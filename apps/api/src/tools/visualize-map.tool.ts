@@ -7,7 +7,11 @@ import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 import { Tool } from "../types/tools.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
-import { geometryColumnsFromSpec, geoInlineRows } from "./geo-delivery.util.js";
+import {
+  geometryColumnsFromSpec,
+  latLngColumnsFromSpec,
+  geoInlineRows,
+} from "./geo-delivery.util.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 
 // -- Tool input --------------------------------------------------------------
@@ -274,13 +278,23 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
 
         const titleField = title ? { title } : {};
         // The tile path (#316) re-runs the pipeline SQL and needs a raw geometry
-        // column named `geom`; expose it from the layer's geometry column
-        // (kept under its own name too, for ST_* + refresh).
+        // column named `geom`. A geometry-column layer exposes it directly; a
+        // lat/lng layer (#520) has none, so synthesize a point from the pair —
+        // otherwise any lat/lng map over INLINE_ROWS_THRESHOLD rows tiles and
+        // every `.mvt` 500s on the missing `src.geom`.
         const primaryGeom = geomCols[0];
+        const latLng = primaryGeom ? null : latLngColumnsFromSpec(spec);
+        const geomExpr = primaryGeom
+          ? `_q.${quoteIdent(primaryGeom)}`
+          : latLng
+            ? `ST_SetSRID(ST_MakePoint(_q.${quoteIdent(latLng.lng)}, _q.${quoteIdent(latLng.lat)}), 4326)`
+            : null;
         const pipelineSql =
-          primaryGeom && primaryGeom !== "geom"
-            ? `SELECT _q.*, _q.${quoteIdent(primaryGeom)} AS geom FROM (${sql}) _q`
-            : sql;
+          primaryGeom === "geom"
+            ? sql
+            : geomExpr
+              ? `SELECT _q.*, ${geomExpr} AS geom FROM (${sql}) _q`
+              : sql;
         const pipeline = { sql: pipelineSql, stationId, organizationId };
 
         // Handle branch first — a large result rides its query-handle envelope
@@ -289,11 +303,11 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           // A tiled map has no inline rows to fit-to client-side, so it would
           // open at [0,0]. Seed the initial view from the geometry extent when
           // the spec leaves it "fit".
-          if (spec.initialView === "fit" && primaryGeom) {
+          if (spec.initialView === "fit" && geomExpr) {
             try {
               const extSql =
                 `SELECT ST_XMin(e) AS xmin, ST_YMin(e) AS ymin, ST_XMax(e) AS xmax, ST_YMax(e) AS ymax ` +
-                `FROM (SELECT ST_Extent(_q.${quoteIdent(primaryGeom)}::geometry) AS e FROM (${sql}) _q) x`;
+                `FROM (SELECT ST_Extent((${geomExpr})::geometry) AS e FROM (${sql}) _q) x`;
               const eres = (await sqlQuery({
                 sql: extSql,
                 stationId,
