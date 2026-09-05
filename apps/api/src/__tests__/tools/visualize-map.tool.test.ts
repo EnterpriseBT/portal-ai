@@ -91,8 +91,12 @@ describe("VisualizeMapTool.execute (#314)", () => {
     // spec is the parsed MapSpec (defaults applied).
     expect((out.spec as { layers: unknown[] }).layers).toHaveLength(1);
     expect((out.spec as { basemap: string }).basemap).toBe("carto-light");
+    // The durable pipeline is tile-ready even for an inline lat/lng map: geom
+    // is synthesized from the pair so a later refresh/tile (a pin that grows
+    // past the inline threshold) has `src.geom` (#520). Inline display rows
+    // above come from the original query, so they're unaffected.
     expect(out.pipeline).toEqual({
-      sql: "SELECT lat, lng, prop_class FROM parcels",
+      sql: 'SELECT _q.*, ST_SetSRID(ST_MakePoint(_q."lng", _q."lat"), 4326) AS geom FROM (SELECT lat, lng, prop_class FROM parcels) _q',
       stationId: "station-1",
       organizationId: "org-1",
     });
@@ -166,6 +170,38 @@ describe("VisualizeMapTool.execute (#314)", () => {
     expect(displaySql).toContain('"c_geometry"');
     // The pipeline (tiles + refresh) exposes a raw `geom` column.
     expect((out.pipeline as { sql: string }).sql).toContain("AS geom");
+  });
+
+  it("lat/lng layer delivered as a handle synthesizes geom for the tile path (#520)", async () => {
+    // A lat/lng map with > INLINE_ROWS_THRESHOLD rows is staged as a handle and
+    // rendered via vector tiles. The tile SQL references `src.geom`, so the
+    // pipeline must synthesize it from the lat/lng pair — without this every
+    // `.mvt` 500s on a missing `geom` column.
+    const latLngHandle = {
+      kind: "handle" as const,
+      envelope: {
+        ...handleEnvelope,
+        schema: [
+          { name: "lat", type: "numeric" },
+          { name: "lng", type: "numeric" },
+          { name: "prop_class", type: "text" },
+        ],
+        samplePeek: [{ lat: 40.7, lng: -111.9, prop_class: "vacant" }],
+      },
+    };
+    const resolveSqlDelivery = jest.fn(async () => latLngHandle);
+    const exec = buildTool({ resolveSqlDelivery: resolveSqlDelivery as never });
+
+    const out = await exec({
+      sql: "SELECT lat, lng, prop_class FROM customers",
+      spec: validSpec, // points layer bound to { latColumn: "lat", lngColumn: "lng" }
+    });
+
+    const pipelineSql = (out.pipeline as { sql: string }).sql;
+    expect(pipelineSql).toContain("ST_MakePoint");
+    expect(pipelineSql).toContain("AS geom");
+    expect(pipelineSql).toContain('"lng"');
+    expect(pipelineSql).toContain('"lat"');
   });
 
   const rampHandle = (col: string) => ({
