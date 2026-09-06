@@ -62,6 +62,10 @@ const SEED_USER = SystemUtilities.id.system;
 /** Default transactions row count when `--rows` is not given (CLI overrides). */
 const DEFAULT_TRANSACTION_ROWS = 1_000_000;
 
+/** The demo custom toolpack's name — unique per org, so a re-seed refreshes the
+ *  existing row rather than inserting a duplicate (see registerCustomToolpack). */
+const DEMO_TOOLPACK_NAME = "demo_supply_tools";
+
 /**
  * Adapt the sync `synthesizeTransactions` generator to the async string-keyed
  * row shape `importRows` consumes — lazily (one row at a time), so peak memory
@@ -367,7 +371,15 @@ export class DemoSeedService {
     return { builtins: builtinSlugs, custom };
   }
 
-  /** Register the demo custom webhook toolpack (mirrors POST /api/toolpacks). */
+  /**
+   * Register (or refresh) the demo custom webhook toolpack — mirrors
+   * POST /api/toolpacks, but **idempotent**: the demo seeder is a re-runnable
+   * convergence (the prod refresh path is a `demo seed` re-run, #509), and
+   * `(organization_id, name)` is unique. A plain INSERT on re-run 23505s, and —
+   * worse — leaves `seedToolpacks` to fall through to `replaceForStation` with
+   * an empty id list, which *disassociates* the already-registered toolpack
+   * from the station. So refresh an existing row in place and reuse its id.
+   */
   private static async registerCustomToolpack(
     orgId: string,
     baseUrl: string
@@ -393,10 +405,9 @@ export class DemoSeedService {
       signingSecret
     );
     const now = Date.now();
-    const model = new OrganizationToolpackModelFactory().create(SEED_USER);
-    model.update({
+    const fields = {
       organizationId: orgId,
-      name: "demo_supply_tools",
+      name: DEMO_TOOLPACK_NAME,
       description: "Harborview Supply Co. vendor tools (shipping + credit).",
       endpoints,
       authHeaders: null,
@@ -405,7 +416,23 @@ export class DemoSeedService {
       metadata,
       schemaFetchedAt: now,
       metadataFetchedAt: metadata !== null ? now : null,
-    });
+    };
+
+    const existing = (
+      await DbService.repository.organizationToolpacks.findByOrganizationId(
+        orgId
+      )
+    ).find((t) => t.name === DEMO_TOOLPACK_NAME);
+    if (existing) {
+      await DbService.repository.organizationToolpacks.update(
+        existing.id,
+        fields as never
+      );
+      return existing.id;
+    }
+
+    const model = new OrganizationToolpackModelFactory().create(SEED_USER);
+    model.update(fields);
     const row = await DbService.repository.organizationToolpacks.create(
       model.parse() as never
     );
