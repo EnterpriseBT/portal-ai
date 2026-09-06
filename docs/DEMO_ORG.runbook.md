@@ -47,11 +47,12 @@ Free, unlimited, all toolpacks, `cta contact`, no Stripe price — a **custom ti
 4. **OAuth.** admin@ connects **Google Sheets** (its Workspace Drive holds #508's sheet) against the prod callback URL. (No Microsoft/OneDrive step — Excel is out of scope.)
 5. **Toolpack URL.** Ensure `DEMO_TOOLPACK_URL` is set for prod (the shared #510 endpoint): `portalops vars set DEMO_TOOLPACK_URL <url> --env prod --yes --confirm-prod`, so the seeder registers the custom toolpack.
 6. **Seed.** `portalai demo seed --env prod --org <orgId> --yes --confirm-prod` (#509) — the documented prod refresh path (there is no prod `demo reset`; re-run `seed` to refresh).
+   - **The ~1M-transaction seed streams over your DB connection — mind the transport.** `demo seed` synthesizes the transactions in-process and imports them through the batch-upsert primitives against `DATABASE_URL`. For prod that URL is a `portalops db tunnel` from a laptop, so all ~1M rows cross the tunnel one batch at a time — measured at roughly **~110 min** end-to-end, and a dropped tunnel or a sleeping laptop kills the run mid-import. Two safe options: **(a)** run the seed from a low-latency vantage inside the env (a bastion/one-off task with direct RDS reach) so the import isn't tunnel-bound, or **(b)** accept the long single-run window — keep the machine awake, hold the tunnel open, and do not run it from the devcontainer (which suspends idle and restarts on editor saves — see the local-env note). To rehearse the flow without the wait, seed a smaller volume first with `--rows <n>` (e.g. `--rows 5000`), then do the full run once when the transport is stable.
 7. **Verify.** Settings → Subscription shows the **Demo** card (unlimited, no checkout CTA), `stripe_subscription_id` is null, and the four connector instances are `active`.
 
 ## The dataset
 
-Authored deterministically by `packages/admin-cli/fixtures/demo/generate.ts` (`npm run --workspace @portalai/admin-cli fixtures:demo`) from the shared module `packages/admin-cli/src/fixtures/demo-data.ts`.
+Authored deterministically by `apps/api/src/scripts/generate-demo-fixtures.ts` (`npm run --workspace @portalai/api fixtures:demo`) from the shared module `apps/api/src/demo/demo-data.ts`, written into `apps/api/fixtures/demo/` (#509 relocated all three from `admin-cli` so the seeder can import the generator directly).
 
 | Entity | File | Rows | Join keys |
 |---|---|---|---|
@@ -66,7 +67,7 @@ Authored deterministically by `packages/admin-cli/fixtures/demo/generate.ts` (`n
 | inventory (REST) | `apps/site/public/demo/inventory.json` | 120 | `product_id` → products |
 | customers+orders | `customers_orders.xlsx` (Customers / Orders) | 400 / 2,000 | Google Sheet hand-upload source (#511) |
 
-**Invariants:** every `orders`/`transactions` `customer_id` and `product_id` resolves; every `shipments`/`transactions` `site_id` resolves; loan schedule closes at ~0; portfolio weights sum to 1. Enforced by `packages/admin-cli/src/__tests__/demo-dataset.test.ts`.
+**Invariants:** every `orders`/`transactions` `customer_id` and `product_id` resolves; every `shipments`/`transactions` `site_id` resolves; loan schedule closes at ~0; portfolio weights sum to 1. Enforced by `apps/api/src/demo/__tests__/demo-dataset.test.ts`.
 
 The `transactions` table is the **large-volume story**: ~1M rows synthesized at seed time (#509) from the same generator, streamed through the batch-upsert primitives. The committed `transactions.sample.csv` is a 5K slice for parsing/inspection; the full volume is seeded, not committed.
 
