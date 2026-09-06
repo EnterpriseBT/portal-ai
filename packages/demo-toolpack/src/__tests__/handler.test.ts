@@ -84,10 +84,11 @@ describe("handler — POST /runtime", () => {
     expect(parse(res).error).toBe("SIGNATURE_INVALID");
   });
 
-  it("401s when the allow-list is empty (fail-closed)", async () => {
+  it("accepts an unsigned call when the allow-list is unset (mock SKIPPED mode)", async () => {
     delete process.env.PORTALAI_SIGNING_SECRETS;
-    const res = await handler(runtimeEvent(body));
-    expect(res.statusCode).toBe(401);
+    const res = await handler(runtimeEvent(body, { sign: false }));
+    expect(res.statusCode).toBe(200);
+    expect(parse(res)).toMatchObject({ credit_score: 719 });
   });
 
   it("404s an unknown tool", async () => {
