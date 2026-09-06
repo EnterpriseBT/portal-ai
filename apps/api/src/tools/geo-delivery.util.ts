@@ -57,6 +57,29 @@ export function geometryColumnsFromSpec(spec: unknown): string[] {
 }
 
 /**
+ * The first lat/lng-bound layer's columns, if any (`map-spec.contract.ts`'s
+ * `{ latColumn, lngColumn }` source arm). The tile path needs a raw `geom`
+ * column; a lat/lng layer has none, so the mint/refresh pipeline synthesizes it
+ * with `ST_MakePoint(lng, lat)`. Returns `null` when no layer binds lat/lng
+ * (a geometry-column spec, handled by {@link geometryColumnsFromSpec}). #520.
+ */
+export function latLngColumnsFromSpec(
+  spec: unknown
+): { lat: string; lng: string } | null {
+  const layers = (
+    spec as { layers?: Array<{ source?: Record<string, unknown> }> } | undefined
+  )?.layers;
+  for (const l of layers ?? []) {
+    const lat = l?.source?.latColumn;
+    const lng = l?.source?.lngColumn;
+    if (typeof lat === "string" && lat && typeof lng === "string" && lng) {
+      return { lat, lng };
+    }
+  }
+  return null;
+}
+
+/**
  * Re-project a geo query's geometry columns to GeoJSON for the inline path.
  * `rawRows` is returned unchanged when there's nothing to convert (no geometry
  * columns — e.g. a lat/lng source — or an empty result). Otherwise one small
