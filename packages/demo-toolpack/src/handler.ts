@@ -8,9 +8,12 @@
  * `/schema` and `/metadata` are served without signature verification on
  * purpose: the app fetches `/schema` signed with a secret it only returns
  * *after* registration, so enforcing signatures there would make registration
- * impossible. The sensitive action — `/runtime` — is always verified against
- * the `PORTALAI_SIGNING_SECRETS` allow-list (comma-separated; one entry per
- * demo env). An empty allow-list fails `/runtime` closed with a 401.
+ * impossible. `/runtime` is verified against the `PORTALAI_SIGNING_SECRETS`
+ * allow-list (comma-separated; one entry per demo env) **when it is set**; when
+ * it is unset the call is accepted unsigned (the reference mock's SKIPPED mode)
+ * — Portal mints the signing secret at registration and never hands it to the
+ * seeder, and the demo payloads are invented, so requiring it would leave the
+ * endpoint uncallable for no security gain.
  *
  * Framework-free (only `node:crypto` via ./signing) so it unit-tests under the
  * same ts-jest ESM config as the other leaf packages and needs no bundler.
@@ -98,16 +101,25 @@ export async function handler(
   }
   if (method === "POST" && endpoint === "runtime") {
     const headers = lowerHeaders(event.headers);
-    const verdict = verifySignature({
-      timestamp: headers["x-portalai-timestamp"],
-      webhookId: headers["x-portalai-webhook-id"],
-      signature: headers["x-portalai-signature"],
-      rawBody,
-      secrets: signingSecrets(),
-      nowSec: Math.floor(Date.now() / 1000),
-    });
-    if (!verdict.ok) {
-      return json(verdict.status, { error: verdict.error });
+    const secrets = signingSecrets();
+    // When no signing secret is configured, accept unsigned calls — mirroring
+    // the reference `mock-toolpack-server`'s SKIPPED mode. Portal generates the
+    // signing secret at registration and doesn't hand it back to the seeder, so
+    // requiring it here would leave the demo endpoint uncallable; the payloads
+    // are invented (shipping quotes, credit scores), so there's nothing to
+    // protect. Once `PORTALAI_SIGNING_SECRETS` is set, every call is verified.
+    if (secrets.length > 0) {
+      const verdict = verifySignature({
+        timestamp: headers["x-portalai-timestamp"],
+        webhookId: headers["x-portalai-webhook-id"],
+        signature: headers["x-portalai-signature"],
+        rawBody,
+        secrets,
+        nowSec: Math.floor(Date.now() / 1000),
+      });
+      if (!verdict.ok) {
+        return json(verdict.status, { error: verdict.error });
+      }
     }
 
     let parsed: unknown;
