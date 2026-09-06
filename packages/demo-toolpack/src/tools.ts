@@ -8,24 +8,40 @@
  * demo runbook and this package's README state the expected result.
  */
 
+// Type-only import — erased at build, so the deployed Lambda keeps zero runtime
+// deps. It exists to hold `PURE_VALUE_CAPABILITY` to the real contract at
+// type-check time (CI Static Checks), so a capability that omits a required
+// field can never ship again (#510: a missing `consumption`/`computeShape` made
+// every registration fail the app's schema validation silently).
+import type { ToolCapability } from "@portalai/core/models";
+
 export interface ToolDefinition {
   name: string;
   description: string;
   parameterSchema: Record<string, unknown>;
-  capability: Record<string, unknown>;
+  capability: ToolCapability;
 }
 
-/** The pure-consumer capability shape the contract's subset allows. */
+/**
+ * The pure-consumer capability shape the contract's subset allows. Must satisfy
+ * `@portalai/core`'s `ToolCapabilitySchema` AND `customToolCapabilityError`
+ * (validated by tools.test.ts against the real core schema) — the app rejects a
+ * `/schema` whose tool capability omits a required field, so every field here is
+ * load-bearing. `consumption.mode: "none"` (takes no record input) and
+ * `computeShape: "pure"` are what a param-only external tool declares.
+ */
 const PURE_VALUE_CAPABILITY = {
   pure: true,
   reads: [],
   writes: [],
   locks: [],
+  consumption: { mode: "none" },
+  computeShape: "pure",
   costHint: "free",
   resultKind: "scalar",
   production: { kind: "value" },
   alwaysAvailable: false,
-} as const;
+} as const satisfies ToolCapability;
 
 export const TOOLS: ToolDefinition[] = [
   {

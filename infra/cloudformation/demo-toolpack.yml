@@ -17,10 +17,13 @@ Description: >-
 # 2. THE SIGNING SECRETS CANNOT EXIST WHEN THIS STACK IS FIRST DEPLOYED.
 #    Portal generates a signing secret (whsec_…) only *when the toolpack is
 #    registered*, which happens after this endpoint is live. So the allow-list
-#    starts empty and `POST /runtime` fails closed (401) until it is populated.
-#    After registering in each env, set the combined allow-list and redeploy /
-#    update-function-configuration (see packages/demo-toolpack/README.md). GET
-#    /schema + /metadata are served openly so registration can fetch the schema
+#    starts empty and `POST /runtime` accepts calls unsigned until it is
+#    populated (mirroring the reference mock's SKIPPED mode; the demo payloads
+#    are invented, so there is nothing to protect until secrets exist). After
+#    registering in each env, set the combined allow-list and redeploy /
+#    update-function-configuration (see packages/demo-toolpack/README.md), and
+#    every call is HMAC-verified thereafter. GET /schema + /metadata are served
+#    openly so registration can fetch the schema
 #    before any secret exists.
 #
 # The handler code shipped by CloudFormation below is a PLACEHOLDER. The real
@@ -82,6 +85,18 @@ Resources:
       # The HMAC signature on /runtime is the auth gate, not IAM.
       AuthType: NONE
 
+  # A public function URL (AuthType NONE) on this account needs BOTH actions
+  # granted to `*`: `lambda:InvokeFunctionUrl` AND `lambda:InvokeFunction`.
+  # Granting only the former leaves the URL returning 403 AccessDeniedException
+  # on every anonymous request even though the URL auth type is NONE — the
+  # console states this explicitly ("missing permissions required for public
+  # access"). `FunctionUrlAuthType: NONE` is only valid on the InvokeFunctionUrl
+  # statement (Lambda rejects it on InvokeFunction), so the InvokeFunction grant
+  # is unconditioned. That is acceptable for THIS function specifically: a
+  # stateless demo toolpack returning deterministic invented data (shipping
+  # quotes, credit scores) with no secrets and no side effects, so a public
+  # Invoke grant exposes nothing worth protecting. Do NOT copy this pattern to a
+  # function that touches real data — use AuthType AWS_IAM there instead.
   UrlInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -89,6 +104,13 @@ Resources:
       Action: lambda:InvokeFunctionUrl
       Principal: "*"
       FunctionUrlAuthType: NONE
+
+  UrlFunctionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunction
+      Principal: "*"
 
 Outputs:
   FunctionUrl:
