@@ -12,7 +12,7 @@ A single AWS Lambda **function-URL** handler that serves the custom-toolpack con
 | `/metadata` | GET | open | Human-readable descriptions/examples |
 | `/runtime` | POST | **HMAC** | Invoke a tool: body `{ tool, input }`, returns any JSON |
 
-`/schema` and `/metadata` are served openly (they are non-sensitive tool catalogs, and the app fetches `/schema` **signed with a secret it only returns after registration** — enforcing there would make registration impossible). `/runtime` verifies the `X-Portalai-*` HMAC signature (see `docs/CUSTOM_TOOLPACK_INTEGRATION.md`) against the `PORTALAI_SIGNING_SECRETS` allow-list. An empty allow-list fails `/runtime` closed with a 401.
+`/schema` and `/metadata` are served openly (they are non-sensitive tool catalogs, and the app fetches `/schema` **signed with a secret it only returns after registration** — enforcing there would make registration impossible). `/runtime` verifies the `X-Portalai-*` HMAC signature (see `docs/CUSTOM_TOOLPACK_INTEGRATION.md`) against the `PORTALAI_SIGNING_SECRETS` allow-list **when it is set**. When it is **unset**, `/runtime` accepts unsigned calls (the reference `mock-toolpack-server`'s SKIPPED mode): Portal mints the signing secret at registration and doesn't hand it back to the seeder, and the demo payloads are invented, so requiring it would leave the endpoint uncallable for no security gain. Set `PORTALAI_SIGNING_SECRETS` to lock it down.
 
 ## The tools
 

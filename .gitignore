@@ -8,6 +8,8 @@ dist/
 build/
 .next/
 out/
+# Lambda bundle zipped for `aws lambda update-function-code` (demo-toolpack deploy)
+function.zip
 
 # Testing
 coverage/
