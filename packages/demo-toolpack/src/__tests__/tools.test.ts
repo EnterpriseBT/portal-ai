@@ -1,4 +1,9 @@
 import {
+  ToolCapabilitySchema,
+  customToolCapabilityError,
+} from "@portalai/core/models";
+
+import {
   TOOLS,
   dispatchTool,
   quoteShippingRate,
@@ -15,6 +20,21 @@ describe("demo-toolpack tools — catalog", () => {
       expect(t.name).toMatch(/^[a-z][a-z0-9_]{0,62}$/);
       expect(t.parameterSchema.type).toBe("object");
       expect(t.capability.pure).toBe(true);
+    }
+  });
+
+  // The app rejects a served /schema whose tool capability doesn't satisfy the
+  // real contract, and the demo seeder fail-opens (built-ins only) with the
+  // reason on a discarded stderr — so a drifted capability failed EVERY
+  // registration silently (#510). This validates each served capability against
+  // the same core schema the app uses, incl. the custom-tool "pure-consumer"
+  // subset, so the drift is caught in CI, not on an app-dev seed.
+  it("every tool capability satisfies the core contract + custom subset", () => {
+    for (const t of TOOLS) {
+      const cap = ToolCapabilitySchema.parse(t.capability);
+      expect(
+        customToolCapabilityError(cap, { allowedConsumptionModes: ["none"] })
+      ).toBeNull();
     }
   });
 });
