@@ -196,6 +196,14 @@ export class DemoSeedService {
       });
     }
 
+    // Link every resolved instance to the org's station (station_instances) so
+    // its entities are queryable in a portal. Connector-instance creation does
+    // NOT auto-link — only an explicit "add to station" does (station.router) —
+    // so without this a freshly-seeded org exposes only the auto-provisioned
+    // Sandbox (transactions), and every entity-specific prompt (customers,
+    // sites, orders) and the map find no data.
+    await DemoSeedService.ensureStationLinks(orgId, [...instanceIds.values()]);
+
     const entities: EntitySeedResult[] = [];
     for (const spec of DEMO_ENTITY_SPECS) {
       entities.push(
@@ -444,6 +452,43 @@ export class DemoSeedService {
    * "Sandbox" already exists (auto-provisioned); File Upload / REST instances
    * are created here so the connector view shows the right connector types.
    */
+  /**
+   * Ensure each connector instance is linked to the org's (single) station via
+   * `station_instances` — idempotent, so a re-seed is a no-op. The Sandbox link
+   * already exists (auto-provisioned); the file-upload/REST instances the seeder
+   * creates need it or their entities never appear in a portal.
+   */
+  private static async ensureStationLinks(
+    orgId: string,
+    connectorInstanceIds: string[]
+  ): Promise<void> {
+    const [station] =
+      await DbService.repository.stations.findByOrganizationId(orgId);
+    if (!station) {
+      throw new Error(
+        `demo seed: org ${orgId} has no station — provision the org first`
+      );
+    }
+    const existing =
+      await DbService.repository.stationInstances.findByStationId(station.id);
+    const linked = new Set(existing.map((s) => s.connectorInstanceId));
+    const now = Date.now();
+    for (const connectorInstanceId of connectorInstanceIds) {
+      if (linked.has(connectorInstanceId)) continue;
+      await DbService.repository.stationInstances.create({
+        id: SystemUtilities.id.v4.generate(),
+        stationId: station.id,
+        connectorInstanceId,
+        created: now,
+        createdBy: SEED_USER,
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+    }
+  }
+
   private static async resolveOrCreateInstance(
     orgId: string,
     kind: DemoInstanceKind
