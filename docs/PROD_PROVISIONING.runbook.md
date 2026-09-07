@@ -115,6 +115,7 @@ Each environment has its own tenant; `app-dev` is `portalsai-staging.us.auth0.co
 
   ⚠️ **Sign the exact bytes you send.** The verifier hashes `req.rawBody`. Build the JSON string once, sign that string, and send that same string as the body — re-serializing between signing and sending changes the bytes and breaks verification.
 - [ ] **Machine-to-machine app for the device flow** ([#194](https://github.com/EnterpriseBT/portal-ai/issues/194)) — this is what `portalai login --env $ENV` uses.
+  - [ ] **Enable the `device_code` grant type on this app.** Dashboard → the app → Settings → Advanced Settings → **Grant Types** → check ☑ **Device Code** → Save (or `auth0 apps update <client-id> --grants <existing…>,device_code` — `--grants` *replaces* the list, so include what's already there). Creating the app does **not** enable it by default. Without it, `portalai login --env $ENV` fails with *"Grant type 'urn:ietf:params:oauth:grant-type:device_code' not allowed for the client."* — a `portalai …--env $ENV` mutation then returns `ENV_NOT_AUTHORIZED` because no session can be established. (Prod hit exactly this: the app existed with its ids in SSM, but the grant was off.)
 
 ```bash
 printf '%s' 'your-tenant.us.auth0.com'   | portalops vars set AUTH0_DOMAIN - --env $ENV $GUARD
