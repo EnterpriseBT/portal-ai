@@ -77,6 +77,15 @@ The guard (`npm run lint:ci-cache`) enforces the CI half of this; nothing enforc
 3. **Mock toolpack:** `npm run webhook:toolpack` starts the mock server; a toolpack registered against its local URL passes schema fetch + a runtime call (with `MOCK_TOOLPACK_SIGNING_SECRET` set, unsigned calls get `401`).
 4. **Tunnel:** `npm run tunnel` prints a public `https://…ngrok…` URL that reaches `curl <ngrok-url>/api/health` → 200.
 
+## Troubleshooting
+
+- **Maps 500 with `Cannot find SRID (3857) in spatial_ref_sys`.** PostGIS's coordinate-system table on your local DB is empty. `CREATE EXTENSION postgis` (migration `0076`) populates it (~8500 rows) on a fresh DB, so this only happens if it was truncated out-of-band. Repopulate from the PostGIS-shipped SQL:
+  ```bash
+  docker exec portalai-postgres-1 sh -c \
+    "psql -U postgres -d portal_ai -f /usr/local/share/postgresql/contrib/postgis-3.5/spatial_ref_sys.sql"
+  ```
+  Verify: `SELECT count(*) FROM spatial_ref_sys;` → `8500`. (`db:reset` is org-scoped and does **not** touch this table; app-dev/prod RDS are unaffected.)
+
 ## Out of scope
 
 - **Deployed-env operations** — inspecting/operating `app-dev`/`prod` is the [charter](./CLI_OPERATIONS_CHARTER.md) + vendor guides (#224–#226) and the native CLIs (#227), not this runbook.
