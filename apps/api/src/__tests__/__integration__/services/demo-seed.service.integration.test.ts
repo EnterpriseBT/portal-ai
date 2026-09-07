@@ -110,6 +110,28 @@ describe("DemoSeedService (integration)", () => {
     }
     // A no-reference entity has zero validation errors.
     expect(result.entities.find((e) => e.key === "customers")!.invalid).toBe(0);
+
+    // Every created instance is linked to the org's station — without this the
+    // portal exposes only the auto-provisioned Sandbox and entity-specific
+    // prompts / the map find no data (regression guard for the station-link fix).
+    const [station] =
+      await DbService.repository.stations.findByOrganizationId(orgId);
+    const linkedIds = new Set(
+      (
+        await DbService.repository.stationInstances.findByStationId(station.id)
+      ).map((s) => s.connectorInstanceId)
+    );
+    const instanceRows =
+      await DbService.repository.connectorInstances.findByOrganizationId(orgId);
+    for (const name of [
+      "File Upload — CSV",
+      "File Upload — XLSX",
+      "Demo REST API",
+    ]) {
+      const inst = instanceRows.find((i) => i.name === name);
+      expect(inst).toBeDefined();
+      expect(linkedIds.has(inst!.id)).toBe(true);
+    }
   });
 
   it("lands XLSX (orders) and JSON (inventory) rows in the wide tables", async () => {
