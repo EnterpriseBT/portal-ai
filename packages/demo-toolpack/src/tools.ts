@@ -8,24 +8,24 @@
  * demo runbook and this package's README state the expected result.
  */
 
-// Type-only import — erased at build, so the deployed Lambda keeps zero runtime
-// deps. It exists to hold `PURE_VALUE_CAPABILITY` to the real contract at
-// type-check time (CI Static Checks), so a capability that omits a required
-// field can never ship again (#510: a missing `consumption`/`computeShape` made
-// every registration fail the app's schema validation silently).
-import type { ToolCapability } from "@portalai/core/models";
-
 export interface ToolDefinition {
   name: string;
   description: string;
   parameterSchema: Record<string, unknown>;
-  capability: ToolCapability;
+  // A plain shape here (not `@portalai/core`'s `ToolCapability`) on purpose: the
+  // deploy-infra step builds ONLY this package, so a build-time import of core —
+  // whose dist isn't built there — would fail the Lambda deploy. The capability
+  // is instead validated at RUNTIME against the real `ToolCapabilitySchema` +
+  // custom-tool subset in tools.test.ts (which runs where core is built). #510:
+  // a capability that omits a required field (consumption/computeShape) makes
+  // the app reject every registration.
+  capability: Record<string, unknown>;
 }
 
 /**
  * The pure-consumer capability shape the contract's subset allows. Must satisfy
  * `@portalai/core`'s `ToolCapabilitySchema` AND `customToolCapabilityError`
- * (validated by tools.test.ts against the real core schema) — the app rejects a
+ * (asserted by tools.test.ts against the real core schema) — the app rejects a
  * `/schema` whose tool capability omits a required field, so every field here is
  * load-bearing. `consumption.mode: "none"` (takes no record input) and
  * `computeShape: "pure"` are what a param-only external tool declares.
@@ -41,7 +41,7 @@ const PURE_VALUE_CAPABILITY = {
   resultKind: "scalar",
   production: { kind: "value" },
   alwaysAvailable: false,
-} as const satisfies ToolCapability;
+} as const;
 
 export const TOOLS: ToolDefinition[] = [
   {
