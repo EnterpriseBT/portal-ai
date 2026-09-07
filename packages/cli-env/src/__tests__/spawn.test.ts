@@ -10,9 +10,14 @@ const disposeMock = jest.fn<() => Promise<void>>();
 const dbMock = jest.fn<() => Promise<{ connectionString: string }>>();
 const resolveEnvConnectionMock =
   jest.fn<(name: string) => Promise<Record<string, unknown>>>();
+const getSecretMock =
+  jest.fn<(def: unknown, name: string) => Promise<string>>();
 
 jest.unstable_mockModule("../connection.js", () => ({
   resolveEnvConnection: resolveEnvConnectionMock,
+}));
+jest.unstable_mockModule("../aws.js", () => ({
+  getSecret: getSecretMock,
 }));
 
 const { runApiScript } = await import("../spawn.js");
@@ -20,6 +25,7 @@ const { EnvInfraError } = await import("../errors.js");
 const { BUILTIN_ENVIRONMENTS } = await import("../registry.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
+const local = BUILTIN_ENVIRONMENTS["local"];
 
 type SpawnResult = { code: number; stdout: string; stderr: string };
 
@@ -34,6 +40,7 @@ beforeEach(() => {
   spawnerCalls.length = 0;
   nextResult = { code: 0, stdout: "", stderr: "" };
   disposeMock.mockReset().mockResolvedValue(undefined);
+  getSecretMock.mockReset().mockResolvedValue("env-encryption-key");
   dbMock
     .mockReset()
     .mockResolvedValue({ connectionString: "postgresql://u:p@host:5432/db" });
@@ -82,6 +89,20 @@ describe("runApiScript", () => {
     expect(spawnerCalls[0].env.DATABASE_URL).toBe(
       "postgresql://u:p@host:5432/db"
     );
+  });
+
+  it("injects the env's ENCRYPTION_KEY for AWS envs (so encrypted writes use the target env's key)", async () => {
+    await runApiScript(appDev, "db:demo:seed", [], spawner as never);
+
+    expect(getSecretMock).toHaveBeenCalledWith(appDev, "encryption-key");
+    expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBe("env-encryption-key");
+  });
+
+  it("does NOT inject ENCRYPTION_KEY for local (no AWS — the .env key is used as-is)", async () => {
+    await runApiScript(local, "db:demo:seed", [], spawner as never);
+
+    expect(getSecretMock).not.toHaveBeenCalled();
+    expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBeUndefined();
   });
 
   it("returns the script's stdout", async () => {
