@@ -62,7 +62,7 @@ The root cause of both the "squares on a small map" bug and the z14 discontinuit
 
 ### Decision 2 — Aggregate grid geometry
 
-- **A — Nested tile-pyramid grid.** `cellsPerAxis = 2^k` (e.g. 16 → 32 px, or 32 → 16 px), so `cellSize = WORLD_3857_WIDTH / 2^(z+k)` snapped to the tile origin. Every cell at `z` is exactly the union of its four children at `z+1`; a bin subdivides, never re-partitions. Represent the bin at the aggregated features' centroid (not the cell center) so the mark sits where the data is and drifts smoothly as the cell splits.
+- **A — Nested tile-pyramid grid.** `cellsPerAxis = 2^k` (e.g. 16 → 32 px, or 32 → 16 px), so `cellSize = WORLD_3857_WIDTH / 2^(z+k)` snapped to the tile origin. Every cell at `z` is exactly the union of its four children at `z+1`; a bin subdivides into four smaller squares, never re-partitions. The bin stays a **cell-bounds square** (no centroid marker) — nesting alone removes the wander, and a square that cleanly subdivides is the more legible continuity story than a drifting point.
 - **B — Fixed global grid (geohash-like), display-size only.** One zoom-independent grid; only the rendered square size changes. Also nested, but decouples cell size from screen px (bins look tiny when zoomed / huge when out) — worse ergonomics for the same continuity.
 
 | | A (nested pyramid) | B (fixed global) |
@@ -109,7 +109,7 @@ Kept as a dissolve path (not folded into grid bins — that would regress real m
 ## Recommendation
 
 1. Replace the global `z < zoomThreshold` choice with **per-tile, count-driven** selection: whole-layer-under-cap ⇒ raw everywhere (persisted `matchedCount`/`rowCount`, fallback `estimatedRows`); otherwise per-tile ⇒ raw when the tile is under cap, nested-grid aggregate when over.
-2. Make the aggregate grid a **nested tile-pyramid** (`cellsPerAxis` a power of two, `cellSize = WORLD_3857_WIDTH / 2^(z+k)`), and render each bin at the **aggregated centroid** so marks subdivide smoothly.
+2. Make the aggregate grid a **nested tile-pyramid** (`cellsPerAxis` a power of two, `cellSize = WORLD_3857_WIDTH / 2^(z+k)`); each bin stays a cell-bounds square that subdivides into four on zoom-in. Because bins are polygons and raw points are points, the raw and aggregate MapLibre layers coexist at all zooms (separated by geometry type + an `_agg` feature flag) — the fixed `AGG_ZOOM_THRESHOLD` min/max-zoom handoff is removed, letting dense and sparse tiles differ at the same zoom.
 3. Over-cap **lines** aggregate too (no arbitrary length-clip); the never-drop guarantee covers points and lines, polygons via the dissolve path.
 4. Make the MapSpec `aggregation` field **advisory** — a preference that never strands a feature — keeping the server gate and web mirror in lockstep through `resolveAggTreatment`.
 5. Make dissolve bands **continuous** by deriving coarse bands from the finest union.
@@ -119,7 +119,7 @@ Kept as a dissolve path (not folded into grid bins — that would regress real m
 
 1. **`k` (cells per axis).** 16 (→32 px bins) or 32 (→16 px bins)? Larger `k` = finer bins, more MVT features per tile. **Lean: 16** (32 px bins ≈ today's 24 px target, comfortably under any per-tile feature budget).
 2. **Over-cap probe mechanism.** A `SELECT count(*)` over the tile envelope, or a `LIMIT cap+1` raw probe that doubles as the raw result when under? **Lean: `LIMIT cap+1` probe** — one query decides *and* returns the rows in the common under-cap case; only over-cap tiles pay for a second (aggregate) query. **The probe's cost on a large layer is validated with production-scale performance tests at smoke** (recorded measurements, not a fixture assertion — plan choice is size-dependent per `CLAUDE.md`); if the per-tile probe plans poorly, fall back to `count(*)`.
-3. **Per-tile count for lines/polygons vs points.** Count of geometries is the natural unit for points; for lines the existing length-rank exists precisely because line count is the wrong budget. **Lean: keep count for points, keep length-rank as the *ordering within* an over-cap line tile that still aggregates by nested grid** — i.e. lines never drop, but the raw-vs-aggregate flip stays count-based.
+3. **Line over-cap behavior. RESOLVED — hybrid.** An over-cap line tile keeps the **longest-N** lines as real (simplified) raw lines *and* covers the remaining lines with the nested-grid aggregate, where a line contributes to **every cell its geometry crosses** (so a line's full extent is covered, not just a representative point). Every in-frame location is covered by a real line or a bin; as tiles subdivide on zoom, more lines promote to raw and bins recede, until all are raw under the cap. This is the faithful reading of "regardless of quantity" for lines (a midpoint/centroid bin would leave a long line's body uncovered).
 4. **Dissolve rebuild.** Band-nesting changes the precompute shape; existing `map_dissolve_geometries` rows must be recomputed. No prod data yet ⇒ a clean truncate + re-enqueue is acceptable rather than a dual-write migration. **Lean: truncate + re-enqueue on deploy.**
 5. **Inline (non-tiled) maps.** Small maps delivered inline (GeoJSON + `fitBounds`) never aggregate. **Lean: unchanged** — they're already all-features-as-themselves and satisfy the invariant trivially.
 
