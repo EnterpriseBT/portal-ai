@@ -443,4 +443,77 @@ describe("Portal map tile route (#316)", () => {
     expect(res.status).toBe(200);
     expect(res.aggregated).toBe(false);
   });
+
+  // ── #532: count-driven per-tile decision (whole-layer fast path) ──────
+
+  const createCountedPin = async (
+    pipelineSql: string,
+    count: { matchedCount: number; matchedCountExact: boolean } | null
+  ): Promise<string> => {
+    const id = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Counted map",
+        type: "geo",
+        content: {
+          // A polygon layer with no colorBy → treatment "bins" (the aggregate path).
+          spec: {
+            layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+          },
+          pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+          ...(count ?? {}),
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    return id;
+  };
+
+  it("fast path: an exact count <= cap renders raw at low zoom, not bins (#532)", async () => {
+    const pin = await createCountedPin('SELECT "c_geom" AS geom FROM parcels', {
+      matchedCount: 5,
+      matchedCountExact: true,
+    });
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // The whole-layer fast path took the raw path even at z0 — no centroid bins.
+    expect(res.aggregated).toBe(false);
+  });
+
+  it("contrast: the same layer with no persisted count still aggregates at low zoom (#532)", async () => {
+    const pin = await createCountedPin(
+      'SELECT "c_geom" AS geom FROM parcels',
+      null
+    );
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    // No count ⇒ interim zoom-threshold fallback ⇒ bins at low zoom (proving the
+    // fast path above is what changed the outcome, not the geometry).
+    expect(res.aggregated).toBe(true);
+  });
 });

@@ -1,10 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapLayer, MapSpec } from "@portalai/core/contracts";
-import {
-  AGG_ZOOM_THRESHOLD,
-  SEQUENTIAL_PALETTE,
-} from "@portalai/core/constants";
+import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
 import type {
   GeoBlockContent,
@@ -484,14 +481,23 @@ describe("layerToMapLibre aggregation (#330)", () => {
     style: { colorBy: { column: "c_city", stops: [["SLC", "#111"]] } },
   } as MapLayer;
 
-  it("tiled category layer → raw layers gated minzoom + an -agg fill gated maxzoom, same colorBy match", () => {
+  it("tiled category layer → raw layers + an -agg fill, separated by the _agg filter (#532)", () => {
     const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: true });
     const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
     const raw = layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`);
-    // Clean handoff: raw at/above threshold, agg below it.
     expect(agg.type).toBe("fill");
-    expect(agg.maxzoom).toBe(AGG_ZOOM_THRESHOLD);
-    expect(raw.every((l) => l.minzoom === AGG_ZOOM_THRESHOLD)).toBe(true);
+    // #532: no zoom handoff — raw and aggregate coexist at every zoom, separated
+    // by the `_agg` feature flag, not by min/max-zoom.
+    expect(agg.minzoom).toBeUndefined();
+    expect(agg.maxzoom).toBeUndefined();
+    expect(agg.filter).toEqual(["==", ["get", "_agg"], 1]);
+    expect(raw.every((l) => l.minzoom === undefined)).toBe(true);
+    expect(
+      raw.every(
+        (l) =>
+          JSON.stringify(l.filter) === JSON.stringify(["!", ["has", "_agg"]])
+      )
+    ).toBe(true);
     // Bins colour by the same colorBy match as the raw fill.
     expect((agg.paint["fill-color"] as unknown[])[0]).toBe("match");
   });
@@ -508,25 +514,28 @@ describe("layerToMapLibre aggregation (#330)", () => {
     expect(JSON.stringify(op)).toContain("_count");
   });
 
-  it("honours a per-layer zoomThreshold override", () => {
+  it("a zoomThreshold override no longer gates (#532 — retained but ignored)", () => {
     const layer = {
       ...catLayer,
       aggregation: { zoomThreshold: 9 },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
-    expect(layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!.maxzoom).toBe(
-      9
-    );
+    const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
+    expect(agg.maxzoom).toBeUndefined();
+    expect(agg.filter).toEqual(["==", ["get", "_agg"], 1]);
     expect(
-      layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`)[0].minzoom
-    ).toBe(9);
+      layers
+        .filter((l) => l.id !== `${sourceIdFor(0)}-agg`)
+        .every((l) => l.minzoom === undefined)
+    ).toBe(true);
   });
 
-  it("aggregation.enabled === false → no agg layer, raw layers not zoom-gated", () => {
+  it("aggregation.enabled === false → no agg layer, raw layers unfiltered/ungated", () => {
     const layer = { ...catLayer, aggregation: { enabled: false } } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
     expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
+    expect(layers.every((l) => l.filter === undefined)).toBe(true);
   });
 
   it("inline (not tiled) → no agg layer even with a colorBy", () => {

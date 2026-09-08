@@ -27,6 +27,7 @@ import {
 import {
   AGG_ZOOM_THRESHOLD,
   AGG_GRID_PX,
+  AGG_TILE_VERSION,
   bandForZoom,
 } from "@portalai/core/constants";
 
@@ -137,10 +138,32 @@ export interface RenderTileDeps {
     tolerance: number;
     cap: number;
     aggregation: TileAggregation;
+    layerTotal: number | null;
+    layerTotalExact: boolean;
   }) => Promise<TileQueryResult>;
 }
 
 const quoteIdentTile = (s: string) => `"${s.replace(/"/g, '""')}"`;
+
+/**
+ * Map-tile ETag format (#532): `"<a|r>~<32-hex hash>"`. The `a`/`r` prefix
+ * records whether the tile aggregated, so a 304 (which runs no query) can report
+ * the correct "aggregated overview" notice from the client's echoed validator.
+ * The hash is what gates the 304; the prefix is carried metadata.
+ */
+function tileEtag(aggregated: boolean, hash: string): string {
+  return `"${aggregated ? "a" : "r"}~${hash}"`;
+}
+
+/** Parse a `tileEtag`. Returns null for a malformed or pre-#532 (prefixless)
+ *  validator — it then fails the 304 hash comparison and re-renders, which is
+ *  the intended cache-bust across the format change. */
+function parseTileEtag(
+  etag: string
+): { aggregated: boolean; hash: string } | null {
+  const m = /^"([ar])~([0-9a-f]{32})"$/.exec(etag);
+  return m ? { aggregated: m[1] === "a", hash: m[2] } : null;
+}
 
 /**
  * Property columns a geo spec needs on each tile feature — the `colorBy`
@@ -167,6 +190,30 @@ export function propertyColumnsFromSpec(spec: unknown): string[] {
   }
   cols.delete("geom");
   return [...cols];
+}
+
+/**
+ * Persisted layer feature count from the query-handle envelope (#532), read from
+ * the block/pin content that `visualize_map` spreads the envelope onto. Prefers
+ * the exact `matchedCount`; falls back to `rowCount` (exact only when the handle
+ * was not `truncated`). Absent envelope ⇒ `{ null, false }` — no fast path.
+ */
+export function layerCountFromContent(content: Record<string, unknown>): {
+  layerTotal: number | null;
+  layerTotalExact: boolean;
+} {
+  const mc = content.matchedCount;
+  if (typeof mc === "number") {
+    return {
+      layerTotal: mc,
+      layerTotalExact: content.matchedCountExact === true,
+    };
+  }
+  const rc = content.rowCount;
+  if (typeof rc === "number") {
+    return { layerTotal: rc, layerTotalExact: content.truncated === false };
+  }
+  return { layerTotal: null, layerTotalExact: false };
 }
 
 /** Resolved low-zoom aggregation config for a tile (#330, #337). */
@@ -239,9 +286,66 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
   };
 }
 
-/** Whether a tile at zoom `z` aggregates under this config. */
-export function shouldAggregate(z: number, agg: TileAggregation): boolean {
-  return agg.enabled && z < agg.zoomThreshold;
+/** The per-tile render mode (#532). */
+export type TileMode = "raw" | "aggregate" | "hybrid-lines" | "dissolve";
+
+/**
+ * The per-tile render decision (#532) — the count-driven replacement for the
+ * pre-#532 global zoom threshold. The invariant it enforces: every in-frame
+ * feature is represented as itself or inside an aggregate, so raw is chosen only
+ * when a tile genuinely fits under the cap.
+ *
+ * Order:
+ *  1. A polygon choropleth with a precompute at this zoom band → `"dissolve"`
+ *     (real merged geometry, never centroid bins).
+ *  2. Whole-layer fast path — an *exactly*-counted layer that fits under the cap
+ *     renders raw at every zoom with no per-tile probe (the #532 filed fix).
+ *  3. Per-tile: once the caller has probed the tile's feature count, the count
+ *     decides — `≤ cap` → raw, over → `"aggregate"` (points) or `"hybrid-lines"`.
+ *
+ * Until a probe runs (`tileCount === null`) the interim fallback reproduces the
+ * pre-#532 zoom threshold, so large layers are unchanged until the probe is
+ * wired (slice 3). An inexact/truncated `layerTotal` never takes the fast path.
+ */
+export function resolveTileMode(args: {
+  z: number;
+  aggregation: TileAggregation;
+  layerTotal: number | null;
+  layerTotalExact: boolean;
+  tileCount: number | null;
+  cap: number;
+  dissolveReady: boolean;
+}): TileMode {
+  const {
+    z,
+    aggregation,
+    layerTotal,
+    layerTotalExact,
+    tileCount,
+    cap,
+    dissolveReady,
+  } = args;
+
+  // A dissolve (polygon choropleth) layer never renders centroid bins: it is
+  // either served from precomputed real geometry, or falls back to the raw
+  // (real, simplified) polygon path — the pre-#532 `treatment !== "dissolve"`
+  // exclusion. Never-drop for these polygons is the dissolve precompute's job.
+  if (aggregation.treatment === "dissolve") {
+    return bandForZoom(z) !== null && dissolveReady ? "dissolve" : "raw";
+  }
+
+  if (layerTotalExact && layerTotal !== null && layerTotal <= cap) {
+    return "raw";
+  }
+
+  if (tileCount !== null) {
+    if (tileCount <= cap) return "raw";
+    return aggregation.kind === "lines" ? "hybrid-lines" : "aggregate";
+  }
+
+  // Interim fallback (no per-tile probe yet): pre-#532 zoom-threshold behavior.
+  const lowZoom = aggregation.enabled && z < aggregation.zoomThreshold;
+  return lowZoom ? "aggregate" : "raw";
 }
 
 function notFound(): ApiError {
@@ -274,6 +378,12 @@ export class PortalMapTileService {
     snapshotUpdatedAt: number | null;
     propertyColumns: string[];
     aggregation: TileAggregation;
+    /** Persisted total feature count from the query envelope (#532) — drives the
+     *  whole-layer fast path. Null when the content carries no count. */
+    layerTotal: number | null;
+    /** Whether `layerTotal` is exact (not a truncated lower bound). Only an exact
+     *  count may take the fast path. */
+    layerTotalExact: boolean;
   }> {
     const findMessageById =
       deps.findMessageById ?? ((id: string) => portalMessagesRepo.findById(id));
@@ -300,6 +410,7 @@ export class PortalMapTileService {
         snapshotUpdatedAt: null,
         propertyColumns: propertyColumnsFromSpec(inner.spec),
         aggregation: aggregationFromSpec(inner.spec),
+        ...layerCountFromContent(inner),
       };
     }
 
@@ -319,6 +430,7 @@ export class PortalMapTileService {
           : null,
       propertyColumns: propertyColumnsFromSpec(content.spec),
       aggregation: aggregationFromSpec(content.spec),
+      ...layerCountFromContent(content),
     };
   }
 
@@ -402,7 +514,10 @@ export class PortalMapTileService {
       `LIMIT ${cap}` +
       `) SELECT ` +
       `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM (` +
-      `SELECT ${catSelect}_count, ` +
+      // `_agg:1` flags a bin so the client separates aggregate fills from raw
+      // features by feature property (not by zoom), letting raw and aggregate
+      // tiles coexist at one zoom (#532).
+      `SELECT ${catSelect}_count, 1 AS _agg, ` +
       `ST_AsMVTGeom(ST_MakeEnvelope(ST_X(cell) - ${half}, ST_Y(cell) - ${half}, ST_X(cell) + ${half}, ST_Y(cell) + ${half}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
       `FROM cells` +
       `) q WHERE q.geom IS NOT NULL) AS mvt, ` +
@@ -428,6 +543,8 @@ export class PortalMapTileService {
     tolerance: number;
     cap: number;
     aggregation: TileAggregation;
+    layerTotal: number | null;
+    layerTotalExact: boolean;
   }): Promise<TileQueryResult> {
     const {
       pipeline,
@@ -440,37 +557,52 @@ export class PortalMapTileService {
       tolerance,
       cap,
       aggregation,
+      layerTotal,
+      layerTotalExact,
     } = args;
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
-    const lowZoom = shouldAggregate(z, aggregation);
 
-    // #472: a low-zoom polygon choropleth is served from precomputed dissolved
-    // geometry (a pin ref with a band + colorBy). A miss — no precompute yet,
-    // or a message ref — falls through to the RAW path (real simplified
-    // polygons), never centroid bins.
-    if (aggregation.treatment === "dissolve" && lowZoom) {
-      const band = bandForZoom(z);
-      if (
-        band !== null &&
-        portalResultId != null &&
-        aggregation.colorByColumn != null &&
-        (await this.hasDissolvePrecompute(
-          portalResultId,
-          aggregation.colorByColumn,
-          band
-        ))
-      ) {
-        return this.runDissolveTile(
-          portalResultId,
-          aggregation.colorByColumn,
-          band,
-          envelope
-        );
-      }
+    // #472/#532: a low-zoom polygon choropleth is served from precomputed
+    // dissolved geometry (a pin ref with a band + colorBy). Its readiness feeds
+    // the mode decision; a miss falls through to raw (real simplified polygons),
+    // never centroid bins.
+    const band = bandForZoom(z);
+    const dissolveReady =
+      aggregation.treatment === "dissolve" &&
+      band !== null &&
+      portalResultId != null &&
+      aggregation.colorByColumn != null &&
+      (await this.hasDissolvePrecompute(
+        portalResultId,
+        aggregation.colorByColumn,
+        band
+      ));
+
+    // #532: count-driven per-tile decision. `tileCount` stays null here until the
+    // over-cap probe is wired (slice 3); the whole-layer fast path (exact count
+    // ≤ cap → raw at every zoom) already fixes the small-layer case (#532).
+    const mode = resolveTileMode({
+      z,
+      aggregation,
+      layerTotal,
+      layerTotalExact,
+      tileCount: null,
+      cap,
+      dissolveReady,
+    });
+
+    if (mode === "dissolve") {
+      return this.runDissolveTile(
+        portalResultId!,
+        aggregation.colorByColumn!,
+        band!,
+        envelope
+      );
     }
 
-    // "dissolve" that missed serves raw (real polygons), not bins.
-    const aggregate = lowZoom && aggregation.treatment !== "dissolve";
+    // "aggregate"/"hybrid-lines" both render bins here; the line hybrid's raw
+    // skeleton is added in slice 4. "raw"/"dissolve-miss" take the raw path.
+    const aggregate = mode === "aggregate" || mode === "hybrid-lines";
     const tileSql = aggregate
       ? this.buildAggregateTileSql(pipeline.sql, z, envelope, aggregation, cap)
       : this.buildRawTileSql(
@@ -622,30 +754,39 @@ export class PortalMapTileService {
     deps: RenderTileDeps = {}
   ): Promise<TileRenderResult> {
     const { ref, z, x, y, organizationId, ifNoneMatch } = params;
-    const { pipeline, snapshotUpdatedAt, propertyColumns, aggregation } =
-      await this.resolvePipeline(ref, organizationId, deps);
-    const willAggregate = shouldAggregate(z, aggregation);
+    const {
+      pipeline,
+      snapshotUpdatedAt,
+      propertyColumns,
+      aggregation,
+      layerTotal,
+      layerTotalExact,
+    } = await this.resolvePipeline(ref, organizationId, deps);
 
-    // ETag over (pipeline SQL, z, x, y, snapshot clock). A fresh pin snapshot
-    // or edited pipeline invalidates cached tiles; a static one caches well.
-    const etag = `"${crypto
+    // ETag hash over (pipeline SQL, z, x, y, snapshot clock, tile-gen version).
+    // A fresh pin snapshot, an edited pipeline, or a bumped AGG_TILE_VERSION
+    // (tile-generation behavior change, #532) invalidates cached tiles.
+    const hash = crypto
       .createHash("sha256")
-      .update(`${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}`)
+      .update(
+        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}`
+      )
       .digest("hex")
-      .slice(0, 32)}"`;
+      .slice(0, 32);
 
     const tolerance = tileSimplifyTolerance(z);
 
-    if (ifNoneMatch && ifNoneMatch === etag) {
-      // No query runs on a 304, so derive the aggregate flag from the config +
-      // zoom (the same condition the query branches on).
+    const prior = ifNoneMatch ? parseTileEtag(ifNoneMatch) : null;
+    if (prior && prior.hash === hash) {
+      // No query runs on a 304 — read the aggregate flag from the client's
+      // echoed validator (the tile bytes are unchanged, so the mode is too).
       return {
         status: 304,
-        etag,
+        etag: ifNoneMatch as string,
         simplifiedTolerance:
-          willAggregate || tolerance === 0 ? null : tolerance,
+          prior.aggregated || tolerance === 0 ? null : tolerance,
         truncatedCap: null,
-        aggregated: willAggregate,
+        aggregated: prior.aggregated,
       };
     }
 
@@ -664,7 +805,11 @@ export class PortalMapTileService {
       tolerance,
       cap: MAP_TILE_FEATURE_CAP,
       aggregation,
+      layerTotal,
+      layerTotalExact,
     });
+
+    const etag = tileEtag(aggregated, hash);
 
     // An aggregate tile is a complete summary — it is neither "simplified"
     // (bins aren't approximations of real shapes) nor "truncated" (nothing was

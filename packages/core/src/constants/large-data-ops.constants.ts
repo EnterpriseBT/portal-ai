@@ -120,6 +120,30 @@ export const AGG_GRID_PX = 24;
 export const AGG_DENSITY_MAX = 5000;
 
 /**
+ * Nested-grid parameters (#532). The aggregate grid's cells-per-tile-axis is a
+ * **power of two** so the grid nests across zoom: a cell at zoom `z` is exactly
+ * the union of its four children at `z+1`, and `cellSize(z) = 2 * cellSize(z+1)`.
+ * This is what makes an aggregate bin *subdivide* on zoom-in instead of the
+ * pre-#532 non-nested `round(512 / AGG_GRID_PX) = 21` lattice, whose cells shared
+ * no boundaries across zoom and so made bins wander/blink. 16 cells ⇒ ~32px bins
+ * at the 512px tile size. `AGG_GRID_PX` is retained for spec back-compat but no
+ * longer sizes the grid; `AGG_ZOOM_THRESHOLD` is retained as the dissolve ceiling
+ * (`bandForZoom`) but no longer gates the raw-vs-aggregate flip — that is now the
+ * per-tile feature count (`resolveTileMode`).
+ */
+export const AGG_GRID_LEVELS = 4;
+export const AGG_CELLS_PER_AXIS = 2 ** AGG_GRID_LEVELS; // 16
+
+/**
+ * Tile-generation version salt (#532). Folded into the map-tile ETag hash so a
+ * change to tile-generation behavior (grid formula, decision, line hybrid)
+ * invalidates every cached tile on deploy — the ETag otherwise covers only the
+ * pipeline SQL + z/x/y + snapshot clock, none of the generation code. Bump this
+ * whenever the bytes a given (pipeline, z, x, y, snapshot) would produce change.
+ */
+export const AGG_TILE_VERSION = 2;
+
+/**
  * Precomputed polygon-dissolve zoom bands (#472, retuned #478). Below the z14
  * raw handoff, a polygon choropleth is served from a per-pin dissolved +
  * simplified geometry (one MultiPolygon per colorBy value per band). Each band
