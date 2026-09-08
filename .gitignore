@@ -37,7 +37,17 @@ swagger.json
 .env.production.local
 
 # IDE
-.vscode/
+# Ignore the root .vscode/ contents, but track the two files that are
+# deliberately the team's shared editor config: settings.json (formatter/eslint/ts
+# + CloudFormation schema validation via yaml.schemas) and extensions.json (the
+# recommendation / unwantedRecommendations mirror of the devcontainer's canonical
+# extension set). `.vscode/*` (middle separator) is root-anchored, so the two
+# workspace-root globs below are still needed to keep per-package IDE dirs local. (#524)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+apps/*/.vscode/
+packages/*/.vscode/
 .idea/
 *.swp
 *.swo

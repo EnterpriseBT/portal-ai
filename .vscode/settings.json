@@ -1,0 +1,127 @@
+{
+  // Editor settings
+  "editor.defaultFormatter": "dbaeumer.vscode-eslint",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  // ESLint settings
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  "eslint.workingDirectories": [
+    "./packages/core"
+  ],
+  // TypeScript settings
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  // File associations
+  "files.associations": {
+    "*.css": "css",
+    "*.scss": "scss"
+  },
+  // Auto-save
+  "files.autoSave": "onFocusChange",
+  // Formatting
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": true,
+  // SCSS/CSS
+  "scss.lint.unknownAtRules": "ignore",
+  "css.lint.unknownAtRules": "ignore",
+  // Exclude from file watcher
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/.git/**": true
+  },
+  // Search exclude
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.turbo": true
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "sqltools.connections": [
+    {
+      "ssh": "Disabled",
+      "previewLimit": 50,
+      "server": "postgres",
+      "port": 5432,
+      "driver": "PostgreSQL",
+      "name": "Local Development",
+      "database": "portal_ai",
+      "username": "postgres",
+      "password": "postgres"
+    },
+    {
+      "pgOptions": {
+        "ssl": {
+          "rejectUnauthorized": false
+        }
+      },
+      "ssh": "Disabled",
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 15432,
+      "driver": "PostgreSQL",
+      "name": "Staging",
+      "username": "portalai",
+      "database": "portal_ai"
+    }
+  ],
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  // Validate the CloudFormation templates against the real CFN JSON schema so
+  // the editor catches genuine mistakes (unknown resource types, misspelled or
+  // missing required properties) rather than merely staying quiet. Path-globbed
+  // to infra/cloudformation/*.yml ONLY, so .github/workflows/*.yml and
+  // docker-compose.yml are left untouched. Pairs with yaml.customTags below,
+  // which lets short-form intrinsics resolve under the schema. (#524)
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/awslabs/goformation/master/schema/cloudformation.schema.json": "infra/cloudformation/*.yml"
+  },
+  // CloudFormation short-form intrinsics (!Ref, !Sub, …) are custom YAML tags
+  // the language server doesn't know, so it flags every one as "Unresolved
+  // tag" (360 warnings across infra/cloudformation/*.yml). Declaring them here
+  // teaches redhat.vscode-yaml the CloudFormation dialect. The templates were
+  // always valid CFN; this only silences the false positives.
+  "yaml.customTags": [
+    "!Ref scalar",
+    "!Sub scalar",
+    "!Sub sequence",
+    "!GetAtt scalar",
+    "!GetAtt sequence",
+    "!GetAZs scalar",
+    "!ImportValue scalar",
+    "!ImportValue mapping",
+    "!Select scalar",
+    "!Select sequence",
+    "!Split sequence",
+    "!Join sequence",
+    "!FindInMap sequence",
+    "!Base64 scalar",
+    "!Base64 mapping",
+    "!Cidr scalar",
+    "!Cidr sequence",
+    "!If sequence",
+    "!Equals sequence",
+    "!And sequence",
+    "!Or sequence",
+    "!Not sequence",
+    "!Condition scalar",
+    "!Transform mapping"
+  ]
+}
