@@ -24,7 +24,15 @@ This fixes both symptoms at once:
 
 ## Smoke (manual, against your dev stack)
 
-- Seed the demo org, then hand-corrupt one `organization_toolpacks.signing_secret` blob (mutate its base64 `data`) via `portalops db psql --env local`. `GET /api/toolpacks` → **200** with the toolpack still listed (not a 500). Re-run the demo seeder → it **repairs** the row (no "already exists"/decrypt abort), and a subsequent list shows the row healthy again.
+Walked live against the local stack (API :3001, real `ENCRYPTION_KEY`, real demo org `62977305…`, toolpack `demo_supply_tools`). Poison = a valid envelope with the GCM `authTag` zeroed so decrypt fails with the production error. Boxes unchecked — yours to confirm against the evidence below.
+
+- [ ] **Baseline** — `GET /api/toolpacks?kind=custom` → **200**, `demo_supply_tools` listed.
+- [ ] **List survives a poison row** — with `signing_secret.authTag` zeroed, `GET /api/toolpacks?kind=custom` → **200**, row still listed (`signingSecretStatus.has: true`). *This is the fix — pre-fix this 500s.*
+- [ ] **Strict single-row stays strict** — same poison row, `GET /api/toolpacks/:id` (uses `findByIdScoped`) → **500**. Confirms the poison is genuinely undecryptable (the exact pre-fix list failure) and that secret-needing paths still fail loudly.
+- [ ] **Seeder-mechanic repair** — the seeder's idempotency step (`findByOrganizationId(...).find(byName)` → `update`, demo-seed.service.ts:429-439) run against the real poisoned row: `findByOrganizationId` returns it degraded (`secretDecryptable: false`, empty secret) **without throwing**, logs the `#531` warning with the row id + GCM error, and the follow-up `update` restores a decryptable secret (strict `findByIdScoped` then reads it). *Exercised via the repository directly; a full `demo seed` needs `DEMO_TOOLPACK_URL` + a reachable webhook, orthogonal to this bug.*
+- [ ] **Restored** — original good blob written back; both endpoints → **200**. Demo org left exactly as found.
+
+Evidence: list `HTTP 200` on the poisoned row, strict `HTTP 500` on the same row, repair probe → `{"step":"findByOrganizationId","threw":false,"found":true,"secretDecryptable":false,"signingSecretIsEmpty":true}` then `{"step":"afterRepair","strictFindThrew":false,"signingSecret":"whsec_smoke_531_repair"}`, plus the repository warning log firing with `error: "Unsupported state or unable to authenticate data"`.
 
 ## Out of scope
 
