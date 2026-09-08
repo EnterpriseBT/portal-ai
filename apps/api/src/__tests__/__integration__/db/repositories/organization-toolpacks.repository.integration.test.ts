@@ -354,4 +354,94 @@ describe("OrganizationToolpacksRepository Integration Tests", () => {
     // The old plaintext is no longer recoverable from the new blob.
     expect(blobAfter).not.toContain("whsec_old");
   });
+
+  // ── Poison-row resilience (#531) ─────────────────────────────────
+
+  /**
+   * Overwrite a row's on-disk `signing_secret` with a syntactically-valid
+   * but undecryptable envelope, simulating a row encrypted under a
+   * different `ENCRYPTION_KEY`. The GCM auth tag will not verify, so any
+   * decrypt of this row throws "unable to authenticate data".
+   */
+  async function poisonSigningSecret(id: string): Promise<void> {
+    const raw = await readRawSigningSecret(id);
+    const envelope = JSON.parse(raw) as Record<string, unknown>;
+    // A 16-byte all-zero auth tag can never match the ciphertext.
+    envelope.authTag = Buffer.alloc(16).toString("base64");
+    await (db as ReturnType<typeof drizzle>)
+      .update(schema.organizationToolpacks)
+      .set({ signingSecret: JSON.stringify(envelope) } as never)
+      .where(eq(schema.organizationToolpacks.id, id));
+  }
+
+  // Case 152
+  it("findByOrganizationId degrades a poison row instead of throwing, and still decrypts healthy rows", async () => {
+    const poison = await repo.create(
+      makeRow({ signingSecret: "whsec_poison" }) as never,
+      db
+    );
+    await repo.create(
+      makeRow({
+        id: generateId(),
+        name: "healthy_pack",
+        signingSecret: "whsec_healthy",
+      }) as never,
+      db
+    );
+    await poisonSigningSecret(poison.id);
+
+    const live = await repo.findByOrganizationId(orgId, db);
+    const byName = Object.fromEntries(live.map((r) => [r.name, r]));
+
+    // The whole list still returns — one bad row does not 500 it.
+    expect(live).toHaveLength(2);
+
+    // The poison row is present but degraded.
+    expect(byName["customer_intel"]?.secretDecryptable).toBe(false);
+    expect(byName["customer_intel"]?.signingSecret).toBe("");
+    expect(byName["customer_intel"]?.authHeaders).toBeNull();
+
+    // The healthy row is untouched and still decrypted.
+    expect(byName["healthy_pack"]?.secretDecryptable).toBe(true);
+    expect(byName["healthy_pack"]?.signingSecret).toBe("whsec_healthy");
+  });
+
+  // Case 153
+  it("findByIdScoped stays strict and throws on a poison row", async () => {
+    const poison = await repo.create(
+      makeRow({ signingSecret: "whsec_poison" }) as never,
+      db
+    );
+    await poisonSigningSecret(poison.id);
+
+    await expect(repo.findByIdScoped(poison.id, orgId, db)).rejects.toThrow();
+  });
+
+  // Case 154
+  it("a re-seed-style update repairs a poison row (findByOrganizationId → update)", async () => {
+    const poison = await repo.create(
+      makeRow({ signingSecret: "whsec_poison" }) as never,
+      db
+    );
+    await poisonSigningSecret(poison.id);
+
+    // The idempotency lookup finds the poison row by name (unencrypted)…
+    const found = (await repo.findByOrganizationId(orgId, db)).find(
+      (r) => r.name === "customer_intel"
+    );
+    expect(found?.id).toBe(poison.id);
+
+    // …and overwriting it writes a fresh, correctly-encrypted secret.
+    await repo.update(
+      found!.id,
+      { signingSecret: "whsec_repaired" } as never,
+      db
+    );
+
+    const relisted = (await repo.findByOrganizationId(orgId, db)).find(
+      (r) => r.name === "customer_intel"
+    );
+    expect(relisted?.secretDecryptable).toBe(true);
+    expect(relisted?.signingSecret).toBe("whsec_repaired");
+  });
 });
