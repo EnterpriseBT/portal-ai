@@ -49,11 +49,28 @@ import {
   encryptCredentials,
   decryptCredentials,
 } from "../../utils/crypto.util.js";
+import { createLogger } from "../../utils/logger.util.js";
+
+const logger = createLogger({ module: "organization-toolpacks-repository" });
 
 // ── Helpers ────────────────────────────────────────────────────────
 
 /** Sentinel value the SQL migration inserts for pre-existing rows. */
 const SIGNING_SECRET_SENTINEL = "__pending_phase6_rotation__";
+
+/**
+ * A toolpack row plus a marker of whether its signing secret decrypted.
+ *
+ * `secretDecryptable` is `false` when the row's encrypted `signingSecret`
+ * could not be decrypted under the current `ENCRYPTION_KEY` — a *poison
+ * row*, e.g. one written under a different key (see #531). Such a row is
+ * returned **degraded**: `signingSecret` is `""` and `authHeaders` is
+ * `null`, but every other column is intact, so list, name-uniqueness, and
+ * seeder-repair paths keep working. On a healthy row the marker is `true`
+ * and both columns hold their decrypted plaintext.
+ */
+export type OrganizationToolpackWithSecretStatus =
+  OrganizationToolpackSelect & { secretDecryptable: boolean };
 
 /** Decrypt the `authHeaders` and `signingSecret` columns of a single row. */
 function decryptRow<
@@ -93,6 +110,40 @@ function decryptRows<
   signingSecret: string;
 })[] {
   return rows.map(decryptRow);
+}
+
+/**
+ * Lenient variant of `decryptRow` for the **list** read path.
+ *
+ * A poison row (encrypted under a different `ENCRYPTION_KEY`, or holding
+ * the migration sentinel) must not take down the whole list, so a decrypt
+ * failure degrades the single row rather than throwing: the secret and
+ * auth headers are omitted and `secretDecryptable: false` flags it. Every
+ * other column is preserved so name-uniqueness checks and seeder repair
+ * still work. Callers that genuinely need the plaintext secret (outbound
+ * signing) use the strict `decryptRow` paths instead. See #531.
+ */
+function tryDecryptRow<
+  T extends { authHeaders: string | null; signingSecret: string },
+>(row: T): T & { secretDecryptable: boolean } {
+  try {
+    return { ...decryptRow(row), secretDecryptable: true };
+  } catch (error) {
+    logger.warn(
+      {
+        toolpackId: (row as unknown as { id?: string }).id ?? "<unknown>",
+        error: error instanceof Error ? error.message : "Unknown",
+      },
+      "organization_toolpacks row has an undecryptable signing_secret; " +
+        "degrading it in the list rather than failing the request (#531)"
+    );
+    return {
+      ...row,
+      authHeaders: null,
+      signingSecret: "",
+      secretDecryptable: false,
+    } as unknown as T & { secretDecryptable: boolean };
+  }
 }
 
 /**
@@ -193,11 +244,21 @@ export class OrganizationToolpacksRepository extends Repository<
 
   /**
    * All live (non-soft-deleted) toolpack rows for an organization.
+   *
+   * This is the **list** read path: it decrypts leniently, so a single
+   * poison row (undecryptable signing secret) is returned degraded with
+   * `secretDecryptable: false` rather than throwing and 500-ing the whole
+   * list. The four callers (toolpacks list, the two name-uniqueness
+   * checks, the demo-seeder idempotency lookup) read only `name`/`id`/
+   * `tools`/`authHeaders`-presence, never the plaintext secret — so the
+   * degradation is invisible to them and lets a re-seed repair the row.
+   * Paths that genuinely need the secret use `findByIdScoped` /
+   * `findManyByIds`, which stay strict. See #531.
    */
   async findByOrganizationId(
     organizationId: string,
     client: DbClient = db
-  ): Promise<OrganizationToolpackSelect[]> {
+  ): Promise<OrganizationToolpackWithSecretStatus[]> {
     const rows = (await (client as typeof db)
       .select()
       .from(organizationToolpacks)
@@ -207,7 +268,7 @@ export class OrganizationToolpacksRepository extends Repository<
           isNull(organizationToolpacks.deleted)
         )
       )) as OrganizationToolpackSelect[];
-    return decryptRows(rows);
+    return rows.map(tryDecryptRow);
   }
 
   /**
