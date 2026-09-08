@@ -1,0 +1,19 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig",
+    "redhat.vscode-yaml",
+    "astro-build.astro-vscode",
+    "ms-azuretools.vscode-containers",
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    "ms-playwright.playwright"
+  ],
+  "unwantedRecommendations": [
+    "bradlc.vscode-tailwindcss",
+    "stylelint.vscode-stylelint",
+    "ms-vscode.vscode-typescript-next",
+    "ms-azuretools.vscode-docker"
+  ]
+}
