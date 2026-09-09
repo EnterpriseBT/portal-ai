@@ -260,35 +260,25 @@ describe("resolveAggTreatment", () => {
     expect(resolveAggTreatment("lines")).toBe("none");
   });
 
-  it("defaults points/polygons/heatmap/cluster to 'bins'", () => {
+  it("defaults points/heatmap/cluster to 'bins'", () => {
     expect(resolveAggTreatment("points")).toBe("bins");
-    expect(resolveAggTreatment("polygons")).toBe("bins");
     expect(resolveAggTreatment("heatmap")).toBe("bins");
     expect(resolveAggTreatment("cluster")).toBe("bins");
+  });
+
+  // #532 smoke amendment: ALL polygons dissolve (never centroid-bin) — a
+  // centroid square doesn't contain the polygon and the live per-tile centroid
+  // over a large layer times out. colorBy vs no-colorBy picks the dissolve
+  // FLAVOR downstream (per-value vs per-cell), not the treatment.
+  it("defaults ALL polygons to 'dissolve', regardless of colorBy (#532)", () => {
+    expect(resolveAggTreatment("polygons")).toBe("dissolve");
   });
 
   it("lets an explicit treatment override the per-kind default", () => {
     expect(resolveAggTreatment("lines", "bins")).toBe("bins");
     expect(resolveAggTreatment("polygons", "none")).toBe("none");
+    expect(resolveAggTreatment("polygons", "bins")).toBe("bins");
     expect(resolveAggTreatment("polygons", "dissolve")).toBe("dissolve");
-  });
-
-  // #472 slice 1: the `hasColorBy` opts arg is accepted but does NOT yet flip
-  // the polygon default — the routing change lands with the serve + client
-  // consumers (slice 4) so the treatment never goes half-migrated.
-  // #472: a polygon layer WITH a colorBy dissolves at low zoom; without one it
-  // keeps "bins" (density overview). Points/heatmap/cluster are unaffected.
-  it("routes polygons+colorBy to 'dissolve', polygons without colorBy to 'bins'", () => {
-    expect(
-      resolveAggTreatment("polygons", undefined, { hasColorBy: true })
-    ).toBe("dissolve");
-    expect(
-      resolveAggTreatment("polygons", undefined, { hasColorBy: false })
-    ).toBe("bins");
-    expect(resolveAggTreatment("polygons")).toBe("bins");
-    expect(resolveAggTreatment("points", undefined, { hasColorBy: true })).toBe(
-      "bins"
-    );
   });
 });
 

@@ -93,6 +93,15 @@ export function aggregateCellSize(z: number): number {
   return WORLD_3857_WIDTH / 2 ** (z + AGG_GRID_LEVELS);
 }
 
+/**
+ * Sentinel `column_name`/`value` for the no-colorBy polygon **dissolve-all**
+ * flavor (#532): every polygon merged into one geometry per band. A colorBy
+ * choropleth keys its rows by the real column name; a plain polygon layer keys
+ * them by this sentinel, so `runDissolveTile` can serve either from the same
+ * `map_dissolve_geometries` table with no schema change.
+ */
+export const DISSOLVE_ALL_KEY = "__all__";
+
 export type TileRef =
   | { kind: "message"; messageId: string; blockIndex: number }
   | { kind: "pin"; portalResultId: string };
@@ -275,13 +284,10 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
     }
   }
   // Per-kind treatment (#337/#472): explicit `treatment` wins, else lines → raw,
-  // polygons + colorBy → dissolve (real geometry at low zoom), others → bins.
-  // "none" routes to the raw path via `enabled:false`.
-  const treatment = kind
-    ? resolveAggTreatment(kind, agg.treatment, {
-        hasColorBy: colorByColumn != null,
-      })
-    : "bins";
+  // #532: polygons → dissolve (real geometry, never centroid bins); lines →
+  // none (raw/hybrid); points → bins. "none" routes to the raw path via
+  // `enabled:false`. colorBy selects the dissolve flavor downstream, not here.
+  const treatment = kind ? resolveAggTreatment(kind, agg.treatment) : "bins";
   return {
     enabled: treatment === "none" ? false : (agg.enabled ?? true),
     zoomThreshold:
@@ -576,16 +582,16 @@ export class PortalMapTileService {
     // the mode decision; a miss falls through to raw (real simplified polygons),
     // never centroid bins.
     const band = bandForZoom(z);
+    // #532: a dissolve layer is a polygon layer. colorBy → per-value rows keyed
+    // by the column; no colorBy → dissolve-all rows keyed by the sentinel. Both
+    // serve from the same table, so the serve column is the colorBy column or
+    // the sentinel — never blocked on "has a colorBy".
+    const dissolveColumn = aggregation.colorByColumn ?? DISSOLVE_ALL_KEY;
     const dissolveReady =
       aggregation.treatment === "dissolve" &&
       band !== null &&
       portalResultId != null &&
-      aggregation.colorByColumn != null &&
-      (await this.hasDissolvePrecompute(
-        portalResultId,
-        aggregation.colorByColumn,
-        band
-      ));
+      (await this.hasDissolvePrecompute(portalResultId, dissolveColumn, band));
 
     // #532: count-driven per-tile decision. `tileCount` stays null here until the
     // over-cap probe is wired (slice 3); the whole-layer fast path (exact count
@@ -603,9 +609,10 @@ export class PortalMapTileService {
     if (mode === "dissolve") {
       return this.runDissolveTile(
         portalResultId!,
-        aggregation.colorByColumn!,
+        dissolveColumn,
         band!,
-        envelope
+        envelope,
+        cap
       );
     }
 
@@ -712,8 +719,15 @@ export class PortalMapTileService {
     portalResultId: string,
     colorByColumn: string,
     band: number,
-    envelope: string
+    envelope: string,
+    cap: number
   ): Promise<TileQueryResult> {
+    // #532: two flavors keyed by `column_name`. A colorBy choropleth returns all
+    // (already-merged, bounded) pieces in the envelope, emitting the value for
+    // the client's paint. A no-colorBy layer (`__all__`) stores one row per
+    // polygon (not unioned — union is prohibitively slow at scale), so the tile
+    // clips the envelope then keeps the largest `cap` by area — the visible ones.
+    const isAreaRanked = colorByColumn === DISSOLVE_ALL_KEY;
     try {
       const rows = (await db.transaction(async (tx) => {
         await tx.execute(
@@ -722,18 +736,24 @@ export class PortalMapTileService {
           )
         );
         await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
+        const valueSelect = isAreaRanked
+          ? sql``
+          : sql`, mdg.value AS ${sql.raw(quoteIdentTile(colorByColumn))}`;
+        const orderLimit = isAreaRanked
+          ? sql`ORDER BY ST_Area(mdg.geom) DESC LIMIT ${cap}`
+          : sql``;
         return (await tx.execute(sql`
           WITH lim AS (
             SELECT ST_AsMVTGeom(ST_Transform(mdg.geom, 3857), ${sql.raw(
               envelope
-            )}, ${TILE_EXTENT}, 64, true) AS geom,
-                   mdg.value AS ${sql.raw(quoteIdentTile(colorByColumn))}
+            )}, ${TILE_EXTENT}, 64, true) AS geom${valueSelect}
             FROM map_dissolve_geometries mdg
             WHERE mdg.portal_result_id = ${portalResultId}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.deleted IS NULL
               AND mdg.geom && ST_Transform(${sql.raw(envelope)}, 4326)
+            ${orderLimit}
           )
           SELECT
             (SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom')

@@ -135,6 +135,43 @@ describe("dissolve-precompute processor (#472)", () => {
     return pinId;
   };
 
+  // #532: a plain polygon pin (no colorBy) → area-ranked simplified geometry.
+  const createPinNoColorBy = async (pipelineSql: string): Promise<string> => {
+    const pinId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id: pinId,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Plain polygons",
+        type: "geo",
+        content: {
+          spec: {
+            layers: [
+              {
+                kind: "polygons",
+                source: { geometryColumn: "geom" },
+                style: { color: "#4A90D9" },
+              },
+            ],
+          },
+          pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+        },
+        snapshotUpdatedAt: null,
+        created: t,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    return pinId;
+  };
+
   const countRows = async (pinId: string): Promise<number> => {
     const r = (await connection.unsafe(
       `SELECT count(*)::int AS n FROM map_dissolve_geometries WHERE portal_result_id = $1`,
@@ -339,6 +376,47 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(new Set(rows.map((r) => r.value))).toEqual(
       new Set(["Private", "Federal", "State"])
     );
+    expect(new Set(rows.map((r) => r.zoom_band))).toEqual(
+      new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
+    );
+  });
+
+  it("#532: a no-colorBy polygon precomputes area-ranked rows (one per polygon, NOT unioned)", async () => {
+    // Three adjacent Private + one Federal + one State = 5 polygons. A colorBy
+    // dissolve would UNION the adjacent ones per value; area-ranked keeps every
+    // polygon as its own row (so ST_Area can rank them on serve).
+    await insertParcel(0, "Private");
+    await insertParcel(1, "Private");
+    await insertParcel(2, "Private");
+    await insertParcel(5, "Federal");
+    await insertParcel(8, "State");
+
+    const pinId = await createPinNoColorBy(
+      'SELECT "c_geom" AS geom FROM parcels'
+    );
+    const result = await runProcessor(pinId, orgId);
+    expect(result.skipped).toBeUndefined();
+
+    const rows = (await connection.unsafe(
+      `SELECT column_name, value, zoom_band, feature_count,
+              ST_GeometryType(geom) AS gtype
+       FROM map_dissolve_geometries WHERE portal_result_id = $1`,
+      [pinId]
+    )) as unknown as Array<{
+      column_name: string;
+      value: string;
+      zoom_band: number;
+      feature_count: number;
+      gtype: string;
+    }>;
+    // Keyed by the sentinel, one row per polygon per band (5 polygons × 5 bands
+    // = 25) — not merged down to a few unioned pieces.
+    expect(rows.every((r) => r.column_name === "__all__")).toBe(true);
+    expect(rows.every((r) => r.value === "__all__")).toBe(true);
+    expect(rows.every((r) => r.feature_count === 1)).toBe(true);
+    expect(rows.every((r) => r.gtype === "ST_MultiPolygon")).toBe(true);
+    const perBand = rows.filter((r) => r.zoom_band === 0).length;
+    expect(perBand).toBe(5); // one row per polygon — proof it's not unioned
     expect(new Set(rows.map((r) => r.zoom_band))).toEqual(
       new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
     );

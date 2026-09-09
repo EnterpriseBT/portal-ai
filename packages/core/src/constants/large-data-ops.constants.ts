@@ -141,7 +141,7 @@ export const AGG_CELLS_PER_AXIS = 2 ** AGG_GRID_LEVELS; // 16
  * pipeline SQL + z/x/y + snapshot clock, none of the generation code. Bump this
  * whenever the bytes a given (pipeline, z, x, y, snapshot) would produce change.
  */
-export const AGG_TILE_VERSION = 2;
+export const AGG_TILE_VERSION = 3;
 
 /**
  * Precomputed polygon-dissolve zoom bands (#472, retuned #478). Below the z14

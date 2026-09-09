@@ -502,10 +502,11 @@ describe("layerToMapLibre aggregation (#330)", () => {
     expect((agg.paint["fill-color"] as unknown[])[0]).toBe("match");
   });
 
-  it("no-colorBy tiled layer → agg fill uses a _count density interpolate", () => {
+  it("no-colorBy tiled POINT layer → agg fill uses a _count density interpolate", () => {
+    // #532: polygons now dissolve; points remain the density-bin path.
     const layer = {
-      kind: "polygons",
-      source: { geometryColumn: "geom" },
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
     const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
@@ -557,10 +558,10 @@ describe("layerToMapLibre aggregation (#330)", () => {
       style: { ...catLayer.style, opacity: 0.9 },
     } as MapLayer);
     expect(overridden.paint["fill-opacity"]).toBe(base);
-    // Density ramp also tops out translucent.
+    // Density ramp also tops out translucent (points — #532 polygons dissolve).
     const density = agg({
-      kind: "polygons",
-      source: { geometryColumn: "geom" },
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
     } as MapLayer);
     const ramp = density.paint["fill-opacity"] as number[];
     expect(ramp[ramp.length - 1]).toBeLessThanOrEqual(0.6);
@@ -618,13 +619,17 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
     expect((fill.paint["fill-color"] as unknown[])[0]).toBe("match");
   });
 
-  it("tiled polygon WITHOUT colorBy stays 'bins' (density overview)", () => {
+  it("tiled polygon WITHOUT colorBy → 'dissolve' too (#532): real fill ungated, NO -agg bin fill", () => {
+    // #532 smoke amendment: every polygon dissolves (served as real geometry),
+    // never centroid bins — so no `-agg` fill, and the base fill/outline render
+    // ungated at all zooms, exactly like the colorBy dissolve path.
     const layer = {
       kind: "polygons",
       source: { geometryColumn: "geom" },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
-    expect(layers.some((l) => l.id === aggId)).toBe(true);
+    expect(layers.some((l) => l.id === aggId)).toBe(false);
+    expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
   });
 });
 

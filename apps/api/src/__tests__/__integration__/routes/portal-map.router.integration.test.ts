@@ -365,6 +365,44 @@ describe("Portal map tile route (#316)", () => {
     return id;
   };
 
+  // #532: a plain (no-colorBy) polygon pin → area-ranked dissolve served under
+  // the "__all__" sentinel.
+  const createNoColorByPin = async (pipelineSql: string): Promise<string> => {
+    const id = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Plain polygons",
+        type: "geo",
+        content: {
+          spec: {
+            layers: [
+              {
+                kind: "polygons",
+                source: { geometryColumn: "geom" },
+                style: { color: "#4A90D9" },
+              },
+            ],
+          },
+          pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    return id;
+  };
+
   const insertDissolveRow = (pin: string, col: string, band: number) =>
     connection.unsafe(
       `INSERT INTO map_dissolve_geometries
@@ -441,6 +479,27 @@ describe("Portal map tile route (#316)", () => {
       organizationId: orgId,
     });
     expect(res.status).toBe(200);
+    expect(res.aggregated).toBe(false);
+  });
+
+  it("#532: a no-colorBy polygon serves the area-ranked '__all__' dissolve at low zoom (real geometry, not a 504)", async () => {
+    // The pipeline references a nonexistent view — if the serve path ran it, the
+    // tile would error. It serves from the precomputed "__all__" rows instead.
+    const pin = await createNoColorByPin(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    await insertDissolveRow(pin, "__all__", 0); // band 0 = z0, sentinel column
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Real polygon geometry from the precompute — not centroid-bin squares.
     expect(res.aggregated).toBe(false);
   });
 

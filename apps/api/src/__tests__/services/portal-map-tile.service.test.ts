@@ -169,7 +169,7 @@ describe("aggregationFromSpec (#330/#337)", () => {
     });
   });
 
-  it("a polygon layer stays binned (enabled:true) + rankByLength:false", () => {
+  it("a polygon layer (no colorBy) defaults to dissolve, not bins (#532)", () => {
     const agg = aggregationFromSpec({
       layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
     });
@@ -177,6 +177,8 @@ describe("aggregationFromSpec (#330/#337)", () => {
       enabled: true,
       rankByLength: false,
       kind: "polygons",
+      treatment: "dissolve",
+      colorByColumn: null,
     });
   });
 
@@ -276,6 +278,28 @@ describe("resolveTileMode (#532)", () => {
     expect(call({ aggregation: dagg, z: 5, dissolveReady: false })).toBe("raw");
     // above the band ceiling a dissolve layer is raw regardless of readiness
     expect(call({ aggregation: dagg, z: 16, dissolveReady: true })).toBe("raw");
+  });
+
+  it("a no-colorBy polygon (treatment dissolve) over cap never returns 'aggregate' (#532)", () => {
+    // aggregationFromSpec gives a no-colorBy polygon treatment "dissolve", so it
+    // takes the dissolve branch — dissolve when ready, raw when not — NEVER the
+    // centroid-bin "aggregate" path, even far over the cap.
+    const poly = agg({
+      treatment: "dissolve",
+      kind: "polygons",
+      colorByColumn: null,
+    });
+    expect(
+      call({ aggregation: poly, z: 5, dissolveReady: true, tileCount: 999_999 })
+    ).toBe("dissolve");
+    expect(
+      call({
+        aggregation: poly,
+        z: 5,
+        dissolveReady: false,
+        tileCount: 999_999,
+      })
+    ).toBe("raw");
   });
 
   it("interim fallback (no probe) reproduces the pre-#532 zoom threshold", () => {

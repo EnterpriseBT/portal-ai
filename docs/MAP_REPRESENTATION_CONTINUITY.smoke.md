@@ -74,11 +74,20 @@ No token required (Esri sample server). Base: `https://sampleserver6.arcgisonlin
 
 - [ ] A layer authored with aggregation off still aggregates when a tile is genuinely over the cap (the invariant wins; no feature stranded).
 
-**Polygons dissolve, never centroid-bin — [5], PENDING (added from the slices-1–2 walk)**
+**Polygons dissolve, never centroid-bin — [5], slice 5 implemented (re-walk to confirm in the live app)**
 
-- [ ] A **large no-colorBy polygon** layer (census block groups) renders **real merged polygon geometry** at low zoom — never centroid squares — and a big polygon's extent is visible (via dissolve at low zoom / raw once its tile is under cap).
-- [ ] The lowest-zoom polygon tile returns a **non-empty MVT** (no `504 MAP_TILE_TIMEOUT` blank) — the tile that timed out at the slices-1–2 walk. **Record the tile latency** (must be under the 10s statement timeout).
-- [ ] A polygon **choropleth** (colorBy) transitions across dissolve zoom bands with a region only **smoothing** its outline — never dropping out or re-merging differently at a band boundary. *(Slice 6.)*
+- [ ] A **large no-colorBy polygon** layer (census block groups) renders **real polygon geometry** (the largest-in-view) at low zoom — never centroid squares — and a big polygon's extent is visible.
+- [ ] The lowest-zoom polygon tile returns a **non-empty MVT** (no `504 MAP_TILE_TIMEOUT` blank) — the tile that timed out on the slices-1–2 walk.
+- [ ] A polygon **choropleth** (colorBy) transitions across dissolve zoom bands with a region only **smoothing** its outline. *(Slice 6.)*
+
+**Recorded measurements (slice 5, against the live 211k census-block-groups layer, 2026-09-09):**
+
+| What | Before (union / live) | After (area-ranked) |
+|---|---|---|
+| Precompute / band | 130–153s (union) — over budget | **~27s** (simplify, no `ST_Union`/`ST_MakeValid`) |
+| z2/1/1 tile serve (the tile that 504'd) | 10s → `504 MAP_TILE_TIMEOUT` | **525ms**, 405 KB MVT, 10,000 features (largest-in-view, area-capped) |
+
+`ST_MakeValid` was the precompute killer (~66s of the 76s attempt); dropped it — `ST_SimplifyPreserveTopology` preserves validity and `ST_AsMVTGeom` tolerates the rest.
 
 ## Smoke findings — slices-1–2 walk (recorded)
 
@@ -90,7 +99,7 @@ Walked against the dev stack; **points passed, polygons found a real defect** �
   1. **Blank low-zoom tiles that "appear suddenly."** Aggregates absent across a continent view; they pop in only once one state fills the view. Root: the live per-tile `ST_Centroid(ST_Transform(ST_Simplify(geom)))` over 169k rows exceeds `TILE_STATEMENT_TIMEOUT_MS` → `504 MAP_TILE_TIMEOUT` → blank; higher zoom = fewer polygons/tile = completes. (Observed 504: `…/tiles/message/a03dbb96…/7/2/1/1.mvt`, z2.) They don't re-vanish because a succeeded tile is ETag-cached — so it's tiles *erroring*, not the wander bug.
   2. **Bin square smaller than the polygon.** A centroid bin is a fixed square at the centroid; a large rural block group collapses to a tiny square.
   3. **Un-viewable zoom gap.** Zoomed out → tiny square (can't see the polygon); zoomed in enough for raw (z14) → polygon bigger than the viewport. No zoom shows a big polygon whole.
-  - **Resolution (slice 5):** polygons never centroid-bin — they **dissolve** to real geometry served from the GiST-indexed precompute (no per-tile scan → no timeout; real extent → fixes 2 & 3). No-colorBy uses a new per-cell dissolve. *Interim workaround while smoking: re-map with a `colorBy` to hit the existing dissolve path.*
+  - **Resolution (slice 5):** polygons never centroid-bin — they **dissolve** to real geometry served from the GiST-indexed precompute (no per-tile scan → no timeout; real extent → fixes 2 & 3). No-colorBy uses precomputed area-ranked simplified geometry (no union — union measured 130-153s/band, prohibitive). *Interim workaround while smoking: re-map with a `colorBy` to hit the existing dissolve path.*
 
 ## Large-dataset performance (measured, not asserted) — [3]/[5], PENDING
 

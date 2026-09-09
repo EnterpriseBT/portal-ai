@@ -13,7 +13,10 @@ import {
   DISSOLVE_LOCK_NAMESPACE,
 } from "../../services/sync-lock.service.js";
 import { PortalSqlService } from "../../services/portal-sql.service.js";
-import { tileSimplifyTolerance } from "../../services/portal-map-tile.service.js";
+import {
+  tileSimplifyTolerance,
+  DISSOLVE_ALL_KEY,
+} from "../../services/portal-map-tile.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 
 const logger = createLogger({ module: "dissolve-precompute" });
@@ -44,10 +47,15 @@ const skip = (
   skipped: reason,
 });
 
-/** The first polygon layer's colorBy column, or why there's nothing to dissolve. */
+/**
+ * The dissolve key for a polygon spec (#532): the first polygon layer's colorBy
+ * column (per-value choropleth), or `null` when a polygon layer has no colorBy
+ * (dissolve-all — one merged coverage). `skip:"non-polygon"` only when there is
+ * no polygon layer at all.
+ */
 function resolvePolygonColorBy(
   spec: unknown
-): { colorByColumn: string } | { skip: SkipReason } {
+): { colorByColumn: string | null } | { skip: SkipReason } {
   const layers =
     (spec as { layers?: Array<Record<string, unknown>> } | undefined)?.layers ??
     [];
@@ -58,7 +66,7 @@ function resolvePolygonColorBy(
       ?.colorBy?.column;
     if (typeof c === "string" && c) return { colorByColumn: c };
   }
-  return { skip: "no-colorby" };
+  return { colorByColumn: null }; // dissolve-all
 }
 
 /**
@@ -92,9 +100,14 @@ async function runDissolve(
   const resolved = resolvePolygonColorBy(spec);
   if ("skip" in resolved) return skip(resolved.skip);
   const { colorByColumn } = resolved;
-  const qcol = quoteIdent(colorByColumn);
+  // colorBy → group by the real column (per-value choropleth); no colorBy →
+  // group by a constant (#532 dissolve-all) and key the rows by the sentinel.
+  const valueExpr = colorByColumn
+    ? `(${quoteIdent(colorByColumn)})::text`
+    : `'${DISSOLVE_ALL_KEY}'`;
+  const storedColumn = colorByColumn ?? DISSOLVE_ALL_KEY;
 
-  // A geo choropleth pin is handle-backed and always carries a re-runnable
+  // A geo polygon pin is handle-backed and always carries a re-runnable
   // pipeline; without one there is nothing to dissolve from.
   if (!pipeline?.sql) return skip("non-polygon", colorByColumn);
   const pipelineSql = pipeline.sql;
@@ -115,11 +128,16 @@ async function runDissolve(
 
   // Cardinality gate — a choropleth with more categories than the ceiling isn't
   // legible and isn't worth dissolving; the serve path falls back to raw-simplify.
+  // Dissolve-all (no colorBy) has one implicit value, so its "cardinality" is
+  // just "has any geometry" (1) — the ceiling never applies.
   const distinctCount = await db.transaction(async (tx) => {
     await applyViews(tx);
+    const countExpr = colorByColumn
+      ? `count(DISTINCT (${quoteIdent(colorByColumn)})::text)`
+      : `LEAST(count(*), 1)`;
     const r = (await tx.execute(
       sql.raw(
-        `SELECT count(DISTINCT (${qcol})::text)::int AS n
+        `SELECT ${countExpr}::int AS n
          FROM (${pipelineSql}) src WHERE src.geom IS NOT NULL`
       )
     )) as unknown as Array<{ n: number }>;
@@ -157,14 +175,19 @@ async function runDissolve(
           sql`DELETE FROM map_dissolve_geometries
               WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
         );
-        await tx.execute(
-          sql.raw(
-            `INSERT INTO map_dissolve_geometries
+        const insertHead = `INSERT INTO map_dissolve_geometries
                (id, created, created_by, organization_id, portal_result_id,
-                column_name, value, zoom_band, feature_count, geom)
+                column_name, value, zoom_band, feature_count, geom)`;
+        const rowMeta = `gen_random_uuid()::text,
+                    (extract(epoch from now()) * 1000)::bigint,
+                    'dissolve_precompute',
+                    '${organizationId}', '${portalResultId}'`;
+        const insertSql = colorByColumn
+          ? // colorBy → per-value union dissolve (choropleth), subdivided.
+            `${insertHead}
              WITH src AS (${pipelineSql}),
              snapped AS (
-               SELECT (${qcol})::text AS value,
+               SELECT ${valueExpr} AS value,
                       ST_CollectionExtract(ST_MakeValid(ST_SnapToGrid(src.geom, ${tol})), 3) AS g
                FROM src WHERE src.geom IS NOT NULL
              ),
@@ -177,19 +200,32 @@ async function runDissolve(
                SELECT value, fc, ST_Subdivide(geom, ${SUBDIVIDE_MAX_VERTICES}) AS piece
                FROM dissolved
              )
-             SELECT gen_random_uuid()::text,
-                    (extract(epoch from now()) * 1000)::bigint,
-                    'dissolve_precompute',
-                    '${organizationId}', '${portalResultId}',
-                    '${colorByColumn.replace(/'/g, "''")}',
+             SELECT ${rowMeta},
+                    '${storedColumn.replace(/'/g, "''")}',
                     value, ${band}, fc,
                     ST_Multi(ST_CollectionExtract(piece, 3))
              FROM pieces
              WHERE piece IS NOT NULL AND NOT ST_IsEmpty(piece)
                AND ST_CollectionExtract(piece, 3) IS NOT NULL
                AND NOT ST_IsEmpty(ST_CollectionExtract(piece, 3))`
-          )
-        );
+          : // #532 no-colorBy → area-ranked simplified geometry, NO union: one
+            // row per polygon, simplified to the band tolerance. Union measured
+            // 130–153s/band on a 211k @ ~226-vertex layer (prohibitive);
+            // simplify-only is ~10s. `runDissolveTile` area-caps on serve.
+            `${insertHead}
+             WITH src AS (${pipelineSql}),
+             simplified AS (
+               -- No ST_MakeValid: it measured ~66s over 211k complex polygons,
+               -- and ST_SimplifyPreserveTopology preserves validity for a valid
+               -- input; ST_AsMVTGeom tolerates the rest on serve.
+               SELECT ST_Multi(ST_CollectionExtract(ST_SimplifyPreserveTopology(src.geom, ${tol}), 3)) AS g
+               FROM src WHERE src.geom IS NOT NULL
+             )
+             SELECT ${rowMeta},
+                    '${DISSOLVE_ALL_KEY}', '${DISSOLVE_ALL_KEY}', ${band}, 1, g
+             FROM simplified
+             WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`;
+        await tx.execute(sql.raw(insertSql));
         const c = (await tx.execute(
           sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
               WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`

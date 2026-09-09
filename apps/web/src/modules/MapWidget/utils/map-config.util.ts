@@ -497,9 +497,7 @@ export function layerToMapLibre(
   // (painted by the same colorBy expression), exactly like the "none" path;
   // there is no centroid-bin fill.
   const agg = layer.aggregation;
-  const treatment = resolveAggTreatment(layer.kind, agg?.treatment, {
-    hasColorBy: !!style.colorBy,
-  });
+  const treatment = resolveAggTreatment(layer.kind, agg?.treatment);
   if (opts.tiled && agg?.enabled !== false && treatment === "bins") {
     // #532: the server decides raw-vs-aggregate per tile by feature count, so a
     // raw tile and a binned tile can occur at the same zoom. Separate them by

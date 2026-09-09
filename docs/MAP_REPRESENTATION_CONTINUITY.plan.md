@@ -23,10 +23,10 @@ Sequencing rationale — the decision + rendering mechanism first (this alone fi
 - **Slice 2** — swap the aggregate grid to the nested tile-pyramid formula. Pure geometry; the web already renders `_agg` bins ungated.
 - **Slice 3** — wire the per-tile `LIMIT cap+1` probe so large-layer tiles decide by count; over-cap **points** aggregate instead of clipping. Advisory-override behavior + JSDoc.
 - **Slice 4** — over-cap **lines** go hybrid (longest-N raw + crossed-cell bins). With points (3) + lines (4) never clipping, **retire `truncated`** (fields, header, web notice).
-- **Slice 5** — **polygons dissolve, never centroid-bin** (smoke amendment): `resolveAggTreatment` routes every polygon to `"dissolve"`; a new no-colorBy per-cell dissolve flavor is precomputed + served; the enqueue extends to all polygons. Fixes the smoke's low-zoom polygon 504 + centroid-square extent loss.
+- **Slice 5** — **polygons dissolve, never centroid-bin** (smoke amendment): `resolveAggTreatment` routes every polygon to `"dissolve"`; a new no-colorBy area-ranked simplified-geometry flavor (no union) is precomputed + served; the enqueue extends to all polygons. Fixes the smoke's low-zoom polygon 504 + centroid-square extent loss.
 - **Slice 6** — dissolve band continuity (derive coarse from finest) + re-enqueue. Last because it's the most perf-sensitive (measured at smoke).
 
-No migration (no schema change; `map_dissolve_geometries` contents are re-enqueued in slice 6, reusing a sentinel `column_name="__grid__"` for the per-cell flavor).
+No migration (no schema change; `map_dissolve_geometries` contents are re-enqueued in slice 6, reusing a sentinel `column_name="__all__"` for the no-colorBy area-ranked flavor).
 
 ---
 
@@ -123,31 +123,31 @@ Over-cap lines keep the major skeleton and cover the rest with bins; with points
 
 ## Slice 5 — Polygons dissolve, never centroid-bin (smoke amendment)
 
-Fixes the two smoke bugs on large no-colorBy polygons — the low-zoom `504 MAP_TILE_TIMEOUT` (live per-tile centroid over 169k rows) and centroid squares that don't show polygon extent. Polygons route to `"dissolve"` for **all** polygon layers, served from the GiST-indexed precompute; a new **per-cell** dissolve flavor covers the no-colorBy case.
+Fixes the two smoke bugs on large no-colorBy polygons — the low-zoom `504 MAP_TILE_TIMEOUT` and centroid squares that don't show polygon extent. Polygons route to `"dissolve"` for **all** polygon layers, served from the GiST-indexed precompute. **Measurement drove the mechanism:** union-based dissolve (dissolve-all or per-cell) is 130–153s/band on the 211k @ ~226-vertex layer (prohibitive); a no-colorBy layer is instead precomputed as **area-ranked simplified geometry, no union** (~10s/band), served `ORDER BY ST_Area DESC LIMIT cap`.
 
 **Files**
 
 - Edit: `packages/core/src/contracts/map-spec.contract.ts` — `resolveAggTreatment`: `kind === "polygons"` → `"dissolve"` regardless of colorBy (drop the `hasColorBy` gate). Single source of truth → the web mirror follows.
-- Edit: `apps/api/src/services/dissolve-precompute.service.ts` — `isDissolvable`/`enqueueForPin` enqueue **every** polygon layer (colorBy or not); `DISSOLVE_CARDINALITY_CEILING` gates the colorBy flavor only.
-- Edit: `apps/api/src/queues/processors/dissolve-precompute.processor.ts` — add the **no-colorBy per-cell dissolve**: per band, `ST_Union` polygons per nested-grid cell (`aggregateCellSize` at the band's rep zoom), store one row per `(band, cell)` under `column_name="__grid__"`, `value="<cellX>:<cellY>"`, `feature_count` = cell count.
-- Edit: `apps/api/src/services/portal-map-tile.service.ts` — `runDissolveTile`/`hasDissolvePrecompute` serve the `"__grid__"` flavor for a no-colorBy polygon layer, emitting `feature_count` as `_count`.
+- Edit: `apps/api/src/services/dissolve-precompute.service.ts` — `isDissolvable`/`enqueueForPin` enqueue **every** polygon layer (colorBy or not).
+- Edit: `apps/api/src/queues/processors/dissolve-precompute.processor.ts` — a no-colorBy polygon precomputes **area-ranked simplified geometry (no union)**: per band, `ST_SimplifyPreserveTopology(geom, tol(band))` each polygon and store **one row per polygon** under sentinel `column_name = value = "__all__"`, `feature_count = 1` (no subdivide, so `ST_Area` ranks the whole polygon). colorBy per-value union path unchanged.
+- Edit: `apps/api/src/services/portal-map-tile.service.ts` — `runDissolveTile` branches on the `"__all__"` sentinel: envelope-clip + `ORDER BY ST_Area(mdg.geom) DESC LIMIT cap`, no colorBy property. colorBy path unchanged; pass the cap through.
 - Tests: `.../services/portal-map-tile.service.test.ts` (case 6, 29), `.../__integration__/queues/dissolve-precompute.processor.integration.test.ts` (27), `.../__integration__/routes/portal-map.router.integration.test.ts` (28).
 
 **Steps**
 
-1. **Tests.** Case 29 (`resolveAggTreatment("polygons")` no colorBy → `"dissolve"`, not `"bins"`). Case 6 (`resolveTileMode`: a no-colorBy polygon over cap never returns `"aggregate"` — `"dissolve"` when ready, else `"raw"`). Case 27 (per-cell precompute rows under `"__grid__"`; every source polygon intersects a stored cell). Case 28 (**a large no-colorBy polygon renders a non-empty fill MVT at z2/z3 — the tile that 504'd — real geometry, not bin squares**). Run; fail.
-2. **Implement** the `resolveAggTreatment` change + per-cell dissolve + serve path. Green.
+1. **Tests.** Case 29 (`resolveAggTreatment("polygons")` no colorBy → `"dissolve"`, not `"bins"`). Case 6 (`resolveTileMode`: a no-colorBy polygon over cap never returns `"aggregate"` — `"dissolve"` when ready, else `"raw"`). Case 27 (area-ranked precompute: **one row per polygon** under `"__all__"`, not unioned — row count ≈ polygon count). Case 28 (**a large no-colorBy polygon renders a non-empty fill MVT at z2/z3 — the tile that 504'd — real geometry, feature count ≤ cap, largest-by-area**). Run; fail.
+2. **Implement** the `resolveAggTreatment` change + area-ranked precompute + area-capped serve path. Green.
 3. Lint + type-check.
 
-**Done when:** cases 6, 27, 28, 29 pass; the 169k census-block-groups layer renders real merged polygons at low zoom with **no timeout** (recorded measurement at smoke); no polygon layer ever reaches `buildAggregateTileSql`.
+**Done when:** cases 6, 27, 28, 29 pass; the 211k census-block-groups layer renders real polygons at low zoom with **no timeout** (recorded measurement: ~10s/band build, index-served tiles); no polygon layer ever reaches `buildAggregateTileSql`.
 
-**Risk:** per-cell union cost — bounded to one cell's polygons (cheaper than a whole-layer union); **measured at smoke** on the 169k layer. Transient: a polygon layer whose precompute is still pending falls to raw-simplify (real geometry, may clip) until the enqueued job lands — self-healing.
+**Risk:** storage ~213k rows/band (accepted, GiST-indexed; fewer bands would still serve since the per-tile area-cap bounds features). Sub-pixel polygons unrendered at extreme low zoom — the documented no-union tradeoff (analogous to lines' longest-N). Transient: precompute-pending falls to raw-simplify until the enqueued job lands — self-healing.
 
 ---
 
 ## Slice 6 — Dissolve band continuity + re-enqueue
 
-Coarse dissolve bands derive from the finest union so a region only smooths across a boundary (applies to both dissolve flavors).
+Coarse dissolve bands derive from the finest union so a region only smooths across a boundary (the colorBy union flavor; the no-colorBy area-ranked flavor has no union to re-merge, so its per-band simplification is already continuous).
 
 **Files**
 

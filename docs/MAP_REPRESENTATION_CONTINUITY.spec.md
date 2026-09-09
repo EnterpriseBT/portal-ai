@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#532](https://github.com/EnterpriseBT/portal-ai/issues/532) · **Discovery:** `docs/MAP_REPRESENTATION_CONTINUITY.discovery.md`
 
-Pins the contract for the map-representation invariant: the raw-vs-aggregate choice moves from a global zoom threshold to a **per-tile feature count**, the aggregate grid becomes a **nested tile-pyramid** (points), over-cap points/lines **aggregate instead of clipping**, **polygons always dissolve to real geometry — never centroid-bin** (smoke amendment: colorBy per-value, no-colorBy per-cell), the MapSpec `aggregation` block becomes **advisory**, polygon **dissolve bands become continuous**, and the tile **ETag gains a version salt**. This is what the tests assert against.
+Pins the contract for the map-representation invariant: the raw-vs-aggregate choice moves from a global zoom threshold to a **per-tile feature count**, the aggregate grid becomes a **nested tile-pyramid** (points), over-cap points/lines **aggregate instead of clipping**, **polygons always dissolve to real geometry — never centroid-bin** (smoke amendment: colorBy per-value, no-colorBy dissolve-all), the MapSpec `aggregation` block becomes **advisory**, polygon **dissolve bands become continuous**, and the tile **ETag gains a version salt**. This is what the tests assert against.
 
 ## Key decisions (confirm before implementation)
 
@@ -13,7 +13,16 @@ Pins the contract for the map-representation invariant: the raw-vs-aggregate cho
 5. **`truncated` retired.** Over-cap → aggregate, never clip, so truncation is unreachable. The `TileQueryResult.truncated` field, `TileRenderResult.truncatedCap`, the `X-Portal-Tile-Truncated` header, and its web notice are removed (clean cut — no prod data, no compat alias).
 6. **ETag salt.** `AGG_TILE_VERSION` folds into the ETag hash; the resolved tile mode rides the ETag as a prefix so a 304 reports the right notice without re-querying.
 7. **Dissolve continuity.** Coarse bands are derived by simplifying the **finest** band's union, not re-unioned independently — a region's outline only smooths across a boundary, never re-merges.
-8. **Polygons dissolve, never centroid-bin (smoke amendment).** The slices 1–2 smoke proved centroid bins are wrong for polygons — a live per-tile `ST_Centroid(ST_Transform(ST_Simplify(geom)))` over 169k rows times out at low zoom (`504 MAP_TILE_TIMEOUT` → blank tiles), and a centroid square carries no extent (doesn't *contain* the polygon). So the `"aggregate"`/nested-centroid path is **points-only**; **every** polygon layer resolves to `"dissolve"` (dropping the `hasColorBy` gate) with two flavors: **colorBy → per-value** dissolve (choropleth), **no-colorBy → per-cell** dissolve on the nested grid (`ST_Union` of the polygons in each cell + `_count` — real merged geometry that nests like the point grid). Both are served from the GiST-indexed precompute, never a per-tile live scan, so the timeout is off the hot path and extent renders correctly.
+8. **Polygons never centroid-bin; a plain polygon layer is served as precomputed, area-ranked simplified geometry (smoke amendment, measured).** The slices 1–2 smoke proved centroid bins are wrong for polygons — a live per-tile `ST_Centroid(ST_Transform(ST_Simplify(geom)))` over the census-block-groups layer (**211,136 polygons, ~226 vertices each**) times out at low zoom (`504` → blank tiles), and a centroid square carries no extent. **Every** polygon layer resolves to `"dissolve"` (the `"aggregate"`/nested-centroid path is points-only), but the smoke measurements ruled out *union*-based dissolve at this scale:
+
+   | Approach | Time / band | Rows / band | |
+   |---|---|---|---|
+   | dissolve-all (union everything) | **153 s** | ~6k | ✗ >180s budget at finer bands |
+   | per-cell (union per grid cell) | **132 s** | **124k** | ✗ slow *and* row-heavy |
+   | simplify-all, **no union** | **~10 s** | 213k | ✓ |
+   | area-rank top-N | **0.2 s** | N | ✓ |
+
+   So a **no-colorBy** polygon layer is precomputed as **per-band simplified whole polygons (no union)**, stored in the GiST-indexed table under a sentinel key, and served by clipping the envelope + `ORDER BY ST_Area DESC LIMIT cap` — a low-zoom tile shows the **largest polygons in view as real shapes**, a high-zoom tile shows all in view. Fixes the timeout (index-served) and extent (real geometry). Tradeoff (conscious, documented): a sub-pixel polygon at extreme low zoom isn't individually rendered — it's invisible there and appears on zoom-in, exactly like lines' longest-N. A **colorBy** choropleth keeps the existing per-value union dissolve (validated on parcels; a huge choropleth's union cost is a separate, pre-existing concern, out of scope here).
 
 ## Scope
 
@@ -115,12 +124,12 @@ const etag = `"${mode}~${hash}"`;               // mode filled after the query o
 
 ### `apps/api/src/queues/processors/dissolve-precompute.processor.ts`
 
-Two dissolve flavors, both precomputed here and served from the GiST index (never a live per-tile scan):
+Two flavors, both precomputed here and served from the GiST index (never a live per-tile scan):
 
-- **colorBy → per-value dissolve** (existing, made continuous): replace the per-band independent `ST_Union` (`:147-198`) with **derive-from-finest** — compute the finest band's `ST_Union` per value once, then each band's rows = `ST_Subdivide(ST_SimplifyPreserveTopology(<finest union>, tol(band)), SUBDIVIDE_MAX_VERTICES)`. Per-band atomic replace + fallback-on-band-failure preserved.
-- **no-colorBy → per-cell dissolve on the nested grid** (new, smoke amendment): for each band, snap to the band's nested-grid cell size (`aggregateCellSize` at the band's `representativeZoom`), `ST_Union` the polygons intersecting each cell (clipped to the cell), and store one row per `(band, cell)` with the merged geometry + `feature_count`. Reuse `map_dissolve_geometries` **without a schema change**: `column_name = "__grid__"` (sentinel), `value = "<cellX>:<cellY>"`, `geom` = the cell union, `feature_count` = the cell's polygon count. Each union is bounded to one cell's polygons, so it's cheaper than a whole-layer union and sidesteps the finest-union blowup.
+- **colorBy → per-value dissolve** (existing, made continuous in slice 6): `ST_Union` per colorBy value per band, `ST_Subdivide`d into pieces. Cardinality-gated by `DISSOLVE_CARDINALITY_CEILING`. **Unchanged** by this slice.
+- **no-colorBy → area-ranked simplified geometry** (new, smoke amendment): **no union.** Per band, `ST_SimplifyPreserveTopology(geom, tol(band))` each polygon and store **one row per polygon** (`ST_Multi`, no subdivide so `ST_Area` ranks the whole polygon) in `map_dissolve_geometries` — **no schema change** — under a sentinel `column_name = value = DISSOLVE_ALL_KEY` (`"__all__"`), `feature_count = 1`. Measured ~10s/band on the 211k layer (vs 130–153s for any union). ~213k rows/band × bands is the storage cost (accepted; noted at smoke).
 
-`runDissolveTile` / `hasDissolvePrecompute` serve both: colorBy queries `column_name = <colorBy>`; a no-colorBy polygon layer queries `column_name = "__grid__"` and emits `feature_count` as `_count` so the client's density paint works. `DissolvePrecomputeService.isDissolvable`/`enqueueForPin` extend to enqueue **every** polygon layer (not only colorBy); the `DISSOLVE_CARDINALITY_CEILING` gate applies to the colorBy flavor only.
+`hasDissolvePrecompute` is unchanged (existence by `(pin, column_name, band)`). `runDissolveTile` **branches on the sentinel**: for `"__all__"` it clips the envelope then `ORDER BY ST_Area(mdg.geom) DESC LIMIT ${cap}` (largest-in-view, real shapes) and emits **no** colorBy property; for a real colorBy column it keeps the existing all-pieces-in-envelope query emitting the value. `defaultRunTileQuery` passes the cap through. `DissolvePrecomputeService.isDissolvable`/`enqueueForPin` extend to enqueue **every** polygon layer (not only colorBy).
 
 ### `apps/web/src/modules/MapWidget/utils/map-config.util.ts`
 
@@ -170,13 +179,13 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core && npm 
 18. **Advisory override**: a spec with `aggregation.enabled:false` on an over-cap layer still aggregates (invariant wins) — bins present.
 19. No response carries `X-Portal-Tile-Truncated` (header retired) on any path.
 
-### Layer 4 — dissolve continuity + no-colorBy per-cell (`apps/api/src/__tests__/__integration__/queues/dissolve-precompute.processor.integration.test.ts`, `.../routes/portal-map.router.integration.test.ts`)
+### Layer 4 — dissolve continuity + no-colorBy dissolve-all (`apps/api/src/__tests__/__integration__/queues/dissolve-precompute.processor.integration.test.ts`, `.../routes/portal-map.router.integration.test.ts`)
 
 20. Coarser band geometry is a topological simplification of the finest band's union for the same value (area within tolerance; same value set) — not an independent re-merge.
 21. Every value present in the finest band is present in every coarser band (no region drops across a boundary).
 22. Per-band atomic-replace + band-failure fallback behavior preserved (regression).
-27. **No-colorBy polygon → per-cell dissolve** precompute: rows land under `column_name = "__grid__"` with `value = "<cellX>:<cellY>"`, a merged `geom`, and a `feature_count`; every source polygon intersects some stored cell's geom (nothing dropped).
-28. **A large no-colorBy polygon tile renders from the precompute at low zoom** — a z2/z3 tile returns a non-empty MVT of **fill (polygon) geometry, not centroid-bin squares**, and `aggregated` reflects dissolve (real geometry), not the bin path. (This is the case that 504'd at smoke.)
+27. **No-colorBy polygon → area-ranked precompute** (no union): one row **per polygon** under `column_name = value = "__all__"`, `feature_count = 1`, geometry simplified to the band tolerance; row count ≈ source polygon count (proves it is *not* unioned — a union would collapse to a handful of pieces).
+28. **A large no-colorBy polygon tile renders from the precompute at low zoom, capped by area** — a z2/z3 tile returns a non-empty MVT of **fill (polygon) geometry, not centroid-bin squares**, feature count ≤ `cap`, and (with more than `cap` polygons in view) the returned polygons are the largest-by-area. `aggregated` reflects dissolve (real geometry). (This is the case that 504'd at smoke.)
 29. `resolveAggTreatment("polygons")` with no colorBy → `"dissolve"` (not `"bins"`), so a polygon layer never reaches `buildAggregateTileSql`.
 
 ### Layer 5 — web (`apps/web/src/modules/MapWidget/__tests__/map-config.util.test.ts`, `.../MapWidget.test.tsx`, `.../tile-source.util.test.ts`)
@@ -186,7 +195,7 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core && npm 
 25. `readTileStatus` no longer surfaces `truncated`; `TileStatus` has no `truncated`.
 26. `MapWidget` shows the aggregated notice (new copy) when a tile is aggregated; renders no truncated notice ever.
 
-**Totals:** ~3 core, ~8 api service, ~8 api integration, ~6 dissolve (incl. per-cell), ~4 web ≈ **29 cases**.
+**Totals:** ~3 core, ~8 api service, ~8 api integration, ~6 dissolve (incl. dissolve-all), ~4 web ≈ **29 cases**.
 
 ## Acceptance criteria
 
@@ -196,8 +205,9 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core && npm 
 - [ ] Over-cap line tiles show the major skeleton as real lines and cover the rest with bins over their crossed cells.
 - [ ] No `aggregation` spec value can leave an in-frame feature unrepresented.
 - [ ] Polygon choropleths transition across dissolve bands with a region only smoothing, never dropping or re-merging.
-- [ ] **Polygons render as real (dissolved/raw) geometry at every zoom — never centroid-bin squares** (colorBy and no-colorBy alike).
-- [ ] **A large no-colorBy polygon layer shows a non-empty aggregate at the lowest zoom** (no `504 MAP_TILE_TIMEOUT` blank tile); the low-zoom polygon tile completes under `TILE_STATEMENT_TIMEOUT_MS` — **recorded measurement at smoke** on the 169k census-block-groups layer.
+- [ ] **Polygons render as real geometry at every zoom — never centroid-bin squares** (colorBy = merged choropleth; no-colorBy = the largest-in-view real polygons).
+- [ ] **A large no-colorBy polygon layer shows a non-empty tile at the lowest zoom** (no `504 MAP_TILE_TIMEOUT` blank tile), served from the precompute under the statement timeout. The precompute build stays under the 180s per-band budget — **recorded measurement** on the 211k census-block-groups layer (~10s/band, area-ranked, no union).
+- [ ] **Accepted degradation:** a sub-pixel polygon at extreme low zoom may not render individually (invisible there; appears on zoom-in) — the documented no-union tradeoff, analogous to lines' longest-N.
 - [ ] Deploying refreshes cached tiles (ETag salt); a 304 reports the correct notice without a query.
 - [ ] `X-Portal-Tile-Truncated` and its notice are gone; no truncation occurs.
 - [ ] `npm run lint && npm run type-check` clean; all suites green.
@@ -209,8 +219,10 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core && npm 
 | Per-tile probe cost on a huge layer. | Whole-layer fast path avoids it for small layers; `LIMIT cap+1` bounds it; **measured at smoke on a production-sized layer** (discovery Q2). Fall back to `count(*)` if it plans poorly. |
 | Line crossed-cell coverage (`ST_SquareGrid` ∩ line) blows up on long lines. | Bounded per tile by `(2^k)²` cells; primitive choice (grid vs segmentize) confirmed at smoke. Fail-closed: on probe/aggregate error the tile still errors visibly (504), never silently drops. |
 | Dissolve finest-union cost (the thing #478 tuned to avoid). | Off the hot path (maintenance queue); **measured at smoke**; fall back to simplify-on-read if prohibitive. |
-| **Live per-tile polygon aggregation times out at low zoom (smoke: 169k block groups → 504).** | Root cause of the smoke blank-tiles. Fix: polygons never live-aggregate — served from the precompute (per-value or per-cell). No-colorBy per-cell union is bounded per cell (cheaper than a whole-layer union). Acceptance requires a non-empty low-zoom polygon tile + a recorded under-timeout measurement. |
-| No-colorBy polygon precompute pending → transient raw-clip at low zoom. | Self-healing once the enqueued job lands; raw still shows *real* geometry (not squares), and the invariant fully holds after precompute. Enqueue at pin creation. |
+| **Live per-tile polygon aggregation times out at low zoom (smoke: 211k block groups @ ~226 verts → 504).** | Root cause of the smoke blank-tiles. Fix: polygons never live-aggregate — served from the precompute. No-colorBy uses **area-ranked simplified geometry (no union)** — union measured 130–153s/band (prohibitive); simplify-only is ~10s/band. Served with `ORDER BY ST_Area DESC LIMIT cap`. |
+| No-colorBy precompute storage (~213k rows/band). | Accepted; bounded and GiST-indexed. Reduce bands if it ever matters — the per-tile area-cap already bounds *features*, so fewer, coarser bands would still serve. Measured, not assumed. |
+| **Sub-pixel polygons unrendered at extreme low zoom** (the no-union tradeoff). | Conscious degradation for pathological layers (200k+ complex polygons) — they're invisible at that zoom and appear on zoom-in (raw/precompute clips into view). Documented in Acceptance; analogous to lines' longest-N. Not silent: the "Dense areas are summarized" notice still shows. |
+| No-colorBy polygon precompute pending → transient raw-clip at low zoom. | Self-healing once the enqueued job lands; raw still shows *real* geometry (not squares). Enqueue at pin creation. |
 | Stale cached tiles after behavior change. | `AGG_TILE_VERSION` salt in the ETag; test 17 asserts the bust. |
 | 304 reports the wrong notice. | Mode rides the ETag prefix; test 16 asserts a query-free, correct 304. |
 | Fail policy. | **Fail-closed toward aggregation / visible error** — an unknown/inexact count or a probe error never yields a silent clip. |
@@ -220,7 +232,7 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core && npm 
 ## Files touched
 
 - **core** — edit `constants/large-data-ops.constants.ts` (new consts + JSDoc), `contracts/map-spec.contract.ts` (JSDoc only); new/edit tests.
-- **api** — edit `services/portal-map-tile.service.ts` (decision, grid, hybrid, ETag, `truncated` removal, count read, `runDissolveTile`/`hasDissolvePrecompute` per-cell flavor), `routes/portal-map.router.ts` (header + `@openapi`), `queues/processors/dissolve-precompute.processor.ts` (band nesting + no-colorBy per-cell dissolve), `services/dissolve-precompute.service.ts` (`isDissolvable`/`enqueueForPin` extend to all polygons); dissolve re-enqueue ops step; edit service + integration tests.
+- **api** — edit `services/portal-map-tile.service.ts` (decision, grid, hybrid, ETag, `truncated` removal, count read, `runDissolveTile`/`hasDissolvePrecompute` dissolve-all flavor), `routes/portal-map.router.ts` (header + `@openapi`), `queues/processors/dissolve-precompute.processor.ts` (band nesting + no-colorBy dissolve-all dissolve), `services/dissolve-precompute.service.ts` (`isDissolvable`/`enqueueForPin` extend to all polygons); dissolve re-enqueue ops step; edit service + integration tests.
 - **web** — edit `modules/MapWidget/utils/map-config.util.ts` (gating→filters), `modules/MapWidget/utils/tile-source.util.ts` (drop truncated), `modules/MapWidget/MapWidget.component.tsx` (notice copy); edit tests.
 
 No new dependency, env var, or infra change.
