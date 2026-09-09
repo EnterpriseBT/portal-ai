@@ -179,6 +179,25 @@ describe("SubscriptionBillingUI — unsubscribed", () => {
     expect(screen.getByText("Current plan")).toBeInTheDocument();
   });
 
+  // #536: two visible contact tiers collapse to a single "Enterprise" card.
+  it("collapses multiple contact tiers to one card (#536)", () => {
+    const secondContact: BillingTier = {
+      ...contactTier,
+      slug: "demo",
+      displayName: "Demo",
+    };
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        tiers={[standardTier, contactTier, secondContact]}
+      />
+    );
+    // One contact card ⇒ exactly one "Contact support" CTA (two would mean a dupe).
+    expect(
+      screen.getAllByRole("link", { name: /^contact support$/i })
+    ).toHaveLength(1);
+  });
+
   // #241: on a custom plan, show ONLY that card (no self-serve upgrade list).
   it("shows only the custom card when the org is on a custom plan", () => {
     render(

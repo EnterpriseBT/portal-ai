@@ -42,10 +42,20 @@ export class TiersRepository extends Repository<
       .orderBy(tiers.created);
   }
 
-  /** Live selectable tiers visible to `organizationId` (#241): public rows
-   *  (`visible_to_organization_id IS NULL`) plus rows scoped to this org. The
-   *  org filter lives HERE, in the query — never in app code after a global
-   *  fetch — so no path can leak another org's private (custom) tier. */
+  /** Live selectable tiers visible to `organizationId` (#241): **public** global
+   *  rows (`visible_to_organization_id IS NULL AND public = true`) plus rows
+   *  scoped to this org (regardless of `public`). The org filter lives HERE, in
+   *  the query — never in app code after a global fetch — so no path can leak
+   *  another org's private (custom) tier.
+   *
+   *  #536: the `public = true` guard on the *global* branch is load-bearing. A
+   *  global tier that is `selectable` but `public:false` — e.g. the local `demo`
+   *  tier, meant to be `set-tier`-able but never *offered* — must not surface as
+   *  a billing card. Without it, `demo` rendered a second, duplicate "Enterprise"
+   *  (contact) card in the in-app grid. An org-scoped custom tier is a real offer
+   *  for that org and stays visible whatever its `public` flag. (An org currently
+   *  *on* a non-public global tier is handled by the caller's managed-plan path,
+   *  not by listing that tier as selectable.) */
   async findSelectableForOrg(
     organizationId: string,
     client: DbClient = db
@@ -58,7 +68,7 @@ export class TiersRepository extends Repository<
           eq(tiers.selectable, true),
           this.notDeleted(),
           or(
-            isNull(tiers.visibleToOrganizationId),
+            and(isNull(tiers.visibleToOrganizationId), eq(tiers.public, true)),
             eq(tiers.visibleToOrganizationId, organizationId)
           )
         )

@@ -100,10 +100,11 @@ describe("tiers card fields integration (#241 slice 1)", () => {
       .values(row as never);
 
   // ── case 6 ──────────────────────────────────────────────────────────
-  it("findSelectableForOrg returns public rows (visible_to_organization_id IS NULL)", async () => {
+  it("findSelectableForOrg returns public, unscoped rows (#536: public=true required)", async () => {
     const slug = `pub-${generateId()}`;
     await insert(
       tierRow(slug, {
+        public: true, // #536: a global tier must be public to be selectable
         cta: "subscribe",
         stripePriceId: `price_${generateId()}`,
       })

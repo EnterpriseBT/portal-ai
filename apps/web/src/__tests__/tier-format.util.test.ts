@@ -8,6 +8,7 @@ import {
   formatPrice,
   entitlementPackNames,
   sortTiersForDisplay,
+  collapseContactTiers,
 } from "../utils/tier-format.util";
 
 import type { BillingTier } from "@portalai/core/contracts";
@@ -111,6 +112,37 @@ describe("sortTiersForDisplay", () => {
     const before = input.map((t) => t.slug);
     sortTiersForDisplay(input);
     expect(input.map((t) => t.slug)).toEqual(before);
+  });
+});
+
+describe("collapseContactTiers (#536)", () => {
+  const tier = (slug: string, cta: BillingTier["cta"]): BillingTier =>
+    ({ slug, cta, price: null }) as BillingTier;
+
+  it("keeps only the first contact tier, dropping later duplicates", () => {
+    const out = collapseContactTiers([
+      tier("standard", "none"),
+      tier("enterprise", "contact"),
+      tier("acme-custom", "contact"),
+    ]);
+    expect(out.map((t) => t.slug)).toEqual(["standard", "enterprise"]);
+  });
+
+  it("passes non-contact tiers through untouched and preserves order", () => {
+    const out = collapseContactTiers([
+      tier("standard", "none"),
+      tier("plus", "subscribe"),
+      tier("pro", "subscribe"),
+    ]);
+    expect(out.map((t) => t.slug)).toEqual(["standard", "plus", "pro"]);
+  });
+
+  it("a single contact tier is unchanged", () => {
+    const out = collapseContactTiers([
+      tier("standard", "none"),
+      tier("enterprise", "contact"),
+    ]);
+    expect(out.map((t) => t.slug)).toEqual(["standard", "enterprise"]);
   });
 });
 

@@ -20,6 +20,18 @@ DATABASE_URL=postgresql://… STRIPE_SECRET_KEY=sk_test_… \
 
 It also creates the standing **`demo` tier** (#511) if absent — free, unlimited, all toolpacks, so any local org can `portalai org set-tier <org> demo --env local` and run the demo dataset. Idempotent — a re-run reports every step `ok` (tier apply all-noop, `demo-tier` `exists`) and changes nothing. Add `--e2e-org` to also seed the `e2e-fixture` org (a bare flag reads the email from `E2E_AUTH0_USERNAME`; the test user must have logged in once via `e2e:auth`, which stays a separate, interactive step — see `packages/e2e/README.md`). Local-only by contract: `--env app-dev`/`prod` exit 2 — deployed envs are provisioned by CI/deploy. Full contract, per-step `--json` output, and failure semantics: [packages/devops-cli/COMMANDS.md → local](../packages/devops-cli/COMMANDS.md#local).
 
+### One command for an unlimited testing org (#537)
+
+To land a fresh env with an org already on an unlimited tier (unlimited allocations + all toolpack entitlements), add `--owner-tier`:
+
+```bash
+npx portalops local provision --env local --e2e-org admin@portalsai.io --owner-tier demo
+# then land in that org (the seeded org has a synthetic owner; you're a member):
+npx portalai member switch <orgId> admin@portalsai.io --env local
+```
+
+`--owner-tier <slug>` assigns the tier to the seeded `--e2e-org` org after `tier-apply`/`demo-tier` have run (so `demo`, `enterprise`, etc. exist). It **requires `--e2e-org`** — the tier attaches to that org, not to the default org the app creates on first login. The test user (`admin@portalsai.io`) must have logged in once so the user row exists.
+
 ## Local Stripe webhook loop
 
 Forward live test-mode Stripe events to your local webhook endpoint and fire test events:

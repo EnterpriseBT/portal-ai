@@ -1,0 +1,14 @@
+-- #536: mark the bootstrap `standard` tier public.
+--
+-- 0065 seeded `standard` before `is_public` existed; 0075 added
+-- `is_public boolean DEFAULT false`, so the migration-baseline `standard`
+-- landed non-public. Only `portalops tier apply` (runtime, from the catalog)
+-- ever set it true — so a migration-only environment (integration, a fresh
+-- local that never ran `tier apply`) carried a non-public `standard`.
+--
+-- #536 makes `is_public` load-bearing: `findSelectableForOrg` now excludes
+-- non-public GLOBAL tiers, so the internal `demo` tier stops rendering as a
+-- billing card. `standard` is the default, marketing-visible tier and MUST be
+-- public for that filter to keep listing it. Idempotent: a no-op where
+-- `standard` is already public (prod/app-dev via `tier apply`) or absent.
+UPDATE "tiers" SET "is_public" = true WHERE "slug" = 'standard';
