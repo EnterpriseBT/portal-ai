@@ -35,6 +35,7 @@ Pins the contract for the map-representation invariant: the raw-vs-aggregate cho
 ### Out of scope
 
 - Replacing the dissolve path with grid bins; `heatmap`/`cluster` layer kinds; client-side clustering; legend/opacity-ramp retuning (unless nesting materially shifts count distributions — a smoke observation, not a change here).
+- **Precompute for message-block maps.** The dissolve precompute is keyed by `portalResultId` (pins) — a large polygon layer delivered as a *transient message block* (not pinned) has no precompute, so it falls to the raw path and can be slow at low zoom. This is by design: **pin the map** to get the indexed fast path (pinning enqueues the precompute). Extending precompute to ephemeral message blocks is deliberately not done (decided at smoke — message maps are transient; pinning is the persistence path).
 
 ## Surface
 

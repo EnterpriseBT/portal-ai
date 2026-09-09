@@ -381,6 +381,34 @@ describe("dissolve-precompute processor (#472)", () => {
     );
   });
 
+  it("#478/#532 slice 6: every colorBy value appears in every band (derive-from-finest — no value drops across a boundary)", async () => {
+    await insertParcel(0, "Private");
+    await insertParcel(1, "Private");
+    await insertParcel(5, "Federal");
+    await insertParcel(8, "State");
+
+    const pinId = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    await runProcessor(pinId, orgId);
+
+    const rows = (await connection.unsafe(
+      `SELECT DISTINCT value, zoom_band FROM map_dissolve_geometries WHERE portal_result_id = $1`,
+      [pinId]
+    )) as unknown as Array<{ value: string; zoom_band: number }>;
+
+    // Each band derives from the SAME finest union, so every band carries the
+    // full value set — a region never drops out or re-merges across a boundary.
+    const expected = new Set(["Private", "Federal", "State"]);
+    for (const { band } of DISSOLVE_ZOOM_BANDS) {
+      const valuesInBand = new Set(
+        rows.filter((r) => r.zoom_band === band).map((r) => r.value)
+      );
+      expect(valuesInBand).toEqual(expected);
+    }
+  });
+
   it("#532: a no-colorBy polygon precomputes area-ranked rows (one per polygon, NOT unioned)", async () => {
     // Three adjacent Private + one Federal + one State = 5 polygons. A colorBy
     // dissolve would UNION the adjacent ones per value; area-ranked keeps every
@@ -501,9 +529,10 @@ describe("dissolve-precompute processor (#472)", () => {
     }
   });
 
-  it("skips a non-polygon / no-colorby pin", async () => {
+  it("skips a non-polygon pin (points → no dissolve)", async () => {
     await insertParcel(0, "Private");
-    // A polygons pin with no colorBy.
+    // A points pin — nothing to dissolve (#532: only polygons dissolve; a
+    // no-colorBy *polygon* now dissolves area-ranked, tested above).
     const pinId = generateId();
     await (db as ReturnType<typeof drizzle>)
       .insert(schema.portalResults)
@@ -514,11 +543,16 @@ describe("dissolve-precompute processor (#472)", () => {
         portalId: null,
         messageId: null,
         blockIndex: null,
-        name: "No colorBy",
+        name: "Points",
         type: "geo",
         content: {
           spec: {
-            layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+            layers: [
+              {
+                kind: "points",
+                source: { latColumn: "lat", lngColumn: "lng" },
+              },
+            ],
           },
           pipeline: {
             sql: 'SELECT "c_geom" AS geom FROM parcels',
@@ -535,7 +569,7 @@ describe("dissolve-precompute processor (#472)", () => {
         deletedBy: null,
       } as never);
     const result = await runProcessor(pinId, orgId);
-    expect(result.skipped).toBe("no-colorby");
+    expect(result.skipped).toBe("non-polygon");
     expect(await countRows(pinId)).toBe(0);
   });
 });

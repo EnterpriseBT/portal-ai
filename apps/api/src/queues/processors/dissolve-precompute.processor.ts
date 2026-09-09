@@ -162,83 +162,114 @@ async function runDissolve(
   let rowsWritten = 0;
   let degraded = false;
 
-  for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
-    const tol = tileSimplifyTolerance(representativeZoom);
-    try {
-      // Per-band transaction: atomic replace of just this band's rows. A band
-      // that fails keeps its prior rows (delete rolls back with the insert) and
-      // does not abort the other bands — the serve path falls back for a missing
-      // band. No zero-row window per band.
-      const inserted = await db.transaction(async (tx) => {
-        await applyViews(tx);
+  const insertHead = `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, geom)`;
+  const rowMeta = `gen_random_uuid()::text,
+              (extract(epoch from now()) * 1000)::bigint,
+              'dissolve_precompute', '${organizationId}', '${portalResultId}'`;
+
+  if (colorByColumn) {
+    // colorBy choropleth — #478 derive-from-finest (slice 6): compute the finest
+    // union per value ONCE (the one expensive union), then each band is a
+    // topological *simplification* of that same geometry, so a region's outline
+    // only smooths across a band boundary, never re-merges differently. One
+    // transaction (the temp finest must outlive the per-band inserts) = an
+    // atomic replace of the whole pin's rows, no zero-row window.
+    const finestTol = tileSimplifyTolerance(
+      Math.max(...DISSOLVE_ZOOM_BANDS.map((b) => b.representativeZoom))
+    );
+    rowsWritten = await db.transaction(async (tx) => {
+      await applyViews(tx);
+      await tx.execute(
+        sql.raw(
+          `CREATE TEMP TABLE _dissolve_finest ON COMMIT DROP AS
+           WITH src AS (${pipelineSql}),
+           snapped AS (
+             SELECT ${valueExpr} AS value,
+                    ST_CollectionExtract(ST_MakeValid(ST_SnapToGrid(src.geom, ${finestTol})), 3) AS g
+             FROM src WHERE src.geom IS NOT NULL
+           )
+           SELECT value, ST_Union(g) AS geom, count(*)::int AS fc
+           FROM snapped WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)
+           GROUP BY value`
+        )
+      );
+      await tx.execute(
+        sql`DELETE FROM map_dissolve_geometries WHERE portal_result_id = ${portalResultId}`
+      );
+      for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
+        const tol = tileSimplifyTolerance(representativeZoom);
         await tx.execute(
-          sql`DELETE FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
-        );
-        const insertHead = `INSERT INTO map_dissolve_geometries
-               (id, created, created_by, organization_id, portal_result_id,
-                column_name, value, zoom_band, feature_count, geom)`;
-        const rowMeta = `gen_random_uuid()::text,
-                    (extract(epoch from now()) * 1000)::bigint,
-                    'dissolve_precompute',
-                    '${organizationId}', '${portalResultId}'`;
-        const insertSql = colorByColumn
-          ? // colorBy → per-value union dissolve (choropleth), subdivided.
+          sql.raw(
             `${insertHead}
-             WITH src AS (${pipelineSql}),
-             snapped AS (
-               SELECT ${valueExpr} AS value,
-                      ST_CollectionExtract(ST_MakeValid(ST_SnapToGrid(src.geom, ${tol})), 3) AS g
-               FROM src WHERE src.geom IS NOT NULL
-             ),
-             dissolved AS (
-               SELECT value, ST_Union(g) AS geom, count(*)::int AS fc
-               FROM snapped WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)
-               GROUP BY value
-             ),
-             pieces AS (
-               SELECT value, fc, ST_Subdivide(geom, ${SUBDIVIDE_MAX_VERTICES}) AS piece
-               FROM dissolved
+             WITH pieces AS (
+               SELECT value, fc,
+                      ST_Subdivide(ST_SimplifyPreserveTopology(geom, ${tol}), ${SUBDIVIDE_MAX_VERTICES}) AS piece
+               FROM _dissolve_finest
              )
              SELECT ${rowMeta},
-                    '${storedColumn.replace(/'/g, "''")}',
-                    value, ${band}, fc,
+                    '${storedColumn.replace(/'/g, "''")}', value, ${band}, fc,
                     ST_Multi(ST_CollectionExtract(piece, 3))
              FROM pieces
              WHERE piece IS NOT NULL AND NOT ST_IsEmpty(piece)
                AND ST_CollectionExtract(piece, 3) IS NOT NULL
                AND NOT ST_IsEmpty(ST_CollectionExtract(piece, 3))`
-          : // #532 no-colorBy → area-ranked simplified geometry, NO union: one
-            // row per polygon, simplified to the band tolerance. Union measured
-            // 130–153s/band on a 211k @ ~226-vertex layer (prohibitive);
-            // simplify-only is ~10s. `runDissolveTile` area-caps on serve.
-            `${insertHead}
-             WITH src AS (${pipelineSql}),
-             simplified AS (
-               -- No ST_MakeValid: it measured ~66s over 211k complex polygons,
-               -- and ST_SimplifyPreserveTopology preserves validity for a valid
-               -- input; ST_AsMVTGeom tolerates the rest on serve.
-               SELECT ST_Multi(ST_CollectionExtract(ST_SimplifyPreserveTopology(src.geom, ${tol}), 3)) AS g
-               FROM src WHERE src.geom IS NOT NULL
-             )
-             SELECT ${rowMeta},
-                    '${DISSOLVE_ALL_KEY}', '${DISSOLVE_ALL_KEY}', ${band}, 1, g
-             FROM simplified
-             WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`;
-        await tx.execute(sql.raw(insertSql));
-        const c = (await tx.execute(
-          sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
-        )) as unknown as Array<{ n: number }>;
-        return c[0]?.n ?? 0;
-      });
-      rowsWritten += inserted;
-    } catch (err) {
-      degraded = true;
-      logger.error(
-        { event: "dissolve.band-failed", portalResultId, band, err },
-        "Dissolve band failed; keeping its prior rows and continuing"
-      );
+          )
+        );
+      }
+      const c = (await tx.execute(
+        sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
+            WHERE portal_result_id = ${portalResultId}`
+      )) as unknown as Array<{ n: number }>;
+      return c[0]?.n ?? 0;
+    });
+  } else {
+    // #532 no-colorBy → area-ranked simplified geometry, NO union: one row per
+    // polygon, simplified to the band tolerance (union measured 130–153s/band on
+    // a 211k @ ~226-vertex layer — prohibitive; simplify-only ~10s). Already
+    // continuous across bands (same polygons, different tolerances), so it keeps
+    // the per-band transaction (atomic replace of one band; a band failure keeps
+    // its prior rows and does not abort the others).
+    for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
+      const tol = tileSimplifyTolerance(representativeZoom);
+      try {
+        const inserted = await db.transaction(async (tx) => {
+          await applyViews(tx);
+          await tx.execute(
+            sql`DELETE FROM map_dissolve_geometries
+                WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
+          );
+          await tx.execute(
+            sql.raw(
+              `${insertHead}
+               WITH src AS (${pipelineSql}),
+               simplified AS (
+                 -- No ST_MakeValid: measured ~66s over 211k complex polygons;
+                 -- ST_SimplifyPreserveTopology preserves validity, ST_AsMVTGeom
+                 -- tolerates the rest on serve.
+                 SELECT ST_Multi(ST_CollectionExtract(ST_SimplifyPreserveTopology(src.geom, ${tol}), 3)) AS g
+                 FROM src WHERE src.geom IS NOT NULL
+               )
+               SELECT ${rowMeta},
+                      '${DISSOLVE_ALL_KEY}', '${DISSOLVE_ALL_KEY}', ${band}, 1, g
+               FROM simplified WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`
+            )
+          );
+          const c = (await tx.execute(
+            sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
+                WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
+          )) as unknown as Array<{ n: number }>;
+          return c[0]?.n ?? 0;
+        });
+        rowsWritten += inserted;
+      } catch (err) {
+        degraded = true;
+        logger.error(
+          { event: "dissolve.band-failed", portalResultId, band, err },
+          "Dissolve band failed; keeping its prior rows and continuing"
+        );
+      }
     }
   }
 

@@ -89,6 +89,8 @@ No token required (Esri sample server). Base: `https://sampleserver6.arcgisonlin
 
 `ST_MakeValid` was the precompute killer (~66s of the 76s attempt); dropped it — `ST_SimplifyPreserveTopology` preserves validity and `ST_AsMVTGeom` tolerates the rest.
 
+> **To re-smoke slice 5 in the live app:** the precompute is **pin-only**, so **pin the census map** (the census layer was delivered as a transient *message block*, which has no precompute) and rebuild the running app (new code + `AGG_TILE_VERSION` bump). Pinning enqueues the precompute (~2–3 min for 5 bands over 211k); low-zoom tiles then serve from the index. An un-pinned message map of a huge polygon layer stays on the slow raw path by design (spec → Out of scope).
+
 ## Smoke findings — slices-1–2 walk (recorded)
 
 Walked against the dev stack; **points passed, polygons found a real defect** → added **slice 5** (spec/discovery/plan amended).
