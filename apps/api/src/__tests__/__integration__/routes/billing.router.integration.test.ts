@@ -130,6 +130,7 @@ describe("Billing router", () => {
     await db.insert(schema.tiers).values([
       testTier(PRO_SLUG, {
         selectable: true,
+        public: true, // #536: a global tier must be public to be a billing card
         stripePriceId: "price_billing_pro",
         cta: "subscribe",
         description: "Everything in Standard, plus more.",
