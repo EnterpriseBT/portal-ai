@@ -70,6 +70,10 @@ export interface LocalProvisionOptions extends MutateOptions {
   /** Seed the e2e fixture org, linking this member email (the user row must
    *  already exist — it is created on the test user's first login). */
   e2eOrgEmail?: string;
+  /** Assign this tier slug to the seeded e2e org (#537) — e.g. `demo` for an
+   *  unlimited testing org. Requires `--e2e-org`; the slug must already exist
+   *  (created by the `tier-apply` / `demo-tier` steps that run first). */
+  ownerTier?: string;
 }
 
 export type ProvisionStepName =
@@ -111,6 +115,12 @@ export async function localProvision(
     throw new Error(
       `local provision only supports --env local (got "${def.name}") — ` +
         "deployed envs are provisioned by CI/deploy"
+    );
+  }
+  if (opts.ownerTier && !opts.e2eOrgEmail) {
+    throw new Error(
+      "--owner-tier requires --e2e-org: the tier is assigned to the seeded org, " +
+        "and the login-created default org does not exist until first login"
     );
   }
   // Uniform mutation guard (a confirmation no-op on local's development
@@ -160,17 +170,20 @@ export async function localProvision(
   if (ok) {
     if (opts.e2eOrgEmail) {
       const email = opts.e2eOrgEmail;
+      const tier = opts.ownerTier;
       await run("e2e-org", async () => {
         await runScript(def, "db:seed:org", [
           "--name",
           E2E_FIXTURE_ORG_NAME,
           "--member-email",
           email,
+          ...(tier ? ["--tier", tier] : []),
         ]);
         return {
           script: "db:seed:org",
           orgName: E2E_FIXTURE_ORG_NAME,
           memberEmail: email,
+          ...(tier ? { ownerTier: tier } : {}),
         };
       });
     } else {
@@ -191,6 +204,7 @@ export async function localProvision(
     args: {
       steps: steps.map((s) => ({ name: s.name, status: s.status })),
       e2eOrg: opts.e2eOrgEmail ?? null,
+      ownerTier: opts.ownerTier ?? null,
     },
   });
 

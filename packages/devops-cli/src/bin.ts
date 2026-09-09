@@ -407,8 +407,15 @@ export function buildProgram(): Command {
       "--e2e-org [member-email]",
       "also seed the e2e-fixture org; bare flag defaults the email from E2E_AUTH0_USERNAME"
     )
+    .option(
+      "--owner-tier <slug>",
+      "assign this tier to the seeded e2e org (e.g. `demo` for unlimited); requires --e2e-org"
+    )
     .action(
-      async (o: GlobalOpts & { e2eOrg?: string | boolean }, cmd: Command) => {
+      async (
+        o: GlobalOpts & { e2eOrg?: string | boolean; ownerTier?: string },
+        cmd: Command
+      ) => {
         let e2eOrgEmail: string | undefined;
         if (o.e2eOrg !== undefined) {
           e2eOrgEmail =
@@ -422,12 +429,16 @@ export function buildProgram(): Command {
             );
           }
         }
+        if (o.ownerTier && !e2eOrgEmail) {
+          cmd.error("error: --owner-tier requires --e2e-org");
+        }
         return execute(
           o,
           async (def) => {
             const res = await localProvision(def, {
               ...flags(o),
               e2eOrgEmail,
+              ownerTier: o.ownerTier,
             });
             const failed = res.steps.find((s) => s.status === "failed");
             if (failed?.error) {

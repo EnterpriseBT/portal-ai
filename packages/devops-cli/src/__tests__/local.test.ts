@@ -129,6 +129,7 @@ describe("localProvision — composition", () => {
             { name: "e2e-org", status: "skipped" },
           ],
           e2eOrg: null,
+          ownerTier: null,
         },
       })
     );
@@ -171,6 +172,39 @@ describe("localProvision — the e2e-org step", () => {
       "db:seed:org",
       expect.anything()
     );
+  });
+
+  it("passes --tier to db:seed:org and records ownerTier when --owner-tier is set (#537)", async () => {
+    const out = await localProvision(
+      local,
+      { e2eOrgEmail: "e2e@example.com", ownerTier: "demo" },
+      deps()
+    );
+    expect(runScript).toHaveBeenCalledWith(local, "db:seed:org", [
+      "--name",
+      E2E_FIXTURE_ORG_NAME,
+      "--member-email",
+      "e2e@example.com",
+      "--tier",
+      "demo",
+    ]);
+    expect(out.steps[4]).toEqual({
+      name: "e2e-org",
+      status: "ok",
+      result: {
+        script: "db:seed:org",
+        orgName: E2E_FIXTURE_ORG_NAME,
+        memberEmail: "e2e@example.com",
+        ownerTier: "demo",
+      },
+    });
+  });
+
+  it("rejects --owner-tier without --e2e-org (nothing to assign it to) (#537)", async () => {
+    await expect(
+      localProvision(local, { ownerTier: "demo" }, deps())
+    ).rejects.toThrow(/--owner-tier requires --e2e-org/);
+    expect(runScript).not.toHaveBeenCalled();
   });
 
   it("a failing db:seed:org (user never logged in) keeps the earlier steps' results", async () => {

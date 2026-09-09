@@ -11,6 +11,7 @@ import { eq, and, isNull, desc, sql, type SQL } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { organizations } from "../db/schema/organizations.table.js";
 import { db } from "../db/client.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
@@ -164,16 +165,26 @@ export class ApplicationService {
   /** CLI seam (#190): idempotent-by-name org fixture with a synthetic owner
    *  (auth0Id "seed|<id>"), optionally adding a real user as a member so the
    *  org is enterable from the app. */
-  static async seedOrganization(opts: { name: string; memberEmail?: string }) {
+  static async seedOrganization(opts: {
+    name: string;
+    memberEmail?: string;
+    /** Assign this tier slug to the org (idempotent — applied whether the org
+     *  is freshly seeded or already exists). Validated against live tiers; a
+     *  seeded org has no Stripe subscription, so no desync guard is needed. */
+    tier?: string;
+  }) {
     const systemId = SystemUtilities.id.system;
 
     const existing = await DbService.repository.organizations.findByName(
       opts.name
     );
     if (existing) {
+      if (opts.tier)
+        await ApplicationService.assignOrgTier(existing.id, opts.tier);
       return {
         organizationId: existing.id,
         ownerUserId: existing.ownerUserId,
+        tier: opts.tier,
         existing: true as const,
       };
     }
@@ -225,13 +236,43 @@ export class ApplicationService {
         memberUserId = member.id;
       }
 
+      if (opts.tier)
+        await ApplicationService.assignOrgTier(
+          provisioned.organization.id,
+          opts.tier,
+          tx
+        );
+
       return {
         organizationId: provisioned.organization.id,
         ownerUserId: owner.id,
         memberUserId,
+        tier: opts.tier,
         existing: false as const,
       };
     });
+  }
+
+  /** Assign a tier slug to an org (seed seam). Validates the slug against live
+   *  tiers so a typo fails loudly instead of tripping the FK; skips the Stripe
+   *  desync guard that `portalai org set-tier` enforces because a seeded org
+   *  never has a subscription. */
+  private static async assignOrgTier(
+    organizationId: string,
+    tier: string,
+    client?: DbClient
+  ): Promise<void> {
+    const row = await DbService.repository.tiers.findBySlug(tier, client);
+    if (!row) {
+      throw new Error(
+        `Tier "${tier}" not found — run \`portalops tier apply\` / \`tier create\` first`
+      );
+    }
+    await DbService.repository.organizations.update(
+      organizationId,
+      { tier },
+      client
+    );
   }
 
   /** The provisioning transaction body — shared by the webhook and CLI paths. */
