@@ -37,7 +37,9 @@ No token required (Esri sample server). Base: `https://sampleserver6.arcgisonlin
 **Full example (paste in a browser to see the GeoJSON):**
 `https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/0/query?where=1=1&outFields=*&f=geojson`
 
-**Notes:** `f=geojson` returns a GeoJSON `FeatureCollection` (`f=json` = Esri JSON, `f=html`/none = the metadata page). Count only: swap the tail for `&returnCountOnly=true&f=json`. **Page size is capped at `maxRecordCount=1000` per request** — for a full large layer, page with `&resultRecordCount=1000&resultOffset=N` (N = 0, 1000, 2000, …), or use a `WHERE` subset (a whole 8.2M-point layer is impractical to pull).
+**Notes:** `f=geojson` returns a GeoJSON `FeatureCollection` (`f=json` = Esri JSON, `f=html`/none = the metadata page). Count only: swap the tail for `&returnCountOnly=true&f=json`. **Page size is capped at `maxRecordCount=1000` per request** — page with `&resultRecordCount=1000&resultOffset=N` (N = 0, 1000, 2000, …); the response's top-level **`exceededTransferLimit: true`** means more pages remain (stop when it's `false`). A whole 8.2M-point layer is impractical to pull — use a `WHERE` subset.
+
+**For the aggregation / wander check specifically:** you need **>10k features in a low-zoom tile**, so pull a paginating mid-size subset. **RI block points** (21,014 points in a tiny area — the whole state sits in ~one low-zoom tile) is the sharpest wander test; **CA block groups** (22,132 polygons) also works. A single 1000-feature page stays under the cap and renders as dots, so pagination must be on for these.
 
 ## Smoke checklist (from the spec's acceptance criteria)
 
