@@ -4,7 +4,9 @@
 
 Manual walkthrough against **your own running dev stack** (web :3000, api :3001), signed in to the seeded org. Every box starts unchecked; check it only after you've observed the stated result. Bugs found go through the bug-filing template at the bottom, not ad-hoc fixes.
 
-> **Interim smoke (slices 1–2).** As of this writing the branch carries slice 1 (count-driven decision + layer coexistence + ETag salt — the filed #532 fix) and slice 2 (nested grid — the wander fix). Steps tagged **[1–2]** are testable now. Steps tagged **[3]/[4]/[5]** cover the over-cap never-drop guarantee, the line hybrid, and dissolve continuity — **not yet on the branch**; leave them unchecked until those slices land. `/smoke` will re-tag everything when the feature is complete.
+> **Interim smoke (slices 1–2).** As of this writing the branch carries slice 1 (count-driven decision + layer coexistence + ETag salt — the filed #532 fix) and slice 2 (nested grid — the wander fix). Steps tagged **[1–2]** are testable now. Steps tagged **[3]/[4]/[5]/[6]** cover the over-cap never-drop guarantee, the line hybrid, **polygons-dissolve-never-bin**, and dissolve continuity — **not yet on the branch**; leave them unchecked until those slices land.
+>
+> **Slices-1–2 walk recorded below** ("Smoke findings"): points passed; large no-colorBy polygons surfaced a real defect (centroid-binning polygons → low-zoom `504` + no extent) that **added slice 5** (see the discovery "Smoke findings" amendment). `/smoke` re-tags everything when the feature is complete.
 
 ## Test data — public ArcGIS REST endpoints
 
@@ -45,14 +47,16 @@ No token required (Esri sample server). Base: `https://sampleserver6.arcgisonlin
 
 **Small layers render as themselves (#532 filed fix) — [1–2], agent-walkable**
 
-- [ ] Map **USA Cities** (3,557 pts). At z3–z5 (national view) the features render as **individual dots**, not grid squares. *(Was squares below z14.)*
-- [ ] Map **USA Highways**. Lines render at every zoom.
-- [ ] Map **USA Counties** (3,141). Real polygons render at every zoom (no bins).
-- [ ] No "Dense areas are summarized…" notice appears on any of the three small layers.
+- [x] Map **USA Cities** (3,557 pts). At z3–z5 (national view) the features render as **individual dots**, not grid squares. *(Was squares below z14.)*
+- [x] Map **USA Highways**. Lines render at every zoom.
+- [x] Map **USA Counties** (3,141). Real polygons render at every zoom (no bins).
+- [x] No "Dense areas are summarized…" notice appears on any of the three small layers.
 
-**Aggregate continuity — bins nest, never wander/blink — [1–2], agent-walkable**
+**Aggregate continuity — point bins nest, never wander/blink — [1–2], agent-walkable**
 
-- [ ] Map a **large** layer (CA block groups, 22k, or Census block points). At a low zoom where a tile exceeds the cap, bins ("Dense areas are summarized — zoom in for detail." notice) appear.
+*(Use a **point** layer — RI block points, 21k. Polygons no longer centroid-bin; they dissolve — see slice 5.)*
+
+- [ ] Map **RI block points** (21k). At a low zoom where a tile exceeds the cap, bins ("Dense areas are summarized — zoom in for detail." notice) appear.
 - [ ] Zoom in one step at a time and watch a specific bin: it **subdivides into up to four smaller bins in place**. It never disappears and reappears somewhere else, and a previously-seen bin does not vanish then return on the way back out. *(This is the core behavior #532 reported.)*
 - [ ] Zoom out one step: four bins **merge into their parent** cleanly.
 
@@ -70,9 +74,23 @@ No token required (Esri sample server). Base: `https://sampleserver6.arcgisonlin
 
 - [ ] A layer authored with aggregation off still aggregates when a tile is genuinely over the cap (the invariant wins; no feature stranded).
 
-**Polygon dissolve continuity — [5], PENDING**
+**Polygons dissolve, never centroid-bin — [5], PENDING (added from the slices-1–2 walk)**
 
-- [ ] A polygon choropleth (colorBy) transitions across dissolve zoom bands with a region only **smoothing** its outline — never dropping out or re-merging differently at a band boundary.
+- [ ] A **large no-colorBy polygon** layer (census block groups) renders **real merged polygon geometry** at low zoom — never centroid squares — and a big polygon's extent is visible (via dissolve at low zoom / raw once its tile is under cap).
+- [ ] The lowest-zoom polygon tile returns a **non-empty MVT** (no `504 MAP_TILE_TIMEOUT` blank) — the tile that timed out at the slices-1–2 walk. **Record the tile latency** (must be under the 10s statement timeout).
+- [ ] A polygon **choropleth** (colorBy) transitions across dissolve zoom bands with a region only **smoothing** its outline — never dropping out or re-merging differently at a band boundary. *(Slice 6.)*
+
+## Smoke findings — slices-1–2 walk (recorded)
+
+Walked against the dev stack; **points passed, polygons found a real defect** → added **slice 5** (spec/discovery/plan amended).
+
+- **PASS — small layers:** USA Cities render as dots at national zoom (not squares), Highways as lines, Counties as real polygons. *(#532 filed fix confirmed.)*
+- **PASS — large points (RI block points, 21k):** bins appear at low zoom and **subdivide in place** as you zoom, no wander/blink, no vanish-and-reappear. *(Nested grid confirmed.)*
+- **BUG → slice 5 — large no-colorBy polygons (169k census block groups):** three symptoms, one root (centroid-binning polygons is wrong):
+  1. **Blank low-zoom tiles that "appear suddenly."** Aggregates absent across a continent view; they pop in only once one state fills the view. Root: the live per-tile `ST_Centroid(ST_Transform(ST_Simplify(geom)))` over 169k rows exceeds `TILE_STATEMENT_TIMEOUT_MS` → `504 MAP_TILE_TIMEOUT` → blank; higher zoom = fewer polygons/tile = completes. (Observed 504: `…/tiles/message/a03dbb96…/7/2/1/1.mvt`, z2.) They don't re-vanish because a succeeded tile is ETag-cached — so it's tiles *erroring*, not the wander bug.
+  2. **Bin square smaller than the polygon.** A centroid bin is a fixed square at the centroid; a large rural block group collapses to a tiny square.
+  3. **Un-viewable zoom gap.** Zoomed out → tiny square (can't see the polygon); zoomed in enough for raw (z14) → polygon bigger than the viewport. No zoom shows a big polygon whole.
+  - **Resolution (slice 5):** polygons never centroid-bin — they **dissolve** to real geometry served from the GiST-indexed precompute (no per-tile scan → no timeout; real extent → fixes 2 & 3). No-colorBy uses a new per-cell dissolve. *Interim workaround while smoking: re-map with a `colorBy` to hit the existing dissolve path.*
 
 ## Large-dataset performance (measured, not asserted) — [3]/[5], PENDING
 

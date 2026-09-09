@@ -71,7 +71,7 @@ The root cause of both the "squares on a small map" bug and the z14 discontinuit
 | Screen-px sized | Yes | No |
 | SQL delta | `cellsPerAxis` → power of two; centroid mark | Larger rewrite of cell sizing |
 
-**Lean: A** with the mark at the aggregated centroid. Smallest change to `buildAggregateTileSql`, screen-px sizing preserved, continuity by construction.
+**Lean: A** — cell-bounds square, screen-px sized, continuity by construction. (Applies to **points**; the smoke amendment below restricts *centroid* bins to points and routes polygons to dissolve.)
 
 ### Decision 3 — Advisory aggregation override
 
@@ -110,10 +110,26 @@ Kept as a dissolve path (not folded into grid bins — that would regress real m
 
 1. Replace the global `z < zoomThreshold` choice with **per-tile, count-driven** selection: whole-layer-under-cap ⇒ raw everywhere (persisted `matchedCount`/`rowCount`, fallback `estimatedRows`); otherwise per-tile ⇒ raw when the tile is under cap, nested-grid aggregate when over.
 2. Make the aggregate grid a **nested tile-pyramid** (`cellsPerAxis` a power of two, `cellSize = WORLD_3857_WIDTH / 2^(z+k)`); each bin stays a cell-bounds square that subdivides into four on zoom-in. Because bins are polygons and raw points are points, the raw and aggregate MapLibre layers coexist at all zooms (separated by geometry type + an `_agg` feature flag) — the fixed `AGG_ZOOM_THRESHOLD` min/max-zoom handoff is removed, letting dense and sparse tiles differ at the same zoom.
-3. Over-cap **lines** aggregate too (no arbitrary length-clip); the never-drop guarantee covers points and lines, polygons via the dissolve path.
+3. Over-cap **lines** aggregate too (no arbitrary length-clip). Never-drop coverage by geometry: **points** → nested-grid centroid bins; **lines** → hybrid (longest-N raw + crossed-cell bins); **polygons** → dissolve, always (per the smoke amendment — colorBy per-value, no-colorBy per-cell; never centroid-binned).
 4. Make the MapSpec `aggregation` field **advisory** — a preference that never strands a feature — keeping the server gate and web mirror in lockstep through `resolveAggTreatment`.
 5. Make dissolve bands **continuous** by deriving coarse bands from the finest union.
 6. Fold a **grid/version salt** into the `renderTile` ETag input so existing cached tiles refresh when the SQL-generation behavior changes.
+
+## Smoke findings — polygon aggregation amendment (slices 1–2 walk)
+
+The slices 1–2 smoke passed for points (small + large: dots-not-squares, bins nest, no vanish) and small polygons, but a large **no-colorBy** polygon layer (169k US census block groups) surfaced that **centroid-binning is correct for points but wrong for polygons**, on two axes:
+
+1. **Perf → blank low-zoom tiles (an invariant violation).** The aggregate SQL centroid-bins the pipeline output per tile: `ST_Centroid(ST_Transform(ST_SimplifyPreserveTopology(c_geometry, 0.0001), 3857))`. The tile's spatial filter is on the *simplified* output geometry, so no GiST index on the raw column can prune — every polygon in the layer is simplified + transformed + centroided on every tile. At low zoom (a z2 world tile over 169k polygons) this blows past `TILE_STATEMENT_TIMEOUT_MS` → `504 MAP_TILE_TIMEOUT` → a **blank tile** → features unrepresented at that zoom. It "resolves" only when you zoom in far enough that a tile holds few enough polygons to finish under 10s (observed: blank across a continent view; bins appear suddenly once one state fills the view; they don't re-vanish because a succeeded tile is ETag-cached). Points never hit this — a point's centroid/transform is trivial.
+2. **Representation → a bin does not *contain* the polygon.** A centroid bin is a fixed `cellSize` square at the polygon's centroid; it carries no extent. A large rural block group collapses to a tiny square, and the raw handoff (z14) is too zoomed to see a big polygon whole — a dead zone where the polygon is viewable at *no* zoom. A square at the centroid violates the invariant's "an aggregate that *contains* it."
+
+**Decision (amends Decisions 2 & 4): polygons never centroid-bin — they aggregate as dissolved real geometry, served from the GiST-indexed precompute.** The nested-grid *centroid* bins of Decision 2 apply to **points** only; lines use the crossed-cell variant (Q3). `resolveAggTreatment` amends so **all** polygon layers resolve to `"dissolve"` (dropping the `hasColorBy` gate that sent no-colorBy polygons to `"bins"`), with two dissolve flavors:
+
+- **colorBy → per-value dissolve** (existing): one merged MultiPolygon per colorBy value per band — the choropleth.
+- **no colorBy → per-cell dissolve on the nested grid** (new): within each nested grid cell, `ST_Union` the intersecting polygons (clipped to the cell) + a `_count`. It nests exactly like the point grid (cells subdivide 4-way on zoom-in) but carries **real merged geometry per cell**, not a centroid square — so extent *and* density read correctly, and continuity is inherited from the shared nested grid. Each union is bounded to one cell's polygons, so it sidesteps the finest-union blowup #478 fought.
+
+Both flavors are precomputed off-request (`dissolve-precompute` on the `maintenance` queue) and served from the GiST index, so the per-tile live query that times out today is **never** on the polygon-aggregation hot path — fixing #1 (perf) and #2 (extent) together. The per-tile over-cap probe (Q2) then hands a *sparse* polygon tile to the raw path so an isolated large polygon becomes viewable below z14 (further relief for #2).
+
+**Interim state (until the polygon slice lands):** a large no-colorBy polygon layer stays on the centroid-bin path (blank low-zoom tiles); a colorBy re-map routes to the existing dissolve path today. Recorded known-gap, new-branch-only (not a regression from `main`).
 
 ## Open questions
 
@@ -128,7 +144,7 @@ Kept as a dissolve path (not folded into grid bins — that would regress real m
 - **Concurrency & correctness.** Tile rendering is read-only inside the session-view transaction; no check-then-act race. The one correctness hazard is the ETag not covering behavior — the version salt (rec. 6) is the fix. **Lean: salt required.**
 - **Accuracy & auditability.** The invariant *is* the accuracy guarantee: no feature silently absent. The persisted count is a lower bound when `truncated`, so the decision must treat "unknown/truncated" as "may be over cap" and fall to per-tile probing. **Lean: never trust a truncated count as under-cap.**
 - **Failure modes.** Fail toward the safe side: when the count is unknown, when a probe errors, or when a tile is ambiguous, **aggregate** (never clip). A dropped feature is the failure this ticket exists to prevent. **Lean: fail-closed toward aggregation.**
-- **Scale & unbounded growth.** A dense tile's aggregate is bounded by cell count (~`(2^k)²`), independent of feature count; the grouping scan is the same cost as today and guarded by `TILE_STATEMENT_TIMEOUT_MS`. Per-tile probing adds at most one bounded query per over-cap tile. **Lean: bounded by construction.**
+- **Scale & unbounded growth.** A point aggregate's *output* is bounded by cell count (~`(2^k)²`), but its *input scan* is the whole layer per tile — fine for points (cheap centroid), **not** for polygons: the smoke walk hit `TILE_STATEMENT_TIMEOUT_MS` on a live per-tile polygon centroid over 169k rows (the timeout is the statement guard doing its job, not a safe bound). **Lean: polygons must aggregate from the precomputed, GiST-indexed dissolve — never a per-tile live scan; points/lines stay live (bounded output, cheap per-row).**
 - **Multi-tenancy.** Per-org isolation is unchanged (session-view transaction, org-scoped pipeline SQL). No new cross-tenant surface. **N/A beyond what exists.**
 - **Contract stability.** Making `aggregation` advisory is **additive** — existing specs stay valid, the field just stops being able to strand features. The ETag salt is the forward versioning hook for future tile-behavior changes. **Lean: additive, no breaking spec change.**
 - **Data lifecycle.** Only `map_dissolve_geometries` is derived/persisted; band-nesting invalidates it, and with no prod data a clean rebuild is fine (see open Q4). Tiles are cache-only (ETag), no lifecycle. **Lean: rebuild dissolve, no data migration.**

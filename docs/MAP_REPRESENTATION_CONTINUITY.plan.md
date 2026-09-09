@@ -1,10 +1,10 @@
 # Continuous map representation — Plan
 
-**TDD-sequenced implementation of the invariant: the count-driven per-tile decision + whole-layer fast path + layer-coexistence + ETag salt (slice 1), the nested grid (2), the over-cap point probe/aggregate (3), the line hybrid + `truncated` retirement (4), and dissolve band continuity (5).**
+**TDD-sequenced implementation of the invariant: the count-driven per-tile decision + whole-layer fast path + layer-coexistence + ETag salt (slice 1), the nested grid (2), the over-cap point probe/aggregate (3), the line hybrid + `truncated` retirement (4), polygons-dissolve-never-bin (5, smoke amendment), and dissolve band continuity (6).**
 
 Spec: `docs/MAP_REPRESENTATION_CONTINUITY.spec.md`. Discovery: `docs/MAP_REPRESENTATION_CONTINUITY.discovery.md`. Issue: #532.
 
-5 slices, each behind a green test suite and each leaving the repo compilable. They land as **commits on `feat/map-representation-continuity` / PR #535** — one feature, one PR (per `CLAUDE.md` → "Phase = commit, not PR").
+6 slices, each behind a green test suite and each leaving the repo compilable. They land as **commits on `feat/map-representation-continuity` / PR #535** — one feature, one PR (per `CLAUDE.md` → "Phase = commit, not PR"). Slices 1–2 are implemented + smoked (points pass); slices 3–6 remain, with **slice 5 added from the slices-1–2 smoke** (large no-colorBy polygons 504'd on the live centroid path and centroid squares lost polygon extent — see the discovery "Smoke findings" amendment).
 
 Run tests from each package (never invoke jest directly — `feedback_use_npm_test_scripts`):
 
@@ -23,9 +23,10 @@ Sequencing rationale — the decision + rendering mechanism first (this alone fi
 - **Slice 2** — swap the aggregate grid to the nested tile-pyramid formula. Pure geometry; the web already renders `_agg` bins ungated.
 - **Slice 3** — wire the per-tile `LIMIT cap+1` probe so large-layer tiles decide by count; over-cap **points** aggregate instead of clipping. Advisory-override behavior + JSDoc.
 - **Slice 4** — over-cap **lines** go hybrid (longest-N raw + crossed-cell bins). With points (3) + lines (4) never clipping, **retire `truncated`** (fields, header, web notice).
-- **Slice 5** — dissolve band continuity (derive coarse from finest) + re-enqueue. Independent subsystem; last because it's the most perf-sensitive (measured at smoke).
+- **Slice 5** — **polygons dissolve, never centroid-bin** (smoke amendment): `resolveAggTreatment` routes every polygon to `"dissolve"`; a new no-colorBy per-cell dissolve flavor is precomputed + served; the enqueue extends to all polygons. Fixes the smoke's low-zoom polygon 504 + centroid-square extent loss.
+- **Slice 6** — dissolve band continuity (derive coarse from finest) + re-enqueue. Last because it's the most perf-sensitive (measured at smoke).
 
-No migration (no schema change; `map_dissolve_geometries` contents are re-enqueued in slice 5).
+No migration (no schema change; `map_dissolve_geometries` contents are re-enqueued in slice 6, reusing a sentinel `column_name="__grid__"` for the per-cell flavor).
 
 ---
 
@@ -120,13 +121,37 @@ Over-cap lines keep the major skeleton and cover the rest with bins; with points
 
 ---
 
-## Slice 5 — Dissolve band continuity + re-enqueue
+## Slice 5 — Polygons dissolve, never centroid-bin (smoke amendment)
 
-Coarse dissolve bands derive from the finest union so a region only smooths across a boundary.
+Fixes the two smoke bugs on large no-colorBy polygons — the low-zoom `504 MAP_TILE_TIMEOUT` (live per-tile centroid over 169k rows) and centroid squares that don't show polygon extent. Polygons route to `"dissolve"` for **all** polygon layers, served from the GiST-indexed precompute; a new **per-cell** dissolve flavor covers the no-colorBy case.
 
 **Files**
 
-- Edit: `apps/api/src/queues/processors/dissolve-precompute.processor.ts` — `runDissolve`: compute the finest band's `ST_Union` per value once, derive each band by `ST_Subdivide(ST_SimplifyPreserveTopology(<finest union>, tol(band)), …)`; keep per-band atomic replace + band-failure fallback.
+- Edit: `packages/core/src/contracts/map-spec.contract.ts` — `resolveAggTreatment`: `kind === "polygons"` → `"dissolve"` regardless of colorBy (drop the `hasColorBy` gate). Single source of truth → the web mirror follows.
+- Edit: `apps/api/src/services/dissolve-precompute.service.ts` — `isDissolvable`/`enqueueForPin` enqueue **every** polygon layer (colorBy or not); `DISSOLVE_CARDINALITY_CEILING` gates the colorBy flavor only.
+- Edit: `apps/api/src/queues/processors/dissolve-precompute.processor.ts` — add the **no-colorBy per-cell dissolve**: per band, `ST_Union` polygons per nested-grid cell (`aggregateCellSize` at the band's rep zoom), store one row per `(band, cell)` under `column_name="__grid__"`, `value="<cellX>:<cellY>"`, `feature_count` = cell count.
+- Edit: `apps/api/src/services/portal-map-tile.service.ts` — `runDissolveTile`/`hasDissolvePrecompute` serve the `"__grid__"` flavor for a no-colorBy polygon layer, emitting `feature_count` as `_count`.
+- Tests: `.../services/portal-map-tile.service.test.ts` (case 6, 29), `.../__integration__/queues/dissolve-precompute.processor.integration.test.ts` (27), `.../__integration__/routes/portal-map.router.integration.test.ts` (28).
+
+**Steps**
+
+1. **Tests.** Case 29 (`resolveAggTreatment("polygons")` no colorBy → `"dissolve"`, not `"bins"`). Case 6 (`resolveTileMode`: a no-colorBy polygon over cap never returns `"aggregate"` — `"dissolve"` when ready, else `"raw"`). Case 27 (per-cell precompute rows under `"__grid__"`; every source polygon intersects a stored cell). Case 28 (**a large no-colorBy polygon renders a non-empty fill MVT at z2/z3 — the tile that 504'd — real geometry, not bin squares**). Run; fail.
+2. **Implement** the `resolveAggTreatment` change + per-cell dissolve + serve path. Green.
+3. Lint + type-check.
+
+**Done when:** cases 6, 27, 28, 29 pass; the 169k census-block-groups layer renders real merged polygons at low zoom with **no timeout** (recorded measurement at smoke); no polygon layer ever reaches `buildAggregateTileSql`.
+
+**Risk:** per-cell union cost — bounded to one cell's polygons (cheaper than a whole-layer union); **measured at smoke** on the 169k layer. Transient: a polygon layer whose precompute is still pending falls to raw-simplify (real geometry, may clip) until the enqueued job lands — self-healing.
+
+---
+
+## Slice 6 — Dissolve band continuity + re-enqueue
+
+Coarse dissolve bands derive from the finest union so a region only smooths across a boundary (applies to both dissolve flavors).
+
+**Files**
+
+- Edit: `apps/api/src/queues/processors/dissolve-precompute.processor.ts` — `runDissolve`: compute the finest band's `ST_Union` once, derive each band by `ST_Subdivide(ST_SimplifyPreserveTopology(<finest union>, tol(band)), …)`; keep per-band atomic replace + band-failure fallback.
 - Ops (documented, not a migration): clear + re-enqueue existing dissolvable pins on deploy (`DELETE FROM map_dissolve_geometries` + `DissolvePrecomputeService.enqueueForPin`).
 - Tests: `apps/api/src/__tests__/__integration__/queues/dissolve-precompute.processor.integration.test.ts`.
 
@@ -150,9 +175,10 @@ Coarse dissolve bands derive from the finest union so a region only smooths acro
 | 2 | nested tile-pyramid grid | 8(formula), 14 | api unit + int |
 | 3 | per-tile probe + over-cap point aggregate + advisory | 13, 18 | api int |
 | 4 | line hybrid + retire `truncated` | 10, 15, 19, 25, 26 | api unit/int + web |
-| 5 | dissolve band continuity + re-enqueue | 20, 21, 22 | api int |
+| 5 | **polygons dissolve, never bin (smoke fix)** | 6, 27, 28, 29 | core + api unit/int |
+| 6 | dissolve band continuity + re-enqueue | 20, 21, 22 | api int |
 
-Total ≈ **26 cases**, no migration. Commits on `feat/map-representation-continuity`; PR #535 grows commit-by-commit.
+Total ≈ **29 cases**, no migration. Commits on `feat/map-representation-continuity`; PR #535 grows commit-by-commit.
 
 ## Cross-slice notes
 
@@ -160,6 +186,7 @@ Total ≈ **26 cases**, no migration. Commits on `feat/map-representation-contin
 - **Layer coexistence is the load-bearing mechanism.** Bins are polygons + `_agg:1`; raw points are points with no `_agg`. MapLibre geometry-type + the `_agg` filter separate them, so no zoom-gate is needed and dense/sparse tiles differ at one zoom. Every slice preserves this.
 - **`resolveTileMode` is fully implemented in slice 1; only the *caller's* `tileCount` source changes.** Slice 1 passes `null` (interim zoom-threshold fallback); slice 3 passes the probe result. No forward dep — the pure function's cases (4–7) all pass in slice 1.
 - **`truncated` retirement waits for slices 3+4.** It stays meaningful (lines still clip) until slice 4; removing it earlier would drop a live signal.
+- **Polygons never touch `buildAggregateTileSql` (slice 5).** The nested centroid-bin grid (slices 1–2) is a **points-only** path; `resolveAggTreatment` sends every polygon to `"dissolve"`, and `resolveTileMode`'s dissolve branch returns `"dissolve"`/`"raw"` (never `"aggregate"`). Until slice 5 lands, a large no-colorBy polygon layer stays on the broken centroid path (low-zoom 504) — a documented interim gap, new-branch-only, worked around today by a colorBy re-map. Bump `AGG_TILE_VERSION` in slice 5 so cached bin-tiles for polygons refresh to dissolve.
 - **ETag mode prefix + `AGG_TILE_VERSION`** ship in slice 1 so cache-busting is in place before any grid/decision change; later slices that change behavior bump `AGG_TILE_VERSION`.
 - **Doc-sync (per `CLAUDE.md` → "Keeping Documentation in Sync"):** slice 1 updates the constants JSDoc; slice 3 updates `map-spec.contract.ts` JSDoc; slice 4 updates the route `@openapi`. No user-facing Help/glossary/tool surfaces change (map rendering is not a tool or a documented user step). The two runbook/README map mentions carry no aggregation-behavior detail — confirm at slice 4.
 - **CLAUDE.md compliance:** file suffixes hold; server-computed SQL interpolants only (no user strings); no SDK/env/infra change; tests via npm scripts.
