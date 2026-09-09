@@ -151,6 +151,21 @@ describe("tiers public fields integration (#311 slice 1)", () => {
     expect(forOrg.some((r) => r.slug === slug)).toBe(true);
   });
 
+  // ── #536 — a non-public GLOBAL selectable tier (the `demo` case) is NOT a card
+  it("findSelectableForOrg excludes a public:false global tier, keeps a public:true one", async () => {
+    const hidden = `demo-${generateId()}`; // global, selectable, public:false, cta:contact
+    const offered = `ent-${generateId()}`; // global, selectable, public:true, cta:contact
+    await insert(tierRow(hidden, { public: false, cta: "contact" }));
+    await insert(tierRow(offered, { public: true, cta: "contact" }));
+
+    const rows = await repo.findSelectableForOrg(orgA, db);
+    const slugs = rows.map((r) => r.slug);
+    // The hidden (demo-like) tier must not surface as a billing card …
+    expect(slugs).not.toContain(hidden);
+    // … while the public contact tier still does.
+    expect(slugs).toContain(offered);
+  });
+
   // ── spec §1 — the CHECK makes public ∧ org-private unrepresentable ───
   it("tiers_public_org_check rejects a public row scoped to an org", async () => {
     await expect(

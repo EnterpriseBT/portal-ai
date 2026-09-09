@@ -80,6 +80,21 @@ export const sortTiersForDisplay = (tiers: BillingTier[]): BillingTier[] =>
     );
   });
 
+/** Collapse `contact` tiers to a single card (#536). Every `cta:"contact"` tier
+ *  renders as the same generic "Enterprise / contact us" teaser (TierCard flattens
+ *  their names on purpose), so more than one is always a visual duplicate. Keeps
+ *  the first contact tier and drops the rest; non-contact tiers pass through
+ *  untouched. Pure; preserves order (dedupe by first occurrence). */
+export const collapseContactTiers = (tiers: BillingTier[]): BillingTier[] => {
+  let seenContact = false;
+  return tiers.filter((t) => {
+    if (t.cta !== "contact") return true;
+    if (seenContact) return false;
+    seenContact = true;
+    return true;
+  });
+};
+
 /** Built-in toolpack entitlement slugs → human pack display names. An unknown
  *  slug (a pack shipping in a later deploy) falls through to the raw slug. */
 export const entitlementPackNames = (slugs: string[]): string[] => {
