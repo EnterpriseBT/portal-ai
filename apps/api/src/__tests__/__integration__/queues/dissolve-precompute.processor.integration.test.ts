@@ -2,11 +2,12 @@
  * Integration tests for the dissolve-precompute processor (#472, slice 2).
  *
  * Exercises the real processor against a live geometry wide table through the
- * session-view path: it runs the pin's durable pipeline, dissolves the result
- * by the colorBy value per zoom band (snap → make-valid → union), subdivides it
- * into bounded pieces, and stores them keyed by the pin. The bounded-union SQL
- * itself was measured against a 397,960-parcel layer (~2s/21s/30s per band); this
- * proves correctness (valid pieces, pin-keyed, cardinality gate, lock, recompute).
+ * session-view path: it runs the pin's durable pipeline and stores one row per
+ * source polygon per zoom band, simplified to the band tolerance and tagged with
+ * its colorBy value (or the dissolve-all sentinel) — area-ranked, NOT unioned
+ * (#532: union was prohibitively slow and re-merged across bands). This proves
+ * correctness (valid per-polygon rows, pin-keyed, no cardinality gate, lock,
+ * recompute).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
@@ -119,6 +120,43 @@ describe("dissolve-precompute processor (#472)", () => {
                 kind: "polygons",
                 source: { geometryColumn: "geom" },
                 style: { colorBy: { column: colorByColumn } },
+              },
+            ],
+          },
+          pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+        },
+        snapshotUpdatedAt: null,
+        created: t,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    return pinId;
+  };
+
+  // #532: a plain polygon pin (no colorBy) → area-ranked simplified geometry.
+  const createPinNoColorBy = async (pipelineSql: string): Promise<string> => {
+    const pinId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id: pinId,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Plain polygons",
+        type: "geo",
+        content: {
+          spec: {
+            layers: [
+              {
+                kind: "polygons",
+                source: { geometryColumn: "geom" },
+                style: { color: "#4A90D9" },
               },
             ],
           },
@@ -299,8 +337,10 @@ describe("dissolve-precompute processor (#472)", () => {
     await connection.end();
   });
 
-  it("dissolves per (value, band) into valid subdivided pieces, keyed by the pin", async () => {
-    // Three Private (adjacent → merge), one Federal, one State.
+  it("#532: a colorBy layer stores individuals + a merged coverage per band, tagged with its value", async () => {
+    // Three adjacent Private, one Federal, one State. Area-ranked (#532) keeps
+    // each polygon as its own row — the three adjacent Private are NOT merged
+    // into one piece the way the old dissolve-union did.
     await insertParcel(0, "Private");
     await insertParcel(1, "Private");
     await insertParcel(2, "Private");
@@ -318,10 +358,10 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(result.rowsWritten).toBeGreaterThan(0);
     expect(result.skipped).toBeUndefined();
 
-    // Rows exist for every band, keyed by the PIN (not the entity), all valid,
-    // carrying the colorBy value + column.
+    // Rows exist for every band, keyed by the PIN, all valid, carrying the
+    // colorBy value + column. `merged` distinguishes the two representations.
     const rows = (await connection.unsafe(
-      `SELECT value, zoom_band, column_name,
+      `SELECT value, zoom_band, column_name, feature_count, merged,
               ST_IsValid(geom) AS valid, ST_GeometryType(geom) AS gtype
        FROM map_dissolve_geometries WHERE portal_result_id = $1`,
       [pinId]
@@ -329,6 +369,8 @@ describe("dissolve-precompute processor (#472)", () => {
       value: string;
       zoom_band: number;
       column_name: string;
+      feature_count: number;
+      merged: boolean;
       valid: boolean;
       gtype: string;
     }>;
@@ -340,6 +382,107 @@ describe("dissolve-precompute processor (#472)", () => {
       new Set(["Private", "Federal", "State"])
     );
     expect(new Set(rows.map((r) => r.zoom_band))).toEqual(
+      new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
+    );
+
+    // Individuals (merged=false): one row per source polygon, feature_count 1 —
+    // the 3 adjacent Private stay 3 separate rows per band (NOT unioned).
+    const individuals = rows.filter((r) => !r.merged);
+    expect(individuals.every((r) => r.feature_count === 1)).toBe(true);
+    const band0PrivateIndiv = individuals.filter(
+      (r) => r.zoom_band === 0 && r.value === "Private"
+    );
+    expect(band0PrivateIndiv.length).toBe(3);
+
+    // Merged coverage (merged=true): a dissolved piece per value per band, its
+    // feature_count = the source polygons it merged (Private = 3).
+    const merged = rows.filter((r) => r.merged);
+    expect(merged.length).toBeGreaterThan(0);
+    expect(new Set(merged.map((r) => r.zoom_band))).toEqual(
+      new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
+    );
+    const band0PrivateMerged = merged.filter(
+      (r) => r.zoom_band === 0 && r.value === "Private"
+    );
+    expect(band0PrivateMerged.length).toBeGreaterThanOrEqual(1);
+    expect(band0PrivateMerged.every((r) => r.feature_count === 3)).toBe(true);
+  });
+
+  it("#532: every colorBy value appears in every band (per-polygon, no value drops across a boundary)", async () => {
+    await insertParcel(0, "Private");
+    await insertParcel(1, "Private");
+    await insertParcel(5, "Federal");
+    await insertParcel(8, "State");
+
+    const pinId = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    await runProcessor(pinId, orgId);
+
+    const rows = (await connection.unsafe(
+      `SELECT DISTINCT value, zoom_band FROM map_dissolve_geometries WHERE portal_result_id = $1`,
+      [pinId]
+    )) as unknown as Array<{ value: string; zoom_band: number }>;
+
+    // Every band simplifies the SAME per-polygon rows, so every band carries the
+    // full value set — a value never drops out or re-merges across a boundary.
+    const expected = new Set(["Private", "Federal", "State"]);
+    for (const { band } of DISSOLVE_ZOOM_BANDS) {
+      const valuesInBand = new Set(
+        rows.filter((r) => r.zoom_band === band).map((r) => r.value)
+      );
+      expect(valuesInBand).toEqual(expected);
+    }
+  });
+
+  it("#532: a no-colorBy polygon stores individuals (one per polygon) + a merged coverage under the sentinel", async () => {
+    // Three adjacent Private + one Federal + one State = 5 polygons. Individuals
+    // keep every polygon as its own row (so ST_Area can rank them under the cap);
+    // the merged coverage unions them for the over-cap case.
+    await insertParcel(0, "Private");
+    await insertParcel(1, "Private");
+    await insertParcel(2, "Private");
+    await insertParcel(5, "Federal");
+    await insertParcel(8, "State");
+
+    const pinId = await createPinNoColorBy(
+      'SELECT "c_geom" AS geom FROM parcels'
+    );
+    const result = await runProcessor(pinId, orgId);
+    expect(result.skipped).toBeUndefined();
+
+    const rows = (await connection.unsafe(
+      `SELECT column_name, value, zoom_band, feature_count, merged,
+              ST_GeometryType(geom) AS gtype
+       FROM map_dissolve_geometries WHERE portal_result_id = $1`,
+      [pinId]
+    )) as unknown as Array<{
+      column_name: string;
+      value: string;
+      zoom_band: number;
+      feature_count: number;
+      merged: boolean;
+      gtype: string;
+    }>;
+    // Both representations keyed by the sentinel column + value.
+    expect(rows.every((r) => r.column_name === "__all__")).toBe(true);
+    expect(rows.every((r) => r.value === "__all__")).toBe(true);
+    expect(rows.every((r) => r.gtype === "ST_MultiPolygon")).toBe(true);
+    expect(new Set(rows.map((r) => r.zoom_band))).toEqual(
+      new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
+    );
+
+    // Individuals: one row per polygon per band (5 per band), feature_count 1.
+    const individuals = rows.filter((r) => !r.merged);
+    expect(individuals.every((r) => r.feature_count === 1)).toBe(true);
+    expect(individuals.filter((r) => r.zoom_band === 0).length).toBe(5);
+
+    // Merged coverage: the 5 polygons unioned, feature_count 5, present per band.
+    const merged = rows.filter((r) => r.merged);
+    expect(merged.length).toBeGreaterThan(0);
+    expect(merged.every((r) => r.feature_count === 5)).toBe(true);
+    expect(new Set(merged.map((r) => r.zoom_band))).toEqual(
       new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
     );
   });
@@ -387,16 +530,20 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(second).toBe(first);
   });
 
-  it("skips a colorBy over the cardinality ceiling and clears stale rows", async () => {
-    // 70 distinct values (> DISSOLVE_CARDINALITY_CEILING = 64).
+  it("#532: a high-cardinality colorBy is precomputed with no cardinality gate", async () => {
+    // 70 distinct values — the old union path skipped over a 64-value ceiling;
+    // the #532 store has no ceiling, so nothing is skipped.
     for (let i = 0; i < 70; i++) await insertParcel(i, `owner-${i}`);
     const pinId = await createPin(
       'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
       "c_own_type"
     );
     const result = await runProcessor(pinId, orgId);
-    expect(result.skipped).toBe("over-cardinality");
-    expect(await countRows(pinId)).toBe(0);
+    expect(result.skipped).toBeUndefined();
+    expect(result.valuesDissolved).toBe(70);
+    // Per band: 70 individuals (one polygon each) + 70 merged pieces (one union
+    // per value, each of a single polygon) = 140 × 5 bands.
+    expect(await countRows(pinId)).toBe(2 * 70 * DISSOLVE_ZOOM_BANDS.length);
   });
 
   it("reports superseded without writing when the pin lock is held", async () => {
@@ -423,9 +570,10 @@ describe("dissolve-precompute processor (#472)", () => {
     }
   });
 
-  it("skips a non-polygon / no-colorby pin", async () => {
+  it("skips a non-polygon pin (points → no dissolve)", async () => {
     await insertParcel(0, "Private");
-    // A polygons pin with no colorBy.
+    // A points pin — nothing to dissolve (#532: only polygons dissolve; a
+    // no-colorBy *polygon* now dissolves area-ranked, tested above).
     const pinId = generateId();
     await (db as ReturnType<typeof drizzle>)
       .insert(schema.portalResults)
@@ -436,11 +584,16 @@ describe("dissolve-precompute processor (#472)", () => {
         portalId: null,
         messageId: null,
         blockIndex: null,
-        name: "No colorBy",
+        name: "Points",
         type: "geo",
         content: {
           spec: {
-            layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+            layers: [
+              {
+                kind: "points",
+                source: { latColumn: "lat", lngColumn: "lng" },
+              },
+            ],
           },
           pipeline: {
             sql: 'SELECT "c_geom" AS geom FROM parcels',
@@ -457,7 +610,7 @@ describe("dissolve-precompute processor (#472)", () => {
         deletedBy: null,
       } as never);
     const result = await runProcessor(pinId, orgId);
-    expect(result.skipped).toBe("no-colorby");
+    expect(result.skipped).toBe("non-polygon");
     expect(await countRows(pinId)).toBe(0);
   });
 });

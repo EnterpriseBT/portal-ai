@@ -6,10 +6,13 @@ import {
   propertyColumnsFromSpec,
   tileSimplifyTolerance,
   aggregationFromSpec,
-  shouldAggregate,
+  resolveTileMode,
+  aggregateCellSize,
+  layerCountFromContent,
   mapTileError,
   type RenderTileDeps,
   type TileQueryResult,
+  type TileAggregation,
 } from "../../services/portal-map-tile.service.js";
 import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
 import { ApiError } from "../../services/http.service.js";
@@ -122,7 +125,7 @@ describe("propertyColumnsFromSpec (#314)", () => {
   });
 });
 
-describe("aggregationFromSpec + shouldAggregate (#330)", () => {
+describe("aggregationFromSpec (#330/#337)", () => {
   it("defaults to on with the shared threshold when no aggregation block is present", () => {
     const agg = aggregationFromSpec({
       layers: [{ style: { colorBy: { column: "c_city" } } }],
@@ -166,7 +169,7 @@ describe("aggregationFromSpec + shouldAggregate (#330)", () => {
     });
   });
 
-  it("a polygon layer stays binned (enabled:true) + rankByLength:false", () => {
+  it("a polygon layer (no colorBy) defaults to dissolve, not bins (#532)", () => {
     const agg = aggregationFromSpec({
       layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
     });
@@ -174,6 +177,8 @@ describe("aggregationFromSpec + shouldAggregate (#330)", () => {
       enabled: true,
       rankByLength: false,
       kind: "polygons",
+      treatment: "dissolve",
+      colorByColumn: null,
     });
   });
 
@@ -215,20 +220,207 @@ describe("aggregationFromSpec + shouldAggregate (#330)", () => {
     });
     expect(agg).toMatchObject({ enabled: false, rankByLength: false });
   });
+});
 
-  it("shouldAggregate honours enabled + the zoom threshold", () => {
-    const on = {
-      enabled: true,
-      zoomThreshold: 12,
-      gridSizePx: 24,
+describe("resolveTileMode (#532)", () => {
+  const agg = (over: Partial<TileAggregation> = {}): TileAggregation => ({
+    enabled: true,
+    zoomThreshold: AGG_ZOOM_THRESHOLD,
+    gridSizePx: 24,
+    colorByColumn: null,
+    kind: "points",
+    treatment: "bins",
+    rankByLength: false,
+    ...over,
+  });
+  const call = (over: Partial<Parameters<typeof resolveTileMode>[0]> = {}) =>
+    resolveTileMode({
+      z: 5,
+      aggregation: agg(),
+      layerTotal: null,
+      layerTotalExact: false,
+      tileCount: null,
+      cap: 10_000,
+      dissolveReady: false,
+      ...over,
+    });
+
+  it("whole-layer fast path: an exact count <= cap is raw at every zoom (#532)", () => {
+    expect(call({ layerTotal: 415, layerTotalExact: true, z: 3 })).toBe("raw");
+    expect(call({ layerTotal: 415, layerTotalExact: true, z: 12 })).toBe("raw");
+  });
+
+  it("an inexact/truncated total never takes the fast path", () => {
+    // inexact total <= cap must not short-circuit to raw; with no probe it falls
+    // back to the zoom threshold (aggregate at low zoom).
+    expect(call({ layerTotal: 415, layerTotalExact: false, z: 3 })).toBe(
+      "aggregate"
+    );
+  });
+
+  it("per-tile count decides once probed: raw under cap, aggregate/hybrid over", () => {
+    expect(call({ tileCount: 9_000 })).toBe("raw");
+    expect(call({ tileCount: 10_001 })).toBe("aggregate");
+    expect(
+      call({ tileCount: 10_001, aggregation: agg({ kind: "lines" }) })
+    ).toBe("hybrid-lines");
+  });
+
+  it("dissolve: ready → dissolve, miss → raw (never centroid bins)", () => {
+    const dagg = agg({
+      treatment: "dissolve",
+      kind: "polygons",
+      colorByColumn: "c",
+    });
+    expect(call({ aggregation: dagg, z: 5, dissolveReady: true })).toBe(
+      "dissolve"
+    );
+    expect(call({ aggregation: dagg, z: 5, dissolveReady: false })).toBe("raw");
+    // above the band ceiling a dissolve layer is raw regardless of readiness
+    expect(call({ aggregation: dagg, z: 16, dissolveReady: true })).toBe("raw");
+  });
+
+  it("a no-colorBy polygon (treatment dissolve) over cap never returns 'aggregate' (#532)", () => {
+    // aggregationFromSpec gives a no-colorBy polygon treatment "dissolve", so it
+    // takes the dissolve branch — dissolve when ready, raw when not — NEVER the
+    // centroid-bin "aggregate" path, even far over the cap.
+    const poly = agg({
+      treatment: "dissolve",
+      kind: "polygons",
       colorByColumn: null,
-      kind: null,
-      treatment: "bins" as const,
-      rankByLength: false,
-    };
-    expect(shouldAggregate(11, on)).toBe(true);
-    expect(shouldAggregate(12, on)).toBe(false); // threshold is exclusive
-    expect(shouldAggregate(5, { ...on, enabled: false })).toBe(false);
+    });
+    expect(
+      call({ aggregation: poly, z: 5, dissolveReady: true, tileCount: 999_999 })
+    ).toBe("dissolve");
+    expect(
+      call({
+        aggregation: poly,
+        z: 5,
+        dissolveReady: false,
+        tileCount: 999_999,
+      })
+    ).toBe("raw");
+  });
+
+  it("interim fallback (no probe) reproduces the pre-#532 zoom threshold", () => {
+    expect(call({ z: 5 })).toBe("aggregate"); // enabled, z < threshold
+    expect(call({ z: 14 })).toBe("raw"); // threshold is exclusive
+    expect(call({ z: 5, aggregation: agg({ enabled: false }) })).toBe("raw");
+  });
+});
+
+describe("layerCountFromContent (#532)", () => {
+  it("prefers matchedCount + its exactness flag", () => {
+    expect(
+      layerCountFromContent({ matchedCount: 500, matchedCountExact: true })
+    ).toEqual({ layerTotal: 500, layerTotalExact: true });
+    expect(
+      layerCountFromContent({ matchedCount: 500, matchedCountExact: false })
+    ).toEqual({ layerTotal: 500, layerTotalExact: false });
+  });
+
+  it("falls back to rowCount, exact only when not truncated", () => {
+    expect(layerCountFromContent({ rowCount: 42, truncated: false })).toEqual({
+      layerTotal: 42,
+      layerTotalExact: true,
+    });
+    expect(layerCountFromContent({ rowCount: 42, truncated: true })).toEqual({
+      layerTotal: 42,
+      layerTotalExact: false,
+    });
+  });
+
+  it("no envelope → no fast path", () => {
+    expect(layerCountFromContent({})).toEqual({
+      layerTotal: null,
+      layerTotalExact: false,
+    });
+  });
+});
+
+describe("aggregateCellSize — nested tile-pyramid grid (#532)", () => {
+  it("halves each zoom level so the grid nests (cellSize(z) = 2·cellSize(z+1))", () => {
+    for (let z = 0; z < 14; z++) {
+      expect(aggregateCellSize(z)).toBeCloseTo(2 * aggregateCellSize(z + 1), 6);
+    }
+  });
+
+  it("is the tile pyramid subdivided AGG_GRID_LEVELS levels", () => {
+    // WORLD_3857_WIDTH / 2^(z + 4) at z=6 → world / 2^10.
+    expect(aggregateCellSize(6)).toBeCloseTo(40075016.685578488 / 2 ** 10, 3);
+  });
+});
+
+describe("buildAggregateTileSql — nested grid + _agg flag (#532)", () => {
+  it("uses the nested aggregateCellSize(z), not a gridSizePx-derived lattice", () => {
+    const q = PortalMapTileService.buildAggregateTileSql(
+      "SELECT geom FROM parcels",
+      6,
+      "ST_TileEnvelope(6, 20, 24)",
+      {
+        enabled: true,
+        zoomThreshold: AGG_ZOOM_THRESHOLD,
+        gridSizePx: 24,
+        colorByColumn: null,
+        kind: "points",
+        treatment: "bins",
+        rankByLength: false,
+      },
+      MAP_TILE_FEATURE_CAP
+    );
+    // The snap uses the nested cell size; z and z+1 differ by exactly 2x.
+    expect(q).toContain(String(aggregateCellSize(6)));
+  });
+
+  it("emits `1 AS _agg` so the client separates bins from raw features", () => {
+    const q = PortalMapTileService.buildAggregateTileSql(
+      "SELECT geom FROM parcels",
+      6,
+      "ST_TileEnvelope(6, 20, 24)",
+      {
+        enabled: true,
+        zoomThreshold: AGG_ZOOM_THRESHOLD,
+        gridSizePx: 24,
+        colorByColumn: null,
+        kind: "points",
+        treatment: "bins",
+        rankByLength: false,
+      },
+      MAP_TILE_FEATURE_CAP
+    );
+    expect(q).toContain("1 AS _agg");
+  });
+});
+
+describe("buildLineHybridTileSql — skeleton + remainder bins (#532 slice 4)", () => {
+  const q = () =>
+    PortalMapTileService.buildLineHybridTileSql(
+      "SELECT geom FROM roads",
+      6,
+      "ST_TileEnvelope(6, 20, 24)",
+      0.01,
+      MAP_TILE_FEATURE_CAP
+    );
+
+  it("ranks by projected length and draws the longest `cap` as the raw skeleton", () => {
+    const sql = q();
+    expect(sql).toContain("ST_Length(ST_Transform(src.geom, 3857)) DESC");
+    expect(sql).toContain(`r.rn <= ${MAP_TILE_FEATURE_CAP}`);
+    // Skeleton features carry no `_agg` flag (0), so the client draws them as lines.
+    expect(sql).toContain("0 AS _agg");
+  });
+
+  it("summarises the remainder (rn > cap) as density bins on the nested grid, flagged `_agg`", () => {
+    const sql = q();
+    expect(sql).toContain(`r.rn > ${MAP_TILE_FEATURE_CAP}`);
+    expect(sql).toContain(String(aggregateCellSize(6)));
+    expect(sql).toContain("1 AS _agg");
+    // A summary never reports truncation.
+    expect(sql).toContain("0 AS n_limited");
+  });
+
+  it("applies the simplify tolerance to the skeleton geometry", () => {
+    expect(q()).toContain("ST_SimplifyPreserveTopology(r.g, 0.01)");
   });
 });
 
@@ -350,7 +542,7 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual(Buffer.from([1, 2, 3]));
-    expect(res.etag).toMatch(/^"[0-9a-f]{32}"$/);
+    expect(res.etag).toMatch(/^"[ar]~[0-9a-f]{32}"$/);
   });
 
   it("sets simplifiedTolerance at low zoom, null at high zoom", async () => {
@@ -431,7 +623,7 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     );
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
-    expect(res.etag).toMatch(/^"[0-9a-f]{32}"$/);
+    expect(res.etag).toMatch(/^"[ar]~[0-9a-f]{32}"$/);
   });
 
   it("returns 304 when If-None-Match equals the tile ETag", async () => {
@@ -449,6 +641,53 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     );
     expect(second.status).toBe(304);
     expect(second.body).toBeUndefined();
+  });
+
+  it("the ETag mode prefix lets a 304 report `aggregated` without a query (#532)", async () => {
+    let queries = 0;
+    const countingDeps = (aggregated: boolean): RenderTileDeps => ({
+      findMessageById: async () => messageWithPipeline,
+      findPortalResultById: async () => null,
+      runTileQuery: async () => {
+        queries++;
+        return {
+          mvt: Buffer.from([1]),
+          featureCount: 3,
+          truncated: false,
+          aggregated,
+        };
+      },
+    });
+    const first = await PortalMapTileService.renderTile(
+      { ref: { kind: "message", messageId: "msg-1", blockIndex: 0 }, ...base },
+      countingDeps(true)
+    );
+    expect(first.etag).toMatch(/^"a~/); // aggregated tile → `a` prefix
+    expect(queries).toBe(1);
+
+    const notModified = await PortalMapTileService.renderTile(
+      {
+        ref: { kind: "message", messageId: "msg-1", blockIndex: 0 },
+        ...base,
+        ifNoneMatch: first.etag,
+      },
+      countingDeps(true)
+    );
+    expect(notModified.status).toBe(304);
+    expect(notModified.aggregated).toBe(true); // read from the ETag prefix …
+    expect(queries).toBe(1); // … no second query ran
+  });
+
+  it("a stale-format If-None-Match re-renders (cache-bust across the salt/format change, #532)", async () => {
+    const stale = await PortalMapTileService.renderTile(
+      {
+        ref: { kind: "message", messageId: "msg-1", blockIndex: 0 },
+        ...base,
+        ifNoneMatch: '"0123456789abcdef0123456789abcdef"', // pre-#532 prefixless
+      },
+      deps()
+    );
+    expect(stale.status).toBe(200);
   });
 
   it("propagates a 504 timeout from the tile query", async () => {

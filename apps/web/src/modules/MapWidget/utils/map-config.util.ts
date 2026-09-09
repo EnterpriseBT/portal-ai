@@ -1,6 +1,5 @@
 import {
   MAP_LAYER_FEATURE_CAP,
-  AGG_ZOOM_THRESHOLD,
   AGG_DENSITY_MAX,
   SEQUENTIAL_PALETTE,
 } from "@portalai/core/constants";
@@ -377,12 +376,15 @@ interface MapLibreLayer {
   type: "circle" | "fill" | "line" | "heatmap";
   source: string;
   paint: Record<string, unknown>;
-  /** Zoom gating for the low-zoom aggregation handoff (#330). MapLibre bounds
-   *  are min-inclusive / max-exclusive, so a raw layer (`minzoom = threshold`)
-   *  and an aggregate fill (`maxzoom = threshold`) hand off cleanly at the
-   *  threshold with no overlap. */
+  /** Optional zoom gating (kept for general MapLibre use). #532 removed the
+   *  aggregation zoom handoff — raw and aggregate tiles now coexist at every
+   *  zoom and are separated by the `_agg` feature filter below, not by zoom. */
   minzoom?: number;
   maxzoom?: number;
+  /** Feature-property filter (#532). The aggregate fill draws only bins
+   *  (`_agg == 1`); the raw layers draw only features without `_agg`. This lets
+   *  a raw tile and a binned tile render correctly at the same zoom. */
+  filter?: unknown[];
 }
 
 /**
@@ -493,25 +495,34 @@ export function layerToMapLibre(
   // (colorBy present) resolves to "dissolve" — the server serves real dissolved
   // geometry at low zoom, so the base fill/outline render ungated at all zooms
   // (painted by the same colorBy expression), exactly like the "none" path;
-  // there is no centroid-bin fill and no minzoom gate.
+  // there is no centroid-bin fill.
   const agg = layer.aggregation;
-  const treatment = resolveAggTreatment(layer.kind, agg?.treatment, {
-    hasColorBy: !!style.colorBy,
-  });
-  if (opts.tiled && agg?.enabled !== false && treatment === "bins") {
-    const threshold = agg?.zoomThreshold ?? AGG_ZOOM_THRESHOLD;
-    for (const l of layers) l.minzoom = threshold;
+  const treatment = resolveAggTreatment(layer.kind, agg?.treatment);
+  // #532: an over-cap tile carries aggregate bins (`_agg:1`). Points bin below
+  // the cap ("bins" treatment); lines serve a HYBRID (slice 4) — the longest
+  // lines drawn raw plus the remainder as density bins — so a tiled line layer
+  // also needs the split + a bin fill. Polygons never bin (dissolve/raw).
+  const hybridLines = layer.kind === "lines";
+  if (
+    opts.tiled &&
+    agg?.enabled !== false &&
+    (treatment === "bins" || hybridLines)
+  ) {
+    // The server decides raw-vs-aggregate per tile by feature count, so a raw
+    // tile and a binned tile can occur at the same zoom. Separate them by the
+    // `_agg` feature flag rather than a min/max-zoom handoff: raw layers draw
+    // only features without `_agg`; the aggregate fill draws only bins.
+    for (const l of layers) l.filter = ["!", ["has", "_agg"]];
+    // The line hybrid's bins carry only `_count` (density), never a colorBy value,
+    // so they always use the density ramp.
+    const densityFill = hybridLines || !style.colorBy;
     layers.push({
       id: `${source}-agg`,
       type: "fill",
       source,
-      maxzoom: threshold,
-      paint: style.colorBy
+      filter: ["==", ["get", "_agg"], 1],
+      paint: densityFill
         ? {
-            "fill-color": color,
-            "fill-opacity": cappedFillOpacity(style.opacity, AGG_FILL_OPACITY),
-          }
-        : {
             "fill-color": color,
             // Density: opacity scales with the per-cell count over a fixed log
             // domain (consistent across tiles, never per-tile normalized), and
@@ -526,6 +537,10 @@ export function layerToMapLibre(
               Math.log10(AGG_DENSITY_MAX),
               AGG_FILL_OPACITY,
             ],
+          }
+        : {
+            "fill-color": color,
+            "fill-opacity": cappedFillOpacity(style.opacity, AGG_FILL_OPACITY),
           },
     });
   }

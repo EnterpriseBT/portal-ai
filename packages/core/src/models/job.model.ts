@@ -552,10 +552,11 @@ export const DissolvePrecomputeResultSchema = z.object({
   columnName: z.string().nullable(),
   valuesDissolved: z.number().int().nonnegative(),
   rowsWritten: z.number().int().nonnegative(),
-  /** Why no dissolve ran (absent ⇒ it ran). */
-  skipped: z
-    .enum(["over-cardinality", "non-polygon", "no-colorby", "superseded"])
-    .optional(),
+  /** Why no dissolve ran (absent ⇒ it ran). `non-polygon`: the pin has no
+   *  polygon layer. `superseded`: another pass held the advisory lock. (#532
+   *  retired `over-cardinality`/`no-colorby` — the area-ranked store has no
+   *  cardinality limit and treats a no-colorBy layer as a first-class flavor.) */
+  skipped: z.enum(["non-polygon", "superseded"]).optional(),
   /** A band failed but others were written — non-fatal (mirror of the sync
    *  result's `mirrorDegraded`). */
   degraded: z.literal(true).optional(),

@@ -278,7 +278,9 @@ describe("Portal map tile route (#316)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toBeInstanceOf(Buffer);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
-    expect(res.etag).toMatch(/^"[0-9a-f]{32}"$/);
+    // #532 ETag format: `"<a|r>~<32-hex>"` — the a/r prefix records whether the
+    // tile aggregated so a 304 can report the right notice.
+    expect(res.etag).toMatch(/^"[ar]~[0-9a-f]{32}"$/);
   });
 
   it("returns 204 for a tile envelope that doesn't contain the geometry", async () => {
@@ -349,6 +351,44 @@ describe("Portal map tile route (#316)", () => {
                 kind: "polygons",
                 source: { geometryColumn: "geom" },
                 style: { colorBy: { column: colorByColumn } },
+              },
+            ],
+          },
+          pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    return id;
+  };
+
+  // #532: a plain (no-colorBy) polygon pin → area-ranked dissolve served under
+  // the "__all__" sentinel.
+  const createNoColorByPin = async (pipelineSql: string): Promise<string> => {
+    const id = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Plain polygons",
+        type: "geo",
+        content: {
+          spec: {
+            layers: [
+              {
+                kind: "polygons",
+                source: { geometryColumn: "geom" },
+                style: { color: "#4A90D9" },
               },
             ],
           },
@@ -442,5 +482,252 @@ describe("Portal map tile route (#316)", () => {
     });
     expect(res.status).toBe(200);
     expect(res.aggregated).toBe(false);
+  });
+
+  it("#532: a no-colorBy polygon serves the area-ranked '__all__' dissolve at low zoom (real geometry, not a 504)", async () => {
+    // The pipeline references a nonexistent view — if the serve path ran it, the
+    // tile would error. It serves from the precomputed "__all__" rows instead.
+    const pin = await createNoColorByPin(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    await insertDissolveRow(pin, "__all__", 0); // band 0 = z0, sentinel column
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Real polygon geometry from the precompute — not centroid-bin squares.
+    expect(res.aggregated).toBe(false);
+  });
+
+  it("#532: an over-cap tile serves the MERGED coverage (never-drop), not a clipped subset", async () => {
+    // The never-drop invariant: when a tile holds more individual polygons than
+    // the feature cap, the serve switches to the stored merged coverage so every
+    // polygon is represented — instead of area-ranking to the largest N and
+    // dropping the rest (which is what made whole swathes disappear).
+    const pin = await createNoColorByPin(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    // One merged-coverage row (band 0) spanning the data area.
+    await connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,10001,true,
+         ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
+      [
+        generateId(),
+        Date.now(),
+        orgId,
+        pin,
+        JSON.stringify({
+          type: "MultiPolygon",
+          coordinates: [POLYGON.coordinates],
+        }),
+      ]
+    );
+    // 10,001 individual rows (merged=false) in the same band, all inside the z0
+    // envelope — one over the 10k cap.
+    await connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       SELECT gen_random_uuid()::text, $1, 'SYSTEM_TEST', $2, $3,
+              '__all__','__all__',0,1,false,
+              ST_Multi(ST_Buffer(ST_SetSRID(
+                ST_MakePoint(1 + (g % 100) * 0.01, 1 + (g / 100) * 0.01), 4326), 0.002))
+       FROM generate_series(1, 10001) g`,
+      [Date.now(), orgId, pin]
+    );
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Over the cap → the merged coverage, flagged as an aggregate overview.
+    expect(res.aggregated).toBe(true);
+  });
+
+  // ── #532: count-driven per-tile decision (whole-layer fast path) ──────
+
+  const createCountedPin = async (
+    pipelineSql: string,
+    count: { matchedCount: number; matchedCountExact: boolean } | null,
+    kind: "points" | "lines" = "points"
+  ): Promise<string> => {
+    const id = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Counted map",
+        type: "geo",
+        content: {
+          // A points/lines layer → the count-driven aggregate path (bins for
+          // points, hybrid for lines). A polygon layer takes the dissolve/raw
+          // path (covered by the dissolve tests above).
+          spec: {
+            layers: [{ kind, source: { geometryColumn: "geom" } }],
+          },
+          pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+          ...(count ?? {}),
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    return id;
+  };
+
+  // Bulk-insert `count` short line segments (near lng/lat 1) so a low-zoom tile
+  // holds more than the feature cap. The wide table FKs `entity_record_id`, so an
+  // `entity_records` row is created for each.
+  const bulkInsertLines = async (count: number) => {
+    const dbTyped = db as ReturnType<typeof drizzle>;
+    const t = Date.now();
+    const erRows = [];
+    const wideRows = [];
+    for (let i = 0; i < count; i++) {
+      const lng = 1 + (i % 100) * 0.01;
+      const lat = 1 + Math.floor(i / 100) * 0.01;
+      const geom = {
+        type: "LineString",
+        coordinates: [
+          [lng, lat],
+          [lng + 0.005, lat + 0.005],
+        ],
+      };
+      const erId = generateId();
+      erRows.push({
+        id: erId,
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        data: { geom },
+        sourceId: `line-${i}`,
+        checksum: `chk-line-${i}`,
+        syncedAt: t,
+        origin: "sync",
+        validationErrors: null,
+        isValid: true,
+        created: t,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+      wideRows.push({
+        entity_record_id: erId,
+        organization_id: orgId,
+        synced_at: t,
+        is_valid: true,
+        source_id: `line-${i}`,
+        c_geom: geom,
+      });
+    }
+    for (let i = 0; i < erRows.length; i += 1000) {
+      await dbTyped
+        .insert(schema.entityRecords)
+        .values(erRows.slice(i, i + 1000) as never);
+    }
+    await new WideTableRepository().upsertMany(entityId, wideRows, db);
+  };
+
+  it("fast path: an exact count <= cap renders raw at low zoom, not bins (#532)", async () => {
+    const pin = await createCountedPin('SELECT "c_geom" AS geom FROM parcels', {
+      matchedCount: 5,
+      matchedCountExact: true,
+    });
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // The whole-layer fast path took the raw path even at z0 — no centroid bins.
+    expect(res.aggregated).toBe(false);
+  });
+
+  it("no persisted count but a tile that fits → the probe serves raw, not bins (#532 slice 3)", async () => {
+    // Only the single setup polygon is in view (1 feature ≤ cap). With no
+    // persisted count the tile is probed; because it fits, it serves raw — the
+    // count-driven probe, not the old zoom-threshold fallback that binned here.
+    const pin = await createCountedPin(
+      'SELECT "c_geom" AS geom FROM parcels',
+      null
+    );
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    expect(res.aggregated).toBe(false);
+  });
+
+  it("#532 slice 3: an over-cap points tile aggregates to bins (probe), never clips", async () => {
+    await bulkInsertLines(10_001); // 10,001 features > the 10k cap, all in z0
+    const pin = await createCountedPin(
+      'SELECT "c_geom" AS geom FROM parcels',
+      null,
+      "points"
+    );
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Over cap → bins, not an arbitrary raw clip.
+    expect(res.aggregated).toBe(true);
+  });
+
+  it("#532 slice 4: an over-cap lines tile serves the hybrid (aggregated), never dropping short lines", async () => {
+    await bulkInsertLines(10_001);
+    const pin = await createCountedPin(
+      'SELECT "c_geom" AS geom FROM parcels',
+      null,
+      "lines"
+    );
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // The hybrid summarises the remainder (never a length-ranked clip that drops
+    // the short lines), so the tile reports aggregated.
+    expect(res.aggregated).toBe(true);
   });
 });

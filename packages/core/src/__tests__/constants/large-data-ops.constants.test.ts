@@ -12,9 +12,11 @@ import {
   VIZ_REFRESH_FRESHNESS_MS,
   VIZ_REFRESH_RATE_PER_MIN,
   DISSOLVE_ZOOM_BANDS,
-  DISSOLVE_CARDINALITY_CEILING,
   bandForZoom,
   AGG_ZOOM_THRESHOLD,
+  AGG_GRID_LEVELS,
+  AGG_CELLS_PER_AXIS,
+  AGG_TILE_VERSION,
 } from "../../constants/large-data-ops.constants.js";
 
 // Anchor test that locks the documented values from
@@ -69,9 +71,29 @@ describe("large-data-ops constants", () => {
       expect(bandForZoom(14)).toBeNull();
       expect(bandForZoom(18)).toBeNull();
     });
+  });
 
-    it("caps dissolve cardinality at 64", () => {
-      expect(DISSOLVE_CARDINALITY_CEILING).toBe(64);
+  // #532 — nested aggregate grid + tile-version salt.
+  describe("nested aggregate grid (#532)", () => {
+    it("cells-per-axis is a power of two so the grid nests across zoom", () => {
+      expect(AGG_CELLS_PER_AXIS).toBe(2 ** AGG_GRID_LEVELS);
+      // power of two ⇒ (n & (n-1)) === 0
+      expect(AGG_CELLS_PER_AXIS & (AGG_CELLS_PER_AXIS - 1)).toBe(0);
+      expect(AGG_CELLS_PER_AXIS).toBe(16);
+    });
+
+    it("nesting property: cell size halves each zoom level (cellSize(z) = 2·cellSize(z+1))", () => {
+      // cellSize(z) = WORLD / 2^(z + AGG_GRID_LEVELS); the world width cancels,
+      // so the ratio is exactly 2 for any world width and any z.
+      const cellSize = (z: number) => 1 / 2 ** (z + AGG_GRID_LEVELS);
+      for (let z = 0; z < 14; z++) {
+        expect(cellSize(z) / cellSize(z + 1)).toBeCloseTo(2, 10);
+      }
+    });
+
+    it("exports a numeric tile-version salt for ETag cache-busting", () => {
+      expect(typeof AGG_TILE_VERSION).toBe("number");
+      expect(AGG_TILE_VERSION).toBeGreaterThanOrEqual(1);
     });
   });
 });

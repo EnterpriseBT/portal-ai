@@ -616,7 +616,7 @@ describe("DissolvePrecompute schemas (#472)", () => {
         columnName: null,
         valuesDissolved: 0,
         rowsWritten: 0,
-        skipped: "over-cardinality",
+        skipped: "non-polygon",
       }).success
     ).toBe(true);
     expect(

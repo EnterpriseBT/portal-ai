@@ -376,7 +376,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             color="text.secondary"
             data-testid="map-widget-aggregated"
           >
-            Aggregated overview — zoom in for detail.
+            Dense areas are summarized — zoom in for detail.
           </Typography>
         ) : tiles.truncated ? (
           <Typography

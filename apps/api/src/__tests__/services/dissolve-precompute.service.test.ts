@@ -27,14 +27,14 @@ describe("DissolvePrecomputeService.isDissolvable", () => {
     ).toBe(true);
   });
 
-  it("rejects a polygon layer with no colorBy", () => {
+  it("accepts a polygon layer with no colorBy (#532 dissolve-all)", () => {
     expect(
       DissolvePrecomputeService.isDissolvable("geo", {
         spec: {
           layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
         },
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("rejects a non-polygon (points) layer even with a colorBy", () => {

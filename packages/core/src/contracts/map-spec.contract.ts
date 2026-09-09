@@ -152,25 +152,26 @@ export type MapLayer = z.infer<typeof MapLayerSchema>;
 export type MapLayerKind = MapLayer["kind"];
 
 /**
- * Resolve a layer's low-zoom aggregation treatment (#337) — the single source
- * of truth shared by the server tile query (`aggregationFromSpec`) and the web
- * paint (`layerToMapLibre`). An explicit `treatment` always wins; otherwise the
- * per-kind default: `lines` render raw + importance-ranked (`"none"`), every
- * other kind gets square grid bins (`"bins"`). Deterministic — the fail-safe
- * never depends on an LLM guess.
+ * Resolve a layer's low-zoom aggregation treatment (#337, amended #532) — the
+ * single source of truth shared by the server tile query (`aggregationFromSpec`)
+ * and the web paint (`layerToMapLibre`). An explicit `treatment` always wins;
+ * otherwise the per-kind default:
+ * - `lines` → `"none"` (raw, importance-ranked; over-cap hybrid downstream);
+ * - `polygons` → `"dissolve"` — **always** (#532 smoke: centroid-binning a
+ *   polygon collapses its extent to a square and the live per-tile centroid over
+ *   a large layer times out; polygons are served from the dissolve precompute
+ *   instead. colorBy vs no-colorBy selects the dissolve *flavor* downstream —
+ *   per-value choropleth vs dissolve-all merged coverage — not the treatment);
+ * - everything else (`points`/`heatmap`/`cluster`) → `"bins"` (nested grid).
+ * Deterministic — the fail-safe never depends on an LLM guess.
  */
 export function resolveAggTreatment(
   kind: MapLayerKind,
-  treatment?: AggTreatment,
-  // #472: `hasColorBy` gates the polygon `"dissolve"` default — a dissolve needs
-  // a categorical value to merge on. A polygon choropleth (colorBy present)
-  // renders as real dissolved polygons at low zoom; a polygon layer without a
-  // colorBy keeps `"bins"` (density overview).
-  opts?: { hasColorBy?: boolean }
+  treatment?: AggTreatment
 ): AggTreatment {
   if (treatment) return treatment;
   if (kind === "lines") return "none";
-  if (kind === "polygons" && opts?.hasColorBy) return "dissolve";
+  if (kind === "polygons") return "dissolve";
   return "bins";
 }
 

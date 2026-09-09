@@ -1,10 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapLayer, MapSpec } from "@portalai/core/contracts";
-import {
-  AGG_ZOOM_THRESHOLD,
-  SEQUENTIAL_PALETTE,
-} from "@portalai/core/constants";
+import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
 import type {
   GeoBlockContent,
@@ -484,22 +481,32 @@ describe("layerToMapLibre aggregation (#330)", () => {
     style: { colorBy: { column: "c_city", stops: [["SLC", "#111"]] } },
   } as MapLayer;
 
-  it("tiled category layer → raw layers gated minzoom + an -agg fill gated maxzoom, same colorBy match", () => {
+  it("tiled category layer → raw layers + an -agg fill, separated by the _agg filter (#532)", () => {
     const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: true });
     const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
     const raw = layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`);
-    // Clean handoff: raw at/above threshold, agg below it.
     expect(agg.type).toBe("fill");
-    expect(agg.maxzoom).toBe(AGG_ZOOM_THRESHOLD);
-    expect(raw.every((l) => l.minzoom === AGG_ZOOM_THRESHOLD)).toBe(true);
+    // #532: no zoom handoff — raw and aggregate coexist at every zoom, separated
+    // by the `_agg` feature flag, not by min/max-zoom.
+    expect(agg.minzoom).toBeUndefined();
+    expect(agg.maxzoom).toBeUndefined();
+    expect(agg.filter).toEqual(["==", ["get", "_agg"], 1]);
+    expect(raw.every((l) => l.minzoom === undefined)).toBe(true);
+    expect(
+      raw.every(
+        (l) =>
+          JSON.stringify(l.filter) === JSON.stringify(["!", ["has", "_agg"]])
+      )
+    ).toBe(true);
     // Bins colour by the same colorBy match as the raw fill.
     expect((agg.paint["fill-color"] as unknown[])[0]).toBe("match");
   });
 
-  it("no-colorBy tiled layer → agg fill uses a _count density interpolate", () => {
+  it("no-colorBy tiled POINT layer → agg fill uses a _count density interpolate", () => {
+    // #532: polygons now dissolve; points remain the density-bin path.
     const layer = {
-      kind: "polygons",
-      source: { geometryColumn: "geom" },
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
     const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
@@ -508,25 +515,28 @@ describe("layerToMapLibre aggregation (#330)", () => {
     expect(JSON.stringify(op)).toContain("_count");
   });
 
-  it("honours a per-layer zoomThreshold override", () => {
+  it("a zoomThreshold override no longer gates (#532 — retained but ignored)", () => {
     const layer = {
       ...catLayer,
       aggregation: { zoomThreshold: 9 },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
-    expect(layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!.maxzoom).toBe(
-      9
-    );
+    const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
+    expect(agg.maxzoom).toBeUndefined();
+    expect(agg.filter).toEqual(["==", ["get", "_agg"], 1]);
     expect(
-      layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`)[0].minzoom
-    ).toBe(9);
+      layers
+        .filter((l) => l.id !== `${sourceIdFor(0)}-agg`)
+        .every((l) => l.minzoom === undefined)
+    ).toBe(true);
   });
 
-  it("aggregation.enabled === false → no agg layer, raw layers not zoom-gated", () => {
+  it("aggregation.enabled === false → no agg layer, raw layers unfiltered/ungated", () => {
     const layer = { ...catLayer, aggregation: { enabled: false } } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
     expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
+    expect(layers.every((l) => l.filter === undefined)).toBe(true);
   });
 
   it("inline (not tiled) → no agg layer even with a colorBy", () => {
@@ -548,10 +558,10 @@ describe("layerToMapLibre aggregation (#330)", () => {
       style: { ...catLayer.style, opacity: 0.9 },
     } as MapLayer);
     expect(overridden.paint["fill-opacity"]).toBe(base);
-    // Density ramp also tops out translucent.
+    // Density ramp also tops out translucent (points — #532 polygons dissolve).
     const density = agg({
-      kind: "polygons",
-      source: { geometryColumn: "geom" },
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
     } as MapLayer);
     const ramp = density.paint["fill-opacity"] as number[];
     expect(ramp[ramp.length - 1]).toBeLessThanOrEqual(0.6);
@@ -570,19 +580,31 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
   } as MapLayer;
   const aggId = `${sourceIdFor(0)}-agg`;
 
-  it("tiled line layer → no -agg fill, raw line renders at all zoom (no minzoom)", () => {
+  it("tiled line layer → hybrid: raw line (·_agg-filtered) + a density -agg fill (#532 slice 4)", () => {
     const { layers } = layerToMapLibre(lineLayer, 0, [], { tiled: true });
-    expect(layers.some((l) => l.id === aggId)).toBe(false);
+    // Over-cap line tiles carry the hybrid's density bins, so a tiled line layer
+    // gets an -agg fill and its raw line is filtered to non-bin features.
+    const agg = layers.find((l) => l.id === aggId)!;
+    expect(agg).toBeTruthy();
+    expect(agg.filter).toEqual(["==", ["get", "_agg"], 1]);
+    // The bins are density (`_count`), never a colorBy match.
+    const op = agg.paint["fill-opacity"] as unknown[];
+    expect(op[0]).toBe("interpolate");
+    expect(JSON.stringify(op)).toContain("_count");
+    const rawLine = layers.find((l) => l.id === `${sourceIdFor(0)}-line`)!;
+    expect(rawLine.filter).toEqual(["!", ["has", "_agg"]]);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
   });
 
-  it("treatment:'bins' forces an -agg fill on a line layer", () => {
+  it("a colorBy line layer's hybrid bins still use the density ramp, not the colorBy match", () => {
     const layer = {
       ...lineLayer,
-      aggregation: { treatment: "bins" },
+      style: { colorBy: { column: "c_road", stops: [["I-15", "#111"]] } },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
-    expect(layers.some((l) => l.id === aggId)).toBe(true);
+    const agg = layers.find((l) => l.id === aggId)!;
+    const op = agg.paint["fill-opacity"] as unknown[];
+    expect(op[0]).toBe("interpolate"); // density, not a match on the (absent) value
   });
 
   it("treatment:'none' opts a polygon out of bins (raw at all zoom)", () => {
@@ -609,13 +631,17 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
     expect((fill.paint["fill-color"] as unknown[])[0]).toBe("match");
   });
 
-  it("tiled polygon WITHOUT colorBy stays 'bins' (density overview)", () => {
+  it("tiled polygon WITHOUT colorBy → 'dissolve' too (#532): real fill ungated, NO -agg bin fill", () => {
+    // #532 smoke amendment: every polygon dissolves (served as real geometry),
+    // never centroid bins — so no `-agg` fill, and the base fill/outline render
+    // ungated at all zooms, exactly like the colorBy dissolve path.
     const layer = {
       kind: "polygons",
       source: { geometryColumn: "geom" },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
-    expect(layers.some((l) => l.id === aggId)).toBe(true);
+    expect(layers.some((l) => l.id === aggId)).toBe(false);
+    expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
   });
 });
 
