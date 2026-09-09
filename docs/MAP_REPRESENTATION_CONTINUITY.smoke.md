@@ -8,31 +8,36 @@ Manual walkthrough against **your own running dev stack** (web :3000, api :3001)
 
 ## Test data — public ArcGIS REST endpoints
 
-No token required (Esri sample server). Base: `https://sampleserver6.arcgisonline.com/arcgis/rest/services`. Ingest through the normal `visualize_map` agent flow so the layer's feature count is persisted — the whole-layer fast path reads that count, and dots-not-squares depends on it.
+No token required (Esri sample server). Base: `https://sampleserver6.arcgisonline.com/arcgis/rest/services`.
+
+> ⚠️ **The bare layer path returns HTML metadata, not data.** `…/USA/MapServer/0` is the layer's *description* page. Actual features come from the layer's **`/query`** sub-endpoint with **`f=geojson`**. The URLs below already include it — use them verbatim (each is `Base` + the path shown).
 
 **Small — under the ~10k tile cap → renders as itself (dots / lines / real polygons) at every zoom:**
 
-| Geometry | Layer | URL suffix | Count |
+| Geometry | Layer | Data URL (append to Base) | Count |
 |---|---|---|---|
-| Points | USA Cities | `/USA/MapServer/0` | 3,557 |
-| Lines | USA Highways | `/USA/MapServer/1` | 679 |
-| Polygons | USA Counties | `/USA/MapServer/3` | 3,141 |
-| Polygons | USA States | `/USA/MapServer/2` | 51 |
+| Points | USA Cities | `/USA/MapServer/0/query?where=1=1&outFields=*&f=geojson` | 3,557 |
+| Lines | USA Highways | `/USA/MapServer/1/query?where=1=1&outFields=*&f=geojson` | 679 |
+| Polygons | USA Counties | `/USA/MapServer/3/query?where=1=1&outFields=*&f=geojson` | 3,141 |
+| Polygons | USA States | `/USA/MapServer/2/query?where=1=1&outFields=*&f=geojson` | 51 |
 
 **Large — over the cap → aggregates into nested-grid bins:**
 
-| Geometry | Layer | URL suffix | Count |
+| Geometry | Layer | Data URL (append to Base) | Count |
 |---|---|---|---|
-| Points | Census Block Points | `/Census/MapServer/0` | 8,205,099 |
-| Polygons | Census Block Groups | `/Census/MapServer/1` | 211,136 |
+| Points | Census Block Points | `/Census/MapServer/0/query?where=1=1&outFields=*&f=geojson` | 8,205,099 |
+| Polygons | Census Block Groups | `/Census/MapServer/1/query?where=1=1&outFields=*&f=geojson` | 211,136 |
 
-**Mid-size subsets (ingestible, still over-cap at low zoom) — add a `WHERE`:**
+**Mid-size subsets (ingestible, still over-cap at low zoom) — a `WHERE` clause narrows it:**
 
-- CA block groups — `/Census/MapServer/1/query?where=STATE_FIPS='06'` → 22,132 polygons
-- RI block points — `/Census/MapServer/0/query?where=STATE_FIPS='44'` → 21,014 points
-- RI block groups — `/Census/MapServer/1/query?where=STATE_FIPS='44'` → 820 (small)
+- CA block groups (22,132) — `/Census/MapServer/1/query?where=STATE_FIPS='06'&outFields=*&f=geojson`
+- RI block points (21,014) — `/Census/MapServer/0/query?where=STATE_FIPS='44'&outFields=*&f=geojson`
+- RI block groups (820, small) — `/Census/MapServer/1/query?where=STATE_FIPS='44'&outFields=*&f=geojson`
 
-**Query recipe:** GeoJSON `{layer}/query?where=1=1&outFields=*&f=geojson`; count `…&returnCountOnly=true&f=json`; `maxRecordCount=1000` per request (page with `&resultRecordCount=1000&resultOffset=N`); filter `where=STATE_FIPS='06'`.
+**Full example (paste in a browser to see the GeoJSON):**
+`https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/0/query?where=1=1&outFields=*&f=geojson`
+
+**Notes:** `f=geojson` returns a GeoJSON `FeatureCollection` (`f=json` = Esri JSON, `f=html`/none = the metadata page). Count only: swap the tail for `&returnCountOnly=true&f=json`. **Page size is capped at `maxRecordCount=1000` per request** — for a full large layer, page with `&resultRecordCount=1000&resultOffset=N` (N = 0, 1000, 2000, …), or use a `WHERE` subset (a whole 8.2M-point layer is impractical to pull).
 
 ## Smoke checklist (from the spec's acceptance criteria)
 
