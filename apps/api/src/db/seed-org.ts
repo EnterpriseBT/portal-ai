@@ -3,7 +3,7 @@
  * (#190, the portalai CLI's `seed org` spawn target). Optionally adds a
  * real user as a member so the org is enterable from the app.
  *
- * Usage: tsx src/db/seed-org.ts --name <name> [--member-email <email>]
+ * Usage: tsx src/db/seed-org.ts --name <name> [--member-email <email>] [--tier <slug>]
  */
 import { ApplicationService } from "../services/application.service.js";
 import { closeDatabase } from "./client.js";
@@ -23,6 +23,7 @@ async function main() {
   const result = await ApplicationService.seedOrganization({
     name,
     memberEmail: arg("--member-email"),
+    tier: arg("--tier"),
   });
   console.log(JSON.stringify(result));
 }

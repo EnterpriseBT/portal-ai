@@ -173,7 +173,7 @@ The card renders a **"Contact support"** CTA while the org is only *viewing* the
 
 ## local
 
-### `portalops local provision --env local [--e2e-org [member-email]] [--yes] [--json]`
+### `portalops local provision --env local [--e2e-org [member-email]] [--owner-tier <slug>] [--yes] [--json]`
 Mutation, **local-only by contract** (#490) — `--env` accepts only `local`; anything else is a usage error (**exit 2**) before any env resolution. Deployed envs are provisioned by CI/deploy (`db:seed:ci` ECS one-off, nightly `tier apply`). One idempotent command for "fresh reset → fully provisioned": it composes the existing steps, in order, stopping at the first failure — nothing is reimplemented.
 
 | Step | Delegates to | Effect |
@@ -181,13 +181,16 @@ Mutation, **local-only by contract** (#490) — `--env` accepts only `local`; an
 | `migrate` | apps/api `db:migrate` (spawned with `DATABASE_URL` injected) | applies pending drizzle migrations (no-op when current) |
 | `seed` | `portalops db seed` (local dispatch → `db:seed`) | system rows: bootstrap `standard` tier + connector definitions |
 | `tier-apply` | `portalops tier apply` | catalog tiers + env-local Stripe price ids (fail-closed on a missing price) |
-| `e2e-org` | apps/api `db:seed:org --name e2e-fixture --member-email <email>` | only with `--e2e-org`; otherwise reported `skipped` |
+| `demo-tier` | `portalops tier create demo` (idempotent) | the standing unlimited `demo` tier (unscoped, non-public); `exists` on a re-run |
+| `e2e-org` | apps/api `db:seed:org --name e2e-fixture --member-email <email> [--tier <slug>]` | only with `--e2e-org`; otherwise reported `skipped` |
 
 `--e2e-org [member-email]`: an explicit value wins; a bare flag defaults from `E2E_AUTH0_USERNAME` in the process env; neither present → usage error (**exit 2**) before any step runs. The member user must already exist — it is created on the test user's first login (`e2e:auth`, see `packages/e2e/README.md`), which stays a separate step because it is interactive by nature.
 
+`--owner-tier <slug>` (#537): assign this tier to the seeded e2e org — e.g. `--owner-tier demo` for an org with unlimited allocations + all toolpack entitlements, ready to test against with no manual `org set-tier`. **Requires `--e2e-org`** (the tier is applied to that org; the login-created default org doesn't exist until first login) — passing it alone is a usage error (**exit 2**). The slug must already exist; since `tier-apply`/`demo-tier` run first, `demo` and every catalog tier (`enterprise`, …) are available. An unknown slug fails the `e2e-org` step loudly rather than silently no-opping. Fastest unlimited-org bring-up: `portalops local provision --env local --e2e-org admin@portalsai.io --owner-tier demo`, then `portalai member switch <orgId> admin@portalsai.io --env local`.
+
 Shell prerequisites: `DATABASE_URL` (the local env connection) and `STRIPE_SECRET_KEY` (the tier step — missing key fails that step `ENV_NOT_CONFIGURED`, exit 3; a key whose account lacks a declared lookup key's price fails it `TIER_APPLY_MISSING_PRICES`, exit 8).
 
-`--json`: `{ "steps": [{ "name": "migrate"|"seed"|"tier-apply"|"e2e-org", "status": "ok"|"skipped"|"failed", "result"?: {…}, "error"?: { "code", "message" } }] }`
+`--json`: `{ "steps": [{ "name": "migrate"|"seed"|"tier-apply"|"demo-tier"|"e2e-org", "status": "ok"|"skipped"|"failed", "result"?: {…}, "error"?: { "code", "message" } }] }` (the `e2e-org` result carries `ownerTier` when `--owner-tier` was set)
 
 > **Failure shape — a deliberate deviation.** Every other command emits either a payload or the `{"error":{…}}` envelope. Here a mid-run step failure emits the **steps payload** — earlier steps' results intact, the failed step carrying its `{code,message}` — and the process exit code is mapped from that code (e.g. a missing Stripe price exits 8 with the migrate + seed results still on stdout). For this command, branch on `steps[].status`, not on the envelope.
 
