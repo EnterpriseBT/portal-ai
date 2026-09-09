@@ -562,7 +562,8 @@ describe("Portal map tile route (#316)", () => {
 
   const createCountedPin = async (
     pipelineSql: string,
-    count: { matchedCount: number; matchedCountExact: boolean } | null
+    count: { matchedCount: number; matchedCountExact: boolean } | null,
+    kind: "points" | "lines" = "points"
   ): Promise<string> => {
     const id = generateId();
     await (db as ReturnType<typeof drizzle>)
@@ -577,12 +578,11 @@ describe("Portal map tile route (#316)", () => {
         name: "Counted map",
         type: "geo",
         content: {
-          // A points layer → treatment "bins" (the aggregate path), so the
-          // whole-layer fast path (raw) vs the interim fallback (bins) contrast is
-          // observable. A polygon layer would take the dissolve/raw path in both
-          // cases (#532), which is what the dissolve tests above cover.
+          // A points/lines layer → the count-driven aggregate path (bins for
+          // points, hybrid for lines). A polygon layer takes the dissolve/raw
+          // path (covered by the dissolve tests above).
           spec: {
-            layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
+            layers: [{ kind, source: { geometryColumn: "geom" } }],
           },
           pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
           ...(count ?? {}),
@@ -596,6 +596,60 @@ describe("Portal map tile route (#316)", () => {
         deletedBy: null,
       } as never);
     return id;
+  };
+
+  // Bulk-insert `count` short line segments (near lng/lat 1) so a low-zoom tile
+  // holds more than the feature cap. The wide table FKs `entity_record_id`, so an
+  // `entity_records` row is created for each.
+  const bulkInsertLines = async (count: number) => {
+    const dbTyped = db as ReturnType<typeof drizzle>;
+    const t = Date.now();
+    const erRows = [];
+    const wideRows = [];
+    for (let i = 0; i < count; i++) {
+      const lng = 1 + (i % 100) * 0.01;
+      const lat = 1 + Math.floor(i / 100) * 0.01;
+      const geom = {
+        type: "LineString",
+        coordinates: [
+          [lng, lat],
+          [lng + 0.005, lat + 0.005],
+        ],
+      };
+      const erId = generateId();
+      erRows.push({
+        id: erId,
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        data: { geom },
+        sourceId: `line-${i}`,
+        checksum: `chk-line-${i}`,
+        syncedAt: t,
+        origin: "sync",
+        validationErrors: null,
+        isValid: true,
+        created: t,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+      wideRows.push({
+        entity_record_id: erId,
+        organization_id: orgId,
+        synced_at: t,
+        is_valid: true,
+        source_id: `line-${i}`,
+        c_geom: geom,
+      });
+    }
+    for (let i = 0; i < erRows.length; i += 1000) {
+      await dbTyped
+        .insert(schema.entityRecords)
+        .values(erRows.slice(i, i + 1000) as never);
+    }
+    await new WideTableRepository().upsertMany(entityId, wideRows, db);
   };
 
   it("fast path: an exact count <= cap renders raw at low zoom, not bins (#532)", async () => {
@@ -616,7 +670,10 @@ describe("Portal map tile route (#316)", () => {
     expect(res.aggregated).toBe(false);
   });
 
-  it("contrast: the same layer with no persisted count still aggregates at low zoom (#532)", async () => {
+  it("no persisted count but a tile that fits → the probe serves raw, not bins (#532 slice 3)", async () => {
+    // Only the single setup polygon is in view (1 feature ≤ cap). With no
+    // persisted count the tile is probed; because it fits, it serves raw — the
+    // count-driven probe, not the old zoom-threshold fallback that binned here.
     const pin = await createCountedPin(
       'SELECT "c_geom" AS geom FROM parcels',
       null
@@ -629,8 +686,48 @@ describe("Portal map tile route (#316)", () => {
       organizationId: orgId,
     });
     expect(res.status).toBe(200);
-    // No count ⇒ interim zoom-threshold fallback ⇒ bins at low zoom (proving the
-    // fast path above is what changed the outcome, not the geometry).
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    expect(res.aggregated).toBe(false);
+  });
+
+  it("#532 slice 3: an over-cap points tile aggregates to bins (probe), never clips", async () => {
+    await bulkInsertLines(10_001); // 10,001 features > the 10k cap, all in z0
+    const pin = await createCountedPin(
+      'SELECT "c_geom" AS geom FROM parcels',
+      null,
+      "points"
+    );
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Over cap → bins, not an arbitrary raw clip.
+    expect(res.aggregated).toBe(true);
+  });
+
+  it("#532 slice 4: an over-cap lines tile serves the hybrid (aggregated), never dropping short lines", async () => {
+    await bulkInsertLines(10_001);
+    const pin = await createCountedPin(
+      'SELECT "c_geom" AS geom FROM parcels',
+      null,
+      "lines"
+    );
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // The hybrid summarises the remainder (never a length-ranked clip that drops
+    // the short lines), so the tile reports aggregated.
     expect(res.aggregated).toBe(true);
   });
 });

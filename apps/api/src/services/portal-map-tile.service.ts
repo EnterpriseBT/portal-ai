@@ -317,12 +317,15 @@ export type TileMode = "raw" | "aggregate" | "hybrid-lines" | "dissolve";
  *     (real merged geometry, never centroid bins).
  *  2. Whole-layer fast path — an *exactly*-counted layer that fits under the cap
  *     renders raw at every zoom with no per-tile probe (the #532 filed fix).
- *  3. Per-tile: once the caller has probed the tile's feature count, the count
- *     decides — `≤ cap` → raw, over → `"aggregate"` (points) or `"hybrid-lines"`.
+ *  3. Per-tile: the caller probes the tile's feature count (points/lines) and the
+ *     count decides — `≤ cap` → raw, over → `"aggregate"` (points) or
+ *     `"hybrid-lines"` (lines draw the longest `cap` + summarise the rest, never
+ *     dropping a line).
  *
- * Until a probe runs (`tileCount === null`) the interim fallback reproduces the
- * pre-#532 zoom threshold, so large layers are unchanged until the probe is
- * wired (slice 3). An inexact/truncated `layerTotal` never takes the fast path.
+ * The caller (`defaultRunTileQuery`) probes for points/lines past the fast path,
+ * so `tileCount` is supplied whenever it matters; the `tileCount === null`
+ * interim (pre-#532 zoom threshold) is a defensive default only. An inexact/
+ * truncated `layerTotal` never takes the fast path.
  */
 export function resolveTileMode(args: {
   z: number;
@@ -542,6 +545,60 @@ export class PortalMapTileService {
   }
 
   /**
+   * Over-cap **line** tile SQL (#532 slice 4) — a hybrid that never drops a line.
+   * Ranks the lines in the envelope by projected length and draws the longest
+   * `cap` as raw geometry (a legible skeleton, `_agg` unset), then summarises the
+   * remainder as density bins on the same nested grid as `buildAggregateTileSql`
+   * (`_agg:1` + `_count`), so the shorter lines are represented as aggregate
+   * rather than clipped away. Both feature kinds share the one MVT layer; the
+   * client separates them by the `_agg` property (as it already does for the
+   * points aggregate). `n_limited` is 0 — a summary never reports truncation.
+   */
+  static buildLineHybridTileSql(
+    pipelineSql: string,
+    z: number,
+    envelope: string,
+    tolerance: number,
+    cap: number
+  ): string {
+    const cellSize = aggregateCellSize(z);
+    const half = cellSize / 2;
+    const geomExpr =
+      tolerance > 0 ? `ST_SimplifyPreserveTopology(r.g, ${tolerance})` : "r.g";
+    return (
+      `WITH ranked AS (` +
+      `SELECT src.geom AS g, ` +
+      `row_number() OVER (ORDER BY ST_Length(ST_Transform(src.geom, 3857)) DESC) AS rn ` +
+      `FROM (${pipelineSql}) src ` +
+      `WHERE src.geom && ST_Transform(${envelope}, 4326)` +
+      `), ` +
+      // The longest `cap` lines, drawn raw (the skeleton).
+      `skeleton AS (` +
+      `SELECT ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom, ` +
+      `NULL::int AS _count, 0 AS _agg ` +
+      `FROM ranked r WHERE r.rn <= ${cap}` +
+      `), ` +
+      // The remainder, summarised to density bins on the nested grid.
+      `bins AS (` +
+      `SELECT ST_SnapToGrid(ST_Centroid(ST_Transform(r.g, 3857)), ${cellSize}) AS cell, count(*)::int AS _count ` +
+      `FROM ranked r WHERE r.rn > ${cap} GROUP BY 1` +
+      `), ` +
+      `bin_geoms AS (` +
+      `SELECT ST_AsMVTGeom(ST_MakeEnvelope(ST_X(cell) - ${half}, ST_Y(cell) - ${half}, ST_X(cell) + ${half}, ST_Y(cell) + ${half}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom, _count, 1 AS _agg ` +
+      `FROM bins` +
+      `), ` +
+      `combined AS (` +
+      `SELECT geom, _count, _agg FROM skeleton WHERE geom IS NOT NULL ` +
+      `UNION ALL ` +
+      `SELECT geom, _count, _agg FROM bin_geoms WHERE geom IS NOT NULL` +
+      `) SELECT ` +
+      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM combined q) AS mvt, ` +
+      `(SELECT count(*) FROM combined)::int AS n, ` +
+      `0 AS n_limited`
+    );
+  }
+
+  /**
    * Default tile-query runner: `ST_AsMVT` over the pipeline SQL as a source
    * subquery, inside the read-only session-view transaction. Delegates SQL
    * shape to `buildRawTileSql` / `buildAggregateTileSql`; z/x/y are validated
@@ -593,20 +650,9 @@ export class PortalMapTileService {
       portalResultId != null &&
       (await this.hasDissolvePrecompute(portalResultId, dissolveColumn, band));
 
-    // #532: count-driven per-tile decision. `tileCount` stays null here until the
-    // over-cap probe is wired (slice 3); the whole-layer fast path (exact count
-    // ≤ cap → raw at every zoom) already fixes the small-layer case (#532).
-    const mode = resolveTileMode({
-      z,
-      aggregation,
-      layerTotal,
-      layerTotalExact,
-      tileCount: null,
-      cap,
-      dissolveReady,
-    });
-
-    if (mode === "dissolve") {
+    // Polygon dissolve is handled from the precompute, count-driven inside
+    // `runDissolveTile` (individuals ≤ cap, merged coverage over).
+    if (dissolveReady) {
       return this.runDissolveTile(
         portalResultId!,
         dissolveColumn,
@@ -616,33 +662,114 @@ export class PortalMapTileService {
       );
     }
 
-    // "aggregate"/"hybrid-lines" both render bins here; the line hybrid's raw
-    // skeleton is added in slice 4. "raw"/"dissolve-miss" take the raw path.
-    const aggregate = mode === "aggregate" || mode === "hybrid-lines";
-    const tileSql = aggregate
-      ? this.buildAggregateTileSql(pipeline.sql, z, envelope, aggregation, cap)
-      : this.buildRawTileSql(
+    // #532 slices 3–4: points/lines are count-driven per tile so nothing is ever
+    // dropped. `resolveTileMode` owns the decision; the probe supplies the
+    // per-tile count it needs. A probe is only run for a points/line layer past
+    // the whole-layer fast path — a polygon with no precompute resolves to `raw`
+    // (the message-map fallback, never bins) and a small/fast-path layer to `raw`
+    // too, neither needing a count. The probe is the raw query at `cap + 1`:
+    // cheap for points/lines (indexed envelope filter, no per-row simplify), so
+    // it doubles as the raw serve for a tile that fits.
+    const isPolygon = aggregation.treatment === "dissolve";
+    const fitsWholeLayer =
+      layerTotalExact && layerTotal !== null && layerTotal <= cap;
+    const needsProbe = !isPolygon && !fitsWholeLayer;
+
+    let probeResult: TileQueryResult | null = null;
+    let tileCount: number | null = null;
+    if (needsProbe) {
+      const probeSql = this.buildRawTileSql(
+        pipeline.sql,
+        envelope,
+        propertyColumns,
+        tolerance,
+        cap + 1,
+        aggregation.rankByLength
+      );
+      probeResult = await this.runSessionViewTile(
+        probeSql,
+        pipeline.stationId,
+        organizationId,
+        false,
+        cap + 1
+      );
+      // `truncated` at LIMIT cap+1 ⇒ the envelope held more than cap features.
+      tileCount = probeResult.truncated ? cap + 1 : probeResult.featureCount;
+    }
+
+    const mode = resolveTileMode({
+      z,
+      aggregation,
+      layerTotal,
+      layerTotalExact,
+      tileCount,
+      cap,
+      dissolveReady: false,
+    });
+
+    if (mode === "raw") {
+      // The probe (when run) already IS the raw serve for a tile that fits.
+      if (probeResult) return { ...probeResult, truncated: false };
+      return this.runSessionViewTile(
+        this.buildRawTileSql(
           pipeline.sql,
           envelope,
           propertyColumns,
           tolerance,
           cap,
           aggregation.rankByLength
-        );
+        ),
+        pipeline.stationId,
+        organizationId,
+        false,
+        cap
+      );
+    }
 
-    // Build the session-view DDL BEFORE opening the tile transaction.
-    // `buildSessionViews` runs its own pooled DB reads (capabilities, entity +
-    // column metadata); doing that while holding this txn's connection means
-    // each concurrent tile request holds one connection and then blocks waiting
-    // for a second — and MapLibre fans out ~10 tiles at once for any sizeable
-    // layer, which deadlocks the pool (every slot held by a tile txn awaiting a
-    // second connection that never frees). Computing the DDL first keeps the txn
-    // to a single connection. (#314)
-    const build = await PortalSqlService.buildSessionViews(
+    // Over the cap → aggregate, never clip: bins for points, and for lines a
+    // hybrid of the longest `cap` drawn raw plus the remainder summarised as
+    // density bins (short lines represented, never dropped).
+    const aggTileSql =
+      mode === "hybrid-lines"
+        ? this.buildLineHybridTileSql(pipeline.sql, z, envelope, tolerance, cap)
+        : this.buildAggregateTileSql(
+            pipeline.sql,
+            z,
+            envelope,
+            aggregation,
+            cap
+          );
+    return this.runSessionViewTile(
+      aggTileSql,
       pipeline.stationId,
+      organizationId,
+      true,
+      cap
+    );
+  }
+
+  /**
+   * Run a tile query (raw / aggregate / hybrid SQL) inside the read-only
+   * session-view transaction and shape the `TileQueryResult`. Extracted so the
+   * count-driven probe and the aggregate serve share one path (#532).
+   *
+   * The session-view DDL is built BEFORE opening the transaction: `buildSession-
+   * Views` runs its own pooled DB reads, and holding this txn's connection while
+   * it does would make each concurrent tile request hold one connection and block
+   * on a second — MapLibre fans out ~10 tiles at once, which would deadlock the
+   * pool. Computing the DDL first keeps the txn to a single connection (#314).
+   */
+  private static async runSessionViewTile(
+    tileSql: string,
+    stationId: string,
+    organizationId: string,
+    aggregate: boolean,
+    cap: number
+  ): Promise<TileQueryResult> {
+    const build = await PortalSqlService.buildSessionViews(
+      stationId,
       organizationId
     );
-
     try {
       return await db.transaction(async (tx) => {
         await tx.execute(
@@ -665,10 +792,11 @@ export class PortalMapTileService {
         const limited = row ? Number(row.n_limited) : 0;
         const raw = row?.mvt ?? null;
         const mvt = raw ? Buffer.from(raw as Uint8Array) : null;
-        // The aggregate path summarizes rather than clips, so it never truncates.
         return {
           mvt,
           featureCount,
+          // The aggregate/hybrid path summarizes rather than clips, so it never
+          // truncates; the raw path is only ever served when it fits under `cap`.
           truncated: aggregate ? false : limited >= cap,
           aggregated: aggregate,
         };

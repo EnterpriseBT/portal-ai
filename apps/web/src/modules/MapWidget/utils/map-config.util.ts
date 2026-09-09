@@ -498,23 +498,31 @@ export function layerToMapLibre(
   // there is no centroid-bin fill.
   const agg = layer.aggregation;
   const treatment = resolveAggTreatment(layer.kind, agg?.treatment);
-  if (opts.tiled && agg?.enabled !== false && treatment === "bins") {
-    // #532: the server decides raw-vs-aggregate per tile by feature count, so a
-    // raw tile and a binned tile can occur at the same zoom. Separate them by
-    // the `_agg` feature flag rather than a min/max-zoom handoff: raw layers
-    // draw only features without `_agg`; the aggregate fill draws only bins.
+  // #532: an over-cap tile carries aggregate bins (`_agg:1`). Points bin below
+  // the cap ("bins" treatment); lines serve a HYBRID (slice 4) — the longest
+  // lines drawn raw plus the remainder as density bins — so a tiled line layer
+  // also needs the split + a bin fill. Polygons never bin (dissolve/raw).
+  const hybridLines = layer.kind === "lines";
+  if (
+    opts.tiled &&
+    agg?.enabled !== false &&
+    (treatment === "bins" || hybridLines)
+  ) {
+    // The server decides raw-vs-aggregate per tile by feature count, so a raw
+    // tile and a binned tile can occur at the same zoom. Separate them by the
+    // `_agg` feature flag rather than a min/max-zoom handoff: raw layers draw
+    // only features without `_agg`; the aggregate fill draws only bins.
     for (const l of layers) l.filter = ["!", ["has", "_agg"]];
+    // The line hybrid's bins carry only `_count` (density), never a colorBy value,
+    // so they always use the density ramp.
+    const densityFill = hybridLines || !style.colorBy;
     layers.push({
       id: `${source}-agg`,
       type: "fill",
       source,
       filter: ["==", ["get", "_agg"], 1],
-      paint: style.colorBy
+      paint: densityFill
         ? {
-            "fill-color": color,
-            "fill-opacity": cappedFillOpacity(style.opacity, AGG_FILL_OPACITY),
-          }
-        : {
             "fill-color": color,
             // Density: opacity scales with the per-cell count over a fixed log
             // domain (consistent across tiles, never per-tile normalized), and
@@ -529,6 +537,10 @@ export function layerToMapLibre(
               Math.log10(AGG_DENSITY_MAX),
               AGG_FILL_OPACITY,
             ],
+          }
+        : {
+            "fill-color": color,
+            "fill-opacity": cappedFillOpacity(style.opacity, AGG_FILL_OPACITY),
           },
     });
   }

@@ -392,6 +392,38 @@ describe("buildAggregateTileSql — nested grid + _agg flag (#532)", () => {
   });
 });
 
+describe("buildLineHybridTileSql — skeleton + remainder bins (#532 slice 4)", () => {
+  const q = () =>
+    PortalMapTileService.buildLineHybridTileSql(
+      "SELECT geom FROM roads",
+      6,
+      "ST_TileEnvelope(6, 20, 24)",
+      0.01,
+      MAP_TILE_FEATURE_CAP
+    );
+
+  it("ranks by projected length and draws the longest `cap` as the raw skeleton", () => {
+    const sql = q();
+    expect(sql).toContain("ST_Length(ST_Transform(src.geom, 3857)) DESC");
+    expect(sql).toContain(`r.rn <= ${MAP_TILE_FEATURE_CAP}`);
+    // Skeleton features carry no `_agg` flag (0), so the client draws them as lines.
+    expect(sql).toContain("0 AS _agg");
+  });
+
+  it("summarises the remainder (rn > cap) as density bins on the nested grid, flagged `_agg`", () => {
+    const sql = q();
+    expect(sql).toContain(`r.rn > ${MAP_TILE_FEATURE_CAP}`);
+    expect(sql).toContain(String(aggregateCellSize(6)));
+    expect(sql).toContain("1 AS _agg");
+    // A summary never reports truncation.
+    expect(sql).toContain("0 AS n_limited");
+  });
+
+  it("applies the simplify tolerance to the skeleton geometry", () => {
+    expect(q()).toContain("ST_SimplifyPreserveTopology(r.g, 0.01)");
+  });
+});
+
 describe("buildRawTileSql — importance ranking (#337)", () => {
   const base = () =>
     PortalMapTileService.buildRawTileSql(

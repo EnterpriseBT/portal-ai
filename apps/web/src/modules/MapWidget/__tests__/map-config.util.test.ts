@@ -580,19 +580,31 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
   } as MapLayer;
   const aggId = `${sourceIdFor(0)}-agg`;
 
-  it("tiled line layer → no -agg fill, raw line renders at all zoom (no minzoom)", () => {
+  it("tiled line layer → hybrid: raw line (·_agg-filtered) + a density -agg fill (#532 slice 4)", () => {
     const { layers } = layerToMapLibre(lineLayer, 0, [], { tiled: true });
-    expect(layers.some((l) => l.id === aggId)).toBe(false);
+    // Over-cap line tiles carry the hybrid's density bins, so a tiled line layer
+    // gets an -agg fill and its raw line is filtered to non-bin features.
+    const agg = layers.find((l) => l.id === aggId)!;
+    expect(agg).toBeTruthy();
+    expect(agg.filter).toEqual(["==", ["get", "_agg"], 1]);
+    // The bins are density (`_count`), never a colorBy match.
+    const op = agg.paint["fill-opacity"] as unknown[];
+    expect(op[0]).toBe("interpolate");
+    expect(JSON.stringify(op)).toContain("_count");
+    const rawLine = layers.find((l) => l.id === `${sourceIdFor(0)}-line`)!;
+    expect(rawLine.filter).toEqual(["!", ["has", "_agg"]]);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
   });
 
-  it("treatment:'bins' forces an -agg fill on a line layer", () => {
+  it("a colorBy line layer's hybrid bins still use the density ramp, not the colorBy match", () => {
     const layer = {
       ...lineLayer,
-      aggregation: { treatment: "bins" },
+      style: { colorBy: { column: "c_road", stops: [["I-15", "#111"]] } },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
-    expect(layers.some((l) => l.id === aggId)).toBe(true);
+    const agg = layers.find((l) => l.id === aggId)!;
+    const op = agg.paint["fill-opacity"] as unknown[];
+    expect(op[0]).toBe("interpolate"); // density, not a match on the (absent) value
   });
 
   it("treatment:'none' opts a polygon out of bins (raw at all zoom)", () => {
