@@ -27,6 +27,7 @@ import {
 import {
   AGG_ZOOM_THRESHOLD,
   AGG_GRID_PX,
+  AGG_GRID_LEVELS,
   AGG_TILE_VERSION,
   bandForZoom,
 } from "@portalai/core/constants";
@@ -75,12 +76,22 @@ export function mapTileError(err: unknown): ApiError | undefined {
 }
 /** MVT tile extent (standard 4096-unit grid). */
 const TILE_EXTENT = 4096;
-/** MapLibre renders vector tiles at 512 screen px by default — grid cells per
- *  tile axis derive from this and the spec's target cell px (#330). */
-const TILE_SCREEN_PX = 512;
 /** Full Web-Mercator (EPSG:3857) world width in metres; a tile's world width at
  *  zoom z is this / 2^z. Sizes the aggregation grid cells server-side (#330). */
 const WORLD_3857_WIDTH = 40075016.685578488;
+
+/**
+ * Nested aggregate-grid cell size in EPSG:3857 metres at zoom `z` (#532). The
+ * grid is the tile pyramid subdivided `AGG_GRID_LEVELS` more levels, so
+ * `cellSize(z) = WORLD_3857_WIDTH / 2^(z + AGG_GRID_LEVELS)` — a power-of-two
+ * lattice snapped to the world origin. Consecutive zooms nest exactly
+ * (`cellSize(z) = 2·cellSize(z+1)`), so a bin subdivides into its four children
+ * on zoom-in instead of the pre-#532 `round(512/gridSizePx)=21` lattice that
+ * shared no boundaries across zoom and made bins wander/blink.
+ */
+export function aggregateCellSize(z: number): number {
+  return WORLD_3857_WIDTH / 2 ** (z + AGG_GRID_LEVELS);
+}
 
 export type TileRef =
   | { kind: "message"; messageId: string; blockIndex: number }
@@ -477,11 +488,13 @@ export class PortalMapTileService {
   }
 
   /**
-   * Low-zoom aggregate tile SQL (#330). Snaps each feature's centroid to a
-   * global square grid (origin 0,0 in EPSG:3857, so bins align across tile
-   * seams), groups by cell, and emits one square bin per cell carrying
-   * `mode()` of the colorBy column (when set) + a `_count`. Cell size is pinned
-   * to ~`gridSizePx` screen pixels via the tile's world width at this zoom. The
+   * Low-zoom aggregate tile SQL (#330, nested grid #532). Snaps each feature's
+   * centroid to a global square grid (origin 0,0 in EPSG:3857, so bins align
+   * across tile seams *and* nest across zoom — see `aggregateCellSize`), groups
+   * by cell, and emits one square bin per cell carrying `mode()` of the colorBy
+   * column (when set) + a `_count` + `_agg:1`. Cell size is `aggregateCellSize(z)`
+   * (a power-of-two subdivision of the tile pyramid), so a bin subdivides into
+   * its four children on zoom-in instead of re-partitioning. The
    * fetch envelope is expanded by one cell so bins straddling a tile edge are
    * caught (and `ST_AsMVTGeom` clips the overhang). `n_limited` is 0 — the
    * aggregate summarizes rather than clips, so it never reports truncation.
@@ -493,11 +506,7 @@ export class PortalMapTileService {
     aggregation: TileAggregation,
     cap: number
   ): string {
-    const cellsPerAxis = Math.max(
-      1,
-      Math.round(TILE_SCREEN_PX / aggregation.gridSizePx)
-    );
-    const cellSize = WORLD_3857_WIDTH / 2 ** z / cellsPerAxis;
+    const cellSize = aggregateCellSize(z);
     const half = cellSize / 2;
     const col = aggregation.colorByColumn;
     const catAgg = col

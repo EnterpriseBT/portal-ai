@@ -7,6 +7,7 @@ import {
   tileSimplifyTolerance,
   aggregationFromSpec,
   resolveTileMode,
+  aggregateCellSize,
   layerCountFromContent,
   mapTileError,
   type RenderTileDeps,
@@ -313,7 +314,40 @@ describe("layerCountFromContent (#532)", () => {
   });
 });
 
-describe("buildAggregateTileSql — bins carry the _agg flag (#532)", () => {
+describe("aggregateCellSize — nested tile-pyramid grid (#532)", () => {
+  it("halves each zoom level so the grid nests (cellSize(z) = 2·cellSize(z+1))", () => {
+    for (let z = 0; z < 14; z++) {
+      expect(aggregateCellSize(z)).toBeCloseTo(2 * aggregateCellSize(z + 1), 6);
+    }
+  });
+
+  it("is the tile pyramid subdivided AGG_GRID_LEVELS levels", () => {
+    // WORLD_3857_WIDTH / 2^(z + 4) at z=6 → world / 2^10.
+    expect(aggregateCellSize(6)).toBeCloseTo(40075016.685578488 / 2 ** 10, 3);
+  });
+});
+
+describe("buildAggregateTileSql — nested grid + _agg flag (#532)", () => {
+  it("uses the nested aggregateCellSize(z), not a gridSizePx-derived lattice", () => {
+    const q = PortalMapTileService.buildAggregateTileSql(
+      "SELECT geom FROM parcels",
+      6,
+      "ST_TileEnvelope(6, 20, 24)",
+      {
+        enabled: true,
+        zoomThreshold: AGG_ZOOM_THRESHOLD,
+        gridSizePx: 24,
+        colorByColumn: null,
+        kind: "points",
+        treatment: "bins",
+        rankByLength: false,
+      },
+      MAP_TILE_FEATURE_CAP
+    );
+    // The snap uses the nested cell size; z and z+1 differ by exactly 2x.
+    expect(q).toContain(String(aggregateCellSize(6)));
+  });
+
   it("emits `1 AS _agg` so the client separates bins from raw features", () => {
     const q = PortalMapTileService.buildAggregateTileSql(
       "SELECT geom FROM parcels",
