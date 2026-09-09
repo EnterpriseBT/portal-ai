@@ -33,6 +33,12 @@ const repos = {
         (name: string) => Promise<{ id: string; ownerUserId: string } | null>
       >(),
   },
+  tiers: {
+    findBySlug:
+      jest.fn<
+        (slug: string, client?: unknown) => Promise<{ slug: string } | null>
+      >(),
+  },
   organizationUsers: {
     create:
       jest.fn<
@@ -277,5 +283,60 @@ describe("seedOrganization", () => {
       })
     ).rejects.toThrow(/not found/);
     expect(repos.users.create).not.toHaveBeenCalled();
+  });
+
+  it("--tier assigns the tier to a freshly-seeded org after validating the slug (#537)", async () => {
+    repos.organizations.findByName.mockResolvedValue(null);
+    repos.tiers.findBySlug.mockResolvedValue({ slug: "demo" });
+
+    const out = await ApplicationService.seedOrganization({
+      name: "QA Org",
+      tier: "demo",
+    });
+
+    expect(repos.tiers.findBySlug).toHaveBeenCalledWith(
+      "demo",
+      expect.anything()
+    );
+    // organizations.update({ tier }) on the provisioned org id
+    const tierUpdate = (
+      repos.organizations.update.mock.calls as unknown as unknown[][]
+    ).find((c) => (c[1] as { tier?: string } | undefined)?.tier === "demo");
+    expect(tierUpdate).toBeDefined();
+    expect(out.existing).toBe(false);
+    if (out.existing === false) expect(out.tier).toBe("demo");
+  });
+
+  it("--tier on an EXISTING org is applied idempotently (#537)", async () => {
+    repos.organizations.findByName.mockResolvedValue({
+      id: "o-1",
+      ownerUserId: "u-o",
+    });
+    repos.tiers.findBySlug.mockResolvedValue({ slug: "demo" });
+
+    const out = await ApplicationService.seedOrganization({
+      name: "QA Org",
+      tier: "demo",
+    });
+
+    expect(repos.organizations.update).toHaveBeenCalledWith(
+      "o-1",
+      { tier: "demo" },
+      undefined
+    );
+    expect(out).toMatchObject({
+      organizationId: "o-1",
+      tier: "demo",
+      existing: true,
+    });
+  });
+
+  it("--tier with an unknown slug throws and never touches the org (#537)", async () => {
+    repos.organizations.findByName.mockResolvedValue(null);
+    repos.tiers.findBySlug.mockResolvedValue(null);
+
+    await expect(
+      ApplicationService.seedOrganization({ name: "QA Org", tier: "nope" })
+    ).rejects.toThrow(/Tier "nope" not found/);
   });
 });
