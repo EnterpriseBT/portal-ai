@@ -1,9 +1,6 @@
 import { sql } from "drizzle-orm";
 
-import {
-  DISSOLVE_ZOOM_BANDS,
-  DISSOLVE_CARDINALITY_CEILING,
-} from "@portalai/core/constants";
+import { DISSOLVE_ZOOM_BANDS } from "@portalai/core/constants";
 import type { DissolvePrecomputeResult } from "@portalai/core/models";
 
 import type { TypedJobProcessor } from "../jobs.worker.js";
@@ -22,17 +19,14 @@ import { createLogger } from "../../utils/logger.util.js";
 const logger = createLogger({ module: "dissolve-precompute" });
 
 /**
- * Off-request statement budget for a dissolve pass (#472). Far above the 10s
- * tile budget because this runs in a background job, not on a tile request —
- * the whole point is to pay the union cost once, off the request path. Measured
- * on a 397,960-parcel layer: ~2s / ~21s / ~30s for the three bands.
+ * Off-request statement budget for a dissolve pass (#472, #532). Far above the
+ * 10s tile budget because this runs in a background job, not on a tile request —
+ * the whole point is to pay the per-band simplify+store cost once, off the
+ * request path. Each band is one `ST_SimplifyPreserveTopology` scan of the pin's
+ * pipeline (no union since #532), measured ~10s/band on a 211k @ ~226-vertex
+ * layer; the fine bands are the costly ones.
  */
 const DISSOLVE_STATEMENT_TIMEOUT_MS = 180_000;
-
-/** Max vertices per stored piece — `ST_Subdivide` splits the dissolved region so
- *  a tile clips only the pieces its envelope overlaps (via the GiST index),
- *  never one giant multipolygon. */
-const SUBDIVIDE_MAX_VERTICES = 512;
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
@@ -70,13 +64,14 @@ function resolvePolygonColorBy(
 }
 
 /**
- * Precompute the dissolved, per-zoom-simplified polygon geometry for a pinned
- * choropleth (#472). Runs the pin's durable `pipeline` once per band, dissolves
- * the result by the colorBy value (snap-to-grid → make-valid → union), and
- * subdivides it into bounded pieces stored keyed by the pin. Serves low-zoom
- * tiles as real polygons without re-running the pipeline; a miss falls back to
- * raw-simplify at serve time. Off-request, under an advisory lock on the pin so
- * two refreshes cannot race.
+ * Precompute per-zoom-simplified polygon geometry for a pinned map (#472, #532).
+ * Runs the pin's durable `pipeline` once per band and stores one row per source
+ * polygon, simplified to the band tolerance and tagged with its colorBy value
+ * (or the dissolve-all sentinel) — NO union (#532: it was prohibitively slow and
+ * re-merged across bands). Serves low-zoom tiles as real polygons without
+ * re-running the pipeline, area-ranked so a tile over the cap keeps the largest
+ * by area; a miss falls back to raw-simplify at serve time. Off-request, under
+ * an advisory lock on the pin so two refreshes cannot race.
  */
 async function runDissolve(
   portalResultId: string,
@@ -126,10 +121,11 @@ async function runDissolve(
     for (const ddl of build.views) await tx.execute(sql.raw(ddl));
   };
 
-  // Cardinality gate — a choropleth with more categories than the ceiling isn't
-  // legible and isn't worth dissolving; the serve path falls back to raw-simplify.
-  // Dissolve-all (no colorBy) has one implicit value, so its "cardinality" is
-  // just "has any geometry" (1) — the ceiling never applies.
+  // Geometry probe + reporting count. The area-ranked store keeps one row per
+  // polygon regardless of colorBy cardinality (a high-category choropleth is no
+  // longer a storage problem — it was, when each value got its own union), so
+  // there is no cardinality ceiling: this pass only detects "no geometry → clear
+  // and stop" and reports the distinct colorBy value count for the result.
   const distinctCount = await db.transaction(async (tx) => {
     await applyViews(tx);
     const countExpr = colorByColumn
@@ -145,18 +141,11 @@ async function runDissolve(
   });
 
   // A pin that no longer qualifies must not keep serving stale dissolve rows.
-  const clearExisting = () =>
-    db.execute(
+  if (distinctCount === 0) {
+    await db.execute(
       sql`DELETE FROM map_dissolve_geometries WHERE portal_result_id = ${portalResultId}`
     );
-
-  if (distinctCount === 0) {
-    await clearExisting();
     return { columnName: colorByColumn, valuesDissolved: 0, rowsWritten: 0 };
-  }
-  if (distinctCount > DISSOLVE_CARDINALITY_CEILING) {
-    await clearExisting();
-    return skip("over-cardinality", colorByColumn);
   }
 
   let rowsWritten = 0;
@@ -169,107 +158,56 @@ async function runDissolve(
               (extract(epoch from now()) * 1000)::bigint,
               'dissolve_precompute', '${organizationId}', '${portalResultId}'`;
 
-  if (colorByColumn) {
-    // colorBy choropleth — #478 derive-from-finest (slice 6): compute the finest
-    // union per value ONCE (the one expensive union), then each band is a
-    // topological *simplification* of that same geometry, so a region's outline
-    // only smooths across a band boundary, never re-merges differently. One
-    // transaction (the temp finest must outlive the per-band inserts) = an
-    // atomic replace of the whole pin's rows, no zero-row window.
-    const finestTol = tileSimplifyTolerance(
-      Math.max(...DISSOLVE_ZOOM_BANDS.map((b) => b.representativeZoom))
-    );
-    rowsWritten = await db.transaction(async (tx) => {
-      await applyViews(tx);
-      await tx.execute(
-        sql.raw(
-          `CREATE TEMP TABLE _dissolve_finest ON COMMIT DROP AS
-           WITH src AS (${pipelineSql}),
-           snapped AS (
-             SELECT ${valueExpr} AS value,
-                    ST_CollectionExtract(ST_MakeValid(ST_SnapToGrid(src.geom, ${finestTol})), 3) AS g
-             FROM src WHERE src.geom IS NOT NULL
-           )
-           SELECT value, ST_Union(g) AS geom, count(*)::int AS fc
-           FROM snapped WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)
-           GROUP BY value`
-        )
-      );
-      await tx.execute(
-        sql`DELETE FROM map_dissolve_geometries WHERE portal_result_id = ${portalResultId}`
-      );
-      for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
-        const tol = tileSimplifyTolerance(representativeZoom);
+  // #532 (unified area-ranked): one row per source polygon per band, simplified
+  // to the band tolerance and tagged with its colorBy value (or the dissolve-all
+  // sentinel). NO union — a colorBy choropleth and a plain polygon layer store
+  // the SAME shape and differ only by the value each row carries, so the serve is
+  // uniform and count-driven: a tile under the cap shows every polygon in view,
+  // one over it shows the largest by area (never-drop the visible ones). Union
+  // was measured 130–153s/band on a 211k @ ~226-vertex layer — prohibitive; the
+  // simplify-only path is ~10s AND never re-merges across a band boundary, so it
+  // is continuous by construction (same polygons, different tolerances). No
+  // ST_MakeValid (measured ~66s over 211k complex polygons; ST_Simplify-
+  // PreserveTopology preserves validity and ST_AsMVTGeom tolerates the rest on
+  // serve). Per-band transaction: a band failure keeps its prior rows and does
+  // not abort the others.
+  const escapedColumn = storedColumn.replace(/'/g, "''");
+  for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
+    const tol = tileSimplifyTolerance(representativeZoom);
+    try {
+      const inserted = await db.transaction(async (tx) => {
+        await applyViews(tx);
+        await tx.execute(
+          sql`DELETE FROM map_dissolve_geometries
+              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
+        );
         await tx.execute(
           sql.raw(
             `${insertHead}
-             WITH pieces AS (
-               SELECT value, fc,
-                      ST_Subdivide(ST_SimplifyPreserveTopology(geom, ${tol}), ${SUBDIVIDE_MAX_VERTICES}) AS piece
-               FROM _dissolve_finest
+             WITH src AS (${pipelineSql}),
+             simplified AS (
+               SELECT ${valueExpr} AS value,
+                      ST_Multi(ST_CollectionExtract(ST_SimplifyPreserveTopology(src.geom, ${tol}), 3)) AS g
+               FROM src WHERE src.geom IS NOT NULL
              )
              SELECT ${rowMeta},
-                    '${storedColumn.replace(/'/g, "''")}', value, ${band}, fc,
-                    ST_Multi(ST_CollectionExtract(piece, 3))
-             FROM pieces
-             WHERE piece IS NOT NULL AND NOT ST_IsEmpty(piece)
-               AND ST_CollectionExtract(piece, 3) IS NOT NULL
-               AND NOT ST_IsEmpty(ST_CollectionExtract(piece, 3))`
+                    '${escapedColumn}', value, ${band}, 1, g
+             FROM simplified WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`
           )
         );
-      }
-      const c = (await tx.execute(
-        sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-            WHERE portal_result_id = ${portalResultId}`
-      )) as unknown as Array<{ n: number }>;
-      return c[0]?.n ?? 0;
-    });
-  } else {
-    // #532 no-colorBy → area-ranked simplified geometry, NO union: one row per
-    // polygon, simplified to the band tolerance (union measured 130–153s/band on
-    // a 211k @ ~226-vertex layer — prohibitive; simplify-only ~10s). Already
-    // continuous across bands (same polygons, different tolerances), so it keeps
-    // the per-band transaction (atomic replace of one band; a band failure keeps
-    // its prior rows and does not abort the others).
-    for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
-      const tol = tileSimplifyTolerance(representativeZoom);
-      try {
-        const inserted = await db.transaction(async (tx) => {
-          await applyViews(tx);
-          await tx.execute(
-            sql`DELETE FROM map_dissolve_geometries
-                WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
-          );
-          await tx.execute(
-            sql.raw(
-              `${insertHead}
-               WITH src AS (${pipelineSql}),
-               simplified AS (
-                 -- No ST_MakeValid: measured ~66s over 211k complex polygons;
-                 -- ST_SimplifyPreserveTopology preserves validity, ST_AsMVTGeom
-                 -- tolerates the rest on serve.
-                 SELECT ST_Multi(ST_CollectionExtract(ST_SimplifyPreserveTopology(src.geom, ${tol}), 3)) AS g
-                 FROM src WHERE src.geom IS NOT NULL
-               )
-               SELECT ${rowMeta},
-                      '${DISSOLVE_ALL_KEY}', '${DISSOLVE_ALL_KEY}', ${band}, 1, g
-               FROM simplified WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`
-            )
-          );
-          const c = (await tx.execute(
-            sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-                WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
-          )) as unknown as Array<{ n: number }>;
-          return c[0]?.n ?? 0;
-        });
-        rowsWritten += inserted;
-      } catch (err) {
-        degraded = true;
-        logger.error(
-          { event: "dissolve.band-failed", portalResultId, band, err },
-          "Dissolve band failed; keeping its prior rows and continuing"
-        );
-      }
+        const c = (await tx.execute(
+          sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
+              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
+        )) as unknown as Array<{ n: number }>;
+        return c[0]?.n ?? 0;
+      });
+      rowsWritten += inserted;
+    } catch (err) {
+      degraded = true;
+      logger.error(
+        { event: "dissolve.band-failed", portalResultId, band, err },
+        "Dissolve band failed; keeping its prior rows and continuing"
+      );
     }
   }
 

@@ -141,24 +141,24 @@ export const AGG_CELLS_PER_AXIS = 2 ** AGG_GRID_LEVELS; // 16
  * pipeline SQL + z/x/y + snapshot clock, none of the generation code. Bump this
  * whenever the bytes a given (pipeline, z, x, y, snapshot) would produce change.
  */
-export const AGG_TILE_VERSION = 4;
+export const AGG_TILE_VERSION = 5;
 
 /**
- * Precomputed polygon-dissolve zoom bands (#472, retuned #478). Below the z14
- * raw handoff, a polygon choropleth is served from a per-pin dissolved +
- * simplified geometry (one MultiPolygon per colorBy value per band). Each band
- * covers `[prev, maxZoomExclusive)` and is dissolved+simplified for its
- * `representativeZoom` (the server derives the tolerance via
- * `tileSimplifyTolerance`). Bands are disjoint and cover z0–13; z≥14 stays the
- * raw path (#450 already fast there). `bandForZoom` returns `null` at/above the
- * threshold.
+ * Precomputed polygon zoom bands (#472, retuned #478, area-ranked #532). Below
+ * the z14 raw handoff, a polygon layer is served from per-pin per-polygon
+ * geometry simplified for each band (#532: one row per source polygon, NOT a
+ * union — a colorBy choropleth and a plain polygon layer store the same shape
+ * and differ only by the value each row carries). Each band covers
+ * `[prev, maxZoomExclusive)` and is simplified for its `representativeZoom` (the
+ * server derives the tolerance via `tileSimplifyTolerance`). Bands are disjoint
+ * and cover z0–13; z≥14 stays the raw path (#450 already fast there).
+ * `bandForZoom` returns `null` at/above the threshold.
  *
- * #478: five bands (was three) so the merge-granularity steps gently across
- * zoom (~2.7× per boundary) instead of one ~20× jump at z8 that visibly
- * "exploded" a merged region into its parcels. The added bands are the *cheap*
- * coarse ones (z7/z8 rep); the expensive fine unions (z9/z12 rep) are unchanged.
- * Measured piece counts per rep zoom on a 397,960-parcel layer: z6≈444, z7≈1227,
- * z8≈3272, z9≈8781, z12≈13336.
+ * #478: five bands (was three) so simplification steps gently across zoom rather
+ * than in one visible jump; the fine bands (z9/z12 rep) carry near-full detail,
+ * so a tile under the cap reads as raw individual polygons well before z14. The
+ * bands predate #532's move off unions; the tolerances are still the right
+ * per-zoom detail steps.
  */
 export const DISSOLVE_ZOOM_BANDS = [
   { band: 0, maxZoomExclusive: 7, representativeZoom: 6 },
@@ -175,14 +175,6 @@ export function bandForZoom(z: number): number | null {
   }
   return null;
 }
-
-/**
- * Max distinct colorBy values a choropleth may have to be dissolved (#472). A
- * choropleth with more categories than this isn't legible anyway; over the
- * ceiling the pin is left to the raw-simplify fallback. Bounds stored rows at
- * `ceiling × DISSOLVE_ZOOM_BANDS.length` per pin.
- */
-export const DISSOLVE_CARDINALITY_CEILING = 64;
 
 /**
  * Geocode address-cache TTL (#315). An address→coordinates mapping is

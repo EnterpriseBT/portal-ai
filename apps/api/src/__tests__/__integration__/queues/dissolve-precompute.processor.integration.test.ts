@@ -2,11 +2,12 @@
  * Integration tests for the dissolve-precompute processor (#472, slice 2).
  *
  * Exercises the real processor against a live geometry wide table through the
- * session-view path: it runs the pin's durable pipeline, dissolves the result
- * by the colorBy value per zoom band (snap → make-valid → union), subdivides it
- * into bounded pieces, and stores them keyed by the pin. The bounded-union SQL
- * itself was measured against a 397,960-parcel layer (~2s/21s/30s per band); this
- * proves correctness (valid pieces, pin-keyed, cardinality gate, lock, recompute).
+ * session-view path: it runs the pin's durable pipeline and stores one row per
+ * source polygon per zoom band, simplified to the band tolerance and tagged with
+ * its colorBy value (or the dissolve-all sentinel) — area-ranked, NOT unioned
+ * (#532: union was prohibitively slow and re-merged across bands). This proves
+ * correctness (valid per-polygon rows, pin-keyed, no cardinality gate, lock,
+ * recompute).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
@@ -336,8 +337,10 @@ describe("dissolve-precompute processor (#472)", () => {
     await connection.end();
   });
 
-  it("dissolves per (value, band) into valid subdivided pieces, keyed by the pin", async () => {
-    // Three Private (adjacent → merge), one Federal, one State.
+  it("#532: a colorBy layer stores one row per polygon per band, tagged with its value (area-ranked, NOT unioned)", async () => {
+    // Three adjacent Private, one Federal, one State. Area-ranked (#532) keeps
+    // each polygon as its own row — the three adjacent Private are NOT merged
+    // into one piece the way the old dissolve-union did.
     await insertParcel(0, "Private");
     await insertParcel(1, "Private");
     await insertParcel(2, "Private");
@@ -356,9 +359,9 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(result.skipped).toBeUndefined();
 
     // Rows exist for every band, keyed by the PIN (not the entity), all valid,
-    // carrying the colorBy value + column.
+    // carrying the colorBy value + column, feature_count 1 (one polygon each).
     const rows = (await connection.unsafe(
-      `SELECT value, zoom_band, column_name,
+      `SELECT value, zoom_band, column_name, feature_count,
               ST_IsValid(geom) AS valid, ST_GeometryType(geom) AS gtype
        FROM map_dissolve_geometries WHERE portal_result_id = $1`,
       [pinId]
@@ -366,6 +369,7 @@ describe("dissolve-precompute processor (#472)", () => {
       value: string;
       zoom_band: number;
       column_name: string;
+      feature_count: number;
       valid: boolean;
       gtype: string;
     }>;
@@ -373,15 +377,22 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(rows.every((r) => r.valid)).toBe(true);
     expect(rows.every((r) => r.gtype === "ST_MultiPolygon")).toBe(true);
     expect(rows.every((r) => r.column_name === "c_own_type")).toBe(true);
+    expect(rows.every((r) => r.feature_count === 1)).toBe(true);
     expect(new Set(rows.map((r) => r.value))).toEqual(
       new Set(["Private", "Federal", "State"])
     );
     expect(new Set(rows.map((r) => r.zoom_band))).toEqual(
       new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
     );
+    // Not unioned: the 3 adjacent Private polygons stay 3 separate rows in each
+    // band (would be 1 merged piece under the old union path).
+    const band0Private = rows.filter(
+      (r) => r.zoom_band === 0 && r.value === "Private"
+    );
+    expect(band0Private.length).toBe(3);
   });
 
-  it("#478/#532 slice 6: every colorBy value appears in every band (derive-from-finest — no value drops across a boundary)", async () => {
+  it("#532: every colorBy value appears in every band (per-polygon, no value drops across a boundary)", async () => {
     await insertParcel(0, "Private");
     await insertParcel(1, "Private");
     await insertParcel(5, "Federal");
@@ -398,8 +409,8 @@ describe("dissolve-precompute processor (#472)", () => {
       [pinId]
     )) as unknown as Array<{ value: string; zoom_band: number }>;
 
-    // Each band derives from the SAME finest union, so every band carries the
-    // full value set — a region never drops out or re-merges across a boundary.
+    // Every band simplifies the SAME per-polygon rows, so every band carries the
+    // full value set — a value never drops out or re-merges across a boundary.
     const expected = new Set(["Private", "Federal", "State"]);
     for (const { band } of DISSOLVE_ZOOM_BANDS) {
       const valuesInBand = new Set(
@@ -493,16 +504,20 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(second).toBe(first);
   });
 
-  it("skips a colorBy over the cardinality ceiling and clears stale rows", async () => {
-    // 70 distinct values (> DISSOLVE_CARDINALITY_CEILING = 64).
+  it("#532: a high-cardinality colorBy is precomputed area-ranked (no cardinality gate)", async () => {
+    // 70 distinct values — the old union path skipped over a 64-value ceiling
+    // because each value got its own union; the area-ranked store keeps one row
+    // per polygon regardless, so there is no ceiling and nothing is skipped.
     for (let i = 0; i < 70; i++) await insertParcel(i, `owner-${i}`);
     const pinId = await createPin(
       'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
       "c_own_type"
     );
     const result = await runProcessor(pinId, orgId);
-    expect(result.skipped).toBe("over-cardinality");
-    expect(await countRows(pinId)).toBe(0);
+    expect(result.skipped).toBeUndefined();
+    expect(result.valuesDissolved).toBe(70);
+    // 70 polygons × 5 bands, one row each.
+    expect(await countRows(pinId)).toBe(70 * DISSOLVE_ZOOM_BANDS.length);
   });
 
   it("reports superseded without writing when the pin lock is held", async () => {

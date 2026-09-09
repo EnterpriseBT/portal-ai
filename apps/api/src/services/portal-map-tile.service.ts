@@ -708,12 +708,14 @@ export class PortalMapTileService {
   }
 
   /**
-   * Serve a low-zoom tile from precomputed dissolved geometry (#472). Clips the
-   * stored pieces for `(pin, colorBy column, band)` to the tile envelope and
-   * emits the colorBy value as a feature property so the client's `colorBy`
-   * paint matches. Reads `map_dissolve_geometries` directly — no pipeline SQL,
-   * no session views. The GiST index means only the pieces overlapping the
-   * envelope are touched, never the whole region.
+   * Serve a low-zoom tile from precomputed polygon geometry (#472, #532).
+   * Area-ranks the stored per-polygon rows for `(pin, column, band)` in the tile
+   * envelope and keeps the largest `cap` by area — a tile under the cap shows
+   * every polygon, one over it the largest (never-drop the visible). A colorBy
+   * layer additionally emits its value as a feature property so the client's
+   * `colorBy` paint matches. Reads `map_dissolve_geometries` directly — no
+   * pipeline SQL, no session views. The GiST index means only the rows
+   * overlapping the envelope are touched, never the whole layer.
    */
   private static async runDissolveTile(
     portalResultId: string,
@@ -722,12 +724,14 @@ export class PortalMapTileService {
     envelope: string,
     cap: number
   ): Promise<TileQueryResult> {
-    // #532: two flavors keyed by `column_name`. A colorBy choropleth returns all
-    // (already-merged, bounded) pieces in the envelope, emitting the value for
-    // the client's paint. A no-colorBy layer (`__all__`) stores one row per
-    // polygon (not unioned — union is prohibitively slow at scale), so the tile
-    // clips the envelope then keeps the largest `cap` by area — the visible ones.
-    const isAreaRanked = colorByColumn === DISSOLVE_ALL_KEY;
+    // #532 (unified area-ranked): every flavor stores one row per source polygon,
+    // simplified per band. The tile clips the envelope then keeps the largest
+    // `cap` by area — so a tile under the cap shows EVERY polygon in view (the
+    // `LIMIT` is a no-op) and one over it shows the largest, never-dropping the
+    // visible ones. Identical for colorBy and no-colorBy; a colorBy layer only
+    // additionally emits its stored value for the client's paint (a no-colorBy
+    // layer keys its rows by the `__all__` sentinel and emits none).
+    const emitValue = colorByColumn !== DISSOLVE_ALL_KEY;
     try {
       const rows = (await db.transaction(async (tx) => {
         await tx.execute(
@@ -736,12 +740,10 @@ export class PortalMapTileService {
           )
         );
         await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
-        const valueSelect = isAreaRanked
-          ? sql``
-          : sql`, mdg.value AS ${sql.raw(quoteIdentTile(colorByColumn))}`;
-        const orderLimit = isAreaRanked
-          ? sql`ORDER BY ST_Area(mdg.geom) DESC LIMIT ${cap}`
+        const valueSelect = emitValue
+          ? sql`, mdg.value AS ${sql.raw(quoteIdentTile(colorByColumn))}`
           : sql``;
+        const orderLimit = sql`ORDER BY ST_Area(mdg.geom) DESC LIMIT ${cap}`;
         return (await tx.execute(sql`
           WITH lim AS (
             SELECT ST_AsMVTGeom(ST_Transform(mdg.geom, 3857), ${sql.raw(

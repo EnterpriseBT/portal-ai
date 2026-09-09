@@ -278,7 +278,9 @@ describe("Portal map tile route (#316)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toBeInstanceOf(Buffer);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
-    expect(res.etag).toMatch(/^"[0-9a-f]{32}"$/);
+    // #532 ETag format: `"<a|r>~<32-hex>"` — the a/r prefix records whether the
+    // tile aggregated so a 304 can report the right notice.
+    expect(res.etag).toMatch(/^"[ar]~[0-9a-f]{32}"$/);
   });
 
   it("returns 204 for a tile envelope that doesn't contain the geometry", async () => {
@@ -522,9 +524,12 @@ describe("Portal map tile route (#316)", () => {
         name: "Counted map",
         type: "geo",
         content: {
-          // A polygon layer with no colorBy → treatment "bins" (the aggregate path).
+          // A points layer → treatment "bins" (the aggregate path), so the
+          // whole-layer fast path (raw) vs the interim fallback (bins) contrast is
+          // observable. A polygon layer would take the dissolve/raw path in both
+          // cases (#532), which is what the dissolve tests above cover.
           spec: {
-            layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+            layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
           },
           pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
           ...(count ?? {}),

@@ -12,7 +12,6 @@ import {
   VIZ_REFRESH_FRESHNESS_MS,
   VIZ_REFRESH_RATE_PER_MIN,
   DISSOLVE_ZOOM_BANDS,
-  DISSOLVE_CARDINALITY_CEILING,
   bandForZoom,
   AGG_ZOOM_THRESHOLD,
   AGG_GRID_LEVELS,
@@ -71,10 +70,6 @@ describe("large-data-ops constants", () => {
       expect(bandForZoom(13)).toBe(4);
       expect(bandForZoom(14)).toBeNull();
       expect(bandForZoom(18)).toBeNull();
-    });
-
-    it("caps dissolve cardinality at 64", () => {
-      expect(DISSOLVE_CARDINALITY_CEILING).toBe(64);
     });
   });
 
