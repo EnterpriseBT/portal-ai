@@ -89,6 +89,8 @@ No token required (Esri sample server). Base: `https://sampleserver6.arcgisonlin
 
 `ST_MakeValid` was the precompute killer (~66s of the 76s attempt); dropped it — `ST_SimplifyPreserveTopology` preserves validity and `ST_AsMVTGeom` tolerates the rest.
 
+> **⚠️ Re-smoke correction (211k layer is a stress case).** The ~27s/band above was a *raw-table `CREATE TABLE`* measurement. The **real processor path** — buildSessionViews + inserting ~213k rows/band into the **GiST-indexed, FK'd** `map_dissolve_geometries` — is slower, and on a resource-constrained dev container the **fine bands (rep 9/12) exceeded the 180s per-band statement timeout**: a live re-smoke landed **only band 2** of 5, so low-zoom tiles (which need band 0) still fell to raw and 504'd. Two real findings: (1) the area-ranked no-colorBy path trades union-time for **insert volume** (~1M rows for a 211k layer) with real GiST-insert cost, and (2) the per-band statement timeout can strand fine bands on a huge layer. **Follow-up: bound the huge-polygon precompute** (cap rows/band by area, and/or fewer bands, and/or adapt the timeout). For a reliable smoke here, use a mid-size layer (CA block groups, 22k) — it precomputes all bands in seconds.
+
 > **To re-smoke slice 5 in the live app:** the precompute is **pin-only**, so **pin the census map** (the census layer was delivered as a transient *message block*, which has no precompute) and rebuild the running app (new code + `AGG_TILE_VERSION` bump). Pinning enqueues the precompute (~2–3 min for 5 bands over 211k); low-zoom tiles then serve from the index. An un-pinned message map of a huge polygon layer stays on the slow raw path by design (spec → Out of scope).
 
 ## Smoke findings — slices-1–2 walk (recorded)
