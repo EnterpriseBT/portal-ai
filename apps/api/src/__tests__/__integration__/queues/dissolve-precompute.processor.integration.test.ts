@@ -337,7 +337,7 @@ describe("dissolve-precompute processor (#472)", () => {
     await connection.end();
   });
 
-  it("#532: a colorBy layer stores one row per polygon per band, tagged with its value (area-ranked, NOT unioned)", async () => {
+  it("#532: a colorBy layer stores individuals + a merged coverage per band, tagged with its value", async () => {
     // Three adjacent Private, one Federal, one State. Area-ranked (#532) keeps
     // each polygon as its own row — the three adjacent Private are NOT merged
     // into one piece the way the old dissolve-union did.
@@ -358,10 +358,10 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(result.rowsWritten).toBeGreaterThan(0);
     expect(result.skipped).toBeUndefined();
 
-    // Rows exist for every band, keyed by the PIN (not the entity), all valid,
-    // carrying the colorBy value + column, feature_count 1 (one polygon each).
+    // Rows exist for every band, keyed by the PIN, all valid, carrying the
+    // colorBy value + column. `merged` distinguishes the two representations.
     const rows = (await connection.unsafe(
-      `SELECT value, zoom_band, column_name, feature_count,
+      `SELECT value, zoom_band, column_name, feature_count, merged,
               ST_IsValid(geom) AS valid, ST_GeometryType(geom) AS gtype
        FROM map_dissolve_geometries WHERE portal_result_id = $1`,
       [pinId]
@@ -370,6 +370,7 @@ describe("dissolve-precompute processor (#472)", () => {
       zoom_band: number;
       column_name: string;
       feature_count: number;
+      merged: boolean;
       valid: boolean;
       gtype: string;
     }>;
@@ -377,19 +378,34 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(rows.every((r) => r.valid)).toBe(true);
     expect(rows.every((r) => r.gtype === "ST_MultiPolygon")).toBe(true);
     expect(rows.every((r) => r.column_name === "c_own_type")).toBe(true);
-    expect(rows.every((r) => r.feature_count === 1)).toBe(true);
     expect(new Set(rows.map((r) => r.value))).toEqual(
       new Set(["Private", "Federal", "State"])
     );
     expect(new Set(rows.map((r) => r.zoom_band))).toEqual(
       new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
     );
-    // Not unioned: the 3 adjacent Private polygons stay 3 separate rows in each
-    // band (would be 1 merged piece under the old union path).
-    const band0Private = rows.filter(
+
+    // Individuals (merged=false): one row per source polygon, feature_count 1 —
+    // the 3 adjacent Private stay 3 separate rows per band (NOT unioned).
+    const individuals = rows.filter((r) => !r.merged);
+    expect(individuals.every((r) => r.feature_count === 1)).toBe(true);
+    const band0PrivateIndiv = individuals.filter(
       (r) => r.zoom_band === 0 && r.value === "Private"
     );
-    expect(band0Private.length).toBe(3);
+    expect(band0PrivateIndiv.length).toBe(3);
+
+    // Merged coverage (merged=true): a dissolved piece per value per band, its
+    // feature_count = the source polygons it merged (Private = 3).
+    const merged = rows.filter((r) => r.merged);
+    expect(merged.length).toBeGreaterThan(0);
+    expect(new Set(merged.map((r) => r.zoom_band))).toEqual(
+      new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
+    );
+    const band0PrivateMerged = merged.filter(
+      (r) => r.zoom_band === 0 && r.value === "Private"
+    );
+    expect(band0PrivateMerged.length).toBeGreaterThanOrEqual(1);
+    expect(band0PrivateMerged.every((r) => r.feature_count === 3)).toBe(true);
   });
 
   it("#532: every colorBy value appears in every band (per-polygon, no value drops across a boundary)", async () => {
@@ -420,10 +436,10 @@ describe("dissolve-precompute processor (#472)", () => {
     }
   });
 
-  it("#532: a no-colorBy polygon precomputes area-ranked rows (one per polygon, NOT unioned)", async () => {
-    // Three adjacent Private + one Federal + one State = 5 polygons. A colorBy
-    // dissolve would UNION the adjacent ones per value; area-ranked keeps every
-    // polygon as its own row (so ST_Area can rank them on serve).
+  it("#532: a no-colorBy polygon stores individuals (one per polygon) + a merged coverage under the sentinel", async () => {
+    // Three adjacent Private + one Federal + one State = 5 polygons. Individuals
+    // keep every polygon as its own row (so ST_Area can rank them under the cap);
+    // the merged coverage unions them for the over-cap case.
     await insertParcel(0, "Private");
     await insertParcel(1, "Private");
     await insertParcel(2, "Private");
@@ -437,7 +453,7 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(result.skipped).toBeUndefined();
 
     const rows = (await connection.unsafe(
-      `SELECT column_name, value, zoom_band, feature_count,
+      `SELECT column_name, value, zoom_band, feature_count, merged,
               ST_GeometryType(geom) AS gtype
        FROM map_dissolve_geometries WHERE portal_result_id = $1`,
       [pinId]
@@ -446,17 +462,27 @@ describe("dissolve-precompute processor (#472)", () => {
       value: string;
       zoom_band: number;
       feature_count: number;
+      merged: boolean;
       gtype: string;
     }>;
-    // Keyed by the sentinel, one row per polygon per band (5 polygons × 5 bands
-    // = 25) — not merged down to a few unioned pieces.
+    // Both representations keyed by the sentinel column + value.
     expect(rows.every((r) => r.column_name === "__all__")).toBe(true);
     expect(rows.every((r) => r.value === "__all__")).toBe(true);
-    expect(rows.every((r) => r.feature_count === 1)).toBe(true);
     expect(rows.every((r) => r.gtype === "ST_MultiPolygon")).toBe(true);
-    const perBand = rows.filter((r) => r.zoom_band === 0).length;
-    expect(perBand).toBe(5); // one row per polygon — proof it's not unioned
     expect(new Set(rows.map((r) => r.zoom_band))).toEqual(
+      new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
+    );
+
+    // Individuals: one row per polygon per band (5 per band), feature_count 1.
+    const individuals = rows.filter((r) => !r.merged);
+    expect(individuals.every((r) => r.feature_count === 1)).toBe(true);
+    expect(individuals.filter((r) => r.zoom_band === 0).length).toBe(5);
+
+    // Merged coverage: the 5 polygons unioned, feature_count 5, present per band.
+    const merged = rows.filter((r) => r.merged);
+    expect(merged.length).toBeGreaterThan(0);
+    expect(merged.every((r) => r.feature_count === 5)).toBe(true);
+    expect(new Set(merged.map((r) => r.zoom_band))).toEqual(
       new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
     );
   });
@@ -504,10 +530,9 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(second).toBe(first);
   });
 
-  it("#532: a high-cardinality colorBy is precomputed area-ranked (no cardinality gate)", async () => {
-    // 70 distinct values — the old union path skipped over a 64-value ceiling
-    // because each value got its own union; the area-ranked store keeps one row
-    // per polygon regardless, so there is no ceiling and nothing is skipped.
+  it("#532: a high-cardinality colorBy is precomputed with no cardinality gate", async () => {
+    // 70 distinct values — the old union path skipped over a 64-value ceiling;
+    // the #532 store has no ceiling, so nothing is skipped.
     for (let i = 0; i < 70; i++) await insertParcel(i, `owner-${i}`);
     const pinId = await createPin(
       'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
@@ -516,8 +541,9 @@ describe("dissolve-precompute processor (#472)", () => {
     const result = await runProcessor(pinId, orgId);
     expect(result.skipped).toBeUndefined();
     expect(result.valuesDissolved).toBe(70);
-    // 70 polygons × 5 bands, one row each.
-    expect(await countRows(pinId)).toBe(70 * DISSOLVE_ZOOM_BANDS.length);
+    // Per band: 70 individuals (one polygon each) + 70 merged pieces (one union
+    // per value, each of a single polygon) = 140 × 5 bands.
+    expect(await countRows(pinId)).toBe(2 * 70 * DISSOLVE_ZOOM_BANDS.length);
   });
 
   it("reports superseded without writing when the pin lock is held", async () => {

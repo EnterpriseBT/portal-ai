@@ -141,14 +141,14 @@ export const AGG_CELLS_PER_AXIS = 2 ** AGG_GRID_LEVELS; // 16
  * pipeline SQL + z/x/y + snapshot clock, none of the generation code. Bump this
  * whenever the bytes a given (pipeline, z, x, y, snapshot) would produce change.
  */
-export const AGG_TILE_VERSION = 5;
+export const AGG_TILE_VERSION = 6;
 
 /**
- * Precomputed polygon zoom bands (#472, retuned #478, area-ranked #532). Below
- * the z14 raw handoff, a polygon layer is served from per-pin per-polygon
- * geometry simplified for each band (#532: one row per source polygon, NOT a
- * union — a colorBy choropleth and a plain polygon layer store the same shape
- * and differ only by the value each row carries). Each band covers
+ * Precomputed polygon zoom bands (#472, retuned #478, count-driven #532). Below
+ * the z14 raw handoff, a polygon layer is served per band from one of two stored
+ * representations (#532): **individual** per-polygon geometry when a tile holds
+ * ≤ the feature cap, or a **merged coverage** (dissolved) when it holds more, so
+ * every polygon is represented and nothing is dropped. Each band covers
  * `[prev, maxZoomExclusive)` and is simplified for its `representativeZoom` (the
  * server derives the tolerance via `tileSimplifyTolerance`). Bands are disjoint
  * and cover z0–13; z≥14 stays the raw path (#450 already fast there).
@@ -156,9 +156,8 @@ export const AGG_TILE_VERSION = 5;
  *
  * #478: five bands (was three) so simplification steps gently across zoom rather
  * than in one visible jump; the fine bands (z9/z12 rep) carry near-full detail,
- * so a tile under the cap reads as raw individual polygons well before z14. The
- * bands predate #532's move off unions; the tolerances are still the right
- * per-zoom detail steps.
+ * so an under-cap tile reads as raw individual polygons well before z14, and the
+ * merged coverage smooths gently across boundaries (derive-from-finest).
  */
 export const DISSOLVE_ZOOM_BANDS = [
   { band: 0, maxZoomExclusive: 7, representativeZoom: 6 },

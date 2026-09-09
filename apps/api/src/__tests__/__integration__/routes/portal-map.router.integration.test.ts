@@ -505,6 +505,59 @@ describe("Portal map tile route (#316)", () => {
     expect(res.aggregated).toBe(false);
   });
 
+  it("#532: an over-cap tile serves the MERGED coverage (never-drop), not a clipped subset", async () => {
+    // The never-drop invariant: when a tile holds more individual polygons than
+    // the feature cap, the serve switches to the stored merged coverage so every
+    // polygon is represented — instead of area-ranking to the largest N and
+    // dropping the rest (which is what made whole swathes disappear).
+    const pin = await createNoColorByPin(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    // One merged-coverage row (band 0) spanning the data area.
+    await connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,10001,true,
+         ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
+      [
+        generateId(),
+        Date.now(),
+        orgId,
+        pin,
+        JSON.stringify({
+          type: "MultiPolygon",
+          coordinates: [POLYGON.coordinates],
+        }),
+      ]
+    );
+    // 10,001 individual rows (merged=false) in the same band, all inside the z0
+    // envelope — one over the 10k cap.
+    await connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       SELECT gen_random_uuid()::text, $1, 'SYSTEM_TEST', $2, $3,
+              '__all__','__all__',0,1,false,
+              ST_Multi(ST_Buffer(ST_SetSRID(
+                ST_MakePoint(1 + (g % 100) * 0.01, 1 + (g / 100) * 0.01), 4326), 0.002))
+       FROM generate_series(1, 10001) g`,
+      [Date.now(), orgId, pin]
+    );
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Over the cap → the merged coverage, flagged as an aggregate overview.
+    expect(res.aggregated).toBe(true);
+  });
+
   // ── #532: count-driven per-tile decision (whole-layer fast path) ──────
 
   const createCountedPin = async (

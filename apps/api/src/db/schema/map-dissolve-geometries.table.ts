@@ -1,21 +1,29 @@
-import { pgTable, text, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, index } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { portalResults } from "./portal-results.table.js";
 
 /**
- * Precomputed low-zoom polygon-dissolve geometry for a pinned choropleth (#472).
- * One row = one **subdivided piece** of a dissolved region:
- * `(portalResultId, columnName, value, zoomBand)` → a bounded (≤ ~512-vertex)
- * MultiPolygon piece. The dissolved region per (value, band) is `ST_Subdivide`d
- * into many pieces so a tile clips only the pieces its envelope overlaps (via
- * the GiST index) rather than one giant geometry. Written off-request by the
- * `dissolve_precompute` job from the pin's durable `pipeline` output, read by
- * the tile serve path to render real polygons below the z14 raw handoff without
- * re-running the pipeline. Keyed by the **pin** (not an entity), so a joined /
- * aggregated multi-source choropleth is served like any other.
+ * Precomputed low-zoom polygon geometry for a pinned map (#472, #532). Written
+ * off-request by the `dissolve_precompute` job from the pin's durable `pipeline`
+ * output, read by the tile serve path to render real polygons below the z14 raw
+ * handoff without re-running the pipeline. Keyed by the **pin** (not an entity),
+ * so a joined / aggregated multi-source map is served like any other.
  *
- * There is intentionally **no unique key** — a (value, band) has many piece
+ * #532: each pin stores **two representations** per band, distinguished by
+ * `merged`, so the serve can honour the never-drop invariant AND show individual
+ * polygons when a tile is sparse:
+ *   - `merged = false` — one row **per source polygon**, simplified to the band
+ *     tolerance, tagged with its colorBy value (or the `__all__` sentinel),
+ *     `featureCount = 1`. Served for a tile **at/under** the feature cap:
+ *     `ORDER BY ST_Area DESC LIMIT cap` shows every polygon in view as itself.
+ *   - `merged = true` — a **dissolved coverage** (one `ST_Union` per value per
+ *     band, `ST_Subdivide`d into bounded pieces), `featureCount` = source count.
+ *     Served for a tile **over** the cap, so every polygon is represented as part
+ *     of the merge — nothing is dropped. As a tile falls under the cap on
+ *     zoom-in, individuals emerge out of the merged shape (continuous).
+ *
+ * There is intentionally **no unique key** — a (value, band, merged) has many
  * rows. Idempotency comes from the processor's per-pin delete-then-insert in one
  * transaction, so a recompute never leaves a half-built or doubled region.
  *
@@ -42,15 +50,21 @@ export const mapDissolveGeometries = pgTable(
     value: text("value").notNull(),
     /** Index into `DISSOLVE_ZOOM_BANDS` (0..n). */
     zoomBand: integer("zoom_band").notNull(),
-    /** Source polygons dissolved into this (value, band)'s region (audit). */
+    /** Source polygons dissolved into this row (1 for an individual, the merged
+     *  source count for a coverage row). */
     featureCount: integer("feature_count").notNull(),
+    /** `false` = one individual source polygon; `true` = a dissolved coverage
+     *  piece (#532). The serve picks the representation by per-tile feature count. */
+    merged: boolean("merged").notNull().default(false),
   },
   (t) => [
-    // The serve lookup: pieces for a pin's column at a band, then geom && envelope.
+    // The serve lookup: rows for a pin's column at a band + representation, then
+    // geom && envelope.
     index("map_dissolve_geometries_lookup_idx").on(
       t.portalResultId,
       t.columnName,
-      t.zoomBand
+      t.zoomBand,
+      t.merged
     ),
     index("map_dissolve_geometries_pin_idx").on(t.portalResultId),
   ]

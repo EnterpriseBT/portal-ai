@@ -21,12 +21,19 @@ const logger = createLogger({ module: "dissolve-precompute" });
 /**
  * Off-request statement budget for a dissolve pass (#472, #532). Far above the
  * 10s tile budget because this runs in a background job, not on a tile request —
- * the whole point is to pay the per-band simplify+store cost once, off the
- * request path. Each band is one `ST_SimplifyPreserveTopology` scan of the pin's
- * pipeline (no union since #532), measured ~10s/band on a 211k @ ~226-vertex
- * layer; the fine bands are the costly ones.
+ * the point is to pay the simplify/union cost once, off the request path. The
+ * individuals scan is ~10s/band; the merged coverage's single finest `ST_Union`
+ * is the expensive step (measured 130–153s on a 211k @ ~226-vertex layer), which
+ * this budget must clear or the merged pass fails degraded (individuals still
+ * serve). The fine bands are the costly ones.
  */
 const DISSOLVE_STATEMENT_TIMEOUT_MS = 180_000;
+
+/** Max vertices per stored **merged-coverage** piece — `ST_Subdivide` splits the
+ *  dissolved region so a tile clips only the pieces its envelope overlaps (via
+ *  the GiST index), never one giant multipolygon. Individuals are never
+ *  subdivided (each source polygon is already small). */
+const SUBDIVIDE_MAX_VERTICES = 512;
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
@@ -64,14 +71,14 @@ function resolvePolygonColorBy(
 }
 
 /**
- * Precompute per-zoom-simplified polygon geometry for a pinned map (#472, #532).
- * Runs the pin's durable `pipeline` once per band and stores one row per source
- * polygon, simplified to the band tolerance and tagged with its colorBy value
- * (or the dissolve-all sentinel) — NO union (#532: it was prohibitively slow and
- * re-merged across bands). Serves low-zoom tiles as real polygons without
- * re-running the pipeline, area-ranked so a tile over the cap keeps the largest
- * by area; a miss falls back to raw-simplify at serve time. Off-request, under
- * an advisory lock on the pin so two refreshes cannot race.
+ * Precompute per-zoom polygon geometry for a pinned map (#472, #532). Runs the
+ * pin's durable `pipeline` and stores TWO representations per band, tagged by
+ * `merged`: individual per-polygon rows (for a tile at/under the feature cap)
+ * and a dissolved coverage (for a tile over it, so nothing is dropped). Both are
+ * tagged with the colorBy value (or the dissolve-all sentinel). Serves low-zoom
+ * tiles as real polygons without re-running the pipeline; a miss falls back to
+ * raw-simplify at serve time. Off-request, under an advisory lock on the pin so
+ * two refreshes cannot race.
  */
 async function runDissolve(
   portalResultId: string,
@@ -153,25 +160,21 @@ async function runDissolve(
 
   const insertHead = `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, portal_result_id,
-          column_name, value, zoom_band, feature_count, geom)`;
+          column_name, value, zoom_band, feature_count, merged, geom)`;
   const rowMeta = `gen_random_uuid()::text,
               (extract(epoch from now()) * 1000)::bigint,
               'dissolve_precompute', '${organizationId}', '${portalResultId}'`;
-
-  // #532 (unified area-ranked): one row per source polygon per band, simplified
-  // to the band tolerance and tagged with its colorBy value (or the dissolve-all
-  // sentinel). NO union — a colorBy choropleth and a plain polygon layer store
-  // the SAME shape and differ only by the value each row carries, so the serve is
-  // uniform and count-driven: a tile under the cap shows every polygon in view,
-  // one over it shows the largest by area (never-drop the visible ones). Union
-  // was measured 130–153s/band on a 211k @ ~226-vertex layer — prohibitive; the
-  // simplify-only path is ~10s AND never re-merges across a band boundary, so it
-  // is continuous by construction (same polygons, different tolerances). No
-  // ST_MakeValid (measured ~66s over 211k complex polygons; ST_Simplify-
-  // PreserveTopology preserves validity and ST_AsMVTGeom tolerates the rest on
-  // serve). Per-band transaction: a band failure keeps its prior rows and does
-  // not abort the others.
   const escapedColumn = storedColumn.replace(/'/g, "''");
+
+  // #532: two representations per band, distinguished by `merged`. The serve
+  // picks by per-tile feature count — individuals when ≤ cap, merged coverage
+  // when over — so every polygon is represented (never-drop) AND a sparse tile
+  // shows real individual shapes.
+
+  // (A) Individuals (`merged = false`): one row per source polygon, simplified
+  // to the band tolerance, tagged with its value. Per-band transaction (a band
+  // failure keeps its prior rows). No union, no ST_MakeValid — ST_Simplify-
+  // PreserveTopology preserves validity and ST_AsMVTGeom tolerates the rest.
   for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
     const tol = tileSimplifyTolerance(representativeZoom);
     try {
@@ -179,7 +182,8 @@ async function runDissolve(
         await applyViews(tx);
         await tx.execute(
           sql`DELETE FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
+              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+                AND merged = false`
         );
         await tx.execute(
           sql.raw(
@@ -191,13 +195,14 @@ async function runDissolve(
                FROM src WHERE src.geom IS NOT NULL
              )
              SELECT ${rowMeta},
-                    '${escapedColumn}', value, ${band}, 1, g
+                    '${escapedColumn}', value, ${band}, 1, false, g
              FROM simplified WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`
           )
         );
         const c = (await tx.execute(
           sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}`
+              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+                AND merged = false`
         )) as unknown as Array<{ n: number }>;
         return c[0]?.n ?? 0;
       });
@@ -206,9 +211,77 @@ async function runDissolve(
       degraded = true;
       logger.error(
         { event: "dissolve.band-failed", portalResultId, band, err },
-        "Dissolve band failed; keeping its prior rows and continuing"
+        "Dissolve individuals band failed; keeping its prior rows and continuing"
       );
     }
+  }
+
+  // (B) Merged coverage (`merged = true`): the never-drop representation for a
+  // tile OVER the cap. Derive-from-finest — one ST_Union per value computed ONCE
+  // (the single expensive union), then each band is a topological simplification
+  // + ST_Subdivide of that same geometry, so the coverage outline only smooths
+  // across a boundary, never re-merges (#478). One transaction (the temp finest
+  // must outlive the per-band inserts) = atomic replace of the pin's merged
+  // rows. On a layer too large to union in budget this fails and is left
+  // degraded — individuals still serve, and an over-cap tile falls back to the
+  // area-ranked individuals (drops the smallest) rather than blanking.
+  try {
+    const finestTol = tileSimplifyTolerance(
+      Math.max(...DISSOLVE_ZOOM_BANDS.map((b) => b.representativeZoom))
+    );
+    const mergedWritten = await db.transaction(async (tx) => {
+      await applyViews(tx);
+      await tx.execute(
+        sql.raw(
+          `CREATE TEMP TABLE _dissolve_finest ON COMMIT DROP AS
+           WITH src AS (${pipelineSql}),
+           snapped AS (
+             SELECT ${valueExpr} AS value,
+                    ST_CollectionExtract(ST_MakeValid(ST_SnapToGrid(src.geom, ${finestTol})), 3) AS g
+             FROM src WHERE src.geom IS NOT NULL
+           )
+           SELECT value, ST_Union(g) AS geom, count(*)::int AS fc
+           FROM snapped WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)
+           GROUP BY value`
+        )
+      );
+      await tx.execute(
+        sql`DELETE FROM map_dissolve_geometries
+            WHERE portal_result_id = ${portalResultId} AND merged = true`
+      );
+      for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
+        const tol = tileSimplifyTolerance(representativeZoom);
+        await tx.execute(
+          sql.raw(
+            `${insertHead}
+             WITH pieces AS (
+               SELECT value, fc,
+                      ST_Subdivide(ST_SimplifyPreserveTopology(geom, ${tol}), ${SUBDIVIDE_MAX_VERTICES}) AS piece
+               FROM _dissolve_finest
+             )
+             SELECT ${rowMeta},
+                    '${escapedColumn}', value, ${band}, fc, true,
+                    ST_Multi(ST_CollectionExtract(piece, 3))
+             FROM pieces
+             WHERE piece IS NOT NULL AND NOT ST_IsEmpty(piece)
+               AND ST_CollectionExtract(piece, 3) IS NOT NULL
+               AND NOT ST_IsEmpty(ST_CollectionExtract(piece, 3))`
+          )
+        );
+      }
+      const c = (await tx.execute(
+        sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
+            WHERE portal_result_id = ${portalResultId} AND merged = true`
+      )) as unknown as Array<{ n: number }>;
+      return c[0]?.n ?? 0;
+    });
+    rowsWritten += mergedWritten;
+  } catch (err) {
+    degraded = true;
+    logger.error(
+      { event: "dissolve.merged-failed", portalResultId, err },
+      "Dissolve merged coverage failed; individuals kept (over-cap tiles fall back to area-ranked)"
+    );
   }
 
   return {

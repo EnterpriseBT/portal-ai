@@ -708,14 +708,17 @@ export class PortalMapTileService {
   }
 
   /**
-   * Serve a low-zoom tile from precomputed polygon geometry (#472, #532).
-   * Area-ranks the stored per-polygon rows for `(pin, column, band)` in the tile
-   * envelope and keeps the largest `cap` by area — a tile under the cap shows
-   * every polygon, one over it the largest (never-drop the visible). A colorBy
-   * layer additionally emits its value as a feature property so the client's
-   * `colorBy` paint matches. Reads `map_dissolve_geometries` directly — no
-   * pipeline SQL, no session views. The GiST index means only the rows
-   * overlapping the envelope are touched, never the whole layer.
+   * Serve a low-zoom tile from precomputed polygon geometry (#472, #532),
+   * count-driven so it honours the never-drop invariant. Counts the **individual**
+   * rows for `(pin, column, band)` in the tile envelope: at/under `cap` it serves
+   * those individuals (every polygon in view rendered as itself); over `cap` it
+   * serves the **merged coverage** rows instead, so every polygon is represented
+   * as part of the dissolve — nothing is dropped. As a tile falls under the cap
+   * on zoom-in, individuals emerge from the merged shape. A colorBy layer emits
+   * its stored value as a feature property so the client's paint matches. Reads
+   * `map_dissolve_geometries` directly — no pipeline SQL, no session views — and
+   * the GiST index touches only rows overlapping the envelope, never the whole
+   * layer.
    */
   private static async runDissolveTile(
     portalResultId: string,
@@ -724,13 +727,6 @@ export class PortalMapTileService {
     envelope: string,
     cap: number
   ): Promise<TileQueryResult> {
-    // #532 (unified area-ranked): every flavor stores one row per source polygon,
-    // simplified per band. The tile clips the envelope then keeps the largest
-    // `cap` by area — so a tile under the cap shows EVERY polygon in view (the
-    // `LIMIT` is a no-op) and one over it shows the largest, never-dropping the
-    // visible ones. Identical for colorBy and no-colorBy; a colorBy layer only
-    // additionally emits its stored value for the client's paint (a no-colorBy
-    // layer keys its rows by the `__all__` sentinel and emits none).
     const emitValue = colorByColumn !== DISSOLVE_ALL_KEY;
     try {
       const rows = (await db.transaction(async (tx) => {
@@ -741,37 +737,81 @@ export class PortalMapTileService {
         );
         await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
         const valueSelect = emitValue
-          ? sql`, mdg.value AS ${sql.raw(quoteIdentTile(colorByColumn))}`
+          ? sql`, picked.v AS ${sql.raw(quoteIdentTile(colorByColumn))}`
           : sql``;
-        const orderLimit = sql`ORDER BY ST_Area(mdg.geom) DESC LIMIT ${cap}`;
+        const env = sql.raw(envelope);
         return (await tx.execute(sql`
-          WITH lim AS (
-            SELECT ST_AsMVTGeom(ST_Transform(mdg.geom, 3857), ${sql.raw(
-              envelope
-            )}, ${TILE_EXTENT}, 64, true) AS geom${valueSelect}
+          WITH cnt AS (
+            SELECT count(*)::int AS n
             FROM map_dissolve_geometries mdg
             WHERE mdg.portal_result_id = ${portalResultId}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
+              AND mdg.merged = false
               AND mdg.deleted IS NULL
-              AND mdg.geom && ST_Transform(${sql.raw(envelope)}, 4326)
-            ${orderLimit}
+              AND mdg.geom && ST_Transform(${env}, 4326)
+          ),
+          individuals AS (
+            -- tile at/under the cap → every polygon in view, as itself
+            SELECT mdg.geom AS g, mdg.value AS v
+            FROM map_dissolve_geometries mdg, cnt
+            WHERE cnt.n <= ${cap}
+              AND mdg.portal_result_id = ${portalResultId}
+              AND mdg.column_name = ${colorByColumn}
+              AND mdg.zoom_band = ${band}
+              AND mdg.merged = false
+              AND mdg.deleted IS NULL
+              AND mdg.geom && ST_Transform(${env}, 4326)
+            ORDER BY ST_Area(mdg.geom) DESC
+            LIMIT ${cap}
+          ),
+          coverage AS (
+            -- tile over the cap → merged coverage, so nothing is dropped
+            SELECT mdg.geom AS g, mdg.value AS v
+            FROM map_dissolve_geometries mdg, cnt
+            WHERE cnt.n > ${cap}
+              AND mdg.portal_result_id = ${portalResultId}
+              AND mdg.column_name = ${colorByColumn}
+              AND mdg.zoom_band = ${band}
+              AND mdg.merged = true
+              AND mdg.deleted IS NULL
+              AND mdg.geom && ST_Transform(${env}, 4326)
+          ),
+          picked AS (
+            SELECT g, v FROM individuals
+            UNION ALL
+            SELECT g, v FROM coverage
+          ),
+          lim AS (
+            SELECT ST_AsMVTGeom(ST_Transform(picked.g, 3857), ${env}, ${TILE_EXTENT}, 64, true) AS geom${valueSelect}
+            FROM picked
           )
           SELECT
             (SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom')
              FROM lim q WHERE q.geom IS NOT NULL) AS mvt,
-            (SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n
-        `)) as unknown as Array<{ mvt: Buffer | Uint8Array | null; n: number }>;
-      })) as Array<{ mvt: Buffer | Uint8Array | null; n: number }>;
+            (SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n,
+            (SELECT n FROM cnt) > ${cap} AS is_merged
+        `)) as unknown as Array<{
+          mvt: Buffer | Uint8Array | null;
+          n: number;
+          is_merged: boolean;
+        }>;
+      })) as Array<{
+        mvt: Buffer | Uint8Array | null;
+        n: number;
+        is_merged: boolean;
+      }>;
       const row = rows[0];
       const raw = row?.mvt ?? null;
       return {
         mvt: raw ? Buffer.from(raw as Uint8Array) : null,
         featureCount: row ? Number(row.n) : 0,
-        // Dissolved real geometry: not a clipped subset (never truncated) and not
-        // a bin aggregate — it renders as polygons with the simplified notice.
+        // Never a clipped subset: under the cap every polygon is shown, over it
+        // the merged coverage represents them all.
         truncated: false,
-        aggregated: false,
+        // A merged-coverage tile is an aggregate overview (dissolved regions);
+        // an individuals tile is real per-polygon geometry.
+        aggregated: Boolean(row?.is_merged),
       };
     } catch (err) {
       const mapped = mapTileError(err);
