@@ -847,6 +847,12 @@ export class PortalMapTileService {
    * `map_dissolve_geometries` directly — no pipeline SQL, no session views — and
    * the GiST index touches only rows overlapping the envelope, never the whole
    * layer.
+   *
+   * #541 degraded fallback: if a band has NO merged coverage (the precompute's
+   * merged pass degraded or is mid-build), an over-cap tile serves area-ranked
+   * individuals clipped to `cap` (flagged `truncated`) rather than serving empty.
+   * The coverage-existence check is band-level, so an empty-but-covered envelope
+   * still serves empty coverage, not the fallback.
    */
   private static async runDissolveTile(
     portalResultId: string,
@@ -879,11 +885,27 @@ export class PortalMapTileService {
               AND mdg.deleted IS NULL
               AND mdg.geom && ST_Transform(${env}, 4326)
           ),
+          has_merged AS (
+            -- band-level (envelope-independent): does this band have ANY merged
+            -- coverage? If not, the merged pass degraded or is mid-build, so an
+            -- over-cap tile falls back to area-ranked individuals (#541) rather
+            -- than serving empty. An empty-but-covered envelope still counts as
+            -- covered, so it serves empty coverage (not the fallback).
+            SELECT EXISTS(
+              SELECT 1 FROM map_dissolve_geometries mdg
+              WHERE mdg.portal_result_id = ${portalResultId}
+                AND mdg.column_name = ${colorByColumn}
+                AND mdg.zoom_band = ${band}
+                AND mdg.merged = true
+                AND mdg.deleted IS NULL
+            ) AS h
+          ),
           individuals AS (
-            -- tile at/under the cap → every polygon in view, as itself
+            -- tile at/under the cap → every polygon in view, as itself; OR a band
+            -- with no merged coverage → area-ranked fallback (#541), clipped to cap
             SELECT mdg.geom AS g, mdg.value AS v
             FROM map_dissolve_geometries mdg, cnt
-            WHERE cnt.n <= ${cap}
+            WHERE (cnt.n <= ${cap} OR NOT (SELECT h FROM has_merged))
               AND mdg.portal_result_id = ${portalResultId}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
@@ -894,10 +916,11 @@ export class PortalMapTileService {
             LIMIT ${cap}
           ),
           coverage AS (
-            -- tile over the cap → merged coverage, so nothing is dropped
+            -- tile over the cap AND the band has coverage → merged, nothing dropped
             SELECT mdg.geom AS g, mdg.value AS v
             FROM map_dissolve_geometries mdg, cnt
             WHERE cnt.n > ${cap}
+              AND (SELECT h FROM has_merged)
               AND mdg.portal_result_id = ${portalResultId}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
@@ -918,27 +941,31 @@ export class PortalMapTileService {
             (SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom')
              FROM lim q WHERE q.geom IS NOT NULL) AS mvt,
             (SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n,
-            (SELECT n FROM cnt) > ${cap} AS is_merged
+            ((SELECT n FROM cnt) > ${cap} AND (SELECT h FROM has_merged)) AS is_merged,
+            ((SELECT n FROM cnt) > ${cap} AND NOT (SELECT h FROM has_merged)) AS fell_back
         `)) as unknown as Array<{
           mvt: Buffer | Uint8Array | null;
           n: number;
           is_merged: boolean;
+          fell_back: boolean;
         }>;
       })) as Array<{
         mvt: Buffer | Uint8Array | null;
         n: number;
         is_merged: boolean;
+        fell_back: boolean;
       }>;
       const row = rows[0];
       const raw = row?.mvt ?? null;
       return {
         mvt: raw ? Buffer.from(raw as Uint8Array) : null,
         featureCount: row ? Number(row.n) : 0,
-        // Never a clipped subset: under the cap every polygon is shown, over it
-        // the merged coverage represents them all.
-        truncated: false,
-        // A merged-coverage tile is an aggregate overview (dissolved regions);
-        // an individuals tile is real per-polygon geometry.
+        // #541: an over-cap tile whose band has no merged coverage falls back to
+        // area-ranked individuals clipped to the cap — a real clip (truncated), so
+        // it surfaces the "Partial at this zoom" notice instead of serving blank.
+        truncated: Boolean(row?.fell_back),
+        // A merged-coverage tile is an aggregate overview (dissolved regions); an
+        // individuals tile (under cap, or the fallback) is real per-polygon geometry.
         aggregated: Boolean(row?.is_merged),
       };
     } catch (err) {
