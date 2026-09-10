@@ -28,6 +28,7 @@ import { DISSOLVE_LOCK_NAMESPACE } from "../../../services/sync-lock.service.js"
 import { DissolvePrecomputeService } from "../../../services/dissolve-precompute.service.js";
 import { JobsService } from "../../../services/jobs.service.js";
 import { dissolvePrecomputeProcessor } from "../../../queues/processors/dissolve-precompute.processor.js";
+import { messageDissolveRetentionPurgeProcessor } from "../../../queues/processors/message-dissolve-retention-purge.processor.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import * as schema from "../../../db/schema/index.js";
 import {
@@ -780,5 +781,85 @@ describe("dissolve-precompute processor (#472)", () => {
       messageId,
     ]);
     expect((await msgRows(messageId, 0)).length).toBe(0);
+  });
+
+  it("#542: age purge deletes message coverage past the window, keeps in-window + pin rows", async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const dbTyped = db as ReturnType<typeof drizzle>;
+    const portalId = generateId();
+    await dbTyped.insert(schema.portals).values({
+      id: portalId,
+      organizationId: orgId,
+      stationId,
+      name: "Portal",
+      created: t,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    const mkMsg = async (created: number): Promise<string> => {
+      const id = generateId();
+      await dbTyped.insert(schema.portalMessages).values({
+        id,
+        portalId,
+        organizationId: orgId,
+        role: "assistant",
+        blocks: [],
+        created,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      return id;
+    };
+    const oldMsg = await mkMsg(t - 40 * DAY); // past a 30d window
+    const newMsg = await mkMsg(t); // in-window
+    const pin = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    const geomJson = JSON.stringify({
+      type: "MultiPolygon",
+      coordinates: [squareAt(0).coordinates],
+    });
+    const insMsgCov = (mid: string) =>
+      connection.unsafe(
+        `INSERT INTO map_dissolve_geometries
+           (id, created, created_by, organization_id, message_id, block_index,
+            column_name, value, zoom_band, feature_count, merged, geom)
+         VALUES ($1,$2,'SYSTEM_TEST',$3,$4,0,'__all__','__all__',0,1,false,
+           ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
+        [generateId(), t, orgId, mid, geomJson]
+      );
+    const insPinCov = (pid: string) =>
+      connection.unsafe(
+        `INSERT INTO map_dissolve_geometries
+           (id, created, created_by, organization_id, portal_result_id,
+            column_name, value, zoom_band, feature_count, merged, geom)
+         VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,1,false,
+           ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
+        [generateId(), t, orgId, pid, geomJson]
+      );
+    await insMsgCov(oldMsg);
+    await insMsgCov(newMsg);
+    await insPinCov(pin);
+
+    const summary = await messageDissolveRetentionPurgeProcessor({ now: t });
+    expect(summary.purged).toBe(1); // only the aged-out message's coverage
+
+    const cnt = async (where: string, val: string): Promise<number> => {
+      const r = (await connection.unsafe(
+        `SELECT count(*)::int AS n FROM map_dissolve_geometries WHERE ${where} = $1`,
+        [val]
+      )) as unknown as Array<{ n: number }>;
+      return r[0].n;
+    };
+    expect(await cnt("message_id", oldMsg)).toBe(0); // aged out → purged
+    expect(await cnt("message_id", newMsg)).toBe(1); // in-window → kept
+    expect(await cnt("portal_result_id", pin)).toBe(1); // pin → never touched
   });
 });

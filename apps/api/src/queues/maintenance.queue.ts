@@ -24,6 +24,11 @@ export const LEDGER_RETENTION_PURGE_JOB = "ledger-retention-purge";
 export const ENTITY_RECORD_RETENTION_PURGE_JOB =
   "entity-record-retention-purge";
 
+/** Job name AND scheduler id for the daily message-block dissolve-coverage
+ *  age purge (#542). Same one-const contract as the other purges. */
+export const MESSAGE_DISSOLVE_RETENTION_PURGE_JOB =
+  "message-dissolve-retention-purge";
+
 let _maintenanceQueue: Queue | null = null;
 
 /**
@@ -81,5 +86,12 @@ export const registerMaintenanceSchedulers = async (): Promise<void> => {
     // minutes on a large backlog; the ledger purge is short.
     { pattern: "30 4 * * *" },
     { name: ENTITY_RECORD_RETENTION_PURGE_JOB }
+  );
+  await getMaintenanceQueue().upsertJobScheduler(
+    MESSAGE_DISSOLVE_RETENTION_PURGE_JOB,
+    // Daily 05:00 UTC — after the entity-record purge, so the two never contend
+    // for the worker's single slot.
+    { pattern: "0 5 * * *" },
+    { name: MESSAGE_DISSOLVE_RETENTION_PURGE_JOB }
   );
 };

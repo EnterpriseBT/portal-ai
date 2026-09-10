@@ -142,6 +142,14 @@ export const environment = {
     process.env.ENTITY_RECORD_ORPHAN_RETENTION_DAYS || "7",
     10
   ),
+  // #542: how long a still-existing message's dissolve coverage is kept.
+  // Message-block maps are transient; an aged-out map serves raw on re-view.
+  // (Message deletion cleans coverage immediately via FK cascade — this is the
+  // age window for messages that survive.)
+  MESSAGE_DISSOLVE_RETENTION_DAYS: parseInt(
+    process.env.MESSAGE_DISSOLVE_RETENTION_DAYS || "30",
+    10
+  ),
   // Stranded-job reconciliation (#391). A non-terminal job whose BullMQ
   // entry is gone AND whose last write is older than the threshold is
   // presumed dead and marked failed by the sweep; the sweep runs at boot
