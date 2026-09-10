@@ -190,7 +190,7 @@ export async function importRows(
     } catch (err) {
       invalid++;
       logger.warn(
-        { sourceId, error: err instanceof Error ? err.message : String(err) },
+        { sourceId, err },
         "Skipping row due to unexpected processing error"
       );
     }

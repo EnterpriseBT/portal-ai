@@ -197,7 +197,7 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
               logger.error(
                 {
                   connectorEntityId: entityId,
-                  error: err instanceof Error ? err.message : String(err),
+                  err,
                 },
                 "reconcileEntity failed after field_mapping_create"
               );
