@@ -1,0 +1,94 @@
+name: npm audit
+
+# Dependency-vulnerability visibility (#545). Runs `npm audit` against the root
+# lockfile and writes the result to the run's step summary. It is DELIBERATELY
+# informational, never a gate:
+#
+#   * Never fails. `npm audit` exits non-zero when it finds anything; every
+#     invocation here is `|| true` and the step is `continue-on-error`, so a
+#     critical advisory shows up in the summary but the check stays green. The
+#     job name is NOT added to main's required checks — a new vuln disclosed
+#     against an already-merged dependency must never wedge an unrelated PR.
+#
+#   * `push: branches-ignore: [main]` is the house idiom (see static-checks.yml)
+#     and IS the PR-time run — it fires on every branch commit. Nothing in this
+#     repo uses a `pull_request` trigger; this workflow does not introduce one.
+#     `schedule` covers main (which `branches-ignore` excludes) once a week so a
+#     newly-disclosed advisory against unchanged deps still surfaces.
+#
+#   * Does not touch Turborepo. `npm audit --package-lock-only` reads the
+#     lockfile with no `npm ci` and no build, so none of the TURBO_* env or the
+#     `lint:ci-cache` rules apply here.
+
+on:
+  schedule:
+    # Weekly, Mondays 09:00 UTC.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - main
+
+# Literal group (not `github.workflow`) to match the sibling workflows — a
+# per-ref group so a new push to a branch cancels that branch's in-flight run.
+concurrency:
+  group: "npm-audit-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Not the `./.github/actions/setup` composite: that runs `npm ci`, which an
+      # audit does not need. Node is only here to run the summary formatter.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run npm audit
+        shell: bash
+        continue-on-error: true
+        run: |
+          # `--package-lock-only`: audit the lockfile without installing.
+          # `|| true`: a non-zero exit (vulns found) must not fail the job.
+          npm audit --package-lock-only --json > audit.json 2>/dev/null || true
+          npm audit --package-lock-only        > audit.txt  2>&1 || true
+
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          let counts = { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 };
+          try {
+            counts = JSON.parse(fs.readFileSync("audit.json", "utf8"))
+              .metadata?.vulnerabilities ?? counts;
+          } catch {}
+          let report = "npm audit produced no output.";
+          try {
+            report = fs.readFileSync("audit.txt", "utf8").trim() || report;
+          } catch {}
+          const out = [
+            "## npm audit",
+            "",
+            `**${counts.total}** vulnerabilities — ` +
+              `${counts.critical} critical · ${counts.high} high · ` +
+              `${counts.moderate} moderate · ${counts.low} low · ${counts.info} info`,
+            "",
+            "<details><summary>Full <code>npm audit</code> report</summary>",
+            "",
+            "```",
+            report,
+            "```",
+            "",
+            "</details>",
+            "",
+          ];
+          process.stdout.write(out.join("\n"));
+          NODE
