@@ -2,13 +2,16 @@ import { pgTable, text, integer, boolean, index } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { portalResults } from "./portal-results.table.js";
+import { portalMessages } from "./portal-messages.table.js";
 
 /**
- * Precomputed low-zoom polygon geometry for a pinned map (#472, #532). Written
- * off-request by the `dissolve_precompute` job from the pin's durable `pipeline`
+ * Precomputed low-zoom polygon geometry for a map (#472, #532, #542). Written
+ * off-request by the `dissolve_precompute` job from the owner's durable `pipeline`
  * output, read by the tile serve path to render real polygons below the z14 raw
- * handoff without re-running the pipeline. Keyed by the **pin** (not an entity),
- * so a joined / aggregated multi-source map is served like any other.
+ * handoff without re-running the pipeline. Keyed by its **owner** — a pin
+ * (`portal_result_id`) or a transient message block (`message_id`+`block_index`),
+ * exactly one set (DB CHECK), each cascade-deleting with its owner (#542) — so a
+ * joined / aggregated multi-source map is served like any other.
  *
  * #532: each pin stores **two representations** per band, distinguished by
  * `merged`, so the serve can honour the never-drop invariant AND show individual
@@ -41,9 +44,20 @@ export const mapDissolveGeometries = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id),
-    portalResultId: text("portal_result_id")
-      .notNull()
-      .references(() => portalResults.id, { onDelete: "cascade" }),
+    /** Owner (#542): a pin **or** a message block — exactly one is set (DB CHECK).
+     *  Pin coverage keys on `portalResultId`; a transient message-block map keys
+     *  on `(messageId, blockIndex)`. Both cascade-delete with their owner. */
+    portalResultId: text("portal_result_id").references(
+      () => portalResults.id,
+      { onDelete: "cascade" }
+    ),
+    /** Message owner (#542): the `portal_messages` row a transient map block lives
+     *  in; FK-cascades so message/portal deletion cleans this coverage for free. */
+    messageId: text("message_id").references(() => portalMessages.id, {
+      onDelete: "cascade",
+    }),
+    /** Which block within the owning message (#542); null for a pin owner. */
+    blockIndex: integer("block_index"),
     /** The pin's colorBy column as it appears on the pipeline output, e.g. `c_own_type`. */
     columnName: text("column_name").notNull(),
     /** One categorical colorBy value (text-cast) — carried onto each MVT feature. */
@@ -67,5 +81,13 @@ export const mapDissolveGeometries = pgTable(
       t.merged
     ),
     index("map_dissolve_geometries_pin_idx").on(t.portalResultId),
+    // The message-owner serve lookup (#542), mirroring the pin lookup.
+    index("map_dissolve_geometries_message_lookup_idx").on(
+      t.messageId,
+      t.blockIndex,
+      t.columnName,
+      t.zoomBand,
+      t.merged
+    ),
   ]
 );

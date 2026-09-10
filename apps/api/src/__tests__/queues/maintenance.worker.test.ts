@@ -42,6 +42,7 @@ jest.unstable_mockModule("bullmq", () => ({
 
 const mockLedger = jest.fn<() => Promise<unknown>>();
 const mockEntityRecord = jest.fn<() => Promise<unknown>>();
+const mockMessageDissolve = jest.fn<() => Promise<unknown>>();
 
 jest.unstable_mockModule(
   "../../queues/processors/ledger-retention-purge.processor.js",
@@ -51,6 +52,10 @@ jest.unstable_mockModule(
   "../../queues/processors/entity-record-retention-purge.processor.js",
   () => ({ entityRecordRetentionPurgeProcessor: mockEntityRecord })
 );
+jest.unstable_mockModule(
+  "../../queues/processors/message-dissolve-retention-purge.processor.js",
+  () => ({ messageDissolveRetentionPurgeProcessor: mockMessageDissolve })
+);
 
 const { createMaintenanceWorker } =
   await import("../../queues/maintenance.worker.js");
@@ -58,6 +63,7 @@ const {
   registerMaintenanceSchedulers,
   LEDGER_RETENTION_PURGE_JOB,
   ENTITY_RECORD_RETENTION_PURGE_JOB,
+  MESSAGE_DISSOLVE_RETENTION_PURGE_JOB,
 } = await import("../../queues/maintenance.queue.js");
 
 describe("maintenance worker dispatch", () => {
@@ -65,6 +71,7 @@ describe("maintenance worker dispatch", () => {
     capturedHandler = undefined;
     mockLedger.mockReset().mockResolvedValue({ purged: 0 });
     mockEntityRecord.mockReset().mockResolvedValue({ purgedOrphan: 0 });
+    mockMessageDissolve.mockReset().mockResolvedValue({ purged: 0 });
     mockUpsertJobScheduler.mockReset().mockResolvedValue(undefined);
     createMaintenanceWorker();
   });
@@ -79,6 +86,13 @@ describe("maintenance worker dispatch", () => {
     await capturedHandler!({ name: ENTITY_RECORD_RETENTION_PURGE_JOB });
     expect(mockEntityRecord).toHaveBeenCalledTimes(1);
     expect(mockLedger).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the message-dissolve retention purge (#542)", async () => {
+    await capturedHandler!({ name: MESSAGE_DISSOLVE_RETENTION_PURGE_JOB });
+    expect(mockMessageDissolve).toHaveBeenCalledTimes(1);
+    expect(mockLedger).not.toHaveBeenCalled();
+    expect(mockEntityRecord).not.toHaveBeenCalled();
   });
 
   it("throws on an unknown job name rather than resolving quietly", async () => {

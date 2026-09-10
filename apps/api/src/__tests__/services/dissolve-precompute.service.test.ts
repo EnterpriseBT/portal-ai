@@ -172,3 +172,57 @@ describe("DissolvePrecomputeService.reenqueueAllDissolvable (#541)", () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("DissolvePrecomputeService.enqueueForMessageBlock (#542)", () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const call = (block: unknown) =>
+    DissolvePrecomputeService.enqueueForMessageBlock({
+      messageId: "m-1",
+      blockIndex: 2,
+      organizationId: "org-1",
+      userId: "u-1",
+      block: block as { type?: string; content?: unknown },
+    });
+
+  it("enqueues for an over-cap polygon block; metadata carries messageId+blockIndex", async () => {
+    const spy = jest
+      .spyOn(JobsService, "create")
+      .mockResolvedValue({ id: "job" } as never);
+    await call({
+      type: "geo",
+      content: { ...polygonChoropleth, matchedCount: 20_000 },
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [, params] = spy.mock.calls[0] as [
+      string,
+      { metadata: Record<string, unknown> },
+    ];
+    expect(params.metadata).toEqual({
+      organizationId: "org-1",
+      messageId: "m-1",
+      blockIndex: 2,
+    });
+  });
+
+  it("skips an under-cap polygon block (the raw fast path never-drops)", async () => {
+    const spy = jest.spyOn(JobsService, "create");
+    await call({
+      type: "geo",
+      content: { ...polygonChoropleth, matchedCount: 100 },
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("skips non-polygon and non-geo blocks", async () => {
+    const spy = jest.spyOn(JobsService, "create");
+    await call({
+      type: "geo",
+      content: { spec: { layers: [{ kind: "points" }] }, matchedCount: 20_000 },
+    });
+    await call({ type: "text", content: {} });
+    expect(spy).not.toHaveBeenCalled();
+  });
+});

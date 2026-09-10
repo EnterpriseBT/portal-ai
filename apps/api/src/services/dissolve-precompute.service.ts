@@ -3,6 +3,10 @@ import { sql } from "drizzle-orm";
 import type { DissolvePrecomputeMetadata } from "@portalai/core/models";
 
 import { JobsService } from "./jobs.service.js";
+import {
+  layerCountFromContent,
+  MAP_TILE_FEATURE_CAP,
+} from "./portal-map-tile.service.js";
 import { db } from "../db/client.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -69,6 +73,62 @@ export class DissolvePrecomputeService {
       logger.warn(
         { portalResultId: params.portalResultId, err },
         "Failed to enqueue dissolve_precompute; pin will fall back to raw-simplify"
+      );
+    }
+  }
+
+  /**
+   * Enqueue a dissolve for a **message block** (#542) — the transient-map
+   * counterpart to `enqueueForPin`, fired when a `visualize_map` message is
+   * persisted. Gated: only a geo polygon block whose layer is **over the tile
+   * feature cap** needs a precompute (a small layer serves raw via the fast path,
+   * so precomputing it is waste). A layer with no persisted count is treated as
+   * possibly-large and precomputed. Best-effort — never fails message creation.
+   */
+  static async enqueueForMessageBlock(params: {
+    messageId: string;
+    blockIndex: number;
+    organizationId: string;
+    userId: string;
+    block: { type?: string; content?: unknown } | null | undefined;
+  }): Promise<void> {
+    const type = params.block?.type;
+    const content = params.block?.content;
+    if (
+      typeof type !== "string" ||
+      !DissolvePrecomputeService.isDissolvable(type, content)
+    ) {
+      return;
+    }
+    const { layerTotal } = layerCountFromContent(
+      (content ?? {}) as Record<string, unknown>
+    );
+    // Known-small → the raw fast path already never-drops; skip the precompute.
+    if (layerTotal != null && layerTotal <= MAP_TILE_FEATURE_CAP) return;
+
+    const metadata: DissolvePrecomputeMetadata = {
+      organizationId: params.organizationId,
+      messageId: params.messageId,
+      blockIndex: params.blockIndex,
+    };
+    try {
+      const job = await JobsService.create(params.userId, {
+        type: "dissolve_precompute",
+        organizationId: params.organizationId,
+        metadata: metadata as unknown as Record<string, unknown>,
+      });
+      logger.info(
+        {
+          messageId: params.messageId,
+          blockIndex: params.blockIndex,
+          jobId: job.id,
+        },
+        "dissolve_precompute job enqueued (message block)"
+      );
+    } catch (err) {
+      logger.warn(
+        { messageId: params.messageId, blockIndex: params.blockIndex, err },
+        "Failed to enqueue message-block dissolve; falls back to raw-simplify"
       );
     }
   }

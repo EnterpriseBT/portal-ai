@@ -539,10 +539,21 @@ export type SqlQueryJobResult = z.infer<typeof SqlQueryJobResultSchema>;
  * entity lock) so two refreshes of one pin cannot race. Enqueued at pin create
  * and on every pin refresh; recompute replaces the pin's rows transactionally.
  */
-export const DissolvePrecomputeMetadataSchema = z.object({
-  portalResultId: z.string(),
-  organizationId: z.string(),
-});
+export const DissolvePrecomputeMetadataSchema = z
+  .object({
+    organizationId: z.string(),
+    /** Pin owner (#472). Exactly one owner is set (pin XOR message block, #542). */
+    portalResultId: z.string().optional(),
+    /** Message-block owner (#542): the message + which block within it. */
+    messageId: z.string().optional(),
+    blockIndex: z.number().int().nonnegative().optional(),
+  })
+  .refine(
+    (m) =>
+      (m.portalResultId != null) !==
+      (m.messageId != null && m.blockIndex != null),
+    { message: "exactly one owner required (portalResultId XOR message block)" }
+  );
 export type DissolvePrecomputeMetadata = z.infer<
   typeof DissolvePrecomputeMetadataSchema
 >;
