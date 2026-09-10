@@ -603,6 +603,38 @@ describe("DissolvePrecompute schemas (#472)", () => {
     expect(r.success).toBe(true);
   });
 
+  it("#542: metadata accepts a message-block owner, rejects both/neither", () => {
+    // message owner
+    expect(
+      DissolvePrecomputeMetadataSchema.safeParse({
+        organizationId: "org-1",
+        messageId: "m-1",
+        blockIndex: 0,
+      }).success
+    ).toBe(true);
+    // both owners set → rejected
+    expect(
+      DissolvePrecomputeMetadataSchema.safeParse({
+        organizationId: "org-1",
+        portalResultId: "pr-1",
+        messageId: "m-1",
+        blockIndex: 0,
+      }).success
+    ).toBe(false);
+    // neither owner → rejected
+    expect(
+      DissolvePrecomputeMetadataSchema.safeParse({ organizationId: "org-1" })
+        .success
+    ).toBe(false);
+    // message owner missing blockIndex → rejected
+    expect(
+      DissolvePrecomputeMetadataSchema.safeParse({
+        organizationId: "org-1",
+        messageId: "m-1",
+      }).success
+    ).toBe(false);
+  });
+
   it("result parses a full run and a skipped run", () => {
     expect(
       DissolvePrecomputeResultSchema.safeParse({

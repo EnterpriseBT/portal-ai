@@ -653,4 +653,132 @@ describe("dissolve-precompute processor (#472)", () => {
       createSpy.mockRestore();
     }
   });
+
+  // #542: a transient message-block map owner.
+  const createMessageBlock = async (
+    pipelineSql: string,
+    colorByColumn: string | null,
+    blocks = 1
+  ): Promise<string> => {
+    const dbTyped = db as ReturnType<typeof drizzle>;
+    const portalId = generateId();
+    await dbTyped.insert(schema.portals).values({
+      id: portalId,
+      organizationId: orgId,
+      stationId,
+      name: "Portal",
+      created: t,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    const layer = colorByColumn
+      ? {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: { colorBy: { column: colorByColumn } },
+        }
+      : { kind: "polygons", source: { geometryColumn: "geom" } };
+    const block = {
+      type: "geo",
+      content: {
+        spec: { layers: [layer] },
+        pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+      },
+    };
+    const messageId = generateId();
+    await dbTyped.insert(schema.portalMessages).values({
+      id: messageId,
+      portalId,
+      organizationId: orgId,
+      role: "assistant",
+      blocks: Array.from({ length: blocks }, () => block),
+      created: t,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return messageId;
+  };
+
+  const runProcessorMsg = (
+    messageId: string,
+    blockIndex: number,
+    organizationId: string
+  ) =>
+    dissolvePrecomputeProcessor({
+      data: { messageId, blockIndex, organizationId },
+      updateProgress: async () => {},
+    } as never);
+
+  const msgRows = async (messageId: string, blockIndex: number) =>
+    (await connection.unsafe(
+      `SELECT portal_result_id, message_id, block_index, merged, feature_count
+       FROM map_dissolve_geometries WHERE message_id = $1 AND block_index = $2`,
+      [messageId, blockIndex]
+    )) as unknown as Array<{
+      portal_result_id: string | null;
+      message_id: string;
+      block_index: number;
+      merged: boolean;
+      feature_count: number;
+    }>;
+
+  it("#542: a message-owner job writes coverage keyed by (message_id, block_index)", async () => {
+    await insertParcel(0, "Private");
+    await insertParcel(1, "Private");
+    await insertParcel(5, "Federal");
+    const messageId = await createMessageBlock(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    const result = await runProcessorMsg(messageId, 0, orgId);
+    expect(result.skipped).toBeUndefined();
+
+    const rows = await msgRows(messageId, 0);
+    expect(rows.length).toBeGreaterThan(0);
+    // Owned by the message block, never a pin.
+    expect(
+      rows.every(
+        (r) =>
+          r.portal_result_id === null &&
+          r.message_id === messageId &&
+          r.block_index === 0
+      )
+    ).toBe(true);
+    // Both representations present (reuses #532/#541 unchanged).
+    expect(rows.some((r) => !r.merged)).toBe(true);
+    expect(rows.some((r) => r.merged)).toBe(true);
+  });
+
+  it("#542: two blocks of one message dissolve independently", async () => {
+    await insertParcel(0, "Private");
+    const messageId = await createMessageBlock(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type",
+      2
+    );
+    await runProcessorMsg(messageId, 0, orgId);
+    await runProcessorMsg(messageId, 1, orgId);
+    expect((await msgRows(messageId, 0)).length).toBeGreaterThan(0);
+    expect((await msgRows(messageId, 1)).length).toBeGreaterThan(0);
+  });
+
+  it("#542: deleting the message cascade-removes its coverage", async () => {
+    await insertParcel(0, "Private");
+    const messageId = await createMessageBlock(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    await runProcessorMsg(messageId, 0, orgId);
+    expect((await msgRows(messageId, 0)).length).toBeGreaterThan(0);
+    await connection.unsafe(`DELETE FROM portal_messages WHERE id = $1`, [
+      messageId,
+    ]);
+    expect((await msgRows(messageId, 0)).length).toBe(0);
+  });
 });

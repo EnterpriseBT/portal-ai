@@ -103,6 +103,22 @@ export function aggregateCellSize(z: number): number {
  */
 export const DISSOLVE_ALL_KEY = "__all__";
 
+/**
+ * Serve-side precompute owner (#542) — a pin or a transient message block. The
+ * dissolve serve keys on whichever the tile ref carries; a message ref used to
+ * force `null` (→ raw path), now it serves its own coverage.
+ */
+export type DissolveOwner =
+  | { kind: "pin"; portalResultId: string }
+  | { kind: "message"; messageId: string; blockIndex: number };
+
+/** SQL predicate scoping a `map_dissolve_geometries mdg` query to an owner. */
+function dissolveOwnerCond(owner: DissolveOwner) {
+  return owner.kind === "pin"
+    ? sql`mdg.portal_result_id = ${owner.portalResultId}`
+    : sql`mdg.message_id = ${owner.messageId} AND mdg.block_index = ${owner.blockIndex}`;
+}
+
 export type TileRef =
   | { kind: "message"; messageId: string; blockIndex: number }
   | { kind: "pin"; portalResultId: string };
@@ -152,7 +168,7 @@ export interface RenderTileDeps {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
-    portalResultId: string | null;
+    dissolveOwner: DissolveOwner | null;
     z: number;
     x: number;
     y: number;
@@ -622,7 +638,7 @@ export class PortalMapTileService {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
-    portalResultId: string | null;
+    dissolveOwner: DissolveOwner | null;
     z: number;
     x: number;
     y: number;
@@ -636,7 +652,7 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
-      portalResultId,
+      dissolveOwner,
       z,
       x,
       y,
@@ -648,8 +664,8 @@ export class PortalMapTileService {
     } = args;
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
 
-    // #472/#532: a low-zoom polygon choropleth is served from precomputed
-    // dissolved geometry (a pin ref with a band + colorBy). Its readiness feeds
+    // #472/#532/#542: a low-zoom polygon map is served from precomputed dissolved
+    // geometry keyed by its owner — a pin OR a message block. Its readiness feeds
     // the mode decision; a miss falls through to raw (real simplified polygons),
     // never centroid bins.
     const band = bandForZoom(z);
@@ -661,14 +677,14 @@ export class PortalMapTileService {
     const dissolveReady =
       aggregation.treatment === "dissolve" &&
       band !== null &&
-      portalResultId != null &&
-      (await this.hasDissolvePrecompute(portalResultId, dissolveColumn, band));
+      dissolveOwner != null &&
+      (await this.hasDissolvePrecompute(dissolveOwner, dissolveColumn, band));
 
     // Polygon dissolve is handled from the precompute, count-driven inside
     // `runDissolveTile` (individuals ≤ cap, merged coverage over).
     if (dissolveReady) {
       return this.runDissolveTile(
-        portalResultId!,
+        dissolveOwner!,
         dissolveColumn,
         band!,
         envelope,
@@ -833,17 +849,17 @@ export class PortalMapTileService {
    * so this cannot be inferred from a per-envelope count.
    */
   private static async hasDissolvePrecompute(
-    portalResultId: string,
+    owner: DissolveOwner,
     colorByColumn: string,
     band: number
   ): Promise<boolean> {
     const r = (await db.execute(sql`
       SELECT EXISTS(
-        SELECT 1 FROM map_dissolve_geometries
-        WHERE portal_result_id = ${portalResultId}
-          AND column_name = ${colorByColumn}
-          AND zoom_band = ${band}
-          AND deleted IS NULL
+        SELECT 1 FROM map_dissolve_geometries mdg
+        WHERE ${dissolveOwnerCond(owner)}
+          AND mdg.column_name = ${colorByColumn}
+          AND mdg.zoom_band = ${band}
+          AND mdg.deleted IS NULL
       ) AS e
     `)) as unknown as Array<{ e: boolean }>;
     return r[0]?.e === true;
@@ -869,7 +885,7 @@ export class PortalMapTileService {
    * still serves empty coverage, not the fallback.
    */
   private static async runDissolveTile(
-    portalResultId: string,
+    owner: DissolveOwner,
     colorByColumn: string,
     band: number,
     envelope: string,
@@ -892,7 +908,7 @@ export class PortalMapTileService {
           WITH cnt AS (
             SELECT count(*)::int AS n
             FROM map_dissolve_geometries mdg
-            WHERE mdg.portal_result_id = ${portalResultId}
+            WHERE ${dissolveOwnerCond(owner)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = false
@@ -907,7 +923,7 @@ export class PortalMapTileService {
             -- covered, so it serves empty coverage (not the fallback).
             SELECT EXISTS(
               SELECT 1 FROM map_dissolve_geometries mdg
-              WHERE mdg.portal_result_id = ${portalResultId}
+              WHERE ${dissolveOwnerCond(owner)}
                 AND mdg.column_name = ${colorByColumn}
                 AND mdg.zoom_band = ${band}
                 AND mdg.merged = true
@@ -920,7 +936,7 @@ export class PortalMapTileService {
             SELECT mdg.geom AS g, mdg.value AS v
             FROM map_dissolve_geometries mdg, cnt
             WHERE (cnt.n <= ${cap} OR NOT (SELECT h FROM has_merged))
-              AND mdg.portal_result_id = ${portalResultId}
+              AND ${dissolveOwnerCond(owner)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = false
@@ -935,7 +951,7 @@ export class PortalMapTileService {
             FROM map_dissolve_geometries mdg, cnt
             WHERE cnt.n > ${cap}
               AND (SELECT h FROM has_merged)
-              AND mdg.portal_result_id = ${portalResultId}
+              AND ${dissolveOwnerCond(owner)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = true
@@ -1036,9 +1052,16 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
-      // #472: only a pin ref addresses a dissolve precompute; a message ref
-      // falls back to raw-simplify at low zoom.
-      portalResultId: ref.kind === "pin" ? ref.portalResultId : null,
+      // #542: both a pin and a message block address a dissolve precompute,
+      // keyed by their owner.
+      dissolveOwner:
+        ref.kind === "pin"
+          ? { kind: "pin", portalResultId: ref.portalResultId }
+          : {
+              kind: "message",
+              messageId: ref.messageId,
+              blockIndex: ref.blockIndex,
+            },
       z,
       x,
       y,

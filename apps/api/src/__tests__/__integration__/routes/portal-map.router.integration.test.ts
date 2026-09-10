@@ -640,6 +640,123 @@ describe("Portal map tile route (#316)", () => {
     expect(res.aggregated).toBe(false);
   });
 
+  // ── #542: a MESSAGE-block map serves its own precompute (owner-keyed) ──
+  const createMessageMap = async (pipelineSql: string): Promise<string> => {
+    const dbTyped = db as ReturnType<typeof drizzle>;
+    const portalId = generateId();
+    await dbTyped.insert(schema.portals).values({
+      id: portalId,
+      organizationId: orgId,
+      stationId,
+      name: "Portal",
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    const messageId = generateId();
+    await dbTyped.insert(schema.portalMessages).values({
+      id: messageId,
+      portalId,
+      organizationId: orgId,
+      role: "assistant",
+      blocks: [
+        {
+          type: "geo",
+          content: {
+            spec: {
+              layers: [
+                { kind: "polygons", source: { geometryColumn: "geom" } },
+              ],
+            },
+            pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+          },
+        },
+      ],
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return messageId;
+  };
+  const insertMsgMerged = (messageId: string) =>
+    connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, message_id, block_index,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,0,'__all__','__all__',0,10001,true,
+         ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
+      [
+        generateId(),
+        Date.now(),
+        orgId,
+        messageId,
+        JSON.stringify({
+          type: "MultiPolygon",
+          coordinates: [POLYGON.coordinates],
+        }),
+      ]
+    );
+  const insertMsgIndividuals = (messageId: string, n: number) =>
+    connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, message_id, block_index,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       SELECT gen_random_uuid()::text, $1, 'SYSTEM_TEST', $2, $3, 0,
+              '__all__','__all__',0,1,false,
+              ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(
+                -179 + ((g - 1) % 100) * 3.5,
+                -85 + (((g - 1) / 100)::int % 100) * 1.6
+              ), 4326), 0.5))
+       FROM generate_series(1, ${n}) g`,
+      [Date.now(), orgId, messageId]
+    );
+
+  it("#542: a message tile ref over-cap serves the merged coverage (owner-keyed)", async () => {
+    // The message's pipeline references a nonexistent view — serving proves it
+    // reads the message-owned precompute, not the raw pipeline.
+    const messageId = await createMessageMap(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    await insertMsgMerged(messageId);
+    await insertMsgIndividuals(messageId, 10_001); // over cap
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "message", messageId, blockIndex: 0 },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    expect(res.aggregated).toBe(true);
+  });
+
+  it("#542: a message tile ref over-cap with NO coverage falls back to individuals, never blank", async () => {
+    const messageId = await createMessageMap(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    await insertMsgIndividuals(messageId, 10_001); // over cap, no merged rows
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "message", messageId, blockIndex: 0 },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    expect(res.aggregated).toBe(false);
+    expect(res.truncatedCap).not.toBeNull();
+  });
+
   // ── #532: count-driven per-tile decision (whole-layer fast path) ──────
 
   const createCountedPin = async (

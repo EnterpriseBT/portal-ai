@@ -38,6 +38,35 @@ const SUBDIVIDE_MAX_VERTICES = 512;
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
+/**
+ * Precompute owner (#542): a pin or a transient message block. The rows, the
+ * delete-then-insert idempotency, and the advisory lock all key on it.
+ */
+type Owner =
+  | { kind: "pin"; portalResultId: string }
+  | { kind: "message"; messageId: string; blockIndex: number };
+
+/** SQL literal for the `(portal_result_id, message_id, block_index)` INSERT
+ *  values — exactly one owner set (the DB CHECK enforces it). Ids are trusted
+ *  (from validated job metadata / the DB). */
+const ownerValues = (o: Owner): string =>
+  o.kind === "pin"
+    ? `'${o.portalResultId}', NULL, NULL`
+    : `NULL, '${o.messageId}', ${o.blockIndex}`;
+
+/** SQL WHERE fragment scoping a query to this owner's rows. */
+const ownerWhere = (o: Owner): string =>
+  o.kind === "pin"
+    ? `portal_result_id = '${o.portalResultId}'`
+    : `message_id = '${o.messageId}' AND block_index = ${o.blockIndex}`;
+
+/** Advisory-lock subject — a message block locks on a composite key so two
+ *  precomputes of the same block can't race, mirroring the pin lock. */
+const ownerLockKey = (o: Owner): string =>
+  o.kind === "pin"
+    ? o.portalResultId
+    : `message:${o.messageId}:${o.blockIndex}`;
+
 type SkipReason = NonNullable<DissolvePrecomputeResult["skipped"]>;
 const skip = (
   reason: SkipReason,
@@ -82,21 +111,47 @@ function resolvePolygonColorBy(
  * two refreshes cannot race.
  */
 async function runDissolve(
-  portalResultId: string,
+  owner: Owner,
   organizationId: string
 ): Promise<DissolvePrecomputeResult> {
-  const rows = (await db.execute(
-    sql`SELECT content, station_id AS "stationId", organization_id AS "organizationId"
-        FROM portal_results WHERE id = ${portalResultId} AND deleted IS NULL`
-  )) as unknown as Array<{
-    content: Record<string, unknown> | null;
-    stationId: string;
-    organizationId: string;
-  }>;
-  const row = rows[0];
-  if (!row || row.organizationId !== organizationId) return skip("non-polygon");
+  // Load the owner's block content + station. A pin reads its portal_results row;
+  // a message block reads blocks[blockIndex].content from its portal_messages row
+  // (a message's station lives in the block's pipeline, not a message column).
+  let content: Record<string, unknown>;
+  let stationId: string;
+  if (owner.kind === "pin") {
+    const rows = (await db.execute(
+      sql`SELECT content, station_id AS "stationId", organization_id AS "organizationId"
+          FROM portal_results WHERE id = ${owner.portalResultId} AND deleted IS NULL`
+    )) as unknown as Array<{
+      content: Record<string, unknown> | null;
+      stationId: string;
+      organizationId: string;
+    }>;
+    const row = rows[0];
+    if (!row || row.organizationId !== organizationId)
+      return skip("non-polygon");
+    content = (row.content ?? {}) as Record<string, unknown>;
+    stationId = row.stationId;
+  } else {
+    const rows = (await db.execute(
+      sql`SELECT blocks, organization_id AS "organizationId"
+          FROM portal_messages WHERE id = ${owner.messageId} AND deleted IS NULL`
+    )) as unknown as Array<{
+      blocks: Array<Record<string, unknown>> | null;
+      organizationId: string;
+    }>;
+    const row = rows[0];
+    if (!row || row.organizationId !== organizationId)
+      return skip("non-polygon");
+    const block = (row.blocks ?? [])[owner.blockIndex] as
+      | Record<string, unknown>
+      | undefined;
+    content = (block?.content ?? {}) as Record<string, unknown>;
+    stationId =
+      (content.pipeline as { stationId?: string } | undefined)?.stationId ?? "";
+  }
 
-  const content = (row.content ?? {}) as Record<string, unknown>;
   const spec = content.spec;
   const pipeline = content.pipeline as { sql?: string } | undefined;
 
@@ -110,13 +165,13 @@ async function runDissolve(
     : `'${DISSOLVE_ALL_KEY}'`;
   const storedColumn = colorByColumn ?? DISSOLVE_ALL_KEY;
 
-  // A geo polygon pin is handle-backed and always carries a re-runnable
+  // A geo polygon map is handle-backed and always carries a re-runnable
   // pipeline; without one there is nothing to dissolve from.
   if (!pipeline?.sql) return skip("non-polygon", colorByColumn);
   const pipelineSql = pipeline.sql;
 
   const build = await PortalSqlService.buildSessionViews(
-    row.stationId,
+    stationId,
     organizationId
   );
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -148,10 +203,10 @@ async function runDissolve(
     return r[0]?.n ?? 0;
   });
 
-  // A pin that no longer qualifies must not keep serving stale dissolve rows.
+  // An owner that no longer qualifies must not keep serving stale dissolve rows.
   if (distinctCount === 0) {
     await db.execute(
-      sql`DELETE FROM map_dissolve_geometries WHERE portal_result_id = ${portalResultId}`
+      sql`DELETE FROM map_dissolve_geometries WHERE ${sql.raw(ownerWhere(owner))}`
     );
     return { columnName: colorByColumn, valuesDissolved: 0, rowsWritten: 0 };
   }
@@ -160,11 +215,12 @@ async function runDissolve(
   let degraded = false;
 
   const insertHead = `INSERT INTO map_dissolve_geometries
-         (id, created, created_by, organization_id, portal_result_id,
+         (id, created, created_by, organization_id,
+          portal_result_id, message_id, block_index,
           column_name, value, zoom_band, feature_count, merged, geom)`;
   const rowMeta = `gen_random_uuid()::text,
               (extract(epoch from now()) * 1000)::bigint,
-              'dissolve_precompute', '${organizationId}', '${portalResultId}'`;
+              'dissolve_precompute', '${organizationId}', ${ownerValues(owner)}`;
   const escapedColumn = storedColumn.replace(/'/g, "''");
 
   // #532: two representations per band, distinguished by `merged`. The serve
@@ -183,7 +239,7 @@ async function runDissolve(
         await applyViews(tx);
         await tx.execute(
           sql`DELETE FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
                 AND merged = false`
         );
         await tx.execute(
@@ -202,7 +258,7 @@ async function runDissolve(
         );
         const c = (await tx.execute(
           sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
                 AND merged = false`
         )) as unknown as Array<{ n: number }>;
         return c[0]?.n ?? 0;
@@ -211,7 +267,7 @@ async function runDissolve(
     } catch (err) {
       degraded = true;
       logger.error(
-        { event: "dissolve.band-failed", portalResultId, band, err },
+        { event: "dissolve.band-failed", owner, band, err },
         "Dissolve individuals band failed; keeping its prior rows and continuing"
       );
     }
@@ -234,7 +290,7 @@ async function runDissolve(
         await applyViews(tx);
         await tx.execute(
           sql`DELETE FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
                 AND merged = true`
         );
         await tx.execute(
@@ -266,7 +322,7 @@ async function runDissolve(
         );
         const c = (await tx.execute(
           sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
                 AND merged = true`
         )) as unknown as Array<{ n: number }>;
         return c[0]?.n ?? 0;
@@ -275,7 +331,7 @@ async function runDissolve(
     } catch (err) {
       degraded = true;
       logger.error(
-        { event: "dissolve.merged-band-failed", portalResultId, band, err },
+        { event: "dissolve.merged-band-failed", owner, band, err },
         "Dissolve merged band failed; keeping its prior rows and continuing"
       );
     }
@@ -292,18 +348,26 @@ async function runDissolve(
 export const dissolvePrecomputeProcessor: TypedJobProcessor<
   "dissolve_precompute"
 > = async (bullJob) => {
-  const { portalResultId, organizationId } = bullJob.data;
-  logger.info({ portalResultId }, "dissolve_precompute started");
+  const { portalResultId, messageId, blockIndex, organizationId } =
+    bullJob.data;
+  // #542: the job owns a pin OR a message block (the metadata refine guarantees
+  // exactly one). Build the owner + lock on its key so two passes can't race.
+  const owner: Owner =
+    portalResultId != null
+      ? { kind: "pin", portalResultId }
+      : { kind: "message", messageId: messageId!, blockIndex: blockIndex! };
+  const lockKey = ownerLockKey(owner);
+  logger.info({ lockKey }, "dissolve_precompute started");
 
   const outcome = await SyncLockService.withAdvisoryLock(
     DISSOLVE_LOCK_NAMESPACE,
-    portalResultId,
-    () => runDissolve(portalResultId, organizationId),
-    { event: "dissolve-lock", subject: "portalResultId" }
+    lockKey,
+    () => runDissolve(owner, organizationId),
+    { event: "dissolve-lock", subject: "owner" }
   );
 
   if (!outcome.acquired) {
-    // Another refresh is already dissolving this pin — nothing to do.
+    // Another pass is already dissolving this owner — nothing to do.
     return {
       columnName: null,
       valuesDissolved: 0,
@@ -313,7 +377,7 @@ export const dissolvePrecomputeProcessor: TypedJobProcessor<
   }
 
   logger.info(
-    { portalResultId, result: outcome.value },
+    { lockKey, result: outcome.value },
     "dissolve_precompute completed"
   );
   return outcome.value;

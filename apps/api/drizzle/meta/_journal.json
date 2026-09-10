@@ -652,6 +652,13 @@
       "when": 1788992387336,
       "tag": "0092_dissolve_merged_representation",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1789002583631,
+      "tag": "0093_generalize_dissolve_ownership",
+      "breakpoints": true
     }
   ]
 }
