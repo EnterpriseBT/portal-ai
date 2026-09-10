@@ -119,7 +119,7 @@
     "ts-jest": "^29.4.6",
     "ttf2woff2": "^8.0.1",
     "typescript": "^5.7.2",
-    "vite": "^6.4.1",
+    "vite": "^6.4.3",
     "vite-plugin-svgr": "^4.5.0"
   },
   "dependencies": {
