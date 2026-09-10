@@ -23,6 +23,7 @@ import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
 import { AnalyticsService } from "./analytics.service.js";
+import { DissolvePrecomputeService } from "./dissolve-precompute.service.js";
 import { EntitlementService } from "./entitlement.service.js";
 import { ToolService } from "./tools.service.js";
 import { DbService } from "./db.service.js";
@@ -562,8 +563,9 @@ export class PortalService {
     }
 
     const now = SystemUtilities.utc.now().getTime();
+    const bulkMessageId = SystemUtilities.id.v4.generate();
     await repo.portalMessages.create({
-      id: SystemUtilities.id.v4.generate(),
+      id: bulkMessageId,
       portalId,
       organizationId: portal.organizationId,
       role: "assistant",
@@ -575,6 +577,19 @@ export class PortalService {
       deleted: null,
       deletedBy: null,
     });
+    // #542: precompute dissolve coverage for any large polygon map block so its
+    // low-zoom tiles never-drop before the user pins.
+    await Promise.all(
+      blocks.map((block, blockIndex) =>
+        DissolvePrecomputeService.enqueueForMessageBlock({
+          messageId: bulkMessageId,
+          blockIndex,
+          organizationId: portal.organizationId,
+          userId: portal.createdBy,
+          block,
+        })
+      )
+    );
 
     const channel = `${PORTAL_EVENTS_CHANNEL_PREFIX}${portalId}`;
     const redis = getRedisClient();
@@ -789,6 +804,19 @@ export class PortalService {
       deleted: null,
       deletedBy: null,
     });
+    // #542: precompute dissolve coverage for any large polygon map block so its
+    // low-zoom tiles never-drop before the user pins.
+    await Promise.all(
+      assistantBlocks.map((block, blockIndex) =>
+        DissolvePrecomputeService.enqueueForMessageBlock({
+          messageId: savedMessage.id,
+          blockIndex,
+          organizationId: portal.organizationId,
+          userId: portal.createdBy,
+          block,
+        })
+      )
+    );
 
     const doneEvent: DoneEvent = {
       type: "done",
