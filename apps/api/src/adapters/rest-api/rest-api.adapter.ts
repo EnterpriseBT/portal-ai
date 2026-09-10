@@ -512,8 +512,7 @@ async function syncOneEndpoint(
       {
         event: "rest-api.sync.wide-table-setup-failed",
         connectorEntityId: endpoint.entity.id,
-        cause: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
+        err,
       },
       "Wide-table mirror setup failed — sync continues but the mirror is skipped"
     );
@@ -832,7 +831,7 @@ export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
               event: "rest-api.sync.wide-table-backfill-probe-failed",
               connectorEntityId: ctx.endpoint.entity.id,
               batchSize: unchangedIds.length,
-              cause: err instanceof Error ? err.message : String(err),
+              err,
             },
             "Missing-wide-row probe failed for batch — entity_records rows are intact; the next reconcile will backfill"
           );
@@ -945,8 +944,7 @@ async function mirrorBatchToWideTable(
           mirror.length > 0
             ? `${mirror[0].p.sourceId}..${mirror[mirror.length - 1].p.sourceId}`
             : undefined,
-        cause: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
+        err,
       },
       "Wide-table mirror failed for batch — entity_records rows are intact; next reconcile will backfill"
     );
@@ -1170,8 +1168,7 @@ async function mirrorRecordToWideTable(
         connectorEntityId,
         recordId,
         sourceId,
-        cause: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
+        err,
       },
       "Wide-table mirror failed for record — entity_records row is intact; next reconcile will backfill"
     );

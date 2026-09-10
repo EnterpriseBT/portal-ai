@@ -765,7 +765,7 @@ export class WideTableRepository {
         {
           event: "wide-table.reap-mark-failed",
           connectorEntityId,
-          cause: err instanceof Error ? err.message : String(err),
+          err,
         },
         "Reap mark failed — wide rows for reaped records stay live until the next reap re-marks them (self-heals)"
       );

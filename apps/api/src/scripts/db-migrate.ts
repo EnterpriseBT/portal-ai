@@ -81,10 +81,7 @@ if (
   runMigrations()
     .then(() => process.exit(0))
     .catch((error) => {
-      logger.error(
-        { error: error instanceof Error ? error.message : String(error) },
-        "Migration failed"
-      );
+      logger.error({ error }, "Migration failed");
       process.exit(1);
     });
 }

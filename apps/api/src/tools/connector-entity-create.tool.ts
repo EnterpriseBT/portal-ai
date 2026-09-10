@@ -171,7 +171,7 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
               logger.error(
                 {
                   connectorEntityId: created.id,
-                  error: err instanceof Error ? err.message : String(err),
+                  err,
                 },
                 "ensureTable failed after connector_entity_create"
               );

@@ -541,12 +541,15 @@ async function fanOutBatch(args: {
       // input syntax for type numeric"). Persisting the wrapper's
       // message would bloat the jobs.result column by N × that size.
       const message = extractShortErrorMessage(err);
-      const fullMessage = err instanceof Error ? err.message : String(err);
+      // #540: log the error object (not `err.message`) so the PII-safe `err`
+      // serializer sanitizes it — the DrizzleQueryError message is the full SQL
+      // text + bound customer params. `message` (short, PG-code-prefixed) is
+      // persisted to jobs.result below, which is the org's own error surface.
       logger.error(
         {
           jobId: args.jobId,
           targetConnectorEntityId: targetId,
-          err: fullMessage,
+          err,
         },
         "bulk_transform: per-target upsert failed; other targets in batch unaffected"
       );
