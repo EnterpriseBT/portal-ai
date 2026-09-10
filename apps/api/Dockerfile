@@ -76,6 +76,13 @@ COPY --from=build /app/packages/core/package.json ./node_modules/@portalai/core/
 COPY --from=build /app/packages/spreadsheet-parsing/dist ./node_modules/@portalai/spreadsheet-parsing/dist
 COPY --from=build /app/packages/spreadsheet-parsing/package.json ./node_modules/@portalai/spreadsheet-parsing/
 
+# Drop root: run as the base image's built-in unprivileged user (uid/gid 1000).
+# No chown needed — the app never writes into /app at runtime (blobs live in S3,
+# spreadsheet parsing is in-memory), and the copied files are world-readable.
+# Placed after all root-only steps (apk add, COPY); migrations run this same
+# image via a command override (db:migrate:ci) and are read-only as this user.
+USER node
+
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
