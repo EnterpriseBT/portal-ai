@@ -1,7 +1,7 @@
 /**
  * Integration tests for the base Repository class.
  *
- * These tests run against a real PostgreSQL database spun up by testcontainers.
+ * These tests run against a real PostgreSQL database provided by the docker-compose postgres-test service (see `__integration__/setup.ts`).
  * They verify CRUD operations, soft-delete semantics, transactions, and bulk operations.
  */
 
