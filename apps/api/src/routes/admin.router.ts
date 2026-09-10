@@ -15,6 +15,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { wideTableResyncService } from "../services/wide-table-resync.service.js";
+import { DissolvePrecomputeService } from "../services/dissolve-precompute.service.js";
 import { getMaintenanceQueue } from "../queues/maintenance.queue.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -91,6 +92,81 @@ adminRouter.post(
               error instanceof Error
                 ? error.message
                 : "Failed to run wide-table resync"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/admin/dissolve/reenqueue:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Re-enqueue the polygon dissolve precompute for every dissolvable pin
+ *     description: >
+ *       Operator-triggered (#541) so bounded merged coverage replaces stale or
+ *       degraded rows built by an earlier precompute. Enqueues one
+ *       `dissolve_precompute` job per geo pin with a polygon layer; each is
+ *       advisory-locked, so an in-flight pin reports `superseded`. Returns
+ *       immediately with the count enqueued; progress is observed via the job
+ *       dashboard / SSE stream. Not run on boot (that would re-precompute the
+ *       whole fleet on every restart).
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Re-enqueue fan-out count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     enqueued: { type: integer, example: 12 }
+ *       401:
+ *         description: Missing authentication
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Re-enqueue failed before enqueuing
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+adminRouter.post(
+  "/dissolve/reenqueue",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.application!.metadata.userId;
+      const result =
+        await DissolvePrecomputeService.reenqueueAllDissolvable(userId);
+      logger.info(
+        { enqueued: result.enqueued, actorUserId: userId },
+        "dissolve reenqueue trigger invoked (#541)"
+      );
+      return HttpService.success(res, result);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to re-enqueue dissolvable pins"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.DISSOLVE_REENQUEUE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to re-enqueue dissolvable pins"
             )
       );
     }

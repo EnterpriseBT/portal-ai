@@ -10,7 +10,14 @@
  * recompute).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -18,6 +25,8 @@ import { DISSOLVE_ZOOM_BANDS } from "@portalai/core/constants";
 import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { WideTableRepository } from "../../../db/repositories/wide-table.repository.js";
 import { DISSOLVE_LOCK_NAMESPACE } from "../../../services/sync-lock.service.js";
+import { DissolvePrecomputeService } from "../../../services/dissolve-precompute.service.js";
+import { JobsService } from "../../../services/jobs.service.js";
 import { dissolvePrecomputeProcessor } from "../../../queues/processors/dissolve-precompute.processor.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import * as schema from "../../../db/schema/index.js";
@@ -617,5 +626,31 @@ describe("dissolve-precompute processor (#472)", () => {
     const result = await runProcessor(pinId, orgId);
     expect(result.skipped).toBe("non-polygon");
     expect(await countRows(pinId)).toBe(0);
+  });
+
+  it("#541: reenqueueAllDissolvable enqueues a dissolve for each polygon pin (real DB scan)", async () => {
+    const p1 = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    const p2 = await createPinNoColorBy('SELECT "c_geom" AS geom FROM parcels');
+    // Spy JobsService.create so the scan is exercised without touching the queue.
+    const createSpy = jest
+      .spyOn(JobsService, "create")
+      .mockResolvedValue({ id: "job" } as never);
+    try {
+      const res = await DissolvePrecomputeService.reenqueueAllDissolvable();
+      const enqueuedPins = createSpy.mock.calls.map(
+        ([, params]) =>
+          (params as unknown as { metadata: { portalResultId: string } })
+            .metadata.portalResultId
+      );
+      // Robust to any pins other suites left behind: both of ours are enqueued.
+      expect(enqueuedPins).toContain(p1);
+      expect(enqueuedPins).toContain(p2);
+      expect(res.enqueued).toBeGreaterThanOrEqual(2);
+    } finally {
+      createSpy.mockRestore();
+    }
   });
 });

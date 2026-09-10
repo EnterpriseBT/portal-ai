@@ -1,6 +1,9 @@
+import { sql } from "drizzle-orm";
+
 import type { DissolvePrecomputeMetadata } from "@portalai/core/models";
 
 import { JobsService } from "./jobs.service.js";
+import { db } from "../db/client.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "dissolve-precompute-enqueue" });
@@ -68,5 +71,42 @@ export class DissolvePrecomputeService {
         "Failed to enqueue dissolve_precompute; pin will fall back to raw-simplify"
       );
     }
+  }
+
+  /**
+   * Re-enqueue a dissolve for **every** dissolvable pin (#541) — operator-
+   * triggered so bounded merged coverage replaces stale/degraded rows built by an
+   * earlier precompute. Idempotent: each pin's job is advisory-locked, so a pin
+   * with an in-flight dissolve just reports `superseded`. Not run on boot (that
+   * would re-precompute the whole fleet on every restart). Returns the count
+   * enqueued.
+   */
+  static async reenqueueAllDissolvable(
+    userId = "SYSTEM_REENQUEUE"
+  ): Promise<{ enqueued: number }> {
+    const rows = (await db.execute(
+      sql`SELECT id, organization_id AS "organizationId", type, content
+          FROM portal_results
+          WHERE type = 'geo' AND deleted IS NULL`
+    )) as unknown as Array<{
+      id: string;
+      organizationId: string;
+      type: string;
+      content: unknown;
+    }>;
+    let enqueued = 0;
+    for (const r of rows) {
+      if (!DissolvePrecomputeService.isDissolvable(r.type, r.content)) continue;
+      await DissolvePrecomputeService.enqueueForPin({
+        portalResultId: r.id,
+        organizationId: r.organizationId,
+        userId,
+        type: r.type,
+        content: r.content,
+      });
+      enqueued += 1;
+    }
+    logger.info({ enqueued }, "reenqueued dissolvable pins (#541)");
+    return { enqueued };
   }
 }
