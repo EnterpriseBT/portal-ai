@@ -23,24 +23,27 @@ jest.unstable_mockModule("maplibre-gl", () => {
     }
     remove() {}
   }
+  // maplibre-gl v6 is ESM-only with named exports (the widget uses
+  // `import * as maplibregl`), so the mock exposes named exports rather than a
+  // default object.
+  class MockPopup {
+    setLngLat() {
+      return this;
+    }
+    setHTML() {
+      return this;
+    }
+    addTo() {
+      return this;
+    }
+  }
   return {
-    default: {
-      Map: MockMap,
-      addProtocol: () => {},
-      removeProtocol: () => {},
-      NavigationControl: class {},
-      Popup: class {
-        setLngLat() {
-          return this;
-        }
-        setHTML() {
-          return this;
-        }
-        addTo() {
-          return this;
-        }
-      },
-    },
+    __esModule: true,
+    Map: MockMap,
+    addProtocol: () => {},
+    removeProtocol: () => {},
+    NavigationControl: class {},
+    Popup: MockPopup,
   };
 });
 
