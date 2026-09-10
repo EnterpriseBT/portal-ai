@@ -6,6 +6,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 import { DissolvePrecomputeService } from "../../services/dissolve-precompute.service.js";
 import { JobsService } from "../../services/jobs.service.js";
+import { db } from "../../db/client.js";
 
 const polygonChoropleth = {
   spec: {
@@ -120,5 +121,54 @@ describe("DissolvePrecomputeService.enqueueForPin", () => {
   it("swallows an enqueue failure — never throws (pin must not fail)", async () => {
     createSpy.mockRejectedValueOnce(new Error("queue down") as never);
     await expect(call()).resolves.toBeUndefined();
+  });
+});
+
+describe("DissolvePrecomputeService.reenqueueAllDissolvable (#541)", () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("enqueues once per dissolvable pin, skips non-polygon / non-geo", async () => {
+    jest.spyOn(db, "execute").mockResolvedValue([
+      {
+        id: "p1",
+        organizationId: "o1",
+        type: "geo",
+        content: polygonChoropleth,
+      },
+      {
+        id: "p2",
+        organizationId: "o1",
+        type: "geo",
+        content: { spec: { layers: [{ kind: "points" }] } },
+      },
+      { id: "p3", organizationId: "o1", type: "table", content: {} },
+    ] as never);
+    const createSpy = jest
+      .spyOn(JobsService, "create")
+      .mockResolvedValue({ id: "job" } as never);
+
+    const res = await DissolvePrecomputeService.reenqueueAllDissolvable();
+
+    // Only p1 (a geo polygon layer) is dissolvable.
+    expect(res.enqueued).toBe(1);
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    const [, params] = createSpy.mock.calls[0] as [
+      string,
+      { metadata: Record<string, unknown> },
+    ];
+    expect(params.metadata).toEqual({
+      portalResultId: "p1",
+      organizationId: "o1",
+    });
+  });
+
+  it("returns { enqueued: 0 } when there are no dissolvable pins", async () => {
+    jest.spyOn(db, "execute").mockResolvedValue([] as never);
+    const createSpy = jest.spyOn(JobsService, "create");
+    const res = await DissolvePrecomputeService.reenqueueAllDissolvable();
+    expect(res.enqueued).toBe(0);
+    expect(createSpy).not.toHaveBeenCalled();
   });
 });

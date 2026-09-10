@@ -558,6 +558,88 @@ describe("Portal map tile route (#316)", () => {
     expect(res.aggregated).toBe(true);
   });
 
+  // Bulk-insert `n` individual (merged=false) dissolve rows in band 0, spread as
+  // 0.5° squares across the globe so they're visible at z0 (not sub-pixel) — all
+  // inside the z0 world envelope.
+  const insertManyIndividuals = (pin: string, n: number) =>
+    connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       SELECT gen_random_uuid()::text, $1, 'SYSTEM_TEST', $2, $3,
+              '__all__','__all__',0,1,false,
+              ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(
+                -179 + ((g - 1) % 100) * 3.5,
+                -85 + (((g - 1) / 100)::int % 100) * 1.6
+              ), 4326), 0.5))
+       FROM generate_series(1, ${n}) g`,
+      [Date.now(), orgId, pin]
+    );
+
+  it("#541 slice 1: over-cap tile with NO merged coverage → area-ranked individuals, never blank", async () => {
+    // A degraded (or mid-build) pin: individuals exist but the merged pass never
+    // wrote coverage. Before #541 this served an EMPTY tile; now it falls back to
+    // area-ranked individuals (the honest degraded state) rather than blanking.
+    const pin = await createNoColorByPin(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    await insertManyIndividuals(pin, 10_001); // > cap, no merged=true rows
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Fallback = area-ranked individuals clipped to the cap: a real clip, not an
+    // aggregate overview and not empty.
+    expect(res.aggregated).toBe(false);
+    expect(res.truncatedCap).not.toBeNull();
+  });
+
+  it("#541 slice 1: under-cap tile in a band that HAS coverage still serves individuals", async () => {
+    // has_merged is band-level; it must not force the coverage path when the tile
+    // itself is under the cap — a sparse tile still shows individual polygons.
+    const pin = await createNoColorByPin(
+      'SELECT "c_geom" AS geom FROM does_not_exist'
+    );
+    await insertManyIndividuals(pin, 5); // ≤ cap
+    await insertDissolveRow(pin, "__all__", 0); // a merged=false row (individual)
+    // Add a real merged=true coverage row so the band "has coverage".
+    await connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, merged, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,5,true,
+         ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
+      [
+        generateId(),
+        Date.now(),
+        orgId,
+        pin,
+        JSON.stringify({
+          type: "MultiPolygon",
+          coordinates: [POLYGON.coordinates],
+        }),
+      ]
+    );
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Under cap → individuals, not the coverage.
+    expect(res.aggregated).toBe(false);
+  });
+
   // ── #532: count-driven per-tile decision (whole-layer fast path) ──────
 
   const createCountedPin = async (

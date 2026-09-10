@@ -141,7 +141,20 @@ export const AGG_CELLS_PER_AXIS = 2 ** AGG_GRID_LEVELS; // 16
  * pipeline SQL + z/x/y + snapshot clock, none of the generation code. Bump this
  * whenever the bytes a given (pipeline, z, x, y, snapshot) would produce change.
  */
-export const AGG_TILE_VERSION = 7;
+export const AGG_TILE_VERSION = 8;
+
+/**
+ * Coarse-snap multiple for the polygon **merged-coverage** union (#541). The
+ * coverage is only ever served for over-cap tiles — dense areas at low/coarse
+ * zoom where per-polygon detail is sub-pixel — so the union input is snapped to a
+ * grid `COVERAGE_SNAP_FACTOR ×` coarser than one tile pixel (`tileSimplify-
+ * Tolerance`) before `ST_Union`. That bounds the union to O(distinct snapped
+ * cells) instead of O(vertices), letting the merged pass clear the per-band
+ * dissolve budget at 200k+ scale. The trade is a blockier coverage at the zoom
+ * it's shown, which refines to individuals on zoom-in. Tuned by smoke measurement
+ * against a production-sized layer.
+ */
+export const COVERAGE_SNAP_FACTOR = 8;
 
 /**
  * Precomputed polygon zoom bands (#472, retuned #478, count-driven #532). Below

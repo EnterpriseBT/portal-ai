@@ -7,6 +7,7 @@ import {
   tileSimplifyTolerance,
   aggregationFromSpec,
   resolveTileMode,
+  coverageSnapTolerance,
   aggregateCellSize,
   layerCountFromContent,
   mapTileError,
@@ -96,6 +97,19 @@ describe("tileSimplifyTolerance", () => {
   it("is positive and shrinks with zoom at low zoom", () => {
     expect(tileSimplifyTolerance(2)).toBeGreaterThan(tileSimplifyTolerance(8));
     expect(tileSimplifyTolerance(8)).toBeGreaterThan(0);
+  });
+});
+
+describe("coverageSnapTolerance (#541)", () => {
+  it("is >= a tile pixel and coarser at a coarser band", () => {
+    // At each band's representative zoom it snaps COVERAGE_SNAP_FACTOR× coarser
+    // than one pixel, so it never rounds below the simplify tolerance.
+    expect(coverageSnapTolerance(6)).toBeGreaterThanOrEqual(
+      tileSimplifyTolerance(6)
+    );
+    expect(coverageSnapTolerance(12)).toBeGreaterThan(0);
+    // A coarser band (lower representative zoom) → a coarser snap.
+    expect(coverageSnapTolerance(6)).toBeGreaterThan(coverageSnapTolerance(12));
   });
 });
 

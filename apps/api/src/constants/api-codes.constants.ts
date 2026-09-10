@@ -412,6 +412,8 @@ export enum ApiCode {
   // Admin / re-sync trigger
   /** A wide-table resync trigger failed to fan out to one or more instances. */
   WIDE_TABLE_RESYNC_FAILED = "WIDE_TABLE_RESYNC_FAILED",
+  /** A dissolve re-enqueue trigger (#541) failed before enqueuing. */
+  DISSOLVE_REENQUEUE_FAILED = "DISSOLVE_REENQUEUE_FAILED",
 
   // Portal SQL surface (Phase 3)
   /** The LLM-supplied SQL hit the deny-list or other safety guard. */
