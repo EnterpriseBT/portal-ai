@@ -1,7 +1,7 @@
 /**
  * Integration tests for the PortalsRepository.
  *
- * Tests run against a real PostgreSQL database spun up by testcontainers.
+ * Tests run against a real PostgreSQL database provided by the docker-compose postgres-test service (see `__integration__/setup.ts`).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
