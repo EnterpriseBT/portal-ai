@@ -2,7 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert, Box, CircularProgress, Paper, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useAuth0 } from "@auth0/auth0-react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
