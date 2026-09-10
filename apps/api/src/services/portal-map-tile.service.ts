@@ -29,6 +29,7 @@ import {
   AGG_GRID_PX,
   AGG_GRID_LEVELS,
   AGG_TILE_VERSION,
+  COVERAGE_SNAP_FACTOR,
   bandForZoom,
 } from "@portalai/core/constants";
 
@@ -385,6 +386,19 @@ export function tileSimplifyTolerance(z: number): number {
   if (z >= 15) return 0;
   // World is 360° across 2^z tiles of TILE_EXTENT units each.
   return 360 / (2 ** z * TILE_EXTENT);
+}
+
+/**
+ * Snap tolerance (degrees) for the polygon merged-coverage union at a band's
+ * representative zoom (#541): `COVERAGE_SNAP_FACTOR ×` a tile pixel, so it is
+ * always ≥ `tileSimplifyTolerance(representativeZoom)` and coarser at a coarser
+ * band. Snapping the union input to this grid bounds the union cost to O(distinct
+ * cells); a floor keeps it positive at the finest band (where the pixel tolerance
+ * would otherwise round toward zero).
+ */
+export function coverageSnapTolerance(representativeZoom: number): number {
+  const pixel = 360 / (2 ** representativeZoom * TILE_EXTENT);
+  return pixel * COVERAGE_SNAP_FACTOR;
 }
 
 export class PortalMapTileService {

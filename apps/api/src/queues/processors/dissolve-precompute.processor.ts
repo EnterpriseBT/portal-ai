@@ -12,6 +12,7 @@ import {
 import { PortalSqlService } from "../../services/portal-sql.service.js";
 import {
   tileSimplifyTolerance,
+  coverageSnapTolerance,
   DISSOLVE_ALL_KEY,
 } from "../../services/portal-map-tile.service.js";
 import { createLogger } from "../../utils/logger.util.js";
@@ -217,47 +218,42 @@ async function runDissolve(
   }
 
   // (B) Merged coverage (`merged = true`): the never-drop representation for a
-  // tile OVER the cap. Derive-from-finest — one ST_Union per value computed ONCE
-  // (the single expensive union), then each band is a topological simplification
-  // + ST_Subdivide of that same geometry, so the coverage outline only smooths
-  // across a boundary, never re-merges (#478). One transaction (the temp finest
-  // must outlive the per-band inserts) = atomic replace of the pin's merged
-  // rows. On a layer too large to union in budget this fails and is left
-  // degraded — individuals still serve, and an over-cap tile falls back to the
-  // area-ranked individuals (drops the smallest) rather than blanking.
-  try {
-    const finestTol = tileSimplifyTolerance(
-      Math.max(...DISSOLVE_ZOOM_BANDS.map((b) => b.representativeZoom))
-    );
-    const mergedWritten = await db.transaction(async (tx) => {
-      await applyViews(tx);
-      await tx.execute(
-        sql.raw(
-          `CREATE TEMP TABLE _dissolve_finest ON COMMIT DROP AS
-           WITH src AS (${pipelineSql}),
-           snapped AS (
-             SELECT ${valueExpr} AS value,
-                    ST_CollectionExtract(ST_MakeValid(ST_SnapToGrid(src.geom, ${finestTol})), 3) AS g
-             FROM src WHERE src.geom IS NOT NULL
-           )
-           SELECT value, ST_Union(g) AS geom, count(*)::int AS fc
-           FROM snapped WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)
-           GROUP BY value`
-        )
-      );
-      await tx.execute(
-        sql`DELETE FROM map_dissolve_geometries
-            WHERE portal_result_id = ${portalResultId} AND merged = true`
-      );
-      for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
-        const tol = tileSimplifyTolerance(representativeZoom);
+  // tile OVER the cap. Per-band **bounded** union (#541): the union input is
+  // snapped to a coarse per-band grid (`coverageSnapTolerance`) BEFORE ST_Union,
+  // so the union cost is O(distinct snapped cells), not O(vertices) — this is what
+  // clears the per-band budget at 200k+ scale (derive-from-finest's single
+  // unbounded union measured 130–153s on a 211k layer). The coverage is only
+  // served for over-cap (dense, low-zoom) tiles where the coarse snap is invisible;
+  // it refines to individuals on zoom-in. Per-band transaction: a band failure
+  // isolates (degraded, prior rows kept), and slice-1's serve fallback (#541)
+  // covers any band left without coverage rather than blanking.
+  for (const { band, representativeZoom } of DISSOLVE_ZOOM_BANDS) {
+    const snap = coverageSnapTolerance(representativeZoom);
+    try {
+      const inserted = await db.transaction(async (tx) => {
+        await applyViews(tx);
+        await tx.execute(
+          sql`DELETE FROM map_dissolve_geometries
+              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+                AND merged = true`
+        );
         await tx.execute(
           sql.raw(
             `${insertHead}
-             WITH pieces AS (
-               SELECT value, fc,
-                      ST_Subdivide(ST_SimplifyPreserveTopology(geom, ${tol}), ${SUBDIVIDE_MAX_VERTICES}) AS piece
-               FROM _dissolve_finest
+             WITH src AS (${pipelineSql}),
+             snapped AS (
+               SELECT ${valueExpr} AS value,
+                      ST_CollectionExtract(ST_MakeValid(ST_SnapToGrid(src.geom, ${snap})), 3) AS g
+               FROM src WHERE src.geom IS NOT NULL
+             ),
+             dissolved AS (
+               SELECT value, ST_Union(g) AS geom, count(*)::int AS fc
+               FROM snapped WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)
+               GROUP BY value
+             ),
+             pieces AS (
+               SELECT value, fc, ST_Subdivide(geom, ${SUBDIVIDE_MAX_VERTICES}) AS piece
+               FROM dissolved
              )
              SELECT ${rowMeta},
                     '${escapedColumn}', value, ${band}, fc, true,
@@ -268,20 +264,21 @@ async function runDissolve(
                AND NOT ST_IsEmpty(ST_CollectionExtract(piece, 3))`
           )
         );
-      }
-      const c = (await tx.execute(
-        sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-            WHERE portal_result_id = ${portalResultId} AND merged = true`
-      )) as unknown as Array<{ n: number }>;
-      return c[0]?.n ?? 0;
-    });
-    rowsWritten += mergedWritten;
-  } catch (err) {
-    degraded = true;
-    logger.error(
-      { event: "dissolve.merged-failed", portalResultId, err },
-      "Dissolve merged coverage failed; individuals kept (over-cap tiles fall back to area-ranked)"
-    );
+        const c = (await tx.execute(
+          sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
+              WHERE portal_result_id = ${portalResultId} AND zoom_band = ${band}
+                AND merged = true`
+        )) as unknown as Array<{ n: number }>;
+        return c[0]?.n ?? 0;
+      });
+      rowsWritten += inserted;
+    } catch (err) {
+      degraded = true;
+      logger.error(
+        { event: "dissolve.merged-band-failed", portalResultId, band, err },
+        "Dissolve merged band failed; keeping its prior rows and continuing"
+      );
+    }
   }
 
   return {

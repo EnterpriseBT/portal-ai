@@ -478,13 +478,18 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(individuals.every((r) => r.feature_count === 1)).toBe(true);
     expect(individuals.filter((r) => r.zoom_band === 0).length).toBe(5);
 
-    // Merged coverage: the 5 polygons unioned, feature_count 5, present per band.
+    // Merged coverage: the 5 polygons snapped-then-unioned, feature_count 5,
+    // present per band. #541: the coarse-snap union COLLAPSES the sources into a
+    // bounded coverage — far fewer merged pieces per band than source polygons
+    // (the 3 adjacent squares union into one), never O(source count).
     const merged = rows.filter((r) => r.merged);
     expect(merged.length).toBeGreaterThan(0);
     expect(merged.every((r) => r.feature_count === 5)).toBe(true);
     expect(new Set(merged.map((r) => r.zoom_band))).toEqual(
       new Set(DISSOLVE_ZOOM_BANDS.map((b) => b.band))
     );
+    const mergedBand0 = merged.filter((r) => r.zoom_band === 0).length;
+    expect(mergedBand0).toBeLessThan(5); // collapsed, not one-per-source
   });
 
   it("keys by the pin, so two pins over the same entity dissolve independently", async () => {
