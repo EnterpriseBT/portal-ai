@@ -1,4 +1,5 @@
 import { auth } from "express-oauth2-jwt-bearer";
+import type { RequestHandler } from "express";
 import { environment } from "../environment.js";
 import { deployMode, type DeployMode } from "../config/deploy-mode.js";
 
@@ -34,8 +35,19 @@ export function resolveAuthConfig(
  * from the mode-selected issuer (cached internally), and validates the JWT
  * signature, expiration, audience, and issuer. Populates req.auth with the
  * decoded token payload. Returns 401 on failure.
+ *
+ * The underlying `auth()` is built **lazily** on first request, not at module
+ * load (#579): `auth()` asserts a non-empty `issuerBaseURL` at construction,
+ * so an eager build would crash the *import* — before the deploy-mode boot
+ * guard can report a clean `DEPLOY_MODE_CONFIG_INVALID` — for a residency
+ * install missing its OIDC config. Deferring construction lets the guard run
+ * first; a config that passes the guard always yields a valid issuer here.
  */
-export const jwtCheck = auth({
-  ...resolveAuthConfig(),
-  tokenSigningAlg: "RS256",
-});
+let authMiddleware: RequestHandler | undefined;
+export const jwtCheck: RequestHandler = (req, res, next) => {
+  authMiddleware ??= auth({
+    ...resolveAuthConfig(),
+    tokenSigningAlg: "RS256",
+  });
+  return authMiddleware(req, res, next);
+};

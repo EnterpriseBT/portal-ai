@@ -3,18 +3,21 @@
  *
  * In residency the central-infra Stripe entitlement webhook must not be
  * exposed — the marketplace is the entitlement channel. This boots the real
- * app under residency env and asserts POST /api/webhooks/stripe is 404
- * (unregistered) while /api/health still serves. The saas case — the same
- * route routing to the signature check, not 404 — is covered by the existing
- * billing.router integration tests, which run in the default (saas) mode.
+ * app under residency env and asserts the Stripe webhook handler is gone:
+ * POST /api/webhooks/stripe is no longer serviced by the (saas-only) handler.
+ * The route is unregistered on webhookRouter, so the request falls through to
+ * the `/api` protected router and gets **401** (unauthenticated) — as opposed
+ * to the **400** the saas signature check returns (covered by the existing
+ * billing / stripe-webhook integration suites in the default mode). The
+ * 400→401 change is the gating proof; either way the Stripe handler never
+ * runs. Auth is deliberately NOT mocked here so this reflects real behavior.
  *
  * Env is set BEFORE importing the app (route registration is module-load) and
  * restored in afterAll so DEPLOY_MODE doesn't leak into later suites.
  */
 
-import { jest, describe, it, expect, afterAll } from "@jest/globals";
+import { describe, it, expect, afterAll } from "@jest/globals";
 import request from "supertest";
-import { Request, Response, NextFunction } from "express";
 
 const saved = {
   DEPLOY_MODE: process.env.DEPLOY_MODE,
@@ -30,12 +33,6 @@ process.env.OIDC_AUDIENCE = "https://api.customer.example";
 delete process.env.STRIPE_SECRET_KEY;
 delete process.env.STRIPE_WEBHOOK_SECRET;
 
-// Auth is irrelevant to health + the stripe webhook (both outside the
-// protected router); mock it so no OIDC/JWKS setup is needed.
-jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
-  jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
-}));
-
 const { app } = await import("../../../app.js");
 
 afterAll(() => {
@@ -46,12 +43,14 @@ afterAll(() => {
 });
 
 describe("DEPLOY_MODE=residency route gating", () => {
-  it("does not expose POST /api/webhooks/stripe (404)", async () => {
+  it("no longer services the Stripe webhook (401 auth shadow, not the 400 saas signature check)", async () => {
     const res = await request(app)
       .post("/api/webhooks/stripe")
       .set("stripe-signature", "t=1,v1=x")
       .send({});
-    expect(res.status).toBe(404);
+    // Route unregistered on webhookRouter → falls through to /api (jwtCheck)
+    // → 401. In saas the same request is 400 from the Stripe handler.
+    expect(res.status).toBe(401);
   });
 
   it("still serves GET /api/health", async () => {

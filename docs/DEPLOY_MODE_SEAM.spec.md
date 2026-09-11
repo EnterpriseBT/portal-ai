@@ -136,7 +136,7 @@ None.
 
 ## Acceptance criteria
 - `DEPLOY_MODE=saas` (default, unset): app behaves exactly as today (Stripe webhook routes, Auth0 auth, agent works).
-- `DEPLOY_MODE=residency` with OIDC vars + no Stripe key: boots; `jwtCheck` verifies against the OIDC issuer/audience; `POST /api/webhooks/stripe` is 404; no vendor client constructed at boot.
+- `DEPLOY_MODE=residency` with OIDC vars + no Stripe key: boots; `jwtCheck` verifies against the OIDC issuer/audience; the Stripe webhook handler is gone — `POST /api/webhooks/stripe` is no longer serviced by it (unregistered on the webhook router, so it falls through to `/api` → `jwtCheck` → **401**, vs the **400** saas returns from the signature check); no vendor client constructed at boot.
 - A contradictory config (residency + Stripe key, or residency missing OIDC) **fails the boot** with `DEPLOY_MODE_CONFIG_INVALID` and a non-zero exit.
 - `env-example-parity.test.ts` green (new vars documented).
 
