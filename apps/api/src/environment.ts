@@ -8,6 +8,15 @@ export const environment = {
     : [],
   AUTH0_AUDIENCE: process.env.AUTH0_AUDIENCE,
   AUTH0_DOMAIN: process.env.AUTH0_DOMAIN,
+  // Deploy-mode seam (#579): `saas` (default, multi-tenant + central) or
+  // `residency` (single-tenant, self-contained in the customer's cloud).
+  // Validated by the boot guard in config/deploy-mode.ts; unset ⇒ saas.
+  DEPLOY_MODE: process.env.DEPLOY_MODE ?? "saas",
+  // Residency identity (#579/#577): the customer's own OIDC issuer URL +
+  // token audience, used instead of AUTH0_* when DEPLOY_MODE=residency.
+  // Empty in saas; the boot guard requires both when residency.
+  OIDC_ISSUER: process.env.OIDC_ISSUER ?? "",
+  OIDC_AUDIENCE: process.env.OIDC_AUDIENCE ?? "",
   // Logging configuration
   LOG_LEVEL: (process.env.LOG_LEVEL || "info") as
     | "trace"
