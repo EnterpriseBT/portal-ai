@@ -114,6 +114,14 @@ export const environment = {
     process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN || "60",
     10
   ),
+  // Per-user fixed-window cap on the authenticated API (#574), keyed by the
+  // Auth0 subject. Generous by design: normal app usage bursts well under
+  // this, so anything near the ceiling is a runaway client or abuse. Fail-open
+  // on a Redis outage (see authenticated-rate-limit.middleware.ts).
+  AUTH_API_RATE_LIMIT_PER_MIN: parseInt(
+    process.env.AUTH_API_RATE_LIMIT_PER_MIN || "300",
+    10
+  ),
   // Retention window for the tool-usage audit ledger (#179 D5): rows older
   // than this many months are hard-deleted by the daily maintenance purge.
   // 24 months ≫ any dispute window; widening it is an env change + restart.

@@ -18,6 +18,9 @@ export enum ApiCode {
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",
   REQUEST_BODY_INVALID_JSON = "REQUEST_BODY_INVALID_JSON",
+  /** Per-user fixed-window limit exceeded on the authenticated API
+   *  (#574). Keyed by the Auth0 subject; fail-open on a Redis outage. 429. */
+  API_RATE_LIMITED = "API_RATE_LIMITED",
 
   // Health
   HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED",
@@ -704,6 +707,7 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "This chart predates live refresh — re-run the prompt to regenerate it with current data.",
   [ApiCode.VIZ_REFRESH_RATE_LIMITED]:
     "Too many refreshes in a short window. Wait a moment and try again.",
+  [ApiCode.API_RATE_LIMITED]: "Too many requests. Wait a moment and try again.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:
     "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
   [ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED]:
