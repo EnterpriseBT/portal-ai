@@ -5,6 +5,10 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { WebhookService } from "../services/webhook.service.js";
 import { StripeService } from "../services/stripe.service.js";
 import { BillingService } from "../services/billing.service.js";
+import {
+  TierGrantService,
+  StripeGrantSource,
+} from "../services/tier-grant.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { verifyWebhookSignature } from "../middleware/webhook-auth.middleware.js";
 import {
@@ -270,7 +274,7 @@ webhookRouter.post(
       const event = StripeService.constructEvent(req.body as Buffer, signature);
 
       const outcome = STRIPE_SUBSCRIPTION_EVENTS.has(event.type)
-        ? await BillingService.handleSubscriptionEvent(event)
+        ? await TierGrantService.apply(new StripeGrantSource(), event)
         : await BillingService.recordIgnoredEvent(event);
 
       logger.info(
