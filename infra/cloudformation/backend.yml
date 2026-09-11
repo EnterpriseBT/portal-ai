@@ -618,6 +618,13 @@ Resources:
               - !Ref AWS::NoValue
             - Name: GOOGLE_OAUTH_CLIENT_ID
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-oauth-client-id"
+            # #580: public Google identifiers the API serves at runtime via
+            # GET /api/connector-config (execution role already reads
+            # /portalai/${Environment}/* — no IAM change).
+            - Name: GOOGLE_PICKER_API_KEY
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-picker-api-key"
+            - Name: GOOGLE_CLOUD_PROJECT_NUMBER
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-cloud-project-number"
             - Name: MICROSOFT_OAUTH_CLIENT_ID
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/microsoft-oauth-client-id"
             - Name: MICROSOFT_OAUTH_TENANT
