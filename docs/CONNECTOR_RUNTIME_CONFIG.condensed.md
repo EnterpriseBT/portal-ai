@@ -27,11 +27,10 @@
 
 **Why authenticated, not `/api/public`:** the picker only runs in the logged-in connector workflow, so anonymous exposure buys nothing and the authed SDK is simpler. The values are Google *browser* identifiers (already client-visible today); GCP referrer/API restrictions on the key are the real control.
 
-## Plan — 3 slices
+## Plan — 2 slices
 
-1. **API + contract.** New: `connector-config.contract.ts` (core) + `ConnectorConfigService` + authenticated `GET /api/connector-config` (`connector-config.router.ts` on `protectedRouter`); env vars + `.env.example`. **Tests:** `connector-config.router.integration.test.ts` — 200 with google config when env set; `google: null` when unset; **401 unauthenticated** (gated by `jwtCheck`); a core contract strict-shape test. (`npm run test:integration` / `test:unit`.)
-2. **Web SDK endpoint.** New: `sdk.connectorConfig.get` (`api/connector-config.api.ts` + a `queryKeys.connectorConfig` entry) via `useAuthQuery`. **Tests:** SDK/hook unit test (`__tests__`) with the mocked SDK — returns config; null when endpoint returns null.
-3. **Rewire the picker off `import.meta.env`.** Edit `google-picker.util.ts` (drop the three consts, `isPickerConfigured(cfg)`) + `use-picker-selection.util.ts` (read the SDK query). **Tests:** `use-picker-selection` unit test — `pickerUnavailable` true when runtime config null, false when complete; `isPickerConfigured(cfg)` truthiness.
+1. **API + contract.** New: `connector-config.contract.ts` (core) + `ConnectorConfigService` + authenticated `GET /api/connector-config` (`connector-config.router.ts` on `protectedRouter`); env vars + `.env.example`; swagger component. **Tests:** contract strict-shape (core); service configured/null projection (unit); `connector-config.router.integration.test.ts` **401 unauthenticated** (gated by `jwtCheck`).
+2. **Web SDK + picker rewire** (one slice — the SDK endpoint has no standalone test; its consumer is the proof). New: `sdk.connectorConfig.get` (`api/connector-config.api.ts` + `queryKeys.connectorConfig`) via `useAuthQuery`. Edit: `google-picker.util.ts` (drop the three `import.meta.env` consts; `isPickerConfigured(google)`), `use-picker-selection.util.ts` (take `googleConfig` as an arg), the container (fetch via SDK, pass it down), and `apps/web/.env.example` (the three `VITE_GOOGLE_*` move to the API). **Tests:** `use-picker-selection` unit test — `pickerUnavailable` true when runtime config null, false when complete.
 
 ## Smoke (manual, against your dev stack)
 
