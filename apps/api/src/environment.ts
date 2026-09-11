@@ -96,6 +96,14 @@ export const environment = {
   GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
   GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
   GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI || "",
+  // Public Google browser identifiers served at runtime by
+  // GET /api/connector-config (#580) so a prebuilt image can carry a
+  // self-hosted install's own config. Non-secret (the Picker browser API key
+  // is restricted in GCP by referrer + API, not by secrecy); the OAuth client
+  // secret above is never served. Previously baked into the web bundle as
+  // VITE_GOOGLE_PICKER_API_KEY / VITE_GOOGLE_CLOUD_PROJECT_NUMBER.
+  GOOGLE_PICKER_API_KEY: process.env.GOOGLE_PICKER_API_KEY || "",
+  GOOGLE_CLOUD_PROJECT_NUMBER: process.env.GOOGLE_CLOUD_PROJECT_NUMBER || "",
   OAUTH_STATE_SECRET: process.env.OAUTH_STATE_SECRET || "",
   // ── Microsoft OAuth
   //    Per-env Microsoft identity-platform v2.0 client for the

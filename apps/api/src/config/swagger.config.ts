@@ -46,6 +46,7 @@ import {
   PublicSitePriceSchema,
   PublicSiteTierSchema,
   PublicSiteConfigResponseSchema,
+  ConnectorConfigResponseSchema,
   DeltaEventSchema,
   ToolCallEventSchema,
   ToolCallEndEventSchema,
@@ -394,6 +395,10 @@ const publicSiteSchemas: Record<string, unknown> = {
   PublicSiteTier: z.toJSONSchema(PublicSiteTierSchema, JSON_SCHEMA_OPTS),
   PublicSiteConfigResponse: z.toJSONSchema(
     PublicSiteConfigResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ConnectorConfigResponse: z.toJSONSchema(
+    ConnectorConfigResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };

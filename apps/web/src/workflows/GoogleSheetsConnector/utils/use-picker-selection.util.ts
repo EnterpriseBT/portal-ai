@@ -1,9 +1,8 @@
 import { useCallback, useState } from "react";
 
+import type { GoogleConnectorConfig } from "@portalai/core/contracts";
+
 import {
-  PICKER_API_KEY,
-  PICKER_APP_ID,
-  PICKER_CLIENT_ID,
   isPickerConfigured,
   openSheetPicker,
   requestBrowserToken,
@@ -13,7 +12,7 @@ import {
 export interface PickerSelection {
   /** True while the token popup / Picker script is in flight. */
   pickerLoading: boolean;
-  /** The Picker cannot run — missing build config, or a script that will not load. */
+  /** The Picker cannot run — missing runtime config, or a script that will not load. */
   pickerUnavailable: boolean;
   /** Set when the authorized Google account is not the connector's. */
   accountMismatch: { expected: string; authorized: string } | null;
@@ -39,8 +38,11 @@ export function usePickerSelection(args: {
   /** The Google account this connector is bound to, if known. */
   linkedEmail: string | null;
   onPicked: (sheet: PickedSheet) => void;
+  /** Runtime Google client config from `GET /api/connector-config` (#580);
+   *  null when the install has no (complete) Google config. */
+  googleConfig: GoogleConnectorConfig | null;
 }): PickerSelection {
-  const { linkedEmail, onPicked } = args;
+  const { linkedEmail, onPicked, googleConfig } = args;
 
   const [pickerLoading, setPickerLoading] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
@@ -54,7 +56,7 @@ export function usePickerSelection(args: {
     void (async () => {
       try {
         const token = await requestBrowserToken({
-          clientId: PICKER_CLIENT_ID,
+          clientId: googleConfig?.clientId ?? "",
           // A nudge toward the right account in the chooser, not a
           // constraint — which is why the address is checked below.
           loginHint: linkedEmail,
@@ -77,8 +79,8 @@ export function usePickerSelection(args: {
 
         const picked = await openSheetPicker({
           oauthToken: token.accessToken,
-          developerKey: PICKER_API_KEY,
-          appId: PICKER_APP_ID,
+          developerKey: googleConfig?.pickerApiKey ?? "",
+          appId: googleConfig?.cloudProjectNumber ?? "",
         });
         // `null` is a cancelled Picker — nothing was granted, nothing to do.
         if (picked) onPicked(picked);
@@ -92,14 +94,14 @@ export function usePickerSelection(args: {
         setPickerLoading(false);
       }
     })();
-  }, [linkedEmail, onPicked]);
+  }, [linkedEmail, onPicked, googleConfig]);
 
   return {
     pickerLoading,
-    // Missing build-time config is as unavailable as a blocked script, and
-    // it is the likelier of the two: the deploy needs three secrets that no
-    // test can assert the presence of.
-    pickerUnavailable: unavailable || !isPickerConfigured(),
+    // Missing runtime config is as unavailable as a blocked script: the
+    // install needs three values from /api/connector-config, and an
+    // unconfigured (BYO-Google) install legitimately has none.
+    pickerUnavailable: unavailable || !isPickerConfigured(googleConfig),
     accountMismatch,
     openPicker,
   };

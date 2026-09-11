@@ -74,6 +74,11 @@ export enum ApiCode {
    *  snapshot failed its own contract on the way out. 500. */
   SITE_CONFIG_FETCH_FAILED = "SITE_CONFIG_FETCH_FAILED",
 
+  // Connector runtime config (#580)
+  /** The assembled connector config failed its own contract on the way out,
+   *  or assembly threw. 500 — defensive; the payload is a pure env read. */
+  CONNECTOR_CONFIG_FETCH_FAILED = "CONNECTOR_CONFIG_FETCH_FAILED",
+
   // Webhooks
   WEBHOOK_MISSING_SIGNATURE = "WEBHOOK_MISSING_SIGNATURE",
   WEBHOOK_INVALID_SIGNATURE = "WEBHOOK_INVALID_SIGNATURE",
