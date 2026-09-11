@@ -49,8 +49,12 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# curl is needed for ECS health checks; postgresql-client provides psql
-RUN apk add --no-cache curl postgresql-client
+# Patch OS packages to the latest in the pinned Alpine release, then install
+# runtime tools. `apk upgrade` keeps the base layer's OS packages (e.g. openssl)
+# current at build time — the deploy-time Trivy gate (#573) blocks a deploy on a
+# fixable CRITICAL/HIGH OS CVE, so the image must ship patched OS packages.
+# curl is needed for ECS health checks; postgresql-client provides psql.
+RUN apk upgrade --no-cache && apk add --no-cache curl postgresql-client
 
 # Copy built API
 COPY --from=build /app/apps/api/dist ./dist

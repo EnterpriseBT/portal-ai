@@ -370,9 +370,47 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      # Supply-chain gate (#573): build the image locally, scan it, and only
+      # push + sign if it passes — a failing image never reaches ECR. The push
+      # step below reuses this builder's cache (same job), so it does not
+      # recompile; it re-exports the same layers with SBOM + provenance.
+      - name: Build image (load, no push) for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: ${{ steps.ecr.outputs.uri }}:prod-${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
+            BUILD_SHA=${{ github.sha }}
+
+      # Gate: fail the deploy on a fixable CRITICAL/HIGH OS-package vuln before
+      # anything is pushed. Scoped to OS packages (`vuln-type: os`) — base-image
+      # and build tooling (bundled npm, esbuild via drizzle-kit) live in the
+      # image but are not our code; app dependencies are covered by the
+      # (non-gating) npm audit check. Unfixed + MEDIUM/LOW are reported, not
+      # blocking. Patch SLA: Critical 7d / High 30d — see docs/SUPPLY_CHAIN.md.
+      - name: Scan image (gate — fail on fixable CRITICAL/HIGH OS vulns)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.ecr.outputs.uri }}:prod-${{ github.sha }}
+          vuln-type: os
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
       # No `:latest` tag in production — a mutable tag makes "what is running"
       # unanswerable after the fact. The release tag and the sha are enough.
-      - name: Build and push Docker image
+      - name: Build and push Docker image (+ SBOM & provenance)
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -383,7 +421,16 @@ jobs:
           build-args: |
             BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
             BUILD_SHA=${{ github.sha }}
-          provenance: false
+          provenance: mode=max
+          sbom: true
+
+      # Keyless signing (GitHub OIDC → Fulcio) of the pushed digest, so the
+      # signature is tag-independent. id-token: write is already granted above.
+      - name: Sign image (cosign keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ steps.ecr.outputs.uri }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
       - name: Get ECS configuration
         id: ecs

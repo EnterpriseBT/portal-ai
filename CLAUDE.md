@@ -58,6 +58,10 @@ Two properties worth internalising: the policy is **fail-open on cache availabil
 
 **Developer machines do not write to this cache.** `turbo` is on the devcontainer PATH as a symlink to `node_modules/.bin/turbo` (never `npm install -g`, since a different CLI version computes different hashes), and the container is not linked to the remote cache — see `docs/LOCAL_DEVELOPMENT.md`.
 
+#### Supply-chain gate on the API image (#573)
+
+The API image is built only at deploy (`deploy-dev.yml` / `deploy-prod.yml`), and each deploy **scans before it pushes**: build (load, no push) → **Trivy gate** (fails the deploy on a fixable `CRITICAL`/`HIGH` **OS-package** CVE, `--vuln-type os --ignore-unfixed`) → push with an **SBOM + SLSA provenance** attestation → **cosign keyless** signature on the digest. A failing image never reaches ECR; the runtime stage runs `apk upgrade` so the OS layer ships patched. The gate is **OS-scoped on purpose** — a full-image scan is dominated by base-image + build tooling (the base image's bundled `npm`, and `esbuild` via `drizzle-kit`), not our code, so gating it would block every deploy on tooling we don't control. Application dependencies stay under the **non-gating** `npm audit` check (#545). Policy, patch SLA (Critical 7d / High 30d), and the `cosign verify` / SBOM-download runbook live in the durable `docs/SUPPLY_CHAIN.md`. This runs at deploy, not on PRs — a PR does not build the image.
+
 ### API Database Scripts (run from `apps/api/`)
 
 ```bash
