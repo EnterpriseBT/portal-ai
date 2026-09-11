@@ -7,9 +7,14 @@ How the Portals AI API container image is scanned, attested, and signed, and how
 The API image is built only at deploy time (dev: push to `main` / manual dispatch; prod: release/tag). Each deploy runs, in order, inside the `deploy-backend` job:
 
 1. **Build (load, no push)** — the image is built and loaded locally, not yet pushed.
-2. **Vulnerability gate** — Trivy scans the local image and **fails the deploy** on any fixable `CRITICAL` or `HIGH` **OS-package** vulnerability (`--vuln-type os --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1`). Nothing is pushed to ECR when the gate fails. `MEDIUM`/`LOW` and vulnerabilities with no fix available are reported but do not block.
+2. **Vulnerability gate** — Trivy scans the **whole image** (OS + language packages) and **fails the deploy** on any fixable `CRITICAL` or `HIGH` (`--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1`). Nothing is pushed to ECR when the gate fails. `MEDIUM`/`LOW` and vulnerabilities with no fix available are reported but do not block.
 
-   **Scope — OS packages only, deliberately.** The gate covers the base-OS layer (e.g. openssl), which the image controls and the runtime stage keeps patched via `apk upgrade`. It does **not** gate on language/binary packages inside the image: our application dependencies are covered by the (non-gating) `npm audit` check, and the remaining lang-package findings are base-image + build tooling (the base image's bundled `npm` CLI, and the `esbuild` binary that `drizzle-kit` pulls into the runtime image) — not our code, and only "fixable" by chasing base-image/tool versions. Gating on them would block every deploy on tooling outside our control. Shrinking that runtime tooling footprint (so a full-image gate becomes viable) is tracked separately.
+   **The runtime image is minimized so a whole-image gate is viable.** A full scan of the original image was dominated by tooling that the runtime never actually uses, so that tooling was removed (see `apps/api/Dockerfile`):
+   - **`drizzle-kit` → `devDependencies`.** The production migrate path (`dist/scripts/db-migrate.js`) uses `drizzle-orm/postgres-js/migrator`, not `drizzle-kit` (it was deliberately moved off `drizzle-kit migrate`, which breaks after an RDS password rotation). `drizzle-kit` was the only prod dependency pulling the `esbuild` binaries, so moving it drops them from the image entirely.
+   - **Bundled `npm`/`npx`/`corepack` deleted from the runtime layer.** The service and the one-off migrate/seed ECS tasks all run `node dist/...` directly (the task command overrides in the deploy workflows point at `node`, not `npm run`), so npm is never invoked at runtime; its bundled transitive deps (tar, pacote, …) went with it.
+   - **OS packages** are patched at build time via `apk upgrade` in the runtime stage.
+
+   `npm audit` (`.github/workflows/npm-audit.yml`) remains a non-gating check for the **source** dependency tree; the image gate is what enforces the shipped artifact.
 3. **Push + attest** — the image is pushed to ECR with a **CycloneDX/SPDX SBOM** (`sbom: true`) and **SLSA build provenance** (`provenance: mode=max`) attached as OCI attestation manifests.
 4. **Sign** — the pushed **digest** is signed with **cosign keyless** (GitHub Actions OIDC → Fulcio; no long-lived keys). Signing the digest (not the tag) makes the signature immutable.
 

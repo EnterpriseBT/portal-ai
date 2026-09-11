@@ -390,17 +390,16 @@ jobs:
             BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
             BUILD_SHA=${{ github.sha }}
 
-      # Gate: fail the deploy on a fixable CRITICAL/HIGH OS-package vuln before
-      # anything is pushed. Scoped to OS packages (`vuln-type: os`) — base-image
-      # and build tooling (bundled npm, esbuild via drizzle-kit) live in the
-      # image but are not our code; app dependencies are covered by the
-      # (non-gating) npm audit check. Unfixed + MEDIUM/LOW are reported, not
-      # blocking. Patch SLA: Critical 7d / High 30d — see docs/SUPPLY_CHAIN.md.
-      - name: Scan image (gate — fail on fixable CRITICAL/HIGH OS vulns)
+      # Gate: fail the deploy on any fixable CRITICAL/HIGH vuln in the whole
+      # image (OS + language packages) before anything is pushed. The runtime
+      # image carries only what it needs — no npm/esbuild/drizzle-kit tooling
+      # (see apps/api/Dockerfile) — so the scan surface is the app + patched OS.
+      # Unfixed + MEDIUM/LOW are reported, not blocking. Patch SLA:
+      # Critical 7d / High 30d — see docs/SUPPLY_CHAIN.md.
+      - name: Scan image (gate — fail on fixable CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.ecr.outputs.uri }}:prod-${{ github.sha }}
-          vuln-type: os
           scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
@@ -520,7 +519,7 @@ jobs:
             --task-definition ${{ steps.migtd.outputs.arn }} \
             --launch-type FARGATE \
             --network-configuration "${{ steps.ecs.outputs.network_config }}" \
-            --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:migrate:ci"]}]}' \
+            --overrides '{"containerOverrides":[{"name":"api","command":["node","dist/scripts/db-migrate.js"]}]}' \
             --query 'tasks[0].taskArn' --output text)
           aws ecs wait tasks-stopped \
             --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"
@@ -546,7 +545,7 @@ jobs:
             --task-definition ${{ steps.migtd.outputs.arn }} \
             --launch-type FARGATE \
             --network-configuration "${{ steps.ecs.outputs.network_config }}" \
-            --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:seed:ci"]}]}' \
+            --overrides '{"containerOverrides":[{"name":"api","command":["node","dist/db/seed.js"]}]}' \
             --query 'tasks[0].taskArn' --output text)
           aws ecs wait tasks-stopped \
             --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"

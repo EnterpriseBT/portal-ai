@@ -19,7 +19,7 @@
 Both deploy workflows change their single build step into a **build → scan → push+attest → sign** sequence (single arch makes `load` + scan straightforward):
 
 1. **Build, no push** — `docker/build-push-action@v6` with `load: true, push: false` (buildx cache populated).
-2. **Scan (gate)** — `aquasecurity/trivy-action` against the loaded image: `vuln-type: os` + `--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1`. A fixable CRITICAL/HIGH **OS-package** vuln fails the job **before anything is pushed**. MEDIUM/LOW + unfixed reported, non-blocking. **OS-scoped deliberately** — the smoke found the full-image scan is dominated by base-image/build tooling (bundled `npm`, `esbuild` via `drizzle-kit`), not our app code (which is clean); gating those would block every deploy on tooling outside our control. App deps stay under the (non-gating) `npm audit`. The runtime stage adds `apk upgrade` so the OS layer ships patched (cleared the openssl HIGH the gate found).
+2. **Scan (gate)** — `aquasecurity/trivy-action` against the loaded image: `--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1` over the **whole image** (OS + language packages). A fixable CRITICAL/HIGH fails the job **before anything is pushed**. MEDIUM/LOW + unfixed reported, non-blocking. **The runtime image is minimized so the whole-image gate passes cleanly** — the smoke found the original image's ~60 findings were all base-image/build tooling the runtime never uses, so it was removed (see Files): `drizzle-kit` → devDep (drops the `esbuild` binaries; the prod migrate uses `drizzle-orm`'s migrator, not drizzle-kit), and bundled `npm`/`npx`/`corepack` deleted (the migrate/seed tasks run `node dist/...` directly). OS layer patched via `apk upgrade`. `npm audit` stays the non-gating **source**-tree check.
 3. **Push + attest** — second `build-push-action` with `push: true`, **`provenance: mode=max`**, **`sbom: true`** — reuses the buildx cache (no recompile), attaches SPDX SBOM + SLSA provenance to the ECR manifest. Capture `outputs.digest`.
 4. **Sign** — `cosign sign --yes <ECR_URI>@<digest>` **keyless** (GitHub OIDC → Fulcio); job gets `permissions: id-token: write`. No key material.
 
@@ -31,7 +31,9 @@ Both deploy workflows change their single build step into a **build → scan →
 
 **Files:**
 - `.github/workflows/deploy-dev.yml` & `.github/workflows/deploy-prod.yml` (edit) — replace the one build step with the 4-step sequence above; `id-token: write` is already on the `deploy-backend` job (AWS OIDC); add `sigstore/cosign-installer@v4.1.2` + `aquasecurity/trivy-action@v0.36.0`. Prod keeps no `latest`.
-- `apps/api/Dockerfile` (edit) — `apk upgrade --no-cache` in the runtime stage so the OS layer ships patched (clears the gate's openssl HIGH).
+- `apps/api/Dockerfile` (edit) — `apk upgrade --no-cache` (patch OS) and `rm -rf` the bundled `npm`/`npx`/`corepack` from the runtime layer.
+- `apps/api/package.json` (edit) — move `drizzle-kit` to `devDependencies` (drops `esbuild` from the runtime image).
+- `.github/workflows/deploy-{dev,prod}.yml` (edit) — the one-off migrate/seed ECS task commands change from `["npm","run","db:migrate:ci"]` / `db:seed:ci` to `["node","dist/scripts/db-migrate.js"]` / `["node","dist/db/seed.js"]` so the image needs no npm.
 - `docs/SUPPLY_CHAIN.md` (new, **durable/unsuffixed**) — the gate policy, severity threshold, patch SLA, and the `cosign verify` / SBOM-download runbook.
 - `CLAUDE.md` (edit) — one line under CI gating noting images are signed + SBOM-attested and the scan is a deploy gate (keep docs in sync).
 
@@ -41,13 +43,14 @@ Both deploy workflows change their single build step into a **build → scan →
 
 Agent-walkable locally:
 1. **Build the image** (arm64, matching deploy): `docker buildx build --platform linux/arm64 -f apps/api/Dockerfile -t portalai-api:scan --load .`
-2. **Run the exact gate command (OS-scoped):** `trivy image --pkg-types os --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 portalai-api:scan` → exits 0 after the `apk upgrade`. (A full-image scan without `--pkg-types os` still lists ~60 base-image/tooling CVEs — expected and not gated; see the decision above.)
-3. **SBOM generates:** `trivy image --format spdx-json --output sbom.json portalai-api:scan` produces a non-empty SPDX doc.
+2. **Run the exact gate command (whole image):** `trivy image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 portalai-api:scan` → exits 0 (all targets 0 vulns after the tooling removal + `apk upgrade`).
+3. **Migrate/seed/boot still work npm-free:** `docker run --rm --network <compose-net> --env-file apps/api/.env portalai-api:scan node dist/scripts/db-migrate.js` (and `node dist/db/seed.js`) succeed; the container boots and `/api/health` returns 200 as the non-root `node` user.
+4. **SBOM generates:** `trivy image --format spdx-json --output sbom.json portalai-api:scan` produces a non-empty SPDX doc.
 
 Manual-only (needs the real deploy — AWS OIDC + ECR, runs after the epic reaches `main`):
-4. **Attestations present:** after a dev deploy, `docker buildx imagetools inspect <ECR_URI>:dev-<sha>` shows provenance + SBOM attestation manifests.
-5. **Signature verifies:** `cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/EnterpriseBT/portal-ai' <ECR_URI>@<digest>` succeeds.
-6. **Gate actually blocks:** a deploy with a seeded fixable CRITICAL fails the job before push (verify once by inspection or a throwaway run), leaving ECS on the prior image.
+5. **Attestations present:** after a dev deploy, `docker buildx imagetools inspect <ECR_URI>:dev-<sha>` shows provenance + SBOM attestation manifests.
+6. **Signature verifies:** `cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/EnterpriseBT/portal-ai' <ECR_URI>@<digest>` succeeds.
+7. **Gate actually blocks:** a deploy with a seeded fixable CRITICAL fails the job before push (verify once by inspection or a throwaway run), leaving ECS on the prior image.
 
 ## Out of scope
 
