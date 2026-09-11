@@ -1,6 +1,6 @@
 import { describe, it, expect, jest } from "@jest/globals";
 
-import { AiService } from "../../services/ai.service.js";
+import { AiService, getAnthropic } from "../../services/ai.service.js";
 
 // The codegen seam (#269) is DI-testable: `generateCode` accepts an injected
 // `generateText` fn (mirrors spreadsheet-parsing-llm.service's test seam), so
@@ -56,5 +56,17 @@ describe("AiService.generateCode (#269 codegen seam)", () => {
 
   it("exposes CODEGEN_MODEL as the opus codegen tier", () => {
     expect(AiService.CODEGEN_MODEL).toBe("claude-opus-4-8");
+  });
+});
+
+describe("getAnthropic (#579 lazy client)", () => {
+  it("imports without throwing when ANTHROPIC_API_KEY is absent (lazy)", () => {
+    // The module loaded at the top of this file without constructing a client;
+    // getAnthropic constructs on demand and must not throw with no key.
+    expect(() => getAnthropic()).not.toThrow();
+  });
+
+  it("memoizes the provider (same instance on repeated calls)", () => {
+    expect(getAnthropic()).toBe(getAnthropic());
   });
 });

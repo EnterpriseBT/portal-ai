@@ -11,6 +11,7 @@ import {
 } from "../services/tier-grant.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { verifyWebhookSignature } from "../middleware/webhook-auth.middleware.js";
+import { isSaas } from "../config/deploy-mode.js";
 import {
   Auth0PostLoginWebhookPayloadSchema,
   type Auth0PostLoginWebhookSyncResponse,
@@ -242,59 +243,67 @@ export const STRIPE_SUBSCRIPTION_EVENTS = new Set([
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  */
-webhookRouter.post(
-  "/stripe",
-  // Raw body — the signature is computed over the exact posted bytes; a
-  // parse/re-serialize round-trip would break verification (case 25).
-  express.raw({ type: "application/json" }),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (!StripeService.isConfigured()) {
+// The Stripe entitlement webhook is a saas-only surface (#579): in residency
+// mode the marketplace is the entitlement channel, so this route is not
+// registered at all — a POST to it 404s rather than being handled.
+if (isSaas()) {
+  webhookRouter.post(
+    "/stripe",
+    // Raw body — the signature is computed over the exact posted bytes; a
+    // parse/re-serialize round-trip would break verification (case 25).
+    express.raw({ type: "application/json" }),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        if (!StripeService.isConfigured()) {
+          return next(
+            new ApiError(
+              503,
+              ApiCode.WEBHOOK_MISSING_SECRET,
+              "Stripe webhook is not configured"
+            )
+          );
+        }
+
+        const signature = req.headers["stripe-signature"];
+        if (!signature || typeof signature !== "string") {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.WEBHOOK_MISSING_SIGNATURE,
+              "Missing stripe-signature header"
+            )
+          );
+        }
+
+        // Fail-closed verification (throws ApiError 400 on mismatch).
+        const event = StripeService.constructEvent(
+          req.body as Buffer,
+          signature
+        );
+
+        const outcome = STRIPE_SUBSCRIPTION_EVENTS.has(event.type)
+          ? await TierGrantService.apply(new StripeGrantSource(), event)
+          : await BillingService.recordIgnoredEvent(event);
+
+        logger.info(
+          { eventId: event.id, type: event.type, outcome },
+          "Processed Stripe webhook event"
+        );
+        return res.status(200).json({ received: true });
+      } catch (error) {
+        if (error instanceof ApiError) return next(error);
+        logger.error(
+          { error: error instanceof Error ? error.message : "Unknown error" },
+          "Stripe webhook processing failed"
+        );
         return next(
           new ApiError(
-            503,
-            ApiCode.WEBHOOK_MISSING_SECRET,
-            "Stripe webhook is not configured"
+            500,
+            ApiCode.WEBHOOK_SYNC_FAILED,
+            "Failed to process Stripe webhook event"
           )
         );
       }
-
-      const signature = req.headers["stripe-signature"];
-      if (!signature || typeof signature !== "string") {
-        return next(
-          new ApiError(
-            400,
-            ApiCode.WEBHOOK_MISSING_SIGNATURE,
-            "Missing stripe-signature header"
-          )
-        );
-      }
-
-      // Fail-closed verification (throws ApiError 400 on mismatch).
-      const event = StripeService.constructEvent(req.body as Buffer, signature);
-
-      const outcome = STRIPE_SUBSCRIPTION_EVENTS.has(event.type)
-        ? await TierGrantService.apply(new StripeGrantSource(), event)
-        : await BillingService.recordIgnoredEvent(event);
-
-      logger.info(
-        { eventId: event.id, type: event.type, outcome },
-        "Processed Stripe webhook event"
-      );
-      return res.status(200).json({ received: true });
-    } catch (error) {
-      if (error instanceof ApiError) return next(error);
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Stripe webhook processing failed"
-      );
-      return next(
-        new ApiError(
-          500,
-          ApiCode.WEBHOOK_SYNC_FAILED,
-          "Failed to process Stripe webhook event"
-        )
-      );
     }
-  }
-);
+  );
+}

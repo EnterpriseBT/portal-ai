@@ -18,6 +18,11 @@ export enum ApiCode {
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",
   REQUEST_BODY_INVALID_JSON = "REQUEST_BODY_INVALID_JSON",
+  /** Boot-time deploy-mode guard (#579): DEPLOY_MODE is unknown, or the
+   *  config contradicts the mode (e.g. residency carrying central Stripe
+   *  credentials). Logged at fatal; the process exits non-zero. No HTTP
+   *  surface — the app refuses to start. */
+  DEPLOY_MODE_CONFIG_INVALID = "DEPLOY_MODE_CONFIG_INVALID",
 
   // Health
   HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED",
