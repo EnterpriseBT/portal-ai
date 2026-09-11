@@ -120,135 +120,6 @@ export class BillingService {
   }
 
   /**
-   * Webhook entry for `customer.subscription.{created,updated,deleted}`.
-   *
-   * Converge-to-source (D2): re-fetches the subscription's CURRENT state
-   * from Stripe (out-of-order delivery can't regress the tier), then in ONE
-   * transaction: the dedup insert (`false` → return `"duplicate"`, no
-   * further work) + the org UPDATE. An unknown customer records
-   * `"unmatched"` and resolves (Q2 — never a retry loop). Throws — → 500 →
-   * Stripe retry — only on DB/Stripe-fetch failure; the rollback removes
-   * the dedup row so the retry processes cleanly.
-   */
-  static async handleSubscriptionEvent(
-    event: Stripe.Event
-  ): Promise<"applied" | "noop" | "unmatched" | "duplicate" | "foreign"> {
-    const snapshot = event.data.object as Stripe.Subscription;
-
-    // Converge read — the decision input is Stripe's current state, never
-    // the event snapshot. A deleted subscription retrieves as `canceled`.
-    const sub = await StripeService.fetchSubscription(snapshot.id);
-    const customerId =
-      typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-
-    const org =
-      await DbService.repository.organizations.findByStripeCustomerId(
-        customerId
-      );
-
-    if (!org) {
-      logger.warn(
-        { eventId: event.id, customerId, subscriptionId: sub.id },
-        "Stripe event for an unknown customer; recording unmatched"
-      );
-      const inserted = await DbService.repository.stripeEvents.insertIfNew(
-        BillingService.eventRow(event, {
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          organizationId: null,
-          resultingTier: null,
-          outcome: "unmatched",
-        })
-      );
-      return inserted ? "unmatched" : "duplicate";
-    }
-
-    // Foreign-subscription guard (#230): once an org tracks a subscription,
-    // only events for THAT subscription may move its billing state. A customer
-    // with a second (orphan) subscription — e.g. a double-checkout before the
-    // first webhook lands — must not have the orphan's lifecycle clobber the
-    // tracked subscription (a terminal orphan event would otherwise clear the
-    // live subscription id + anchor and revert the tier). Record + skip. When
-    // nothing is tracked (null), the initial subscribe still adopts below.
-    if (org.stripeSubscriptionId && org.stripeSubscriptionId !== sub.id) {
-      logger.warn(
-        {
-          eventId: event.id,
-          organizationId: org.id,
-          trackedSubscriptionId: org.stripeSubscriptionId,
-          eventSubscriptionId: sub.id,
-        },
-        "Ignoring Stripe event for a foreign subscription (org tracks a different one)"
-      );
-      const inserted = await DbService.repository.stripeEvents.insertIfNew(
-        BillingService.eventRow(event, {
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          organizationId: org.id,
-          resultingTier: null,
-          outcome: "foreign",
-        })
-      );
-      return inserted ? "foreign" : "duplicate";
-    }
-
-    const priceIndex = await DbService.repository.tiers.priceIndex();
-    const derived = BillingService.deriveTierFromSubscription(
-      {
-        status: sub.status,
-        priceId: sub.items.data[0]?.price?.id ?? null,
-        billingCycleAnchor: sub.billing_cycle_anchor,
-      },
-      priceIndex,
-      org.tier
-    );
-
-    const nextSubscriptionId = derived.subscriptionLive ? sub.id : null;
-    const changed =
-      org.tier !== derived.tier ||
-      org.stripeSubscriptionId !== nextSubscriptionId ||
-      org.billingAnchorDay !== derived.anchorDay;
-
-    // Dedup row + org write commit or roll back together (D2).
-    return DbService.transaction(async (tx) => {
-      const inserted = await DbService.repository.stripeEvents.insertIfNew(
-        BillingService.eventRow(event, {
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          organizationId: org.id,
-          resultingTier: changed ? derived.tier : null,
-          outcome: changed ? "applied" : "noop",
-        }),
-        tx
-      );
-      if (!inserted) return "duplicate";
-      if (!changed) return "noop";
-
-      await DbService.repository.organizations.update(
-        org.id,
-        {
-          tier: derived.tier,
-          stripeSubscriptionId: nextSubscriptionId,
-          billingAnchorDay: derived.anchorDay,
-          updated: Date.now(),
-          updatedBy: SystemUtilities.id.system,
-        },
-        tx
-      );
-      logger.info(
-        {
-          eventId: event.id,
-          organizationId: org.id,
-          tier: derived.tier,
-          billingAnchorDay: derived.anchorDay,
-        },
-        "Applied Stripe subscription state to organization"
-      );
-      return "applied";
-    });
-  }
-
-  /**
    * Record a signature-verified event of a type we don't handle —
    * dedup'd like everything else, so redeliveries stay one row.
    *
@@ -524,7 +395,11 @@ export class BillingService {
   }
 
   /** Assemble a `stripe_events` row (audit fields via the model factory). */
-  private static eventRow(
+  /**
+   * Build a `stripe_events` dedup row. Public (#565) so `StripeGrantSource`
+   * records the same rows this service's `recordIgnoredEvent` does.
+   */
+  static eventRow(
     event: Stripe.Event,
     fields: {
       stripeCustomerId: string | null;
