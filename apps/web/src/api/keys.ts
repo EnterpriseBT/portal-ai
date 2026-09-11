@@ -37,6 +37,10 @@ export const queryKeys = {
     root: ["billing"] as const,
     tiers: () => [...queryKeys.billing.root, "tiers"] as const,
   },
+  connectorConfig: {
+    root: ["connectorConfig"] as const,
+    get: () => [...queryKeys.connectorConfig.root, "get"] as const,
+  },
   connectorDefinitions: {
     root: ["connectorDefinitions"] as const,
     list: (params?: ConnectorDefinitionListRequestQuery) =>
