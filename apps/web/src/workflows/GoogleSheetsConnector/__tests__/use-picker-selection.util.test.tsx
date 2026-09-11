@@ -31,26 +31,34 @@ const openSheetPickerMock =
     }) => Promise<{ spreadsheetId: string; name: string } | null>
   >();
 
-const isPickerConfiguredMock = jest.fn<() => boolean>();
-
 jest.unstable_mockModule("../utils/google-picker.util", () => ({
   requestBrowserToken: requestBrowserTokenMock,
   openSheetPicker: openSheetPickerMock,
   loadPicker: jest.fn(async () => undefined),
-  isPickerConfigured: isPickerConfiguredMock,
-  PICKER_API_KEY: "AIzaKEY",
-  PICKER_CLIENT_ID: "client-1.apps.googleusercontent.com",
-  PICKER_APP_ID: "872674925548",
+  // The real predicate (arg-based, #580) — availability is driven by the
+  // runtime config passed into the hook, not a mock return value.
+  isPickerConfigured: (
+    g: {
+      clientId?: string;
+      pickerApiKey?: string;
+      cloudProjectNumber?: string;
+    } | null
+  ) => Boolean(g?.clientId && g?.pickerApiKey && g?.cloudProjectNumber),
 }));
 
 const { usePickerSelection } =
   await import("../utils/use-picker-selection.util");
 
+/** A complete runtime config — the picker is "configured" with this. */
+const FULL_GOOGLE = {
+  clientId: "client-1.apps.googleusercontent.com",
+  pickerApiKey: "AIzaKEY",
+  cloudProjectNumber: "872674925548",
+};
+
 beforeEach(() => {
   requestBrowserTokenMock.mockReset();
   openSheetPickerMock.mockReset();
-  isPickerConfiguredMock.mockReset();
-  isPickerConfiguredMock.mockReturnValue(true);
   openSheetPickerMock.mockResolvedValue({
     spreadsheetId: "1abcXYZ",
     name: "Q3 Forecast",
@@ -66,7 +74,11 @@ describe("usePickerSelection — the account-match guard", () => {
     const onPicked = jest.fn();
 
     const { result } = renderHook(() =>
-      usePickerSelection({ linkedEmail: "alice@example.com", onPicked })
+      usePickerSelection({
+        googleConfig: FULL_GOOGLE,
+        linkedEmail: "alice@example.com",
+        onPicked,
+      })
     );
     await act(async () => {
       result.current.openPicker();
@@ -88,6 +100,7 @@ describe("usePickerSelection — the account-match guard", () => {
 
     const { result } = renderHook(() =>
       usePickerSelection({
+        googleConfig: FULL_GOOGLE,
         linkedEmail: "alice@example.com",
         onPicked: jest.fn(),
       })
@@ -111,7 +124,11 @@ describe("usePickerSelection — the account-match guard", () => {
     const onPicked = jest.fn();
 
     const { result } = renderHook(() =>
-      usePickerSelection({ linkedEmail: "alice@example.com", onPicked })
+      usePickerSelection({
+        googleConfig: FULL_GOOGLE,
+        linkedEmail: "alice@example.com",
+        onPicked,
+      })
     );
     await act(async () => {
       result.current.openPicker();
@@ -135,6 +152,7 @@ describe("usePickerSelection — the account-match guard", () => {
 
     const { result } = renderHook(() =>
       usePickerSelection({
+        googleConfig: FULL_GOOGLE,
         linkedEmail: "alice@example.com",
         onPicked: jest.fn(),
       })
@@ -157,7 +175,11 @@ describe("usePickerSelection — the account-match guard", () => {
     });
 
     const { result } = renderHook(() =>
-      usePickerSelection({ linkedEmail: null, onPicked: jest.fn() })
+      usePickerSelection({
+        googleConfig: FULL_GOOGLE,
+        linkedEmail: null,
+        onPicked: jest.fn(),
+      })
     );
     await act(async () => {
       result.current.openPicker();
@@ -179,6 +201,7 @@ describe("usePickerSelection — the account-match guard", () => {
 
     const { result } = renderHook(() =>
       usePickerSelection({
+        googleConfig: FULL_GOOGLE,
         linkedEmail: "alice@example.com",
         onPicked: jest.fn(),
       })
@@ -198,14 +221,28 @@ describe("usePickerSelection — the account-match guard", () => {
 });
 
 describe("usePickerSelection — availability", () => {
-  it("reports the Picker unavailable when the build-time config is missing", () => {
-    isPickerConfiguredMock.mockReturnValue(false);
-
+  it("reports the Picker unavailable when the runtime config is missing (google: null)", () => {
     const { result } = renderHook(() =>
-      usePickerSelection({ linkedEmail: null, onPicked: jest.fn() })
+      usePickerSelection({
+        googleConfig: null,
+        linkedEmail: null,
+        onPicked: jest.fn(),
+      })
     );
 
     expect(result.current.pickerUnavailable).toBe(true);
+  });
+
+  it("reports it available when the runtime config is complete", () => {
+    const { result } = renderHook(() =>
+      usePickerSelection({
+        googleConfig: FULL_GOOGLE,
+        linkedEmail: null,
+        onPicked: jest.fn(),
+      })
+    );
+
+    expect(result.current.pickerUnavailable).toBe(false);
   });
 
   it("reports it unavailable when the Google script will not load", async () => {
@@ -214,7 +251,11 @@ describe("usePickerSelection — availability", () => {
     );
 
     const { result } = renderHook(() =>
-      usePickerSelection({ linkedEmail: null, onPicked: jest.fn() })
+      usePickerSelection({
+        googleConfig: FULL_GOOGLE,
+        linkedEmail: null,
+        onPicked: jest.fn(),
+      })
     );
     await act(async () => {
       result.current.openPicker();
@@ -229,7 +270,11 @@ describe("usePickerSelection — availability", () => {
     requestBrowserTokenMock.mockRejectedValue(new Error("popup_closed"));
 
     const { result } = renderHook(() =>
-      usePickerSelection({ linkedEmail: null, onPicked: jest.fn() })
+      usePickerSelection({
+        googleConfig: FULL_GOOGLE,
+        linkedEmail: null,
+        onPicked: jest.fn(),
+      })
     );
     await act(async () => {
       result.current.openPicker();
@@ -248,7 +293,11 @@ describe("usePickerSelection — availability", () => {
     const onPicked = jest.fn();
 
     const { result } = renderHook(() =>
-      usePickerSelection({ linkedEmail: "alice@example.com", onPicked })
+      usePickerSelection({
+        googleConfig: FULL_GOOGLE,
+        linkedEmail: "alice@example.com",
+        onPicked,
+      })
     );
     await act(async () => {
       result.current.openPicker();

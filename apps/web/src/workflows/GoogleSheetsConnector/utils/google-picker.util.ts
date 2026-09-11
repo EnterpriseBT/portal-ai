@@ -8,11 +8,13 @@
  * pieces: minting a token, and running the Picker with it.
  *
  * Nothing here reads context: every value arrives as an argument so the
- * module is testable without a Vite build. The `import.meta.env` reads live
- * at the bottom as exported constants, which is the only place a build-time
- * value enters (the `?.` follows `contact.util.ts` — `import.meta.env` does
- * not exist under jest).
+ * module is testable without a Vite build. Client config (client id, picker
+ * key, project number) is no longer read from `import.meta.env` here — it
+ * arrives at runtime from `GET /api/connector-config` (#580) and is threaded
+ * in as arguments; `isPickerConfigured` below takes that config.
  */
+
+import type { GoogleConnectorConfig } from "@portalai/core/contracts";
 
 export interface PickedSheet {
   spreadsheetId: string;
@@ -283,20 +285,16 @@ async function resolveEmail(accessToken: string): Promise<string> {
   return body.email;
 }
 
-// Build-time config. `?.` because `import.meta.env` does not exist outside a
-// Vite build (jest, node scripts) — the module must import cleanly there.
-export const PICKER_API_KEY: string =
-  import.meta.env?.VITE_GOOGLE_PICKER_API_KEY ?? "";
-export const PICKER_CLIENT_ID: string =
-  import.meta.env?.VITE_GOOGLE_OAUTH_CLIENT_ID ?? "";
-export const PICKER_APP_ID: string =
-  import.meta.env?.VITE_GOOGLE_CLOUD_PROJECT_NUMBER ?? "";
-
 /**
- * True when every build-time value the Picker needs is present. The step
- * renders a configuration message rather than an empty selector when this is
- * false — a missing key is our problem, and saying "no spreadsheets found"
- * would blame the user's Google account for it.
+ * True when the runtime connector config carries every value the Picker needs
+ * (#580 — fetched from `GET /api/connector-config`, no longer baked in at
+ * build via `VITE_GOOGLE_*`). The step renders a configuration message rather
+ * than an empty selector when this is false — a missing key is our problem,
+ * and saying "no spreadsheets found" would blame the user's Google account.
  */
-export const isPickerConfigured = (): boolean =>
-  Boolean(PICKER_API_KEY && PICKER_CLIENT_ID && PICKER_APP_ID);
+export const isPickerConfigured = (
+  google: GoogleConnectorConfig | null | undefined
+): boolean =>
+  Boolean(
+    google?.clientId && google?.pickerApiKey && google?.cloudProjectNumber
+  );

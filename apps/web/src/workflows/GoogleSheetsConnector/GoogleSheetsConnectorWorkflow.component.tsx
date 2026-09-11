@@ -285,9 +285,14 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     [workflow]
   );
 
+  // Runtime connector config (#580) — client id / picker key / project number
+  // now arrive from the API at runtime, not baked into the bundle at build.
+  const connectorConfigQuery = sdk.connectorConfig.get();
+
   const picker = usePickerSelection({
     linkedEmail: workflow.accountInfo?.identity ?? null,
     onPicked: handlePicked,
+    googleConfig: connectorConfigQuery.data?.google ?? null,
   });
 
   // ── Column definitions for binding labels (shared with file-upload) ─
