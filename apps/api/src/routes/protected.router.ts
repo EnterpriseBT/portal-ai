@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { jwtCheck } from "../middleware/auth.middleware.js";
+import { connectorConfigRouter } from "./connector-config.router.js";
 import { profileRouter } from "./profile.router.js";
 import { organizationRouter } from "./organization.router.js";
 import { billingRouter } from "./billing.router.js";
@@ -31,6 +32,7 @@ export const protectedRouter = Router();
 protectedRouter.use(jwtCheck);
 
 // Mount routers
+protectedRouter.use("/connector-config", connectorConfigRouter);
 protectedRouter.use("/profile", profileRouter);
 protectedRouter.use("/organization", organizationRouter);
 protectedRouter.use("/billing", billingRouter);
