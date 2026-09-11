@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { UnauthorizedError } from "express-oauth2-jwt-bearer";
 import { ApiCode } from "./constants/api-codes.constants.js";
 import { healthRouter } from "./routes/health.router.js";
@@ -32,6 +33,16 @@ app.use(httpLogger);
 // Propagate req.log into AsyncLocalStorage so service-layer loggers
 // inherit reqId/userId without needing to pass req through every call.
 app.use(requestContextMiddleware);
+
+// Security response headers (HSTS, nosniff, frame-deny, referrer policy, a
+// strict default CSP, X-Powered-By removed). CORP is set to cross-origin
+// because the SPA and MapLibre tiles consume this API from a different origin
+// in every deployed env — the CORS allowlist below is the access boundary,
+// not CORP (helmet's same-origin default would break those cross-origin
+// fetches). The strict global CSP is inert for the API's JSON responses
+// (CSP only constrains HTML rendering); the Swagger UI route relaxes it
+// locally to render its inline bundle — see swagger.router.ts.
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
 // Webhook routes must be mounted before express.json() so the webhook's
 // custom JSON parser can capture the raw body for HMAC signature verification.
