@@ -42,6 +42,11 @@ jest.unstable_mockModule("maplibre-gl", () => {
     Map: MockMap,
     addProtocol: () => {},
     removeProtocol: () => {},
+    // #548: MapWidget calls setWorkerUrl at module scope to point maplibre-gl
+    // v6's ESM tile worker at the Vite-emitted asset (the worker isn't
+    // statically detectable, so Vite doesn't emit it without the explicit
+    // `?worker&url` import). No-op under jest.
+    setWorkerUrl: () => {},
     NavigationControl: class {},
     Popup: MockPopup,
   };

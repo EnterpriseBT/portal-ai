@@ -43,6 +43,10 @@ export default {
     "^d3/dist/d3\\.min\\.js$": "<rootDir>/src/__tests__/__mocks__/rawMock.js",
     "sandbox-bootstrap\\.js$": "<rootDir>/src/__tests__/__mocks__/rawMock.js",
     "\\?raw$": "<rootDir>/src/__tests__/__mocks__/rawMock.js",
+    // Vite `?worker&url` imports (MapWidget's maplibre-gl worker, #548) — the
+    // emitted worker asset is a build-time URL; under jest it stands in as a
+    // string, same as `?raw`. Must precede the relative-.js mapper.
+    "\\?worker&url$": "<rootDir>/src/__tests__/__mocks__/rawMock.js",
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "\\.svg$": "<rootDir>/src/__tests__/__mocks__/svgMock.tsx",
     "\\.css$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
