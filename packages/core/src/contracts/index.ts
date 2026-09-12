@@ -94,6 +94,9 @@ export * from "./billing.contract.js";
 export * from "./usage-ledger.contract.js";
 export * from "./maintenance.contract.js";
 
+/** Audit-log endpoint contracts — schemas & types (#575) */
+export * from "./audit-log.contract.js";
+
 /** Spreadsheet parsing contracts — re-exported from @portalai/spreadsheet-parsing */
 export * from "./spreadsheet-parsing.contract.js";
 

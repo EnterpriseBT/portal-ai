@@ -18,13 +18,13 @@ Each slice: (1) write failing tests; (2) smallest change to green them; (3) focu
 
 Sequencing rationale — contract + storage first, then read, then emission, then housekeeping:
 
-- **Slice 1** — the contract: core model + Zod, the Drizzle table, dual-schema type-checks, the migration (incl. the tamper-evidence REVOKE). Pure leaf; everything else imports these types.
-- **Slice 2** — the `AuditLogRepository` + the fail-open `AuditService`, unit-tested; carries the REVOKE-holds integration test (needs `append` to seed a row first). No emission yet.
+- **Slice 1** — the contract: core model + Zod, the Drizzle table, dual-schema type-checks, the migration (incl. the tamper-evidence **trigger** — Open Q2 resolved to a trigger, not a REVOKE, since the app owns the table). Pure leaf; everything else imports these types.
+- **Slice 2** — the `AuditLogRepository` + the fail-open `AuditService`, unit-tested; carries the trigger-holds integration test (needs `append` to seed a row first). No emission yet.
 - **Slice 3** — the owner-gated read endpoint + `ApiCode`s + OpenAPI. Depends only on slice 2's `findPage`; the integration test seeds rows via the repo directly, so read correctness is verified **independent of** emission.
 - **Slice 4** — `trust proxy` + the audit-context helper + the webhook payload extension + `AuditService.record` calls at every seam. The emission integration test proves a real seam writes a row **and** that the audited action still succeeds when the audit write fails (fail-open end-to-end).
 - **Slice 5** — the retention purge processor + queue/worker/env, cloned from the ledger purge. Independent housekeeping, last.
 
-The migration lands in slice 1 (`add-audit-log-table`, incl. `REVOKE UPDATE, DELETE`); every later integration test relies on it being applied by the test DB's migration run.
+The migration lands in slice 1 (`0094_add-audit-log-table`, incl. the append-only trigger); every later integration test relies on it being applied by the test DB's migration run.
 
 ---
 
@@ -37,19 +37,19 @@ The append-only table and its dual-schema types. Nothing writes or reads it yet.
 - New: `packages/core/src/models/audit-log.model.ts` — `AUDIT_ACTIONS`, `AuditActionSchema`, `AuditOutcomeSchema`, `AuditLogEntrySchema` (`CoreSchema.extend`), `AuditLogEntryModel`, `AuditLogEntryModelFactory` (mirror `tool-usage-ledger.model.ts`).
 - New: `packages/core/src/contracts/audit-log.contract.ts` — `AuditLogListRequestQuerySchema`, `AuditLogListResponseSchema` + types.
 - New: `apps/api/src/db/schema/audit-log.table.ts` — `auditLog` `pgTable` (spec §3): `baseColumns` + org FK + `userId`/`action`/`targetType`/`targetId`/`outcome`/`sourceIp`/`userAgent`/`metadata` (jsonb), `(organizationId, created, id)` index, outcome check. No unique idempotency key.
-- New: `apps/api/drizzle/<n>_add-audit-log-table.sql` — generated, then hand-append `REVOKE UPDATE, DELETE ON audit_log FROM <app_db_role>;`.
+- New: `apps/api/drizzle/0094_add-audit-log-table.sql` — generated, then hand-append the `audit_log_prevent_mutation` trigger (blocks UPDATE always, DELETE unless `app.audit_retention_purge='on'`).
 - Edit: `packages/core/src/models/index.ts`, `packages/core/src/contracts/index.ts`, `apps/api/src/db/schema/index.ts`, `apps/api/src/db/schema/zod.ts` (`AuditLogSelect`/`Insert`), `apps/api/src/db/schema/type-checks.ts` (bidirectional `IsAssignable` + `InferSelectModel`).
 - New tests: `packages/core/src/models/__tests__/audit-log.model.test.ts`, `packages/core/src/contracts/__tests__/audit-log.contract.test.ts`.
 
 **Steps**
 
 1. **Tests (spec: core model ~7, contract ~4).** Model: valid entry parses; unknown `action` rejected; bad `outcome` rejected; nullable `targetType`/`targetId`/`sourceIp`/`userAgent`/`metadata`; factory `create(createdBy)` stamps base fields. Contract: query defaults `sortOrder='desc'`; optional `action`/`outcome` parse; response shape. Run; fail.
-2. **Implement** the model, contract, table, zod entries, type-checks. Generate the migration (`npm run db:generate -- --name add-audit-log-table`) and hand-append the REVOKE. Green.
+2. **Implement** the model, contract, table, zod entries, type-checks. Generate the migration (`npm run db:generate -- --name add-audit-log-table`) and hand-append the trigger. Green.
 3. Lint + type-check (the dual-schema guard in `type-checks.ts` is a compile-time assertion — `type-check` is its test).
 
 **Done when:** the core model + contract cases pass; `type-check` passes (dual-schema guard holds); the migration applies cleanly. Nothing references the table at runtime yet.
 
-**Risk:** the jsonb `metadata` dual-schema mapping — mirror `connector-instances.config` (`z.record(z.string(), z.unknown()).nullable()` ↔ `jsonb(...).$type<Record<string,unknown>>()`), which the type-check confirms. **REVOKE vs role identity** (spec Open Q2): if the app role == migration role in an env, the self-REVOKE can't apply — fall back to the documented `BEFORE UPDATE OR DELETE` trigger; decide at generate time and note which in the migration comment.
+**Risk:** the jsonb `metadata` dual-schema mapping — mirror `connector-instances.config` (`z.record(z.string(), z.unknown()).nullable()` ↔ `jsonb(...).$type<Record<string,unknown>>()`), which the type-check confirms. **Tamper-evidence mechanism** (spec Open Q2): resolved to a trigger — the app connects as the table owner, so `REVOKE` is a no-op, and a blanket block would break the slice-5 purge. The trigger blocks UPDATE always and DELETE unless the purge sets `app.audit_retention_purge='on'`. Also: import `AUDIT_ACTIONS` from `@portalai/core/models`, not the root barrel (drizzle-kit's tsx loader chokes on the root barrel's SVG assets).
 
 ---
 
@@ -59,21 +59,21 @@ The append-only repo and the central emission service, unit-tested. Carries the 
 
 **Files**
 
-- New: `apps/api/src/db/repositories/audit-log.repository.ts` — `AuditLogRepository` with `append`, `findPage`, `deleteOlderThan`, `SORTABLE_COLUMNS`/`AUDIT_LOG_SORT_KEYS` (spec §6); no update/delete surface. `auditLogRepo` singleton.
+- New: `apps/api/src/db/repositories/audit-log.repository.ts` — `AuditLogRepository` with `append`, `findPage`, `deleteOlderThan` (each purge batch sets `SET LOCAL app.audit_retention_purge='on'` so the trigger permits it), `SORTABLE_COLUMNS`/`AUDIT_LOG_SORT_KEYS` (spec §6); no update/delete surface. `auditLogRepo` singleton.
 - New: `apps/api/src/services/audit.service.ts` — `AuditService.record(event)` + `AuditEvent` (spec §7): fail-open try/catch, `error` log + failure counter, default `outcome='success'`, actor = `createdBy`.
 - Edit: `apps/api/src/services/db.service.ts` — register `auditLog: auditLogRepo`.
-- New tests: `apps/api/src/services/__tests__/audit.service.test.ts`; `apps/api/src/db/repositories/__tests__/audit-log.repository.test.ts`; a REVOKE-holds assertion in the repo integration test.
+- New tests: `apps/api/src/services/__tests__/audit.service.test.ts`; `apps/api/src/db/repositories/__tests__/audit-log.repository.test.ts`; a trigger-holds assertion in the repo integration test.
 
 **Steps**
 
 1. **Unit tests (spec: repo ~7, service ~6).** Repo: `append` inserts; `findPage` org-scopes, filters by `action`/`outcome`, orders newest-first with `id` tiebreaker, returns total; `deleteOlderThan` batch-deletes by cutoff. Service: `record` writes a row with actor/action/target/outcome/ip/ua; **fail-open** — when `append` throws, `record` resolves (no throw) and logs at `error` + bumps the counter; defaults `outcome='success'`. Run; fail.
-2. **Integration test (spec: tamper-evidence ~1).** `append` a row, then attempt a raw `UPDATE`/`DELETE` on it through the app connection — assert both are rejected (the REVOKE/trigger holds). Run; fail.
+2. **Integration test (spec: tamper-evidence ~1).** `append` a row, then attempt a raw `UPDATE` and an unflagged `DELETE` through the app connection — assert both are rejected (the trigger raises); assert a `SET LOCAL app.audit_retention_purge='on'` DELETE succeeds. Run; fail.
 3. **Implement** the repo (mirror the ledger repo; `findPage` appends `auditLog.id` to `orderBy`) + the service (fail-open wrap) + the DbService registration. Green.
 4. Lint + type-check.
 
-**Done when:** repo + service unit cases pass; the REVOKE-holds integration assertion passes. `AuditService.record` is callable but not yet called from any seam.
+**Done when:** repo + service unit cases pass; the trigger-holds integration assertion passes. `AuditService.record` is callable but not yet called from any seam.
 
-**Risk:** the failure counter's durability (spec §7) — a module-level counter + a distinct `error` log code is the floor; wiring it to a metrics/health surface is optional and can be confirmed with the user (spec Key decision 3). The REVOKE test must use the **app** DB connection, not the migration/owner role, or it will spuriously pass.
+**Risk:** the failure counter's durability (spec §7) — a module-level counter + a distinct `error` log code is the floor; wiring it to a metrics/health surface is optional and can be confirmed with the user (spec Key decision 3). The trigger test must use the **app** DB connection; the trigger fires for any role, so this is naturally correct.
 
 ---
 
@@ -153,8 +153,8 @@ Daily housekeeping, cloned from the ledger purge. Independent, last.
 
 | Slice | Lands | Spec cases | Tests |
 |---|---|---|---|
-| 1 | core model + contract + table + zod + type-checks + migration (REVOKE) | model ~7, contract ~4 | core unit + type-check |
-| 2 | `AuditLogRepository` + fail-open `AuditService` + REVOKE-holds | repo ~7, service ~6, tamper ~1 | api unit + integration |
+| 1 | core model + contract + table + zod + type-checks + migration (trigger) | model ~7, contract ~4 | core unit + type-check |
+| 2 | `AuditLogRepository` + fail-open `AuditService` + trigger-holds | repo ~7, service ~6, tamper ~1 | api unit + integration |
 | 3 | owner-gated read endpoint + `ApiCode`s + OpenAPI | read ~6 | api integration |
 | 4 | `trust proxy` + context helper + webhook ext + emission at seams | emission ~3 | api integration |
 | 5 | retention purge + queue/worker/env + README | retention ~3 | api integration |
@@ -163,7 +163,7 @@ Total ≈ **37 cases**, one migration (slice 1). Commits on `feat/audit-log`; PR
 
 ## Cross-slice notes
 
-- **Migration lands in slice 1**, and every later integration slice (2–5) depends on the test DB having applied it (incl. the REVOKE). The REVOKE vs trigger choice (Open Q2) is decided at slice 1.
+- **Migration lands in slice 1**, and every later integration slice (2–5) depends on the test DB having applied it (incl. the trigger). Open Q2 (REVOKE vs trigger) is decided at slice 1 — a trigger, since the app owns the table.
 - **Read before emission is deliberate** (slices 3 → 4): the read is verified by directly-seeded rows, so read correctness never depends on emission correctness, and vice-versa.
 - **Fail-open is the through-line** — asserted at the unit level in slice 2 (`record` swallows) and end-to-end in slice 4 (a seam's action survives an audit-write failure). Both are required; the spec's central safety property.
 - **`trust proxy` (slice 4) is a global config touch** shared with #574 — verify its per-user rate-limit keying is unaffected (it is; it keys on the principal, not IP).

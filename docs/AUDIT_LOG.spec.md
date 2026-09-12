@@ -9,7 +9,7 @@ Pins the contract for the append-only `audit_log`: the table + dual-schema model
 3. **Typed `AuditAction` union** in `@portalai/core` + structured `targetType`/`targetId`/`outcome`/`metadata`. (D3.)
 4. **Credential-access auditing is limited** to deliberate reveal/sync-use seams — never the per-row `decryptRows`. (D4.)
 5. **`trust proxy` enabled** so `sourceIp` is the real client IP; `userAgent` captured alongside. (D5.)
-6. **Append-only tamper-evidence** via a repo with no update/delete surface **+ a DB-level `REVOKE UPDATE, DELETE`** in the migration; hash-chain deferred. (D6.)
+6. **Append-only tamper-evidence** via a repo with no update/delete surface **+ a DB trigger** (`audit_log_no_mutation`) that blocks every UPDATE and every DELETE *except* the retention purge, which opts in with `SET LOCAL app.audit_retention_purge = 'on'`. A `REVOKE` was the discovery lean but is a no-op against the table owner (the app connects as owner until #397), and would also block the legitimate purge — the trigger works regardless of role and gates the one allowed delete path. Hash-chain deferred. (D6, Open Q2 resolved.)
 7. **Owner-gated read** (`ownerUserId === userId`, else `403 AUDIT_LOG_NOT_AUTHORIZED`) — predicate swaps to `role='admin'` when #576 lands, contract unchanged. Rows **persist beyond org soft-delete**; retention window `AUDIT_LOG_RETENTION_MONTHS` (default 24). (PRD gate + D7.)
 
 ## Scope
@@ -100,7 +100,7 @@ export const auditLog = pgTable(
 );
 ```
 
-`AUDIT_ACTIONS` imported from `@portalai/core`. Register in `apps/api/src/db/schema/index.ts`. **No unique idempotency key** — duplicate audit rows are acceptable (append-only trail, not billing); a retried login webhook producing two `auth.login` rows is accurate, not a bug.
+`AUDIT_ACTIONS` imported from `@portalai/core/models` (the root barrel pulls in `./ui` SVG assets that drizzle-kit's tsx loader can't parse — the `/models` subpath is clean). Register in `apps/api/src/db/schema/index.ts`. **No unique idempotency key** — duplicate audit rows are acceptable (append-only trail, not billing); a retried login webhook producing two `auth.login` rows is accurate, not a bug.
 
 ### 4. drizzle-zod — `apps/api/src/db/schema/zod.ts`
 
@@ -131,7 +131,10 @@ export class AuditLogRepository extends Repository<typeof auditLog, AuditLogSele
     client?: DbClient,
   ): Promise<{ entries: AuditLogSelect[]; total: number }>;
 
-  /** Retention purge batch seam — hard-delete ≤ batchSize rows created before cutoffMs. */
+  /** Retention purge batch seam — hard-delete ≤ batchSize rows created before
+   *  cutoffMs. Runs each batch in a transaction that first sets
+   *  `SET LOCAL app.audit_retention_purge = 'on'` so the append-only trigger
+   *  permits this — the ONLY sanctioned delete path. */
   async deleteOlderThan(cutoffMs: number, batchSize: number, client?: DbClient): Promise<number>;
 }
 export const auditLogRepo = new AuditLogRepository();
@@ -215,20 +218,32 @@ Register `AuditLogEntry` + `AuditLogListResponse` via `z.toJSONSchema(...)` (mir
 
 ### 15. Retention — processor + queue + worker + env (edits/new)
 
-- New `apps/api/src/queues/processors/audit-log-retention-purge.processor.ts` — mirrors `ledger-retention-purge.processor.ts`: `AUDIT_LOG_PURGE_BATCH_SIZE = 10_000`, `AuditLogRetentionPurgeSummary { purged, batches, cutoff }`, window `environment.AUDIT_LOG_RETENTION_MONTHS`, drain loop over `auditLogRepo.deleteOlderThan`.
+- New `apps/api/src/queues/processors/audit-log-retention-purge.processor.ts` — mirrors `ledger-retention-purge.processor.ts`: `AUDIT_LOG_PURGE_BATCH_SIZE = 10_000`, `AuditLogRetentionPurgeSummary { purged, batches, cutoff }`, window `environment.AUDIT_LOG_RETENTION_MONTHS`, drain loop over `auditLogRepo.deleteOlderThan` (which sets the `app.audit_retention_purge` flag per §6 so the append-only trigger permits its DELETEs).
 - `apps/api/src/queues/maintenance.queue.ts` — add `AUDIT_LOG_RETENTION_PURGE_JOB = "audit-log-retention-purge"` const + a scheduler entry (`{ pattern: "30 5 * * *" }` — after the message-dissolve purge, no worker-slot contention).
 - `apps/api/src/queues/maintenance.worker.ts` — dispatch `if (job.name === AUDIT_LOG_RETENTION_PURGE_JOB)`.
 - `apps/api/src/environment.ts` — `AUDIT_LOG_RETENTION_MONTHS` (default 24). `GET /api/admin/maintenance` surfaces the run automatically (generic scheduler read).
 
 ## Migration
 
-`npm run db:generate -- --name add-audit-log-table`, then hand-edit the generated SQL to append the tamper-evidence guard:
+`0094_add-audit-log-table.sql` (`npm run db:generate -- --name add-audit-log-table`), hand-edited to append the tamper-evidence guard as a **trigger** (Open Q2 resolved — the app connects as the table owner, so `REVOKE` is a no-op, and a blanket block would break the retention purge):
 
 ```sql
-REVOKE UPDATE, DELETE ON audit_log FROM <app_db_role>;
+CREATE OR REPLACE FUNCTION audit_log_prevent_mutation() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE'
+    AND current_setting('app.audit_retention_purge', true) = 'on' THEN
+    RETURN OLD;                       -- the retention purge (§15) opts in
+  END IF;
+  RAISE EXCEPTION 'audit_log is append-only: % is not permitted', TG_OP
+    USING ERRCODE = 'insufficient_privilege';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER audit_log_no_mutation
+  BEFORE UPDATE OR DELETE ON "audit_log"
+  FOR EACH ROW EXECUTE FUNCTION audit_log_prevent_mutation();
 ```
 
-The app DB role is the runtime connection role; migrations run under the owner/migration role (Open Q2 lean — REVOKE, not a trigger). If the runtime and migration roles are the same in an env, fall back to a `BEFORE UPDATE OR DELETE` trigger that `RAISE EXCEPTION` (documented alternative). No backfill — new table. No seed.
+UPDATE is never permitted; DELETE only under the purge's `SET LOCAL app.audit_retention_purge = 'on'`. Validated against Postgres 17 (UPDATE blocked, unflagged DELETE blocked, flagged DELETE allowed). No backfill — new table. No seed.
 
 ## Seed
 
@@ -249,14 +264,14 @@ None — `audit_log` is populated only by live emission.
 - `apps/api/src/__tests__/__integration__/routes/audit-log.router.integration.test.ts` — owner gets a page; **non-owner member → 403 `AUDIT_LOG_NOT_AUTHORIZED`**; invalid `sortBy` → 400; org-scoping (org A cannot see org B's rows); pagination/total. (~6)
 - `apps/api/src/__tests__/__integration__/services/audit-emission.integration.test.ts` — a representative seam (e.g. `org.delete` or `toolpack.secret.rotate`) produces an `audit_log` row with the right actor/target/outcome; and the audited action still succeeds when the audit write is forced to fail (fail-open, end-to-end). (~3)
 - `apps/api/src/__tests__/__integration__/queues/audit-log-retention-purge.integration.test.ts` — rows older than the window are purged, newer retained, summary shape correct. (~3)
-- Tamper-evidence: an integration assertion that the app role cannot `UPDATE`/`DELETE` an `audit_log` row (the REVOKE holds). (~1)
+- Tamper-evidence: an integration assertion that the app cannot `UPDATE` or (unflagged) `DELETE` an `audit_log` row — the trigger raises — while a `SET LOCAL app.audit_retention_purge='on'` DELETE succeeds. (~1)
 
 **Totals ≈ 37 cases.**
 
 ## Acceptance criteria
 
 - Security-relevant actions (the seams in §10) produce `audit_log` rows with actor + target + outcome.
-- The app exposes no update/delete path for audit rows (no repo methods; DB `REVOKE`/trigger blocks it).
+- The app exposes no update/delete path for audit rows (no repo methods; the DB trigger blocks it).
 - The **org owner** can retrieve their org's trail via `GET /api/organization/audit-log`; a non-owner member gets `403 AUDIT_LOG_NOT_AUTHORIZED`.
 - Audit rows survive their org's soft-delete; `org.delete` itself appears in the trail.
 - A failed audit write does not fail the underlying action; the failure is logged at `error` + counted, not swallowed silently.
@@ -266,14 +281,14 @@ None — `audit_log` is populated only by live emission.
 
 - **Fail-mode:** fail-open by design — an audit-store outage means *missing* rows (a logged, counted gap), never a blocked login/action. The safety cost (a gap in the trail) is accepted over the availability cost of fail-closed; the counter makes the gap detectable.
 - **`trust proxy` hop count** (D5): wrong count → wrong `sourceIp`, or (if over-trusting) a client-spoofable IP. Pin the count to the actual ALB+CloudFront chain; if uncertain, trust exactly the known hops and read the corresponding `X-Forwarded-For` entry. Touches the same request-IP surface as #574 (rate limiting) — verify #574's keying is unaffected (it keys per-user, so it is).
-- **REVOKE vs runtime/migration role identity** (Open Q2): if the app role == migration role, the REVOKE can't cleanly self-restrict — fall back to the trigger. Detected at migration time in each env.
-- **Rollback:** the table + emission are additive; disabling is dropping the scheduler + no-op-ing `AuditService.record`. The migration's REVOKE is reversible with a `GRANT`.
+- **Tamper-evidence mechanism** (Open Q2 resolved): a trigger, not a REVOKE — the app owns the table, so REVOKE is a no-op, and the trigger additionally permits the purge's flagged DELETE. A table owner/superuser can still drop the trigger; that DBA-level threat is out of scope (the guarantee is that no *application* path mutates). The purge flag is `SET LOCAL` (transaction-scoped), so it can't leak to an ordinary request.
+- **Rollback:** the table + emission are additive; disabling is dropping the scheduler + no-op-ing `AuditService.record`. The trigger is reversible with `DROP TRIGGER`/`DROP FUNCTION`.
 
 ## Files touched
 
-- **New:** `packages/core/src/models/audit-log.model.ts`, `packages/core/src/contracts/audit-log.contract.ts`, `apps/api/src/db/schema/audit-log.table.ts`, `apps/api/src/db/repositories/audit-log.repository.ts`, `apps/api/src/services/audit.service.ts`, `apps/api/src/queues/processors/audit-log-retention-purge.processor.ts`, `apps/api/drizzle/<n>_add-audit-log-table.sql`, the four test files above.
+- **New:** `packages/core/src/models/audit-log.model.ts`, `packages/core/src/contracts/audit-log.contract.ts`, `apps/api/src/db/schema/audit-log.table.ts`, `apps/api/src/db/repositories/audit-log.repository.ts`, `apps/api/src/services/audit.service.ts`, `apps/api/src/queues/processors/audit-log-retention-purge.processor.ts`, `apps/api/drizzle/0094_add-audit-log-table.sql`, the four test files above.
 - **Edit:** `packages/core/src/models/index.ts`, `packages/core/src/contracts/index.ts`, `packages/core/src/contracts/webhook.contract.ts`, `apps/api/src/db/schema/{index,zod,type-checks}.ts`, `apps/api/src/services/db.service.ts`, `apps/api/src/app.ts`, `apps/api/src/routes/organization.router.ts`, `apps/api/src/constants/api-codes.constants.ts`, `apps/api/src/config/swagger.config.ts`, `apps/api/src/environment.ts`, `apps/api/src/queues/maintenance.{queue,worker}.ts`, and the emission seams in §10 (`webhook.service.ts`, `application.service.ts`, `organization-delete.service.ts`, `connector-instance.router.ts`, `toolpacks.router.ts`, `connector-entity.router.ts`, connector export handlers).
 
 ## Next step
 
-`docs/AUDIT_LOG.plan.md` — roughly five TDD slices, each a commit on `feat/audit-log`: (1) core model + contract + table + zod + type-checks + migration (incl. REVOKE); (2) `AuditLogRepository` + `AuditService` (fail-open) with unit tests; (3) `trust proxy` + audit-context helper + emission wiring at the seams + emission integration test; (4) owner-gated read endpoint + `ApiCode`s + OpenAPI + integration test; (5) retention processor + queue/worker/env + purge integration test. Each slice leaves the tree green.
+`docs/AUDIT_LOG.plan.md` — roughly five TDD slices, each a commit on `feat/audit-log`: (1) core model + contract + table + zod + type-checks + migration (incl. the append-only trigger); (2) `AuditLogRepository` + `AuditService` (fail-open) with unit tests; (3) `trust proxy` + audit-context helper + emission wiring at the seams + emission integration test; (4) owner-gated read endpoint + `ApiCode`s + OpenAPI + integration test; (5) retention processor + queue/worker/env + purge integration test. Each slice leaves the tree green.
