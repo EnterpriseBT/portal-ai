@@ -30,6 +30,8 @@ import {
 } from "../db/repositories/audit-log.repository.js";
 import { OrganizationDeleteService } from "../services/organization-delete.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { AuditService } from "../services/audit.service.js";
+import { auditContextFromRequest } from "../utils/audit-context.util.js";
 
 const logger = createLogger({ module: "organization" });
 
@@ -316,6 +318,17 @@ organizationRouter.delete(
 
       await OrganizationDeleteService.deleteOrganization(id, userId);
 
+      // #575: audit the destructive action (post-commit, fail-open). The org
+      // row is soft-deleted (tombstone), so the audit row — retained past the
+      // tombstone — is the durable record that the deletion happened.
+      void AuditService.record({
+        ...auditContextFromRequest(req),
+        action: "org.delete",
+        targetType: "organization",
+        targetId: id,
+        metadata: { name: organization.name },
+      });
+
       return HttpService.success<OrganizationDeleteResponse>(res, { id });
     } catch (error) {
       logger.error(
@@ -523,6 +536,20 @@ organizationRouter.post(
         user.id,
         parsed.data.organizationId
       );
+
+      // #575: record under the org switched INTO (this route runs without
+      // getApplicationMetadata, so build the context by hand). Post-commit,
+      // fail-open.
+      void AuditService.record({
+        userId: user.id,
+        organizationId: result.organization.id,
+        action: "member.switch",
+        targetType: "organization",
+        targetId: result.organization.id,
+        sourceIp: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      });
+
       return HttpService.success<OrganizationGetResponse>(res, {
         organization: result.organization,
       });

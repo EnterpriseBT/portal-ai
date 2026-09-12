@@ -34,6 +34,8 @@ import { TierService } from "../services/tier.service.js";
 import { ToolpackRegistrationService } from "../services/toolpack-registration.service.js";
 import { BUILTIN_TOOL_NAMES } from "../services/tools.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { AuditService } from "../services/audit.service.js";
+import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { eq, and, isNull } from "drizzle-orm";
 import { stationToolpacks } from "../db/schema/index.js";
 import { generateSigningSecret } from "../utils/webhook-signing.util.js";
@@ -787,6 +789,14 @@ toolpacksRouter.post(
       } as never);
 
       logger.info({ id, organizationId }, "Toolpack signing secret rotated");
+
+      // #575: audit the secret rotation (post-commit, fail-open).
+      void AuditService.record({
+        ...auditContextFromRequest(req),
+        action: "toolpack.secret.rotate",
+        targetType: "toolpack",
+        targetId: id,
+      });
 
       return HttpService.success<ToolpackRotateSigningSecretResponsePayload>(
         res,

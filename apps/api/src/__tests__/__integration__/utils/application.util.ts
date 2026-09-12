@@ -7,6 +7,7 @@
  */
 
 import { drizzle } from "drizzle-orm/postgres-js";
+import { sql } from "drizzle-orm";
 import { UUIDv4Factory } from "@portalai/core/utils";
 import * as schema from "../../../db/schema/index.js";
 
@@ -38,6 +39,7 @@ const {
   stations,
   usage,
   toolUsageLedger,
+  auditLog,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -178,6 +180,12 @@ export async function teardownOrg(db: Db): Promise<void> {
   await db.delete(connectorDefinitions);
   await db.delete(usage);
   await db.delete(toolUsageLedger);
+  // #575: audit_log FK-references organizations and its append-only trigger
+  // blocks a plain DELETE — purge it (flagged) before the org rows it points at.
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL app.audit_retention_purge = 'on'`);
+    await tx.delete(auditLog);
+  });
   await db.delete(organizationUsers);
   await db.delete(organizations);
   await db.delete(users);

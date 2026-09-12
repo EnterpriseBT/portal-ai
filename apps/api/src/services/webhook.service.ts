@@ -7,6 +7,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { UserModel, UserModelFactory } from "@portalai/core/models";
 import { SystemUtilities } from "../utils/system.util.js";
 import { ApplicationService } from "./application.service.js";
+import { AuditService } from "./audit.service.js";
 
 const logger = createLogger({ module: "webhook" });
 
@@ -51,6 +52,27 @@ export class WebhookService {
         "Created new user from webhook"
       );
 
+      // #575: a new user's org is provisioned on first login. Audit both the
+      // org creation and the login itself (post-commit, fail-open). The end
+      // user's IP/agent come from the Auth0 Action payload when forwarded.
+      void AuditService.record({
+        organizationId: created.organization.id,
+        userId: created.user.id,
+        action: "org.create",
+        targetType: "organization",
+        targetId: created.organization.id,
+        sourceIp: payload.ip ?? null,
+        userAgent: payload.user_agent ?? null,
+      });
+      void AuditService.record({
+        organizationId: created.organization.id,
+        userId: created.user.id,
+        action: "auth.login",
+        sourceIp: payload.ip ?? null,
+        userAgent: payload.user_agent ?? null,
+        metadata: { firstLogin: true },
+      });
+
       return { action: "created", userId: created.user.id };
     }
 
@@ -75,6 +97,21 @@ export class WebhookService {
       { userId: existing.id, auth0Id: payload.user_id },
       "Updated user from webhook"
     );
+
+    // #575: audit the login (post-commit, fail-open). Record under the user's
+    // current org; if it can't be resolved, skip rather than fail the login.
+    const currentOrg = await ApplicationService.getCurrentOrganization(
+      existing.id
+    ).catch(() => null);
+    if (currentOrg) {
+      void AuditService.record({
+        organizationId: currentOrg.organization.id,
+        userId: existing.id,
+        action: "auth.login",
+        sourceIp: payload.ip ?? null,
+        userAgent: payload.user_agent ?? null,
+      });
+    }
 
     return { action: "updated", userId: existing.id };
   }

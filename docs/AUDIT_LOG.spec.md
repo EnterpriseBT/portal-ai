@@ -194,6 +194,8 @@ export class AuditService {
 
 All calls are `void AuditService.record({...})` **after** the action's own success (post-commit), never awaited inside the action's transaction.
 
+**Shipped in slice 4** (clean seams present today): `auth.login` (webhook, both paths), `org.create` (webhook signup), `org.delete`, `member.switch`, `connector.credential.create`, `toolpack.secret.rotate`, `data.delete`. **Deferred** (the `AuditAction` enum reserves them, but the seam arrives with a later ticket): `member.add`/`member.remove` (explicit invites land with #584 seats), `connector.credential.update`/`.access` (OAuth reconnect + a deliberate reveal/sync-use seam — discovery Open Q1; no such endpoint exists yet), and a distinct `data.export` seam (no consolidated export endpoint today). These are recorded, not dropped — wiring them is a one-line `AuditService.record` at the seam when it exists.
+
 ### 11. Read endpoint — `apps/api/src/routes/organization.router.ts` (edit)
 
 `GET /api/organization/audit-log`, guarded by `getApplicationMetadata`, mirroring the ledger read (~715):

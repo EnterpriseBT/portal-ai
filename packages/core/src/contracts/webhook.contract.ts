@@ -8,6 +8,12 @@ export const Auth0PostLoginWebhookPayloadSchema = z.object({
   email: z.string().optional(),
   name: z.string().optional(),
   picture: z.string().optional(),
+  // #575: the END USER's request context, forwarded by the Auth0 post-login
+  // Action (`event.request.ip` / `.user_agent`) so the `auth.login` audit row
+  // records where the login came from. Optional — absent → the audit row's
+  // sourceIp/userAgent are null (never Auth0's server IP).
+  ip: z.string().optional(),
+  user_agent: z.string().optional(),
 });
 
 export type Auth0PostLoginWebhookPayload = z.infer<
