@@ -32,7 +32,9 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "AUTH0_DOMAIN",
       "CORS_ORIGIN",
       "DEMO_TOOLPACK_URL", // #509 shared demo custom-toolpack base URL
+      "GOOGLE_CLOUD_PROJECT_NUMBER", // #580 runtime connector-config
       "GOOGLE_OAUTH_CLIENT_ID",
+      "GOOGLE_PICKER_API_KEY", // #580 runtime connector-config
       "MICROSOFT_OAUTH_CLIENT_ID",
       "MICROSOFT_OAUTH_TENANT",
       "SALES_EMAIL", // #311 public site-config contact
