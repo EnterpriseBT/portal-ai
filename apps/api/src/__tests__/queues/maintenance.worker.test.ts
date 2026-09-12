@@ -43,6 +43,7 @@ jest.unstable_mockModule("bullmq", () => ({
 const mockLedger = jest.fn<() => Promise<unknown>>();
 const mockEntityRecord = jest.fn<() => Promise<unknown>>();
 const mockMessageDissolve = jest.fn<() => Promise<unknown>>();
+const mockAuditLog = jest.fn<() => Promise<unknown>>();
 
 jest.unstable_mockModule(
   "../../queues/processors/ledger-retention-purge.processor.js",
@@ -56,6 +57,10 @@ jest.unstable_mockModule(
   "../../queues/processors/message-dissolve-retention-purge.processor.js",
   () => ({ messageDissolveRetentionPurgeProcessor: mockMessageDissolve })
 );
+jest.unstable_mockModule(
+  "../../queues/processors/audit-log-retention-purge.processor.js",
+  () => ({ auditLogRetentionPurgeProcessor: mockAuditLog })
+);
 
 const { createMaintenanceWorker } =
   await import("../../queues/maintenance.worker.js");
@@ -64,6 +69,7 @@ const {
   LEDGER_RETENTION_PURGE_JOB,
   ENTITY_RECORD_RETENTION_PURGE_JOB,
   MESSAGE_DISSOLVE_RETENTION_PURGE_JOB,
+  AUDIT_LOG_RETENTION_PURGE_JOB,
 } = await import("../../queues/maintenance.queue.js");
 
 describe("maintenance worker dispatch", () => {
@@ -93,6 +99,12 @@ describe("maintenance worker dispatch", () => {
     expect(mockMessageDissolve).toHaveBeenCalledTimes(1);
     expect(mockLedger).not.toHaveBeenCalled();
     expect(mockEntityRecord).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the audit-log retention purge (#575)", async () => {
+    await capturedHandler!({ name: AUDIT_LOG_RETENTION_PURGE_JOB });
+    expect(mockAuditLog).toHaveBeenCalledTimes(1);
+    expect(mockLedger).not.toHaveBeenCalled();
   });
 
   it("throws on an unknown job name rather than resolving quietly", async () => {
