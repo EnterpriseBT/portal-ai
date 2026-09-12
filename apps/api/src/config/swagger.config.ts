@@ -42,6 +42,7 @@ import {
   BillingPortalRequestSchema,
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
+  AuditLogListResponseSchema,
   MaintenanceStatusResponseSchema,
   PublicSitePriceSchema,
   PublicSiteTierSchema,
@@ -79,6 +80,7 @@ import {
   PaginationConfigSchema,
   RestApiInstanceConfigSchema,
   ToolUsageLedgerEntrySchema,
+  AuditLogEntrySchema,
 } from "@portalai/core/models";
 
 import { environment } from "../environment.js";
@@ -379,6 +381,11 @@ const usageLedgerSchemas: Record<string, unknown> = {
   ),
   MaintenanceStatusResponse: z.toJSONSchema(
     MaintenanceStatusResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  AuditLogEntry: z.toJSONSchema(AuditLogEntrySchema, JSON_SCHEMA_OPTS),
+  AuditLogListResponse: z.toJSONSchema(
+    AuditLogListResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };
