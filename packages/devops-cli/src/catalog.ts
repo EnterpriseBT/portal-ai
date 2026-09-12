@@ -71,6 +71,11 @@ export const CATALOG: CatalogEntry[] = [
   secret("DEMO_TOOLPACK_SIGNING_SECRETS", "demo-toolpack-signing-secrets"),
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
+  // #580: public Google browser identifiers the API serves at runtime via
+  // GET /api/connector-config (moved out of the web build's VITE_GOOGLE_*).
+  // Non-secret (the Picker key is restricted in GCP by referrer + API).
+  ssm("GOOGLE_PICKER_API_KEY", "google-picker-api-key"),
+  ssm("GOOGLE_CLOUD_PROJECT_NUMBER", "google-cloud-project-number"),
   ssm("MICROSOFT_OAUTH_CLIENT_ID", "microsoft-oauth-client-id"),
   ssm("MICROSOFT_OAUTH_TENANT", "microsoft-oauth-tenant"),
   ssm("AUTH0_DOMAIN", "auth0-domain"),
