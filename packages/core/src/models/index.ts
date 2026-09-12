@@ -82,5 +82,8 @@ export * from "./stripe-event.model.js";
 /** Tool usage audit ledger entry (#179) */
 export * from "./tool-usage-ledger.model.js";
 
+/** Security audit log entry (#575) */
+export * from "./audit-log.model.js";
+
 /** REST API connector config + credentials schemas */
 export * from "./api-connector.model.js";

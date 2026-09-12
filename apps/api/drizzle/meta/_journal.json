@@ -659,6 +659,13 @@
       "when": 1789002583631,
       "tag": "0093_generalize_dissolve_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1789237692985,
+      "tag": "0094_add-audit-log-table",
+      "breakpoints": true
     }
   ]
 }

@@ -653,6 +653,15 @@ export enum ApiCode {
   /** Maintenance-queue status read (schedulers + recent runs) failed. 500. */
   MAINTENANCE_FETCH_FAILED = "MAINTENANCE_FETCH_FAILED",
 
+  // Security audit log (#575)
+  /** Malformed audit-log query (unknown sortBy / bad pagination). 400. */
+  AUDIT_LOG_INVALID_QUERY = "AUDIT_LOG_INVALID_QUERY",
+  /** Caller is not the organization's owner (audit read is owner-gated;
+   *  widens to role='admin' with #576). 403. */
+  AUDIT_LOG_NOT_AUTHORIZED = "AUDIT_LOG_NOT_AUTHORIZED",
+  /** Audit-log read failed. 500. */
+  AUDIT_LOG_FETCH_FAILED = "AUDIT_LOG_FETCH_FAILED",
+
   // Compute-tool purity (#114)
   /** Compute input (rows resolved from a query handle, or inline rows)
    *  exceeded COMPUTE_MAX_ROWS — too many rows for an in-memory compute. 400. */

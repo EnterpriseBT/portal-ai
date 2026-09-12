@@ -11,19 +11,27 @@ import type {
   OrganizationGetResponse,
   OrganizationUsageGetResponse,
   UsageLedgerListResponse,
+  AuditLogListResponse,
   UserMembershipsGetResponse,
 } from "@portalai/core/contracts";
 import {
   OrganizationDeleteRequestSchema,
   OrganizationSwitchRequestSchema,
   UsageLedgerListRequestQuerySchema,
+  AuditLogListRequestQuerySchema,
 } from "@portalai/core/contracts";
 import {
   TOOL_USAGE_LEDGER_SORT_KEYS,
   type ToolUsageLedgerSortBy,
 } from "../db/repositories/tool-usage-ledger.repository.js";
+import {
+  AUDIT_LOG_SORT_KEYS,
+  type AuditLogSortBy,
+} from "../db/repositories/audit-log.repository.js";
 import { OrganizationDeleteService } from "../services/organization-delete.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { AuditService } from "../services/audit.service.js";
+import { auditContextFromRequest } from "../utils/audit-context.util.js";
 
 const logger = createLogger({ module: "organization" });
 
@@ -310,6 +318,17 @@ organizationRouter.delete(
 
       await OrganizationDeleteService.deleteOrganization(id, userId);
 
+      // #575: audit the destructive action (post-commit, fail-open). The org
+      // row is soft-deleted (tombstone), so the audit row — retained past the
+      // tombstone — is the durable record that the deletion happened.
+      void AuditService.record({
+        ...auditContextFromRequest(req),
+        action: "org.delete",
+        targetType: "organization",
+        targetId: id,
+        metadata: { name: organization.name },
+      });
+
       return HttpService.success<OrganizationDeleteResponse>(res, { id });
     } catch (error) {
       logger.error(
@@ -517,6 +536,20 @@ organizationRouter.post(
         user.id,
         parsed.data.organizationId
       );
+
+      // #575: record under the org switched INTO (this route runs without
+      // getApplicationMetadata, so build the context by hand). Post-commit,
+      // fail-open.
+      void AuditService.record({
+        userId: user.id,
+        organizationId: result.organization.id,
+        action: "member.switch",
+        targetType: "organization",
+        targetId: result.organization.id,
+        sourceIp: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      });
+
       return HttpService.success<OrganizationGetResponse>(res, {
         organization: result.organization,
       });
@@ -765,6 +798,170 @@ organizationRouter.get(
               error instanceof Error
                 ? error.message
                 : "Failed to fetch usage ledger"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/audit-log:
+ *   get:
+ *     tags:
+ *       - Organization
+ *     summary: List the current organization's security audit log
+ *     description: Paginated, tamper-evident trail of security-relevant actions (#575) — logins, org/member changes, credential create/update/use, secret rotation, data export/delete. Newest-first by default; filterable by action and outcome. Owner-gated (widens to role='admin' with #576).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/limitParam'
+ *       - $ref: '#/components/parameters/offsetParam'
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [created]
+ *           default: created
+ *         description: Field to sort by (allow-map; unknown values are a 400)
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort direction (defaults newest-first)
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *         description: Audit action to filter by (exact match; unknown values are a 400)
+ *       - in: query
+ *         name: outcome
+ *         schema:
+ *           type: string
+ *           enum: [success, failure]
+ *         description: Outcome to filter by
+ *     responses:
+ *       200:
+ *         description: One page of audit-log entries + the filter-scoped total
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/AuditLogListResponse'
+ *       400:
+ *         description: Malformed query (unknown sortBy/action or bad pagination)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       401:
+ *         description: Missing authentication
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: Caller is not the organization's owner
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: User or organization not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+organizationRouter.get(
+  "/audit-log",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = AuditLogListRequestQuerySchema.safeParse(req.query);
+      if (
+        !parsed.success ||
+        !AUDIT_LOG_SORT_KEYS.includes(parsed.data.sortBy as AuditLogSortBy)
+      ) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.AUDIT_LOG_INVALID_QUERY,
+            "Invalid audit-log query"
+          )
+        );
+      }
+      const query = parsed.data;
+
+      const userId = req.application?.metadata.userId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
+
+      // Owner gate. The audit trail is owner-only for now; the predicate
+      // swaps to a role='admin' check when #576 lands, contract unchanged.
+      const organization =
+        await DbService.repository.organizations.findById(organizationId);
+      if (!organization) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_NOT_FOUND,
+            "Organization not found"
+          )
+        );
+      }
+      if (organization.ownerUserId !== userId) {
+        return next(
+          new ApiError(
+            403,
+            ApiCode.AUDIT_LOG_NOT_AUTHORIZED,
+            "Only the organization's owner can read the audit log"
+          )
+        );
+      }
+
+      const { entries, total } = await DbService.repository.auditLog.findPage(
+        organizationId,
+        {
+          action: query.action,
+          outcome: query.outcome,
+          limit: query.limit,
+          offset: query.offset,
+          sortBy: query.sortBy as AuditLogSortBy,
+          sortOrder: query.sortOrder,
+        }
+      );
+
+      return HttpService.success<AuditLogListResponse>(res, {
+        entries,
+        total,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch audit log"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.AUDIT_LOG_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch audit log"
             )
       );
     }

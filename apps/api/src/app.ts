@@ -24,6 +24,15 @@ const logger = createLogger({ module: "app" });
 
 export const app = express();
 
+// #575: trust the deployment's proxy chain so `req.ip` is the real client IP
+// (recorded as the audit log's `sourceIp`), not the ALB/CloudFront hop. Set to
+// the exact number of trusted hops via TRUST_PROXY_HOPS — never `true`, which
+// would let a client spoof its own X-Forwarded-For. 0 (local/dev) leaves the
+// default (req.ip = socket peer).
+if (environment.TRUST_PROXY_HOPS > 0) {
+  app.set("trust proxy", environment.TRUST_PROXY_HOPS);
+}
+
 // Register all connector adapters
 registerAdapters();
 

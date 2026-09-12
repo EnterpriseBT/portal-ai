@@ -129,6 +129,19 @@ export const environment = {
     process.env.LEDGER_RETENTION_MONTHS || "24",
     10
   ),
+  // #575: how many trusted proxy hops sit in front of the API, so Express
+  // resolves `req.ip` to the real client IP for the audit log's `sourceIp`.
+  // Default 0 = trust nothing (local/dev: req.ip is the socket peer). Deployed
+  // envs set this to the exact chain length (CloudFront + ALB) — NOT `true`,
+  // which would let a client spoof its own audit-trail IP via X-Forwarded-For.
+  TRUST_PROXY_HOPS: parseInt(process.env.TRUST_PROXY_HOPS || "0", 10),
+  // #575: security audit-log retention. Rows older than this are hard-deleted
+  // by the daily maintenance purge. 24 months ≥ a typical SOC 2 review cycle;
+  // its own env (separate from the billing ledger) so the two tune apart.
+  AUDIT_LOG_RETENTION_MONTHS: parseInt(
+    process.env.AUDIT_LOG_RETENTION_MONTHS || "24",
+    10
+  ),
   // Retention windows for soft-deleted `entity_records` (#442). Two, split
   // by whether the row's parent `connector_entity` is itself deleted:
   //

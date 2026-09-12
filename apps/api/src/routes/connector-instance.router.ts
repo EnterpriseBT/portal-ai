@@ -34,6 +34,8 @@ import {
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { AuditService } from "../services/audit.service.js";
+import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import {
@@ -748,6 +750,17 @@ connectorInstanceRouter.post(
         { id: connectorInstance.id, connectorDefinitionId, organizationId },
         "Connector instance created"
       );
+
+      // #575: audit credential provisioning (only when credentials were set;
+      // post-commit, fail-open). The secret value is never recorded.
+      if (credentials) {
+        void AuditService.record({
+          ...auditContextFromRequest(req),
+          action: "connector.credential.create",
+          targetType: "connector_instance",
+          targetId: connectorInstance.id,
+        });
+      }
 
       return HttpService.success<ConnectorInstanceCreateResponsePayload>(
         res,

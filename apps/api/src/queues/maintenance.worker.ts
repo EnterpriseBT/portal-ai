@@ -6,11 +6,13 @@ import {
   ENTITY_RECORD_RETENTION_PURGE_JOB,
   LEDGER_RETENTION_PURGE_JOB,
   MESSAGE_DISSOLVE_RETENTION_PURGE_JOB,
+  AUDIT_LOG_RETENTION_PURGE_JOB,
   MAINTENANCE_QUEUE_NAME,
 } from "./maintenance.queue.js";
 import { ledgerRetentionPurgeProcessor } from "./processors/ledger-retention-purge.processor.js";
 import { entityRecordRetentionPurgeProcessor } from "./processors/entity-record-retention-purge.processor.js";
 import { messageDissolveRetentionPurgeProcessor } from "./processors/message-dissolve-retention-purge.processor.js";
+import { auditLogRetentionPurgeProcessor } from "./processors/audit-log-retention-purge.processor.js";
 
 const logger = createLogger({ module: "maintenance-worker" });
 
@@ -32,6 +34,9 @@ export const createMaintenanceWorker = (): Worker => {
       }
       if (job.name === MESSAGE_DISSOLVE_RETENTION_PURGE_JOB) {
         return messageDissolveRetentionPurgeProcessor();
+      }
+      if (job.name === AUDIT_LOG_RETENTION_PURGE_JOB) {
+        return auditLogRetentionPurgeProcessor();
       }
       throw new Error(`Unknown maintenance job: ${job.name}`);
     },
