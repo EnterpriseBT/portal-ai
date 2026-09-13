@@ -4,15 +4,50 @@ import {
   ApplicationRoute,
   HELP_TAB_INDEX,
   HelpTab,
+  SETTINGS_TAB_INDEX,
+  SettingsTab,
   helpAnchorHash,
   helpTabIndexFromSearch,
   normalizeHelpSearch,
   parseHelpAnchor,
+  settingsTabIndexFromSearch,
 } from "../utils/routes.util";
 
 describe("ApplicationRoute", () => {
   it("includes Help route at /help", () => {
     expect(ApplicationRoute.Help).toBe("/help");
+  });
+});
+
+describe("settingsTabIndexFromSearch", () => {
+  it("resolves each tab slug to its rendered index", () => {
+    expect(settingsTabIndexFromSearch("?tab=profile")).toBe(0);
+    expect(settingsTabIndexFromSearch("?tab=organization")).toBe(1);
+    expect(settingsTabIndexFromSearch("?tab=billing")).toBe(2);
+    expect(settingsTabIndexFromSearch("?tab=activity")).toBe(3);
+  });
+
+  it("resolves via SETTINGS_TAB_INDEX for every SettingsTab member", () => {
+    for (const tab of Object.values(SettingsTab)) {
+      expect(settingsTabIndexFromSearch(`?tab=${tab}`)).toBe(
+        SETTINGS_TAB_INDEX[tab]
+      );
+    }
+  });
+
+  it("falls back to the first tab when absent or unrecognized", () => {
+    expect(settingsTabIndexFromSearch("")).toBe(0);
+    expect(settingsTabIndexFromSearch("?tab=nonsense")).toBe(0);
+    expect(settingsTabIndexFromSearch("?foo=bar")).toBe(0);
+  });
+
+  it("registers the owner-only Activity tab last (#596)", () => {
+    expect(SETTINGS_TAB_INDEX).toEqual({
+      [SettingsTab.Profile]: 0,
+      [SettingsTab.Organization]: 1,
+      [SettingsTab.Billing]: 2,
+      [SettingsTab.Activity]: 3,
+    });
   });
 });
 

@@ -1,3 +1,4 @@
+import type { AuditLogListRequestQuery } from "@portalai/core/contracts";
 import type { ColumnDefinitionListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorEntityListRequestQuery } from "@portalai/core/contracts";
@@ -36,6 +37,11 @@ export const queryKeys = {
   billing: {
     root: ["billing"] as const,
     tiers: () => [...queryKeys.billing.root, "tiers"] as const,
+  },
+  auditLog: {
+    root: ["auditLog"] as const,
+    list: (params?: AuditLogListRequestQuery) =>
+      [...queryKeys.auditLog.root, "list", params] as const,
   },
   connectorDefinitions: {
     root: ["connectorDefinitions"] as const,
