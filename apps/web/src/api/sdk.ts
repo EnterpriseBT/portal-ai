@@ -1,3 +1,4 @@
+import { auditLog } from "./audit-log.api";
 import { auth } from "./auth.api";
 import { billing } from "./billing.api";
 import { columnDefinitions } from "./column-definitions.api";
@@ -28,6 +29,7 @@ import { apiConnector } from "./api-connector.api";
 export { queryKeys } from "./keys";
 
 export const sdk = {
+  auditLog,
   auth,
   billing,
   columnDefinitions,
