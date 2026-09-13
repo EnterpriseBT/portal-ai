@@ -20,6 +20,7 @@ import {
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
+import { AuditLogActivity } from "../components/AuditLogActivity.component";
 import { DataResult } from "../components/DataResult.component";
 import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
 import { UsageLedgerDialog } from "../components/UsageLedgerDialog.component";
@@ -29,7 +30,11 @@ import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
 import { formatUsageValue } from "../utils/usage-format.util";
-import { settingsTabIndexFromSearch } from "../utils/routes.util";
+import {
+  SETTINGS_TAB_INDEX,
+  SettingsTab,
+  settingsTabIndexFromSearch,
+} from "../utils/routes.util";
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierName = (slug: string): string =>
@@ -43,7 +48,7 @@ export const SettingsView = () => {
   // #284: unentitled-toolpack affordances link to /settings?tab=billing, so
   // the tab is seeded from the param at mount. Read the same way as the
   // ?billing= checkout return below; clicking a tab does not rewrite it.
-  const { tabsProps, getTabProps, getTabPanelProps } = useTabs(
+  const { tabsProps, getTabProps, getTabPanelProps, setValue } = useTabs(
     settingsTabIndexFromSearch(window.location.search)
   );
   const theme = useTheme();
@@ -95,6 +100,29 @@ export const SettingsView = () => {
   const organizationResult = sdk.organizations.current();
   const usageResult = sdk.organizations.usage();
 
+  // Owner gate for the Activity (audit-log) tab (#596). The server is the
+  // real boundary (403 AUDIT_LOG_NOT_AUTHORIZED); hiding the tab is
+  // defense-in-depth. Isolated to one predicate so #576 can widen it to
+  // owner+admin in a single place, mirroring the read API's swap.
+  const currentUserId = profileResult.data?.userId ?? null;
+  const ownerUserId = organizationResult.data?.organization.ownerUserId ?? null;
+  const ownerKnown =
+    profileResult.data !== undefined && organizationResult.data !== undefined;
+  const isOwner =
+    ownerKnown && currentUserId != null && currentUserId === ownerUserId;
+
+  // A non-owner who deep-linked ?tab=activity lands on a tab that isn't
+  // rendered for them — once ownership resolves, fall back to the first tab.
+  // Adjust-state-during-render (converges: after the reset the guard is
+  // false), the same pattern UsageLedgerDialog uses for reopen.
+  if (
+    ownerKnown &&
+    !isOwner &&
+    tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Activity]
+  ) {
+    setValue(0);
+  }
+
   // Danger zone (#197): delete the org, then end the session — logout is
   // unconditional on success, even for multi-org users.
   const { logout } = sdk.auth.logout();
@@ -115,6 +143,7 @@ export const SettingsView = () => {
         <Tab label="Profile" {...getTabProps(0)} />
         <Tab label="Organization" {...getTabProps(1)} />
         <Tab label="Subscription & Billing" {...getTabProps(2)} />
+        {isOwner && <Tab label="Activity" {...getTabProps(3)} />}
       </Tabs>
       <TabPanel {...getTabPanelProps(0)}>
         <PageSection title="Profile" variant="outlined">
@@ -338,6 +367,15 @@ export const SettingsView = () => {
           {tabsProps.value === 2 && <SubscriptionBilling />}
         </PageSection>
       </TabPanel>
+      {isOwner && (
+        <TabPanel {...getTabPanelProps(3)}>
+          <PageSection title="Activity" variant="outlined">
+            {/* Mounted only while active so the audit-log query fires only
+                on this tab (#596). */}
+            {tabsProps.value === 3 && <AuditLogActivity />}
+          </PageSection>
+        </TabPanel>
+      )}
     </Box>
   );
 };
