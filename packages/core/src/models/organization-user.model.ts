@@ -2,6 +2,23 @@ import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
+ * The per-membership role (#576). Seeded, fixed set — the authorization
+ * baseline every `PermissionService` check starts from:
+ * - `owner`  — the org creator; allow everything (billing + org delete are
+ *   owner-exclusive).
+ * - `admin`  — everything an owner can, minus billing and org delete.
+ * - `member` — createdBy-scoped; widened later by object grants (#598).
+ *
+ * A required field with no default: every membership-creation site sets it
+ * explicitly (owner → `owner`, all others → `member`). Kept required rather
+ * than defaulted so a new creation site that forgets it fails loudly at
+ * `parse()` instead of silently minting a `member`.
+ */
+export const ORG_ROLES = ["owner", "admin", "member"] as const;
+export const OrgRoleSchema = z.enum(ORG_ROLES);
+export type OrgRole = z.infer<typeof OrgRoleSchema>;
+
+/**
  * Organization–User join model (many-to-many).
  * Extends CoreModel with foreign-key references to both tables.
  *
@@ -13,6 +30,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 export const OrganizationUserSchema = CoreSchema.extend({
   organizationId: z.string(),
   userId: z.string(),
+  role: OrgRoleSchema,
   lastLogin: z.number().nullable(),
 });
 

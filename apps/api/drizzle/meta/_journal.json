@@ -666,6 +666,13 @@
       "when": 1789237692985,
       "tag": "0094_add-audit-log-table",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789427014899,
+      "tag": "0095_add_organization_user_role",
+      "breakpoints": true
     }
   ]
 }
