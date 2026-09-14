@@ -4,6 +4,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { TierService } from "../services/tier.service.js";
 import { UsageService } from "../services/usage.service.js";
 import type {
@@ -291,15 +292,10 @@ organizationRouter.delete(
         );
       }
 
-      if (organization.ownerUserId !== userId) {
-        return next(
-          new ApiError(
-            403,
-            ApiCode.ORGANIZATION_NOT_OWNER,
-            "Only the organization's owner can delete it"
-          )
-        );
-      }
+      // Owner-only (#576). Throws INSUFFICIENT_ROLE-mapped ORGANIZATION_NOT_OWNER
+      // for a non-owner (admin included — org deletion is owner-exclusive); the
+      // outer catch forwards it.
+      PermissionService.check(req.application!.metadata, "org.delete");
 
       if (parsed.data.confirmationName.trim() !== organization.name.trim()) {
         return next(
@@ -906,31 +902,11 @@ organizationRouter.get(
       }
       const query = parsed.data;
 
-      const userId = req.application?.metadata.userId as string;
       const organizationId = req.application?.metadata.organizationId as string;
 
-      // Owner gate. The audit trail is owner-only for now; the predicate
-      // swaps to a role='admin' check when #576 lands, contract unchanged.
-      const organization =
-        await DbService.repository.organizations.findById(organizationId);
-      if (!organization) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.ORGANIZATION_NOT_FOUND,
-            "Organization not found"
-          )
-        );
-      }
-      if (organization.ownerUserId !== userId) {
-        return next(
-          new ApiError(
-            403,
-            ApiCode.AUDIT_LOG_NOT_AUTHORIZED,
-            "Only the organization's owner can read the audit log"
-          )
-        );
-      }
+      // Audit trail is owner + admin (#576 widened this from owner-only).
+      // Throws INSUFFICIENT_ROLE for a member; the outer catch forwards it.
+      PermissionService.check(req.application!.metadata, "org.audit.read");
 
       const { entries, total } = await DbService.repository.auditLog.findPage(
         organizationId,

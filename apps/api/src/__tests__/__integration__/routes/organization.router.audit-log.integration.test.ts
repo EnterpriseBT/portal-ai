@@ -19,7 +19,7 @@ import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
-import type { User } from "@portalai/core/models";
+import type { OrgRole, User } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -126,7 +126,9 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
 
   /** An org owned by someone else, with the caller (AUTH0_ID) a mere member
    *  and this org as their current org — the non-owner authz case. */
-  async function seedOrgWhereCallerIsMember(): Promise<string> {
+  async function seedOrgWhereCallerHasRole(
+    role: OrgRole = "member"
+  ): Promise<string> {
     const now = Date.now();
     const ownerId = generateId();
     await (db as ReturnType<typeof drizzle>).insert(users).values({
@@ -175,6 +177,7 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
       id: generateId(),
       organizationId: orgId,
       userId: callerId,
+      role,
       lastLogin: now,
       created: now,
       createdBy: "SYSTEM_TEST",
@@ -256,8 +259,8 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
     expect(badAction.body.code).toBe(ApiCode.AUDIT_LOG_INVALID_QUERY);
   });
 
-  it("denies a non-owner member with 403 AUDIT_LOG_NOT_AUTHORIZED", async () => {
-    const orgId = await seedOrgWhereCallerIsMember();
+  it("denies a member with 403 INSUFFICIENT_ROLE (#576)", async () => {
+    const orgId = await seedOrgWhereCallerHasRole("member");
     await seedAuditRow(orgId, { action: "org.create" });
 
     const res = await request(app)
@@ -265,7 +268,20 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.AUDIT_LOG_NOT_AUTHORIZED);
+    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+  });
+
+  it("allows an admin to read the audit log (#576 widen)", async () => {
+    const orgId = await seedOrgWhereCallerHasRole("admin");
+    await seedAuditRow(orgId, { action: "org.create" });
+
+    const res = await request(app)
+      .get("/api/organization/audit-log")
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.payload.total).toBe(1);
   });
 
   it("401s without authentication", async () => {

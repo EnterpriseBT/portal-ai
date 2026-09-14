@@ -102,6 +102,7 @@ export function createOrganizationUser(
     id: generateId(),
     organizationId,
     userId,
+    role: "member",
     lastLogin: now,
     created: now,
     createdBy: "SYSTEM_TEST",
@@ -139,7 +140,9 @@ export async function seedUserAndOrg(
   const org = createOrganization(user.id);
   await db.insert(organizations).values(org as never);
 
-  const orgUser = createOrganizationUser(org.id, user.id);
+  // The seeded user is the org's owner (org.ownerUserId === user.id), so the
+  // membership carries the owner role (#576).
+  const orgUser = createOrganizationUser(org.id, user.id, { role: "owner" });
   await db.insert(organizationUsers).values(orgUser as never);
 
   return {

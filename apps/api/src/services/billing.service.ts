@@ -17,6 +17,10 @@ import { StripeService } from "./stripe.service.js";
 import { TierService } from "./tier.service.js";
 import { RebuildDispatchService } from "./rebuild-dispatch.service.js";
 import { ApiError } from "./http.service.js";
+import {
+  PermissionService,
+  type PermissionContext,
+} from "./permission.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -335,7 +339,7 @@ export class BillingService {
    */
   static async createCheckout(
     org: OrganizationSelect,
-    callerUserId: string,
+    caller: PermissionContext,
     tierSlug: string
   ): Promise<{ url: string }> {
     if (!StripeService.isConfigured()) {
@@ -345,13 +349,10 @@ export class BillingService {
         "Billing is not configured in this environment"
       );
     }
-    if (org.ownerUserId !== callerUserId) {
-      throw new ApiError(
-        403,
-        ApiCode.BILLING_NOT_OWNER,
-        "Only the organization owner can manage billing"
-      );
-    }
+    // Owner-only (#576). check maps billing.manage deny → BILLING_NOT_OWNER,
+    // preserving the contract; runs after the configured-503 guard so the
+    // documented order (configured → owner) is unchanged.
+    PermissionService.check(caller, "billing.manage");
     if (org.stripeSubscriptionId) {
       throw new ApiError(
         409,
@@ -402,7 +403,7 @@ export class BillingService {
         await DbService.repository.organizations.update(org.id, {
           stripeCustomerId: customerId,
           updated: Date.now(),
-          updatedBy: callerUserId,
+          updatedBy: caller.userId,
         });
       }
 
@@ -432,7 +433,7 @@ export class BillingService {
    */
   static async createPortal(
     org: OrganizationSelect,
-    callerUserId: string,
+    caller: PermissionContext,
     tierSlug?: string
   ): Promise<{ url: string }> {
     if (!StripeService.isConfigured()) {
@@ -442,13 +443,10 @@ export class BillingService {
         "Billing is not configured in this environment"
       );
     }
-    if (org.ownerUserId !== callerUserId) {
-      throw new ApiError(
-        403,
-        ApiCode.BILLING_NOT_OWNER,
-        "Only the organization owner can manage billing"
-      );
-    }
+    // Owner-only (#576). check maps billing.manage deny → BILLING_NOT_OWNER,
+    // preserving the contract; runs after the configured-503 guard so the
+    // documented order (configured → owner) is unchanged.
+    PermissionService.check(caller, "billing.manage");
     if (!org.stripeCustomerId) {
       throw new ApiError(
         409,
