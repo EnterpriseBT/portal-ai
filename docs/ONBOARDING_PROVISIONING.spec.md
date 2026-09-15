@@ -40,6 +40,8 @@ Pins the contract for #583: one idempotent, concurrency-safe `ApplicationService
 
 Drizzle-generated migration only (no data step — OQ1). This index is also the `onConflictDoNothing` target below.
 
+> **Contract note — single-issuer uniqueness (for #577).** The column *value* is the OIDC `sub` claim, which is deployment-agnostic (Auth0 SaaS, a residency-mode customer OIDC, or a self-hosted issuer all populate it identically). But `sub` is unique only *within an issuer*, so `UNIQUE(auth0_id)` is correct **only under a single issuer** — the shared SaaS Auth0 tenant. **Enterprise SSO / residency (#577)** introduces per-customer OIDC/SAML issuers, where two IdPs can legitimately emit the same `sub`; the correct key becomes `(issuer, sub)`. #583 keeps the single-column index (right for SaaS, and no `issuer` value exists to populate yet — no speculative column), and #577 owns extending the key when it adds multi-issuer identity. The column name `auth0_id` is likewise SaaS-flavored; a rename to `subject_id` is deferred to whenever #577 touches this, not done mid-flight.
+
 ### `UsersRepository.findOrCreateByAuth0Id`
 
 **File: `apps/api/src/db/repositories/users.repository.ts`** — add:
