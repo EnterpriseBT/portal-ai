@@ -113,6 +113,26 @@ describe("WebhookService Integration Tests", () => {
       expect(found?.picture).toBeNull();
     });
 
+    it("re-delivery of a new-user webhook creates no duplicate user or org (#583)", async () => {
+      // Both calls go through ensureProvisioned's find-or-create + no-membership
+      // gate, so the second is idempotent — one user, one org.
+      const first = await WebhookService.syncUser(basePayload);
+      expect(first.action).toBe("created");
+
+      const second = await WebhookService.syncUser(basePayload);
+      // The user now exists, so the second delivery takes the update branch.
+      expect(second.userId).toBe(first.userId);
+
+      const usersRepo = new Repository(users);
+      const foundUsers = await usersRepo.findMany(undefined, {}, db);
+      expect(foundUsers).toHaveLength(1);
+
+      const orgsRepo = new Repository(organizations);
+      const orgs = await orgsRepo.findMany(undefined, {}, db);
+      expect(orgs).toHaveLength(1);
+      expect(orgs[0].ownerUserId).toBe(first.userId);
+    });
+
     it("should detect change when email goes from null to a value", async () => {
       // Create user with no email
       const minimalPayload: Auth0PostLoginWebhookPayload = {

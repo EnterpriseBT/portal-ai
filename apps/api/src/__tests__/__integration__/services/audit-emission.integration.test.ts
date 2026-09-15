@@ -22,9 +22,12 @@ import { and, eq, sql } from "drizzle-orm";
 import type { User } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
-import { ApplicationService } from "../../../services/application.service.js";
 import { auditLogRepo } from "../../../db/repositories/audit-log.repository.js";
-import { generateId, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  provisionTestOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|audit-emit-user";
 
@@ -96,7 +99,7 @@ describe("Audit emission (#575 slice 4)", () => {
   }
 
   it("org.delete via the route writes an audit_log row (actor + target + outcome)", async () => {
-    const result = await ApplicationService.setupOrganization(createOwner());
+    const result = await provisionTestOrg(createOwner());
     const org = result.organization;
 
     const res = await request(app)
@@ -127,7 +130,7 @@ describe("Audit emission (#575 slice 4)", () => {
   });
 
   it("is FAIL-OPEN end-to-end: the delete succeeds even when the audit write throws", async () => {
-    const result = await ApplicationService.setupOrganization(createOwner());
+    const result = await provisionTestOrg(createOwner());
     const org = result.organization;
 
     // Force the audit write to fail; the destructive action must still commit.

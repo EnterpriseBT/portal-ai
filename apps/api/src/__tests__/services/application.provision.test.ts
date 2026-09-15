@@ -11,6 +11,13 @@ jest.unstable_mockModule("../../db/client.js", () => ({
     }),
   },
   closeDatabase: async () => {},
+  // Pulled in transitively via SyncLockService (application.service imports it
+  // for ensureProvisioned). This unit suite doesn't exercise the lock, so a
+  // stub that just satisfies the import binding is enough.
+  reserveConnection: async () => ({
+    unsafe: async () => [{ locked: true }],
+    release: () => {},
+  }),
 }));
 
 const repos = {
@@ -192,20 +199,11 @@ describe("provisionOrganizationFor (the shared transaction body)", () => {
   });
 });
 
-describe("setupOrganization (webhook parity)", () => {
-  it("creates the user FIRST, then runs the same provisioning; returns { user, organization, organizationUser }", async () => {
-    const owner = { id: "u-hook", auth0Id: "google-oauth2|1", email: "x@y.z" };
-    const out = await ApplicationService.setupOrganization(owner as never);
-    expect(repos.users.create).toHaveBeenCalledWith(owner, "TX");
-    expect(out.user.id).toBe("u-hook");
-    expect(out.organization).toBeDefined();
-    expect(out.organizationUser).toBeDefined();
-    expect(repos.organizations.create.mock.calls[0][0]).toMatchObject({
-      name: "My Organization",
-      ownerUserId: "u-hook",
-    });
-  });
-});
+// The former `setupOrganization` (create-user + provision) is removed (#583);
+// its create-then-provision behavior now lives in `ensureProvisioned` and is
+// covered by the ensureProvisioned integration tests, which exercise the real
+// advisory lock + find-or-create against Postgres (not mockable meaningfully
+// here). This unit suite keeps its coverage of the provisioning core below.
 
 describe("createOrganizationForEmail", () => {
   it("unknown email → throws (users originate in Auth0)", async () => {

@@ -1,4 +1,3 @@
-import { User } from "@portalai/core/models";
 import {
   OrganizationModelFactory,
   OrganizationUserModelFactory,
@@ -12,10 +11,17 @@ import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { organizations } from "../db/schema/organizations.table.js";
 import { db } from "../db/client.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
+import type {
+  UserSelect,
+  OrganizationSelect,
+  OrganizationUserSelect,
+} from "../db/schema/zod.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { SeedService } from "./seed.service.js";
+import { AuditService } from "./audit.service.js";
+import { SyncLockService } from "./sync-lock.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -121,22 +127,102 @@ export class ApplicationService {
     return { organization, role: updated[0].role };
   }
 
-  /** Webhook path (Auth0 post-login, new user): create the user, then run
-   *  the full provisioning transaction. Signature unchanged (#190 refactor). */
-  static async setupOrganization(owner: User) {
-    return DbService.transaction(async (tx) => {
-      const createdUser = await DbService.repository.users
-        .create(owner, tx)
-        .catch((err) => {
-          logger.error({ error: err }, "Database error creating user");
-          throw new Error("Database error creating user");
-        });
+  /**
+   * First-login provisioning — the single idempotent, concurrency-safe path
+   * shared by the Auth0 webhook (eager) and `getApplicationMetadata` (the
+   * request-path self-heal). Find-or-create the user, then, under an advisory
+   * lock keyed by the Auth0 sub, provision a personal owner-org **iff** the
+   * user has no live membership. (#583)
+   *
+   * The unique index on `users.auth0_id` is the hard backstop against duplicate
+   * users; the lock is what lets the loser of a first-login race observe the
+   * winner's committed org and no-op instead of provisioning a second one.
+   *
+   * `resolveProfile` is lazy — invoked only when a user row must be created —
+   * so the request-path caller pays the Auth0 profile fetch only on a genuine
+   * first login, never on every request.
+   *
+   * This is the first-login *wrapper* (with a no-membership gate), NOT the
+   * reusable provisioning core. A future in-UI "create another org" feature
+   * calls `provisionOrganizationFor` directly, past this gate — keep the gate
+   * here, out of the core.
+   */
+  static async ensureProvisioned(
+    auth0Sub: string,
+    resolveProfile: () => Promise<{
+      email: string | null;
+      name: string | null;
+      picture: string | null;
+    }>,
+    auditCtx?: { sourceIp: string | null; userAgent: string | null }
+  ): Promise<{
+    user: UserSelect;
+    organization: OrganizationSelect;
+    organizationUser: OrganizationUserSelect;
+    created: boolean;
+  }> {
+    return SyncLockService.withProvisioningLock(auth0Sub, async () => {
+      // ── User (find-or-create) ──────────────────────────────────────
+      let userRow = await DbService.repository.users.findByAuth0Id(auth0Sub);
+      if (!userRow) {
+        const profile = await resolveProfile();
+        const model = new UserModelFactory()
+          .create(SystemUtilities.id.system)
+          .update({
+            auth0Id: auth0Sub,
+            email: profile.email,
+            name: profile.name,
+            picture: profile.picture,
+            lastLogin: SystemUtilities.utc.now().getTime(),
+          });
+        const res = await DbService.repository.users.findOrCreateByAuth0Id(
+          model.parse()
+        );
+        userRow = res.user;
+      }
+      const user = userRow;
 
-      const provisioned = await ApplicationService.provisionOrganizationInTx(
-        createdUser.id,
-        tx
+      // ── Org (provision iff no live membership) ─────────────────────
+      const current = await ApplicationService.getCurrentOrganization(user.id);
+      if (current) {
+        return {
+          user,
+          organization: current.organization,
+          organizationUser: current.organizationUser,
+          created: false,
+        };
+      }
+
+      const provisioned = await DbService.transaction((tx) =>
+        ApplicationService.provisionOrganizationInTx(user.id, tx)
       );
-      return { user: createdUser, ...provisioned };
+
+      // ── Audit (only on a fresh provision; post-commit, fail-open) ──
+      // Lifted from the webhook so both entry points audit identically.
+      void AuditService.record({
+        organizationId: provisioned.organization.id,
+        userId: user.id,
+        action: "org.create",
+        targetType: "organization",
+        targetId: provisioned.organization.id,
+        sourceIp: auditCtx?.sourceIp ?? null,
+        userAgent: auditCtx?.userAgent ?? null,
+      });
+      void AuditService.record({
+        organizationId: provisioned.organization.id,
+        userId: user.id,
+        action: "auth.login",
+        sourceIp: auditCtx?.sourceIp ?? null,
+        userAgent: auditCtx?.userAgent ?? null,
+        metadata: { firstLogin: true },
+      });
+
+      return {
+        user,
+        organization: provisioned.organization,
+        organizationUser: provisioned.organizationUser,
+        created: true,
+      };
     });
   }
 
