@@ -72,6 +72,11 @@ export const environment = {
   // to `GET /api/webhook/handle/:id` (#124). Defaults to the local dev API.
   PUBLIC_API_BASE_URL:
     process.env.PUBLIC_API_BASE_URL || "http://localhost:3001",
+  // The web app's externally-reachable base, used to build shareable invite
+  // links (#584). Defaults to the local dev web app.
+  WEB_APP_URL: process.env.WEB_APP_URL || "http://localhost:3000",
+  // How long an org invitation stays acceptable before it expires (#584).
+  INVITATION_TTL_DAYS: parseInt(process.env.INVITATION_TTL_DAYS || "7", 10),
   // Emergency rollback flags. Both default false. Flip via env to
   // disable without redeploying: SSRF agent stops resolving+filtering
   // outbound IPs; signing stops appending HMAC headers. The static

@@ -15,6 +15,9 @@ import type {
   AuditLogListResponse,
   UserMembershipsGetResponse,
   MemberRoleUpdateResponse,
+  InvitationResponse,
+  InvitationListResponse,
+  MemberListResponse,
 } from "@portalai/core/contracts";
 import {
   OrganizationDeleteRequestSchema,
@@ -22,7 +25,9 @@ import {
   UsageLedgerListRequestQuerySchema,
   AuditLogListRequestQuerySchema,
   MemberRoleUpdateRequestSchema,
+  InviteCreateRequestSchema,
 } from "@portalai/core/contracts";
+import { SeatService } from "../services/seat.service.js";
 import {
   TOOL_USAGE_LEDGER_SORT_KEYS,
   type ToolUsageLedgerSortBy,
@@ -494,6 +499,239 @@ organizationRouter.patch(
               500,
               ApiCode.ORGANIZATION_FETCH_FAILED,
               error instanceof Error ? error.message : "Failed to assign role"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/invitations:
+ *   post:
+ *     summary: Invite a user to the organization (owner/admin)
+ *     tags: [Organization]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/InviteCreateRequest'
+ *     responses:
+ *       200:
+ *         description: The created invitation, incl. a one-time inviteUrl
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/InvitationResponse'
+ *       403:
+ *         description: Caller's role may not invite
+ *       409:
+ *         description: Already a member, already invited, or seat limit reached
+ */
+organizationRouter.post(
+  "/invitations",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const ctx = req.application!.metadata;
+      const parsed = InviteCreateRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "email (valid) and role (member|admin) are required"
+          )
+        );
+      }
+      const audit = auditContextFromRequest(req);
+      const invitation = await SeatService.invite(ctx, parsed.data, {
+        sourceIp: audit.sourceIp,
+        userAgent: audit.userAgent,
+      });
+      return HttpService.success<InvitationResponse>(res, invitation);
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to invite"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/invitations:
+ *   get:
+ *     summary: List the organization's pending invitations (owner/admin)
+ *     tags: [Organization]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Pending invitations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/InvitationListResponse'
+ */
+organizationRouter.get(
+  "/invitations",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const invitations = await SeatService.listInvitations(
+        req.application!.metadata
+      );
+      return HttpService.success<InvitationListResponse>(res, { invitations });
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list invitations"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/invitations/{id}/revoke:
+ *   post:
+ *     summary: Revoke a pending invitation (owner/admin)
+ *     tags: [Organization]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The revoked invitation
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/InvitationResponse'
+ *       404:
+ *         description: No pending invitation with that id
+ */
+organizationRouter.post(
+  "/invitations/:id/revoke",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const audit = auditContextFromRequest(req);
+      const invitation = await SeatService.revoke(
+        req.application!.metadata,
+        req.params.id,
+        { sourceIp: audit.sourceIp, userAgent: audit.userAgent }
+      );
+      return HttpService.success<InvitationResponse>(res, invitation);
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to revoke"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/invitations/{id}/resend:
+ *   post:
+ *     summary: Rotate the token + extend expiry on a pending invitation (owner/admin)
+ *     tags: [Organization]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The refreshed invitation, incl. a new one-time inviteUrl
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/InvitationResponse'
+ *       404:
+ *         description: No pending invitation with that id
+ */
+organizationRouter.post(
+  "/invitations/:id/resend",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const audit = auditContextFromRequest(req);
+      const invitation = await SeatService.resend(
+        req.application!.metadata,
+        req.params.id,
+        { sourceIp: audit.sourceIp, userAgent: audit.userAgent }
+      );
+      return HttpService.success<InvitationResponse>(res, invitation);
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to resend"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/members:
+ *   get:
+ *     summary: List the organization's members (owner/admin)
+ *     tags: [Organization]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Members
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MemberListResponse'
+ */
+organizationRouter.get(
+  "/members",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const members = await SeatService.listMembers(req.application!.metadata);
+      return HttpService.success<MemberListResponse>(res, { members });
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to list members"
             )
       );
     }

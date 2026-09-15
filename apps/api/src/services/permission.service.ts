@@ -21,6 +21,7 @@ export interface PermissionContext {
  * The actions the guard understands.
  * - `billing.manage` / `org.delete` — owner-only.
  * - `org.audit.read` / `member.role.assign` — owner + admin.
+ * - `member.invite` / `member.remove` — owner + admin (seats, #584).
  * - `resource.read` / `resource.write` — role default; a `member` is
  *   `createdBy`-scoped (read also allowed on system-created rows).
  *
@@ -32,6 +33,8 @@ export type PermissionAction =
   | "org.delete"
   | "org.audit.read"
   | "member.role.assign"
+  | "member.invite"
+  | "member.remove"
   | "resource.read"
   | "resource.write";
 
