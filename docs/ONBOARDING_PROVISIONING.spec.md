@@ -62,7 +62,7 @@ Behavior: `insert(users).values(data).onConflictDoNothing({ target: users.auth0I
 **File: `apps/api/src/services/sync-lock.service.ts`** — add a sibling to `withInstanceLockWait`, in a **distinct namespace** (the file already guards against keyspace collisions):
 
 ```ts
-const PROVISION_LOCK_NAMESPACE = 0x50_52_56_4e; // "PRVN"
+const PROVISION_LOCK_NAMESPACE = 0x5052_5646; // "PRVF"
 /** Wait-acquire an advisory lock keyed on an Auth0 sub for first-login
  *  provisioning; always runs `fn` (throws on timeout, like withInstanceLockWait). */
 static async withProvisioningLock<T>(auth0Sub: string, fn: () => Promise<T>): Promise<T>
