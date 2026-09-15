@@ -39,6 +39,10 @@ export enum ApiCode {
   /** DELETE cascade failed server-side (transaction rolled back). 500. */
   ORGANIZATION_DELETE_FAILED = "ORGANIZATION_DELETE_FAILED",
 
+  // Authorization / RBAC (#576)
+  /** The caller's role lacks the permission required for this action. 403. */
+  INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE",
+
   // Billing (#176)
   /** Stripe env keys absent in this environment. 503. */
   BILLING_NOT_CONFIGURED = "BILLING_NOT_CONFIGURED",

@@ -225,7 +225,7 @@ export function createAdminStore(
       // lastLogin to now) does.
       const row = new OrganizationUserModelFactory()
         .create(actor)
-        .update({ organizationId: orgId, userId, lastLogin: 0 })
+        .update({ organizationId: orgId, userId, role: "member", lastLogin: 0 })
         .parse();
       await db.insert(organizationUsers).values(row as never);
     },

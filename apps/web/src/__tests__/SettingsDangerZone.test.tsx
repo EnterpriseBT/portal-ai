@@ -57,6 +57,7 @@ const profileData = {
 };
 
 const orgData = {
+  role: "owner",
   organization: {
     id: "org-1",
     name: "Acme Corp",
@@ -109,6 +110,16 @@ const openOrganizationTab = async () => {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("SettingsView — Danger zone (#197 slice 5)", () => {
+  it("disables Delete for a non-owner (member) — #576 role gating", async () => {
+    mockCurrent.mockReturnValue(
+      loaded({ ...orgData, role: "member" as const })
+    );
+    await openOrganizationTab();
+    expect(
+      screen.getByRole("button", { name: "Delete organization" })
+    ).toBeDisabled();
+  });
+
   it("renders the Danger zone and opens the delete dialog (case 25)", async () => {
     await openOrganizationTab();
 
@@ -161,5 +172,21 @@ describe("SettingsView — Danger zone (#197 slice 5)", () => {
 
     expect(mockMutate).toHaveBeenCalled();
     expect(mockLogout).not.toHaveBeenCalled();
+  });
+});
+
+describe("SettingsView — Profile role (#576)", () => {
+  it("shows the caller's role on the Profile tab (Owner)", () => {
+    render(<SettingsView />); // Profile is the default tab
+    const roleLabel = screen.getByText("Role");
+    expect(roleLabel).toBeInTheDocument();
+    expect(screen.getByText("Owner")).toBeInTheDocument();
+  });
+
+  it("shows Member when the caller is a member", () => {
+    mockCurrent.mockReturnValue(loaded({ ...orgData, role: "member" }));
+    render(<SettingsView />);
+    expect(screen.getByText("Role")).toBeInTheDocument();
+    expect(screen.getByText("Member")).toBeInTheDocument();
   });
 });

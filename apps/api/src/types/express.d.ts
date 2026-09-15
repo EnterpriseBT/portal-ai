@@ -2,6 +2,7 @@ import {
   Request as ExpressRequest,
   Response as ExpressResponse,
 } from "express";
+import type { OrgRole } from "@portalai/core/models";
 
 /**
  * JWT token payload structure from Auth0
@@ -45,6 +46,8 @@ export interface ApplicationMetadata {
   userId: string;
   /** Current organization ID for the authenticated user */
   organizationId: string;
+  /** The caller's role in the current organization (#576). */
+  role: OrgRole;
 }
 
 declare global {

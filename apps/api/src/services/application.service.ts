@@ -118,7 +118,7 @@ export class ApplicationService {
       );
     }
 
-    return { organization };
+    return { organization, role: updated[0].role };
   }
 
   /** Webhook path (Auth0 post-login, new user): create the user, then run
@@ -227,6 +227,7 @@ export class ApplicationService {
           .update({
             organizationId: provisioned.organization.id,
             userId: member.id,
+            role: "member",
             lastLogin: 0,
           });
         await DbService.repository.organizationUsers.create(
@@ -300,6 +301,7 @@ export class ApplicationService {
       .update({
         organizationId: createdOrg.id,
         userId,
+        role: "owner",
         lastLogin: SystemUtilities.utc.now().getTime(),
       });
 

@@ -55,6 +55,10 @@ describe("AuditLogEntrySchema", () => {
     expect(model.validate().success).toBe(true);
   });
 
+  it("includes member.role.change (#576)", () => {
+    expect(AUDIT_ACTIONS).toContain("member.role.change");
+  });
+
   it("accepts every declared AuditAction", () => {
     for (const action of AUDIT_ACTIONS) {
       const model = new AuditLogEntryModelFactory()

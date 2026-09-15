@@ -53,6 +53,7 @@ export const getApplicationMetadata = async (
       metadata: {
         userId: user.id,
         organizationId: orgResult.organization.id,
+        role: orgResult.organizationUser.role,
       },
     };
 

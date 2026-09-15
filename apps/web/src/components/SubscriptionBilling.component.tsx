@@ -224,7 +224,6 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
 
 export const SubscriptionBilling: React.FC = () => {
   const organizationResult = sdk.organizations.current();
-  const profileResult = sdk.auth.profile();
   const tiersResult = sdk.billing.tiers();
   // #257: source the current tier's policy. Deliberately NOT in the DataResult
   // below — a usage hiccup must not blank the whole tab; the current-plan card
@@ -258,9 +257,9 @@ export const SubscriptionBilling: React.FC = () => {
   };
 
   return (
-    <DataResult results={{ organizationResult, profileResult, tiersResult }}>
-      {({ organizationResult, profileResult, tiersResult }) => {
-        const { organization } = organizationResult;
+    <DataResult results={{ organizationResult, tiersResult }}>
+      {({ organizationResult, tiersResult }) => {
+        const { organization, role } = organizationResult;
         const { tiers } = tiersResult;
 
         // State derivation (spec D5/#241 D6): a live subscription wins;
@@ -294,10 +293,7 @@ export const SubscriptionBilling: React.FC = () => {
         return (
           <SubscriptionBillingUI
             state={state}
-            isOwner={
-              profileResult.userId != null &&
-              profileResult.userId === organization.ownerUserId
-            }
+            isOwner={role === "owner"}
             currentTierName={currentTierName}
             currentTierSlug={organization.tier}
             tiers={tiers}

@@ -117,11 +117,11 @@ describe("getApplicationMetadata", () => {
     );
   });
 
-  it("should set req.application.metadata and call next on success", async () => {
+  it("should set req.application.metadata (incl. role) and call next on success", async () => {
     mockFindByAuth0Id.mockResolvedValue({ id: "user-1" });
     mockGetCurrentOrganization.mockResolvedValue({
       organization: { id: "org-1" },
-      organizationUser: { id: "org-user-1" },
+      organizationUser: { id: "org-user-1", role: "admin" },
     });
     const { req, res, next } = createMocks({ sub: "auth0|abc123" });
 
@@ -131,6 +131,7 @@ describe("getApplicationMetadata", () => {
       metadata: {
         userId: "user-1",
         organizationId: "org-1",
+        role: "admin",
       },
     });
     expect(next).toHaveBeenCalledWith();

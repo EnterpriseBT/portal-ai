@@ -27,6 +27,7 @@ export const AUDIT_ACTIONS = [
   "member.add",
   "member.remove",
   "member.switch",
+  "member.role.change",
   "connector.credential.create",
   "connector.credential.update",
   "connector.credential.access",
