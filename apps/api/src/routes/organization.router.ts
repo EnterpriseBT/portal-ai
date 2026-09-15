@@ -14,12 +14,14 @@ import type {
   UsageLedgerListResponse,
   AuditLogListResponse,
   UserMembershipsGetResponse,
+  MemberRoleUpdateResponse,
 } from "@portalai/core/contracts";
 import {
   OrganizationDeleteRequestSchema,
   OrganizationSwitchRequestSchema,
   UsageLedgerListRequestQuerySchema,
   AuditLogListRequestQuerySchema,
+  MemberRoleUpdateRequestSchema,
 } from "@portalai/core/contracts";
 import {
   TOOL_USAGE_LEDGER_SORT_KEYS,
@@ -340,6 +342,161 @@ organizationRouter.delete(
               error instanceof Error
                 ? error.message
                 : "Failed to delete organization"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/members/{userId}/role:
+ *   patch:
+ *     summary: Assign a member's role in the current organization
+ *     description: >
+ *       Owner and admin may assign the `member` role. Only the **owner** may
+ *       mint or remove an `admin`; the `owner` role itself is immutable here
+ *       (ownership transfer is out of scope). Emits `member.role.change` (#576).
+ *     tags:
+ *       - Organization
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The internal user id of the member whose role is changing.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MemberRoleUpdateRequest'
+ *     responses:
+ *       200:
+ *         description: Role updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MemberRoleUpdateResponse'
+ *       400:
+ *         description: Invalid payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: Caller's role may not assign this role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Member not found in this organization
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+organizationRouter.patch(
+  "/members/:userId/role",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const ctx = req.application!.metadata;
+      const targetUserId = req.params.userId;
+
+      const parsed = MemberRoleUpdateRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "role is required and must be one of owner|admin|member"
+          )
+        );
+      }
+      const newRole = parsed.data.role;
+
+      // Base authz: owner + admin may assign roles; members may not.
+      PermissionService.check(ctx, "member.role.assign");
+
+      const target =
+        await DbService.repository.organizationUsers.findByOrganizationAndUser(
+          ctx.organizationId,
+          targetUserId
+        );
+      if (!target) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_USER_NOT_FOUND,
+            "Member not found in this organization"
+          )
+        );
+      }
+
+      // The owner role is immutable via this endpoint — minting or removing an
+      // owner is ownership transfer, out of scope for #576.
+      if (newRole === "owner" || target.role === "owner") {
+        return next(
+          new ApiError(
+            403,
+            ApiCode.INSUFFICIENT_ROLE,
+            "The owner role can only change through ownership transfer"
+          )
+        );
+      }
+
+      // OQ2: only the owner may mint or remove an `admin`.
+      if (
+        (newRole === "admin" || target.role === "admin") &&
+        ctx.role !== "owner"
+      ) {
+        return next(
+          new ApiError(
+            403,
+            ApiCode.INSUFFICIENT_ROLE,
+            "Only the owner can assign or remove the admin role"
+          )
+        );
+      }
+
+      if (target.role === newRole) {
+        return HttpService.success<MemberRoleUpdateResponse>(res, {
+          member: target,
+        });
+      }
+
+      const updated = await DbService.repository.organizationUsers.update(
+        target.id,
+        {
+          role: newRole,
+        }
+      );
+
+      // #575/#576: audit the role change (post-commit, fail-open).
+      void AuditService.record({
+        ...auditContextFromRequest(req),
+        action: "member.role.change",
+        targetType: "user",
+        targetId: targetUserId,
+        metadata: { from: target.role, to: newRole },
+      });
+
+      return HttpService.success<MemberRoleUpdateResponse>(res, {
+        member: updated ?? { ...target, role: newRole },
+      });
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to assign role"
             )
       );
     }

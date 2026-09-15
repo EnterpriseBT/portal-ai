@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { OrganizationSchema } from "../models/organization.model.js";
+import {
+  OrgRoleSchema,
+  OrganizationUserSchema,
+} from "../models/organization-user.model.js";
 
 /**
  * Response payload for fetching a single organization.
@@ -35,4 +39,26 @@ export const OrganizationDeleteResponseSchema = z.object({
 
 export type OrganizationDeleteResponse = z.infer<
   typeof OrganizationDeleteResponseSchema
+>;
+
+/**
+ * Request body for PATCH /api/organization/members/:userId/role (#576) — assign
+ * a membership role. Owner + admin may call it; only the owner may mint/remove
+ * `admin` or `owner` (enforced in the route, OQ2).
+ */
+export const MemberRoleUpdateRequestSchema = z.object({
+  role: OrgRoleSchema,
+});
+
+export type MemberRoleUpdateRequest = z.infer<
+  typeof MemberRoleUpdateRequestSchema
+>;
+
+/** Response payload for a successful role assignment — the updated membership. */
+export const MemberRoleUpdateResponseSchema = z.object({
+  member: OrganizationUserSchema,
+});
+
+export type MemberRoleUpdateResponse = z.infer<
+  typeof MemberRoleUpdateResponseSchema
 >;
