@@ -346,6 +346,66 @@ export class SeatService {
     return current;
   }
 
+  /**
+   * Remove a member from the caller's org (owner + admin). Soft-deletes the
+   * membership. Refuses to remove the **last live owner** — that would strand
+   * the org ownerless. The owner-count check + delete run under the seat lock
+   * so two concurrent removals of two different owners can't both slip past the
+   * "more than one owner" check and leave zero.
+   */
+  static async removeMember(
+    caller: PermissionContext,
+    targetUserId: string,
+    auditCtx: SeatAuditContext
+  ): Promise<void> {
+    PermissionService.check(caller, "member.remove");
+    const orgId = caller.organizationId;
+
+    await SyncLockService.withSeatLock(orgId, async () => {
+      const target =
+        await DbService.repository.organizationUsers.findByOrganizationAndUser(
+          orgId,
+          targetUserId
+        );
+      if (!target) {
+        throw new ApiError(
+          404,
+          ApiCode.ORGANIZATION_USER_NOT_FOUND,
+          "Member not found in this organization"
+        );
+      }
+      if (target.role === "owner") {
+        const owners = await DbService.repository.organizationUsers.count(
+          and(
+            eq(organizationUsers.organizationId, orgId),
+            eq(organizationUsers.role, "owner")
+          )
+        );
+        if (owners <= 1) {
+          throw new ApiError(
+            409,
+            ApiCode.LAST_OWNER_REMOVAL,
+            "Cannot remove the last owner of the organization"
+          );
+        }
+      }
+      await DbService.repository.organizationUsers.softDelete(
+        target.id,
+        caller.userId
+      );
+      void AuditService.record({
+        organizationId: orgId,
+        userId: caller.userId,
+        action: "member.remove",
+        targetType: "user",
+        targetId: targetUserId,
+        sourceIp: auditCtx.sourceIp,
+        userAgent: auditCtx.userAgent,
+        metadata: { role: target.role },
+      });
+    });
+  }
+
   // ── internals ───────────────────────────────────────────────────────
 
   /** Bind a user to an org as a member, or bump lastLogin if already one. */

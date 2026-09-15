@@ -15,6 +15,7 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { SeatService } from "../../../services/seat.service.js";
+import { DbService } from "../../../services/db.service.js";
 import { ApiError } from "../../../services/http.service.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { PermissionContext } from "../../../services/permission.service.js";
@@ -354,5 +355,66 @@ describe("SeatService Integration Tests", () => {
     await expect(
       SeatService.acceptByToken(invitee as never, token, AUDIT)
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_EXPIRED });
+  });
+
+  // ── remove ──────────────────────────────────────────────────────────
+
+  /** Add a second membership (a plain member) and return its user id. */
+  async function addMember(role: "admin" | "member" = "member") {
+    const u = createUser(`auth0|${generateId()}`);
+    await asDrizzle()
+      .insert(schema.users)
+      .values(u as never);
+    await asDrizzle()
+      .insert(schema.organizationUsers)
+      .values(createOrganizationUser(orgId, u.id, { role }) as never);
+    return u.id;
+  }
+
+  it("removeMember soft-deletes the membership and audits", async () => {
+    const memberId = await addMember("member");
+    await SeatService.removeMember(owner, memberId, AUDIT);
+
+    const live =
+      await DbService.repository.organizationUsers.findByOrganizationAndUser(
+        orgId,
+        memberId
+      );
+    expect(live).toBeUndefined(); // soft-deleted → excluded from live reads
+    await new Promise((r) => setTimeout(r, 60));
+    expect(await auditRows("member.remove")).toHaveLength(1);
+  });
+
+  it("refuses to remove the last owner (LAST_OWNER_REMOVAL)", async () => {
+    await expect(
+      SeatService.removeMember(owner, ownerId, AUDIT)
+    ).rejects.toMatchObject({ code: ApiCode.LAST_OWNER_REMOVAL });
+  });
+
+  it("allows removing an owner when another owner remains", async () => {
+    const secondOwner = await addMember("member");
+    // Promote directly to a second owner.
+    await asDrizzle()
+      .update(schema.organizationUsers)
+      .set({ role: "owner" })
+      .where(eq(schema.organizationUsers.userId, secondOwner));
+    await expect(
+      SeatService.removeMember(owner, ownerId, AUDIT)
+    ).resolves.toBeUndefined();
+  });
+
+  it("404s removing a non-member; a member caller is denied", async () => {
+    await expect(
+      SeatService.removeMember(owner, "no-such-user", AUDIT)
+    ).rejects.toMatchObject({ code: ApiCode.ORGANIZATION_USER_NOT_FOUND });
+
+    const member: PermissionContext = {
+      userId: "u-m",
+      organizationId: orgId,
+      role: "member",
+    };
+    await expect(
+      SeatService.removeMember(member, ownerId, AUDIT)
+    ).rejects.toBeInstanceOf(ApiError);
   });
 });

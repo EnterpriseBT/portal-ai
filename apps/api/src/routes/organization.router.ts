@@ -838,6 +838,55 @@ organizationRouter.post(
   }
 );
 
+/**
+ * @openapi
+ * /api/organization/members/{userId}:
+ *   delete:
+ *     summary: Remove a member from the organization (owner/admin)
+ *     tags: [Organization]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       204:
+ *         description: Member removed
+ *       403:
+ *         description: Caller's role may not remove members
+ *       404:
+ *         description: Member not found in this organization
+ *       409:
+ *         description: Cannot remove the last owner
+ */
+organizationRouter.delete(
+  "/members/:userId",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const audit = auditContextFromRequest(req);
+      await SeatService.removeMember(
+        req.application!.metadata,
+        req.params.userId,
+        { sourceIp: audit.sourceIp, userAgent: audit.userAgent }
+      );
+      res.status(204).send();
+      return;
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to remove member"
+            )
+      );
+    }
+  }
+);
+
 organizationRouter.get(
   "/current",
   async (req: Request, res: Response, next: NextFunction) => {

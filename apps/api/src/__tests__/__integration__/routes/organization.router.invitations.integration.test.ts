@@ -224,4 +224,45 @@ describe("Organization seats routes (#584)", () => {
     );
     expect(res.status).toBe(404);
   });
+
+  it("owner: DELETE /members/:userId removes a member → 204", async () => {
+    await seed("owner");
+    const [callerMembership] = await asDrizzle()
+      .select()
+      .from(schema.organizationUsers)
+      .where(eq(schema.organizationUsers.role, "owner"));
+    // A second, removable member in the caller's org.
+    const m = createUser(`auth0|${generateId()}`);
+    await asDrizzle()
+      .insert(schema.users)
+      .values(m as never);
+    await asDrizzle()
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(callerMembership.organizationId, m.id, {
+          role: "member",
+        }) as never
+      );
+
+    const res = await auth(
+      request(app).delete(`/api/organization/members/${m.id}`)
+    );
+    expect(res.status).toBe(204);
+  });
+
+  it("owner: DELETE the last owner → 409 LAST_OWNER_REMOVAL", async () => {
+    await seed("owner");
+    // The caller is the only owner; find their user id from the membership.
+    const [callerMembership] = await asDrizzle()
+      .select()
+      .from(schema.organizationUsers)
+      .where(eq(schema.organizationUsers.role, "owner"));
+    const res = await auth(
+      request(app).delete(
+        `/api/organization/members/${callerMembership.userId}`
+      )
+    );
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.LAST_OWNER_REMOVAL);
+  });
 });
