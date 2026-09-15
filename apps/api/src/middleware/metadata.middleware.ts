@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 
 import { ApplicationService } from "../services/application.service.js";
+import { Auth0Service } from "../services/auth0.service.js";
 import { DbService } from "../services/db.service.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -32,21 +33,44 @@ export const getApplicationMetadata = async (
     }
 
     const user = await DbService.repository.users.findByAuth0Id(auth0Id);
-    if (!user) {
-      return next(
-        new ApiError(404, ApiCode.METADATA_USER_NOT_FOUND, "User not found")
-      );
-    }
+    const orgResult = user
+      ? await ApplicationService.getCurrentOrganization(user.id)
+      : null;
 
-    const orgResult = await ApplicationService.getCurrentOrganization(user.id);
-    if (!orgResult) {
-      return next(
-        new ApiError(
-          404,
-          ApiCode.METADATA_ORGANIZATION_NOT_FOUND,
-          "Organization not found"
-        )
+    // Self-heal (#583): a logged-in user with no row, or no membership, means
+    // the Auth0 post-login webhook never provisioned them (misconfigured,
+    // unreachable, or a user predating it). Provision on the request path so
+    // the invariant "an authenticated user always resolves to a membership +
+    // role" holds regardless of the webhook. Idempotent + advisory-locked, so
+    // concurrent requests during a first login converge on one org. The Auth0
+    // profile is fetched lazily — only when a user row must be created — via
+    // the request's own access token. A fetch failure falls to the catch below
+    // → 500 METADATA_FETCH_FAILED (fail-closed): never a nameless partial user.
+    if (!user || !orgResult) {
+      const ensured = await ApplicationService.ensureProvisioned(
+        auth0Id,
+        async () => {
+          const profile = await Auth0Service.getAuth0UserProfile(
+            Auth0Service.getAccessToken(req.headers.authorization)
+          );
+          return {
+            email: profile.email ?? null,
+            name: profile.name ?? null,
+            picture: profile.picture ?? null,
+          };
+        },
+        { sourceIp: req.ip ?? null, userAgent: req.get("user-agent") ?? null }
       );
+
+      req.application = {
+        metadata: {
+          userId: ensured.user.id,
+          organizationId: ensured.organization.id,
+          role: ensured.organizationUser.role,
+        },
+      };
+
+      return next();
     }
 
     req.application = {

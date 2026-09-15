@@ -57,8 +57,18 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
   });
 
   afterEach(async () => {
-    await teardownOrg(db as ReturnType<typeof drizzle>);
-    await connection.end();
+    try {
+      // ensureProvisioned emits its org.create + auth.login audit rows
+      // fire-and-forget (post-commit, fail-open). Let them land before
+      // teardown purges audit_log — a late insert would otherwise re-reference
+      // an org mid-delete and the FK abort would leak this suite's connection
+      // pool (surfacing as 503s in later suites). The connection is closed in
+      // `finally` regardless, so a teardown failure can never leak either.
+      await new Promise((r) => setTimeout(r, 150));
+      await teardownOrg(db as ReturnType<typeof drizzle>);
+    } finally {
+      await connection.end();
+    }
   });
 
   const sub = () => `auth0|${generateId()}`;
