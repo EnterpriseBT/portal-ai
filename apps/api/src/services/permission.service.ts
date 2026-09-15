@@ -123,13 +123,16 @@ export class PermissionService {
     }
   }
 
-  /** Keep the pre-existing specific codes for billing/org-delete (#576). */
+  /** Keep the pre-existing specific codes for the three privileged actions
+   *  (#576); INSUFFICIENT_ROLE is the generic gate (e.g. role assignment). */
   private static denyCode(action: PermissionAction): ApiCode {
     switch (action) {
       case "billing.manage":
         return ApiCode.BILLING_NOT_OWNER;
       case "org.delete":
         return ApiCode.ORGANIZATION_NOT_OWNER;
+      case "org.audit.read":
+        return ApiCode.AUDIT_LOG_NOT_AUTHORIZED;
       default:
         return ApiCode.INSUFFICIENT_ROLE;
     }

@@ -397,6 +397,7 @@ describe("SubscriptionBilling container", () => {
   });
 
   const orgData = {
+    role: "owner",
     organization: {
       id: "org-1",
       name: "Acme Corp",
@@ -520,6 +521,7 @@ describe("SubscriptionBilling container", () => {
     );
     mockCurrent.mockReturnValue(
       loaded({
+        role: "owner",
         organization: {
           ...orgData.organization,
           tier: "pro",

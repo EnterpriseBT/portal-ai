@@ -126,7 +126,8 @@ describe("PermissionService.check", () => {
     };
     expectDeny("admin", "billing.manage", ApiCode.BILLING_NOT_OWNER);
     expectDeny("admin", "org.delete", ApiCode.ORGANIZATION_NOT_OWNER);
-    expectDeny("member", "org.audit.read", ApiCode.INSUFFICIENT_ROLE);
+    expectDeny("member", "org.audit.read", ApiCode.AUDIT_LOG_NOT_AUTHORIZED);
+    expectDeny("member", "member.role.assign", ApiCode.INSUFFICIENT_ROLE);
   });
 
   it("fails closed on an unresolved role", () => {

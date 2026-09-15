@@ -112,7 +112,7 @@ Role-only policy (this ticket):
 
 ### Error code
 
-**File: `apps/api/src/constants/api-codes.constants.ts`** — add `INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE"`. Existing `ORGANIZATION_NOT_OWNER` / `AUDIT_LOG_NOT_AUTHORIZED` / `BILLING_NOT_OWNER` are **retained** (billing/org-delete stay owner-only, so their names still read true) — `check` throws `INSUFFICIENT_ROLE` for the generic role gate and the audit-read widen; billing/org-delete may keep their specific codes via `check` throwing the mapped code, or switch to `INSUFFICIENT_ROLE`. **Decision: keep the specific codes** for billing + org-delete (clearer client messages), use `INSUFFICIENT_ROLE` for audit-read and future generic gates.
+**File: `apps/api/src/constants/api-codes.constants.ts`** — add `INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE"`. Existing `ORGANIZATION_NOT_OWNER` / `AUDIT_LOG_NOT_AUTHORIZED` / `BILLING_NOT_OWNER` are **retained** (billing/org-delete stay owner-only, so their names still read true) — `check` throws `INSUFFICIENT_ROLE` for the generic role gate and the audit-read widen; billing/org-delete may keep their specific codes via `check` throwing the mapped code, or switch to `INSUFFICIENT_ROLE`. **Decision: keep the specific codes** for all three privileged actions (billing → `BILLING_NOT_OWNER`, org-delete → `ORGANIZATION_NOT_OWNER`, audit-read → `AUDIT_LOG_NOT_AUTHORIZED`); `INSUFFICIENT_ROLE` is the generic gate (role assignment + future gates).
 
 ### Role in middleware
 
@@ -131,7 +131,7 @@ req.application = { metadata: {
 ### Replace the hand-written owner checks
 
 - **Org delete** `organization.router.ts:294` — `if (ownerUserId !== userId) …ORGANIZATION_NOT_OWNER` → `PermissionService.check(ctx, "org.delete")` (owner-only; keep the `ORGANIZATION_NOT_OWNER` code via the mapped throw).
-- **Audit-log read** `organization.router.ts:925` — → `PermissionService.check(ctx, "org.audit.read")` (owner **+ admin** now — the widen the `:912-913` comment anticipated; #596's Activity tab follows). Throw `INSUFFICIENT_ROLE`.
+- **Audit-log read** `organization.router.ts:925` — → `PermissionService.check(ctx, "org.audit.read")` (owner **+ admin** now — the widen the `:912-913` comment anticipated; #596's Activity tab follows). Keeps `AUDIT_LOG_NOT_AUTHORIZED` (accurate for the owner+admin gate, and consistent with billing/org-delete keeping their specific codes); `INSUFFICIENT_ROLE` is reserved for the generic gate (role assignment).
 - **Billing** `billing.service.ts:348,445` — `if (ownerUserId !== callerUserId) …BILLING_NOT_OWNER` → `PermissionService.check(ctx, "billing.manage")` (owner-only; keep `BILLING_NOT_OWNER`). `ctx` is threaded from the caller (the router already has `req.application.metadata`).
 
 ### Audit action
@@ -220,7 +220,7 @@ Run via npm scripts: `cd packages/core && npm run test:unit`; `cd apps/api && np
 ### Layer 4 — route integration
 
 13. `DELETE` org as non-owner → 403 `ORGANIZATION_NOT_OWNER`; owner succeeds. Admin → 403 (Key decision 2).
-14. Audit-log read: member → 403 `INSUFFICIENT_ROLE`; **admin → 200** (the widen); owner → 200.
+14. Audit-log read: member → 403 `AUDIT_LOG_NOT_AUTHORIZED`; **admin → 200** (the widen); owner → 200.
 15. Billing action: admin → 403 `BILLING_NOT_OWNER`; owner → 200.
 16. `PATCH …/members/:userId/role`: owner promotes member→admin (200, emits `member.role.change`); **admin** promoting someone to admin → 403; admin sets member→member (200); unknown member → 404.
 17. `GET /api/organization/current` payload includes the caller's `role`.

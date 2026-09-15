@@ -259,7 +259,7 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
     expect(badAction.body.code).toBe(ApiCode.AUDIT_LOG_INVALID_QUERY);
   });
 
-  it("denies a member with 403 INSUFFICIENT_ROLE (#576)", async () => {
+  it("denies a member with 403 AUDIT_LOG_NOT_AUTHORIZED (#576)", async () => {
     const orgId = await seedOrgWhereCallerHasRole("member");
     await seedAuditRow(orgId, { action: "org.create" });
 
@@ -268,7 +268,7 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.AUDIT_LOG_NOT_AUTHORIZED);
   });
 
   it("allows an admin to read the audit log (#576 widen)", async () => {
