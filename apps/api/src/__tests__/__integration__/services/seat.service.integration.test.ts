@@ -293,4 +293,66 @@ describe("SeatService Integration Tests", () => {
       (invitations[0] as Record<string, unknown>).tokenHash
     ).toBeUndefined();
   });
+
+  // ── accept ──────────────────────────────────────────────────────────
+
+  it("acceptByToken binds the invitee as a member and is idempotent", async () => {
+    await setSeatCap(null);
+    const inv = await SeatService.invite(
+      owner,
+      { email: "joiner@x.com", role: "member" },
+      AUDIT
+    );
+    const token = inv.inviteUrl!.split("token=")[1];
+    const invitee = createUser(`auth0|${generateId()}`, {
+      email: "joiner@x.com",
+    });
+    await asDrizzle()
+      .insert(schema.users)
+      .values(invitee as never);
+
+    const res = await SeatService.acceptByToken(invitee as never, token, AUDIT);
+    expect(res.organization.id).toBe(orgId);
+    expect(res.role).toBe("member");
+
+    const [membership] = await asDrizzle()
+      .select()
+      .from(schema.organizationUsers)
+      .where(eq(schema.organizationUsers.userId, invitee.id));
+    expect(membership.role).toBe("member");
+
+    // Re-accepting the (now consumed) token fails.
+    await expect(
+      SeatService.acceptByToken(invitee as never, token, AUDIT)
+    ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
+
+    await new Promise((r) => setTimeout(r, 60));
+    expect(await auditRows("member.invite.accept")).toHaveLength(1);
+  });
+
+  it("acceptByToken: 404 on unknown token, 410 on expired", async () => {
+    await setSeatCap(null);
+    const invitee = createUser(`auth0|${generateId()}`, { email: "e@x.com" });
+    await asDrizzle()
+      .insert(schema.users)
+      .values(invitee as never);
+
+    await expect(
+      SeatService.acceptByToken(invitee as never, "bogus-token", AUDIT)
+    ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
+
+    const inv = await SeatService.invite(
+      owner,
+      { email: "e@x.com", role: "member" },
+      AUDIT
+    );
+    const token = inv.inviteUrl!.split("token=")[1];
+    await asDrizzle()
+      .update(schema.invitations)
+      .set({ expiresAt: Date.now() - 1 })
+      .where(eq(schema.invitations.id, inv.id));
+    await expect(
+      SeatService.acceptByToken(invitee as never, token, AUDIT)
+    ).rejects.toMatchObject({ code: ApiCode.INVITATION_EXPIRED });
+  });
 });

@@ -18,6 +18,7 @@ import type {
   InvitationResponse,
   InvitationListResponse,
   MemberListResponse,
+  AcceptInvitationResponse,
 } from "@portalai/core/contracts";
 import {
   OrganizationDeleteRequestSchema,
@@ -26,8 +27,12 @@ import {
   AuditLogListRequestQuerySchema,
   MemberRoleUpdateRequestSchema,
   InviteCreateRequestSchema,
+  AcceptInvitationRequestSchema,
 } from "@portalai/core/contracts";
+import { UserModelFactory } from "@portalai/core/models";
 import { SeatService } from "../services/seat.service.js";
+import { Auth0Service } from "../services/auth0.service.js";
+import { SystemUtilities } from "../utils/system.util.js";
 import {
   TOOL_USAGE_LEDGER_SORT_KEYS,
   type ToolUsageLedgerSortBy,
@@ -732,6 +737,101 @@ organizationRouter.get(
               500,
               ApiCode.ORGANIZATION_FETCH_FAILED,
               error instanceof Error ? error.message : "Failed to list members"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/invitations/accept:
+ *   post:
+ *     summary: Accept an invitation by token (any authenticated user)
+ *     tags: [Organization]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AcceptInvitationRequest'
+ *     responses:
+ *       200:
+ *         description: The invited org + the caller's role in it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AcceptInvitationResponse'
+ *       404:
+ *         description: No valid invitation for that token
+ *       410:
+ *         description: The invitation has expired
+ */
+organizationRouter.post(
+  "/invitations/accept",
+  // jwtCheck only (mounted on the router) — NOT getApplicationMetadata: the
+  // accepter may have no current org yet, and binding the membership here is
+  // what gives them one.
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth0Id = req.auth?.payload.sub as string | undefined;
+      if (!auth0Id) {
+        return next(
+          new ApiError(
+            401,
+            ApiCode.METADATA_MISSING_AUTH,
+            "Missing authentication subject"
+          )
+        );
+      }
+      const parsed = AcceptInvitationRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "token is required"
+          )
+        );
+      }
+
+      // Resolve or create the caller's user (a brand-new invitee may accept
+      // before any other authed request has provisioned them).
+      let user = await DbService.repository.users.findByAuth0Id(auth0Id);
+      if (!user) {
+        const profile = await Auth0Service.getAuth0UserProfile(
+          Auth0Service.getAccessToken(req.headers.authorization)
+        );
+        const created = await DbService.repository.users.findOrCreateByAuth0Id(
+          new UserModelFactory()
+            .create(SystemUtilities.id.system)
+            .update({
+              auth0Id,
+              email: profile.email ?? null,
+              name: profile.name ?? null,
+              picture: profile.picture ?? null,
+              lastLogin: SystemUtilities.utc.now().getTime(),
+            })
+            .parse()
+        );
+        user = created.user;
+      }
+
+      const audit = auditContextFromRequest(req);
+      const result = await SeatService.acceptByToken(user, parsed.data.token, {
+        sourceIp: audit.sourceIp,
+        userAgent: audit.userAgent,
+      });
+      return HttpService.success<AcceptInvitationResponse>(res, result);
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to accept"
             )
       );
     }

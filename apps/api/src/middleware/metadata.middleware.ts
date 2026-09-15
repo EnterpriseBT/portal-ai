@@ -57,6 +57,7 @@ export const getApplicationMetadata = async (
             email: profile.email ?? null,
             name: profile.name ?? null,
             picture: profile.picture ?? null,
+            emailVerified: profile.email_verified ?? false,
           };
         },
         { sourceIp: req.ip ?? null, userAgent: req.get("user-agent") ?? null }

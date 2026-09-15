@@ -1,17 +1,26 @@
 import crypto from "crypto";
 import { eq, and, isNull } from "drizzle-orm";
 
-import { InvitationModelFactory } from "@portalai/core/models";
+import {
+  InvitationModelFactory,
+  OrganizationUserModelFactory,
+} from "@portalai/core/models";
 import type {
   InviteCreateRequest,
   InvitationResponse,
+  AcceptInvitationResponse,
   Member,
 } from "@portalai/core/contracts";
+import type {
+  OrganizationSelect,
+  OrganizationUserSelect,
+  UserSelect,
+  InvitationSelect,
+} from "../db/schema/zod.js";
 
 import { db } from "../db/client.js";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { users } from "../db/schema/users.table.js";
-import type { InvitationSelect } from "../db/schema/zod.js";
 import { DbService } from "./db.service.js";
 import { AuditService } from "./audit.service.js";
 import { SyncLockService } from "./sync-lock.service.js";
@@ -211,7 +220,176 @@ export class SeatService {
     return SeatService.toResponse(updated ?? inv, SeatService.inviteUrl(token));
   }
 
+  /**
+   * Accept a pending invitation by its plaintext token — the explicit accept
+   * path (any authenticated user). Consumes the invite atomically (single
+   * winner), then binds the user to the invited org with the invited role.
+   * Seat-neutral (the pending seat was already reserved), so no cap re-check.
+   * Idempotent when the user is already a member of that org.
+   */
+  static async acceptByToken(
+    user: UserSelect,
+    token: string,
+    auditCtx: SeatAuditContext
+  ): Promise<AcceptInvitationResponse> {
+    const now = SystemUtilities.utc.now().getTime();
+    const tokenHash = SeatService.hashToken(token);
+    const consumed = await DbService.repository.invitations.consumeByTokenHash(
+      tokenHash,
+      user.id,
+      now
+    );
+    if (!consumed) {
+      const existing =
+        await DbService.repository.invitations.findByTokenHash(tokenHash);
+      if (
+        existing &&
+        existing.status === "pending" &&
+        existing.expiresAt <= now
+      ) {
+        throw new ApiError(
+          410,
+          ApiCode.INVITATION_EXPIRED,
+          "This invitation has expired"
+        );
+      }
+      throw new ApiError(
+        404,
+        ApiCode.INVITATION_NOT_FOUND,
+        "No valid invitation for that token"
+      );
+    }
+
+    const orgUser = await SeatService.attachMembership(
+      user.id,
+      consumed.organizationId,
+      consumed.role,
+      now
+    );
+    void AuditService.record({
+      organizationId: consumed.organizationId,
+      userId: user.id,
+      action: "member.invite.accept",
+      targetType: "invitation",
+      targetId: consumed.id,
+      sourceIp: auditCtx.sourceIp,
+      userAgent: auditCtx.userAgent,
+      metadata: { role: consumed.role },
+    });
+
+    const organization = await SeatService.requireOrg(consumed.organizationId);
+    return { organization, role: orgUser.role };
+  }
+
+  /**
+   * The first-login self-heal branch (#583/#584): accept every live, unexpired
+   * pending invitation for a **verified** email, binding the user to each
+   * invited org — instead of provisioning a personal org. Returns the current
+   * org (the most recently-invited) or null when the email has no pending
+   * invites. Seat-neutral; called by `ApplicationService.ensureProvisioned`.
+   */
+  static async acceptPendingForEmail(
+    user: UserSelect,
+    email: string,
+    auditCtx: SeatAuditContext
+  ): Promise<{
+    organization: OrganizationSelect;
+    organizationUser: OrganizationUserSelect;
+  } | null> {
+    const now = SystemUtilities.utc.now().getTime();
+    const pendings =
+      await DbService.repository.invitations.findPendingActiveByEmail(
+        email.trim().toLowerCase(),
+        now
+      );
+    if (!pendings.length) return null;
+
+    let current: {
+      organization: OrganizationSelect;
+      organizationUser: OrganizationUserSelect;
+    } | null = null;
+
+    // Ordered expiresAt desc, so index 0 is the most recent — give it the
+    // highest lastLogin so it becomes the user's current org.
+    for (let i = 0; i < pendings.length; i++) {
+      const inv = pendings[i];
+      const consumed =
+        await DbService.repository.invitations.consumeByTokenHash(
+          inv.tokenHash,
+          user.id,
+          now
+        );
+      if (!consumed) continue; // raced with another accept; skip
+      const orgUser = await SeatService.attachMembership(
+        user.id,
+        inv.organizationId,
+        inv.role,
+        now - i
+      );
+      void AuditService.record({
+        organizationId: inv.organizationId,
+        userId: user.id,
+        action: "member.invite.accept",
+        targetType: "invitation",
+        targetId: inv.id,
+        sourceIp: auditCtx.sourceIp,
+        userAgent: auditCtx.userAgent,
+        metadata: { role: inv.role, viaEmail: true },
+      });
+      if (!current) {
+        current = {
+          organization: await SeatService.requireOrg(inv.organizationId),
+          organizationUser: orgUser,
+        };
+      }
+    }
+    return current;
+  }
+
   // ── internals ───────────────────────────────────────────────────────
+
+  /** Bind a user to an org as a member, or bump lastLogin if already one. */
+  private static async attachMembership(
+    userId: string,
+    organizationId: string,
+    role: OrganizationUserSelect["role"],
+    lastLogin: number
+  ): Promise<OrganizationUserSelect> {
+    const existing =
+      await DbService.repository.organizationUsers.findByOrganizationAndUser(
+        organizationId,
+        userId
+      );
+    if (existing) {
+      const updated = await DbService.repository.organizationUsers.update(
+        existing.id,
+        { lastLogin }
+      );
+      return updated ?? existing;
+    }
+    const model = new OrganizationUserModelFactory().create(userId).update({
+      organizationId,
+      userId,
+      role,
+      lastLogin,
+    });
+    return DbService.repository.organizationUsers.create(model.parse());
+  }
+
+  private static async requireOrg(
+    organizationId: string
+  ): Promise<OrganizationSelect> {
+    const org =
+      await DbService.repository.organizations.findById(organizationId);
+    if (!org) {
+      throw new ApiError(
+        404,
+        ApiCode.ORGANIZATION_NOT_FOUND,
+        "Organization not found"
+      );
+    }
+    return org;
+  }
 
   /** True if the org can admit one more seat. Must be called under the seat
    *  lock. `maxSeats === null` (tier unlimited) always admits. */

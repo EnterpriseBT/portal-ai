@@ -12,6 +12,7 @@ import {
   beforeEach,
   afterEach,
 } from "@jest/globals";
+import crypto from "crypto";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -166,5 +167,61 @@ describe("Organization seats routes (#584)", () => {
         .send({ email: "not-an-email", role: "owner" })
     );
     expect(res.status).toBe(400);
+  });
+
+  it("accept: POST /invitations/accept binds the caller to the invited org", async () => {
+    await seed("owner"); // AUTH0_ID is a member of org A (email caller@x.com)
+    // A separate inviter org with a pending invite for the caller's email.
+    const inviter = createUser(`auth0|${generateId()}`);
+    await asDrizzle()
+      .insert(schema.users)
+      .values(inviter as never);
+    const orgB = createOrganization(inviter.id);
+    await asDrizzle()
+      .insert(schema.organizations)
+      .values(orgB as never);
+    await asDrizzle()
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(orgB.id, inviter.id, { role: "owner" }) as never
+      );
+    const token = `tok-${generateId()}`;
+    await asDrizzle()
+      .insert(schema.invitations)
+      .values({
+        id: generateId(),
+        created: Date.now(),
+        createdBy: inviter.id,
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+        organizationId: orgB.id,
+        email: "caller@x.com",
+        role: "member",
+        tokenHash: crypto.createHash("sha256").update(token).digest("hex"),
+        status: "pending",
+        expiresAt: Date.now() + 3_600_000,
+        invitedByUserId: inviter.id,
+        acceptedByUserId: null,
+        acceptedAt: null,
+      } as never);
+
+    const res = await auth(
+      request(app).post("/api/organization/invitations/accept").send({ token })
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.payload.organization.id).toBe(orgB.id);
+    expect(res.body.payload.role).toBe("member");
+  });
+
+  it("accept: unknown token → 404", async () => {
+    await seed("member");
+    const res = await auth(
+      request(app)
+        .post("/api/organization/invitations/accept")
+        .send({ token: "does-not-exist" })
+    );
+    expect(res.status).toBe(404);
   });
 });
