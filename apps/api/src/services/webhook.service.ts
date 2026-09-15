@@ -4,7 +4,7 @@ import type {
 } from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import { UserModel, UserModelFactory } from "@portalai/core/models";
+import { UserModel } from "@portalai/core/models";
 import { SystemUtilities } from "../utils/system.util.js";
 import { ApplicationService } from "./application.service.js";
 import { AuditService } from "./audit.service.js";
@@ -27,53 +27,32 @@ export class WebhookService {
       });
 
     if (!existing) {
-      const user = new UserModelFactory()
-        .create(SystemUtilities.id.system)
-        .update({
-          auth0Id: payload.user_id,
+      // Delegate to the shared first-login path (#583) so the eager (webhook)
+      // and self-heal (request) paths provision identically and emit the same
+      // org.create + auth.login{firstLogin} audit rows. `ensureProvisioned`
+      // find-or-creates the user, so the profile is passed lazily.
+      const { user } = await ApplicationService.ensureProvisioned(
+        payload.user_id,
+        async () => ({
           email: payload.email ?? null,
           name: payload.name ?? null,
           picture: payload.picture ?? null,
-          lastLogin: SystemUtilities.utc.now().getTime(),
-        });
-
-      const created = await ApplicationService.setupOrganization(
-        user.parse()
+        }),
+        { sourceIp: payload.ip ?? null, userAgent: payload.user_agent ?? null }
       ).catch((err) => {
         logger.error(
           { auth0Id: payload.user_id, error: err },
-          "Error setting up organization for new user"
+          "Error provisioning organization for new user"
         );
         throw new Error("Error setting up organization for new user");
       });
 
       logger.info(
-        { userId: created.user.id, auth0Id: payload.user_id },
+        { userId: user.id, auth0Id: payload.user_id },
         "Created new user from webhook"
       );
 
-      // #575: a new user's org is provisioned on first login. Audit both the
-      // org creation and the login itself (post-commit, fail-open). The end
-      // user's IP/agent come from the Auth0 Action payload when forwarded.
-      void AuditService.record({
-        organizationId: created.organization.id,
-        userId: created.user.id,
-        action: "org.create",
-        targetType: "organization",
-        targetId: created.organization.id,
-        sourceIp: payload.ip ?? null,
-        userAgent: payload.user_agent ?? null,
-      });
-      void AuditService.record({
-        organizationId: created.organization.id,
-        userId: created.user.id,
-        action: "auth.login",
-        sourceIp: payload.ip ?? null,
-        userAgent: payload.user_agent ?? null,
-        metadata: { firstLogin: true },
-      });
-
-      return { action: "created", userId: created.user.id };
+      return { action: "created", userId: user.id };
     }
 
     const user = new UserModel(existing).update({

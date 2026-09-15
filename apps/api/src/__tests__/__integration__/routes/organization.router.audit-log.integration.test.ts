@@ -23,8 +23,11 @@ import type { OrgRole, User } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
-import { ApplicationService } from "../../../services/application.service.js";
-import { generateId, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  provisionTestOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|audit-log-user";
 
@@ -190,7 +193,7 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
   }
 
   it("returns the owner's org rows newest-first with total; respects limit/offset", async () => {
-    const result = await ApplicationService.setupOrganization(createOwner());
+    const result = await provisionTestOrg(createOwner());
     const orgId = result.organization.id;
 
     const base = Date.now();
@@ -222,7 +225,7 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
   });
 
   it("filters by action and outcome; unknown sortBy → 400", async () => {
-    const result = await ApplicationService.setupOrganization(createOwner());
+    const result = await provisionTestOrg(createOwner());
     const orgId = result.organization.id;
 
     await seedAuditRow(orgId, { action: "org.create", outcome: "success" });

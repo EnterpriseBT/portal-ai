@@ -10,6 +10,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import { UUIDv4Factory } from "@portalai/core/utils";
 import * as schema from "../../../db/schema/index.js";
+import { DbService } from "../../../services/db.service.js";
+import { ApplicationService } from "../../../services/application.service.js";
 
 const {
   users,
@@ -192,4 +194,26 @@ export async function teardownOrg(db: Db): Promise<void> {
   await db.delete(organizationUsers);
   await db.delete(organizations);
   await db.delete(users);
+}
+
+/**
+ * Create the given user row, then provision their personal owner-org — the
+ * test-setup convenience that the removed `ApplicationService.setupOrganization`
+ * used to provide (#583). Built from the public provisioning core
+ * (`users.create` + `provisionOrganizationFor`) rather than a resurrected
+ * service method: `setupOrganization` had no non-test caller once the webhook
+ * moved to `ensureProvisioned`, and its create-user+provision role belongs in a
+ * test helper, not on the service. Preserves the caller-supplied `id` and
+ * returns the same `{ user, organization, organizationUser }` shape callers
+ * relied on. First-login idempotency/concurrency is covered directly by the
+ * `ensureProvisioned` integration tests.
+ */
+export async function provisionTestOrg(
+  owner: Record<string, unknown> & { id: string; auth0Id: string }
+) {
+  const user = await DbService.repository.users.create(owner as never);
+  const provisioned = await ApplicationService.provisionOrganizationFor(
+    user.id
+  );
+  return { user, ...provisioned };
 }

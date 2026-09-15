@@ -15,8 +15,11 @@ import type { User } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
-import { ApplicationService } from "../../../services/application.service.js";
-import { generateId, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  provisionTestOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|org-test-user";
 
@@ -123,7 +126,7 @@ describe("Organization Router", () => {
 
     it("should return 200 with the current organization", async () => {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const res = await request(app)
         .get("/api/organization/current")
@@ -142,7 +145,7 @@ describe("Organization Router", () => {
     it("should return the organization with the most recent login", async () => {
       // Setup first org via ApplicationService
       const owner = createOwner();
-      await ApplicationService.setupOrganization(owner);
+      await provisionTestOrg(owner);
 
       // Retrieve the user to get internal ID
       const { DbService } = await import("../../../services/db.service.js");
@@ -193,7 +196,7 @@ describe("Organization Router", () => {
   describe("GET /api/organization/usage (#172 slice 3)", () => {
     it("returns the tier policy and a zeroed usage balance for a standard org", async () => {
       const owner = createOwner();
-      await ApplicationService.setupOrganization(owner);
+      await provisionTestOrg(owner);
 
       const res = await request(app)
         .get("/api/organization/usage")
@@ -211,7 +214,7 @@ describe("Organization Router", () => {
 
     it("reflects an incremented usage balance", async () => {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const { TierService } = await import("../../../services/tier.service.js");
       const { UsageService } =
@@ -289,7 +292,7 @@ describe("Organization Router", () => {
 
     it("lists the user's live memberships, flagging the current one", async () => {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
       // Second org, never entered (lastLogin=0) → not current.
       const secondOrgId = await addSecondOrg(result.user.id, 0);
 
@@ -314,7 +317,7 @@ describe("Organization Router", () => {
   describe("POST /api/organization/switch", () => {
     it("flips the current org to the target (GET /current reflects it)", async () => {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
       const secondOrgId = await addSecondOrg(result.user.id, 0);
 
       const switchRes = await request(app)
@@ -332,7 +335,7 @@ describe("Organization Router", () => {
 
     it("returns 403 MEMBERSHIP_NOT_FOUND for an org the user does not belong to", async () => {
       const owner = createOwner();
-      await ApplicationService.setupOrganization(owner);
+      await provisionTestOrg(owner);
       const d = db as ReturnType<typeof drizzle>;
       // An org the user has no membership in.
       const strangerUserId = generateId();
@@ -395,7 +398,7 @@ describe("Organization Router", () => {
 
     it("returns 404 when :id is not the caller's current org (case 13)", async () => {
       const owner = createOwner();
-      await ApplicationService.setupOrganization(owner);
+      await provisionTestOrg(owner);
 
       const res = await request(app)
         .delete(`/api/organization/${generateId()}`)
@@ -484,7 +487,7 @@ describe("Organization Router", () => {
 
     it("returns 400 for a missing body and a mismatched name (case 15)", async () => {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const missing = await request(app)
         .delete(`/api/organization/${result.organization.id}`)
@@ -506,7 +509,7 @@ describe("Organization Router", () => {
 
     it("deletes on the happy path; repeat and /current 404 (case 16)", async () => {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       // Surrounding whitespace passes via trim (spec D4).
       const res = await request(app)
@@ -531,7 +534,7 @@ describe("Organization Router", () => {
 
     it("returns 409 with runningJobs when a job is active (case 17)", async () => {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
       const d = db as ReturnType<typeof drizzle>;
       const jobId = generateId();
       await d.insert(schema.jobs).values({

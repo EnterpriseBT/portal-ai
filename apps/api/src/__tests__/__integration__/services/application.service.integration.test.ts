@@ -17,7 +17,11 @@ import { StationToolpacksRepository } from "../../../db/repositories/station-too
 import { ApplicationService } from "../../../services/application.service.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { SeedService } from "../../../services/seed.service.js";
-import { generateId, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  provisionTestOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const {
   users,
@@ -71,11 +75,15 @@ describe("ApplicationService Integration Tests", () => {
     };
   }
 
-  describe("setupOrganization", () => {
+  // Exercises the create-user + provision flow (formerly the webhook-only
+  // ApplicationService.setupOrganization, now the provisionTestOrg helper built
+  // on the public provisioning core). First-login idempotency/concurrency is
+  // covered by the ensureProvisioned integration tests.
+  describe("provisionTestOrg (create user + provision)", () => {
     it("should create a user row in the database", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const usersRepo = new Repository(users);
       const found = await usersRepo.findById(result.user.id, db);
@@ -90,7 +98,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should create an organization named 'My Organization'", async () => {
       const owner = createOwner({ name: "Alice Smith" });
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const orgsRepo = new Repository(organizations);
       const found = await orgsRepo.findById(result.organization.id, db);
@@ -102,7 +110,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should set ownerUserId on the organization to the owner's id", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const orgsRepo = new Repository(organizations);
       const found = await orgsRepo.findById(result.organization.id, db);
@@ -114,7 +122,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should set timezone to UTC on the organization", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const orgsRepo = new Repository(organizations);
       const found = await orgsRepo.findById(result.organization.id, db);
@@ -125,7 +133,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should create an organization_users link between the user and org", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const orgUsersRepo = new Repository(organizationUsers);
       const links = await orgUsersRepo.findMany(undefined, {}, db);
@@ -139,7 +147,7 @@ describe("ApplicationService Integration Tests", () => {
       const before = Date.now();
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const orgUsersRepo = new Repository(organizationUsers);
       const links = await orgUsersRepo.findMany(undefined, {}, db);
@@ -153,7 +161,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should return all three created entities", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       expect(result.user).toBeDefined();
       expect(result.user.id).toBe(owner.id);
@@ -171,7 +179,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should create a sandbox connector instance for the new organization", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const instancesRepo = new Repository(connectorInstances);
       const instances = await instancesRepo.findMany(undefined, {}, db);
@@ -199,7 +207,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should create a default station with data_query tool pack", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const stationsRepo = new Repository(stations);
       const allStations = await stationsRepo.findMany(undefined, {}, db);
@@ -221,7 +229,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should link the sandbox connector instance to the default station", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const instancesRepo = new Repository(connectorInstances);
       const instances = await instancesRepo.findMany(undefined, {}, db);
@@ -248,7 +256,7 @@ describe("ApplicationService Integration Tests", () => {
     it("should set defaultStationId on the organization", async () => {
       const owner = createOwner();
 
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       const orgsRepo = new Repository(organizations);
       const found = await orgsRepo.findById(result.organization.id, db);
@@ -268,7 +276,7 @@ describe("ApplicationService Integration Tests", () => {
       await db.delete(connectorDefinitions);
 
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       expect(result.user).toBeDefined();
       expect(result.organization).toBeDefined();
@@ -284,10 +292,9 @@ describe("ApplicationService Integration Tests", () => {
       expect(stationCount).toBe(0);
     });
 
-    it("should roll back sandbox provisioning if station creation fails", async () => {
-      // We verify transaction atomicity by attempting to set up with a
-      // duplicate user id (which fails), then checking no provisioning
-      // artifacts remain.
+    it("provisions no sandbox artifacts when the user create fails", async () => {
+      // A duplicate user id fails the create step, so provisioning never runs —
+      // no connector instances or stations are left behind.
       const owner = createOwner();
       const usersRepo = new Repository(users);
       await usersRepo.create(
@@ -307,9 +314,7 @@ describe("ApplicationService Integration Tests", () => {
         db
       );
 
-      await expect(
-        ApplicationService.setupOrganization(owner)
-      ).rejects.toThrow();
+      await expect(provisionTestOrg(owner)).rejects.toThrow();
 
       // Neither connector instances nor stations should exist
       const instancesRepo = new Repository(connectorInstances);
@@ -321,9 +326,9 @@ describe("ApplicationService Integration Tests", () => {
       expect(stationCount).toBe(0);
     });
 
-    it("should roll back all rows if the transaction fails", async () => {
-      // Create a user first so the second call with the same id causes a
-      // unique constraint violation, which should roll back the whole tx.
+    it("creates no org or membership when the user create fails", async () => {
+      // Create a user first so the helper's create step hits a duplicate-id
+      // violation before provisioning; no org/membership rows should appear.
       const owner = createOwner();
       const usersRepo = new Repository(users);
       await usersRepo.create(
@@ -343,9 +348,7 @@ describe("ApplicationService Integration Tests", () => {
         db
       );
 
-      await expect(
-        ApplicationService.setupOrganization(owner)
-      ).rejects.toThrow();
+      await expect(provisionTestOrg(owner)).rejects.toThrow();
 
       // Organization and org_user should not have been created
       const orgsRepo = new Repository(organizations);
@@ -363,7 +366,7 @@ describe("ApplicationService Integration Tests", () => {
       overrides?: Partial<{ lastLogin: number | null }>
     ) {
       const owner = createOwner();
-      const result = await ApplicationService.setupOrganization(owner);
+      const result = await provisionTestOrg(owner);
 
       if (overrides?.lastLogin !== undefined) {
         const orgUsersRepo = new Repository(organizationUsers);
@@ -508,7 +511,7 @@ describe("ApplicationService Integration Tests", () => {
   // lastLogin (mirrors the getCurrentOrganization block's seedUserWithOrg,
   // which is scoped to that describe).
   async function seedOwnerWithLogin(lastLogin: number) {
-    const result = await ApplicationService.setupOrganization(createOwner());
+    const result = await provisionTestOrg(createOwner());
     await new Repository(organizationUsers).update(
       result.organizationUser.id,
       { lastLogin } as never,
