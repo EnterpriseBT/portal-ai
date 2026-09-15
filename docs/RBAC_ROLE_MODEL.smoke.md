@@ -32,6 +32,7 @@ Most of RBAC is server-side and needs more than one role, so this suite is **mos
 ## §2 — Role-aware Settings gating *(AC: current() role → useRole; Activity owner+admin; danger-zone owner-only)*
 
 - [ ] **[walk]** As **owner** (default): open **Settings**. Tabs are Profile · Organization · Subscription & Billing · **Activity**. The Activity tab is **present**.
+- [ ] **[walk]** Settings → **Profile**: a **Role** row shows the caller's role (e.g. "Owner").
 - [ ] **[walk]** Settings → Organization → **Danger zone**: the **Delete organization** button is **enabled**.
 - [ ] **[walk]** Settings → Subscription & Billing: owner-only actions (Subscribe / Manage) are **enabled**.
 - [ ] **[manual]** Flip your `role` to `admin` in `db:studio`, reload Settings: **Activity tab still present** (admin may read the audit log); **Delete organization is disabled**; billing owner-actions **disabled**.
