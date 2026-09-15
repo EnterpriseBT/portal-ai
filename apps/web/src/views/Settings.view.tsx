@@ -105,7 +105,7 @@ export const SettingsView = () => {
   // useRole(); the server's PermissionService is the real boundary, this hides
   // affordances a role can't use. The Activity (audit-log) tab is owner+admin
   // (the #596→#576 widen); billing + danger zone stay owner-only.
-  const { isOwner, isAdminOrOwner, roleKnown } = useRole();
+  const { role, isOwner, isAdminOrOwner, roleKnown } = useRole();
 
   // A member who deep-linked ?tab=activity lands on a tab that isn't rendered
   // for them — once the role resolves, fall back to the first tab.
@@ -200,6 +200,14 @@ export const SettingsView = () => {
                     direction="vertical"
                     items={[
                       { label: "Email", value: profile.email },
+                      {
+                        label: "Role",
+                        // The caller's role in the current org (#576).
+                        value: role
+                          ? role.charAt(0).toUpperCase() + role.slice(1)
+                          : "",
+                        hidden: !role,
+                      },
                       {
                         label: "Last login",
                         value: profileResult.lastLogin

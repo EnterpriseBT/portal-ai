@@ -174,3 +174,19 @@ describe("SettingsView — Danger zone (#197 slice 5)", () => {
     expect(mockLogout).not.toHaveBeenCalled();
   });
 });
+
+describe("SettingsView — Profile role (#576)", () => {
+  it("shows the caller's role on the Profile tab (Owner)", () => {
+    render(<SettingsView />); // Profile is the default tab
+    const roleLabel = screen.getByText("Role");
+    expect(roleLabel).toBeInTheDocument();
+    expect(screen.getByText("Owner")).toBeInTheDocument();
+  });
+
+  it("shows Member when the caller is a member", () => {
+    mockCurrent.mockReturnValue(loaded({ ...orgData, role: "member" }));
+    render(<SettingsView />);
+    expect(screen.getByText("Role")).toBeInTheDocument();
+    expect(screen.getByText("Member")).toBeInTheDocument();
+  });
+});
