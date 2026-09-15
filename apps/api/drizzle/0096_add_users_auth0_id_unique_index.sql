@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "users_auth0_id_unique" ON "users" USING btree ("auth0_id") WHERE "users"."deleted" IS NULL;
