@@ -13,6 +13,9 @@ export * from "./health.contract.js";
 /** Organization contracts — schemas & types */
 export * from "./organization.contract.js";
 
+/** Organization invitation / seats contracts (#584) */
+export * from "./invitation.contract.js";
+
 /** User-Organization contracts — schemas & types */
 export * from "./user-organization.contract.js";
 

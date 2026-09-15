@@ -680,6 +680,13 @@
       "when": 1789497030447,
       "tag": "0096_add_users_auth0_id_unique_index",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1789508895549,
+      "tag": "0097_add_org_seats",
+      "breakpoints": true
     }
   ]
 }
