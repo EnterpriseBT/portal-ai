@@ -29,10 +29,7 @@ import {
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
 } from "@portalai/core/contracts";
-import { UserModelFactory } from "@portalai/core/models";
 import { SeatService } from "../services/seat.service.js";
-import { Auth0Service } from "../services/auth0.service.js";
-import { SystemUtilities } from "../utils/system.util.js";
 import {
   TOOL_USAGE_LEDGER_SORT_KEYS,
   type ToolUsageLedgerSortBy,
@@ -796,33 +793,13 @@ organizationRouter.post(
         );
       }
 
-      // Resolve or create the caller's user (a brand-new invitee may accept
-      // before any other authed request has provisioned them).
-      let user = await DbService.repository.users.findByAuth0Id(auth0Id);
-      if (!user) {
-        const profile = await Auth0Service.getAuth0UserProfile(
-          Auth0Service.getAccessToken(req.headers.authorization)
-        );
-        const created = await DbService.repository.users.findOrCreateByAuth0Id(
-          new UserModelFactory()
-            .create(SystemUtilities.id.system)
-            .update({
-              auth0Id,
-              email: profile.email ?? null,
-              name: profile.name ?? null,
-              picture: profile.picture ?? null,
-              lastLogin: SystemUtilities.utc.now().getTime(),
-            })
-            .parse()
-        );
-        user = created.user;
-      }
-
       const audit = auditContextFromRequest(req);
-      const result = await SeatService.acceptByToken(user, parsed.data.token, {
-        sourceIp: audit.sourceIp,
-        userAgent: audit.userAgent,
-      });
+      const result = await SeatService.acceptByToken(
+        auth0Id,
+        req.headers.authorization,
+        parsed.data.token,
+        { sourceIp: audit.sourceIp, userAgent: audit.userAgent }
+      );
       return HttpService.success<AcceptInvitationResponse>(res, result);
     } catch (error) {
       return next(

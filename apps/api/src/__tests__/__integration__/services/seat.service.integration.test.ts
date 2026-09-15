@@ -312,7 +312,12 @@ describe("SeatService Integration Tests", () => {
       .insert(schema.users)
       .values(invitee as never);
 
-    const res = await SeatService.acceptByToken(invitee as never, token, AUDIT);
+    const res = await SeatService.acceptByToken(
+      invitee.auth0Id,
+      "Bearer x",
+      token,
+      AUDIT
+    );
     expect(res.organization.id).toBe(orgId);
     expect(res.role).toBe("member");
 
@@ -324,7 +329,7 @@ describe("SeatService Integration Tests", () => {
 
     // Re-accepting the (now consumed) token fails.
     await expect(
-      SeatService.acceptByToken(invitee as never, token, AUDIT)
+      SeatService.acceptByToken(invitee.auth0Id, "Bearer x", token, AUDIT)
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
 
     await new Promise((r) => setTimeout(r, 60));
@@ -339,7 +344,12 @@ describe("SeatService Integration Tests", () => {
       .values(invitee as never);
 
     await expect(
-      SeatService.acceptByToken(invitee as never, "bogus-token", AUDIT)
+      SeatService.acceptByToken(
+        invitee.auth0Id,
+        "Bearer x",
+        "bogus-token",
+        AUDIT
+      )
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
 
     const inv = await SeatService.invite(
@@ -353,7 +363,7 @@ describe("SeatService Integration Tests", () => {
       .set({ expiresAt: Date.now() - 1 })
       .where(eq(schema.invitations.id, inv.id));
     await expect(
-      SeatService.acceptByToken(invitee as never, token, AUDIT)
+      SeatService.acceptByToken(invitee.auth0Id, "Bearer x", token, AUDIT)
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_EXPIRED });
   });
 

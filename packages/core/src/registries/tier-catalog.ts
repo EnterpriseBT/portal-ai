@@ -56,6 +56,9 @@ export const TierCatalogEntrySchema = z.object({
   /** Stripe `lookup_key` — the cross-env price identity. null = not
    *  purchasable (no checkout path). */
   stripeLookupKey: z.string().min(1).nullable(),
+  /** #584: max org seats (accepted members + pending invites). null =
+   *  unlimited (negotiated enterprise). Operator-tunable via `tier apply`. */
+  maxSeats: z.number().int().min(1).nullable(),
 });
 export type TierCatalogEntry = z.infer<typeof TierCatalogEntrySchema>;
 
@@ -104,6 +107,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       // its sync writes are all costHint "free" (never charged), so the
       // entitlement is margin-neutral, and record editing is core-loop work.
       slug: "standard",
+      maxSeats: 3,
       displayName: "Standard",
       periodKind: "monthly",
       periodAnchorDay: 1,
@@ -128,6 +132,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
     {
       // Paid mid tier.
       slug: "plus",
+      maxSeats: 10,
       displayName: "Plus",
       periodKind: "monthly",
       periodAnchorDay: 1,
@@ -162,6 +167,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
     {
       // Top self-serve tier: everything allowed, ceilings margin-sized.
       slug: "pro",
+      maxSeats: 25,
       displayName: "Pro",
       periodKind: "monthly",
       periodAnchorDay: 1,
@@ -188,6 +194,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       // per-client custom tiers of #241, which are org-scoped; this is the
       // generic Enterprise upgrade card everyone sees. Negotiated → unlimited.
       slug: "enterprise",
+      maxSeats: null,
       displayName: "Enterprise",
       periodKind: "monthly",
       periodAnchorDay: 1,

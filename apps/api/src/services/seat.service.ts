@@ -4,6 +4,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import {
   InvitationModelFactory,
   OrganizationUserModelFactory,
+  UserModelFactory,
 } from "@portalai/core/models";
 import type {
   InviteCreateRequest,
@@ -23,6 +24,7 @@ import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { users } from "../db/schema/users.table.js";
 import { DbService } from "./db.service.js";
 import { AuditService } from "./audit.service.js";
+import { Auth0Service } from "./auth0.service.js";
 import { SyncLockService } from "./sync-lock.service.js";
 import {
   PermissionService,
@@ -228,10 +230,15 @@ export class SeatService {
    * Idempotent when the user is already a member of that org.
    */
   static async acceptByToken(
-    user: UserSelect,
+    auth0Sub: string,
+    authorizationHeader: string | undefined,
     token: string,
     auditCtx: SeatAuditContext
   ): Promise<AcceptInvitationResponse> {
+    // Resolve or create the caller's user — a brand-new invitee may accept
+    // before any other authed request has provisioned them.
+    const user = await SeatService.resolveCaller(auth0Sub, authorizationHeader);
+
     const now = SystemUtilities.utc.now().getTime();
     const tokenHash = SeatService.hashToken(token);
     const consumed = await DbService.repository.invitations.consumeByTokenHash(
@@ -407,6 +414,32 @@ export class SeatService {
   }
 
   // ── internals ───────────────────────────────────────────────────────
+
+  /** Find the caller's user by sub, or create it from the Auth0 profile
+   *  (a brand-new invitee accepting before anything else provisioned them). */
+  private static async resolveCaller(
+    auth0Sub: string,
+    authorizationHeader: string | undefined
+  ): Promise<UserSelect> {
+    const existing = await DbService.repository.users.findByAuth0Id(auth0Sub);
+    if (existing) return existing;
+    const profile = await Auth0Service.getAuth0UserProfile(
+      Auth0Service.getAccessToken(authorizationHeader)
+    );
+    const { user } = await DbService.repository.users.findOrCreateByAuth0Id(
+      new UserModelFactory()
+        .create(SystemUtilities.id.system)
+        .update({
+          auth0Id: auth0Sub,
+          email: profile.email ?? null,
+          name: profile.name ?? null,
+          picture: profile.picture ?? null,
+          lastLogin: SystemUtilities.utc.now().getTime(),
+        })
+        .parse()
+    );
+    return user;
+  }
 
   /** Bind a user to an org as a member, or bump lastLogin if already one. */
   private static async attachMembership(
