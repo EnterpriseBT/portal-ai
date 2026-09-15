@@ -54,6 +54,7 @@ const validRowFields = {
   displayOrder: 0,
   description: null,
   visibleToOrganizationId: null,
+  maxSeats: null,
 };
 
 // ── Tests ────────────────────────────────────────────────────────────
