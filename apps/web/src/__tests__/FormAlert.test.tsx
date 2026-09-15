@@ -41,4 +41,39 @@ describe("FormAlert", () => {
     render(<FormAlert serverError={{ message: "Error", code: "TEST_CODE" }} />);
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
+
+  it("renders the standardized RBAC-denial lead for a permission code (#576)", () => {
+    render(
+      <FormAlert
+        serverError={{
+          message: "Only the organization owner can manage billing",
+          code: "BILLING_NOT_OWNER",
+        }}
+      />
+    );
+    // Standardized lead...
+    expect(
+      screen.getByText(/You don't have permission to perform this action/)
+    ).toBeInTheDocument();
+    // ...with the server's specific reason + code kept as detail.
+    expect(
+      screen.getByText(/Only the organization owner can manage billing/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/BILLING_NOT_OWNER/)).toBeInTheDocument();
+  });
+
+  it("does not apply the RBAC lead to a non-permission code", () => {
+    render(
+      <FormAlert
+        serverError={{
+          message: "Duplicate name",
+          code: "ENTITY_TAG_DUPLICATE_NAME",
+        }}
+      />
+    );
+    expect(
+      screen.queryByText(/You don't have permission/)
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Duplicate name/)).toBeInTheDocument();
+  });
 });

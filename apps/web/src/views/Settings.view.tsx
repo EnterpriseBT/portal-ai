@@ -29,6 +29,7 @@ import { sdk } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
+import { useRole } from "../utils/use-role.util";
 import { formatUsageValue } from "../utils/usage-format.util";
 import {
   SETTINGS_TAB_INDEX,
@@ -100,24 +101,19 @@ export const SettingsView = () => {
   const organizationResult = sdk.organizations.current();
   const usageResult = sdk.organizations.usage();
 
-  // Owner gate for the Activity (audit-log) tab (#596). The server is the
-  // real boundary (403 AUDIT_LOG_NOT_AUTHORIZED); hiding the tab is
-  // defense-in-depth. Isolated to one predicate so #576 can widen it to
-  // owner+admin in a single place, mirroring the read API's swap.
-  const currentUserId = profileResult.data?.userId ?? null;
-  const ownerUserId = organizationResult.data?.organization.ownerUserId ?? null;
-  const ownerKnown =
-    profileResult.data !== undefined && organizationResult.data !== undefined;
-  const isOwner =
-    ownerKnown && currentUserId != null && currentUserId === ownerUserId;
+  // Role-aware gating (#576). Single source: sdk.organizations.current() via
+  // useRole(); the server's PermissionService is the real boundary, this hides
+  // affordances a role can't use. The Activity (audit-log) tab is owner+admin
+  // (the #596→#576 widen); billing + danger zone stay owner-only.
+  const { isOwner, isAdminOrOwner, roleKnown } = useRole();
 
-  // A non-owner who deep-linked ?tab=activity lands on a tab that isn't
-  // rendered for them — once ownership resolves, fall back to the first tab.
+  // A member who deep-linked ?tab=activity lands on a tab that isn't rendered
+  // for them — once the role resolves, fall back to the first tab.
   // Adjust-state-during-render (converges: after the reset the guard is
   // false), the same pattern UsageLedgerDialog uses for reopen.
   if (
-    ownerKnown &&
-    !isOwner &&
+    roleKnown &&
+    !isAdminOrOwner &&
     tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Activity]
   ) {
     setValue(0);
@@ -143,7 +139,7 @@ export const SettingsView = () => {
         <Tab label="Profile" {...getTabProps(0)} />
         <Tab label="Organization" {...getTabProps(1)} />
         <Tab label="Subscription & Billing" {...getTabProps(2)} />
-        {isOwner && <Tab label="Activity" {...getTabProps(3)} />}
+        {isAdminOrOwner && <Tab label="Activity" {...getTabProps(3)} />}
       </Tabs>
       <TabPanel {...getTabPanelProps(0)}>
         <PageSection title="Profile" variant="outlined">
@@ -340,6 +336,7 @@ export const SettingsView = () => {
                       type="button"
                       variant="outlined"
                       color="error"
+                      disabled={!isOwner}
                       onClick={() => setDeleteDialogOpen(true)}
                     >
                       Delete organization
@@ -367,7 +364,7 @@ export const SettingsView = () => {
           {tabsProps.value === 2 && <SubscriptionBilling />}
         </PageSection>
       </TabPanel>
-      {isOwner && (
+      {isAdminOrOwner && (
         <TabPanel {...getTabPanelProps(3)}>
           <PageSection title="Activity" variant="outlined">
             {/* Mounted only while active so the audit-log query fires only

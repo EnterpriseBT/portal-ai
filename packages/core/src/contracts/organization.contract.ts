@@ -6,10 +6,13 @@ import {
 } from "../models/organization-user.model.js";
 
 /**
- * Response payload for fetching a single organization.
+ * Response payload for the caller's current organization — the org plus the
+ * caller's `role` in it (#576), the single source the web app derives role-aware
+ * gating from (never recomputed from `ownerUserId`).
  */
 export const OrganizationGetResponseSchema = z.object({
   organization: OrganizationSchema,
+  role: OrgRoleSchema,
 });
 
 export type OrganizationGetResponse = z.infer<

@@ -57,6 +57,7 @@ const profileData = {
 };
 
 const orgData = {
+  role: "owner",
   organization: {
     id: "org-1",
     name: "Acme Corp",
@@ -109,6 +110,16 @@ const openOrganizationTab = async () => {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("SettingsView — Danger zone (#197 slice 5)", () => {
+  it("disables Delete for a non-owner (member) — #576 role gating", async () => {
+    mockCurrent.mockReturnValue(
+      loaded({ ...orgData, role: "member" as const })
+    );
+    await openOrganizationTab();
+    expect(
+      screen.getByRole("button", { name: "Delete organization" })
+    ).toBeDisabled();
+  });
+
   it("renders the Danger zone and opens the delete dialog (case 25)", async () => {
     await openOrganizationTab();
 

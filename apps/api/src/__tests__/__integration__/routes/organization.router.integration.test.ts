@@ -135,6 +135,8 @@ describe("Organization Router", () => {
       expect(res.body.payload.organization.name).toBe("My Organization");
       // #172 slice 2: `tier` flows onto OrganizationGetResponse with no mapper.
       expect(res.body.payload.organization.tier).toBe("standard");
+      // #576 slice 5: the caller's role rides the current-org response.
+      expect(res.body.payload.role).toBe("owner");
     });
 
     it("should return the organization with the most recent login", async () => {

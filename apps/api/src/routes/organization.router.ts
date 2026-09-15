@@ -62,10 +62,7 @@ export const organizationRouter = Router();
  *                   type: boolean
  *                   example: true
  *                 payload:
- *                   type: object
- *                   properties:
- *                     organization:
- *                       $ref: '#/components/schemas/Organization'
+ *                   $ref: '#/components/schemas/OrganizationGetResponse'
  *       404:
  *         description: User or organization not found
  *         content:
@@ -554,6 +551,7 @@ organizationRouter.get(
 
       return HttpService.success<OrganizationGetResponse>(res, {
         organization: result.organization,
+        role: result.organizationUser.role,
       });
     } catch (error) {
       logger.error(
@@ -705,6 +703,7 @@ organizationRouter.post(
 
       return HttpService.success<OrganizationGetResponse>(res, {
         organization: result.organization,
+        role: result.role,
       });
     } catch (error) {
       return next(

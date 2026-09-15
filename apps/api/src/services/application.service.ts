@@ -118,7 +118,7 @@ export class ApplicationService {
       );
     }
 
-    return { organization };
+    return { organization, role: updated[0].role };
   }
 
   /** Webhook path (Auth0 post-login, new user): create the user, then run
