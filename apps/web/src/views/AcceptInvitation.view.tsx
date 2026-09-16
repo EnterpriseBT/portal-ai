@@ -1,8 +1,10 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 
 import { CircularProgress } from "@mui/material";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+
+import type { AcceptInvitationResponse } from "@portalai/core/contracts";
 
 import {
   Box,
@@ -145,58 +147,93 @@ const statusFromError = (code?: string): AcceptInvitationStatus =>
       ? "invalid"
       : "error";
 
+/**
+ * In-flight accept POSTs keyed by token, module-scoped so they survive a
+ * component unmount/remount. This is what makes accept-on-mount both
+ * **single-fire** and **StrictMode-safe**: React's dev double-mount (and any
+ * real remount) reuses the same promise instead of firing a second POST — which
+ * would 404 against an already-consumed token and strand the result on the
+ * discarded observer. Cleared once the promise settles.
+ */
+const acceptInFlight = new Map<string, Promise<AcceptInvitationResponse>>();
+
 export interface AcceptInvitationViewProps {
   token?: string;
+}
+
+interface AcceptOutcome {
+  status: AcceptInvitationStatus;
+  orgName?: string;
+  errorMessage?: string;
 }
 
 /**
  * Accept-invitation landing (#585) — the invitee arrives at
  * `/invitations/accept?token=…` (after login, thanks to the `returnTo` wiring).
  * Accepts once on mount; on success invalidates `organizations.root` (the new
- * membership changes the org switcher), toasts, and navigates home.
+ * membership changes the org switcher), toasts, and navigates home. The outcome
+ * is held in local state (not the mutation observer) so it survives the
+ * unmount/remount that would otherwise leave a stranded observer stuck on the
+ * spinner.
  */
 export const AcceptInvitationView: React.FC<AcceptInvitationViewProps> = ({
   token,
 }) => {
-  const accept = sdk.invitations.accept();
+  const { mutateAsync: acceptAsync } = sdk.invitations.accept();
   const toast = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const firedRef = useRef(false);
+  const [outcome, setOutcome] = useState<AcceptOutcome | null>(null);
 
   useEffect(() => {
-    if (!token || firedRef.current) return;
-    firedRef.current = true;
-    accept.mutate(
-      { token },
-      {
-        onSuccess: (data) => {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.organizations.root,
-          });
-          toast.success(`You've joined ${data.organization.name}`);
-          navigate({ to: "/" });
-        },
+    if (!token) return;
+    let active = true;
+
+    let pending = acceptInFlight.get(token);
+    if (!pending) {
+      pending = acceptAsync({ token });
+      acceptInFlight.set(token, pending);
+      // Free the slot once settled; the consumer below owns error handling, so
+      // swallow here to avoid an unhandled rejection on the cleanup chain.
+      void pending.finally(() => acceptInFlight.delete(token)).catch(() => {});
+    }
+
+    pending.then(
+      (data) => {
+        if (!active) return;
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.organizations.root,
+        });
+        toast.success(`You've joined ${data.organization.name}`);
+        setOutcome({ status: "success", orgName: data.organization.name });
+        navigate({ to: "/" });
+      },
+      (error) => {
+        if (!active) return;
+        const server = toServerError(error);
+        setOutcome({
+          status: statusFromError(server?.code),
+          errorMessage: server?.message ?? undefined,
+        });
       }
     );
-    // Fire exactly once for the token; the mutation handle is stable enough and
-    // re-running would re-attempt an already-consumed token.
+
+    return () => {
+      active = false;
+    };
+    // Re-run only if the token changes; the module-level map dedupes the POST.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const status: AcceptInvitationStatus = !token
     ? "missingToken"
-    : accept.isSuccess
-      ? "success"
-      : accept.isError
-        ? statusFromError(toServerError(accept.error)?.code)
-        : "pending";
+    : (outcome?.status ?? "pending");
 
   return (
     <AcceptInvitationViewUI
       status={status}
-      orgName={accept.data?.organization.name}
-      errorMessage={toServerError(accept.error)?.message}
+      orgName={outcome?.orgName}
+      errorMessage={outcome?.errorMessage}
       onGoHome={() => navigate({ to: "/" })}
     />
   );
