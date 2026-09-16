@@ -54,7 +54,7 @@ Set the Issue Type to `Epic` via the same GraphQL mutation `/ticket` uses (`upda
 
 ### 3. Create the children as native sub-issues
 
-Each child is a normal ticket — **use `/ticket`'s body templates and steps** (PRD or repro+impact, Issue Type `Feature`/`Bug`, sizing recorded). Additionally, each child body's `## References` names its dependencies ("blocked by #<sibling>") and its intended child branch (`feat/<child-slug>`, targeting the epic branch).
+Each child is a normal ticket — **use `/ticket`'s body templates and steps** (PRD or repro+impact, Issue Type `Feature`/`Bug`, sizing recorded). Additionally, each child body's `## References` names its dependencies ("blocked by #<sibling>") and its intended child branch (`feat/<child-number>-<child-slug>`, targeting the epic branch).
 
 Link each child to the parent:
 
@@ -75,7 +75,7 @@ Move the parent's board card to `In Progress` (the one-liner in `CLAUDE.md` → 
 
 ## The branch mechanics (what you enforce while managing)
 
-- **Children branch from the epic branch**, not `main`: `git checkout epic/<slug> && git checkout -b feat/<child-slug>`. Child PRs set **base: `epic/<slug>`** and squash-merge into it after review + CI (workflows run on all non-`main` pushes).
+- **Children branch from the epic branch**, not `main`: `git checkout epic/<slug> && git checkout -b feat/<child-number>-<child-slug>` (the child branch carries its own ticket number, per CLAUDE.md branch naming; the epic branch stays theme-named). Child PRs set **base: `epic/<slug>`** and squash-merge into it after review + CI (workflows run on all non-`main` pushes).
 - **Keep-pace rule:** before each child PR merges, update the epic branch from main — `git checkout epic/<slug> && git merge main && git push`. Merge commits on the epic branch are fine (they vanish at final rebase/squash); the final integration must never be a big bang.
 - **Child issues stay open at child-merge.** GitHub auto-close only fires on default-branch merges. Update the parent's Status row to `Merged into epic` instead — the batch close happens at close-out.
 - **The Status table is the record of truth.** Every child state change (branch opened, PR opened, merged into epic) updates the parent body **in the same action** — a stale table is a bug.

@@ -3,7 +3,21 @@ import { Alert, Box, CircularProgress, Paper, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useAuth0 } from "@auth0/auth0-react";
 import * as maplibregl from "maplibre-gl";
+// maplibre v6 computes its worker URL as
+// `new URL("./maplibre-gl-worker.mjs", import.meta.url)` split across two
+// internal functions, which Vite's static `new Worker(new URL(…))` detection
+// can't see — so the worker chunk was never emitted, and the runtime request
+// for `/assets/maplibre-gl-worker.mjs` fell through to the SPA's index.html
+// (a non-JS `text/html` MIME → blocked module script), leaving every map
+// blank and stuck "Rendering…" in the deployed build (fine in `vite dev`,
+// which serves the worker directly). Point maplibre at a Vite-bundled worker:
+// `?worker&url` bundles the worker + its shared chunk into one self-contained
+// asset and yields the emitted (hashed, correctly-served) URL. Must run before
+// the first Map is constructed — module scope is fine (MapWidget is lazy).
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";

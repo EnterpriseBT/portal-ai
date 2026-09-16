@@ -114,6 +114,12 @@ export default defineConfig({
     }) as PluginOption,
     react() as PluginOption,
   ],
+  // maplibre-gl v6's tile worker is an ES module (`new Worker(url, {type:
+  // "module"})`); bundle app workers as ES so the emitted worker (see
+  // MapWidget's `?worker&url` import) matches. No other app workers exist.
+  worker: {
+    format: "es",
+  },
   build: {
     rollupOptions: {
       output: {
