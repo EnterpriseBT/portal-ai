@@ -34,17 +34,68 @@ export class Auth0Service {
     return authorization!.substring(7);
   }
 
+  /** issuer → resolved userinfo endpoint (OIDC discovery cache, #577). */
+  private static discoveryCache = new Map<string, string>();
+
+  /** The default Auth0 issuer (`iss` claim carries the trailing slash). */
+  private static defaultAuth0Issuer(): string {
+    return `https://${environment.AUTH0_DOMAIN}/`;
+  }
+
   /**
-   * Fetches the authenticated user's profile from Auth0's userinfo endpoint
+   * Resolve an issuer's `userinfo` endpoint from its OIDC discovery document
+   * (`/.well-known/openid-configuration`), cached per issuer. Used for
+   * non-Auth0 (self-hosted / enterprise) issuers under #577.
+   */
+  private static async resolveUserinfoEndpoint(
+    issuer: string
+  ): Promise<string> {
+    const cached = Auth0Service.discoveryCache.get(issuer);
+    if (cached) return cached;
+
+    const url = `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
+    const response = await globalThis.fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        ApiCode.AUTH_UPSTREAM_ERROR,
+        `Failed to fetch OIDC discovery for ${issuer}: ${response.status}`
+      );
+    }
+    const doc = (await response.json()) as { userinfo_endpoint?: string };
+    if (!doc.userinfo_endpoint) {
+      throw new ApiError(
+        502,
+        ApiCode.AUTH_UPSTREAM_ERROR,
+        `OIDC discovery for ${issuer} has no userinfo_endpoint`
+      );
+    }
+    Auth0Service.discoveryCache.set(issuer, doc.userinfo_endpoint);
+    return doc.userinfo_endpoint;
+  }
+
+  /**
+   * Fetches the authenticated user's profile from the issuer's userinfo
+   * endpoint. When `issuer` is omitted or is the default Auth0 issuer, hits the
+   * known Auth0 `userinfo` directly (no discovery round-trip); a non-Auth0
+   * issuer resolves its endpoint via OIDC discovery (#577).
    * @param accessToken - The user's access token
+   * @param issuer - The token's `iss` claim (optional; defaults to Auth0)
    * @returns The user's profile information
    */
   public static async getAuth0UserProfile(
-    accessToken: string
+    accessToken: string,
+    issuer?: string
   ): Promise<Auth0UserProfile> {
-    const userInfoUrl = `https://${environment.AUTH0_DOMAIN}/userinfo`;
+    const userInfoUrl =
+      !issuer || issuer === Auth0Service.defaultAuth0Issuer()
+        ? `https://${environment.AUTH0_DOMAIN}/userinfo`
+        : await Auth0Service.resolveUserinfoEndpoint(issuer);
 
-    logger.debug({ url: userInfoUrl }, "Fetching user profile from Auth0");
+    logger.debug({ url: userInfoUrl }, "Fetching user profile");
 
     const response = await globalThis.fetch(userInfoUrl, {
       method: "GET",

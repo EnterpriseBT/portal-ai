@@ -23,7 +23,6 @@ export * from "./user-organization.contract.js";
 export * from "./user-membership.contract.js";
 
 /** Webhook contracts — schemas & types */
-export * from "./webhook.contract.js";
 
 /** Connector Definition contracts — schemas & types */
 export * from "./connector-definition.contract.js";

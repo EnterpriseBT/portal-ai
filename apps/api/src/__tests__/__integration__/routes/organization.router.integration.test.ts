@@ -76,6 +76,7 @@ describe("Organization Router", () => {
       email: `owner-${generateId()}@example.com`,
       name: "Jane Doe",
       lastLogin: now,
+      lastLoginSession: null,
       picture: "https://example.com/avatar.png",
       created: now,
       createdBy: "SYSTEM_TEST",

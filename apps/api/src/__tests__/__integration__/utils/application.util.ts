@@ -66,6 +66,7 @@ export function createUser(
     email: `user-${generateId()}@example.com`,
     name: "Test User",
     lastLogin: now,
+    lastLoginSession: null,
     picture: null,
     created: now,
     createdBy: "SYSTEM_TEST",

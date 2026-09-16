@@ -25,6 +25,7 @@ import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { SeedService } from "../../../services/seed.service.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
   createUser,
@@ -312,5 +313,169 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     expect(result.user.id).toBe(existing.id);
     expect(result.organization.ownerUserId).toBe(existing.id); // personal org
     expect(result.organizationUser.role).toBe("owner");
+  });
+
+  // ── deploy-mode provisioning fallback (#577, slice 4) ────────────────
+  // The existing cases above all use the default fallback ("personal_org"),
+  // proving SaaS self-serve is unchanged. These exercise the split.
+
+  it("self_hosted join_single_org: first user → owner, second → member of the same org", async () => {
+    const first = await ApplicationService.ensureProvisioned(
+      sub(),
+      profileResolver(),
+      undefined,
+      "join_single_org"
+    );
+    expect(first.created).toBe(true);
+    expect(first.organizationUser.role).toBe("owner");
+
+    const second = await ApplicationService.ensureProvisioned(
+      sub(),
+      profileResolver(),
+      undefined,
+      "join_single_org"
+    );
+    expect(second.created).toBe(true);
+    expect(second.organizationUser.role).toBe("member");
+    expect(second.organization.id).toBe(first.organization.id);
+  });
+
+  it("saas deny: enterprise-federated with no invite → 403 SSO_PROVISIONING_NOT_INVITED, no org", async () => {
+    const auth0Sub = sub();
+    await expect(
+      ApplicationService.ensureProvisioned(
+        auth0Sub,
+        profileResolver({ emailVerified: true }),
+        undefined,
+        "deny"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+
+    // The user row may exist, but no org was provisioned for them.
+    const [u] = await usersFor(auth0Sub);
+    if (u) expect(await orgsOwnedBy(u.id)).toHaveLength(0);
+  });
+
+  it("deny fallback but a pending invite exists → joins the invited org (invite wins)", async () => {
+    const email = `invitee-${generateId()}@example.com`;
+    const invitedOrgId = await seedPendingInvite(email, "member");
+
+    const result = await ApplicationService.ensureProvisioned(
+      sub(),
+      profileResolver({ email, emailVerified: true }),
+      undefined,
+      "deny"
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.organization.id).toBe(invitedOrgId);
+    expect(result.organizationUser.role).toBe("member");
+  });
+
+  // ── re-homed per-login audit/profile (#577, slice 6) ─────────────────
+
+  it("recordLoginIfNewSession: new marker → auth.login + persists marker; repeat → no-op", async () => {
+    const auth0Sub = sub();
+    const p = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver()
+    );
+    await new Promise((r) => setTimeout(r, 75));
+
+    const loginRows = () =>
+      (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.organizationId, p.organization.id),
+            eq(auditLog.action, "auth.login")
+          )
+        );
+
+    // Provision emitted one auth.login{firstLogin}.
+    expect(await loginRows()).toHaveLength(1);
+
+    const profile = jest.fn(async () => ({
+      email: "refreshed@example.com",
+      name: "Refreshed",
+      picture: null,
+      emailVerified: true,
+    }));
+
+    // A new session marker → a second auth.login + the marker persisted.
+    await ApplicationService.recordLoginIfNewSession(
+      p.user,
+      p.organization.id,
+      p.organizationUser,
+      "at:1000",
+      profile,
+      { sourceIp: null, userAgent: null }
+    );
+    await new Promise((r) => setTimeout(r, 75));
+    expect(await loginRows()).toHaveLength(2);
+    const refreshed = (await usersFor(auth0Sub))[0];
+    expect(refreshed.lastLoginSession).toBe("at:1000");
+    expect(refreshed.name).toBe("Refreshed");
+
+    // The same marker again → no new auth.login (deduped).
+    await ApplicationService.recordLoginIfNewSession(
+      refreshed as never,
+      p.organization.id,
+      p.organizationUser,
+      "at:1000",
+      profile,
+      { sourceIp: null, userAgent: null }
+    );
+    await new Promise((r) => setTimeout(r, 75));
+    expect(await loginRows()).toHaveLength(2);
+  });
+
+  it("recordLoginIfNewSession: concurrent first-requests of one session → exactly one auth.login", async () => {
+    // Every login fires a burst of parallel API calls (dashboard load); they
+    // all pass the stale-user early-out, so the atomic conditional UPDATE — not
+    // a read-then-write — must be what dedups them (found in #577 smoke).
+    const auth0Sub = sub();
+    const p = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver()
+    );
+    await new Promise((r) => setTimeout(r, 75));
+
+    const loginRows = () =>
+      (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.organizationId, p.organization.id),
+            eq(auditLog.action, "auth.login")
+          )
+        );
+    expect(await loginRows()).toHaveLength(1); // provision firstLogin
+
+    const profile = jest.fn(async () => ({
+      email: "c@example.com",
+      name: "Concurrent",
+      picture: null,
+      emailVerified: true,
+    }));
+
+    await Promise.all(
+      Array.from({ length: 6 }, () =>
+        ApplicationService.recordLoginIfNewSession(
+          p.user,
+          p.organization.id,
+          p.organizationUser,
+          "at:5000",
+          profile,
+          { sourceIp: null, userAgent: null }
+        )
+      )
+    );
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Exactly one new auth.login (2 total) despite six concurrent callers.
+    expect(await loginRows()).toHaveLength(2);
   });
 });

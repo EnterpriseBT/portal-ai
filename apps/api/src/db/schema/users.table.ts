@@ -22,6 +22,10 @@ export const users = pgTable(
     name: text("name"),
     picture: text("picture"),
     lastLogin: bigint("last_login", { mode: "number" }),
+    // #577: the last-seen login-session marker (auth_time → sid → iat) used to
+    // dedup per-login side-effects (auth.login audit + profile refresh) on the
+    // request path. Null until the first login is observed post-deploy.
+    lastLoginSession: text("last_login_session"),
   },
   (t) => [
     uniqueIndex("users_auth0_id_unique")

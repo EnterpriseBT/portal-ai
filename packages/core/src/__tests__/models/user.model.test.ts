@@ -157,4 +157,43 @@ describe("UserModelFactory", () => {
       }
     });
   });
+
+  // ── lastLoginSession (#577) ──────────────────────────────────────
+  describe("lastLoginSession", () => {
+    const factory = () =>
+      new UserModelFactory({ coreModelFactory: buildCoreModelFactory() });
+
+    const baseUser = (extra: Record<string, unknown> = {}) => ({
+      auth0Id: "auth0|123",
+      email: "t@t.com",
+      name: "T",
+      picture: null,
+      lastLogin: null,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      ...extra,
+    });
+
+    it("accepts a string marker and round-trips through parse", () => {
+      const model = factory().create("system");
+      model.update(baseUser({ lastLoginSession: "auth_time:1700000000" }));
+      expect(model.parse().lastLoginSession).toBe("auth_time:1700000000");
+    });
+
+    it("accepts null", () => {
+      const model = factory().create("system");
+      model.update(baseUser({ lastLoginSession: null }));
+      expect(model.validate().success).toBe(true);
+      expect(model.parse().lastLoginSession).toBeNull();
+    });
+
+    it("defaults to null when omitted — no creation-site breakage", () => {
+      const model = factory().create("system");
+      model.update(baseUser());
+      expect(model.validate().success).toBe(true);
+      expect(model.parse().lastLoginSession).toBeNull();
+    });
+  });
 });

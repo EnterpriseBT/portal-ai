@@ -9,6 +9,7 @@ import {
 import { eq, and, isNull, desc, sql, type SQL } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { organizations } from "../db/schema/organizations.table.js";
+import { users } from "../db/schema/users.table.js";
 import { db } from "../db/client.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 import type {
@@ -23,6 +24,7 @@ import { SeedService } from "./seed.service.js";
 import { AuditService } from "./audit.service.js";
 import { SeatService } from "./seat.service.js";
 import { SyncLockService } from "./sync-lock.service.js";
+import type { ProvisioningFallback } from "../config/sso.config.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -156,7 +158,8 @@ export class ApplicationService {
       picture: string | null;
       emailVerified: boolean;
     }>,
-    auditCtx?: { sourceIp: string | null; userAgent: string | null }
+    auditCtx?: { sourceIp: string | null; userAgent: string | null },
+    fallback: ProvisioningFallback = "personal_org"
   ): Promise<{
     user: UserSelect;
     organization: OrganizationSelect;
@@ -218,6 +221,47 @@ export class ApplicationService {
         };
       }
 
+      // ── Fallback split by deploy mode (#577) ───────────────────────
+      // No membership and no matched invitation: what happens next depends on
+      // the mode the caller resolved.
+      if (fallback === "deny") {
+        // SaaS enterprise-federated identity with no invite — invite-gated, so
+        // reject rather than provisioning a personal org (tenant isolation).
+        throw new ApiError(
+          403,
+          ApiCode.SSO_PROVISIONING_NOT_INVITED,
+          "This account is not a member of any organization and was not invited"
+        );
+      }
+      if (fallback === "join_single_org") {
+        // Self-hosted: join the one org tree as a member. The first user (no
+        // org exists yet) falls through to provisioning below and becomes owner.
+        const singleton = await ApplicationService.getSingletonOrganization();
+        if (singleton) {
+          const now = SystemUtilities.utc.now().getTime();
+          const orgUser = await SeatService.attachMembership(
+            user.id,
+            singleton.id,
+            "member",
+            now
+          );
+          void AuditService.record({
+            organizationId: singleton.id,
+            userId: user.id,
+            action: "auth.login",
+            sourceIp: auditCtx?.sourceIp ?? null,
+            userAgent: auditCtx?.userAgent ?? null,
+            metadata: { firstLogin: true },
+          });
+          return {
+            user,
+            organization: singleton,
+            organizationUser: orgUser,
+            created: true,
+          };
+        }
+      }
+
       const provisioned = await DbService.transaction((tx) =>
         ApplicationService.provisionOrganizationInTx(user.id, tx)
       );
@@ -249,6 +293,95 @@ export class ApplicationService {
         created: true,
       };
     });
+  }
+
+  /**
+   * The single org tree of a self-hosted install (#577). Returns the earliest
+   * non-deleted organization, or null when none exists yet (the first user is
+   * about to provision it and become its owner).
+   */
+  static async getSingletonOrganization(): Promise<OrganizationSelect | null> {
+    const rows = await db
+      .select()
+      .from(organizations)
+      .where(isNull(organizations.deleted))
+      .orderBy(organizations.created)
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Re-homed per-login side-effects (#577). The Auth0 webhook used to refresh
+   * the profile and emit an `auth.login` audit row on every login; with the
+   * webhook removed, the request path does it — deduped by a login-session
+   * marker (auth_time → sid → iat) so neither a token refresh mid-session nor
+   * the burst of parallel API calls a single login fires (dashboard load)
+   * emits more than one row.
+   *
+   * The dedup is an **atomic conditional UPDATE**, not a read-then-write: the
+   * one request that flips `last_login_session` to this marker wins and emits
+   * the login; concurrent siblings match 0 rows and return. Only the winner
+   * fetches the profile, so a login costs at most one `userinfo` call. Best-
+   * effort — a failure logs and returns, never breaking the request. Callers
+   * fire-and-forget (`void`).
+   */
+  static async recordLoginIfNewSession(
+    user: UserSelect,
+    organizationId: string,
+    organizationUser: OrganizationUserSelect,
+    sessionMarker: string | null,
+    resolveProfile: () => Promise<{
+      email: string | null;
+      name: string | null;
+      picture: string | null;
+      emailVerified: boolean;
+    }>,
+    auditCtx: { sourceIp: string | null; userAgent: string | null }
+  ): Promise<void> {
+    // Cheap early-out for the common case (same session as last seen). The
+    // atomic update below is the real guard — `user` here can be stale.
+    if (!sessionMarker || sessionMarker === user.lastLoginSession) return;
+    try {
+      const now = SystemUtilities.utc.now().getTime();
+      // Claim the new session atomically. `IS DISTINCT FROM` (not `<>`) so a
+      // NULL prior value counts as a change (the first login after deploy).
+      const won = await DbService.repository.users.updateWhere(
+        and(
+          eq(users.id, user.id),
+          sql`${users.lastLoginSession} IS DISTINCT FROM ${sessionMarker}`
+        ) as SQL,
+        { lastLogin: now, lastLoginSession: sessionMarker }
+      );
+      if (won.length === 0) return; // a concurrent request already recorded it
+
+      // Winner only: refresh the profile + emit exactly one auth.login.
+      const profile = await resolveProfile().catch(() => null);
+      if (profile) {
+        await DbService.repository.users.update(user.id, {
+          email: profile.email,
+          name: profile.name,
+          picture: profile.picture,
+        });
+      }
+      await DbService.repository.organizationUsers.update(organizationUser.id, {
+        lastLogin: now,
+      });
+      void AuditService.record({
+        organizationId,
+        userId: user.id,
+        action: "auth.login",
+        sourceIp: auditCtx.sourceIp,
+        userAgent: auditCtx.userAgent,
+      });
+    } catch (error) {
+      logger.warn(
+        {
+          userId: user.id,
+          error: error instanceof Error ? error.message : "unknown",
+        },
+        "recordLoginIfNewSession failed (non-fatal)"
+      );
+    }
   }
 
   /** Provision a full organization for an EXISTING user (#190 — the

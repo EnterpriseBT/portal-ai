@@ -8,6 +8,20 @@ export const environment = {
     : [],
   AUTH0_AUDIENCE: process.env.AUTH0_AUDIENCE,
   AUTH0_DOMAIN: process.env.AUTH0_DOMAIN,
+  // ── Enterprise SSO (#577). Config-driven OIDC identity seam.
+  //    DEPLOY_MODE: "saas" (default) keeps today's Auth0/Google behavior;
+  //    "self_hosted" points at the customer's own OIDC and JIT-provisions into
+  //    the single org tree.
+  DEPLOY_MODE: (process.env.DEPLOY_MODE || "saas") as "saas" | "self_hosted",
+  //    SSO_ISSUERS: JSON array of { issuer, audience, alg? }. Unset ⇒ derived
+  //    from AUTH0_DOMAIN + AUTH0_AUDIENCE (the SaaS default), so the validator
+  //    points at today's Auth0 tenant unchanged. Parsed by SsoConfig.
+  SSO_ISSUERS: process.env.SSO_ISSUERS,
+  //    SSO_ENTERPRISE_CLAIM(+_VALUE): the token claim (and optional expected
+  //    value) that marks a login as enterprise-federated, so SaaS provisioning
+  //    can invite-gate it. Unset ⇒ no token is treated as enterprise-federated.
+  SSO_ENTERPRISE_CLAIM: process.env.SSO_ENTERPRISE_CLAIM,
+  SSO_ENTERPRISE_CLAIM_VALUE: process.env.SSO_ENTERPRISE_CLAIM_VALUE,
   // Logging configuration
   LOG_LEVEL: (process.env.LOG_LEVEL || "info") as
     | "trace"
@@ -28,8 +42,6 @@ export const environment = {
   DB_PASSWORD_CACHE_TTL_MS: process.env.DB_PASSWORD_CACHE_TTL_MS
     ? Number(process.env.DB_PASSWORD_CACHE_TTL_MS)
     : undefined,
-  // Auth0 webhook
-  AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
   // ── Stripe subscription billing (#176). Per-env keys — test mode
   //    everywhere except prod. Absent keys ⇒ billing endpoints 503 and the
   //    webhook 503s (Stripe retries until configured); the app boots fine.

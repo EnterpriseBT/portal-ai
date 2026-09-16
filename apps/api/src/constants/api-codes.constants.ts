@@ -15,6 +15,14 @@ export enum ApiCode {
    *  middleware's InsufficientScopeError. 403 (#216). */
   AUTH_FORBIDDEN = "AUTH_FORBIDDEN",
 
+  // Enterprise SSO (#577)
+  /** A well-formed token whose `iss` claim matches no configured SSO issuer —
+   *  the multi-issuer validator has no validator to route it to. 401. */
+  SSO_UNKNOWN_ISSUER = "SSO_UNKNOWN_ISSUER",
+  /** A SaaS enterprise-federated identity that matched no pending invitation —
+   *  provisioning is invite-gated, so it is denied rather than given an org. 403. */
+  SSO_PROVISIONING_NOT_INVITED = "SSO_PROVISIONING_NOT_INVITED",
+
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",
   REQUEST_BODY_INVALID_JSON = "REQUEST_BODY_INVALID_JSON",
