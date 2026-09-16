@@ -556,7 +556,7 @@ Every non-trivial change lives on **one branch** with **one PR**. The five artif
 
 Each phase has a skill that executes it deterministically: `/ticket` → `/discovery` → `/spec` → `/plan` → `/smoke`, with `/epic` coordinating multi-ticket parents. **Implementation only starts after discovery/spec/plan are reviewed and confirmed** — the skills draft, the user confirms, then code lands.
 
-Branch naming follows the work, not the artifact: `feat/<slug>` for new functionality, `fix/<slug>` for bug fixes, `chore/<slug>` / `docs/<slug>` / `test/<slug>` for everything else. The discovery/spec/plan commits live on this same branch — there is **no** `docs/<slug>-discovery` or `docs/<slug>-spec` interim branch.
+Branch naming follows the work, not the artifact, and carries the ticket number for at-a-glance readability: `<type>/<issue-number>-<slug>` — `feat/123-some-feature` for new functionality, `fix/789-some-bugfix` for bug fixes, `chore/<n>-<slug>` / `docs/<n>-<slug>` / `test/<n>-<slug>` for everything else. The number is bare — no `#`, no brackets (brackets are a glob to the shell). The discovery/spec/plan commits live on this same branch — there is **no** `docs/<n>-<slug>-discovery` or `docs/<n>-<slug>-spec` interim branch.
 
 Notes:
 
@@ -624,7 +624,7 @@ Portals AI is an enterprise, multi-tenant, billing-facing product — a discover
 
 ### Branching
 
-- Branch off `main`. Prefix by intent: `fix/<slug>` for bug fixes, `feat/<slug>` for new functionality; use `chore/`, `docs/`, `test/` for other types.
+- Branch off `main`, naming the branch `<type>/<issue-number>-<slug>` (bare number, no `#` or brackets): `fix/789-some-bugfix` for bug fixes, `feat/123-some-feature` for new functionality; use `chore/`, `docs/`, `test/` prefixes for other types.
 - **Exception:** children of an open epic branch off — and PR back into — `epic/<slug>`, not `main`. See "Epic branches".
 
 ### Epic branches
