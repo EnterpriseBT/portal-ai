@@ -7,6 +7,22 @@ import { createLogger } from "../utils/logger.util.js";
 const logger = createLogger({ module: "ai-codegen" });
 
 type AnthropicProvider = ReturnType<typeof createAnthropic>;
+type AnthropicSettings = NonNullable<Parameters<typeof createAnthropic>[0]>;
+
+/**
+ * Build the Anthropic provider settings from environment (#567). When
+ * `ANTHROPIC_BASE_URL` is set, the client routes through that prefix (a proxy
+ * / self-hosted gateway seam for off-AWS / residency installs); unset leaves
+ * the SDK default (https://api.anthropic.com/v1) untouched.
+ */
+export function buildAnthropicSettings(
+  env: Pick<typeof environment, "ANTHROPIC_API_KEY" | "ANTHROPIC_BASE_URL">
+): AnthropicSettings {
+  return {
+    apiKey: env.ANTHROPIC_API_KEY,
+    ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}),
+  };
+}
 
 /**
  * The Anthropic provider, constructed lazily and memoized (#579). Building it
@@ -18,9 +34,9 @@ type AnthropicProvider = ReturnType<typeof createAnthropic>;
  */
 let anthropicProvider: AnthropicProvider | undefined;
 export function getAnthropic(): AnthropicProvider {
-  return (anthropicProvider ??= createAnthropic({
-    apiKey: environment.ANTHROPIC_API_KEY,
-  }));
+  return (anthropicProvider ??= createAnthropic(
+    buildAnthropicSettings(environment)
+  ));
 }
 
 // claude-sonnet-4-6 is the current Sonnet. The prior pin,
