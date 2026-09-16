@@ -83,4 +83,35 @@ describe("LoginFormUI Component", () => {
 
     expect(mockOnClickGoogleLogin).toHaveBeenCalledTimes(1);
   });
+
+  // #577: the self-hosted container passes a generic label (Universal Login),
+  // so the primary button is no longer Google-branded.
+  it("renders a generic primary label under self-hosted props", () => {
+    render(
+      <LoginFormUI
+        onClickGoogleLogin={mockOnClickGoogleLogin}
+        primaryLabel="Sign in with SSO"
+        showGoogleIcon={false}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /sign in with sso/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /sign in with google/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("invokes the primary handler regardless of label", async () => {
+    const user = userEvent.setup();
+    render(
+      <LoginFormUI
+        onClickGoogleLogin={mockOnClickGoogleLogin}
+        primaryLabel="Sign in with SSO"
+        showGoogleIcon={false}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: /sign in with sso/i }));
+    expect(mockOnClickGoogleLogin).toHaveBeenCalledTimes(1);
+  });
 });
