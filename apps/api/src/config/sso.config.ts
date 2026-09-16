@@ -15,6 +15,15 @@ import { environment } from "../environment.js";
  */
 export type DeployMode = "saas" | "self_hosted";
 
+/**
+ * What `ensureProvisioned` does for an authenticated user who has no membership
+ * and matched no invitation:
+ * - `personal_org`  — provision a personal owner-org (today's SaaS self-serve).
+ * - `join_single_org` — self-hosted: join the one org tree (first user → owner).
+ * - `deny` — SaaS enterprise-federated with no invite: reject, no org created.
+ */
+export type ProvisioningFallback = "personal_org" | "join_single_org" | "deny";
+
 export interface IssuerConfig {
   /** The exact `iss` claim value to trust (Auth0 carries a trailing slash). */
   issuer: string;
@@ -103,5 +112,32 @@ export class SsoConfig {
     if (!name || !name.trim()) return null;
     const value = environment.SSO_ENTERPRISE_CLAIM_VALUE;
     return value && value.trim() ? { name, value } : { name };
+  }
+
+  /** Whether a token's payload carries the configured enterprise-federated marker. */
+  private static isEnterpriseFederated(
+    payload: Record<string, unknown> | undefined,
+    claim: EnterpriseClaimConfig
+  ): boolean {
+    if (!payload) return false;
+    const actual = payload[claim.name];
+    if (actual === undefined || actual === null) return false;
+    return claim.value === undefined ? true : actual === claim.value;
+  }
+
+  /**
+   * The provisioning fallback for an authenticated user with no membership and
+   * no matched invitation, decided from deploy mode + the token payload:
+   * - self_hosted → `join_single_org`;
+   * - saas + a configured enterprise claim the token carries → `deny`;
+   * - otherwise (saas self-serve) → `personal_org`.
+   */
+  static provisioningFallback(
+    payload: Record<string, unknown> | undefined
+  ): ProvisioningFallback {
+    if (SsoConfig.deployMode() === "self_hosted") return "join_single_org";
+    const claim = SsoConfig.enterpriseClaim();
+    if (claim && SsoConfig.isEnterpriseFederated(payload, claim)) return "deny";
+    return "personal_org";
   }
 }

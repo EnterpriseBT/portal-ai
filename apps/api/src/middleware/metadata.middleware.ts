@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 
 import { ApplicationService } from "../services/application.service.js";
 import { Auth0Service } from "../services/auth0.service.js";
+import { SsoConfig } from "../config/sso.config.js";
 import { DbService } from "../services/db.service.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -63,7 +64,10 @@ export const getApplicationMetadata = async (
             emailVerified: profile.email_verified ?? false,
           };
         },
-        { sourceIp: req.ip ?? null, userAgent: req.get("user-agent") ?? null }
+        { sourceIp: req.ip ?? null, userAgent: req.get("user-agent") ?? null },
+        SsoConfig.provisioningFallback(
+          req.auth?.payload as Record<string, unknown> | undefined
+        )
       );
 
       req.application = {

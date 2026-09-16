@@ -147,3 +147,52 @@ describe("SsoConfig.enterpriseClaim", () => {
     });
   });
 });
+
+describe("SsoConfig.provisioningFallback", () => {
+  it("is join_single_org in self_hosted", async () => {
+    const SsoConfig = await loadSsoConfig({
+      ...AUTH0,
+      DEPLOY_MODE: "self_hosted",
+    });
+    expect(SsoConfig.provisioningFallback({ iss: "x" })).toBe(
+      "join_single_org"
+    );
+  });
+
+  it("is personal_org in saas with no enterprise claim configured", async () => {
+    const SsoConfig = await loadSsoConfig({ ...AUTH0 });
+    expect(SsoConfig.provisioningFallback({ sub: "google|1" })).toBe(
+      "personal_org"
+    );
+  });
+
+  it("is deny in saas when the token carries the configured enterprise claim+value", async () => {
+    const SsoConfig = await loadSsoConfig({
+      ...AUTH0,
+      SSO_ENTERPRISE_CLAIM: "conn",
+      SSO_ENTERPRISE_CLAIM_VALUE: "acme",
+    });
+    expect(SsoConfig.provisioningFallback({ conn: "acme" })).toBe("deny");
+  });
+
+  it("is personal_org in saas when the claim is configured but the token does not match", async () => {
+    const SsoConfig = await loadSsoConfig({
+      ...AUTH0,
+      SSO_ENTERPRISE_CLAIM: "conn",
+      SSO_ENTERPRISE_CLAIM_VALUE: "acme",
+    });
+    expect(SsoConfig.provisioningFallback({ conn: "other" })).toBe(
+      "personal_org"
+    );
+    expect(SsoConfig.provisioningFallback(undefined)).toBe("personal_org");
+  });
+
+  it("denies on claim presence alone when no value is configured", async () => {
+    const SsoConfig = await loadSsoConfig({
+      ...AUTH0,
+      SSO_ENTERPRISE_CLAIM: "conn",
+    });
+    expect(SsoConfig.provisioningFallback({ conn: "anything" })).toBe("deny");
+    expect(SsoConfig.provisioningFallback({ sub: "x" })).toBe("personal_org");
+  });
+});

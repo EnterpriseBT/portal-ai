@@ -25,6 +25,7 @@ import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { SeedService } from "../../../services/seed.service.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
   createUser,
@@ -312,5 +313,62 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     expect(result.user.id).toBe(existing.id);
     expect(result.organization.ownerUserId).toBe(existing.id); // personal org
     expect(result.organizationUser.role).toBe("owner");
+  });
+
+  // ── deploy-mode provisioning fallback (#577, slice 4) ────────────────
+  // The existing cases above all use the default fallback ("personal_org"),
+  // proving SaaS self-serve is unchanged. These exercise the split.
+
+  it("self_hosted join_single_org: first user → owner, second → member of the same org", async () => {
+    const first = await ApplicationService.ensureProvisioned(
+      sub(),
+      profileResolver(),
+      undefined,
+      "join_single_org"
+    );
+    expect(first.created).toBe(true);
+    expect(first.organizationUser.role).toBe("owner");
+
+    const second = await ApplicationService.ensureProvisioned(
+      sub(),
+      profileResolver(),
+      undefined,
+      "join_single_org"
+    );
+    expect(second.created).toBe(true);
+    expect(second.organizationUser.role).toBe("member");
+    expect(second.organization.id).toBe(first.organization.id);
+  });
+
+  it("saas deny: enterprise-federated with no invite → 403 SSO_PROVISIONING_NOT_INVITED, no org", async () => {
+    const auth0Sub = sub();
+    await expect(
+      ApplicationService.ensureProvisioned(
+        auth0Sub,
+        profileResolver({ emailVerified: true }),
+        undefined,
+        "deny"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+
+    // The user row may exist, but no org was provisioned for them.
+    const [u] = await usersFor(auth0Sub);
+    if (u) expect(await orgsOwnedBy(u.id)).toHaveLength(0);
+  });
+
+  it("deny fallback but a pending invite exists → joins the invited org (invite wins)", async () => {
+    const email = `invitee-${generateId()}@example.com`;
+    const invitedOrgId = await seedPendingInvite(email, "member");
+
+    const result = await ApplicationService.ensureProvisioned(
+      sub(),
+      profileResolver({ email, emailVerified: true }),
+      undefined,
+      "deny"
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.organization.id).toBe(invitedOrgId);
+    expect(result.organizationUser.role).toBe("member");
   });
 });

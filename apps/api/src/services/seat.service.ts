@@ -470,8 +470,10 @@ export class SeatService {
     return user;
   }
 
-  /** Bind a user to an org as a member, or bump lastLogin if already one. */
-  private static async attachMembership(
+  /** Bind a user to an org as a member, or bump lastLogin if already one.
+   *  Public so on-first-token provisioning (#577, self-hosted join_single_org)
+   *  can reuse the same idempotent membership primitive. */
+  static async attachMembership(
     userId: string,
     organizationId: string,
     role: OrganizationUserSelect["role"],

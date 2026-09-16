@@ -23,6 +23,7 @@ import { SeedService } from "./seed.service.js";
 import { AuditService } from "./audit.service.js";
 import { SeatService } from "./seat.service.js";
 import { SyncLockService } from "./sync-lock.service.js";
+import type { ProvisioningFallback } from "../config/sso.config.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -156,7 +157,8 @@ export class ApplicationService {
       picture: string | null;
       emailVerified: boolean;
     }>,
-    auditCtx?: { sourceIp: string | null; userAgent: string | null }
+    auditCtx?: { sourceIp: string | null; userAgent: string | null },
+    fallback: ProvisioningFallback = "personal_org"
   ): Promise<{
     user: UserSelect;
     organization: OrganizationSelect;
@@ -218,6 +220,47 @@ export class ApplicationService {
         };
       }
 
+      // ── Fallback split by deploy mode (#577) ───────────────────────
+      // No membership and no matched invitation: what happens next depends on
+      // the mode the caller resolved.
+      if (fallback === "deny") {
+        // SaaS enterprise-federated identity with no invite — invite-gated, so
+        // reject rather than provisioning a personal org (tenant isolation).
+        throw new ApiError(
+          403,
+          ApiCode.SSO_PROVISIONING_NOT_INVITED,
+          "This account is not a member of any organization and was not invited"
+        );
+      }
+      if (fallback === "join_single_org") {
+        // Self-hosted: join the one org tree as a member. The first user (no
+        // org exists yet) falls through to provisioning below and becomes owner.
+        const singleton = await ApplicationService.getSingletonOrganization();
+        if (singleton) {
+          const now = SystemUtilities.utc.now().getTime();
+          const orgUser = await SeatService.attachMembership(
+            user.id,
+            singleton.id,
+            "member",
+            now
+          );
+          void AuditService.record({
+            organizationId: singleton.id,
+            userId: user.id,
+            action: "auth.login",
+            sourceIp: auditCtx?.sourceIp ?? null,
+            userAgent: auditCtx?.userAgent ?? null,
+            metadata: { firstLogin: true },
+          });
+          return {
+            user,
+            organization: singleton,
+            organizationUser: orgUser,
+            created: true,
+          };
+        }
+      }
+
       const provisioned = await DbService.transaction((tx) =>
         ApplicationService.provisionOrganizationInTx(user.id, tx)
       );
@@ -249,6 +292,21 @@ export class ApplicationService {
         created: true,
       };
     });
+  }
+
+  /**
+   * The single org tree of a self-hosted install (#577). Returns the earliest
+   * non-deleted organization, or null when none exists yet (the first user is
+   * about to provision it and become its owner).
+   */
+  static async getSingletonOrganization(): Promise<OrganizationSelect | null> {
+    const rows = await db
+      .select()
+      .from(organizations)
+      .where(isNull(organizations.deleted))
+      .orderBy(organizations.created)
+      .limit(1);
+    return rows[0] ?? null;
   }
 
   /** Provision a full organization for an EXISTING user (#190 — the
