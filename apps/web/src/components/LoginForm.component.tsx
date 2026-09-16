@@ -14,6 +14,10 @@ import {
 } from "@portalai/core/ui";
 
 import { TERMS_URL, PRIVACY_URL } from "../utils/site-origin.util";
+import {
+  takeReturnTo,
+  PRE_LOGIN_RETURN_TO_KEY,
+} from "../utils/post-login-return-to.util";
 
 export interface LoginFormUIProps {
   onClickGoogleLogin: () => void;
@@ -119,7 +123,9 @@ export const LoginForm = () => {
   const { withGoogle, withUniversal } = sdk.auth.login();
 
   const handleGoogleLogin = () => {
-    withGoogle();
+    // `Authorized` stashed the path the invitee was headed for; carry it through
+    // login so they return to their accept link afterwards (#585).
+    withGoogle(takeReturnTo(PRE_LOGIN_RETURN_TO_KEY) ?? undefined);
   };
 
   // Dev/test-only sign-in for the E2E harness (#304). The app's normal login

@@ -4,6 +4,7 @@ export enum ApplicationRoute {
   Dashboard = "/",
   Settings = "/settings",
   Login = "/login",
+  AcceptInvitation = "/invitations/accept",
   Connectors = "/connectors",
   ConnectorInstance = "/connectors/$connectorInstanceId",
   Entities = "/entities",

@@ -6,8 +6,24 @@ import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 import "@portalai/core/styles";
 import { queryClient } from "../client";
 import { useStorage, registerAuthLogout } from "../utils";
+import {
+  POST_LOGIN_RETURN_TO_KEY,
+  stashReturnTo,
+} from "../utils/post-login-return-to.util";
 import { LayoutProvider } from "./Layout.provider";
 import { ToastProvider } from "./Toast.provider";
+
+/**
+ * After Auth0 completes a login, stash the transaction's `returnTo` (set from
+ * `appState` on the login call) for the in-router bridge to consume (#585). The
+ * router is created inside this provider, so navigating here isn't possible —
+ * `usePostLoginReturnTo` (mounted in the root route) does the navigation.
+ */
+const onRedirectCallback = (appState?: { returnTo?: string }) => {
+  if (appState?.returnTo) {
+    stashReturnTo(POST_LOGIN_RETURN_TO_KEY, appState.returnTo);
+  }
+};
 
 const AuthErrorHandler: React.FC = () => {
   const { logout } = useAuth0();
@@ -45,6 +61,7 @@ export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
           redirect_uri: window.location.origin,
           audience: import.meta.env.VITE_AUTH0_AUDIENCE,
         }}
+        onRedirectCallback={onRedirectCallback}
         cacheLocation="localstorage"
         useRefreshTokens={true}
       >
