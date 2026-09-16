@@ -42,8 +42,6 @@ export const environment = {
   DB_PASSWORD_CACHE_TTL_MS: process.env.DB_PASSWORD_CACHE_TTL_MS
     ? Number(process.env.DB_PASSWORD_CACHE_TTL_MS)
     : undefined,
-  // Auth0 webhook
-  AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
   // ── Stripe subscription billing (#176). Per-env keys — test mode
   //    everywhere except prod. Absent keys ⇒ billing endpoints 503 and the
   //    webhook 503s (Stripe retries until configured); the app boots fine.

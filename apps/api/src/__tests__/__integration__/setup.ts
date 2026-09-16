@@ -28,7 +28,6 @@ export default async function globalSetup() {
   // Set environment variables for tests
   process.env.DATABASE_URL = databaseUrl;
   process.env.SYSTEM_ID ??= "SYSTEM_TEST";
-  process.env.AUTH0_WEBHOOK_SECRET ??= "test-webhook-secret";
   // Stripe test defaults so `environment.js` (read at import) resolves them
   // before any test loads — otherwise the billing + stripe-webhook suites 503
   // (WEBHOOK_MISSING_SECRET) in CI, which provides no Stripe env. The webhook

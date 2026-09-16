@@ -371,4 +371,63 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     expect(result.organization.id).toBe(invitedOrgId);
     expect(result.organizationUser.role).toBe("member");
   });
+
+  // ── re-homed per-login audit/profile (#577, slice 6) ─────────────────
+
+  it("recordLoginIfNewSession: new marker → auth.login + persists marker; repeat → no-op", async () => {
+    const auth0Sub = sub();
+    const p = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver()
+    );
+    await new Promise((r) => setTimeout(r, 75));
+
+    const loginRows = () =>
+      (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.organizationId, p.organization.id),
+            eq(auditLog.action, "auth.login")
+          )
+        );
+
+    // Provision emitted one auth.login{firstLogin}.
+    expect(await loginRows()).toHaveLength(1);
+
+    const profile = jest.fn(async () => ({
+      email: "refreshed@example.com",
+      name: "Refreshed",
+      picture: null,
+      emailVerified: true,
+    }));
+
+    // A new session marker → a second auth.login + the marker persisted.
+    await ApplicationService.recordLoginIfNewSession(
+      p.user,
+      p.organization.id,
+      p.organizationUser,
+      "at:1000",
+      profile,
+      { sourceIp: null, userAgent: null }
+    );
+    await new Promise((r) => setTimeout(r, 75));
+    expect(await loginRows()).toHaveLength(2);
+    const refreshed = (await usersFor(auth0Sub))[0];
+    expect(refreshed.lastLoginSession).toBe("at:1000");
+    expect(refreshed.name).toBe("Refreshed");
+
+    // The same marker again → no new auth.login (deduped).
+    await ApplicationService.recordLoginIfNewSession(
+      refreshed as never,
+      p.organization.id,
+      p.organizationUser,
+      "at:1000",
+      profile,
+      { sourceIp: null, userAgent: null }
+    );
+    await new Promise((r) => setTimeout(r, 75));
+    expect(await loginRows()).toHaveLength(2);
+  });
 });

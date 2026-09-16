@@ -28,6 +28,9 @@ jest.unstable_mockModule("../../services/application.service.js", () => ({
   ApplicationService: {
     getCurrentOrganization: mockGetCurrentOrganization,
     ensureProvisioned: mockEnsureProvisioned,
+    // #577: the returning-user branch fires this fire-and-forget; a no-op keeps
+    // the happy-path assertions focused on the metadata it attaches.
+    recordLoginIfNewSession: jest.fn(async () => undefined),
   },
 }));
 

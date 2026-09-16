@@ -309,6 +309,63 @@ export class ApplicationService {
     return rows[0] ?? null;
   }
 
+  /**
+   * Re-homed per-login side-effects (#577). The Auth0 webhook used to refresh
+   * the profile and emit an `auth.login` audit row on every login; with the
+   * webhook removed, the request path does it — deduped by a login-session
+   * marker (auth_time → sid → iat) so a token refresh mid-session doesn't
+   * repeat it. Best-effort: a failure logs and returns, never breaking the
+   * request that carried the login. Callers fire-and-forget (`void`).
+   */
+  static async recordLoginIfNewSession(
+    user: UserSelect,
+    organizationId: string,
+    organizationUser: OrganizationUserSelect,
+    sessionMarker: string | null,
+    resolveProfile: () => Promise<{
+      email: string | null;
+      name: string | null;
+      picture: string | null;
+      emailVerified: boolean;
+    }>,
+    auditCtx: { sourceIp: string | null; userAgent: string | null }
+  ): Promise<void> {
+    if (!sessionMarker || sessionMarker === user.lastLoginSession) return;
+    try {
+      const now = SystemUtilities.utc.now().getTime();
+      const profile = await resolveProfile().catch(() => null);
+      await DbService.repository.users.update(user.id, {
+        ...(profile
+          ? {
+              email: profile.email,
+              name: profile.name,
+              picture: profile.picture,
+            }
+          : {}),
+        lastLogin: now,
+        lastLoginSession: sessionMarker,
+      });
+      await DbService.repository.organizationUsers.update(organizationUser.id, {
+        lastLogin: now,
+      });
+      void AuditService.record({
+        organizationId,
+        userId: user.id,
+        action: "auth.login",
+        sourceIp: auditCtx.sourceIp,
+        userAgent: auditCtx.userAgent,
+      });
+    } catch (error) {
+      logger.warn(
+        {
+          userId: user.id,
+          error: error instanceof Error ? error.message : "unknown",
+        },
+        "recordLoginIfNewSession failed (non-fatal)"
+      );
+    }
+  }
+
   /** Provision a full organization for an EXISTING user (#190 — the
    *  portalai CLI's `org create` / `seed org` path). Same transaction body
    *  the webhook uses: org + owner membership + system column definitions +

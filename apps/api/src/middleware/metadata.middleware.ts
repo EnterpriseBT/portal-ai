@@ -11,6 +11,22 @@ import { createLogger } from "../utils/logger.util.js";
 const logger = createLogger({ module: "metadata-middleware" });
 
 /**
+ * Derive a login-session marker from the validated token payload, preferring
+ * `auth_time` (true login time), then `sid` (session id), then `iat` (#577,
+ * OQ6). Prefixed so the three kinds never collide. Null when none is present —
+ * the caller then skips per-login re-emission for that IdP.
+ */
+function loginSessionMarker(
+  payload: Record<string, unknown> | undefined
+): string | null {
+  if (!payload) return null;
+  if (typeof payload.auth_time === "number") return `at:${payload.auth_time}`;
+  if (typeof payload.sid === "string") return `sid:${payload.sid}`;
+  if (typeof payload.iat === "number") return `iat:${payload.iat}`;
+  return null;
+}
+
+/**
  * Middleware that resolves the authenticated Auth0 user and their current
  * organization, then attaches both IDs to `req.application.metadata`.
  *
@@ -80,6 +96,32 @@ export const getApplicationMetadata = async (
 
       return next();
     }
+
+    // Re-homed per-login side-effects (#577): refresh the profile + emit the
+    // auth.login audit row for a returning user when the token represents a new
+    // login session (the webhook used to do this). Fire-and-forget + deduped by
+    // the session marker; never blocks or fails the request.
+    void ApplicationService.recordLoginIfNewSession(
+      user,
+      orgResult.organization.id,
+      orgResult.organizationUser,
+      loginSessionMarker(req.auth?.payload),
+      async () => {
+        const profile = await Auth0Service.getAuth0UserProfile(
+          Auth0Service.getAccessToken(req.headers.authorization),
+          typeof req.auth?.payload.iss === "string"
+            ? req.auth.payload.iss
+            : undefined
+        );
+        return {
+          email: profile.email ?? null,
+          name: profile.name ?? null,
+          picture: profile.picture ?? null,
+          emailVerified: profile.email_verified ?? false,
+        };
+      },
+      { sourceIp: req.ip ?? null, userAgent: req.get("user-agent") ?? null }
+    );
 
     req.application = {
       metadata: {
