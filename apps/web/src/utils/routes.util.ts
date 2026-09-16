@@ -4,6 +4,7 @@ export enum ApplicationRoute {
   Dashboard = "/",
   Settings = "/settings",
   Login = "/login",
+  AcceptInvitation = "/invitations/accept",
   Connectors = "/connectors",
   ConnectorInstance = "/connectors/$connectorInstanceId",
   Entities = "/entities",
@@ -39,15 +40,18 @@ export enum SettingsTab {
   Profile = "profile",
   Organization = "organization",
   Billing = "billing",
+  Members = "members",
   Activity = "activity",
 }
 
-/** Tab order as rendered by `Settings.view.tsx`. */
+/** Tab order as rendered by `Settings.view.tsx`. Members + Activity are both
+ *  owner/admin-only (#585/#596); a member deep-linking either lands on tab 0. */
 export const SETTINGS_TAB_INDEX: Record<SettingsTab, number> = {
   [SettingsTab.Profile]: 0,
   [SettingsTab.Organization]: 1,
   [SettingsTab.Billing]: 2,
-  [SettingsTab.Activity]: 3,
+  [SettingsTab.Members]: 3,
+  [SettingsTab.Activity]: 4,
 };
 
 /**

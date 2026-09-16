@@ -54,6 +54,12 @@ export const formatAgentTurns = (t: TierPolicy["agentTurns"]): string => {
   return parts.length > 0 ? parts.join(" · ") : "Unlimited";
 };
 
+/** #584: org seat cap — "Up to 5 seats" / "1 seat" / "Unlimited" (null). */
+export const formatSeats = (maxSeats: TierPolicy["maxSeats"]): string =>
+  maxSeats === null
+    ? "Unlimited"
+    : `Up to ${nf.format(maxSeats)} seat${maxSeats === 1 ? "" : "s"}`;
+
 /** Per-tool caps as display rows (empty when none). */
 export const formatPerToolCaps = (caps: TierPolicy["perToolCaps"]): string[] =>
   caps

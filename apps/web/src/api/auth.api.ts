@@ -13,9 +13,13 @@ export const auth = {
   login: () => {
     const { loginWithRedirect } = useAuth0();
     return {
-      withGoogle: () =>
+      // `returnTo` (an in-app path) rides through the Auth0 round trip in
+      // `appState`; `onRedirectCallback` (Application.provider) stashes it and
+      // the post-login bridge navigates there (#585). Omitted → lands on "/".
+      withGoogle: (returnTo?: string) =>
         loginWithRedirect({
           openUrl: (url) => window.location.replace(url),
+          ...(returnTo ? { appState: { returnTo } } : {}),
           authorizationParams: {
             connection: "google-oauth2",
             redirect_uri: window.location.origin,

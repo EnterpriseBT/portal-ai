@@ -5,6 +5,7 @@ import { ServerErrorView } from "../views/ServerError.view";
 import { LoadingView } from "../views/Loading.view";
 import { Authorized } from "../components/Authorized.component";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
+import { usePostLoginReturnTo } from "../utils/post-login-return-to.util";
 
 // Define router context interface for type safety
 export interface RouterContext {
@@ -20,6 +21,9 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  // After a login round trip, navigate to the stashed returnTo (e.g. an invite
+  // accept link the invitee opened while logged out) exactly once (#585).
+  usePostLoginReturnTo();
   return <Outlet />;
 }
 

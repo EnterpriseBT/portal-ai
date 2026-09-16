@@ -34,6 +34,14 @@ export const queryKeys = {
     memberships: () =>
       [...queryKeys.organizations.root, "memberships"] as const,
   },
+  members: {
+    root: ["members"] as const,
+    list: () => [...queryKeys.members.root, "list"] as const,
+  },
+  invitations: {
+    root: ["invitations"] as const,
+    list: () => [...queryKeys.invitations.root, "list"] as const,
+  },
   billing: {
     root: ["billing"] as const,
     tiers: () => [...queryKeys.billing.root, "tiers"] as const,

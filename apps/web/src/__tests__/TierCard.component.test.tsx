@@ -25,6 +25,7 @@ const policy = (tier: string): BillingTier["policy"] => ({
   agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny",
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
+  maxSeats: 5,
 });
 
 const subscribeTier: BillingTier = {
@@ -75,6 +76,9 @@ describe("TierCardUI — subscribe", () => {
     expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
     // #498: the un-charged send ceiling rides the same card.
     expect(screen.getByText(/Agent turns:/)).toBeInTheDocument();
+    // #584: the org seat cap rides the same card.
+    expect(screen.getByText(/Seats:/)).toBeInTheDocument();
+    expect(screen.getByText(/Up to 5 seats/)).toBeInTheDocument();
     expect(
       screen.getByText(/2,500 units \/ period · 20 \/ min/)
     ).toBeInTheDocument();

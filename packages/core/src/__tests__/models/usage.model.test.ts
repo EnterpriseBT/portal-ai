@@ -66,6 +66,7 @@ describe("OrganizationUsageGetResponseSchema", () => {
           builtinToolpacks: ["data_query", "web_search"],
           customToolpacks: true,
         },
+        maxSeats: null,
       },
       usage: {
         periodId: "2026-07",

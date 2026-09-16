@@ -22,6 +22,7 @@ const policy = {
   agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny",
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
+  maxSeats: null,
 };
 
 // A `subscribe` tier with a live price (#241).
@@ -150,6 +151,9 @@ describe("TierPolicySchema key pin (#214 contract guard)", () => {
         "agentTurns",
         "allocations",
         "entitlements",
+        // #584: the org seat cap rides the policy so the billing card and the
+        // org usage panel read it from the same resolved contract.
+        "maxSeats",
         "overage",
         "perToolCaps",
         "period",

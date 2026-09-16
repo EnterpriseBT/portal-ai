@@ -36,6 +36,7 @@ import { Route as StationsStationIdRouteImport } from './routes/stations.$statio
 import { Route as PortalsPortalIdRouteImport } from './routes/portals.$portalId'
 import { Route as PortalResultsPortalResultIdRouteImport } from './routes/portal-results.$portalResultId'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
+import { Route as InvitationsAcceptRouteImport } from './routes/invitations.accept'
 import { Route as EntityGroupsEntityGroupIdRouteImport } from './routes/entity-groups.$entityGroupId'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
 import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
@@ -181,6 +182,11 @@ const JobsJobIdRoute = JobsJobIdRouteImport.update({
   path: '/$jobId',
   getParentRoute: () => JobsRoute,
 } as any)
+const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
+  id: '/invitations/accept',
+  path: '/invitations/accept',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EntityGroupsEntityGroupIdRoute =
   EntityGroupsEntityGroupIdRouteImport.update({
     id: '/$entityGroupId',
@@ -246,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
+  '/invitations/accept': typeof InvitationsAcceptRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
+  '/invitations/accept': typeof InvitationsAcceptRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
@@ -309,6 +317,7 @@ export interface FileRoutesById {
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
+  '/invitations/accept': typeof InvitationsAcceptRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
@@ -348,6 +357,7 @@ export interface FileRouteTypes {
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
     | '/entity-groups/$entityGroupId'
+    | '/invitations/accept'
     | '/jobs/$jobId'
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
@@ -373,6 +383,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/column-definitions/$columnDefinitionId'
     | '/entity-groups/$entityGroupId'
+    | '/invitations/accept'
     | '/jobs/$jobId'
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
     | '/entity-groups/$entityGroupId'
+    | '/invitations/accept'
     | '/jobs/$jobId'
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
@@ -444,6 +456,7 @@ export interface RootRouteChildren {
   StationsRoute: typeof StationsRouteWithChildren
   TagsRoute: typeof TagsRouteWithChildren
   ToolpacksRoute: typeof ToolpacksRouteWithChildren
+  InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   PortalsPortalIdRoute: typeof PortalsPortalIdRoute
 }
 
@@ -637,6 +650,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/jobs/$jobId'
       preLoaderRoute: typeof JobsJobIdRouteImport
       parentRoute: typeof JobsRoute
+    }
+    '/invitations/accept': {
+      id: '/invitations/accept'
+      path: '/invitations/accept'
+      fullPath: '/invitations/accept'
+      preLoaderRoute: typeof InvitationsAcceptRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/entity-groups/$entityGroupId': {
       id: '/entity-groups/$entityGroupId'
@@ -871,6 +891,7 @@ const rootRouteChildren: RootRouteChildren = {
   StationsRoute: StationsRouteWithChildren,
   TagsRoute: TagsRouteWithChildren,
   ToolpacksRoute: ToolpacksRouteWithChildren,
+  InvitationsAcceptRoute: InvitationsAcceptRoute,
   PortalsPortalIdRoute: PortalsPortalIdRoute,
 }
 export const routeTree = rootRouteImport

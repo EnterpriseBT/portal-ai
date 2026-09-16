@@ -131,6 +131,9 @@ describe("Organization seats routes (#584)", () => {
     expect(members.status).toBe(200);
     expect(members.body.payload.members).toHaveLength(1);
     expect(members.body.payload.members[0].role).toBe("owner");
+    // #585: seatUsage rides on the members response — 1 owner + the 1 pending
+    // invite created above; unlimited test tier → max null.
+    expect(members.body.payload.seatUsage).toEqual({ used: 2, max: null });
   });
 
   it("owner: revoke a pending invitation → 200 revoked", async () => {
