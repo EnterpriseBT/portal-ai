@@ -64,9 +64,22 @@ export const MemberSchema = z.object({
 });
 export type Member = z.infer<typeof MemberSchema>;
 
+/**
+ * Org seat usage (#585) — `used` = accepted members + pending-active invites;
+ * `max` = the tier's seat cap, `null` = unlimited. A display value (the server
+ * enforces the cap on invite via `SeatService`); resolved fail-open (`max:null`
+ * when the tier can't be read) so it never blocks the members list.
+ */
+export const SeatUsageSchema = z.object({
+  used: z.number().int().nonnegative(),
+  max: z.number().int().nullable(),
+});
+export type SeatUsage = z.infer<typeof SeatUsageSchema>;
+
 /** Response payload for `GET /api/organization/members`. */
 export const MemberListResponseSchema = z.object({
   members: z.array(MemberSchema),
+  seatUsage: SeatUsageSchema,
 });
 export type MemberListResponse = z.infer<typeof MemberListResponseSchema>;
 

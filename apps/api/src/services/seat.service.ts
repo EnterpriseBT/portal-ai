@@ -174,6 +174,35 @@ export class SeatService {
     return rows as Member[];
   }
 
+  /**
+   * Seat usage for display (#585): `used` = live members + pending-active
+   * invites; `max` = the org's tier cap, or **null** (unlimited) when the tier
+   * has no cap OR can't be resolved. Deliberately **non-throwing** — a display
+   * value must never block the members list; the cap is *enforced* on invite by
+   * `admit` (which fail-closes). Owner + admin only, same gate as listMembers.
+   */
+  static async seatUsage(
+    caller: PermissionContext
+  ): Promise<{ used: number; max: number | null }> {
+    PermissionService.check(caller, "member.invite");
+    const orgId = caller.organizationId;
+    const now = SystemUtilities.utc.now().getTime();
+    const members = await DbService.repository.organizationUsers.count(
+      eq(organizationUsers.organizationId, orgId)
+    );
+    const pending = await DbService.repository.invitations.countPendingActive(
+      orgId,
+      now
+    );
+    let max: number | null = null;
+    const org = await DbService.repository.organizations.findById(orgId);
+    if (org?.tier) {
+      const tier = await DbService.repository.tiers.findBySlug(org.tier);
+      max = tier?.maxSeats ?? null;
+    }
+    return { used: members + pending, max };
+  }
+
   /** Revoke a pending invitation. Owner + admin only. */
   static async revoke(
     caller: PermissionContext,

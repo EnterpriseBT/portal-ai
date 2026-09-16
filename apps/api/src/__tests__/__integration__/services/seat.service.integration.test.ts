@@ -295,6 +295,27 @@ describe("SeatService Integration Tests", () => {
     ).toBeUndefined();
   });
 
+  // ── seat usage (#585) ───────────────────────────────────────────────
+
+  it("seatUsage counts members + pending invites and reports the cap", async () => {
+    await setSeatCap(5);
+    await SeatService.invite(
+      owner,
+      { email: "u@x.com", role: "member" },
+      AUDIT
+    );
+    const usage = await SeatService.seatUsage(owner);
+    expect(usage.used).toBe(2); // owner member + 1 pending invite
+    expect(usage.max).toBe(5);
+  });
+
+  it("seatUsage max is null when the tier is uncapped", async () => {
+    await setSeatCap(null);
+    const usage = await SeatService.seatUsage(owner);
+    expect(usage.max).toBeNull();
+    expect(usage.used).toBe(1); // just the owner
+  });
+
   // ── accept ──────────────────────────────────────────────────────────
 
   it("acceptByToken binds the invitee as a member and is idempotent", async () => {

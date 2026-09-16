@@ -724,8 +724,15 @@ organizationRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const members = await SeatService.listMembers(req.application!.metadata);
-      return HttpService.success<MemberListResponse>(res, { members });
+      const ctx = req.application!.metadata;
+      const [members, seatUsage] = await Promise.all([
+        SeatService.listMembers(ctx),
+        SeatService.seatUsage(ctx),
+      ]);
+      return HttpService.success<MemberListResponse>(res, {
+        members,
+        seatUsage,
+      });
     } catch (error) {
       return next(
         error instanceof ApiError

@@ -2,6 +2,8 @@ import {
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
   InvitationResponseSchema,
+  SeatUsageSchema,
+  MemberListResponseSchema,
 } from "../../contracts/invitation.contract.js";
 
 describe("InviteCreateRequestSchema", () => {
@@ -70,5 +72,42 @@ describe("InvitationResponseSchema", () => {
       inviteUrl: "https://app/accept?token=abc",
     };
     expect(InvitationResponseSchema.safeParse(row).success).toBe(true);
+  });
+});
+
+describe("SeatUsageSchema (#585)", () => {
+  it("accepts used + a numeric or null cap", () => {
+    expect(SeatUsageSchema.safeParse({ used: 2, max: 5 }).success).toBe(true);
+    expect(SeatUsageSchema.safeParse({ used: 0, max: null }).success).toBe(
+      true
+    );
+  });
+
+  it("rejects a negative used count", () => {
+    expect(SeatUsageSchema.safeParse({ used: -1, max: null }).success).toBe(
+      false
+    );
+  });
+});
+
+describe("MemberListResponseSchema (#585)", () => {
+  const member = {
+    userId: "u-1",
+    email: "a@b.com",
+    name: "A",
+    role: "member" as const,
+    joinedAt: 1,
+  };
+
+  it("requires seatUsage alongside members", () => {
+    expect(
+      MemberListResponseSchema.safeParse({ members: [member] }).success
+    ).toBe(false);
+    expect(
+      MemberListResponseSchema.safeParse({
+        members: [member],
+        seatUsage: { used: 1, max: 3 },
+      }).success
+    ).toBe(true);
   });
 });
