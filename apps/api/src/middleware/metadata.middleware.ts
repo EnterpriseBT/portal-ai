@@ -51,7 +51,10 @@ export const getApplicationMetadata = async (
         auth0Id,
         async () => {
           const profile = await Auth0Service.getAuth0UserProfile(
-            Auth0Service.getAccessToken(req.headers.authorization)
+            Auth0Service.getAccessToken(req.headers.authorization),
+            typeof req.auth?.payload.iss === "string"
+              ? req.auth.payload.iss
+              : undefined
           );
           return {
             email: profile.email ?? null,
