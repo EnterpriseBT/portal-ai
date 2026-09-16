@@ -107,7 +107,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       // its sync writes are all costHint "free" (never charged), so the
       // entitlement is margin-neutral, and record editing is core-loop work.
       slug: "standard",
-      maxSeats: 3,
+      maxSeats: 5,
       displayName: "Standard",
       periodKind: "monthly",
       periodAnchorDay: 1,
@@ -132,7 +132,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
     {
       // Paid mid tier.
       slug: "plus",
-      maxSeats: 10,
+      maxSeats: 25,
       displayName: "Plus",
       periodKind: "monthly",
       periodAnchorDay: 1,
@@ -166,8 +166,12 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
     },
     {
       // Top self-serve tier: everything allowed, ceilings margin-sized.
+      // Seats are unlimited (#584): members share the org's usage allocation,
+      // which the cost grid above already bounds — so uncapped seats add no
+      // unbounded vendor bill (unlike a null cost allocation, which the guard
+      // test forbids on a selectable tier).
       slug: "pro",
-      maxSeats: 25,
+      maxSeats: null,
       displayName: "Pro",
       periodKind: "monthly",
       periodAnchorDay: 1,
