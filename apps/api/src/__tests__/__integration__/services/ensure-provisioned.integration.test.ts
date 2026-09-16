@@ -430,4 +430,52 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     await new Promise((r) => setTimeout(r, 75));
     expect(await loginRows()).toHaveLength(2);
   });
+
+  it("recordLoginIfNewSession: concurrent first-requests of one session → exactly one auth.login", async () => {
+    // Every login fires a burst of parallel API calls (dashboard load); they
+    // all pass the stale-user early-out, so the atomic conditional UPDATE — not
+    // a read-then-write — must be what dedups them (found in #577 smoke).
+    const auth0Sub = sub();
+    const p = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver()
+    );
+    await new Promise((r) => setTimeout(r, 75));
+
+    const loginRows = () =>
+      (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.organizationId, p.organization.id),
+            eq(auditLog.action, "auth.login")
+          )
+        );
+    expect(await loginRows()).toHaveLength(1); // provision firstLogin
+
+    const profile = jest.fn(async () => ({
+      email: "c@example.com",
+      name: "Concurrent",
+      picture: null,
+      emailVerified: true,
+    }));
+
+    await Promise.all(
+      Array.from({ length: 6 }, () =>
+        ApplicationService.recordLoginIfNewSession(
+          p.user,
+          p.organization.id,
+          p.organizationUser,
+          "at:5000",
+          profile,
+          { sourceIp: null, userAgent: null }
+        )
+      )
+    );
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Exactly one new auth.login (2 total) despite six concurrent callers.
+    expect(await loginRows()).toHaveLength(2);
+  });
 });
