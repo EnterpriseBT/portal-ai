@@ -21,6 +21,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { AuditLogActivity } from "../components/AuditLogActivity.component";
+import { MembersTab } from "../components/MembersTab.component";
 import { DataResult } from "../components/DataResult.component";
 import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
 import { UsageLedgerDialog } from "../components/UsageLedgerDialog.component";
@@ -114,7 +115,8 @@ export const SettingsView = () => {
   if (
     roleKnown &&
     !isAdminOrOwner &&
-    tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Activity]
+    // Members + Activity are the owner/admin-only tabs (indices ≥ Members).
+    tabsProps.value >= SETTINGS_TAB_INDEX[SettingsTab.Members]
   ) {
     setValue(0);
   }
@@ -139,7 +141,8 @@ export const SettingsView = () => {
         <Tab label="Profile" {...getTabProps(0)} />
         <Tab label="Organization" {...getTabProps(1)} />
         <Tab label="Subscription & Billing" {...getTabProps(2)} />
-        {isAdminOrOwner && <Tab label="Activity" {...getTabProps(3)} />}
+        {isAdminOrOwner && <Tab label="Members" {...getTabProps(3)} />}
+        {isAdminOrOwner && <Tab label="Activity" {...getTabProps(4)} />}
       </Tabs>
       <TabPanel {...getTabPanelProps(0)}>
         <PageSection title="Profile" variant="outlined">
@@ -374,10 +377,19 @@ export const SettingsView = () => {
       </TabPanel>
       {isAdminOrOwner && (
         <TabPanel {...getTabPanelProps(3)}>
+          <PageSection title="Members" variant="outlined">
+            {/* Mounted only while active so the members/invitations queries
+                fire only on this tab (#585). */}
+            {tabsProps.value === 3 && <MembersTab />}
+          </PageSection>
+        </TabPanel>
+      )}
+      {isAdminOrOwner && (
+        <TabPanel {...getTabPanelProps(4)}>
           <PageSection title="Activity" variant="outlined">
             {/* Mounted only while active so the audit-log query fires only
                 on this tab (#596). */}
-            {tabsProps.value === 3 && <AuditLogActivity />}
+            {tabsProps.value === 4 && <AuditLogActivity />}
           </PageSection>
         </TabPanel>
       )}

@@ -24,7 +24,8 @@ describe("settingsTabIndexFromSearch", () => {
     expect(settingsTabIndexFromSearch("?tab=profile")).toBe(0);
     expect(settingsTabIndexFromSearch("?tab=organization")).toBe(1);
     expect(settingsTabIndexFromSearch("?tab=billing")).toBe(2);
-    expect(settingsTabIndexFromSearch("?tab=activity")).toBe(3);
+    expect(settingsTabIndexFromSearch("?tab=members")).toBe(3);
+    expect(settingsTabIndexFromSearch("?tab=activity")).toBe(4);
   });
 
   it("resolves via SETTINGS_TAB_INDEX for every SettingsTab member", () => {
@@ -41,12 +42,13 @@ describe("settingsTabIndexFromSearch", () => {
     expect(settingsTabIndexFromSearch("?foo=bar")).toBe(0);
   });
 
-  it("registers the owner-only Activity tab last (#596)", () => {
+  it("registers the owner/admin-only Members + Activity tabs last (#585/#596)", () => {
     expect(SETTINGS_TAB_INDEX).toEqual({
       [SettingsTab.Profile]: 0,
       [SettingsTab.Organization]: 1,
       [SettingsTab.Billing]: 2,
-      [SettingsTab.Activity]: 3,
+      [SettingsTab.Members]: 3,
+      [SettingsTab.Activity]: 4,
     });
   });
 });
