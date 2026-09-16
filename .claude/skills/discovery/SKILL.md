@@ -29,18 +29,18 @@ Before any branch, survey, or drafting, evaluate the PRD against the **PRD dimen
 
 The gate is **blocking**: a discovery doc drafted against an incomplete PRD is exactly the failure mode it exists to prevent (#212). It applies in both full and condensed modes. Bug issues skip it — the repro template has its own shape.
 
-### 3. Derive the slug and branch prefix
+### 3. Derive the slug and branch name
 
-The slug becomes the file name (`docs/<SLUG>.discovery.md`) and the branch suffix. Derive from the issue title:
+The slug becomes the file name (`docs/<SLUG>.discovery.md`) and part of the branch name. Derive from the issue title:
 
 - `UPPER_SNAKE_CASE` for the file name (e.g. issue "API connector" → `API_CONNECTOR`)
-- `lower-kebab-case` for the branch suffix (e.g. `api-connector`)
+- `lower-kebab-case` for the branch slug (e.g. `api-connector`)
 
-The branch prefix follows the issue type, since this is the **single branch** the entire feature lives on (per CLAUDE.md → "One feature = one branch = one PR"):
+The branch is `<prefix>/<issue-number>-<slug>` — the issue number sits between the prefix and the slug so it's readable at a glance (e.g. issue #123 "API connector" → `feat/123-api-connector`). The number is the bare ticket number, no `#` and no brackets. The prefix follows the issue type, since this is the **single branch** the entire feature lives on (per CLAUDE.md → "One feature = one branch = one PR"):
 
-- `Feature` → `feat/<slug>`
-- `Bug` → `fix/<slug>`
-- `Task` → `chore/<slug>` (or `docs/<slug>` / `test/<slug>` if the work is purely docs- or test-only)
+- `Feature` → `feat/<number>-<slug>`
+- `Bug` → `fix/<number>-<slug>`
+- `Task` → `chore/<number>-<slug>` (or `docs/<number>-<slug>` / `test/<number>-<slug>` if the work is purely docs- or test-only)
 
 Ask the user to confirm the slug if the issue title is ambiguous (more than five words, special characters, etc.). Otherwise pick and tell them in one sentence what you chose.
 
@@ -49,7 +49,7 @@ Ask the user to confirm the slug if the issue title is ambiguous (more than five
 ```bash
 git checkout main
 git pull --ff-only origin main
-git checkout -b <prefix>/<slug>
+git checkout -b <prefix>/<number>-<slug>
 ```
 
 If a branch by that name already exists locally or remotely, stop and ask the user how to proceed (extend the existing branch vs. pick a new name). The branch is shared with later phases (spec, plan, implementation) — don't create a new branch when those commit.
