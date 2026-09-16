@@ -11,10 +11,10 @@ Companion phase docs (swept over time): `ENTERPRISE_SSO.discovery.md` / `.spec.m
 
 ## Auth0 vendor teardown (required on deploy)
 
-Removing the webhook has a vendor side the code cannot do for you. Do it **per Auth0 tenant**, in this order, so provisioning never gaps:
+Removing the webhook has a vendor side the code cannot do for you, and **ordering is load-bearing**: a post-login Action that POSTs to the removed route will fail, and unless the Action swallows its own error, **Auth0 fails the entire login** — the user is bounced straight back to the sign-in page (a login loop, observed during #577 smoke). The Action must therefore go **before** the webhook route disappears from the app that users hit. Per Auth0 tenant (`local` · `app-dev` · `prod`):
 
-1. **Deploy the app first.** The request-path self-heal already provisions and audits every login, so the old post-login Action becomes redundant the moment the new build is live.
-2. **Remove the post-login Action / Trigger.** In each tenant's **Actions → Flows → Login**, detach and delete the Action that POSTs to `…/api/webhooks/auth0/sync`. Left in place it just 404s on every login (harmless but noisy) — remove it. The Action also carried the HMAC secret below.
+1. **Remove/disable the post-login Action FIRST.** In each tenant's **Actions → Flows → Login**, detach and delete the Action that POSTs to `…/api/webhooks/auth0/sync`. Provisioning does **not** gap: the request-path self-heal (#583) already provisions every login without the webhook. Do this **before** (or in the same change as) deploying the webhook removal — never leave a live Action pointing at a route the deployed app no longer serves, or every login in that window loops. The Action also carried the HMAC secret below.
+2. **Then deploy the webhook removal.** With no Action calling it, the gone route is inert.
 3. **Remove `AUTH0_WEBHOOK_SECRET`** from each env's secret store, **after** the new build (which no longer reads it) is deployed:
    - `local`: delete the line from your `.env`.
    - `app-dev` / `prod`: it lives in AWS Secrets Manager / SSM. Remove it with `portalops vars` (per `packages/devops-cli/COMMANDS.md`); on `prod` the guard requires `--yes --confirm-prod`.
