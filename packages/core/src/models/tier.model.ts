@@ -97,6 +97,11 @@ export const TierPolicySchema = z.object({
     perMin: z.number().int().nonnegative().nullable(),
     perDay: z.number().int().nonnegative().nullable(),
   }),
+  /** #584: max org seats (accepted members + pending invites). null =
+   *  unlimited. Carried on the resolved policy so both the billing tier card
+   *  and the org usage panel can surface it from the same resolution that
+   *  already handles org-scoped custom tiers. */
+  maxSeats: z.number().int().min(1).nullable(),
 });
 export type TierPolicy = z.infer<typeof TierPolicySchema>;
 

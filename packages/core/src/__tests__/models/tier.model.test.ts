@@ -27,6 +27,7 @@ const validPolicy = {
     builtinToolpacks: ["data_query", "web_search"],
     customToolpacks: true,
   },
+  maxSeats: null,
 };
 
 const validRowFields = {

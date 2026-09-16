@@ -60,6 +60,11 @@ Manual smoke test for [#585](https://github.com/EnterpriseBT/portal-ai/issues/58
 - [ ] **Missing token:** open `/invitations/accept` (no `?token`) → **"This invitation link is incomplete"**.
 - [ ] **Last-owner protection:** attempt to remove the sole owner is blocked in the UI (disabled) and, if forced via API, returns a server error. — manual (API force)
 
+## §6 — Seat cap on the subscription surfaces (AC-3)
+
+- [ ] Settings → **Subscription & Billing** → each plan/tier card shows a **Seats** row: Standard **Up to 5 seats**, Plus **Up to 25 seats**, Pro / Enterprise **Unlimited** (matches the catalog after `portalops tier apply`).
+- [ ] Settings → **Organization** → **Subscription & Usage** section shows a **Seats** line reflecting the current org's tier cap (e.g. **Up to 5 seats** on Standard, **Unlimited** on Pro/Enterprise).
+
 ## Sign-off
 
 - [ ] Every section above verified
@@ -72,7 +77,7 @@ Manual smoke test for [#585](https://github.com/EnterpriseBT/portal-ai/issues/58
 |---|---|
 | AC-1 tab visibility + server-side deny | §1 |
 | AC-2 invite/copy, resend/revoke, re-role, remove, last-owner guard | §2, §3 |
-| AC-3 seat usage display + cap block (409) | §2, §3, §5 |
+| AC-3 seat usage display + cap block (409) + seat cap on billing/org cards | §2, §3, §5, §6 |
 | AC-4 invitee bound + token survives login (returnTo) | §4, §5 |
 | AC-5 lint/type-check/suites green | Sign-off |
 

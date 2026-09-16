@@ -32,6 +32,7 @@ import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
 import { useRole } from "../utils/use-role.util";
 import { formatUsageValue } from "../utils/usage-format.util";
+import { formatSeats } from "../utils/tier-format.util";
 import {
   SETTINGS_TAB_INDEX,
   SettingsTab,
@@ -292,6 +293,13 @@ export const SettingsView = () => {
                           label: "Subscription Tier",
                           value: formatTierName(tier.tier),
                           icon: <Icon name={IconName.Star} fontSize="small" />,
+                        },
+                        {
+                          label: "Seats",
+                          value: formatSeats(tier.maxSeats),
+                          icon: (
+                            <Icon name={IconName.Person} fontSize="small" />
+                          ),
                         },
                         {
                           label: "Metered usage",

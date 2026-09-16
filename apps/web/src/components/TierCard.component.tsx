@@ -22,6 +22,7 @@ import {
   formatPeriod,
   formatPerToolCaps,
   formatPrice,
+  formatSeats,
   entitlementPackNames,
 } from "../utils/tier-format.util";
 
@@ -96,6 +97,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
         : "Free";
 
   const rows = [
+    { label: "Seats", value: formatSeats(policy.maxSeats) },
     { label: "Free tools", value: formatAllocation(policy.allocations.free) },
     {
       label: "Metered tools",

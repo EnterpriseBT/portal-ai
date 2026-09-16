@@ -49,6 +49,7 @@ const policy = (tier: string) => ({
   agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny" as const,
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
+  maxSeats: null,
 });
 
 const standardTier: BillingTier = {

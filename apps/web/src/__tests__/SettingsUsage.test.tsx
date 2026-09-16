@@ -84,6 +84,7 @@ const usageData = {
     perToolCaps: null,
     agentTurns: { perMin: null, perDay: null },
     overage: "hard-deny",
+    maxSeats: 5,
   },
   usage: {
     periodId: "2026-07",
@@ -114,6 +115,12 @@ describe("SettingsView — Organization tier + usage (#172 slice 4)", () => {
     await openOrganizationTab();
     expect(screen.getByText("Subscription Tier")).toBeInTheDocument();
     expect(screen.getByText("Standard")).toBeInTheDocument();
+  });
+
+  it("renders the seat cap from the resolved tier (#584)", async () => {
+    await openOrganizationTab();
+    expect(screen.getByText("Seats")).toBeInTheDocument();
+    expect(screen.getByText("Up to 5 seats")).toBeInTheDocument();
   });
 
   it("renders used/available per class; an unlimited class shows Unlimited", async () => {
