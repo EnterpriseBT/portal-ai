@@ -687,6 +687,13 @@
       "when": 1789508895549,
       "tag": "0097_add_org_seats",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1789588185365,
+      "tag": "0098_add-user-last-login-session",
+      "breakpoints": true
     }
   ]
 }

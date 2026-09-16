@@ -87,6 +87,7 @@ describe("Audit emission (#575 slice 4)", () => {
       email: `owner-${generateId()}@example.com`,
       name: "Emit Owner",
       lastLogin: now,
+      lastLoginSession: null,
       picture: null,
       created: now,
       createdBy: "SYSTEM_TEST",

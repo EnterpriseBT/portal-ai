@@ -94,6 +94,7 @@ describe("Profile Router", () => {
           name: mockProfile.name ?? null,
           picture: mockProfile.picture ?? null,
           lastLogin: 1706000000000,
+          lastLoginSession: null,
           created: Date.now(),
           createdBy: "system",
           updated: null,
