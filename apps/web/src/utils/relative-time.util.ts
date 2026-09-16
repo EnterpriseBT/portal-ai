@@ -15,6 +15,13 @@ export function formatAgo(epochMs: number, nowMs: number = Date.now()): string {
   return `${Math.floor(elapsed / DAY)} d ago`;
 }
 
+/** True when `epochMs` is in the past — the render-safe seam for expiry
+ *  checks (the lint rules bar impure calls in component bodies; tests pass
+ *  `nowMs` for determinism). */
+export function isPast(epochMs: number, nowMs: number = Date.now()): boolean {
+  return nowMs > epochMs;
+}
+
 /** True when `epochMs` is older than `thresholdMs` — the render-safe seam
  *  for staleness checks (the lint rules bar impure calls in component
  *  bodies; tests pass `nowMs` for determinism). */

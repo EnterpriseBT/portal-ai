@@ -13,10 +13,18 @@ const owner: Member = {
 
 const base = {
   members: [owner],
+  invitations: [],
   callerRole: "owner" as const,
   callerUserId: "u-owner",
   onChangeRole: jest.fn(),
   onRemoveClick: jest.fn(),
+  onInviteClick: jest.fn(),
+  onResend: jest.fn(),
+  onRevoke: jest.fn(),
+  canInvite: true,
+  lastInviteUrl: null,
+  onCopyLink: jest.fn(),
+  onDismissLink: jest.fn(),
 };
 
 describe("MembersTabUI seat-usage indicator", () => {
@@ -47,5 +55,82 @@ describe("MembersTabUI seat-usage indicator", () => {
     );
     // StatusMessage renders the error; the list is not shown.
     expect(screen.queryByText("owner@x.com")).not.toBeInTheDocument();
+  });
+});
+
+describe("MembersTabUI invite + pending (#585)", () => {
+  it("invokes onInviteClick from the Invite button", () => {
+    const onInviteClick = jest.fn();
+    render(
+      <MembersTabUI
+        {...base}
+        seatUsage={{ used: 1, max: 5 }}
+        onInviteClick={onInviteClick}
+      />
+    );
+    screen.getByRole("button", { name: "Invite member" }).click();
+    expect(onInviteClick).toHaveBeenCalled();
+  });
+
+  it("disables the Invite button when the seat cap is reached", () => {
+    render(
+      <MembersTabUI
+        {...base}
+        seatUsage={{ used: 5, max: 5 }}
+        canInvite={false}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Invite member" })
+    ).toBeDisabled();
+  });
+
+  it("shows the one-time invite link with a Copy control", () => {
+    const onCopyLink = jest.fn();
+    render(
+      <MembersTabUI
+        {...base}
+        seatUsage={{ used: 2, max: 5 }}
+        lastInviteUrl="https://app.local/accept?token=abc"
+        onCopyLink={onCopyLink}
+      />
+    );
+    expect(screen.getByLabelText("Invite link")).toHaveValue(
+      "https://app.local/accept?token=abc"
+    );
+    screen.getByRole("button", { name: "Copy" }).click();
+    expect(onCopyLink).toHaveBeenCalledWith(
+      "https://app.local/accept?token=abc"
+    );
+  });
+
+  it("renders pending invitations", () => {
+    render(
+      <MembersTabUI
+        {...base}
+        seatUsage={{ used: 2, max: 5 }}
+        invitations={[
+          {
+            id: "inv-1",
+            organizationId: "org-1",
+            email: "pending@example.com",
+            role: "member",
+            status: "pending",
+            expiresAt: 1_784_100_000_000,
+            invitedByUserId: "u-owner",
+            acceptedByUserId: null,
+            acceptedAt: null,
+            created: 1_784_000_000_000,
+            createdBy: "u-owner",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+        ]}
+      />
+    );
+    expect(screen.getByText("Pending invitations")).toBeInTheDocument();
+    expect(screen.getByText("pending@example.com")).toBeInTheDocument();
   });
 });
