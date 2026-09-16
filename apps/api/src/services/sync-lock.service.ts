@@ -32,6 +32,15 @@ export const DISSOLVE_LOCK_NAMESPACE = 0x4453_4c56;
  */
 export const PROVISION_LOCK_NAMESPACE = 0x5052_5646;
 
+/**
+ * Advisory-lock namespace for org seat mutations (#584), keyed by
+ * `organizationId`. Invite/accept run a check-then-write that spans two tables
+ * (memberships + pending invitations), so they serialize per org under this
+ * lock — no overshoot of the tier seat cap. Distinct from every other
+ * namespace. `0x5345_4154` is ASCII "SEAT".
+ */
+export const SEAT_LOCK_NAMESPACE = 0x5345_4154;
+
 export type SyncLockOutcome<T> =
   | { acquired: true; value: T }
   | { acquired: false };
@@ -65,6 +74,20 @@ export class ProvisioningLockWaitTimeoutError extends Error {
       `Timed out after ${timeoutMs}ms waiting for the provisioning lock on ${auth0Sub}`
     );
     this.name = "ProvisioningLockWaitTimeoutError";
+  }
+}
+
+/**
+ * Thrown by {@link SyncLockService.withSeatLock} when the wait budget elapses
+ * (#584) — seat mutations are a handful of rows, so a timeout means the org's
+ * seat lock is wedged; the caller gives up rather than block indefinitely.
+ */
+export class SeatLockWaitTimeoutError extends Error {
+  constructor(timeoutMs: number, organizationId: string) {
+    super(
+      `Timed out after ${timeoutMs}ms waiting for the seat lock on organization ${organizationId}`
+    );
+    this.name = "SeatLockWaitTimeoutError";
   }
 }
 
@@ -318,6 +341,64 @@ export class SyncLockService {
           logger.error(
             { event: "provision-lock.unlock-failed", auth0Sub, err },
             "Provisioning advisory unlock failed; the lock will be released when this session ends"
+          );
+        }
+      }
+      reserved.release();
+    }
+  }
+
+  /**
+   * Wait-then-hold advisory lock for org seat mutations (#584), keyed by
+   * `organizationId`. Invite and accept run a check-then-write spanning
+   * memberships + pending invitations; serializing per org here is what makes
+   * the tier seat cap impossible to overshoot under concurrent invites. Waiting
+   * (not the non-blocking {@link withAdvisoryLock}): a concurrent invite must
+   * queue and re-evaluate the count, not be dropped. Same structure as
+   * {@link withProvisioningLock}, distinct namespace.
+   */
+  static async withSeatLock<T>(
+    organizationId: string,
+    fn: () => Promise<T>,
+    opts: { timeoutMs?: number; pollMs?: number } = {}
+  ): Promise<T> {
+    const timeoutMs = opts.timeoutMs ?? 10_000;
+    const pollMs = opts.pollMs ?? 250;
+    const deadline = Date.now() + timeoutMs;
+    const reserved = await reserveConnection();
+    let held = false;
+
+    try {
+      for (;;) {
+        const rows = (await reserved.unsafe(
+          `SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked`,
+          [SEAT_LOCK_NAMESPACE, organizationId]
+        )) as unknown as Array<{ locked: boolean }>;
+        held = rows[0]?.locked === true;
+        if (held) break;
+
+        if (Date.now() + pollMs > deadline) {
+          logger.warn(
+            { event: "seat-lock.wait-timeout", organizationId },
+            "Seat advisory lock not released within the wait budget"
+          );
+          throw new SeatLockWaitTimeoutError(timeoutMs, organizationId);
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+      }
+
+      return await fn();
+    } finally {
+      if (held) {
+        try {
+          await reserved.unsafe(`SELECT pg_advisory_unlock($1, hashtext($2))`, [
+            SEAT_LOCK_NAMESPACE,
+            organizationId,
+          ]);
+        } catch (err) {
+          logger.error(
+            { event: "seat-lock.unlock-failed", organizationId, err },
+            "Seat advisory unlock failed; the lock will be released when this session ends"
           );
         }
       }

@@ -37,6 +37,7 @@ export class WebhookService {
           email: payload.email ?? null,
           name: payload.name ?? null,
           picture: payload.picture ?? null,
+          emailVerified: payload.email_verified ?? false,
         }),
         { sourceIp: payload.ip ?? null, userAgent: payload.user_agent ?? null }
       ).catch((err) => {

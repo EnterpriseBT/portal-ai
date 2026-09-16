@@ -84,6 +84,9 @@ export const tiers = pgTable(
       // degrades `organizations`'s inferred row type to `Record<string, any>`.
       (): AnyPgColumn => organizations.id
     ),
+    /** #584: max org seats (accepted members + pending invites) on this tier.
+     *  Null = unlimited (enterprise/custom), mirroring the charge grid. */
+    maxSeats: integer("max_seats"),
   },
   (t) => [
     // FULL unique CONSTRAINT (not a soft-delete-partial index): `slug` is the
@@ -124,6 +127,11 @@ export const tiers = pgTable(
         AND (${t.expensiveRatePerMin} IS NULL OR ${t.expensiveRatePerMin} >= 0)
         AND (${t.agentTurnsPerMin} IS NULL OR ${t.agentTurnsPerMin} >= 0)
         AND (${t.agentTurnsPerDay} IS NULL OR ${t.agentTurnsPerDay} >= 0)`
+    ),
+    // #584: a seat cap, when set, must admit at least one member.
+    check(
+      "tiers_max_seats_nonneg",
+      sql`${t.maxSeats} IS NULL OR ${t.maxSeats} >= 1`
     ),
   ]
 );

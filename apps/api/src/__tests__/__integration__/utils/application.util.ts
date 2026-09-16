@@ -42,6 +42,7 @@ const {
   usage,
   toolUsageLedger,
   auditLog,
+  invitations,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -191,6 +192,7 @@ export async function teardownOrg(db: Db): Promise<void> {
     await tx.execute(sql`SET LOCAL app.audit_retention_purge = 'on'`);
     await tx.delete(auditLog);
   });
+  await db.delete(invitations); // #584: FK → organizations + users
   await db.delete(organizationUsers);
   await db.delete(organizations);
   await db.delete(users);

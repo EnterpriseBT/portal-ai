@@ -152,6 +152,10 @@ export const TierSchema = CoreSchema.extend({
   /** Per-client custom-tier scoping (#241): the org this tier is visible to.
    *  Null = public (all orgs). Set = private to that one org. */
   visibleToOrganizationId: z.string().nullable(),
+  /** Max org seats (accepted members + pending invites) on this tier (#584).
+   *  Null = unlimited (enterprise/custom), mirroring the allocation grid. DB
+   *  column `max_seats`, CHECK `max_seats IS NULL OR max_seats >= 1`. */
+  maxSeats: z.number().int().min(1).nullable(),
 });
 export type Tier = z.infer<typeof TierSchema>;
 

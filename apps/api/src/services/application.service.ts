@@ -21,6 +21,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { SeedService } from "./seed.service.js";
 import { AuditService } from "./audit.service.js";
+import { SeatService } from "./seat.service.js";
 import { SyncLockService } from "./sync-lock.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -153,6 +154,7 @@ export class ApplicationService {
       email: string | null;
       name: string | null;
       picture: string | null;
+      emailVerified: boolean;
     }>,
     auditCtx?: { sourceIp: string | null; userAgent: string | null }
   ): Promise<{
@@ -164,8 +166,9 @@ export class ApplicationService {
     return SyncLockService.withProvisioningLock(auth0Sub, async () => {
       // ── User (find-or-create) ──────────────────────────────────────
       let userRow = await DbService.repository.users.findByAuth0Id(auth0Sub);
+      let profile: Awaited<ReturnType<typeof resolveProfile>> | null = null;
       if (!userRow) {
-        const profile = await resolveProfile();
+        profile = await resolveProfile();
         const model = new UserModelFactory()
           .create(SystemUtilities.id.system)
           .update({
@@ -181,6 +184,28 @@ export class ApplicationService {
         userRow = res.user;
       }
       const user = userRow;
+
+      // ── Invited user? (#584) ───────────────────────────────────────
+      // Only on a just-created user with a VERIFIED email: accept any pending
+      // invitations for that email and join the invited org(s) instead of
+      // provisioning a personal org ("invited user joins the invited org
+      // only"). Existing-user-no-membership falls through to personal-org
+      // provisioning unchanged (they accept via the token endpoint).
+      if (profile?.emailVerified && profile.email) {
+        const joined = await SeatService.acceptPendingForEmail(
+          user,
+          profile.email,
+          auditCtx ?? { sourceIp: null, userAgent: null }
+        );
+        if (joined) {
+          return {
+            user,
+            organization: joined.organization,
+            organizationUser: joined.organizationUser,
+            created: true,
+          };
+        }
+      }
 
       // ── Org (provision iff no live membership) ─────────────────────
       const current = await ApplicationService.getCurrentOrganization(user.id);

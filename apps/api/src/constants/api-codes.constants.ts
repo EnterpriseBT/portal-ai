@@ -43,6 +43,21 @@ export enum ApiCode {
   /** The caller's role lacks the permission required for this action. 403. */
   INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE",
 
+  // Seats / invitations (#584)
+  /** Invite target is already a live member of the org. 409. */
+  MEMBER_ALREADY_EXISTS = "MEMBER_ALREADY_EXISTS",
+  /** A live pending invite for this (org, email) already exists — resend it
+   *  rather than creating a duplicate. 409. */
+  INVITATION_ALREADY_PENDING = "INVITATION_ALREADY_PENDING",
+  /** The tier seat cap (accepted members + pending invites) is reached. 409. */
+  SEAT_LIMIT_EXCEEDED = "SEAT_LIMIT_EXCEEDED",
+  /** No live invitation for the given id/token. 404. */
+  INVITATION_NOT_FOUND = "INVITATION_NOT_FOUND",
+  /** The invitation has expired and can no longer be accepted. 410. */
+  INVITATION_EXPIRED = "INVITATION_EXPIRED",
+  /** Removing this member would strand the org with no owner. 409. */
+  LAST_OWNER_REMOVAL = "LAST_OWNER_REMOVAL",
+
   // Billing (#176)
   /** Stripe env keys absent in this environment. 503. */
   BILLING_NOT_CONFIGURED = "BILLING_NOT_CONFIGURED",

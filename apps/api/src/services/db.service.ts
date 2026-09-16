@@ -38,6 +38,7 @@ import {
   stripeEventsRepo,
   toolUsageLedgerRepo,
   auditLogRepo,
+  invitationsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -120,6 +121,7 @@ export class DbService {
       stripeEvents: stripeEventsRepo,
       toolUsageLedger: toolUsageLedgerRepo,
       auditLog: auditLogRepo,
+      invitations: invitationsRepo,
     };
   }
 }

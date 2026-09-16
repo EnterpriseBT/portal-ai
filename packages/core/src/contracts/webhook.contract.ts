@@ -6,6 +6,10 @@ import { z } from "zod";
 export const Auth0PostLoginWebhookPayloadSchema = z.object({
   user_id: z.string().min(1),
   email: z.string().optional(),
+  /** #584: whether Auth0 considers the email verified — forwarded by the Action
+   *  (`event.user.email_verified`). Gates the invite email-match on the eager
+   *  (webhook) provisioning path; absent → treated as unverified. */
+  email_verified: z.boolean().optional(),
   name: z.string().optional(),
   picture: z.string().optional(),
   // #575: the END USER's request context, forwarded by the Auth0 post-login

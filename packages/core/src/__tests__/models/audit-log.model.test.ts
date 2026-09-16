@@ -59,6 +59,17 @@ describe("AuditLogEntrySchema", () => {
     expect(AUDIT_ACTIONS).toContain("member.role.change");
   });
 
+  it("includes the invitation lifecycle actions (#584)", () => {
+    expect(AUDIT_ACTIONS).toEqual(
+      expect.arrayContaining([
+        "member.invite",
+        "member.invite.accept",
+        "member.invite.revoke",
+        "member.invite.resend",
+      ])
+    );
+  });
+
   it("accepts every declared AuditAction", () => {
     for (const action of AUDIT_ACTIONS) {
       const model = new AuditLogEntryModelFactory()

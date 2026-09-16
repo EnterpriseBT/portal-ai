@@ -33,3 +33,4 @@ export * from "./usage.repository.js";
 export * from "./stripe-events.repository.js";
 export * from "./tool-usage-ledger.repository.js";
 export * from "./audit-log.repository.js";
+export * from "./invitations.repository.js";

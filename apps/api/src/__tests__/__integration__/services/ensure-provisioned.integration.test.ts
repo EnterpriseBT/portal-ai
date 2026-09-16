@@ -28,17 +28,23 @@ import { SeedService } from "../../../services/seed.service.js";
 import {
   generateId,
   createUser,
+  createOrganization,
+  createOrganizationUser,
   teardownOrg,
 } from "../utils/application.util.js";
 
-const { users, organizations, auditLog } = schema;
+const { users, organizations, organizationUsers, invitations, auditLog } =
+  schema;
 
 /** A profile resolver that records how many times it was asked. */
-const profileResolver = () =>
+const profileResolver = (
+  opts: { email?: string; emailVerified?: boolean } = {}
+) =>
   jest.fn(async () => ({
-    email: `resolved-${generateId()}@example.com`,
+    email: opts.email ?? `resolved-${generateId()}@example.com`,
     name: "Resolved User",
     picture: null,
+    emailVerified: opts.emailVerified ?? false,
   }));
 
 describe("ApplicationService.ensureProvisioned Integration Tests", () => {
@@ -213,5 +219,98 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     await new Promise((r) => setTimeout(r, 75));
     expect(await auditRows("org.create")).toHaveLength(1);
     expect(await auditRows("auth.login")).toHaveLength(1);
+  });
+
+  // ── invited-user branch (#584, Decision 2-C) ────────────────────────
+
+  /** Seed an inviter org + a pending invitation for `email`; return its org. */
+  async function seedPendingInvite(email: string, role: "member" | "admin") {
+    const client = db as ReturnType<typeof drizzle>;
+    const inviter = createUser(`auth0|${generateId()}`);
+    await client.insert(users).values(inviter as never);
+    const org = createOrganization(inviter.id);
+    await client.insert(organizations).values(org as never);
+    await client
+      .insert(organizationUsers)
+      .values(
+        createOrganizationUser(org.id, inviter.id, { role: "owner" }) as never
+      );
+    await DbService.repository.invitations.create({
+      id: generateId(),
+      created: Date.now(),
+      createdBy: inviter.id,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: org.id,
+      email: email.toLowerCase(),
+      role,
+      tokenHash: `hash-${generateId()}`,
+      status: "pending",
+      expiresAt: Date.now() + 3_600_000,
+      invitedByUserId: inviter.id,
+      acceptedByUserId: null,
+      acceptedAt: null,
+    } as never);
+    return org.id;
+  }
+
+  it("verified email with a pending invite → joins the invited org, no personal org", async () => {
+    const email = `invitee-${generateId()}@example.com`;
+    const invitedOrgId = await seedPendingInvite(email, "member");
+    const auth0Sub = sub();
+
+    const result = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver({ email, emailVerified: true })
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.organization.id).toBe(invitedOrgId);
+    expect(result.organizationUser.role).toBe("member");
+    // No personal org was provisioned for the new user.
+    expect(await orgsOwnedBy(result.user.id)).toHaveLength(0);
+  });
+
+  it("UNverified email with a pending invite → personal org (invite untouched)", async () => {
+    const email = `invitee-${generateId()}@example.com`;
+    await seedPendingInvite(email, "member");
+    const auth0Sub = sub();
+
+    const result = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver({ email, emailVerified: false })
+    );
+
+    expect(result.created).toBe(true);
+    // A personal owner-org was provisioned; the invite was not consumed.
+    expect(result.organization.ownerUserId).toBe(result.user.id);
+    expect(result.organizationUser.role).toBe("owner");
+    const stillPending = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(invitations)
+      .where(eq(invitations.email, email.toLowerCase()));
+    expect(stillPending[0].status).toBe("pending");
+  });
+
+  it("existing user with no membership → personal org (invite branch not consulted)", async () => {
+    // #583 case 6 preserved: an existing user fetches no profile, so the
+    // verified-email branch never runs even if an invite exists for the email.
+    const auth0Sub = sub();
+    const existing = await DbService.repository.users.create(
+      createUser(auth0Sub, { email: "existing@example.com" }) as never
+    );
+    await seedPendingInvite("existing@example.com", "member");
+
+    const result = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver({ email: "existing@example.com", emailVerified: true })
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.user.id).toBe(existing.id);
+    expect(result.organization.ownerUserId).toBe(existing.id); // personal org
+    expect(result.organizationUser.role).toBe("owner");
   });
 });
