@@ -37,10 +37,14 @@ ENV VITE_APP_VERSION=$VITE_APP_VERSION \
 COPY package*.json turbo.json tsconfig.json ./
 COPY apps/web/package*.json apps/web/
 COPY packages/core/package*.json packages/core/
+# @portalai/core's contracts import @portalai/spreadsheet-parsing, so it must be
+# present for core (and thus web) to build.
+COPY packages/spreadsheet-parsing/package*.json packages/spreadsheet-parsing/
 
 RUN npm ci
 
-# Sources (web depends on @portalai/core only).
+# Sources: web → core → spreadsheet-parsing (turbo builds them in order).
+COPY packages/spreadsheet-parsing/ packages/spreadsheet-parsing/
 COPY packages/core/ packages/core/
 COPY apps/web/ apps/web/
 
