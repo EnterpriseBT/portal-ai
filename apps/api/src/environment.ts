@@ -53,6 +53,10 @@ export const environment = {
   SYSTEM_ID: process.env.SYSTEM_ID,
   // Anthropic configuration
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  // Optional base-URL override for the Anthropic client (#567) — a proxy /
+  // self-hosted gateway seam for off-AWS / residency installs. Unset ("") ⇒
+  // the SDK default (https://api.anthropic.com/v1); behavior unchanged.
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "",
   // Per-stage model overrides for `interpret()`. Default to Haiku 4.5 — both
   // stages are narrow, schema-constrained sub-tasks (header→column-definition
   // match, axis-label→axis-name propose) that Haiku handles in ~1 s each vs.
@@ -205,6 +209,12 @@ export const environment = {
   UPLOAD_S3_BUCKET: process.env.UPLOAD_S3_BUCKET || "",
   UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
   UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",
+  // Portability seams (#567) — point object storage at an S3-compatible
+  // endpoint (MinIO / Ceph / R2). Both unset ⇒ today's AWS-S3 behavior.
+  // Credentials still resolve through the AWS SDK credential chain
+  // (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), never read here.
+  UPLOAD_S3_ENDPOINT: process.env.UPLOAD_S3_ENDPOINT || "",
+  UPLOAD_S3_FORCE_PATH_STYLE: process.env.UPLOAD_S3_FORCE_PATH_STYLE === "true",
   UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(
     process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "1800",
     10

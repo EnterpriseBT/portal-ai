@@ -9,15 +9,41 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+import type { S3ClientConfig } from "@aws-sdk/client-s3";
+
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "s3-service" });
 
-const s3Client = new S3Client({
-  region: environment.UPLOAD_S3_REGION,
-  requestChecksumCalculation: "WHEN_REQUIRED",
-});
+/**
+ * Build the `S3Client` config from environment (#567). When
+ * `UPLOAD_S3_ENDPOINT` is set, the client targets an S3-compatible object
+ * store (MinIO / Ceph / R2) with path-style addressing per
+ * `UPLOAD_S3_FORCE_PATH_STYLE`; unset leaves the AWS-S3 default untouched.
+ * Credentials are intentionally NOT read here — they resolve through the AWS
+ * SDK credential chain (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, ~/.aws,
+ * IAM role), which keeps the env-parity guard's READ_BY_OTHERS invariant.
+ */
+export function buildS3ClientConfig(
+  env: Pick<
+    typeof environment,
+    "UPLOAD_S3_REGION" | "UPLOAD_S3_ENDPOINT" | "UPLOAD_S3_FORCE_PATH_STYLE"
+  >
+): S3ClientConfig {
+  return {
+    region: env.UPLOAD_S3_REGION,
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    ...(env.UPLOAD_S3_ENDPOINT
+      ? {
+          endpoint: env.UPLOAD_S3_ENDPOINT,
+          forcePathStyle: env.UPLOAD_S3_FORCE_PATH_STYLE,
+        }
+      : {}),
+  };
+}
+
+const s3Client = new S3Client(buildS3ClientConfig(environment));
 
 /**
  * Thin wrapper over the AWS S3 SDK for the upload-streaming pipeline.
