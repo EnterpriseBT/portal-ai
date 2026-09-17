@@ -666,6 +666,13 @@
       "when": 1789674043979,
       "tag": "0094_rename_stripe_events_to_commercial_events",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789675181734,
+      "tag": "0095_add_org_marketplace_entitlement_columns",
+      "breakpoints": true
     }
   ]
 }

@@ -50,6 +50,28 @@ export class OrganizationsRepository extends Repository<
       .limit(1);
     return row;
   }
+
+  /** Find the org tracking an AWS Marketplace entitlement (#568; the column
+   *  is UNIQUE where not null). */
+  async findByMarketplaceEntitlementId(
+    marketplaceEntitlementId: string,
+    client: DbClient = db
+  ): Promise<OrganizationSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(
+            organizations.marketplaceEntitlementId,
+            marketplaceEntitlementId
+          ),
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return row;
+  }
 }
 
 /** Singleton instance. */
