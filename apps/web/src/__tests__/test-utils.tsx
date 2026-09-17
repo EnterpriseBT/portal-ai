@@ -10,6 +10,24 @@ import {
 } from "@tanstack/react-router";
 import { LayoutProvider } from "../providers/Layout.provider";
 import { ToastProvider } from "../providers/Toast.provider";
+import { AuthContext, NormalizedAuth } from "../providers/Auth.provider";
+
+// A default normalized auth so components rendered here that read the auth seam
+// (#607) — directly via `useAuth()` or through `sdk.auth.*` — don't hit the
+// "must be used within an AuthProvider" guard. Tests that need a specific
+// session pass `auth`. Bypasses the real vendor bridge, so no Auth0/OIDC SDK is
+// mounted in unit tests.
+const defaultAuth: NormalizedAuth = {
+  session: {
+    user: { name: "Test User", picture: "https://example.com/pic.jpg" },
+    isAuthenticated: true,
+    isLoading: false,
+    error: undefined,
+  },
+  getToken: async () => "test-token",
+  login: { withGoogle: () => {}, withUniversal: () => {} },
+  logout: () => {},
+};
 
 const createTestRouter = () => {
   const rootRoute = createRootRoute();
@@ -22,30 +40,38 @@ const createTestRouter = () => {
 
 interface CustomRenderOptions extends Omit<RenderOptions, "wrapper"> {
   queryClient?: QueryClient;
+  auth?: Partial<NormalizedAuth>;
 }
 
 function renderWithProviders(
   ui: React.ReactElement,
-  { queryClient = new QueryClient(), ...options }: CustomRenderOptions = {}
+  {
+    queryClient = new QueryClient(),
+    auth,
+    ...options
+  }: CustomRenderOptions = {}
 ) {
   const testRouter = createTestRouter();
+  const authValue: NormalizedAuth = { ...defaultAuth, ...auth };
 
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <ThemeProvider defaultTheme="brand">
-        <QueryClientProvider client={queryClient}>
-          <LayoutProvider>
-            {/* Mirrors Application.provider's chain (#293): inside the theme,
-                outside the router. Without it, any component under test that
-                raises a toast would silently hit the no-op fallback. */}
-            <ToastProvider>
-              <RouterContextProvider router={testRouter}>
-                {children}
-              </RouterContextProvider>
-            </ToastProvider>
-          </LayoutProvider>
-        </QueryClientProvider>
-      </ThemeProvider>
+      <AuthContext.Provider value={authValue}>
+        <ThemeProvider defaultTheme="brand">
+          <QueryClientProvider client={queryClient}>
+            <LayoutProvider>
+              {/* Mirrors Application.provider's chain (#293): inside the theme,
+                  outside the router. Without it, any component under test that
+                  raises a toast would silently hit the no-op fallback. */}
+              <ToastProvider>
+                <RouterContextProvider router={testRouter}>
+                  {children}
+                </RouterContextProvider>
+              </ToastProvider>
+            </LayoutProvider>
+          </QueryClientProvider>
+        </ThemeProvider>
+      </AuthContext.Provider>
     );
   }
 
