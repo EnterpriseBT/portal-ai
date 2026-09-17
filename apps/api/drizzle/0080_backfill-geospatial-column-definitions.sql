@@ -13,6 +13,14 @@
 --
 -- Adding an entry to SYSTEM_COLUMN_DEFINITIONS requires a migration like this
 -- one; see the note on that array in apps/api/src/services/seed.service.ts.
+--
+-- Machine-readable proof of that backfill (#581): the backfill-coverage guard
+-- (src/__tests__/services/seed-backfill-coverage.test.ts) scans for these
+-- markers, so each geospatial key here is proven-by-migration rather than
+-- grandfathered. One marker per key inserted below.
+-- backfill:system-column:geometry
+-- backfill:system-column:latitude
+-- backfill:system-column:longitude
 INSERT INTO "column_definitions" (
 	"id", "created", "created_by", "organization_id",
 	"key", "label", "type", "description",
