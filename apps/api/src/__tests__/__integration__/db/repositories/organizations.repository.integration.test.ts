@@ -79,10 +79,7 @@ describe("OrganizationsRepository — marketplace entitlement (#568)", () => {
       marketplaceEntitlementId: "aws-ent-find",
       entitlementThrough: 1_900_000_000_000,
     });
-    const found = await repo.findByMarketplaceEntitlementId(
-      "aws-ent-find",
-      db
-    );
+    const found = await repo.findByMarketplaceEntitlementId("aws-ent-find", db);
     expect(found?.id).toBe(org.id);
     expect(found?.entitlementThrough).toBe(1_900_000_000_000);
   });

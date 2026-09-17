@@ -81,7 +81,10 @@ describe("CommercialEventsRepository Integration Tests", () => {
     const externalId = `evt_${generateId()}`;
 
     const first = await repo.insertIfNew(eventRow({ externalId }) as never, db);
-    const second = await repo.insertIfNew(eventRow({ externalId }) as never, db);
+    const second = await repo.insertIfNew(
+      eventRow({ externalId }) as never,
+      db
+    );
 
     expect(first).toBe(true);
     expect(second).toBe(false);

@@ -31,7 +31,13 @@ const marketplaceFields = {
   outcome: "applied" as const,
 };
 
-const OUTCOMES = ["applied", "noop", "unmatched", "ignored", "foreign"] as const;
+const OUTCOMES = [
+  "applied",
+  "noop",
+  "unmatched",
+  "ignored",
+  "foreign",
+] as const;
 
 // ── Tests ────────────────────────────────────────────────────────────
 

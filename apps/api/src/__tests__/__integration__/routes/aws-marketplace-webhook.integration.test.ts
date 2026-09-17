@@ -37,8 +37,9 @@ jest.unstable_mockModule("../../../services/marketplace.service.js", () => ({
   MarketplaceService: { isConfigured: () => mockIsConfigured },
 }));
 
-const mockApply =
-  jest.fn<(...args: unknown[]) => Promise<string>>().mockResolvedValue("applied");
+const mockApply = jest
+  .fn<(...args: unknown[]) => Promise<string>>()
+  .mockResolvedValue("applied");
 jest.unstable_mockModule("../../../services/tier-grant.service.js", () => ({
   TierGrantService: { apply: mockApply },
   StripeGrantSource: class {},

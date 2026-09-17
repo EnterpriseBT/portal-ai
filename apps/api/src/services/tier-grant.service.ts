@@ -242,9 +242,7 @@ export class StripeGrantSource implements TierGrantSource<Stripe.Event> {
  * `entitlementThrough` to now (derived read-only) — the tier is left
  * unchanged, so no data is lost; renewal restores the future term.
  */
-export class AwsMarketplaceGrantSource
-  implements TierGrantSource<MarketplaceNotification>
-{
+export class AwsMarketplaceGrantSource implements TierGrantSource<MarketplaceNotification> {
   idempotencyKey(notification: MarketplaceNotification): string {
     return notification.MessageId;
   }

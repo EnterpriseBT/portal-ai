@@ -62,10 +62,7 @@ export class OrganizationsRepository extends Repository<
       .from(this.table)
       .where(
         and(
-          eq(
-            organizations.marketplaceEntitlementId,
-            marketplaceEntitlementId
-          ),
+          eq(organizations.marketplaceEntitlementId, marketplaceEntitlementId),
           this.notDeleted()
         )
       )
@@ -78,7 +75,9 @@ export class OrganizationsRepository extends Repository<
    * one org (#568), which a marketplace entitlement grants to. Undefined when
    * there is not exactly one (zero, or ambiguous with more than one).
    */
-  async findSole(client: DbClient = db): Promise<OrganizationSelect | undefined> {
+  async findSole(
+    client: DbClient = db
+  ): Promise<OrganizationSelect | undefined> {
     const rows = await (client as typeof db)
       .select()
       .from(this.table)

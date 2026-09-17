@@ -175,11 +175,17 @@ const _usageInferredToModel: _UsageInferredToModel = true;
 // ── CommercialEvent ──────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _CommEvtDrizzleToModel = IsAssignable<CommercialEventSelect, CommercialEvent>;
+type _CommEvtDrizzleToModel = IsAssignable<
+  CommercialEventSelect,
+  CommercialEvent
+>;
 const _commEvtDrizzleToModel: _CommEvtDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _CommEvtModelToDrizzle = IsAssignable<CommercialEvent, CommercialEventSelect>;
+type _CommEvtModelToDrizzle = IsAssignable<
+  CommercialEvent,
+  CommercialEventSelect
+>;
 const _commEvtModelToDrizzle: _CommEvtModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches

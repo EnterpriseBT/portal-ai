@@ -15,9 +15,9 @@ describe("isEntitlementExpired (#568, case 15)", () => {
   });
 
   it("a past term is expired", () => {
-    expect(
-      isEntitlementExpired({ entitlementThrough: NOW - 1 }, NOW)
-    ).toBe(true);
+    expect(isEntitlementExpired({ entitlementThrough: NOW - 1 }, NOW)).toBe(
+      true
+    );
   });
 
   it("a term exactly at now is not yet expired (strict less-than)", () => {

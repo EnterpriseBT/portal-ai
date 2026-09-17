@@ -25,7 +25,8 @@ jest.unstable_mockModule("../../services/marketplace.service.js", () => ({
   },
 }));
 
-const mockFindSole = jest.fn<() => Promise<Record<string, unknown> | undefined>>();
+const mockFindSole =
+  jest.fn<() => Promise<Record<string, unknown> | undefined>>();
 const mockOrgUpdate =
   jest.fn<(...a: unknown[]) => Promise<Record<string, unknown>>>();
 const mockInsertIfNew = jest.fn<(...a: unknown[]) => Promise<boolean>>();
@@ -41,9 +42,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { TierGrantService, AwsMarketplaceGrantSource } = await import(
-  "../../services/tier-grant.service.js"
-);
+const { TierGrantService, AwsMarketplaceGrantSource } =
+  await import("../../services/tier-grant.service.js");
 
 const NOTIFICATION = { MessageId: "msg-1", action: "entitlement-updated" };
 const FUTURE = 1_900_000_000_000;
@@ -134,7 +134,10 @@ describe("AwsMarketplaceGrantSource.resolve (#568)", () => {
     if (res.outcome !== "grant") throw new Error("expected grant");
     expect(res.changed).toBe(true);
     // term set to now (⇒ derived read-only for any later request); tier UNTOUCHED
-    const update = res.orgUpdate as { entitlementThrough: number; tier?: string };
+    const update = res.orgUpdate as {
+      entitlementThrough: number;
+      tier?: string;
+    };
     expect(update.entitlementThrough).toBeGreaterThanOrEqual(before);
     expect(update.entitlementThrough).toBeLessThanOrEqual(after);
     expect(update.tier).toBeUndefined();

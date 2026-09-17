@@ -24,11 +24,12 @@ const mockEnv = {
   AWS_MARKETPLACE_REGION: "us-east-1",
   SYSTEM_ID: "SYSTEM",
 };
-jest.unstable_mockModule("../../environment.js", () => ({ environment: mockEnv }));
+jest.unstable_mockModule("../../environment.js", () => ({
+  environment: mockEnv,
+}));
 
-const { MarketplaceService } = await import(
-  "../../services/marketplace.service.js"
-);
+const { MarketplaceService } =
+  await import("../../services/marketplace.service.js");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -77,7 +78,9 @@ describe("MarketplaceService.getEntitlement (#568, case 8)", () => {
       expirationDate: 1_900_000_000_000,
     });
     // the converge read is scoped to the configured product
-    const cmd = mockSend.mock.calls[0]?.[0] as { input: { ProductCode: string } };
+    const cmd = mockSend.mock.calls[0]?.[0] as {
+      input: { ProductCode: string };
+    };
     expect(cmd.input.ProductCode).toBe("prod-abc");
   });
 

@@ -317,9 +317,7 @@ if (isSaas()) {
 // X.509 (not HMAC), so verification goes through sns-validator.
 const snsValidator = new MessageValidator();
 
-function validateSnsSignature(
-  message: Record<string, unknown>
-): Promise<void> {
+function validateSnsSignature(message: Record<string, unknown>): Promise<void> {
   return new Promise((resolve, reject) => {
     snsValidator.validate(message as never, (err) =>
       err ? reject(err) : resolve()
@@ -423,9 +421,7 @@ webhookRouter.post(
           {
             MessageId: String(message.MessageId),
             action:
-              typeof message.Subject === "string"
-                ? message.Subject
-                : undefined,
+              typeof message.Subject === "string" ? message.Subject : undefined,
           }
         );
         logger.info(

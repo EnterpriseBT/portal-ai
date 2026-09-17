@@ -95,12 +95,8 @@ export const CommercialEventSelectSchema = createSelectSchema(commercialEvents);
 export const CommercialEventInsertSchema = createInsertSchema(commercialEvents);
 
 /** Inferred types */
-export type CommercialEventSelect = z.infer<
-  typeof CommercialEventSelectSchema
->;
-export type CommercialEventInsert = z.infer<
-  typeof CommercialEventInsertSchema
->;
+export type CommercialEventSelect = z.infer<typeof CommercialEventSelectSchema>;
+export type CommercialEventInsert = z.infer<typeof CommercialEventInsertSchema>;
 
 // ── Tool Usage Ledger ─────────────────────────────────────────────────
 

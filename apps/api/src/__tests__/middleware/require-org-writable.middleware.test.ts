@@ -18,9 +18,8 @@ jest.unstable_mockModule("../../services/application.service.js", () => ({
   ApplicationService: { getCurrentOrganization: mockGetCurrentOrganization },
 }));
 
-const { requireOrgWritable } = await import(
-  "../../middleware/require-org-writable.middleware.js"
-);
+const { requireOrgWritable } =
+  await import("../../middleware/require-org-writable.middleware.js");
 const { ApiError } = await import("../../services/http.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
@@ -37,8 +36,11 @@ function makeReq(method: string, path = "/stations"): Request {
 
 function run(req: Request): Promise<unknown> {
   return new Promise((resolve) => {
-    requireOrgWritable(req, {} as Response, ((err?: unknown) =>
-      resolve(err)) as NextFunction);
+    requireOrgWritable(
+      req,
+      {} as Response,
+      ((err?: unknown) => resolve(err)) as NextFunction
+    );
   });
 }
 
@@ -94,7 +96,11 @@ describe("requireOrgWritable (#568)", () => {
   });
 
   it("allows a POST when there is no auth subject (downstream auth handles it)", async () => {
-    const req = { method: "POST", path: "/stations", auth: undefined } as unknown as Request;
+    const req = {
+      method: "POST",
+      path: "/stations",
+      auth: undefined,
+    } as unknown as Request;
     const err = await run(req);
     expect(err).toBeUndefined();
     expect(mockFindByAuth0Id).not.toHaveBeenCalled();

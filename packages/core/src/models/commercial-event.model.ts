@@ -16,7 +16,10 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  */
 
 /** The commercial rail an event arrived on. */
-export const CommercialEventSourceSchema = z.enum(["stripe", "aws_marketplace"]);
+export const CommercialEventSourceSchema = z.enum([
+  "stripe",
+  "aws_marketplace",
+]);
 export type CommercialEventSource = z.infer<typeof CommercialEventSourceSchema>;
 
 /**
