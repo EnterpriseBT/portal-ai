@@ -580,7 +580,7 @@ const options: swaggerJsdoc.Options = {
         },
         HealthReadyResponse: {
           type: "object",
-          required: ["ready", "checks"],
+          required: ["ready", "checks", "timestamp"],
           properties: {
             ready: {
               type: "boolean",
@@ -601,6 +601,11 @@ const options: swaggerJsdoc.Options = {
                   description: "Redis reachable",
                 },
               },
+            },
+            timestamp: {
+              type: "string",
+              format: "date-time",
+              description: "Server timestamp when the probe ran",
             },
           },
         },

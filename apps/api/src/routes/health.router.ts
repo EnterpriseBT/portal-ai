@@ -143,11 +143,17 @@ healthRouter.get(
         ),
     });
 
+    const timestamp = new Date().toISOString();
+
     if (!result.ready) {
       logger.warn({ checks: result.checks }, "Readiness probe failed");
+      // The 503 body carries the full readiness shape (ready:false + checks)
+      // in `details` so the probe/logs show which dependency failed.
       return next(
         new ApiError(503, ApiCode.HEALTH_NOT_READY, "Service not ready", {
+          ready: false,
           checks: result.checks,
+          timestamp,
         })
       );
     }
@@ -155,6 +161,7 @@ healthRouter.get(
     const payload: HealthReadyResponse = {
       ready: true,
       checks: result.checks,
+      timestamp,
     };
     return HttpService.success(res, payload);
   }

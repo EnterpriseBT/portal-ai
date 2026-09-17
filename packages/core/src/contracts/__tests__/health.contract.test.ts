@@ -4,10 +4,13 @@ import {
 } from "../health.contract.js";
 
 describe("HealthReadyResponseSchema", () => {
+  const timestamp = new Date().toISOString();
+
   it("accepts a valid readiness payload", () => {
     const result = HealthReadyResponseSchema.safeParse({
       ready: true,
       checks: { db: true, redis: true },
+      timestamp,
     });
     expect(result.success).toBe(true);
   });
@@ -16,12 +19,16 @@ describe("HealthReadyResponseSchema", () => {
     const result = HealthReadyResponseSchema.safeParse({
       ready: false,
       checks: { db: true, redis: false },
+      timestamp,
     });
     expect(result.success).toBe(true);
   });
 
   it("rejects a payload missing checks", () => {
-    const result = HealthReadyResponseSchema.safeParse({ ready: true });
+    const result = HealthReadyResponseSchema.safeParse({
+      ready: true,
+      timestamp,
+    });
     expect(result.success).toBe(false);
   });
 
@@ -29,6 +36,15 @@ describe("HealthReadyResponseSchema", () => {
     const result = HealthReadyResponseSchema.safeParse({
       ready: false,
       checks: { db: true },
+      timestamp,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a payload missing timestamp", () => {
+    const result = HealthReadyResponseSchema.safeParse({
+      ready: true,
+      checks: { db: true, redis: true },
     });
     expect(result.success).toBe(false);
   });

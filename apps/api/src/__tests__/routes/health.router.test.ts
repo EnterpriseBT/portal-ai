@@ -91,10 +91,9 @@ describe("GET /api/health/ready", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.payload).toEqual({
-      ready: true,
-      checks: { db: true, redis: true },
-    });
+    expect(res.body.payload.ready).toBe(true);
+    expect(res.body.payload.checks).toEqual({ db: true, redis: true });
+    expect(typeof res.body.payload.timestamp).toBe("string");
   });
 
   it("returns 503 with HEALTH_NOT_READY when the DB is down", async () => {
@@ -106,6 +105,7 @@ describe("GET /api/health/ready", () => {
     expect(res.status).toBe(503);
     expect(res.body.success).toBe(false);
     expect(res.body.code).toBe(ApiCode.HEALTH_NOT_READY);
+    expect(res.body.details.ready).toBe(false);
     expect(res.body.details.checks).toEqual({ db: false, redis: true });
   });
 

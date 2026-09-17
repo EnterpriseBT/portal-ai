@@ -25,6 +25,7 @@ export const HealthReadyResponseSchema = z.object({
     db: z.boolean(),
     redis: z.boolean(),
   }),
+  timestamp: z.string(),
 });
 
 export type HealthReadyResponse = z.infer<typeof HealthReadyResponseSchema>;
