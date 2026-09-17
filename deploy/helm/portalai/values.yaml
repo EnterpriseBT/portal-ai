@@ -1,0 +1,101 @@
+# Portals AI residency chart — default values. See README.md for the full
+# reference. Data-dependency bundling (postgresql/redis/minio subcharts),
+# migrate/seed hooks, ingress and the bundled Keycloak issuer land in later
+# slices (#566); this skeleton wires the api + web workloads, their config and
+# secret env, and the split liveness/readiness probes.
+
+# Container images. repository/tag are required at install (the deploy pipeline
+# pushes them to ECR; a customer mirrors them into their own registry).
+image:
+  api:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  web:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+
+# Pull secrets for a private registry, e.g. [{ name: regcred }].
+imagePullSecrets: []
+
+api:
+  replicaCount: 1
+  port: 3001
+  # Extra/override env injected directly on the api container (in addition to
+  # the ConfigMap + Secret envFrom).
+  env: {}
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  # Runs as the node image's uid-1000 `node` user. runAsNonRoot is enforced
+  # here until the image is hardened to build non-root (#571).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+web:
+  replicaCount: 1
+  # nginx-unprivileged listens on 8080.
+  port: 8080
+  env: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  # nginx-unprivileged already runs as uid 101; just assert non-root.
+  podSecurityContext:
+    runAsNonRoot: true
+
+# Per-container hardening applied to both workloads. readOnlyRootFilesystem is
+# off because the api writes transient files; tightened with #571.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# saas | residency — sets DEPLOY_MODE (selects the API's auth validator) and
+# is echoed into the web config.js.
+deployMode: saas
+
+# OIDC identity (residency). Non-secret; reaches the API validator and the web
+# config.js. Ignored in saas mode (Auth0 via secrets/config).
+oidc:
+  issuer: ""
+  audience: ""
+  clientId: ""
+
+# Non-secret env → ConfigMap. Arbitrary key/value pairs the app reads from env
+# (e.g. AUTH0_DOMAIN, PUBLIC_API_BASE_URL, CORS_ORIGIN, GOOGLE_* non-secret).
+config: {}
+
+# Secret env → Secret (e.g. ENCRYPTION_KEY, ANTHROPIC_API_KEY, AUTH0_WEBHOOK_SECRET,
+# STRIPE_*, OAUTH_STATE_SECRET). Rendered into a chart-managed Secret unless
+# existingSecret is set, in which case the app reads env from that Secret and
+# these are ignored.
+secrets: {}
+existingSecret: ""
+
+# Data dependencies. This skeleton composes DATABASE_URL / REDIS_URL from the
+# `external` blocks below; the bundled subcharts (with an `enabled` toggle) are
+# added in slice 4.
+postgresql:
+  external:
+    host: ""
+    port: 5432
+    database: portalai
+    user: portalai
+    password: ""
+
+redis:
+  external:
+    url: ""

@@ -1,0 +1,19 @@
+Portals AI ({{ .Chart.Name }}-{{ .Chart.Version }}) installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Deploy mode: {{ .Values.deployMode }}
+
+Workloads:
+  - API:  {{ include "portalai.fullname" . }}-api  (port {{ .Values.api.port }})
+  - Web:  {{ include "portalai.fullname" . }}-web  (port {{ .Values.web.port }})
+
+Check rollout:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "portalai.fullname" . }}-api
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "portalai.fullname" . }}-web
+
+Readiness (DB + Redis) is probed at /api/health/ready; liveness at /api/health.
+
+{{- if not .Values.ingress }}
+
+No ingress is defined yet. Reach the app by port-forwarding:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "portalai.fullname" . }}-web {{ .Values.web.port }}:{{ .Values.web.port }}
+{{- end }}

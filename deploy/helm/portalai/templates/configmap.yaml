@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "portalai.fullname" . }}-config
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+data:
+  DEPLOY_MODE: {{ .Values.deployMode | quote }}
+  # Web config.js selects the auth provider from AUTH_PROVIDER; default it from
+  # the deploy mode so residency installs get OIDC without a second knob.
+  AUTH_PROVIDER: {{ if eq .Values.deployMode "residency" }}"oidc"{{ else }}"auth0"{{ end }}
+  OIDC_ISSUER: {{ .Values.oidc.issuer | quote }}
+  OIDC_AUDIENCE: {{ .Values.oidc.audience | quote }}
+  OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+  {{- range $key, $value := .Values.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
