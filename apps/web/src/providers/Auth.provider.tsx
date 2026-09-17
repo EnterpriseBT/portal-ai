@@ -1,10 +1,14 @@
 import React, { useCallback, useContext, useMemo } from "react";
 import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
+import {
+  AuthProvider as OidcProvider,
+  useAuth as useOidcAuth,
+} from "react-oidc-context";
 
 import {
   getRuntimeConfig,
   resolveAuth0Settings,
-  RuntimeConfigError,
+  resolveOidcSettings,
 } from "../utils/runtime-config.util";
 
 /**
@@ -123,11 +127,53 @@ const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+/** Bridges `react-oidc-context` into the normalized `AuthContext` (residency). */
+const OidcAuthBridge: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const oidc = useOidcAuth();
+
+  const getToken = useCallback(async (): Promise<string> => {
+    if (oidc.user?.access_token) {
+      return oidc.user.access_token;
+    }
+    // Expired / not yet loaded — renew silently. A failure propagates so the
+    // caller routes it through the 401→logout path, matching Auth0.
+    const renewed = await oidc.signinSilent();
+    if (renewed?.access_token) {
+      return renewed.access_token;
+    }
+    throw new Error("Unable to acquire an access token");
+  }, [oidc]);
+
+  const value = useMemo<NormalizedAuth>(
+    () => ({
+      session: {
+        user: oidc.user?.profile as AuthUser | undefined,
+        isAuthenticated: oidc.isAuthenticated,
+        isLoading: oidc.isLoading,
+        error: oidc.error,
+      },
+      getToken,
+      // Residency login is IdP-hosted: both entry points redirect to the
+      // customer's issuer (no Google pin, no Auth0 Universal Login).
+      login: {
+        withGoogle: () => void oidc.signinRedirect(),
+        withUniversal: () => void oidc.signinRedirect(),
+      },
+      logout: () => void oidc.signoutRedirect(),
+    }),
+    [oidc, getToken]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
 /**
  * Selects the auth provider at runtime from `window.__RUNTIME_CONFIG__` (#566):
- * Auth0 (SaaS) or a generic OIDC client (residency). The OIDC branch is wired
- * in slice 3; until then a residency build **fails closed** rather than
- * silently running against our Auth0 tenant.
+ * Auth0 (SaaS) or a generic OIDC client (residency). A residency build with
+ * incomplete OIDC config **fails closed** (`resolveOidcSettings` throws) rather
+ * than silently running against our Auth0 tenant or anonymous.
  */
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -152,8 +198,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   }
 
-  // Slice 3 replaces this with the react-oidc-context provider + bridge.
-  throw new RuntimeConfigError(
-    "OIDC auth provider is not yet available in this build"
+  // Residency: a config-driven generic OIDC client. `resolveOidcSettings`
+  // throws on a blank field (fail-closed). PKCE public client (no secret).
+  const settings = resolveOidcSettings(cfg);
+  return (
+    <OidcProvider
+      authority={settings.issuer}
+      client_id={settings.clientId}
+      redirect_uri={window.location.origin}
+      scope="openid profile email offline_access"
+      extraQueryParams={{ audience: settings.audience }}
+      automaticSilentRenew={true}
+      onSigninCallback={() => {
+        // Strip ?code=&state= from the URL after the code exchange so the
+        // router doesn't see them; parity with Auth0's implicit callback.
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+      }}
+    >
+      <OidcAuthBridge>{children}</OidcAuthBridge>
+    </OidcProvider>
   );
 };

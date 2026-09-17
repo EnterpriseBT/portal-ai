@@ -23,6 +23,35 @@ jest.unstable_mockModule("@auth0/auth0-react", () => ({
   useAuth0: () => mockUseAuth0Value,
 }));
 
+const mockSigninRedirect = jest.fn();
+const mockSignoutRedirect = jest.fn();
+const mockSigninSilent = jest
+  .fn<() => Promise<{ access_token?: string } | null>>()
+  .mockResolvedValue(null);
+
+let mockOidcValue: Record<string, unknown>;
+
+jest.unstable_mockModule("react-oidc-context", () => ({
+  AuthProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useAuth: () => mockOidcValue,
+}));
+
+const RESIDENCY_CONFIG = {
+  AUTH_PROVIDER: "oidc",
+  DEPLOY_MODE: "residency",
+  OIDC_ISSUER: "https://id.customer.example",
+  OIDC_CLIENT_ID: "portalai-web",
+  OIDC_AUDIENCE: "https://api.customer.example",
+};
+
+const setRuntimeConfig = (cfg: Record<string, string>) => {
+  (
+    window as unknown as { __RUNTIME_CONFIG__: Record<string, string> }
+  ).__RUNTIME_CONFIG__ = cfg;
+};
+
 const { render, screen, fireEvent, waitFor } =
   await import("@testing-library/react");
 const { AuthProvider, useAuth } = await import("../providers/Auth.provider");
@@ -55,6 +84,7 @@ const Probe: React.FC = () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockGetAccessTokenSilently.mockResolvedValue("mock-access-token");
+  mockSigninSilent.mockResolvedValue(null);
   mockUseAuth0Value = {
     user: { name: "Ada" },
     isAuthenticated: true,
@@ -64,6 +94,19 @@ beforeEach(() => {
     loginWithRedirect: mockLoginWithRedirect,
     logout: mockLogout,
   };
+  mockOidcValue = {
+    user: { access_token: "oidc-token", profile: { name: "Rey" } },
+    isAuthenticated: true,
+    isLoading: false,
+    error: undefined,
+    signinRedirect: mockSigninRedirect,
+    signoutRedirect: mockSignoutRedirect,
+    signinSilent: mockSigninSilent,
+  };
+});
+
+afterEach(() => {
+  delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
 });
 
 describe("useAuth() seam — Auth0 bridge (#607)", () => {
@@ -144,5 +187,47 @@ describe("useAuth() seam — Auth0 bridge (#607)", () => {
       "useAuth must be used within an AuthProvider"
     );
     spy.mockRestore();
+  });
+});
+
+describe("useAuth() seam — OIDC bridge (#607)", () => {
+  it("case 11 — session/token map from react-oidc-context; login/logout redirect", async () => {
+    setRuntimeConfig(RESIDENCY_CONFIG);
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    // case 21 — a protected view renders under the OIDC provider without crashing.
+    expect(screen.getByTestId("authed")).toHaveTextContent("true");
+    expect(screen.getByTestId("user")).toHaveTextContent("Rey");
+
+    fireEvent.click(screen.getByText("token"));
+    await waitFor(() =>
+      expect(screen.getByTestId("token")).toHaveTextContent("oidc-token")
+    );
+
+    fireEvent.click(screen.getByText("google"));
+    fireEvent.click(screen.getByText("universal"));
+    expect(mockSigninRedirect).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByText("logout"));
+    expect(mockSignoutRedirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("case 12 — a blank OIDC field under oidc fails closed (no silent Auth0 fallback)", () => {
+    setRuntimeConfig({ ...RESIDENCY_CONFIG, OIDC_ISSUER: "" });
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    expect(() =>
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      )
+    ).toThrow(/OIDC config incomplete/);
+    spy.mockRestore();
+    // The Auth0 bridge was never mounted.
+    expect(mockGetAccessTokenSilently).not.toHaveBeenCalled();
   });
 });
