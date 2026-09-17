@@ -44,6 +44,12 @@ export const environment = {
   //    webhook 503s (Stripe retries until configured); the app boots fine.
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+  // ── AWS Marketplace entitlement rail (#568). Set on a residency/marketplace
+  //    install; unset ⇒ the marketplace webhook 404s and no entitlement is
+  //    resolved (the SaaS Stripe rail is unaffected). The AWS Marketplace
+  //    Entitlement Service is only available in us-east-1.
+  AWS_MARKETPLACE_PRODUCT_CODE: process.env.AWS_MARKETPLACE_PRODUCT_CODE || "",
+  AWS_MARKETPLACE_REGION: process.env.AWS_MARKETPLACE_REGION || "us-east-1",
   // #217: Stripe Tax on checkout — default ON (go-live posture). An
   // unconfigured sandbox opts out EXPLICITLY with "false" (a conscious,
   // visible downgrade); requires the account's origin address + default

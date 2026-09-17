@@ -72,6 +72,20 @@ export class OrganizationsRepository extends Repository<
       .limit(1);
     return row;
   }
+
+  /**
+   * The sole non-deleted organization — the single-tenant residency install's
+   * one org (#568), which a marketplace entitlement grants to. Undefined when
+   * there is not exactly one (zero, or ambiguous with more than one).
+   */
+  async findSole(client: DbClient = db): Promise<OrganizationSelect | undefined> {
+    const rows = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(this.notDeleted())
+      .limit(2);
+    return rows.length === 1 ? rows[0] : undefined;
+  }
 }
 
 /** Singleton instance. */
