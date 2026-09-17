@@ -10,7 +10,7 @@
  */
 
 import type Stripe from "stripe";
-import { StripeEventModelFactory } from "@portalai/core/models";
+import { CommercialEventModelFactory } from "@portalai/core/models";
 import type { BillingTier } from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
@@ -137,7 +137,7 @@ export class BillingService {
       customer?: unknown;
       subscription?: unknown;
     };
-    const inserted = await DbService.repository.stripeEvents.insertIfNew(
+    const inserted = await DbService.repository.commercialEvents.insertIfNew(
       BillingService.eventRow(event, {
         stripeCustomerId:
           typeof obj.customer === "string" ? obj.customer : null,
@@ -394,10 +394,11 @@ export class BillingService {
     }
   }
 
-  /** Assemble a `stripe_events` row (audit fields via the model factory). */
   /**
-   * Build a `stripe_events` dedup row. Public (#565) so `StripeGrantSource`
-   * records the same rows this service's `recordIgnoredEvent` does.
+   * Build a `commercial_events` dedup row for the Stripe rail (#176/#565).
+   * Public so `StripeGrantSource` records the same rows this service's
+   * `recordIgnoredEvent` does. The row is `source: "stripe"`, keyed on the
+   * Stripe `event.id` as its `externalId`.
    */
   static eventRow(
     event: Stripe.Event,
@@ -409,9 +410,14 @@ export class BillingService {
       outcome: "applied" | "noop" | "unmatched" | "ignored" | "foreign";
     }
   ) {
-    return new StripeEventModelFactory()
+    return new CommercialEventModelFactory()
       .create(SystemUtilities.id.system)
-      .update({ eventId: event.id, type: event.type, ...fields })
+      .update({
+        source: "stripe",
+        externalId: event.id,
+        type: event.type,
+        ...fields,
+      })
       .parse();
   }
 }

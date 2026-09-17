@@ -11,9 +11,8 @@
  *
  * A source only `resolve`s an event to an outcome; `apply` owns the D2
  * transaction (the dedup insert + the org UPDATE commit or roll back
- * together) and the outcome vocabulary. The dedup store is `stripe_events`
- * for now — generalizing it to `commercial_events` lands with the first
- * non-Stripe source (#568), not here.
+ * together) and the outcome vocabulary. The dedup store is `commercial_events`
+ * (generalized in #568), keyed on `(source, external_id)`.
  */
 
 import type Stripe from "stripe";
@@ -21,6 +20,10 @@ import type Stripe from "stripe";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
 import { BillingService } from "./billing.service.js";
+import {
+  MarketplaceService,
+  type MarketplaceNotification,
+} from "./marketplace.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -34,7 +37,7 @@ export type TierGrantOutcome =
   | "duplicate"
   | "foreign";
 
-/** The dedup row a source records for an event (a `stripe_events` row today). */
+/** The dedup row a source records for an event (a `commercial_events` row). */
 type EventRow = ReturnType<typeof BillingService.eventRow>;
 
 /** The column-generic partial write `apply` applies to `organizations`. */
@@ -90,7 +93,7 @@ export class TierGrantService {
       resolution.outcome === "unmatched" ||
       resolution.outcome === "foreign"
     ) {
-      const inserted = await DbService.repository.stripeEvents.insertIfNew(
+      const inserted = await DbService.repository.commercialEvents.insertIfNew(
         resolution.eventRow
       );
       return inserted ? resolution.outcome : "duplicate";
@@ -99,7 +102,7 @@ export class TierGrantService {
     // grant — dedup row + org write commit or roll back together (D2).
     const { organizationId, changed, orgUpdate, eventRow } = resolution;
     return DbService.transaction(async (tx) => {
-      const inserted = await DbService.repository.stripeEvents.insertIfNew(
+      const inserted = await DbService.repository.commercialEvents.insertIfNew(
         eventRow,
         tx
       );
@@ -222,6 +225,124 @@ export class StripeGrantSource implements TierGrantSource<Stripe.Event> {
         stripeSubscriptionId: sub.id,
         organizationId: org.id,
         resultingTier: changed ? derived.tier : null,
+        outcome: changed ? "applied" : "noop",
+      }),
+    };
+  }
+}
+
+/**
+ * AwsMarketplaceGrantSource (#568) — an AWS Marketplace entitlement as a
+ * {@link TierGrantSource}. Idempotency keys on the SNS `MessageId`; `resolve`
+ * does a converge read of the current entitlement (not the notification
+ * payload), resolves the single-tenant residency org, applies the #230-analog
+ * foreign guard on `marketplaceEntitlementId`, and writes the tier + term.
+ *
+ * A lapsed / absent entitlement degrades the org to **read-only** by setting
+ * `entitlementThrough` to now (derived read-only) — the tier is left
+ * unchanged, so no data is lost; renewal restores the future term.
+ */
+export class AwsMarketplaceGrantSource implements TierGrantSource<MarketplaceNotification> {
+  idempotencyKey(notification: MarketplaceNotification): string {
+    return notification.MessageId;
+  }
+
+  async resolve(
+    notification: MarketplaceNotification
+  ): Promise<GrantResolution> {
+    // Converge read — the authoritative current entitlement, not the payload.
+    const entitlement = await MarketplaceService.getEntitlement();
+
+    // Single-tenant residency: the entitlement grants to the install's one org.
+    const org = await DbService.repository.organizations.findSole();
+    if (!org) {
+      logger.warn(
+        { messageId: notification.MessageId },
+        "Marketplace event with no sole organization; recording unmatched"
+      );
+      return {
+        outcome: "unmatched",
+        eventRow: MarketplaceService.eventRow(notification, {
+          organizationId: null,
+          resultingTier: null,
+          outcome: "unmatched",
+        }),
+      };
+    }
+
+    // Foreign-guard (#230 analog): once an org tracks an entitlement, only that
+    // entitlement may move its state.
+    if (
+      entitlement &&
+      org.marketplaceEntitlementId &&
+      org.marketplaceEntitlementId !== entitlement.customerIdentifier
+    ) {
+      logger.warn(
+        {
+          messageId: notification.MessageId,
+          organizationId: org.id,
+          tracked: org.marketplaceEntitlementId,
+          event: entitlement.customerIdentifier,
+        },
+        "Ignoring a foreign marketplace entitlement (org tracks a different one)"
+      );
+      return {
+        outcome: "foreign",
+        eventRow: MarketplaceService.eventRow(notification, {
+          organizationId: org.id,
+          resultingTier: null,
+          outcome: "foreign",
+        }),
+      };
+    }
+
+    // Term lapsed / unsubscribed: flip read-only via a now-dated term, tier
+    // UNCHANGED (never data loss). Idempotent — a no-op once already expired,
+    // and a no-op for an org that was never marketplace-granted.
+    if (!entitlement) {
+      const now = Date.now();
+      const wasGranted =
+        org.marketplaceEntitlementId != null || org.entitlementThrough != null;
+      const alreadyExpired =
+        org.entitlementThrough != null && org.entitlementThrough <= now;
+      const changed = wasGranted && !alreadyExpired;
+      return {
+        outcome: "grant",
+        organizationId: org.id,
+        changed,
+        orgUpdate: {
+          entitlementThrough: now,
+          updated: Date.now(),
+          updatedBy: SystemUtilities.id.system,
+        },
+        eventRow: MarketplaceService.eventRow(notification, {
+          organizationId: org.id,
+          resultingTier: null,
+          outcome: changed ? "applied" : "noop",
+        }),
+      };
+    }
+
+    const tier = MarketplaceService.dimensionToTier(entitlement.dimension);
+    const changed =
+      org.tier !== tier ||
+      org.marketplaceEntitlementId !== entitlement.customerIdentifier ||
+      org.entitlementThrough !== entitlement.expirationDate;
+
+    return {
+      outcome: "grant",
+      organizationId: org.id,
+      changed,
+      orgUpdate: {
+        tier,
+        marketplaceEntitlementId: entitlement.customerIdentifier,
+        entitlementThrough: entitlement.expirationDate,
+        updated: Date.now(),
+        updatedBy: SystemUtilities.id.system,
+      },
+      eventRow: MarketplaceService.eventRow(notification, {
+        organizationId: org.id,
+        resultingTier: changed ? tier : null,
         outcome: changed ? "applied" : "noop",
       }),
     };

@@ -35,7 +35,7 @@ import {
   apiEndpointsRepo,
   tiersRepo,
   usageRepo,
-  stripeEventsRepo,
+  commercialEventsRepo,
   toolUsageLedgerRepo,
 } from "../db/index.js";
 import {
@@ -116,7 +116,7 @@ export class DbService {
       apiEndpoints: apiEndpointsRepo,
       tiers: tiersRepo,
       usage: usageRepo,
-      stripeEvents: stripeEventsRepo,
+      commercialEvents: commercialEventsRepo,
       toolUsageLedger: toolUsageLedgerRepo,
     };
   }

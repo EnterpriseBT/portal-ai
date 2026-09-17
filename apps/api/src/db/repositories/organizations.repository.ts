@@ -50,6 +50,41 @@ export class OrganizationsRepository extends Repository<
       .limit(1);
     return row;
   }
+
+  /** Find the org tracking an AWS Marketplace entitlement (#568; the column
+   *  is UNIQUE where not null). */
+  async findByMarketplaceEntitlementId(
+    marketplaceEntitlementId: string,
+    client: DbClient = db
+  ): Promise<OrganizationSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(organizations.marketplaceEntitlementId, marketplaceEntitlementId),
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return row;
+  }
+
+  /**
+   * The sole non-deleted organization — the single-tenant residency install's
+   * one org (#568), which a marketplace entitlement grants to. Undefined when
+   * there is not exactly one (zero, or ambiguous with more than one).
+   */
+  async findSole(
+    client: DbClient = db
+  ): Promise<OrganizationSelect | undefined> {
+    const rows = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(this.notDeleted())
+      .limit(2);
+    return rows.length === 1 ? rows[0] : undefined;
+  }
 }
 
 /** Singleton instance. */

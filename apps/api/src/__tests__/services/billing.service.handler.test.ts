@@ -33,7 +33,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         update: mockOrgUpdate,
       },
       tiers: { priceIndex: mockPriceIndex },
-      stripeEvents: { insertIfNew: mockInsertIfNew },
+      commercialEvents: { insertIfNew: mockInsertIfNew },
     },
     transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(TX),
   },
@@ -100,7 +100,8 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
     // event row and org write share the SAME transaction client
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_1",
+        source: "stripe",
+        externalId: "evt_1",
         type: "customer.subscription.updated",
         stripeCustomerId: "cus_1",
         stripeSubscriptionId: "sub_1",
@@ -221,7 +222,8 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
     expect(mockPriceIndex).not.toHaveBeenCalled();
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_1",
+        source: "stripe",
+        externalId: "evt_1",
         stripeSubscriptionId: "sub_2",
         organizationId: "org-1",
         resultingTier: null,
@@ -294,7 +296,8 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
     expect(mockOrgUpdate).not.toHaveBeenCalled();
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_1",
+        source: "stripe",
+        externalId: "evt_1",
         organizationId: null,
         resultingTier: null,
         outcome: "unmatched",
@@ -335,7 +338,8 @@ describe("BillingService.recordIgnoredEvent", () => {
     expect(outcome).toBe("ignored");
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_2",
+        source: "stripe",
+        externalId: "evt_2",
         type: "invoice.paid",
         organizationId: null,
         outcome: "ignored",

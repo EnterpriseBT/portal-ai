@@ -231,5 +231,29 @@ describe("OrganizationModelFactory", () => {
         expect(model.validate().success).toBe(false);
       }
     );
+
+    // ── Marketplace entitlement (#568, case 2) ────────────────────────
+
+    it("defaults the marketplace entitlement fields to null when not provided", () => {
+      const model = factory.create("system");
+      model.update(validOrgFields);
+
+      const parsed = model.parse();
+      expect(parsed.marketplaceEntitlementId).toBeNull();
+      expect(parsed.entitlementThrough).toBeNull();
+    });
+
+    it("accepts explicit marketplace entitlement values", () => {
+      const model = factory.create("system");
+      model.update({
+        ...validOrgFields,
+        marketplaceEntitlementId: "aws-cust-abc123",
+        entitlementThrough: 1_900_000_000_000,
+      });
+
+      const parsed = model.parse();
+      expect(parsed.marketplaceEntitlementId).toBe("aws-cust-abc123");
+      expect(parsed.entitlementThrough).toBe(1_900_000_000_000);
+    });
   });
 });

@@ -20,7 +20,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       organizations: { update: mockOrgUpdate },
-      stripeEvents: { insertIfNew: mockInsertIfNew },
+      commercialEvents: { insertIfNew: mockInsertIfNew },
     },
     transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(TX),
   },
