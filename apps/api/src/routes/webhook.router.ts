@@ -8,7 +8,10 @@ import { BillingService } from "../services/billing.service.js";
 import {
   TierGrantService,
   StripeGrantSource,
+  AwsMarketplaceGrantSource,
 } from "../services/tier-grant.service.js";
+import { MarketplaceService } from "../services/marketplace.service.js";
+import MessageValidator from "sns-validator";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { verifyWebhookSignature } from "../middleware/webhook-auth.middleware.js";
 import { isSaas } from "../config/deploy-mode.js";
@@ -307,3 +310,144 @@ if (isSaas()) {
     }
   );
 }
+
+// The AWS Marketplace SNS entitlement webhook (#568). Registered always but
+// gated at request time on marketplace config (a POST 404s when the rail is
+// off) — the residency install's entitlement channel. SNS signs messages with
+// X.509 (not HMAC), so verification goes through sns-validator.
+const snsValidator = new MessageValidator();
+
+function validateSnsSignature(
+  message: Record<string, unknown>
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    snsValidator.validate(message as never, (err) =>
+      err ? reject(err) : resolve()
+    );
+  });
+}
+
+/**
+ * @openapi
+ * /api/webhooks/aws-marketplace:
+ *   post:
+ *     tags:
+ *       - Webhooks
+ *     summary: AWS Marketplace entitlement SNS notification
+ *     description: >
+ *       Receives AWS Marketplace entitlement-change notifications over SNS.
+ *       Confirms the subscription (SubscriptionConfirmation) and, on a
+ *       Notification, converges the entitlement to `organizations.tier` via the
+ *       marketplace grant source. Authenticated by the SNS X.509 signature.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         text/plain:
+ *           schema:
+ *             type: string
+ *     responses:
+ *       200:
+ *         description: Processed, or subscription confirmed
+ *       400:
+ *         description: SNS signature verification failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The marketplace rail is not configured
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+webhookRouter.post(
+  "/aws-marketplace",
+  express.text({ type: "*/*" }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (!MarketplaceService.isConfigured()) {
+      return next(
+        new ApiError(
+          404,
+          ApiCode.MARKETPLACE_NOT_CONFIGURED,
+          "AWS Marketplace is not configured"
+        )
+      );
+    }
+
+    let message: Record<string, unknown>;
+    try {
+      message =
+        typeof req.body === "string"
+          ? (JSON.parse(req.body) as Record<string, unknown>)
+          : (req.body as Record<string, unknown>);
+    } catch {
+      return next(
+        new ApiError(
+          400,
+          ApiCode.MARKETPLACE_SIGNATURE_INVALID,
+          "Malformed SNS message body"
+        )
+      );
+    }
+
+    try {
+      await validateSnsSignature(message);
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : "unknown" },
+        "AWS Marketplace SNS signature verification failed"
+      );
+      return next(
+        new ApiError(
+          400,
+          ApiCode.MARKETPLACE_SIGNATURE_INVALID,
+          "SNS signature verification failed"
+        )
+      );
+    }
+
+    try {
+      if (
+        message.Type === "SubscriptionConfirmation" &&
+        typeof message.SubscribeURL === "string"
+      ) {
+        // Confirm the SNS subscription by fetching the SubscribeURL.
+        await fetch(message.SubscribeURL);
+        return res.status(200).json({ received: true, confirmed: true });
+      }
+
+      if (message.Type === "Notification") {
+        const outcome = await TierGrantService.apply(
+          new AwsMarketplaceGrantSource(),
+          {
+            MessageId: String(message.MessageId),
+            action:
+              typeof message.Subject === "string"
+                ? message.Subject
+                : undefined,
+          }
+        );
+        logger.info(
+          { messageId: message.MessageId, outcome },
+          "Processed AWS Marketplace SNS notification"
+        );
+        return res.status(200).json({ received: true, outcome });
+      }
+
+      return res.status(200).json({ received: true });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "unknown" },
+        "AWS Marketplace webhook processing failed"
+      );
+      return next(
+        new ApiError(
+          500,
+          ApiCode.WEBHOOK_SYNC_FAILED,
+          "Failed to process AWS Marketplace notification"
+        )
+      );
+    }
+  }
+);

@@ -64,6 +64,12 @@ export enum ApiCode {
   /** Stripe portal-session call failed. 502. */
   BILLING_PORTAL_FAILED = "BILLING_PORTAL_FAILED",
 
+  // AWS Marketplace entitlement rail (#568)
+  /** The marketplace webhook was hit but the rail isn't configured. 404. */
+  MARKETPLACE_NOT_CONFIGURED = "MARKETPLACE_NOT_CONFIGURED",
+  /** SNS message signature verification failed (or the body was malformed). 400. */
+  MARKETPLACE_SIGNATURE_INVALID = "MARKETPLACE_SIGNATURE_INVALID",
+
   // Public site config (#311)
   /** A public tier carries a stripePriceId whose price will not resolve
    *  (Stripe outage or deleted price). 503 — fail closed so the site build
