@@ -1,11 +1,11 @@
 # Portals AI Web
 
-React web application for the Portals AI project with Auth0 authentication, Material UI, and TanStack Router.
+React web application for the Portals AI project with config-driven authentication (Auth0 for SaaS, generic OIDC for residency), Material UI, and TanStack Router.
 
 ## Features
 
 - ✅ React 18 with TypeScript
-- ✅ Auth0 authentication with JWT tokens
+- ✅ Config-driven auth (#607): Auth0 (SaaS) or a generic OIDC issuer (residency), selected at runtime with JWT tokens
 - ✅ TanStack Router for file-based routing
 - ✅ TanStack Query for data fetching and caching
 - ✅ Material UI (MUI) components
@@ -34,6 +34,8 @@ VITE_AUTH0_AUDIENCE=https://api-dev.portalsai.io
 ```
 
 > **Note:** All environment variables must be prefixed with `VITE_` to be accessible in the Vite application.
+
+> **Auth (#607):** The `VITE_AUTH0_*` values are **build-time**, used for local dev and the SaaS build (our Auth0 tenant). A prebuilt **residency** image instead reads identity config at runtime from `window.__RUNTIME_CONFIG__` — served by `config.js` (#566), keys `AUTH_PROVIDER` / `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_AUDIENCE` / `DEPLOY_MODE` — so one image logs in against a customer's OIDC issuer with no rebuild. Only non-secret values are exposed; the SPA is a PKCE public client (no client secret in the bundle).
 
 ### Installation & Development
 
@@ -275,7 +277,7 @@ Organize imports in this order:
 
 ```typescript
 import React, { useState } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useQuery } from "@tanstack/react-query";
 import { Box } from "@mui/material";
 import { ThemeProvider } from "@portalai/core";
 import { Header } from "../components/Header.component";
@@ -329,11 +331,17 @@ export const Route = createFileRoute("/_authorized")({
 
 ## Authentication
 
-This app uses Auth0 for authentication with the following flow:
+Auth is a **config-driven seam** (#607): a single `useAuth()` hook
+(`src/providers/Auth.provider.tsx`) normalizes whichever identity provider the
+runtime config selects — **Auth0** (SaaS) or a **generic OIDC client** (residency)
+— so no component imports a vendor auth SDK. `AuthProvider` reads
+`window.__RUNTIME_CONFIG__.AUTH_PROVIDER` and mounts the matching bridge; a
+residency build with incomplete OIDC config **fails closed** rather than falling
+back to Auth0.
 
-1. **Login** - Users are redirected to Auth0 for authentication
-2. **Token Management** - Tokens are stored in localStorage with refresh token support
-3. **Protected Routes** - Routes wrapped in `AuthorizedLayout` require authentication
+1. **Login** - Users are redirected to the configured issuer (Auth0 with the Google connection for SaaS, or the customer's OIDC issuer for residency)
+2. **Token Management** - `useAuth().getToken()` acquires the access token with silent refresh; tokens are held by the provider (localStorage for Auth0)
+3. **Protected Routes** - Routes wrapped in `AuthorizedLayout` require authentication (via `sdk.auth.session()`, which reads the seam)
 4. **API Calls** - Every authenticated request goes through the SDK (see below)
 
 ## API Calls & SDK
@@ -348,7 +356,7 @@ All API calls **must** route through the SDK in `src/api/`. Components never cal
 
 ### Writing endpoints
 
-SDK endpoints are built on the helpers in `src/utils/api.util.ts`. These helpers handle Auth0 token fetching, response unwrapping, and TanStack Query integration — do not reimplement any of this.
+SDK endpoints are built on the helpers in `src/utils/api.util.ts`. These helpers handle auth token fetching (via the `useAuth()` seam — provider-agnostic), response unwrapping, and TanStack Query integration — do not reimplement any of this.
 
 - **`useAuthMutation`** — write calls AND imperative reads. For a GET that needs to fire per-invocation (e.g. a viewport-driven fetch), set `method: "GET"`, `body: () => undefined`, and build the URL from variables via `url: (vars) => string`:
 

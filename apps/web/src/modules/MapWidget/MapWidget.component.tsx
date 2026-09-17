@@ -1,7 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert, Box, CircularProgress, Paper, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { useAuth0 } from "@auth0/auth0-react";
 import * as maplibregl from "maplibre-gl";
 // maplibre v6 computes its worker URL as
 // `new URL("./maplibre-gl-worker.mjs", import.meta.url)` split across two
@@ -22,6 +21,7 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl);
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";
 
+import { useAuth } from "../../providers/Auth.provider";
 import { resolveApiUrl } from "../../utils/api.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import {
@@ -500,7 +500,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
 }) => {
   const muiTheme = useTheme();
   const mode = muiTheme.palette.mode === "dark" ? "dark" : "light";
-  const { getAccessTokenSilently } = useAuth0();
+  const { getToken } = useAuth();
 
   const parsed = useMemo(
     () => GeoBlockContentSchema.safeParse(content),
@@ -520,16 +520,12 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   const getTileToken = useMemo(
     () => async () => {
       try {
-        return await getAccessTokenSilently({
-          authorizationParams: {
-            audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-          },
-        });
+        return await getToken();
       } catch {
         return null;
       }
     },
-    [getAccessTokenSilently]
+    [getToken]
   );
 
   if (!parsedContent) {

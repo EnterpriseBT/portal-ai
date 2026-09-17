@@ -18,3 +18,12 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/**
+ * Runtime identity config injected by `config.js` (#566) before the bundle
+ * loads, consumed by `runtime-config.util.ts` (#607). Non-secret only — a
+ * public OIDC issuer / client id / audience; never a client secret.
+ */
+interface Window {
+  __RUNTIME_CONFIG__?: Record<string, string>;
+}
