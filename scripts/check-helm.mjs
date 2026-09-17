@@ -139,6 +139,55 @@ const scenarios = [
           out.includes('"helm.sh/hook": post-install') &&
           out.includes('command: ["node", "dist/db/seed.js"]'),
       ],
+      [
+        "no ingress or bundled issuer by default",
+        (out) => !out.includes("kind: Ingress") && !out.includes("keycloak"),
+      ],
+    ],
+  },
+  {
+    name: "ingress enabled",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "ingress.enabled=true",
+      "--set",
+      "ingress.host=app.example.com",
+      "--set",
+      "ingress.className=nginx",
+      "--set",
+      "ingress.tls.enabled=true",
+      "--set",
+      "ingress.tls.secretName=app-tls",
+    ],
+    assertions: [
+      ["Ingress renders", (out) => out.includes("kind: Ingress")],
+      [
+        "routes /api to the api service",
+        (out) => /path: \/api\b[\s\S]*?name: p-portalai-api/.test(out),
+      ],
+      [
+        "routes / to the web service",
+        (out) => /name: p-portalai-web\b/.test(out),
+      ],
+      ["TLS secret wired", (out) => out.includes('secretName: "app-tls"')],
+    ],
+  },
+  {
+    name: "bundled issuer (keycloak)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "bundledIssuer.enabled=true",
+    ],
+    assertions: [
+      ["Keycloak subchart renders", (out) => out.includes("keycloak")],
     ],
   },
   {

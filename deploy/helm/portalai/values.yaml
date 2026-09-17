@@ -165,3 +165,22 @@ migrate:
   enabled: true
 seed:
   enabled: true
+
+# ── Ingress ──────────────────────────────────────────────────────────────
+# Off by default (reach the app by port-forward, or bring your own ingress).
+# When enabled, /api routes to the API service and / to the web service on a
+# single host. TLS via a cert-manager-issued secret — see README.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tls:
+    enabled: false
+    secretName: ""
+
+# ── Bundled identity issuer (Keycloak) ───────────────────────────────────
+# Optional fallback OIDC issuer for residency installs with no customer IdP.
+# Off by default; customer OIDC (oidc.*) is the primary path.
+bundledIssuer:
+  enabled: false

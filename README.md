@@ -105,6 +105,14 @@ Each package has detailed documentation in its README:
 
 ## Deployment Guide
 
+Two deployment shapes:
+
+- **SaaS (managed)** — AWS ECS Fargate + S3/CloudFront, described below.
+- **Full residency (self-hosted)** — the whole app (API + web + data deps) as
+  one Helm release, for customers who run it in their own cluster. See
+  [`deploy/helm/portalai/README.md`](deploy/helm/portalai/README.md). Additive:
+  the SaaS path is untouched.
+
 ### Architecture
 
 The dev environment runs on AWS with ECS Fargate (API), S3 + CloudFront (frontend), RDS PostgreSQL, and ElastiCache Redis. Infrastructure is defined in CloudFormation templates under `infra/cloudformation/`.
