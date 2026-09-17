@@ -67,8 +67,9 @@ helm install portalai deploy/helm/portalai \
 | `redis.enabled` | `true` | Bundle Redis (mandatory PVC). `false` → `redis.external.url`. |
 | `redis.master.persistence.size` | `8Gi` | Redis PVC size (durable BullMQ store). |
 | `minio.enabled` | `true` | Bundle MinIO. `false` → `minio.external.*`. Full S3 wiring lands with #567. |
-| `migrate.enabled` | `true` | Run migrations as a `pre-install,pre-upgrade` hook Job. |
-| `seed.enabled` | `true` | Run global seeds as a `post-install` hook Job. |
+| `migrate.enabled` | `true` | Run first-install migrations as a `pre-install` hook Job. |
+| `seed.enabled` | `true` | Run first-install global seeds as a `post-install` hook Job. |
+| `upgrade.enabled` | `true` | On `helm upgrade`, run migrations + seeds as one advisory-locked `pre-upgrade` hook Job (`db:upgrade`). |
 | `ingress.enabled` | `false` | Route `/api` → API, `/` → web on `ingress.host`. |
 | `ingress.className` | `""` | IngressClass. |
 | `ingress.tls.enabled` / `.secretName` | `false` / `""` | TLS via a (cert-manager-issued) secret. |
@@ -81,11 +82,20 @@ helm install portalai deploy/helm/portalai \
   official Postgres entrypoint/data-dir conventions, so `global.security.allowInsecureImages`
   is set and runtime compatibility must be confirmed on a real cluster.
   Production should use **managed PostGIS** (`postgresql.enabled=false`).
-- **Bundled-DB first install + migrate.** The `migrate` hook is
-  `pre-install,pre-upgrade`; on a *first install with the bundled DB* the DB is
-  created in the main phase and is not reachable during `pre-install`. Either
-  install against an external DB, or set `migrate.enabled=false` and run the
-  migration once the bundled DB is up. `pre-upgrade` (DB already exists) is
+- **Upgrades run one job, with one signal (#581).** On `helm upgrade` the
+  `upgrade` hook (`pre-upgrade`) runs `db:upgrade` — pending migrations + the
+  idempotent global seed, under a session advisory lock so two concurrent passes
+  never both migrate. It prints `UPGRADE COMPLETE` and exits non-zero on failure;
+  watch `kubectl logs job/<release>-upgrade`. Prefer `helm upgrade --atomic`: a
+  failed upgrade then rolls the *workloads* back automatically, while the
+  expand-only schema stays valid under the previous image. Migrations are
+  forward-only — a mistake is undone by a new forward migration, never a
+  down-migration. Set `upgrade.enabled=false` to fall back to migrate-only.
+- **Bundled-DB first install + migrate.** The first-install `migrate` hook is
+  `pre-install`; on a *first install with the bundled DB* the DB is created in
+  the main phase and is not reachable during `pre-install`. Either install
+  against an external DB, or set `migrate.enabled=false` and run the migration
+  once the bundled DB is up. The `pre-upgrade` path (DB already exists) is
   unaffected. This is why production points at an external managed DB.
 - **Bundled deps are evaluation-grade** (non-HA, in-cluster). Production points
   at external managed HA services via the `enabled: false` toggles.
