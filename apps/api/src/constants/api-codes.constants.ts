@@ -69,6 +69,8 @@ export enum ApiCode {
   MARKETPLACE_NOT_CONFIGURED = "MARKETPLACE_NOT_CONFIGURED",
   /** SNS message signature verification failed (or the body was malformed). 400. */
   MARKETPLACE_SIGNATURE_INVALID = "MARKETPLACE_SIGNATURE_INVALID",
+  /** A mutating request against a read-only org (lapsed marketplace term). 403. */
+  ORG_ENTITLEMENT_EXPIRED = "ORG_ENTITLEMENT_EXPIRED",
 
   // Public site config (#311)
   /** A public tier carries a stripePriceId whose price will not resolve
