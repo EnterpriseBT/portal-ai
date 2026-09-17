@@ -63,6 +63,15 @@ RUN curl -fsSL https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/p
 RUN curl -sSfL https://raw.githubusercontent.com/auth0/auth0-cli/main/install.sh \
     | sh -s -- -b /usr/local/bin
 
+# Install Helm (chart lint/template for the L2 install package, #566) so
+# `helm lint` / `helm template` run locally in the devcontainer, matching the
+# check the Static Checks CI runs against deploy/helm/portalai. Official apt repo.
+RUN curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /etc/apt/keyrings/helm.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" \
+    | tee /etc/apt/sources.list.d/helm-stable-debian.list > /dev/null \
+    && apt-get update && apt-get install -y helm \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
