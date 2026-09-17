@@ -1,6 +1,10 @@
 import { describe, it, expect, jest } from "@jest/globals";
 
-import { AiService, getAnthropic } from "../../services/ai.service.js";
+import {
+  AiService,
+  getAnthropic,
+  buildAnthropicSettings,
+} from "../../services/ai.service.js";
 
 // The codegen seam (#269) is DI-testable: `generateCode` accepts an injected
 // `generateText` fn (mirrors spreadsheet-parsing-llm.service's test seam), so
@@ -68,5 +72,27 @@ describe("getAnthropic (#579 lazy client)", () => {
 
   it("memoizes the provider (same instance on repeated calls)", () => {
     expect(getAnthropic()).toBe(getAnthropic());
+  });
+});
+
+describe("buildAnthropicSettings (#567 portability seam)", () => {
+  it("omits baseURL when unset (SDK default unchanged)", () => {
+    const settings = buildAnthropicSettings({
+      ANTHROPIC_API_KEY: "sk-test",
+      ANTHROPIC_BASE_URL: "",
+    });
+
+    expect(settings.apiKey).toBe("sk-test");
+    expect("baseURL" in settings).toBe(false);
+  });
+
+  it("passes baseURL through when set (proxy / gateway seam)", () => {
+    const settings = buildAnthropicSettings({
+      ANTHROPIC_API_KEY: "sk-test",
+      ANTHROPIC_BASE_URL: "https://gateway.example.internal/v1",
+    });
+
+    expect(settings.apiKey).toBe("sk-test");
+    expect(settings.baseURL).toBe("https://gateway.example.internal/v1");
   });
 });
