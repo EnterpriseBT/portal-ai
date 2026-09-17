@@ -1,6 +1,7 @@
 import React from "react";
 import MuiLink from "@mui/material/Link";
 import { sdk } from "../api/sdk";
+import { getRuntimeConfig } from "../utils/runtime-config.util";
 import {
   Box,
   Paper,
@@ -21,11 +22,18 @@ export interface LoginFormUIProps {
    *  container supplies it solely under its dev guard, so it is absent for
    *  normal users and in production bundles. */
   onClickDevLogin?: () => void;
+  /** Primary-button copy. Defaults to the SaaS Google label; a residency
+   *  (OIDC) install passes a generic "Sign in" (#607). */
+  primaryLabel?: string;
+  /** Whether to show the Google icon on the primary button (SaaS only). */
+  showProviderIcon?: boolean;
 }
 
 export const LoginFormUI: React.FC<LoginFormUIProps> = ({
   onClickGoogleLogin,
   onClickDevLogin,
+  primaryLabel = "Sign in with Google",
+  showProviderIcon = true,
 }) => {
   return (
     <Container maxWidth="sm">
@@ -59,14 +67,16 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
               size="large"
               fullWidth
               onClick={onClickGoogleLogin}
-              startIcon={<Icon name={IconName.Google} />}
+              startIcon={
+                showProviderIcon ? <Icon name={IconName.Google} /> : undefined
+              }
               sx={{
                 py: 1.5,
                 textTransform: "none",
                 fontSize: "1rem",
               }}
             >
-              Sign in with Google
+              {primaryLabel}
             </Button>
 
             <Typography
@@ -117,6 +127,8 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
 
 export const LoginForm = () => {
   const { withGoogle, withUniversal } = sdk.auth.login();
+  // Residency (OIDC) login is IdP-hosted, not Google — use generic copy (#607).
+  const isOidc = getRuntimeConfig().authProvider === "oidc";
 
   const handleGoogleLogin = () => {
     withGoogle();
@@ -129,13 +141,15 @@ export const LoginForm = () => {
   // builds (`import.meta.env.DEV` — stripped from production bundles) AND only
   // when explicitly requested via `?e2e`, so it never appears for normal users.
   const showDevLogin =
-    import.meta.env.DEV &&
+    !!import.meta.env?.DEV &&
     new URLSearchParams(window.location.search).has("e2e");
 
   return (
     <LoginFormUI
       onClickGoogleLogin={handleGoogleLogin}
       onClickDevLogin={showDevLogin ? () => withUniversal() : undefined}
+      primaryLabel={isOidc ? "Sign in" : "Sign in with Google"}
+      showProviderIcon={!isOidc}
     />
   );
 };

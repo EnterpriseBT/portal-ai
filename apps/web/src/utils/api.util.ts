@@ -1,4 +1,3 @@
-import { useAuth0 } from "@auth0/auth0-react";
 import {
   useMutation,
   useQuery,
@@ -11,6 +10,7 @@ import type {
   ApiErrorResponse,
   ApiSuccessResponse,
 } from "@portalai/core/contracts";
+import { useAuth } from "../providers/Auth.provider";
 import { handleAuthError } from "./auth-error.util";
 
 export interface ServerError {
@@ -27,7 +27,9 @@ export function toServerError(
 }
 
 export function resolveApiUrl(path: string): string {
-  return `${import.meta.env.VITE_API_BASE_URL}${path}`;
+  // `?.` because `import.meta.env` does not exist outside a Vite build (jest,
+  // node scripts) — the value is always set in a real build.
+  return `${import.meta.env?.VITE_API_BASE_URL ?? ""}${path}`;
 }
 
 export class ApiError extends Error {
@@ -52,24 +54,21 @@ export class ApiError extends Error {
 
 /**
  * Hook that returns an authenticated fetch function.
- * Retrieves the access token from Auth0 and attaches it as a Bearer token.
+ * Retrieves the access token from the auth seam (#607) and attaches it as a
+ * Bearer token. The audience is resolved inside `getToken`, per provider.
  *
  * Usage:
  *   const { fetchWithAuth } = useAuthFetch();
  *   const data = await fetchWithAuth("/api/profile");
  */
 export const useAuthFetch = () => {
-  const { getAccessTokenSilently } = useAuth0();
+  const { getToken } = useAuth();
 
   const fetchWithAuth = useCallback(
     async <T>(url: string, options: RequestInit = {}): Promise<T> => {
       let token: string;
       try {
-        token = await getAccessTokenSilently({
-          authorizationParams: {
-            audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-          },
-        });
+        token = await getToken();
       } catch (error) {
         handleAuthError();
         throw error;
@@ -105,7 +104,7 @@ export const useAuthFetch = () => {
 
       return response.json() as Promise<T>;
     },
-    [getAccessTokenSilently]
+    [getToken]
   );
 
   return { fetchWithAuth };
