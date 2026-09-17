@@ -155,3 +155,13 @@ minio:
     region: us-east-1
     bucket: portalai-uploads
     forcePathStyle: true
+
+# ── Lifecycle hooks ──────────────────────────────────────────────────────
+# Run the API image's existing migrate/seed entrypoints as Helm hook Jobs.
+# migrate is pre-install,pre-upgrade (schema ready before api pods roll — see
+# README for the bundled-DB first-install caveat); seed is post-install
+# (idempotent global seeds).
+migrate:
+  enabled: true
+seed:
+  enabled: true

@@ -127,6 +127,38 @@ const scenarios = [
         (out) => out.includes("kind: PersistentVolumeClaim"),
       ],
       ["bundled MinIO renders", (out) => out.includes("p-minio")],
+      [
+        "migrate hook: pre-install,pre-upgrade + command",
+        (out) =>
+          out.includes('"helm.sh/hook": pre-install,pre-upgrade') &&
+          out.includes('command: ["node", "dist/scripts/db-migrate.js"]'),
+      ],
+      [
+        "seed hook: post-install + command",
+        (out) =>
+          out.includes('"helm.sh/hook": post-install') &&
+          out.includes('command: ["node", "dist/db/seed.js"]'),
+      ],
+    ],
+  },
+  {
+    name: "hooks disabled",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "migrate.enabled=false",
+      "--set",
+      "seed.enabled=false",
+    ],
+    assertions: [
+      [
+        "no migrate/seed jobs render when disabled",
+        (out) =>
+          !out.includes("db-migrate.js") && !out.includes("dist/db/seed.js"),
+      ],
     ],
   },
   {
