@@ -20,7 +20,12 @@ import {
 } from "@portalai/cli-env";
 
 import { runReset, type ResetResult } from "../reset.js";
-import { runSeedTask, type SeedTaskResult } from "../ecs.js";
+import {
+  runSeedTask,
+  runUpgradeTask,
+  type SeedTaskResult,
+  type UpgradeTaskResult,
+} from "../ecs.js";
 import type { MutateOptions } from "./vars.js";
 
 export interface ConnectOptions {
@@ -273,4 +278,52 @@ export async function dbResetSeed(
   const reset = await runReset(def, opts);
   const seed = await dbSeed(def, opts, runScript);
   return { reset, seed };
+}
+
+/** Which way the upgrade ran — the env's SHAPE decides, never a deploy mode. */
+export type UpgradeResult =
+  | ({ via: "ecs" } & UpgradeTaskResult)
+  | { via: "local"; script: string };
+
+/**
+ * Upgrade — apply pending migrations + the idempotent global seed as one
+ * advisory-locked operation (`db:upgrade`, #581). A mutation, not destructive
+ * (migrations are expand-only; prod is gated by `--yes --confirm-prod`, not
+ * blocked).
+ *
+ * Deployment-agnostic by construction: it routes only on the env's SHAPE, the
+ * same split as `dbSeed`. A deployed env runs `db:upgrade:ci` as an ECS one-off
+ * inside the container; local spawns the app's own `db:upgrade`. There is NO
+ * saas/residency branch here — a residency install upgrades via Helm and never
+ * touches this CLI; this command serves our own SaaS/ECS channel.
+ */
+export async function dbUpgrade(
+  def: EnvironmentDefinition,
+  opts: MutateOptions,
+  runScript: typeof runApiScript = runApiScript
+): Promise<UpgradeResult> {
+  assertOperationAllowed(def, {
+    destructive: false,
+    confirmed: !!opts.yes,
+    prodConfirmed: !!opts.confirmProd,
+  });
+
+  let result: UpgradeResult;
+  if (def.aws) {
+    result = { via: "ecs", ...(await runUpgradeTask(def)) };
+  } else {
+    await runScript(def, "db:upgrade", []);
+    result = { via: "local", script: "db:upgrade" };
+  }
+
+  await recordAudit({
+    env: def.name,
+    operator: "portalops",
+    command: "db upgrade",
+    args:
+      result.via === "ecs"
+        ? { via: result.via, taskArn: result.taskArn }
+        : { via: result.via, script: result.script },
+  });
+  return result;
 }
