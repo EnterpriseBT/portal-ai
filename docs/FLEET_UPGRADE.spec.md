@@ -7,7 +7,7 @@ This spec pins the contract for making a per-install upgrade safe: a single `db:
 ## Key decisions (flag for review)
 
 1. **Unified `db:upgrade`** (migrate + seed in one process, one signal), run as a `pre-upgrade` chart hook — discovery D1-B. First-install keeps the existing `pre-install` migrate + `post-install` seed jobs (bundled-DB timing caveat).
-2. **Session-scoped advisory lock** around the whole upgrade — `pg_try_advisory_lock` on a dedicated `max: 1` connection (NOT the xact-scoped `withEntityLock`), fail-closed: can't acquire ⇒ "another upgrade in progress" ⇒ exit non-zero, no work.
+2. **Reuse the existing session-scoped advisory lock.** `db:upgrade` takes `SyncLockService.withAdvisoryLock(UPGRADE_LOCK_NAMESPACE, "db-upgrade", fn)` — the generalized, non-blocking, fail-closed, session-scoped lock already shipped for #460/#472 (`apps/api/src/services/sync-lock.service.ts`, returning `{ acquired: true; value } | { acquired: false }`). We add only a new namespace constant; can't acquire ⇒ "another upgrade in progress" ⇒ exit non-zero, no work. **No new lock primitive** — reinventing `withEntityLock`'s sibling would duplicate live code.
 3. **Per-org backfills stay ordered idempotent SQL migrations** (the `0080` pattern); they run inside `db:upgrade`'s migrate step. A **coverage guard** makes a new `SYSTEM_COLUMN_DEFINITIONS` key without a paired backfill migration fail CI.
 4. **Destructive-DDL is surfaced at review, not silently blocked** — `lint:migrations` fails on destructive DDL unless the statement carries `-- destructive-ok: <reason>`.
 5. **`portalops db upgrade` routes by env shape only** (ECS one-off in deployed envs / local spawn), no `saas`/`residency` branching; residency upgrades via Helm and never touches the CLI. Discovery D5.
@@ -19,7 +19,7 @@ This spec pins the contract for making a per-install upgrade safe: a single `db:
 ### In scope
 
 1. `apps/api/src/scripts/db-upgrade.ts` (new) — `runUpgrade()` = advisory-locked (migrate → seed) with a structured summary + exit code; `db:upgrade` / `db:upgrade:ci` scripts.
-2. `apps/api/src/db/advisory-lock.util.ts` — add a **session-scoped** `withGlobalLock` (dedicated connection, `pg_try_advisory_lock` + `pg_advisory_unlock`) + a `GLOBAL_LOCK_KEYS.dbUpgrade` key.
+2. `apps/api/src/services/sync-lock.service.ts` — add `UPGRADE_LOCK_NAMESPACE` (an ASCII-int constant like the existing `SYNC_LOCK_NAMESPACE`/`DISSOLVE_LOCK_NAMESPACE`); `db:upgrade` calls the existing `SyncLockService.withAdvisoryLock`. No new lock primitive.
 3. `scripts/check-migrations.mjs` + `npm run lint:migrations` (new) — destructive-DDL scan with `-- destructive-ok:` acknowledgment + embedded self-test fixtures (the `check-ci-cache.mjs`/`check-helm.mjs` family); wired into CI.
 4. `apps/api` backfill-coverage guard test — every `SYSTEM_COLUMN_DEFINITIONS` key is baseline-or-has-a-backfill-marker.
 5. Backfill-marker convention `-- backfill:system-column:<key>` added to the existing `0080` backfill (retroactive) so the geospatial keys satisfy the guard.
@@ -56,7 +56,7 @@ export async function runUpgrade(): Promise<UpgradeSummary>;
 ```
 
 Behavior, in order:
-1. Acquire `withGlobalLock(GLOBAL_LOCK_KEYS.dbUpgrade)` via `pg_try_advisory_lock`. **Not acquired ⇒** log `UPGRADE SKIPPED: another upgrade is already running`, return `{ acquiredLock: false, … }`, entrypoint **exits non-zero** (fail-closed — never two concurrent migrators).
+1. Acquire `SyncLockService.withAdvisoryLock(UPGRADE_LOCK_NAMESPACE, "db-upgrade", fn)`. **`{ acquired: false }` ⇒** log `UPGRADE SKIPPED: another upgrade is already running`, return `{ acquiredLock: false, … }`, entrypoint **exits non-zero** (fail-closed — never two concurrent migrators). Steps 2–4 run inside `fn`.
 2. Run migrations via the existing `runMigrations()` path (schema + the `0080`-style per-org SQL backfills ride here). Capture `migrationsApplied` from a `SELECT count(*) FROM drizzle.__drizzle_migrations` delta.
 3. Run global bootstrap seed (`new SeedService().seed()` — idempotent `seedTiers` + `seedConnectorDefinitions`).
 4. Release the lock (finally), emit the summary, and a final line: **`UPGRADE COMPLETE (migrations: N, seed: ok)`** on success or **`UPGRADE FAILED: <one-line reason>`** on any throw.
@@ -69,33 +69,19 @@ Exit code: `0` only on `acquiredLock && seedOk && migrate-succeeded`; `1` otherw
 "db:upgrade:ci": "node dist/scripts/db-upgrade.js",
 ```
 
-### Session-scoped advisory lock
+### Upgrade advisory-lock namespace (reuse)
 
-**File: `apps/api/src/db/advisory-lock.util.ts`** — add alongside `withEntityLock`:
+**File: `apps/api/src/services/sync-lock.service.ts`** — add one constant beside `SYNC_LOCK_NAMESPACE` (`0x5359_4e43` "SYNC") and `DISSOLVE_LOCK_NAMESPACE` (`0x4453_4c56` "DSLV"):
 
 ```ts
-/** Application-global advisory-lock keys (distinct 64-bit ints from a constant string). */
-export const GLOBAL_LOCK_KEYS = {
-  dbUpgrade: globalLockKey("portalai:db-upgrade"),
-} as const;
-
-export function globalLockKey(name: string): bigint; // SHA-256(name) leading 8 bytes, big-endian signed — same derivation as entityLockKey
-
-/**
- * Run `fn` while holding a SESSION-scoped advisory lock on a dedicated max:1
- * connection. Uses pg_try_advisory_lock (non-blocking): if the lock is already
- * held, `fn` does NOT run and `acquired: false` is returned. Released with
- * pg_advisory_unlock in a finally. Session-scoped (not pg_advisory_xact_lock)
- * because migrate() opens its own transactions — an xact lock would release
- * between migration files.
- */
-export async function withGlobalLock<T>(
-  key: bigint,
-  fn: () => Promise<T>,
-): Promise<{ acquired: true; value: T } | { acquired: false }>;
+/** Advisory-lock namespace for the whole-DB upgrade (#581), keyed by the
+ *  constant "db-upgrade" (a singleton). Distinct from the sync/dissolve
+ *  namespaces so it never collides in Postgres's single advisory keyspace.
+ *  0x5550_4752 is ASCII "UPGR". */
+export const UPGRADE_LOCK_NAMESPACE = 0x5550_4752;
 ```
 
-The dedicated connection follows the non-pooled pattern noted in `apps/api/src/db/client.ts:47` (session locks "cannot use a pooled" connection) and routes its password through the same `createDbPasswordResolver`.
+`db:upgrade` then calls the **existing** `SyncLockService.withAdvisoryLock(UPGRADE_LOCK_NAMESPACE, "db-upgrade", fn)` — already session-scoped (`reserveConnection` + `pg_try_advisory_lock` + `pg_advisory_unlock` in a `finally`), non-blocking, and fail-closed (`{ acquired: false }` without running `fn`). Session-scoped is exactly right here: `migrate()` opens its own transactions, so an xact lock would release between files — `withAdvisoryLock` holds the lock on its own reserved connection for the whole block. No new primitive; the lock's behavior is already covered by the `sync-lock` integration tests.
 
 ### `lint:migrations` — destructive-DDL guard
 
@@ -154,49 +140,43 @@ No new seed data. `db:upgrade` **invokes** the existing `SeedService.seed()` (bo
 
 Run via npm scripts (`feedback_use_npm_test_scripts`): `cd apps/api && npm run test:unit && npm run test:integration`; `cd packages/devops-cli && npm run test:unit`; root `npm run lint:migrations -- --self-test`.
 
-### Layer 1 — advisory lock (apps/api integration)
+The upgrade advisory lock is **not** re-tested here — its behavior (session-scoped, non-blocking, fail-closed, release-on-throw) is already covered by the `sync-lock` integration tests; case 3 below exercises it through `runUpgrade`.
 
-1. `withGlobalLock(key, fn)` runs `fn` and returns `{ acquired: true, value }` when the lock is free.
-2. A second `withGlobalLock(sameKey, …)` while the first is held returns `{ acquired: false }` and does **not** run its `fn` (fail-closed serialization).
-3. Different keys don't contend (both acquire).
-4. The lock is released after `fn` resolves **and** after `fn` throws (a subsequent acquire succeeds) — `finally` unlock.
-5. `globalLockKey` is deterministic and stable for a given name; distinct names → distinct keys.
+### Layer 1 — `db:upgrade` entrypoint (apps/api integration)
 
-### Layer 2 — `db:upgrade` entrypoint (apps/api integration)
+1. `runUpgrade()` on a fresh DB applies pending migrations (`migrationsApplied > 0`), seeds, returns `acquiredLock: true, seedOk: true`.
+2. A **second** `runUpgrade()` immediately after is a safe no-op: `migrationsApplied === 0`, `seedOk: true` (idempotent seed), exit-eligible `0`.
+3. When the upgrade lock is already held (a concurrent `withAdvisoryLock(UPGRADE_LOCK_NAMESPACE, …)` on a second connection), `runUpgrade()` returns `acquiredLock: false` and performs no migrate/seed (spies assert zero calls).
+4. A migrate failure propagates: `runUpgrade()` rejects/returns failure, the entrypoint would exit `1`, and the lock is released (a subsequent `runUpgrade` acquires) — `withAdvisoryLock`'s `finally` unlock.
+5. Reuses the resolver path — `buildMigrationClientOptions`-style assertion that the upgrade migrate opens its connection with a password **callback**, not a static password (the #505 regression guard, mirrored).
 
-6. `runUpgrade()` on a fresh DB applies pending migrations (`migrationsApplied > 0`), seeds, returns `acquiredLock: true, seedOk: true`.
-7. A **second** `runUpgrade()` immediately after is a safe no-op: `migrationsApplied === 0`, `seedOk: true` (idempotent seed), exit-eligible `0`.
-8. When the global lock is already held, `runUpgrade()` returns `acquiredLock: false` and performs no migrate/seed (spy on migrate/seed asserts zero calls).
-9. A migrate failure propagates: `runUpgrade()` rejects/returns failure, the entrypoint would exit `1`, and the lock is released (test 4 covers release-on-throw).
-10. Reuses the resolver path — `buildMigrationClientOptions`-style assertion that the upgrade opens its connection with a password **callback**, not a static password (the #505 regression guard, mirrored).
+### Layer 2 — `lint:migrations` (root, self-test)
 
-### Layer 3 — `lint:migrations` (root, self-test)
+6. `--self-test`: destructive statement without a marker → non-zero exit.
+7. `--self-test`: destructive statement **with** `-- destructive-ok: <reason>` → pass.
+8. `--self-test`: `-- destructive-ok:` with empty reason → fail.
+9. `--self-test`: purely additive migration (`CREATE TABLE`, `ADD COLUMN`) → pass.
+10. Running against the **real** `apps/api/drizzle/` tree passes (no unacknowledged destructive DDL exists today).
 
-11. `--self-test`: destructive statement without a marker → non-zero exit.
-12. `--self-test`: destructive statement **with** `-- destructive-ok: <reason>` → pass.
-13. `--self-test`: `-- destructive-ok:` with empty reason → fail.
-14. `--self-test`: purely additive migration (`CREATE TABLE`, `ADD COLUMN`) → pass.
-15. Running against the **real** `apps/api/drizzle/` tree passes (no unacknowledged destructive DDL exists today).
+### Layer 3 — backfill coverage guard (apps/api unit)
 
-### Layer 4 — backfill coverage guard (apps/api unit)
+11. Every current `SYSTEM_COLUMN_DEFINITIONS` key is in `BASELINE ∪ markers` — passes against the real tree (after `0080` markers land).
+12. A synthetic key absent from baseline and markers **fails** the assertion (drive via a stubbed catalog list) with the template-pointing message.
+13. The `0080` markers are discovered by the scanner (each geospatial key present in `B`).
 
-16. Every current `SYSTEM_COLUMN_DEFINITIONS` key is in `BASELINE ∪ markers` — passes against the real tree (after `0080` markers land).
-17. A synthetic key absent from baseline and markers **fails** the assertion (drive via a stubbed catalog list) with the template-pointing message.
-18. The `0080` markers are discovered by the scanner (each geospatial key present in `B`).
+### Layer 4 — `portalops db upgrade` (devops-cli unit)
 
-### Layer 5 — `portalops db upgrade` (devops-cli unit)
+14. `dbUpgrade` on a deployed env issues the ECS one-off `db:upgrade:ci` (mocked runner asserts the command), not a local spawn.
+15. `dbUpgrade` on `local` spawns `db:upgrade` (mocked runner).
+16. No `deployMode`-conditional branch in `dbUpgrade` (the routing key is env shape only) — asserted by exercising both a `saas` and a `residency`-config env of the same *shape* and getting the same routing.
+17. `--json` success envelope on stdout; guard/exit-code contract honored (app-dev without `--yes` → usage/confirmation exit).
 
-19. `dbUpgrade` on a deployed env issues the ECS one-off `db:upgrade:ci` (mocked runner asserts the command), not a local spawn.
-20. `dbUpgrade` on `local` spawns `db:upgrade` (mocked runner).
-21. No `deployMode`-conditional branch in `dbUpgrade` (the routing key is env shape only) — asserted by exercising both a `saas` and a `residency`-config env of the same *shape* and getting the same routing.
-22. `--json` success envelope on stdout; guard/exit-code contract honored (app-dev without `--yes` → usage/confirmation exit).
+### Layer 5 — chart (lint:helm / template render)
 
-### Layer 6 — chart (lint:helm / template render)
+18. `helm template` (or the existing `check-helm.mjs` guard extended) renders `upgrade-job.yaml` with `helm.sh/hook: pre-upgrade` and the `db-upgrade.js` command when `upgrade.enabled: true`; omits it when `false`.
+19. `migrate-job.yaml` renders `pre-install` only; `seed-job.yaml` renders `post-install`; no template references a nonexistent value.
 
-23. `helm template` (or the existing `check-helm.mjs` guard extended) renders `upgrade-job.yaml` with `helm.sh/hook: pre-upgrade` and the `db-upgrade.js` command when `upgrade.enabled: true`; omits it when `false`.
-24. `migrate-job.yaml` renders `pre-install` only; `seed-job.yaml` renders `post-install`; no template references a nonexistent value.
-
-**Totals:** ~5 lock + ~5 entrypoint + ~5 lint:migrations + ~3 backfill-guard + ~4 CLI + ~2 chart ≈ **24 cases**.
+**Totals:** ~5 entrypoint + ~5 lint:migrations + ~3 backfill-guard + ~4 CLI + ~2 chart ≈ **19 cases** (the advisory lock reuses existing coverage).
 
 ## Acceptance criteria
 
@@ -213,7 +193,7 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd apps/api && npm run t
 
 | Risk | Mitigation |
 |---|---|
-| An xact-scoped lock would release between migration files, letting a second runner in mid-upgrade. | `withGlobalLock` is **session-scoped** (`pg_try_advisory_lock` on a dedicated `max:1` connection), released in `finally` (tests 2, 4). |
+| An xact-scoped lock would release between migration files, letting a second runner in mid-upgrade. | Reuse the **session-scoped** `SyncLockService.withAdvisoryLock` (`reserveConnection` + `pg_try_advisory_lock`, released in `finally`) — it holds the lock on its own reserved connection for the whole block (tests 3, 4). |
 | A failed upgrade leaves a half-applied migration file. | drizzle wraps each migration file in a transaction; partial files never persist. Expand-only keeps the previous image valid under the new schema. |
 | Destructive-DDL guard is too blunt and blocks a legitimate cleanup. | It's an **acknowledgment**, not a block — `-- destructive-ok: <reason>` lets an intentional post-deprecation drop through, deliberately and in-file (tests 12–13). |
 | Backfill guard's baseline hides a real gap. | Baseline is a one-time literal for pre-guard keys; every **future** key must carry a marker (=migration). Test 17 proves a non-baseline, unmarked key fails. |
@@ -224,7 +204,7 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd apps/api && npm run t
 
 ## Files touched
 
-**`apps/api`** — new: `src/scripts/db-upgrade.ts`, `src/services/__tests__/seed-backfill-coverage.test.ts`, `src/scripts/__tests__/db-upgrade.test.ts`, `src/db/__tests__/advisory-lock.global.test.ts`; edit: `src/db/advisory-lock.util.ts` (+`withGlobalLock`/`GLOBAL_LOCK_KEYS`), `package.json` (+`db:upgrade`/`db:upgrade:ci`), `drizzle/0080_backfill-geospatial-column-definitions.sql` (+markers).
+**`apps/api`** — new: `src/scripts/db-upgrade.ts`, `src/services/__tests__/seed-backfill-coverage.test.ts`, `src/__tests__/__integration__/scripts/db-upgrade.integration.test.ts`; edit: `src/services/sync-lock.service.ts` (+`UPGRADE_LOCK_NAMESPACE`), `package.json` (+`db:upgrade`/`db:upgrade:ci`), `drizzle/0080_backfill-geospatial-column-definitions.sql` (+markers).
 
 **root** — new: `scripts/check-migrations.mjs`; edit: `package.json` (+`lint:migrations`), `.github/workflows/unit-test.yml` (run it).
 
@@ -238,4 +218,4 @@ No new dependency. No env-var change. No API route change.
 
 ## Next step
 
-`docs/FLEET_UPGRADE.plan.md` — TDD slices, each an independently green commit on `feat/581-fleet-upgrade` PR'd into `epic/enterprise-deployment`: (1) `withGlobalLock` + `GLOBAL_LOCK_KEYS`; (2) `db:upgrade` entrypoint + scripts; (3) `lint:migrations` destructive-DDL guard + CI wiring; (4) backfill-coverage guard + `0080` markers; (5) chart `upgrade-job.yaml` + hook re-scoping + NOTES/values; (6) `portalops db upgrade`; (7) durable-doc updates. Slices 1–2 freeze the upgrade contract; 3–4 are independent guards that can land in parallel; 5–6 consume the entrypoint; 7 closes.
+`docs/FLEET_UPGRADE.plan.md` — TDD slices, each an independently green commit on `feat/581-fleet-upgrade` PR'd into `epic/enterprise-deployment`: (1) `db:upgrade` entrypoint (+`UPGRADE_LOCK_NAMESPACE`, reusing `withAdvisoryLock`) + scripts; (2) `lint:migrations` destructive-DDL guard + CI wiring; (3) backfill-coverage guard + `0080` markers; (4) chart `upgrade-job.yaml` + hook re-scoping + NOTES/values; (5) `portalops db upgrade`; (6) durable-doc updates. Slice 1 freezes the upgrade contract; 2–3 are independent guards that can land in parallel; 4–5 consume the entrypoint; 6 closes.
