@@ -165,6 +165,11 @@ migrate:
   enabled: true
 seed:
   enabled: true
+# On `helm upgrade`, a single pre-upgrade job runs migrations + the idempotent
+# global seed under one advisory lock (`db:upgrade`, #581), before the api pods
+# roll. First install still uses migrate (pre-install) + seed (post-install).
+upgrade:
+  enabled: true
 
 # ── Ingress ──────────────────────────────────────────────────────────────
 # Off by default (reach the app by port-forward, or bring your own ingress).

@@ -12,6 +12,15 @@ Check rollout:
 
 Readiness (DB + Redis) is probed at /api/health/ready; liveness at /api/health.
 
+{{- if .Values.upgrade.enabled }}
+
+On `helm upgrade`, schema migrations + seeds run in one pre-upgrade job before
+the API rolls. Watch it and confirm the final "UPGRADE COMPLETE" line:
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "portalai.fullname" . }}-upgrade
+Prefer `helm upgrade --atomic`: a failed upgrade then rolls the workloads back
+automatically (migrations are expand-only, so the schema stays valid).
+{{- end }}
+
 {{- if not .Values.ingress }}
 
 No ingress is defined yet. Reach the app by port-forwarding:
