@@ -22,6 +22,13 @@ export const OrganizationSchema = CoreSchema.extend({
   stripeSubscriptionId: z.string().nullable().default(null),
   /** Billing-cycle anchor day (1–28, webhook-written; null = calendar month). */
   billingAnchorDay: z.number().int().min(1).max(28).nullable().default(null),
+  /** AWS Marketplace entitlement identity (#568) — the customer identifier the
+   *  org tracks. UNIQUE where not null; the #230-analog foreign guard keys on
+   *  it. Null for SaaS / non-marketplace orgs. */
+  marketplaceEntitlementId: z.string().nullable().default(null),
+  /** Epoch-ms end of the marketplace contract term (#568). Null = not
+   *  marketplace-granted. Read-only is derived when this is in the past. */
+  entitlementThrough: z.number().int().nullable().default(null),
 });
 
 export type Organization = z.infer<typeof OrganizationSchema>;

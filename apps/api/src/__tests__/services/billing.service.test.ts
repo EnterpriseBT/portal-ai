@@ -12,7 +12,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockInsertIfNew = jest.fn<(row: unknown) => Promise<boolean>>();
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
-    repository: { stripeEvents: { insertIfNew: mockInsertIfNew } },
+    repository: { commercialEvents: { insertIfNew: mockInsertIfNew } },
   },
 }));
 

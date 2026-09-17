@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { jwtCheck } from "../middleware/auth.middleware.js";
+import { requireOrgWritable } from "../middleware/require-org-writable.middleware.js";
 import { connectorConfigRouter } from "./connector-config.router.js";
 import { profileRouter } from "./profile.router.js";
 import { organizationRouter } from "./organization.router.js";
@@ -30,6 +31,10 @@ export const protectedRouter = Router();
 
 // All routes in this router require a valid JWT
 protectedRouter.use(jwtCheck);
+
+// Read-only degradation for a lapsed marketplace entitlement (#568): mutating
+// methods are gated when the org's term has expired; reads always pass.
+protectedRouter.use(requireOrgWritable);
 
 // Mount routers
 protectedRouter.use("/connector-config", connectorConfigRouter);

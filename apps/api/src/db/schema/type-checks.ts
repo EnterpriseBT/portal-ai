@@ -37,7 +37,7 @@ import type {
   OrganizationToolpack,
   Tier,
   Usage,
-  StripeEvent,
+  CommercialEvent,
   ToolUsageLedgerEntry,
 } from "@portalai/core/models";
 import type {
@@ -63,7 +63,7 @@ import type {
   OrganizationToolpackSelect,
   TierSelect,
   UsageSelect,
-  StripeEventSelect,
+  CommercialEventSelect,
   ToolUsageLedgerSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
@@ -94,7 +94,7 @@ import type { mapDissolveGeometries } from "./map-dissolve-geometries.table.js";
 import type { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import type { tiers } from "./tiers.table.js";
 import type { usage } from "./usage.table.js";
-import type { stripeEvents } from "./stripe-events.table.js";
+import type { commercialEvents } from "./commercial-events.table.js";
 import type { toolUsageLedger } from "./tool-usage-ledger.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
@@ -172,23 +172,29 @@ type _UsageInferredRow = InferSelectModel<typeof usage>;
 type _UsageInferredToModel = IsAssignable<_UsageInferredRow, Usage>;
 const _usageInferredToModel: _UsageInferredToModel = true;
 
-// ── StripeEvent ──────────────────────────────────────────────────
+// ── CommercialEvent ──────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _StripeEvtDrizzleToModel = IsAssignable<StripeEventSelect, StripeEvent>;
-const _stripeEvtDrizzleToModel: _StripeEvtDrizzleToModel = true;
+type _CommEvtDrizzleToModel = IsAssignable<
+  CommercialEventSelect,
+  CommercialEvent
+>;
+const _commEvtDrizzleToModel: _CommEvtDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _StripeEvtModelToDrizzle = IsAssignable<StripeEvent, StripeEventSelect>;
-const _stripeEvtModelToDrizzle: _StripeEvtModelToDrizzle = true;
+type _CommEvtModelToDrizzle = IsAssignable<
+  CommercialEvent,
+  CommercialEventSelect
+>;
+const _commEvtModelToDrizzle: _CommEvtModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
-type _StripeEvtInferredRow = InferSelectModel<typeof stripeEvents>;
-type _StripeEvtInferredToModel = IsAssignable<
-  _StripeEvtInferredRow,
-  StripeEvent
+type _CommEvtInferredRow = InferSelectModel<typeof commercialEvents>;
+type _CommEvtInferredToModel = IsAssignable<
+  _CommEvtInferredRow,
+  CommercialEvent
 >;
-const _stripeEvtInferredToModel: _StripeEvtInferredToModel = true;
+const _commEvtInferredToModel: _CommEvtInferredToModel = true;
 
 // ── ToolUsageLedgerEntry ─────────────────────────────────────────
 
