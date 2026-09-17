@@ -55,19 +55,51 @@ if set, else the chart-managed Secret.
 {{- end -}}
 
 {{/*
-DATABASE_URL. Skeleton composes it from postgresql.external; the bundled-service
-branch is added in slice 4.
+DATABASE_URL. Composed from the bundled postgresql service when enabled, else
+from postgresql.external.
 */}}
 {{- define "portalai.databaseUrl" -}}
+{{- if .Values.postgresql.enabled -}}
+{{- with .Values.postgresql.auth -}}
+postgresql://{{ .username }}:{{ .password }}@{{ $.Release.Name }}-postgresql:5432/{{ .database }}
+{{- end -}}
+{{- else -}}
 {{- with .Values.postgresql.external -}}
 postgresql://{{ .user }}:{{ .password }}@{{ .host }}:{{ .port }}/{{ .database }}
 {{- end -}}
 {{- end -}}
+{{- end -}}
 
 {{/*
-REDIS_URL. Skeleton uses redis.external.url; the bundled-service branch is added
-in slice 4.
+REDIS_URL. Composed from the bundled redis master service when enabled (auth
+off — evaluation-grade), else from redis.external.url.
 */}}
 {{- define "portalai.redisUrl" -}}
+{{- if .Values.redis.enabled -}}
+redis://{{ .Release.Name }}-redis-master:6379
+{{- else -}}
 {{- .Values.redis.external.url -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+UPLOAD_S3_ENDPOINT. Bundled MinIO service when enabled, else minio.external.endpoint.
+*/}}
+{{- define "portalai.s3Endpoint" -}}
+{{- if .Values.minio.enabled -}}
+http://{{ .Release.Name }}-minio:9000
+{{- else -}}
+{{- .Values.minio.external.endpoint -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+UPLOAD_S3_BUCKET. Bundled default bucket when enabled, else minio.external.bucket.
+*/}}
+{{- define "portalai.s3Bucket" -}}
+{{- if .Values.minio.enabled -}}
+{{- .Values.minio.defaultBuckets -}}
+{{- else -}}
+{{- .Values.minio.external.bucket -}}
+{{- end -}}
 {{- end -}}

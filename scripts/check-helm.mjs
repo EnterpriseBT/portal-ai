@@ -39,6 +39,24 @@ const IMAGE_ARGS = [
   "image.web.tag=test",
 ];
 
+// External data-dep values for the "managed endpoints" render path.
+const EXTERNAL_ARGS = [
+  "--set",
+  "postgresql.enabled=false",
+  "--set",
+  "redis.enabled=false",
+  "--set",
+  "minio.enabled=false",
+  "--set",
+  "postgresql.external.host=db.example.com",
+  "--set",
+  "postgresql.external.password=pw",
+  "--set",
+  "redis.external.url=redis://cache.example.com:6379",
+  "--set",
+  "minio.external.endpoint=https://s3.example.com",
+];
+
 function helmAvailable() {
   try {
     execFileSync("helm", ["version", "--short"], { stdio: "ignore" });
@@ -52,11 +70,32 @@ function run(args) {
   return execFileSync("helm", args, { encoding: "utf8" });
 }
 
+/**
+ * Fetch the pinned subchart dependencies (Chart.lock). Bitnami's index is
+ * needed for the HTTP repo entries; adding it is idempotent. A failure here is
+ * fatal — a missing/renamed pinned chart must fail loudly, not silently render
+ * without its data deps.
+ */
+function buildDependencies() {
+  execFileSync(
+    "helm",
+    [
+      "repo",
+      "add",
+      "bitnami",
+      "https://charts.bitnami.com/bitnami",
+      "--force-update",
+    ],
+    { stdio: "ignore" }
+  );
+  run(["dependency", "build", CHART]);
+}
+
 /** A rendered scenario plus the assertions it must satisfy. */
 const scenarios = [
   {
-    name: "defaults (api + web skeleton)",
-    args: ["template", "portalai", CHART, ...IMAGE_ARGS],
+    name: "defaults (api + web + bundled data deps)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS],
     assertions: [
       ["api liveness probe", (out) => out.includes("path: /api/health\n")],
       [
@@ -70,6 +109,48 @@ const scenarios = [
         "api reads env from ConfigMap + Secret",
         (out) =>
           out.includes("configMapRef:") && out.includes("secretRef:"),
+      ],
+      [
+        "bundled DATABASE_URL points at the postgresql service",
+        (out) => /DATABASE_URL: "postgresql:\/\/[^"]*@p-postgresql:5432\//.test(out),
+      ],
+      [
+        "bundled REDIS_URL points at the redis master service",
+        (out) => out.includes('REDIS_URL: "redis://p-redis-master:6379"'),
+      ],
+      [
+        "bundled DB uses the PostGIS image override",
+        (out) => out.includes("imresamu/postgis:17-3.5"),
+      ],
+      [
+        "bundled Redis has a persistent volume claim",
+        (out) => out.includes("kind: PersistentVolumeClaim"),
+      ],
+      ["bundled MinIO renders", (out) => out.includes("p-minio")],
+    ],
+  },
+  {
+    name: "external (managed endpoints)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS, ...EXTERNAL_ARGS],
+    assertions: [
+      [
+        "external DATABASE_URL",
+        (out) => out.includes('DATABASE_URL: "postgresql://portalai:pw@db.example.com:5432/portalai"'),
+      ],
+      [
+        "external REDIS_URL",
+        (out) => out.includes('REDIS_URL: "redis://cache.example.com:6379"'),
+      ],
+      [
+        "external S3 endpoint",
+        (out) => out.includes('UPLOAD_S3_ENDPOINT: "https://s3.example.com"'),
+      ],
+      [
+        "no bundled subchart objects render",
+        (out) =>
+          !out.includes("p-postgresql") &&
+          !out.includes("p-redis") &&
+          !out.includes("p-minio"),
       ],
     ],
   },
@@ -85,6 +166,19 @@ function main() {
   }
 
   const failures = [];
+
+  // Fetch pinned subchart deps (Chart.lock) before lint/template.
+  try {
+    buildDependencies();
+    console.log("✓ helm dependency build (pinned subcharts)");
+  } catch (err) {
+    console.error(
+      "✗ helm dependency build failed — a pinned subchart could not be " +
+        "fetched (network, or a moved/renamed Bitnami chart):\n" +
+        (err.stderr || err.stdout || err.message)
+    );
+    process.exit(1);
+  }
 
   // helm lint
   try {

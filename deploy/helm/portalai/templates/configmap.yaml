@@ -12,6 +12,12 @@ data:
   OIDC_ISSUER: {{ .Values.oidc.issuer | quote }}
   OIDC_AUDIENCE: {{ .Values.oidc.audience | quote }}
   OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+  # S3/MinIO uploads. ENDPOINT + FORCE_PATH_STYLE are consumed once #567 lands;
+  # BUCKET/REGION are read today. Composed bundled-vs-external in _helpers.tpl.
+  UPLOAD_S3_ENDPOINT: {{ include "portalai.s3Endpoint" . | quote }}
+  UPLOAD_S3_BUCKET: {{ include "portalai.s3Bucket" . | quote }}
+  UPLOAD_S3_REGION: {{ if .Values.minio.enabled }}"us-east-1"{{ else }}{{ .Values.minio.external.region | quote }}{{ end }}
+  UPLOAD_S3_FORCE_PATH_STYLE: {{ if .Values.minio.enabled }}"true"{{ else }}{{ .Values.minio.external.forcePathStyle | quote }}{{ end }}
   {{- range $key, $value := .Values.config }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}

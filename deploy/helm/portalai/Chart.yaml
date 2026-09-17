@@ -9,5 +9,22 @@ type: application
 version: 0.1.0
 # App version — overridden at package time with the release image tag/SHA.
 appVersion: "0.0.0"
-# Bundled data-dependency subcharts (postgresql/redis/minio) and the optional
-# Keycloak issuer are added in later slices (#566, slices 4 and 6).
+
+# Bundled data-dependency subcharts, each disable-able to an external endpoint.
+# Versions are pinned and Chart.lock is committed so `helm dependency build` is
+# reproducible and a missing/renamed chart fails loudly (Bitnami is actively
+# restricting its free catalog — see README). The optional Keycloak issuer is
+# added in slice 6.
+dependencies:
+  - name: postgresql
+    version: 16.7.27 # PostgreSQL 17.x — matches the imresamu/postgis:17-3.5 override
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: 20.13.4 # Redis 7.4.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: minio
+    version: 17.0.21
+    repository: https://charts.bitnami.com/bitnami
+    condition: minio.enabled

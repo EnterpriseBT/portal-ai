@@ -85,10 +85,37 @@ config: {}
 secrets: {}
 existingSecret: ""
 
-# Data dependencies. This skeleton composes DATABASE_URL / REDIS_URL from the
-# `external` blocks below; the bundled subcharts (with an `enabled` toggle) are
-# added in slice 4.
+# Required by recent Bitnami charts to accept a non-Bitnami image (the PostGIS
+# override below). Bundled deps are evaluation-grade; production points at
+# managed endpoints via the `external` blocks (enabled: false).
+global:
+  security:
+    allowInsecureImages: true
+
+# ── Data dependencies ────────────────────────────────────────────────────
+# Each is bundled by default and disable-able to an external managed endpoint.
+# When enabled, DATABASE_URL / REDIS_URL / UPLOAD_S3_* are composed from the
+# bundled service names (_helpers.tpl); when disabled, from the `external` block.
+
 postgresql:
+  enabled: true
+  # PostGIS image so the bundled DB satisfies migration 0076 (CREATE EXTENSION
+  # postgis). NOTE: the Bitnami postgresql subchart is built around a Bitnami
+  # image; running a foreign PostGIS image is a DOCUMENTED SMOKE RISK
+  # (entrypoint / data-dir path conventions differ) — see README. Production
+  # should use managed PostGIS via enabled:false + external.
+  image:
+    registry: docker.io
+    repository: imresamu/postgis
+    tag: "17-3.5"
+  auth:
+    username: portalai
+    password: portalai
+    database: portalai
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
   external:
     host: ""
     port: 5432
@@ -97,5 +124,34 @@ postgresql:
     password: ""
 
 redis:
+  enabled: true
+  architecture: standalone
+  # Evaluation-grade: auth off so REDIS_URL is composable without a generated
+  # password. A managed Redis (enabled:false) carries its own auth in the URL.
+  auth:
+    enabled: false
+  master:
+    # MANDATORY PVC — Redis is the durable BullMQ store; without it, in-flight
+    # jobs are lost on a pod restart.
+    persistence:
+      enabled: true
+      size: 8Gi
   external:
     url: ""
+
+minio:
+  enabled: true
+  auth:
+    rootUser: portalai
+    rootPassword: portalai-minio
+  defaultBuckets: portalai-uploads
+  persistence:
+    enabled: true
+    size: 20Gi
+  # Full S3 endpoint/credential wiring lands with #567 (PR #606); this composes
+  # the endpoint + bucket the app will read once merged.
+  external:
+    endpoint: ""
+    region: us-east-1
+    bucket: portalai-uploads
+    forcePathStyle: true
