@@ -7,6 +7,17 @@ import globals from "globals";
 
 export default [
   js.configs.recommended,
+  // Node-run build scripts (e.g. the residency image's render-config.mjs, #566)
+  // execute under bare node, not the browser — give them node globals.
+  {
+    files: ["scripts/**/*.{js,mjs}"],
+    languageOptions: {
+      sourceType: "module",
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
   {
     files: ["src/**/*.{ts,tsx}", ".storybook/**/*.{ts,tsx}"],
     languageOptions: {
@@ -103,6 +114,9 @@ export default [
       "*.config.js",
       "*.config.ts",
       "**/*.d.ts",
+      // Static assets served verbatim — not source. config.js is the runtime
+      // config default (#566), regenerated per-container in the residency image.
+      "public/**",
     ],
   },
 ];

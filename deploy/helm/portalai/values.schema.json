@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Portals AI residency chart values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "api": { "$ref": "#/$defs/image" },
+        "web": { "$ref": "#/$defs/image" }
+      },
+      "required": ["api", "web"]
+    },
+    "imagePullSecrets": { "type": "array" },
+    "deployMode": {
+      "type": "string",
+      "enum": ["saas", "residency"]
+    },
+    "oidc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "issuer": { "type": "string" },
+        "audience": { "type": "string" },
+        "clientId": { "type": "string" }
+      }
+    },
+    "config": { "type": "object" },
+    "secrets": { "type": "object" },
+    "existingSecret": { "type": "string" },
+    "api": { "type": "object", "additionalProperties": true },
+    "web": { "type": "object", "additionalProperties": true },
+    "postgresql": { "type": "object", "additionalProperties": true },
+    "redis": { "type": "object", "additionalProperties": true }
+  },
+  "required": ["image", "deployMode"],
+  "$defs": {
+    "image": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    }
+  }
+}
