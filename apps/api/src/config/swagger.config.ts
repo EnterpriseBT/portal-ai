@@ -578,6 +578,32 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        HealthReadyResponse: {
+          type: "object",
+          required: ["ready", "checks"],
+          properties: {
+            ready: {
+              type: "boolean",
+              description:
+                "True only when every backing dependency is reachable",
+            },
+            checks: {
+              type: "object",
+              required: ["db", "redis"],
+              description: "Per-dependency reachability",
+              properties: {
+                db: {
+                  type: "boolean",
+                  description: "PostgreSQL reachable",
+                },
+                redis: {
+                  type: "boolean",
+                  description: "Redis reachable",
+                },
+              },
+            },
+          },
+        },
         UserProfile: {
           type: "object",
           required: ["sub"],
