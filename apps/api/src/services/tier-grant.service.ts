@@ -11,9 +11,8 @@
  *
  * A source only `resolve`s an event to an outcome; `apply` owns the D2
  * transaction (the dedup insert + the org UPDATE commit or roll back
- * together) and the outcome vocabulary. The dedup store is `stripe_events`
- * for now — generalizing it to `commercial_events` lands with the first
- * non-Stripe source (#568), not here.
+ * together) and the outcome vocabulary. The dedup store is `commercial_events`
+ * (generalized in #568), keyed on `(source, external_id)`.
  */
 
 import type Stripe from "stripe";
@@ -34,7 +33,7 @@ export type TierGrantOutcome =
   | "duplicate"
   | "foreign";
 
-/** The dedup row a source records for an event (a `stripe_events` row today). */
+/** The dedup row a source records for an event (a `commercial_events` row). */
 type EventRow = ReturnType<typeof BillingService.eventRow>;
 
 /** The column-generic partial write `apply` applies to `organizations`. */
@@ -90,7 +89,7 @@ export class TierGrantService {
       resolution.outcome === "unmatched" ||
       resolution.outcome === "foreign"
     ) {
-      const inserted = await DbService.repository.stripeEvents.insertIfNew(
+      const inserted = await DbService.repository.commercialEvents.insertIfNew(
         resolution.eventRow
       );
       return inserted ? resolution.outcome : "duplicate";
@@ -99,7 +98,7 @@ export class TierGrantService {
     // grant — dedup row + org write commit or roll back together (D2).
     const { organizationId, changed, orgUpdate, eventRow } = resolution;
     return DbService.transaction(async (tx) => {
-      const inserted = await DbService.repository.stripeEvents.insertIfNew(
+      const inserted = await DbService.repository.commercialEvents.insertIfNew(
         eventRow,
         tx
       );

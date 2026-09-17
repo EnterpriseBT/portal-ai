@@ -77,7 +77,7 @@ export * from "./tier.model.js";
 export * from "./usage.model.js";
 
 /** Stripe webhook event dedup/audit model (#176) */
-export * from "./stripe-event.model.js";
+export * from "./commercial-event.model.js";
 
 /** Tool usage audit ledger entry (#179) */
 export * from "./tool-usage-ledger.model.js";

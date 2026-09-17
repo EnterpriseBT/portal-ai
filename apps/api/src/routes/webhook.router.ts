@@ -195,7 +195,7 @@ export const STRIPE_SUBSCRIPTION_EVENTS = new Set([
  *       Receives Stripe events (signature-verified over the exact raw bytes;
  *       JWT-exempt). `customer.subscription.{created,updated,deleted}` events
  *       converge the organization's tier to the subscription's current state,
- *       dedup'd per event id through the `stripe_events` table; other event
+ *       dedup'd per event id through the `commercial_events` table; other event
  *       types are recorded as `ignored`. Every non-error outcome — applied,
  *       noop, unmatched, duplicate, ignored — returns 200 so Stripe stops
  *       redelivering; processing failures return 500 so Stripe retries.
