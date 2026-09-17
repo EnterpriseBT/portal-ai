@@ -87,9 +87,10 @@ export const UPGRADE_LOCK_NAMESPACE = 0x5550_4752;
 
 **File: `scripts/check-migrations.mjs`** (new) + **root `package.json`**: `"lint:migrations": "node scripts/check-migrations.mjs"`. Same shape as `scripts/check-ci-cache.mjs` (module doc explaining the silent failure it prevents; `--self-test` runs embedded fixtures before the real tree).
 
-- Scans `apps/api/drizzle/*.sql` **changed in the PR** (falls back to all files on `--self-test`/full run) for destructive DDL: `DROP TABLE`, `DROP COLUMN`, `ALTER … DROP`, `DROP … CONSTRAINT`, `TRUNCATE`, `ALTER COLUMN … TYPE` (narrowing) — case-insensitive, comment-stripped.
-- A matched line **passes only if** the statement (or the line above) carries `-- destructive-ok: <reason>` with a non-empty reason. Otherwise the script **exits non-zero**, naming the file + statement + the marker to add.
-- Self-test fixtures: a destructive statement without a marker fails; the same with a valid marker passes; a non-destructive migration passes; an empty-reason marker fails.
+- Scans `apps/api/drizzle/*.sql` for destructive DDL: `DROP TABLE`, `DROP COLUMN`, `DROP … CONSTRAINT`, `TRUNCATE`, `ALTER COLUMN … (SET DATA) TYPE` — case-insensitive, string/comment-aware.
+- **Grandfathered by index.** The 20 existing files with destructive DDL are historical, applied, and immutable, so the guard enforces **only on migrations numbered above `BASELINE_MAX_MIGRATION_INDEX = 95`** (the current journal max). Every *future* migration is `0096+` and is checked; history is left alone (no retroactive acknowledgments).
+- A matched line **passes only if** the statement (or the line immediately above) carries `-- destructive-ok: <reason>` with a non-empty reason. Otherwise the script **exits non-zero**, naming the file + statement + the marker to add.
+- Self-test fixtures exercise the pure rule on synthetic SQL (index-independent): a destructive statement without a marker fails; the same with a valid marker passes; a non-destructive migration passes; an empty-reason marker fails.
 - Wired into `unit-test.yml` next to `lint:ci-cache` / `lint:helm` (a required-check job).
 
 ### Per-org backfill coverage guard
@@ -156,7 +157,7 @@ The upgrade advisory lock is **not** re-tested here — its behavior (session-sc
 7. `--self-test`: destructive statement **with** `-- destructive-ok: <reason>` → pass.
 8. `--self-test`: `-- destructive-ok:` with empty reason → fail.
 9. `--self-test`: purely additive migration (`CREATE TABLE`, `ADD COLUMN`) → pass.
-10. Running against the **real** `apps/api/drizzle/` tree passes (no unacknowledged destructive DDL exists today).
+10. Running against the **real** `apps/api/drizzle/` tree passes — only migrations numbered `> 95` are enforced, and none exist yet, so history (0000–0095) is grandfathered.
 
 ### Layer 3 — backfill coverage guard (apps/api unit)
 

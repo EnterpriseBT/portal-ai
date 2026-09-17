@@ -65,7 +65,7 @@ A root guard script (the `check-ci-cache.mjs`/`check-helm.mjs` family) that fail
 **Steps**
 
 1. **Self-test cases (spec 6–10).** destructive statement without a marker → non-zero; same with `-- destructive-ok: <reason>` → pass; empty-reason marker → fail; purely additive migration → pass; the **real** `apps/api/drizzle/` tree passes. Run `node scripts/check-migrations.mjs --self-test`; fail (script absent).
-2. **Implement** the scanner: comment-strip, match `DROP TABLE|DROP COLUMN|ALTER … DROP|DROP … CONSTRAINT|TRUNCATE|ALTER COLUMN … TYPE` (case-insensitive), require a non-empty `-- destructive-ok:` on the statement or the line above, self-test fixtures run before the real tree. Green.
+2. **Implement** the scanner: a pure `findViolations(sql)` (string/comment-aware) matching `DROP TABLE|DROP COLUMN|DROP … CONSTRAINT|TRUNCATE|ALTER COLUMN … (SET DATA) TYPE`, requiring a non-empty `-- destructive-ok:` on the statement or the line above; the real-tree pass enforces only on migrations indexed `> BASELINE_MAX_MIGRATION_INDEX (95)` (history is grandfathered); self-test fixtures run before the real tree. Green.
 3. Wire into CI; lint (the script is `.mjs`, must pass repo prettier/eslint globs if included).
 
 **Done when:** `--self-test` passes, the real tree passes, and the check is a CI step.
