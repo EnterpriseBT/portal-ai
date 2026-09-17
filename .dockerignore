@@ -1,0 +1,36 @@
+# Build context excludes (#566). The api/web Dockerfiles copy manifests + source
+# and run `npm ci` / the build INSIDE the image, so these regenerated or
+# irrelevant paths must not bloat the context sent to the daemon.
+**/node_modules
+**/dist
+**/build
+**/.turbo
+**/coverage
+**/storybook-static
+**/.next
+**/.vite
+
+.git
+.github
+.husky
+
+# Local env / secrets — never bake into an image layer
+**/.env
+**/.env.*
+!**/.env.example
+
+# Test + tooling artifacts
+packages/e2e/test-results
+packages/e2e/playwright-report
+packages/e2e/.auth
+**/*.log
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+
+# Docs and IaC are not needed to build the app images
+docs
+infra
+deploy

@@ -163,6 +163,34 @@ Resources:
         - Key: Name
           Value: !Sub "portalai-api-${Environment}"
 
+  # ── Web ECR Repository ───────────────────────────────────
+  # Holds the residency web image (#566): the SPA served by nginx, built and
+  # pushed by deploy-*.yml alongside the API image and pulled by the L2 Helm
+  # chart. Additive — the SaaS web path still ships to S3 + CloudFront.
+  WebECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "portalai-web-${Environment}"
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-web-${Environment}"
+
   # ── S3 Upload Access Logs Bucket ─────────────────────────
   # Self-logging bucket that receives server-access logs for UploadBucket.
   UploadAccessLogsBucket:
@@ -691,6 +719,11 @@ Outputs:
     Value: !GetAtt ECRRepository.RepositoryUri
     Export:
       Name: !Sub "${Environment}-EcrRepositoryUri"
+
+  WebEcrRepositoryUri:
+    Value: !GetAtt WebECRRepository.RepositoryUri
+    Export:
+      Name: !Sub "${Environment}-WebEcrRepositoryUri"
 
   EcsClusterName:
     Value: !Ref ECSCluster

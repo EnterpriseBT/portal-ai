@@ -63,6 +63,23 @@ RUN curl -fsSL https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/p
 RUN curl -sSfL https://raw.githubusercontent.com/auth0/auth0-cli/main/install.sh \
     | sh -s -- -b /usr/local/bin
 
+# Install Helm (chart lint/template for the L2 install package, #566) so
+# `helm lint` / `helm template` run locally in the devcontainer, matching the
+# check the Static Checks CI runs against deploy/helm/portalai.
+#
+# Installed from the get.helm.sh release tarball, NOT the baltocdn apt repo:
+# baltocdn chains to ISRG Root YR, a root that Debian bookworm's newest
+# ca-certificates (20250419) does not carry, so curl fails cert verification
+# there and the build dies. No trust-store upgrade fixes it. apt bought us
+# nothing here anyway — this image is rebuilt, never `apt upgrade`d.
+ARG HELM_VERSION=3.19.0
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-${ARCH}.tar.gz" -o /tmp/helm.tgz \
+    && tar -xzf /tmp/helm.tgz -C /tmp \
+    && install -m 0755 "/tmp/linux-${ARCH}/helm" /usr/local/bin/helm \
+    && rm -rf /tmp/helm.tgz "/tmp/linux-${ARCH}" \
+    && helm version --short
+
 # Install Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"

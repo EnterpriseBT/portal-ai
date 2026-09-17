@@ -385,6 +385,32 @@ jobs:
             BUILD_SHA=${{ github.sha }}
           provenance: false
 
+      # Residency web image (#566). See deploy-dev.yml for the rationale —
+      # additive to the SaaS S3/CloudFront web deploy; pulled by the L2 Helm
+      # chart; multi-arch; runtime-configured via config.js.
+      - name: Get web ECR repository URI
+        id: web-ecr
+        run: |
+          ECR_URI=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-backend \
+            --query "Stacks[0].Outputs[?ExportName=='prod-WebEcrRepositoryUri'].OutputValue" \
+            --output text)
+          echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.web-ecr.outputs.uri }}:prod-${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
+            BUILD_SHA=${{ github.sha }}
+            VITE_API_BASE_URL=
+          provenance: false
+
       - name: Get ECS configuration
         id: ecs
         run: |

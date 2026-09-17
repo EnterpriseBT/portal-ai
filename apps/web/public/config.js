@@ -1,0 +1,1 @@
+window.__RUNTIME_CONFIG__ = {"AUTH_PROVIDER":"auth0","OIDC_ISSUER":"","OIDC_CLIENT_ID":"","OIDC_AUDIENCE":"","DEPLOY_MODE":"saas"};

@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+    <!-- Runtime configuration (#566). A classic (blocking) script so
+         window.__RUNTIME_CONFIG__ is set before the deferred module bundle
+         runs. In the residency image this file is rendered per-container from
+         env at startup; in dev/SaaS the static public/config.js default is
+         served. SPA consumption is #607. -->
+    <script src="/config.js"></script>
+
     <title>Portals AI — Data Integration &amp; Visualization</title>
     <meta name="description" content="Portals connects your data sources with AI-powered intelligence. Build dynamic data portals, automate integrations, and visualize insights — all in one platform." />
 
