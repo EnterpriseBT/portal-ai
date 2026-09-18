@@ -717,6 +717,7 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 - `README.md` (root), `apps/web/README.md`, `apps/api/README.md`, `packages/core/README.md`, `packages/spreadsheet-parsing/README.md`
 - The **durable** (unsuffixed) `docs/` set — `CLI_OPERATIONS_CHARTER.md`, `LOCAL_DEVELOPMENT.md`, the `*.runbook.md` files, the vendor CLI ops guides. Phase docs (`.discovery`/`.spec`/`.plan`/`.smoke`/`.condensed`) are **not** on this list: they describe a decision at a point in time and get swept, so they are never updated to match later behavior
 - `docs/CUSTOM_TOOLPACK_INTEGRATION.md` — the custom-tool author contract
+- `docs/DEPLOYMENT_SECURITY_REVIEW.md` (#582) — the residency review-record template + SaaS baseline. Its **egress and subprocessor sections are code-derived** (the third-party-calling tools + their egress env vars), so a change to what the app sends off-box drifts it. Keep it in sync — see the table row below
 - `CLAUDE.md` itself, when a change alters a documented convention (and its mirror, `.github/copilot-instructions.md`)
 
 ### What changed → what to check
@@ -729,6 +730,7 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 | a validation rule or its message | `record-field-serialization.util.ts` (+ the field's `helperText`) |
 | a tool (capability/input/semantics) | the three tool surfaces above (`.tool.ts` + `builtin-toolpacks.ts` mirror + `system.prompt.ts`) |
 | the custom-tool wire/capability contract | `CUSTOM_TOOLPACK_INTEGRATION.md` + `RegisterToolpackDialog` |
+| an **egress vector** — a tool that makes a third-party network call, its egress env var (`ANTHROPIC_BASE_URL`/`TAVILY_API_KEY`/`GEOCODING_API_KEY`/a new one), or a subprocessor/telemetry behavior | `docs/DEPLOYMENT_SECURITY_REVIEW.md` (egress §1 + subprocessor §2 + telemetry §3, and the SaaS baseline) |
 | a convention, script, or setup step | the relevant `README.md` / `docs/*.md` / `CLAUDE.md` (+ `.github/copilot-instructions.md`) |
 
 The pinning tests (`builtin-toolpacks.test.ts`, `system.prompt.test.ts`, `glossary.util.test.ts`, `faq.util.test.ts`) catch some drift — but not semantic drift or the prose surfaces. The check is yours, not the test suite's.
