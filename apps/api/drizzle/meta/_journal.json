@@ -677,35 +677,35 @@
     {
       "idx": 96,
       "version": "7",
-      "when": 1789237692985,
+      "when": 1789675181735,
       "tag": "0096_add-audit-log-table",
       "breakpoints": true
     },
     {
       "idx": 97,
       "version": "7",
-      "when": 1789427014899,
+      "when": 1789675181736,
       "tag": "0097_add_organization_user_role",
       "breakpoints": true
     },
     {
       "idx": 98,
       "version": "7",
-      "when": 1789497030447,
+      "when": 1789675181737,
       "tag": "0098_add_users_auth0_id_unique_index",
       "breakpoints": true
     },
     {
       "idx": 99,
       "version": "7",
-      "when": 1789508895549,
+      "when": 1789675181738,
       "tag": "0099_add_org_seats",
       "breakpoints": true
     },
     {
       "idx": 100,
       "version": "7",
-      "when": 1789588185365,
+      "when": 1789675181739,
       "tag": "0100_add-user-last-login-session",
       "breakpoints": true
     }
