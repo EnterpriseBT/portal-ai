@@ -78,5 +78,13 @@ jobs:
       - name: Check CI cache wiring and required-check invariants
         run: npm run lint:ci-cache
 
+      # Fails a NEW migration (indexed > 95) that carries destructive DDL
+      # (DROP/TRUNCATE/type change) without a `-- destructive-ok: <reason>`
+      # acknowledgment (#581). Upgrades are forward-only against customer data,
+      # so an unacknowledged drop is irreversible and otherwise invisible in CI.
+      # Self-tests its rule against embedded fixtures before the real tree.
+      - name: Check migrations for unacknowledged destructive DDL
+        run: npm run lint:migrations
+
       - name: Run unit tests
         run: npm run test:unit

@@ -128,9 +128,9 @@ const scenarios = [
       ],
       ["bundled MinIO renders", (out) => out.includes("p-minio")],
       [
-        "migrate hook: pre-install,pre-upgrade + command",
+        "migrate hook: pre-install only + command",
         (out) =>
-          out.includes('"helm.sh/hook": pre-install,pre-upgrade') &&
+          out.includes('"helm.sh/hook": pre-install\n') &&
           out.includes('command: ["node", "dist/scripts/db-migrate.js"]'),
       ],
       [
@@ -138,6 +138,12 @@ const scenarios = [
         (out) =>
           out.includes('"helm.sh/hook": post-install') &&
           out.includes('command: ["node", "dist/db/seed.js"]'),
+      ],
+      [
+        "upgrade hook: pre-upgrade + db-upgrade command",
+        (out) =>
+          out.includes('"helm.sh/hook": pre-upgrade') &&
+          out.includes('command: ["node", "dist/scripts/db-upgrade.js"]'),
       ],
       [
         "no ingress or bundled issuer by default",
@@ -201,12 +207,16 @@ const scenarios = [
       "migrate.enabled=false",
       "--set",
       "seed.enabled=false",
+      "--set",
+      "upgrade.enabled=false",
     ],
     assertions: [
       [
-        "no migrate/seed jobs render when disabled",
+        "no migrate/seed/upgrade jobs render when disabled",
         (out) =>
-          !out.includes("db-migrate.js") && !out.includes("dist/db/seed.js"),
+          !out.includes("db-migrate.js") &&
+          !out.includes("dist/db/seed.js") &&
+          !out.includes("db-upgrade.js"),
       ],
     ],
   },

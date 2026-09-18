@@ -1,17 +1,20 @@
-{{- if .Values.migrate.enabled }}
+{{- if .Values.upgrade.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "portalai.fullname" . }}-migrate
+  name: {{ include "portalai.fullname" . }}-upgrade
   labels:
     {{- include "portalai.labels" . | nindent 4 }}
-    app.kubernetes.io/component: migrate
+    app.kubernetes.io/component: upgrade
   annotations:
-    # First-install schema only (#581). The `pre-upgrade` path moved to
-    # `upgrade-job.yaml`, which runs migrate + seed as one signalled operation.
-    # On a FIRST install with the bundled DB, see README (the DB is created in
-    # the main phase — point at an external DB or migrate after it is up).
-    "helm.sh/hook": pre-install
+    # The single upgrade signal (#581). On `helm upgrade` the DB already exists,
+    # so schema migrations + the idempotent global seed run in ONE job before the
+    # api pods roll — `db:upgrade` holds a session advisory lock across both, so
+    # two concurrent passes never both migrate. It prints "UPGRADE COMPLETE" and
+    # exits non-zero on failure; run `helm upgrade --atomic` to roll the
+    # workloads back (the schema is expand-only and stays valid). First install
+    # uses the separate migrate (pre-install) + seed (post-install) jobs.
+    "helm.sh/hook": pre-upgrade
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
@@ -20,7 +23,7 @@ spec:
     metadata:
       labels:
         {{- include "portalai.labels" . | nindent 8 }}
-        app.kubernetes.io/component: migrate
+        app.kubernetes.io/component: upgrade
     spec:
       restartPolicy: Never
       {{- with .Values.imagePullSecrets }}
@@ -30,10 +33,10 @@ spec:
       securityContext:
         {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
       containers:
-        - name: migrate
+        - name: upgrade
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
           imagePullPolicy: {{ .Values.image.api.pullPolicy }}
-          command: ["node", "dist/scripts/db-migrate.js"]
+          command: ["node", "dist/scripts/db-upgrade.js"]
           envFrom:
             - configMapRef:
                 name: {{ include "portalai.fullname" . }}-config

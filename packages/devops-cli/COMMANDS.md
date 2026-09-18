@@ -25,7 +25,7 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 |---|---|---|---|
 | read | — | — | — |
 | connect (`db tunnel`, `db psql`) | — | — | `--confirm-prod` |
-| mutation (`vars set/apply`, `db seed`, `db url --write`) | — | `--yes` | `--yes --confirm-prod` |
+| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`) | — | `--yes` | `--yes --confirm-prod` |
 | destructive (`db reset`, `db reset-seed`) | — | `--yes` | **refused** (exit 6) |
 
 Every mutation/destructive command appends a JSONL audit entry to `~/.portalai/audit.log` (no secret values).
@@ -118,6 +118,10 @@ Mutation. Restores the system rows a reset removes — the `standard` tier row t
 ### `portalops db reset-seed --env <env> --yes [--json]`
 **Destructive** (never production). `reset` then `seed`, in that order — a total truncate and re-seed, meaning the same thing for every env. The schema and `__drizzle_migrations` survive the truncate, so no migration step is involved.
 `--json`: `{ "reset": {…}, "seed": {…} }`
+
+### `portalops db upgrade --env <env> --yes [--confirm-prod] [--json]`
+Mutation (not destructive — migrations are expand-only, so `prod` is gated by `--yes --confirm-prod`, never refused). Applies pending migrations **and** the idempotent global seed as one advisory-locked operation (`db:upgrade`, #581) — a second concurrent pass acquires no lock and does no work. **Dispatches on the env's shape** exactly like `db seed`, with **no saas/residency branch**: a deployed env runs `db:upgrade:ci` as a FARGATE one-off ECS task (non-zero container exit → exit 7 naming CloudWatch); `--env local` spawns the app's own `db:upgrade`. A residency install upgrades via the Helm chart's `pre-upgrade` job and never uses this command — it serves our own SaaS/ECS channel.
+`--json`: `{ "via": "ecs", "taskArn", "exitCode": 0 }` or `{ "via": "local", "script": "db:upgrade" }`
 
 ## tier
 
