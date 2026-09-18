@@ -296,7 +296,7 @@ printf '%s' '<rk_live_…>' | portalops vars set STRIPE_SECRET_KEY - --env $ENV 
 printf '%s' '<whsec_…>'   | portalops vars set STRIPE_WEBHOOK_SECRET - --env $ENV $GUARD
 ```
 
-Use a **restricted** key, not the account secret key. The operator/agent key for inspection is a separate read-only one — mutation safety for vendor CLIs is the credential, never a prompt.
+Use a **restricted** key, not the account secret key. The operator/agent key for inspection is a separate read-only one — mutation safety for vendor CLIs is the credential, never a prompt. For AWS specifically this is the `portalai-prod-operator-read` role (inspection) vs `portalai-prod-operator-write` (MFA-gated mutations), both assumed by the `portalai-operator` user — see #397 / `infra/cloudformation/iam.yml` and [`AWS_CLI_OPS.md`](AWS_CLI_OPS.md) → *Operator roles*.
 
 ---
 

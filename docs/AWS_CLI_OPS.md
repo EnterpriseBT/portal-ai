@@ -16,6 +16,25 @@ aws sts get-caller-identity --output json
 
 > **Safety model — the IAM identity is the gate, not the prompt.** The mutating ops (`ecs update-service`/`run-task`/`execute-command`, `cloudformation deploy`) are gated by **IAM**: run the agent/inspection path with a **read-only IAM identity** (the AWS-managed `ReadOnlyAccess`, or a scoped read policy — `logs:Get*`/`FilterLogEvents`, `ecs:Describe*`/`List*`, `rds:Describe*`, `cloudformation:Describe*`, `s3:List*`/`Get*`, `elasticloadbalancing:Describe*`) and AWS **rejects** any write. That server-side denial — **not** the `.claude` allowlist and **not** a Claude Code permission prompt — is the mutation-safety boundary. The allowlist only reduces prompts for *reads*, and prompting is bypassable per session mode. Write ops require assuming a separate **write** role + deliberate operator intent.
 
+### Operator roles (#397) — the concrete read/write identities
+
+This model is realized in `infra/cloudformation/iam.yml` (the account-global `portalai-iam` stack). There is one low-privilege IAM user, **`portalai-operator`**, whose *only* permission is `sts:AssumeRole` onto the per-env operator roles — so standing keys on a laptop are inert until a role is assumed (there is no SSO / Identity Center in the account):
+
+| Role | Grants | Assume |
+|---|---|---|
+| `portalai-{dev,prod}-operator-read` | the read set above + `ssm`/`secretsmanager` reads on `portalai/{env}/*` + the bastion tunnel (`ssm:StartSession`, env-isolated by the bastion's `Name` tag) | the default inspection identity |
+| `portalai-{dev,prod}-operator-write` | read **+** `ssm:PutParameter`, `secretsmanager:Put/CreateSecret` on `portalai/{env}/*`, `ecs:RunTask` + `iam:PassRole` for the one-off DB tasks | assumed only for a mutation; **prod-write requires MFA** on `AssumeRole` |
+
+```bash
+# default: read-only inspection
+eval "$(aws sts assume-role --role-arn arn:aws:iam::<acct>:role/portalai-dev-operator-read \
+  --role-session-name ops --query Credentials --output json \
+  | jq -r '"export AWS_ACCESS_KEY_ID=\(.AccessKeyId) AWS_SECRET_ACCESS_KEY=\(.SecretAccessKey) AWS_SESSION_TOKEN=\(.SessionToken)"')"
+# a mutation: assume the write role instead (prod-write additionally needs --serial-number/--token-code MFA)
+```
+
+The **deploy** roles (`github-cicd-deploy-{dev,prod}`, GitHub-OIDC) carry scoped policies from the same stack — no longer `AdministratorAccess`. CI never uses the operator user; it assumes its OIDC deploy role.
+
 ### Agent / devcontainer path
 Plain `aws login` here redirects to an ephemeral **localhost** callback the host browser can't reach → a **400 on redirect**. Use the cross-device flow instead:
 ```bash

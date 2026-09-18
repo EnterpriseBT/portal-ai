@@ -30,6 +30,8 @@ Both run in the **`prod` GitHub Environment**, so both pause for approval.
 
       "token.actions.githubusercontent.com:sub": "repo:EnterpriseBT/portal-ai:environment:prod"
 
+  The role's **permission policy is least-privilege IaC (#397)**: `infra/cloudformation/iam.yml` (the `portalai-iam` stack) defines `portalai-deploy-prod-{app,infra}` and attaches them to this role **by name**. `AdministratorAccess` is retired from it once a prod release proves the scoped policy (zero-`AccessDenied` CloudTrail diff) — the trust document above is never changed by that work.
+
 - [ ] **`PROD_AWS_ROLE_ARN` and `PROD_HOSTED_ZONE_ID` must be repository secrets, not environment secrets** — `deploy-site-prod.yml` reads them in its caller job, outside the environment.
 - [ ] The twelve `PROD_SECRET_ARN_*` and three `PROD_VITE_AUTH0_*` secrets — see the provisioning runbook.
 
