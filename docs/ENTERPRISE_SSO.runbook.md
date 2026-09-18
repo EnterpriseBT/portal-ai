@@ -6,7 +6,7 @@ Companion phase docs (swept over time): `ENTERPRISE_SSO.discovery.md` / `.spec.m
 
 ## What changed in the app (context)
 
-- The OIDC validator is config-driven: `SSO_ISSUERS` (a JSON issuer list) with `AUTH0_DOMAIN`/`AUTH0_AUDIENCE` as the default. `DEPLOY_MODE` (`saas` | `self_hosted`) selects provisioning behavior.
+- The OIDC validator is config-driven and **mode-gated** (`DEPLOY_MODE` = `saas` | `residency`, owned by `config/deploy-mode.ts` since the epic merge #616). **saas:** `SSO_ISSUERS` (a JSON issuer list for enterprise federation *into* the SaaS) with `AUTH0_DOMAIN`/`AUTH0_AUDIENCE` as the default. **residency:** the single customer issuer `OIDC_ISSUER`/`OIDC_AUDIENCE` (the boot guard requires both). The multi-issuer validator is built lazily; a malformed `SSO_ISSUERS` fails the boot check in `index.ts start()`.
 - **The Auth0 post-login sync webhook was removed.** Provisioning now happens on the first authenticated request (`metadata.middleware` → `ensureProvisioned`), and the per-login profile-refresh + `auth.login` audit are re-homed onto that same request path. Nothing calls `POST /api/webhooks/auth0/sync` any more — it returns 404.
 
 ## Auth0 vendor teardown (required on deploy)
@@ -34,28 +34,31 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
   - `SSO_ENTERPRISE_CLAIM_VALUE` — optional; when set the claim must equal it, else presence alone marks it.
 - Leave `DEPLOY_MODE` unset (defaults `saas`). Google self-serve login is unchanged.
 
-### Self-hosted / residency — customer OIDC or bundled issuer
+### Residency — customer OIDC or bundled issuer
 
-- Set `DEPLOY_MODE=self_hosted`. First login provisions the single org tree (first user → owner, rest → member); there is no personal-org fallback.
-- Point the validator at the customer's IdP via `SSO_ISSUERS`, e.g.:
+- Set `DEPLOY_MODE=residency`. First login provisions the single org tree (first user → owner, rest → member); there is no personal-org fallback. The boot guard (`config/deploy-mode.ts`) refuses to start unless `OIDC_ISSUER` + `OIDC_AUDIENCE` are set (and rejects any central Stripe creds).
+- Point the validator at the customer's IdP via `OIDC_ISSUER` / `OIDC_AUDIENCE` (a single issuer in residency; `SSO_ISSUERS` is ignored):
   ```
-  SSO_ISSUERS=[{"issuer":"https://idp.customer.com/","audience":"portalai","alg":"RS256"}]
+  OIDC_ISSUER=https://idp.customer.com/
+  OIDC_AUDIENCE=portalai
   ```
-  The issuer must serve `/.well-known/openid-configuration` (the app resolves its `userinfo` from there). `alg` defaults `RS256`; set `ES256`/`PS256` if the IdP signs with those.
-- **Bundled issuer fallback:** when the customer has no IdP, the Helm chart (#566/#569) ships an OIDC issuer; point `SSO_ISSUERS` at it. That packaging is deployment-epic work — this ticket defines only the env contract it satisfies.
+  The issuer must serve `/.well-known/openid-configuration` (the app resolves its `userinfo` from there); the validator uses `RS256`.
+- The **web** logs in against that same issuer at runtime via `config.js` (`AUTH_PROVIDER=oidc`, #607) — no rebuild, no `VITE_*` at build time.
+- **Bundled issuer fallback:** when the customer has no IdP, the Helm chart (#566/#569) ships an OIDC issuer; point `OIDC_ISSUER` at it.
 
 ## Verification
 
 - `POST /api/webhooks/auth0/sync` → **404** (the route is gone).
 - A login still writes an `auth.login` audit row (owner-only Settings → Activity) — for a returning user too, deduped per login session.
-- SaaS: an invited enterprise user lands in the inviting org; an uninvited one is denied (403 `SSO_PROVISIONING_NOT_INVITED`). Self-hosted: the first user owns the org, later users join as members.
+- SaaS: an invited enterprise user lands in the inviting org; an uninvited one is denied (403 `SSO_PROVISIONING_NOT_INVITED`). Residency: the first user owns the org, later users join as members.
 
 ## Env reference
 
 | Var | Where | Meaning |
 |---|---|---|
-| `DEPLOY_MODE` | api | `saas` (default) or `self_hosted` |
-| `SSO_ISSUERS` | api | JSON `[{issuer,audience,alg?}]`; unset → derived from `AUTH0_*` |
-| `SSO_ENTERPRISE_CLAIM` / `_VALUE` | api | marks an enterprise-federated login for invite-gating |
-| `VITE_DEPLOY_MODE` | web | `saas` → Google button; `self_hosted` → Universal Login |
+| `DEPLOY_MODE` | api | `saas` (default) or `residency` (owned by `config/deploy-mode.ts`) |
+| `SSO_ISSUERS` | api | **saas only** — JSON `[{issuer,audience,alg?}]` for enterprise federation; unset → derived from `AUTH0_*` |
+| `SSO_ENTERPRISE_CLAIM` / `_VALUE` | api | **saas only** — marks an enterprise-federated login for invite-gating |
+| `OIDC_ISSUER` / `OIDC_AUDIENCE` | api | **residency only** — the single customer issuer; boot guard requires both |
+| web auth provider | web | runtime `config.js` `AUTH_PROVIDER` (`auth0` / `oidc`, #607) — not a build-time `VITE_*` |
 | ~~`AUTH0_WEBHOOK_SECRET`~~ | — | **removed** (#577); clear it from every store |
