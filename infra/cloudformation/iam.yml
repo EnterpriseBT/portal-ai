@@ -543,6 +543,15 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
+          # The bastion stack resolves its AMI from the AWS-managed public SSM
+          # parameter namespace (arn has an empty account id).
+          - Sid: SsmPublicParams
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/*"
           - Sid: CloudFormationStacks
             Effect: Allow
             Action:
@@ -849,6 +858,15 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
+          # The bastion stack resolves its AMI from the AWS-managed public SSM
+          # parameter namespace (arn has an empty account id).
+          - Sid: SsmPublicParams
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/*"
           - Sid: CloudFormationStacks
             Effect: Allow
             Action:
