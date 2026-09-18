@@ -29,9 +29,15 @@ export enum ApiCode {
   /** Per-user fixed-window limit exceeded on the authenticated API
    *  (#574). Keyed by the Auth0 subject; fail-open on a Redis outage. 429. */
   API_RATE_LIMITED = "API_RATE_LIMITED",
+  /** Boot-time deploy-mode guard (#579): DEPLOY_MODE is unknown, or the
+   *  config contradicts the mode (e.g. residency carrying central Stripe
+   *  credentials). Logged at fatal; the process exits non-zero. No HTTP
+   *  surface — the app refuses to start. */
+  DEPLOY_MODE_CONFIG_INVALID = "DEPLOY_MODE_CONFIG_INVALID",
 
   // Health
   HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED",
+  HEALTH_NOT_READY = "HEALTH_NOT_READY",
 
   // Organization
   ORGANIZATION_USER_NOT_FOUND = "ORGANIZATION_USER_NOT_FOUND",
@@ -88,6 +94,14 @@ export enum ApiCode {
   /** Stripe portal-session call failed. 502. */
   BILLING_PORTAL_FAILED = "BILLING_PORTAL_FAILED",
 
+  // AWS Marketplace entitlement rail (#568)
+  /** The marketplace webhook was hit but the rail isn't configured. 404. */
+  MARKETPLACE_NOT_CONFIGURED = "MARKETPLACE_NOT_CONFIGURED",
+  /** SNS message signature verification failed (or the body was malformed). 400. */
+  MARKETPLACE_SIGNATURE_INVALID = "MARKETPLACE_SIGNATURE_INVALID",
+  /** A mutating request against a read-only org (lapsed marketplace term). 403. */
+  ORG_ENTITLEMENT_EXPIRED = "ORG_ENTITLEMENT_EXPIRED",
+
   // Public site config (#311)
   /** A public tier carries a stripePriceId whose price will not resolve
    *  (Stripe outage or deleted price). 503 — fail closed so the site build
@@ -98,6 +112,11 @@ export enum ApiCode {
   /** Snapshot assembly failed for any other reason, or the assembled
    *  snapshot failed its own contract on the way out. 500. */
   SITE_CONFIG_FETCH_FAILED = "SITE_CONFIG_FETCH_FAILED",
+
+  // Connector runtime config (#580)
+  /** The assembled connector config failed its own contract on the way out,
+   *  or assembly threw. 500 — defensive; the payload is a pure env read. */
+  CONNECTOR_CONFIG_FETCH_FAILED = "CONNECTOR_CONFIG_FETCH_FAILED",
 
   // Webhooks
   WEBHOOK_MISSING_SIGNATURE = "WEBHOOK_MISSING_SIGNATURE",

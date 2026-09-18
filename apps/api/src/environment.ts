@@ -8,20 +8,24 @@ export const environment = {
     : [],
   AUTH0_AUDIENCE: process.env.AUTH0_AUDIENCE,
   AUTH0_DOMAIN: process.env.AUTH0_DOMAIN,
-  // ── Enterprise SSO (#577). Config-driven OIDC identity seam.
-  //    DEPLOY_MODE: "saas" (default) keeps today's Auth0/Google behavior;
-  //    "self_hosted" points at the customer's own OIDC and JIT-provisions into
-  //    the single org tree.
-  DEPLOY_MODE: (process.env.DEPLOY_MODE || "saas") as "saas" | "self_hosted",
-  //    SSO_ISSUERS: JSON array of { issuer, audience, alg? }. Unset ⇒ derived
-  //    from AUTH0_DOMAIN + AUTH0_AUDIENCE (the SaaS default), so the validator
-  //    points at today's Auth0 tenant unchanged. Parsed by SsoConfig.
+  // Deploy-mode seam (#579): `saas` (default, multi-tenant + central) or
+  // `residency` (single-tenant, self-contained in the customer's cloud).
+  // Validated by the boot guard in config/deploy-mode.ts; unset ⇒ saas. The
+  // mode's union type lives in config/deploy-mode.ts (parseDeployMode).
+  DEPLOY_MODE: process.env.DEPLOY_MODE ?? "saas",
+  // Enterprise SSO (#577) — saas-mode enterprise federation. SSO_ISSUERS: a
+  // JSON array of { issuer, audience, alg? }; unset ⇒ derived from AUTH0_DOMAIN
+  // + AUTH0_AUDIENCE (the SaaS default). SSO_ENTERPRISE_CLAIM(+_VALUE): the
+  // token claim (and optional expected value) marking a login enterprise-
+  // federated, so SaaS provisioning can invite-gate it. Parsed by SsoConfig.
   SSO_ISSUERS: process.env.SSO_ISSUERS,
-  //    SSO_ENTERPRISE_CLAIM(+_VALUE): the token claim (and optional expected
-  //    value) that marks a login as enterprise-federated, so SaaS provisioning
-  //    can invite-gate it. Unset ⇒ no token is treated as enterprise-federated.
   SSO_ENTERPRISE_CLAIM: process.env.SSO_ENTERPRISE_CLAIM,
   SSO_ENTERPRISE_CLAIM_VALUE: process.env.SSO_ENTERPRISE_CLAIM_VALUE,
+  // Residency identity (#579) — the customer's own OIDC issuer URL + token
+  // audience, used instead of AUTH0_* when DEPLOY_MODE=residency. Empty in
+  // saas; the boot guard (config/deploy-mode.ts) requires both when residency.
+  OIDC_ISSUER: process.env.OIDC_ISSUER ?? "",
+  OIDC_AUDIENCE: process.env.OIDC_AUDIENCE ?? "",
   // Logging configuration
   LOG_LEVEL: (process.env.LOG_LEVEL || "info") as
     | "trace"
@@ -47,6 +51,12 @@ export const environment = {
   //    webhook 503s (Stripe retries until configured); the app boots fine.
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+  // ── AWS Marketplace entitlement rail (#568). Set on a residency/marketplace
+  //    install; unset ⇒ the marketplace webhook 404s and no entitlement is
+  //    resolved (the SaaS Stripe rail is unaffected). The AWS Marketplace
+  //    Entitlement Service is only available in us-east-1.
+  AWS_MARKETPLACE_PRODUCT_CODE: process.env.AWS_MARKETPLACE_PRODUCT_CODE || "",
+  AWS_MARKETPLACE_REGION: process.env.AWS_MARKETPLACE_REGION || "us-east-1",
   // #217: Stripe Tax on checkout — default ON (go-live posture). An
   // unconfigured sandbox opts out EXPLICITLY with "false" (a conscious,
   // visible downgrade); requires the account's origin address + default
@@ -56,6 +66,10 @@ export const environment = {
   SYSTEM_ID: process.env.SYSTEM_ID,
   // Anthropic configuration
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  // Optional base-URL override for the Anthropic client (#567) — a proxy /
+  // self-hosted gateway seam for off-AWS / residency installs. Unset ("") ⇒
+  // the SDK default (https://api.anthropic.com/v1); behavior unchanged.
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "",
   // Per-stage model overrides for `interpret()`. Default to Haiku 4.5 — both
   // stages are narrow, schema-constrained sub-tasks (header→column-definition
   // match, axis-label→axis-name propose) that Haiku handles in ~1 s each vs.
@@ -104,6 +118,14 @@ export const environment = {
   GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
   GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
   GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI || "",
+  // Public Google browser identifiers served at runtime by
+  // GET /api/connector-config (#580) so a prebuilt image can carry a
+  // self-hosted install's own config. Non-secret (the Picker browser API key
+  // is restricted in GCP by referrer + API, not by secrecy); the OAuth client
+  // secret above is never served. Previously baked into the web bundle as
+  // VITE_GOOGLE_PICKER_API_KEY / VITE_GOOGLE_CLOUD_PROJECT_NUMBER.
+  GOOGLE_PICKER_API_KEY: process.env.GOOGLE_PICKER_API_KEY || "",
+  GOOGLE_CLOUD_PROJECT_NUMBER: process.env.GOOGLE_CLOUD_PROJECT_NUMBER || "",
   OAUTH_STATE_SECRET: process.env.OAUTH_STATE_SECRET || "",
   // ── Microsoft OAuth
   //    Per-env Microsoft identity-platform v2.0 client for the
@@ -226,6 +248,12 @@ export const environment = {
   UPLOAD_S3_BUCKET: process.env.UPLOAD_S3_BUCKET || "",
   UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
   UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",
+  // Portability seams (#567) — point object storage at an S3-compatible
+  // endpoint (MinIO / Ceph / R2). Both unset ⇒ today's AWS-S3 behavior.
+  // Credentials still resolve through the AWS SDK credential chain
+  // (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), never read here.
+  UPLOAD_S3_ENDPOINT: process.env.UPLOAD_S3_ENDPOINT || "",
+  UPLOAD_S3_FORCE_PATH_STYLE: process.env.UPLOAD_S3_FORCE_PATH_STYLE === "true",
   UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(
     process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "1800",
     10

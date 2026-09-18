@@ -92,19 +92,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-jest.unstable_mockModule("@auth0/auth0-react", () => ({
-  useAuth0: () => ({
-    getAccessTokenSilently: jest
-      .fn<() => Promise<string>>()
-      .mockResolvedValue("test-token"),
-  }),
-}));
+// Auth is provided by `test-utils`' default AuthContext (#607): the token
+// comes from the seam's `getToken`, not a vendor mock, so no `@auth0/auth0-react`
+// stub is needed here.
 
 // `usePortalChatLock` + `portal-stream.util` open SSE connections —
-// short-circuit them (the real path reads
-// `import.meta.env.VITE_AUTH0_AUDIENCE`, undefined in tests). The stub was a
-// no-op object; #279 upgraded it to the capturable `MockEventSource` so a test
-// can drive tool-step events through the container.
+// short-circuit them. The stub was a no-op object; #279 upgraded it to the
+// capturable `MockEventSource` so a test can drive tool-step events through the
+// container.
 jest.unstable_mockModule("../api/sse.api", () => ({
   sse: {
     create: () => async (path: string) =>

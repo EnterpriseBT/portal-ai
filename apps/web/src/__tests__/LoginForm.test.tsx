@@ -22,7 +22,7 @@ jest.mock("../api/sdk", () => ({
   queryKeys: {},
 }));
 
-import { LoginFormUI } from "../components/LoginForm.component";
+import { LoginFormUI, LoginForm } from "../components/LoginForm.component";
 
 describe("LoginFormUI Component", () => {
   const mockOnClickGoogleLogin = jest.fn();
@@ -84,34 +84,44 @@ describe("LoginFormUI Component", () => {
     expect(mockOnClickGoogleLogin).toHaveBeenCalledTimes(1);
   });
 
-  // #577: the self-hosted container passes a generic label (Universal Login),
-  // so the primary button is no longer Google-branded.
-  it("renders a generic primary label under self-hosted props", () => {
+  it("case 20 — renders a generic 'Sign in' label when passed one (residency)", () => {
     render(
       <LoginFormUI
         onClickGoogleLogin={mockOnClickGoogleLogin}
-        primaryLabel="Sign in with SSO"
-        showGoogleIcon={false}
+        primaryLabel="Sign in"
+        showProviderIcon={false}
       />
     );
-    expect(
-      screen.getByRole("button", { name: /sign in with sso/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /sign in with google/i })
     ).not.toBeInTheDocument();
   });
+});
 
-  it("invokes the primary handler regardless of label", async () => {
-    const user = userEvent.setup();
-    render(
-      <LoginFormUI
-        onClickGoogleLogin={mockOnClickGoogleLogin}
-        primaryLabel="Sign in with SSO"
-        showGoogleIcon={false}
-      />
-    );
-    await user.click(screen.getByRole("button", { name: /sign in with sso/i }));
-    expect(mockOnClickGoogleLogin).toHaveBeenCalledTimes(1);
+describe("LoginForm container label (#607)", () => {
+  afterEach(() => {
+    delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
+  });
+
+  it("case 20 — SaaS (auth0) shows 'Sign in with Google'", () => {
+    render(<LoginForm />);
+    expect(
+      screen.getByRole("button", { name: /sign in with google/i })
+    ).toBeInTheDocument();
+  });
+
+  it("case 20 — residency (oidc) shows a generic 'Sign in'", () => {
+    (
+      window as unknown as { __RUNTIME_CONFIG__: Record<string, string> }
+    ).__RUNTIME_CONFIG__ = {
+      AUTH_PROVIDER: "oidc",
+      DEPLOY_MODE: "residency",
+      OIDC_ISSUER: "https://id.customer.example",
+      OIDC_CLIENT_ID: "portalai-web",
+      OIDC_AUDIENCE: "https://api.customer.example",
+    };
+    render(<LoginForm />);
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 });

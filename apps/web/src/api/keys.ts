@@ -51,6 +51,10 @@ export const queryKeys = {
     list: (params?: AuditLogListRequestQuery) =>
       [...queryKeys.auditLog.root, "list", params] as const,
   },
+  connectorConfig: {
+    root: ["connectorConfig"] as const,
+    get: () => [...queryKeys.connectorConfig.root, "get"] as const,
+  },
   connectorDefinitions: {
     root: ["connectorDefinitions"] as const,
     list: (params?: ConnectorDefinitionListRequestQuery) =>

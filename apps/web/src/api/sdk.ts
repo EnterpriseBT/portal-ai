@@ -1,6 +1,7 @@
 import { auditLog } from "./audit-log.api";
 import { auth } from "./auth.api";
 import { billing } from "./billing.api";
+import { connectorConfig } from "./connector-config.api";
 import { columnDefinitions } from "./column-definitions.api";
 import { connectorDefinitions } from "./connector-definitions.api";
 import { connectorEntities } from "./connector-entities.api";
@@ -34,6 +35,7 @@ export const sdk = {
   auditLog,
   auth,
   billing,
+  connectorConfig,
   columnDefinitions,
   connectorDefinitions,
   connectorEntities,

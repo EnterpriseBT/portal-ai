@@ -35,9 +35,16 @@ function buildValidators(): Map<string, RequestHandler> {
   return map;
 }
 
-// Built once at module load. A malformed `SSO_ISSUERS` throws here, so the app
-// fails fast at boot rather than silently accepting no issuer.
-const validators = buildValidators();
+// Built lazily on first request (not at module load), so the DEPLOY_MODE boot
+// guard (`assertDeployModeConsistency`, index.ts) runs and reports before any
+// `auth()` construction — an eager build would crash import before the guard
+// can exit cleanly. Fail-fast on a malformed `SSO_ISSUERS` is preserved by the
+// boot-time `SsoConfig.issuers()` call in index.ts `start()` (#616).
+let validators: Map<string, RequestHandler> | null = null;
+function getValidators(): Map<string, RequestHandler> {
+  if (validators === null) validators = buildValidators();
+  return validators;
+}
 
 /** Read the `iss` claim from a JWT without verifying it (routing only). */
 function unverifiedIssuer(token: string): string | null {
@@ -66,7 +73,7 @@ export const jwtCheck: RequestHandler = (
   }
 
   const iss = unverifiedIssuer(authz.substring(7));
-  const validator = iss ? validators.get(iss) : undefined;
+  const validator = iss ? getValidators().get(iss) : undefined;
   if (!validator) {
     return next(
       new ApiError(

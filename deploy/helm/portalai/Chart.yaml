@@ -1,0 +1,34 @@
+apiVersion: v2
+name: portalai
+description: >-
+  Portals AI — full-residency install. Deploys the API and the standalone web
+  SPA as one release, with data dependencies either bundled (evaluation) or
+  pointed at managed endpoints (production). See README.md.
+type: application
+# Chart version — bump on chart changes.
+version: 0.1.0
+# App version — overridden at package time with the release image tag/SHA.
+appVersion: "0.0.0"
+
+# Bundled data-dependency subcharts, each disable-able to an external endpoint.
+# Versions are pinned and Chart.lock is committed so `helm dependency build` is
+# reproducible and a missing/renamed chart fails loudly (Bitnami is actively
+# restricting its free catalog — see README). The optional Keycloak issuer is
+# added in slice 6.
+dependencies:
+  - name: postgresql
+    version: 16.7.27 # PostgreSQL 17.x — matches the imresamu/postgis:17-3.5 override
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: 20.13.4 # Redis 7.4.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: minio
+    version: 17.0.21
+    repository: https://charts.bitnami.com/bitnami
+    condition: minio.enabled
+  - name: keycloak
+    version: 25.2.0 # optional bundled fallback OIDC issuer
+    repository: https://charts.bitnami.com/bitnami
+    condition: bundledIssuer.enabled

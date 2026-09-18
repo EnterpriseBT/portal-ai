@@ -2,6 +2,8 @@ import { Router } from "express";
 import { jwtCheck } from "../middleware/auth.middleware.js";
 import { authenticatedRateLimit } from "../middleware/authenticated-rate-limit.middleware.js";
 import { environment } from "../environment.js";
+import { requireOrgWritable } from "../middleware/require-org-writable.middleware.js";
+import { connectorConfigRouter } from "./connector-config.router.js";
 import { profileRouter } from "./profile.router.js";
 import { organizationRouter } from "./organization.router.js";
 import { billingRouter } from "./billing.router.js";
@@ -39,8 +41,12 @@ protectedRouter.use(jwtCheck);
 protectedRouter.use(
   authenticatedRateLimit(environment.AUTH_API_RATE_LIMIT_PER_MIN)
 );
+// Read-only degradation for a lapsed marketplace entitlement (#568): mutating
+// methods are gated when the org's term has expired; reads always pass.
+protectedRouter.use(requireOrgWritable);
 
 // Mount routers
+protectedRouter.use("/connector-config", connectorConfigRouter);
 protectedRouter.use("/profile", profileRouter);
 protectedRouter.use("/organization", organizationRouter);
 protectedRouter.use("/billing", billingRouter);

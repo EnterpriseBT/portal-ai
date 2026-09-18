@@ -20,6 +20,8 @@ const org = (id: string, name: string, isCurrent: boolean): UserMembership => ({
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     billingAnchorDay: null,
+    marketplaceEntitlementId: null,
+    entitlementThrough: null,
     created: 1,
     createdBy: "SYSTEM",
     updated: null,

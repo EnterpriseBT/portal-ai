@@ -460,6 +460,36 @@ jobs:
           IMAGE: ${{ steps.ecr.outputs.uri }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
+      # Residency web image (#566). Additive to the S3/CloudFront SaaS web
+      # deploy — this image is what the L2 Helm chart pulls. Built multi-arch
+      # so it runs on any customer cluster. Auth/runtime config is injected at
+      # container startup (config.js), so no VITE auth secrets are baked in;
+      # VITE_API_BASE_URL is empty (same-origin behind the chart's ingress).
+      - name: Get web ECR repository URI
+        id: web-ecr
+        run: |
+          ECR_URI=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-backend \
+            --query "Stacks[0].Outputs[?ExportName=='dev-WebEcrRepositoryUri'].OutputValue" \
+            --output text)
+          echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.web-ecr.outputs.uri }}:dev-${{ github.sha }}
+            ${{ steps.web-ecr.outputs.uri }}:latest
+          build-args: |
+            BUILD_VERSION=dev-${{ github.sha }}
+            BUILD_SHA=${{ github.sha }}
+            VITE_API_BASE_URL=
+          provenance: false
+
       - name: Get ECS configuration
         id: ecs
         run: |

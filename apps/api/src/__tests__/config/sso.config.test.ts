@@ -104,18 +104,21 @@ describe("SsoConfig.isConfigured", () => {
   });
 });
 
-describe("SsoConfig.deployMode", () => {
-  it("defaults to saas", async () => {
-    const SsoConfig = await loadSsoConfig({ ...AUTH0 });
-    expect(SsoConfig.deployMode()).toBe("saas");
-  });
-
-  it("is self_hosted when DEPLOY_MODE=self_hosted", async () => {
+describe("SsoConfig.issuers — residency (#616)", () => {
+  it("returns the single customer OIDC issuer in residency mode", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      DEPLOY_MODE: "self_hosted",
+      DEPLOY_MODE: "residency",
+      OIDC_ISSUER: "https://idp.customer.com/",
+      OIDC_AUDIENCE: "portalai",
     });
-    expect(SsoConfig.deployMode()).toBe("self_hosted");
+    expect(SsoConfig.issuers()).toEqual([
+      {
+        issuer: "https://idp.customer.com/",
+        audience: "portalai",
+        alg: "RS256",
+      },
+    ]);
   });
 });
 
@@ -149,10 +152,10 @@ describe("SsoConfig.enterpriseClaim", () => {
 });
 
 describe("SsoConfig.provisioningFallback", () => {
-  it("is join_single_org in self_hosted", async () => {
+  it("is join_single_org in residency", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      DEPLOY_MODE: "self_hosted",
+      DEPLOY_MODE: "residency",
     });
     expect(SsoConfig.provisioningFallback({ iss: "x" })).toBe(
       "join_single_org"

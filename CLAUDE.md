@@ -70,7 +70,10 @@ npm run db:migrate                                # Apply pending migrations
 npm run db:push          # Push schema directly (dev only)
 npm run db:studio        # Open Drizzle Studio GUI
 npm run db:seed          # Seed the database
+npm run db:upgrade       # Deploy-time upgrade: advisory-locked migrate + seed, one signal (#581)
 ```
+
+**`db:upgrade` is the per-install upgrade path (#581).** It runs migrations + the idempotent global seed as one operation under a session-scoped advisory lock (`SyncLockService.withAdvisoryLock`), so two concurrent passes never both migrate; it prints `UPGRADE COMPLETE` / `UPGRADE FAILED` and exits accordingly. The Helm chart runs it as a `pre-upgrade` hook; `portalops db upgrade --env <env>` runs the same entrypoint on our SaaS/ECS channel (env-shape routing, no deploy-mode branch). Migrations stay **forward-only, expand-only** — a mistake is undone by a new forward migration, and a failed upgrade under `helm upgrade --atomic` rolls the workloads back while the schema stays valid. Two CI guards protect it: **`npm run lint:migrations`** fails a new migration (indexed > 95) carrying destructive DDL (`DROP`/`TRUNCATE`/type change) unless it carries `-- destructive-ok: <reason>`; and a backfill-coverage test fails a new per-org seed entry that lacks a paired backfill migration (see "Adding a system column definition" below).
 
 ## File Naming Conventions
 
@@ -372,9 +375,9 @@ If either side is updated without the other, **the build fails**.
 A new entry therefore ships with **two** things:
 
 1. The array entry, and
-2. a **data migration that inserts it for every existing organization** — `apps/api/drizzle/0080_backfill-geospatial-column-definitions.sql` is the template. Cross-join `organizations`, and repeat the partial unique index's `WHERE deleted IS NULL` inside the `ON CONFLICT` (a partial index is only matched by an `ON CONFLICT` that restates its predicate) so the migration is a safe no-op on orgs that already hold the key.
+2. a **data migration that inserts it for every existing organization** — `apps/api/drizzle/0080_backfill-geospatial-column-definitions.sql` is the template. Cross-join `organizations`, and repeat the partial unique index's `WHERE deleted IS NULL` inside the `ON CONFLICT` (a partial index is only matched by an `ON CONFLICT` that restates its predicate) so the migration is a safe no-op on orgs that already hold the key. Mark the backfill with a `-- backfill:system-column:<key>` comment per key (as `0080` now does).
 
-This is not hypothetical bookkeeping: #316 added three geospatial definitions with a schema-only migration and stranded four app-dev orgs, which is what #414 had to repair. The same rule applies to any table seeded per-organization rather than globally — global seeds (tiers, connector definitions) are covered by `SeedService.seed()` and `portalops db seed`, which are safe to re-run.
+**This is now mechanically enforced (#581).** A backfill-coverage test (`apps/api/src/__tests__/services/seed-backfill-coverage.test.ts`) fails CI if a `SYSTEM_COLUMN_DEFINITIONS` key is neither in the pre-guard baseline nor proven by a `-- backfill:system-column:<key>` marker in some `drizzle/*.sql`. Adding a key without the paired backfill therefore fails the build — it cannot silently strand existing orgs on upgrade the way #316 did. This is not hypothetical bookkeeping: #316 added three geospatial definitions with a schema-only migration and stranded four app-dev orgs, which is what #414 had to repair. The same rule applies to any table seeded per-organization rather than globally — global seeds (tiers, connector definitions) are covered by `SeedService.seed()` and `portalops db seed`, which are safe to re-run.
 
 ### Indexing and ordering a table that will grow (#433)
 
@@ -718,6 +721,7 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 - `README.md` (root), `apps/web/README.md`, `apps/api/README.md`, `packages/core/README.md`, `packages/spreadsheet-parsing/README.md`
 - The **durable** (unsuffixed) `docs/` set — `CLI_OPERATIONS_CHARTER.md`, `LOCAL_DEVELOPMENT.md`, the `*.runbook.md` files, the vendor CLI ops guides. Phase docs (`.discovery`/`.spec`/`.plan`/`.smoke`/`.condensed`) are **not** on this list: they describe a decision at a point in time and get swept, so they are never updated to match later behavior
 - `docs/CUSTOM_TOOLPACK_INTEGRATION.md` — the custom-tool author contract
+- `docs/DEPLOYMENT_SECURITY_REVIEW.md` (#582) — the residency review-record template + SaaS baseline. Its **egress and subprocessor sections are code-derived** (the third-party-calling tools + their egress env vars), so a change to what the app sends off-box drifts it. Keep it in sync — see the table row below
 - `CLAUDE.md` itself, when a change alters a documented convention (and its mirror, `.github/copilot-instructions.md`)
 
 ### What changed → what to check
@@ -730,6 +734,7 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 | a validation rule or its message | `record-field-serialization.util.ts` (+ the field's `helperText`) |
 | a tool (capability/input/semantics) | the three tool surfaces above (`.tool.ts` + `builtin-toolpacks.ts` mirror + `system.prompt.ts`) |
 | the custom-tool wire/capability contract | `CUSTOM_TOOLPACK_INTEGRATION.md` + `RegisterToolpackDialog` |
+| an **egress vector** — a tool that makes a third-party network call, its egress env var (`ANTHROPIC_BASE_URL`/`TAVILY_API_KEY`/`GEOCODING_API_KEY`/a new one), or a subprocessor/telemetry behavior | `docs/DEPLOYMENT_SECURITY_REVIEW.md` (egress §1 + subprocessor §2 + telemetry §3, and the SaaS baseline) |
 | a convention, script, or setup step | the relevant `README.md` / `docs/*.md` / `CLAUDE.md` (+ `.github/copilot-instructions.md`) |
 
 The pinning tests (`builtin-toolpacks.test.ts`, `system.prompt.test.ts`, `glossary.util.test.ts`, `faq.util.test.ts`) catch some drift — but not semantic drift or the prose surfaces. The check is yours, not the test suite's.

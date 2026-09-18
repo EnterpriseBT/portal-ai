@@ -1,0 +1,191 @@
+# Portals AI residency chart — default values. See README.md for the full
+# reference. Data-dependency bundling (postgresql/redis/minio subcharts),
+# migrate/seed hooks, ingress and the bundled Keycloak issuer land in later
+# slices (#566); this skeleton wires the api + web workloads, their config and
+# secret env, and the split liveness/readiness probes.
+
+# Container images. repository/tag are required at install (the deploy pipeline
+# pushes them to ECR; a customer mirrors them into their own registry).
+image:
+  api:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  web:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+
+# Pull secrets for a private registry, e.g. [{ name: regcred }].
+imagePullSecrets: []
+
+api:
+  replicaCount: 1
+  port: 3001
+  # Extra/override env injected directly on the api container (in addition to
+  # the ConfigMap + Secret envFrom).
+  env: {}
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  # Runs as the node image's uid-1000 `node` user. runAsNonRoot is enforced
+  # here until the image is hardened to build non-root (#571).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+web:
+  replicaCount: 1
+  # nginx-unprivileged listens on 8080.
+  port: 8080
+  env: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  # nginx-unprivileged already runs as uid 101; just assert non-root.
+  podSecurityContext:
+    runAsNonRoot: true
+
+# Per-container hardening applied to both workloads. readOnlyRootFilesystem is
+# off because the api writes transient files; tightened with #571.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# saas | residency — sets DEPLOY_MODE (selects the API's auth validator) and
+# is echoed into the web config.js.
+deployMode: saas
+
+# OIDC identity (residency). Non-secret; reaches the API validator and the web
+# config.js. Ignored in saas mode (Auth0 via secrets/config).
+oidc:
+  issuer: ""
+  audience: ""
+  clientId: ""
+
+# Non-secret env → ConfigMap. Arbitrary key/value pairs the app reads from env
+# (e.g. AUTH0_DOMAIN, PUBLIC_API_BASE_URL, CORS_ORIGIN, GOOGLE_* non-secret).
+config: {}
+
+# Secret env → Secret (e.g. ENCRYPTION_KEY, ANTHROPIC_API_KEY, AUTH0_WEBHOOK_SECRET,
+# STRIPE_*, OAUTH_STATE_SECRET). Rendered into a chart-managed Secret unless
+# existingSecret is set, in which case the app reads env from that Secret and
+# these are ignored.
+secrets: {}
+existingSecret: ""
+
+# Required by recent Bitnami charts to accept a non-Bitnami image (the PostGIS
+# override below). Bundled deps are evaluation-grade; production points at
+# managed endpoints via the `external` blocks (enabled: false).
+global:
+  security:
+    allowInsecureImages: true
+
+# ── Data dependencies ────────────────────────────────────────────────────
+# Each is bundled by default and disable-able to an external managed endpoint.
+# When enabled, DATABASE_URL / REDIS_URL / UPLOAD_S3_* are composed from the
+# bundled service names (_helpers.tpl); when disabled, from the `external` block.
+
+postgresql:
+  enabled: true
+  # PostGIS image so the bundled DB satisfies migration 0076 (CREATE EXTENSION
+  # postgis). NOTE: the Bitnami postgresql subchart is built around a Bitnami
+  # image; running a foreign PostGIS image is a DOCUMENTED SMOKE RISK
+  # (entrypoint / data-dir path conventions differ) — see README. Production
+  # should use managed PostGIS via enabled:false + external.
+  image:
+    registry: docker.io
+    repository: imresamu/postgis
+    tag: "17-3.5"
+  auth:
+    username: portalai
+    password: portalai
+    database: portalai
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+  external:
+    host: ""
+    port: 5432
+    database: portalai
+    user: portalai
+    password: ""
+
+redis:
+  enabled: true
+  architecture: standalone
+  # Evaluation-grade: auth off so REDIS_URL is composable without a generated
+  # password. A managed Redis (enabled:false) carries its own auth in the URL.
+  auth:
+    enabled: false
+  master:
+    # MANDATORY PVC — Redis is the durable BullMQ store; without it, in-flight
+    # jobs are lost on a pod restart.
+    persistence:
+      enabled: true
+      size: 8Gi
+  external:
+    url: ""
+
+minio:
+  enabled: true
+  auth:
+    rootUser: portalai
+    rootPassword: portalai-minio
+  defaultBuckets: portalai-uploads
+  persistence:
+    enabled: true
+    size: 20Gi
+  # Full S3 endpoint/credential wiring lands with #567 (PR #606); this composes
+  # the endpoint + bucket the app will read once merged.
+  external:
+    endpoint: ""
+    region: us-east-1
+    bucket: portalai-uploads
+    forcePathStyle: true
+
+# ── Lifecycle hooks ──────────────────────────────────────────────────────
+# Run the API image's existing migrate/seed entrypoints as Helm hook Jobs.
+# migrate is pre-install,pre-upgrade (schema ready before api pods roll — see
+# README for the bundled-DB first-install caveat); seed is post-install
+# (idempotent global seeds).
+migrate:
+  enabled: true
+seed:
+  enabled: true
+# On `helm upgrade`, a single pre-upgrade job runs migrations + the idempotent
+# global seed under one advisory lock (`db:upgrade`, #581), before the api pods
+# roll. First install still uses migrate (pre-install) + seed (post-install).
+upgrade:
+  enabled: true
+
+# ── Ingress ──────────────────────────────────────────────────────────────
+# Off by default (reach the app by port-forward, or bring your own ingress).
+# When enabled, /api routes to the API service and / to the web service on a
+# single host. TLS via a cert-manager-issued secret — see README.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tls:
+    enabled: false
+    secretName: ""
+
+# ── Bundled identity issuer (Keycloak) ───────────────────────────────────
+# Optional fallback OIDC issuer for residency installs with no customer IdP.
+# Off by default; customer OIDC (oidc.*) is the primary path.
+bundledIssuer:
+  enabled: false

@@ -106,7 +106,7 @@ describe("POST /api/webhooks/stripe", () => {
     connection = postgres(process.env.DATABASE_URL, { max: 1 });
     db = drizzle(connection, { schema });
 
-    await db.delete(schema.stripeEvents);
+    await db.delete(schema.commercialEvents);
     await teardownOrg(db);
     await db.delete(schema.tiers).where(eq(schema.tiers.slug, PRO_SLUG));
 
@@ -151,7 +151,7 @@ describe("POST /api/webhooks/stripe", () => {
 
   afterEach(async () => {
     fetchSpy.mockRestore();
-    await db.delete(schema.stripeEvents);
+    await db.delete(schema.commercialEvents);
     await teardownOrg(db);
     await db.delete(schema.tiers).where(eq(schema.tiers.slug, PRO_SLUG));
     await connection.end();
@@ -168,8 +168,8 @@ describe("POST /api/webhooks/stripe", () => {
   async function eventRows(eventId: string) {
     return db
       .select()
-      .from(schema.stripeEvents)
-      .where(eq(schema.stripeEvents.eventId, eventId));
+      .from(schema.commercialEvents)
+      .where(eq(schema.commercialEvents.externalId, eventId));
   }
 
   // ── case 19 ─────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
-  "id": "c99ee72a-d3fd-4fd8-9052-41d899962404",
-  "prevId": "9035f24e-e8db-49f2-8692-ec9e14d295d1",
+  "id": "b8346d04-7a82-4f65-823c-5f4c2d1f943e",
+  "prevId": "7af3f705-9124-4577-a534-bf7785289446",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2669,13 +2669,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'member'"
-        },
         "last_login": {
           "name": "last_login",
           "type": "bigint",
@@ -2715,12 +2708,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "organization_users_role_check": {
-          "name": "organization_users_role_check",
-          "value": "\"organization_users\".\"role\" IN ('owner', 'admin', 'member')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.organizations": {
@@ -4333,24 +4321,7 @@
           "notNull": false
         }
       },
-      "indexes": {
-        "users_auth0_id_unique": {
-          "name": "users_auth0_id_unique",
-          "columns": [
-            {
-              "expression": "auth0_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"users\".\"deleted\" IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

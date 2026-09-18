@@ -1,57 +1,18 @@
-import { useAuth0 } from "@auth0/auth0-react";
 import type { Auth0UserProfileGetResponse } from "@portalai/core/contracts";
 import { useAuthQuery } from "../utils/api.util";
+import { useAuth } from "../providers/Auth.provider";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
 
+// The `sdk.auth` facade is provider-agnostic: it delegates to the `useAuth()`
+// seam (#607), which normalizes Auth0 (SaaS) or a generic OIDC client
+// (residency). Consumers of `sdk.auth.*` are unchanged by the provider swap.
 export const auth = {
-  session: () => {
-    const { user, isAuthenticated, isLoading, error } = useAuth0();
-    return { user, isAuthenticated, isLoading, error };
-  },
+  session: () => useAuth().session,
 
-  login: () => {
-    const { loginWithRedirect } = useAuth0();
-    return {
-      // `returnTo` (an in-app path) rides through the Auth0 round trip in
-      // `appState`; `onRedirectCallback` (Application.provider) stashes it and
-      // the post-login bridge navigates there (#585). Omitted → lands on "/".
-      withGoogle: (returnTo?: string) =>
-        loginWithRedirect({
-          openUrl: (url) => window.location.replace(url),
-          ...(returnTo ? { appState: { returnTo } } : {}),
-          authorizationParams: {
-            connection: "google-oauth2",
-            redirect_uri: window.location.origin,
-          },
-        }),
-      // Universal Login with NO pinned connection, so Auth0 offers every
-      // enabled connection (including a Database username/password one). This
-      // exists only for the guarded, dev/test-only E2E sign-in affordance
-      // (#304): the app's normal login is Google-only, which a headless test
-      // user can't drive, so the harness authenticates a Database-connection
-      // test user through this path. Never surfaced in production — see the
-      // guard in LoginForm.
-      withUniversal: () =>
-        loginWithRedirect({
-          openUrl: (url) => window.location.replace(url),
-          authorizationParams: {
-            redirect_uri: window.location.origin,
-          },
-        }),
-    };
-  },
+  login: () => useAuth().login,
 
-  logout: () => {
-    const { logout } = useAuth0();
-    return {
-      logout: () =>
-        logout({
-          logoutParams: { returnTo: window.location.origin },
-          openUrl: (url) => window.location.replace(url),
-        }),
-    };
-  },
+  logout: () => ({ logout: useAuth().logout }),
 
   profile: (options?: QueryOptions<Auth0UserProfileGetResponse>) =>
     useAuthQuery<Auth0UserProfileGetResponse>(

@@ -16,6 +16,10 @@ import { FileUploadSessionService } from "./services/file-upload-session.service
 import { JobReconciliationService } from "./services/job-reconciliation.service.js";
 import { wideTableReconcilerService } from "./services/wide-table-reconciler.service.js";
 import { ApiCode } from "./constants/api-codes.constants.js";
+import {
+  assertDeployModeConsistency,
+  deployMode,
+} from "./config/deploy-mode.js";
 
 const jobsWorker = createJobsWorker(processors);
 const maintenanceWorker = createMaintenanceWorker();
@@ -36,6 +40,21 @@ process.on("unhandledRejection", (reason) => {
 });
 
 async function start() {
+  // Deploy-mode consistency guard (#579) — runs before anything else so a
+  // misconfigured install (e.g. residency still carrying central Stripe
+  // credentials, or missing its OIDC config) refuses to boot rather than run
+  // and silently phone home. Fail-closed, mirroring the wide-table check.
+  try {
+    assertDeployModeConsistency();
+    logger.info({ deployMode }, "Deploy mode resolved");
+  } catch (err) {
+    logger.fatal(
+      { err, code: ApiCode.DEPLOY_MODE_CONFIG_INVALID },
+      "Deploy-mode config is inconsistent — refusing to start"
+    );
+    process.exit(1);
+  }
+
   await connectDatabase();
 
   // Wide-table boot drift check — guarantees every live connector_entity

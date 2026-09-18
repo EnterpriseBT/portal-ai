@@ -1,4 +1,5 @@
 import { environment } from "../environment.js";
+import { isResidency } from "./deploy-mode.js";
 
 /**
  * Enterprise SSO configuration authority (#577).
@@ -12,14 +13,16 @@ import { environment } from "../environment.js";
  *
  * Methods read `environment` on each call (no module-load caching), so a test
  * can vary the env by mocking the environment module.
+ *
+ * The deploy mode itself (`saas` | `residency`) is owned by `deploy-mode.ts`
+ * (#579/#616) — this file consumes `isResidency()` rather than defining its own.
  */
-export type DeployMode = "saas" | "self_hosted";
 
 /**
  * What `ensureProvisioned` does for an authenticated user who has no membership
  * and matched no invitation:
  * - `personal_org`  — provision a personal owner-org (today's SaaS self-serve).
- * - `join_single_org` — self-hosted: join the one org tree (first user → owner).
+ * - `join_single_org` — residency: join the one org tree (first user → owner).
  * - `deny` — SaaS enterprise-federated with no invite: reject, no org created.
  */
 export type ProvisioningFallback = "personal_org" | "join_single_org" | "deny";
@@ -40,18 +43,25 @@ export interface EnterpriseClaimConfig {
 }
 
 export class SsoConfig {
-  /** The deployment model. `saas` (default) or `self_hosted`. */
-  static deployMode(): DeployMode {
-    return environment.DEPLOY_MODE === "self_hosted" ? "self_hosted" : "saas";
-  }
-
   /**
-   * The trusted issuers. Parses `SSO_ISSUERS` (a JSON array of
-   * `{ issuer, audience, alg? }`); when unset, derives the single Auth0 issuer
-   * from `AUTH0_DOMAIN` + `AUTH0_AUDIENCE` so the SaaS default is unchanged.
+   * The trusted issuers, mode-gated (#616):
+   * - **residency** → the single customer OIDC issuer (`OIDC_ISSUER` /
+   *   `OIDC_AUDIENCE`); the deploy-mode boot guard guarantees both are set.
+   * - **saas** → parse `SSO_ISSUERS` (a JSON array of `{ issuer, audience,
+   *   alg? }`); when unset, derive the single Auth0 issuer from `AUTH0_DOMAIN`
+   *   + `AUTH0_AUDIENCE` so the SaaS default is unchanged.
    * Throws on malformed/invalid `SSO_ISSUERS` (a boot-time misconfiguration).
    */
   static issuers(): IssuerConfig[] {
+    if (isResidency()) {
+      return [
+        {
+          issuer: environment.OIDC_ISSUER,
+          audience: environment.OIDC_AUDIENCE,
+          alg: "RS256",
+        },
+      ];
+    }
     const raw = environment.SSO_ISSUERS;
     if (raw && raw.trim()) {
       let parsed: unknown;
@@ -128,14 +138,14 @@ export class SsoConfig {
   /**
    * The provisioning fallback for an authenticated user with no membership and
    * no matched invitation, decided from deploy mode + the token payload:
-   * - self_hosted → `join_single_org`;
+   * - residency → `join_single_org`;
    * - saas + a configured enterprise claim the token carries → `deny`;
    * - otherwise (saas self-serve) → `personal_org`.
    */
   static provisioningFallback(
     payload: Record<string, unknown> | undefined
   ): ProvisioningFallback {
-    if (SsoConfig.deployMode() === "self_hosted") return "join_single_org";
+    if (isResidency()) return "join_single_org";
     const claim = SsoConfig.enterpriseClaim();
     if (claim && SsoConfig.isEnterpriseFederated(payload, claim)) return "deny";
     return "personal_org";

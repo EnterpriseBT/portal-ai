@@ -1,4 +1,11 @@
-import { pgTable, text, integer, unique, check } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  integer,
+  bigint,
+  unique,
+  check,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { users } from "./users.table.js";
@@ -30,12 +37,21 @@ export const organizations = pgTable(
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubscriptionId: text("stripe_subscription_id"),
     billingAnchorDay: integer("billing_anchor_day"),
+    /** AWS Marketplace entitlement identity (#568). UNIQUE where not null —
+     *  one org tracks one entitlement (#230 analog). */
+    marketplaceEntitlementId: text("marketplace_entitlement_id"),
+    /** Epoch-ms end of the marketplace contract term (#568). Null = not
+     *  marketplace-granted. Read-only is derived when in the past. */
+    entitlementThrough: bigint("entitlement_through", { mode: "number" }),
   },
   (t) => [
     // PG UNIQUE ignores NULLs — "unique where not null" for both ids.
     unique("organizations_stripe_customer_id_unique").on(t.stripeCustomerId),
     unique("organizations_stripe_subscription_id_unique").on(
       t.stripeSubscriptionId
+    ),
+    unique("organizations_marketplace_entitlement_id_unique").on(
+      t.marketplaceEntitlementId
     ),
     check(
       "organizations_anchor_day_check",

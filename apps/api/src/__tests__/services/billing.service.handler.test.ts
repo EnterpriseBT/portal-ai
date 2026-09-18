@@ -1,6 +1,7 @@
 /**
- * Unit tests for `BillingService.handleSubscriptionEvent` /
- * `recordIgnoredEvent` (#176 slice 3) — the webhook tier writer.
+ * Unit tests for the Stripe webhook tier writer (#176 slice 3): the
+ * `TierGrantService.apply(new StripeGrantSource(), …)` seam (#565) and
+ * `BillingService.recordIgnoredEvent`.
  *
  * Converge fetch + repositories mocked; the real rollback semantics get
  * integration coverage in `stripe-webhook.integration.test.ts` (case 24).
@@ -32,13 +33,15 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         update: mockOrgUpdate,
       },
       tiers: { priceIndex: mockPriceIndex },
-      stripeEvents: { insertIfNew: mockInsertIfNew },
+      commercialEvents: { insertIfNew: mockInsertIfNew },
     },
     transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(TX),
   },
 }));
 
 const { BillingService } = await import("../../services/billing.service.js");
+const { TierGrantService, StripeGrantSource } =
+  await import("../../services/tier-grant.service.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -84,10 +87,12 @@ beforeEach(() => {
 
 // ── Tests (case 14) ──────────────────────────────────────────────────
 
-describe("BillingService.handleSubscriptionEvent", () => {
+describe("TierGrantService.apply (StripeGrantSource)", () => {
   it("applied: converges, writes tier/sub-id/anchor + event row in one transaction", async () => {
-    const outcome =
-      await BillingService.handleSubscriptionEvent(subscriptionEvent());
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
+      subscriptionEvent()
+    );
 
     expect(outcome).toBe("applied");
     // converge read, not the event snapshot
@@ -95,7 +100,8 @@ describe("BillingService.handleSubscriptionEvent", () => {
     // event row and org write share the SAME transaction client
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_1",
+        source: "stripe",
+        externalId: "evt_1",
         type: "customer.subscription.updated",
         stripeCustomerId: "cus_1",
         stripeSubscriptionId: "sub_1",
@@ -127,7 +133,8 @@ describe("BillingService.handleSubscriptionEvent", () => {
       convergedSub({ status: "canceled" })
     );
 
-    const outcome = await BillingService.handleSubscriptionEvent(
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
       subscriptionEvent({ type: "customer.subscription.deleted" })
     );
 
@@ -152,8 +159,10 @@ describe("BillingService.handleSubscriptionEvent", () => {
   it("duplicate: insertIfNew false short-circuits — no org write", async () => {
     mockInsertIfNew.mockResolvedValue(false);
 
-    const outcome =
-      await BillingService.handleSubscriptionEvent(subscriptionEvent());
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
+      subscriptionEvent()
+    );
 
     expect(outcome).toBe("duplicate");
     expect(mockOrgUpdate).not.toHaveBeenCalled();
@@ -169,8 +178,10 @@ describe("BillingService.handleSubscriptionEvent", () => {
       billingAnchorDay: 15,
     });
 
-    const outcome =
-      await BillingService.handleSubscriptionEvent(subscriptionEvent());
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
+      subscriptionEvent()
+    );
 
     expect(outcome).toBe("noop");
     expect(mockOrgUpdate).not.toHaveBeenCalled();
@@ -197,7 +208,8 @@ describe("BillingService.handleSubscriptionEvent", () => {
       convergedSub({ id: "sub_2", status: "canceled" })
     );
 
-    const outcome = await BillingService.handleSubscriptionEvent(
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
       subscriptionEvent({
         type: "customer.subscription.deleted",
         data: { object: { id: "sub_2", customer: "cus_1" } },
@@ -210,7 +222,8 @@ describe("BillingService.handleSubscriptionEvent", () => {
     expect(mockPriceIndex).not.toHaveBeenCalled();
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_1",
+        source: "stripe",
+        externalId: "evt_1",
         stripeSubscriptionId: "sub_2",
         organizationId: "org-1",
         resultingTier: null,
@@ -225,7 +238,8 @@ describe("BillingService.handleSubscriptionEvent", () => {
       convergedSub({ id: "sub_2", status: "active" })
     );
 
-    const outcome = await BillingService.handleSubscriptionEvent(
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
       subscriptionEvent({
         data: { object: { id: "sub_2", customer: "cus_1" } },
       })
@@ -240,7 +254,8 @@ describe("BillingService.handleSubscriptionEvent", () => {
     mockFetchSubscription.mockResolvedValue(convergedSub({ id: "sub_2" }));
     mockInsertIfNew.mockResolvedValue(false);
 
-    const outcome = await BillingService.handleSubscriptionEvent(
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
       subscriptionEvent({
         data: { object: { id: "sub_2", customer: "cus_1" } },
       })
@@ -254,7 +269,8 @@ describe("BillingService.handleSubscriptionEvent", () => {
     // org.stripeSubscriptionId is null by default — not foreign, still adopts.
     mockFetchSubscription.mockResolvedValue(convergedSub({ id: "sub_9" }));
 
-    const outcome = await BillingService.handleSubscriptionEvent(
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
       subscriptionEvent({
         data: { object: { id: "sub_9", customer: "cus_1" } },
       })
@@ -271,14 +287,17 @@ describe("BillingService.handleSubscriptionEvent", () => {
   it("unmatched: unknown customer records the outcome, org untouched, resolves (no throw)", async () => {
     mockFindByStripeCustomerId.mockResolvedValue(undefined);
 
-    const outcome =
-      await BillingService.handleSubscriptionEvent(subscriptionEvent());
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
+      subscriptionEvent()
+    );
 
     expect(outcome).toBe("unmatched");
     expect(mockOrgUpdate).not.toHaveBeenCalled();
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_1",
+        source: "stripe",
+        externalId: "evt_1",
         organizationId: null,
         resultingTier: null,
         outcome: "unmatched",
@@ -290,7 +309,7 @@ describe("BillingService.handleSubscriptionEvent", () => {
     mockFetchSubscription.mockRejectedValue(new Error("stripe down"));
 
     await expect(
-      BillingService.handleSubscriptionEvent(subscriptionEvent())
+      TierGrantService.apply(new StripeGrantSource(), subscriptionEvent())
     ).rejects.toThrow("stripe down");
     expect(mockInsertIfNew).not.toHaveBeenCalled();
     expect(mockOrgUpdate).not.toHaveBeenCalled();
@@ -300,7 +319,7 @@ describe("BillingService.handleSubscriptionEvent", () => {
     mockOrgUpdate.mockRejectedValue(new Error("db failure"));
 
     await expect(
-      BillingService.handleSubscriptionEvent(subscriptionEvent())
+      TierGrantService.apply(new StripeGrantSource(), subscriptionEvent())
     ).rejects.toThrow("db failure");
     // The insert DID run inside the same transaction — Postgres rolls it
     // back with the failed update (integration case 24 proves it).
@@ -319,7 +338,8 @@ describe("BillingService.recordIgnoredEvent", () => {
     expect(outcome).toBe("ignored");
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: "evt_2",
+        source: "stripe",
+        externalId: "evt_2",
         type: "invoice.paid",
         organizationId: null,
         outcome: "ignored",

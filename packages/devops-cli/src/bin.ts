@@ -26,6 +26,7 @@ import {
   dbReset,
   dbSeed,
   dbResetSeed,
+  dbUpgrade,
   dbUrl,
   type DbUrlResult,
 } from "./commands/db.js";
@@ -282,6 +283,16 @@ export function buildProgram(): Command {
       .description("total truncate + re-seed (destructive; never prod)")
   ).action(async (o: GlobalOpts) =>
     execute(o, (def) => dbResetSeed(def, flags(o)))
+  );
+
+  common(
+    db
+      .command("upgrade")
+      .description(
+        "apply pending migrations + seed as one advisory-locked op: ECS one-off task, or the app's db:upgrade script for local"
+      )
+  ).action(async (o: GlobalOpts) =>
+    execute(o, (def) => dbUpgrade(def, flags(o)))
   );
 
   // ── tier (#218) ────────────────────────────────────────────────────

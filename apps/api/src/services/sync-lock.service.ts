@@ -41,6 +41,19 @@ export const PROVISION_LOCK_NAMESPACE = 0x5052_5646;
  */
 export const SEAT_LOCK_NAMESPACE = 0x5345_4154;
 
+/**
+ * Advisory-lock namespace for a whole-DB upgrade (#581), keyed by the constant
+ * `"db-upgrade"` (a singleton — there is one upgrade per install at a time).
+ * Distinct from the sync/dissolve namespaces so it never collides in Postgres's
+ * single advisory keyspace. `0x5550_4752` is ASCII "UPGR".
+ *
+ * `db:upgrade` (`scripts/db-upgrade.ts`) holds it across migrate + seed so two
+ * concurrent passes (a Helm hook racing an operator's `portalops db upgrade`,
+ * or a re-delivered task) can never both migrate — the second gets
+ * `{ acquired: false }` and does no work.
+ */
+export const UPGRADE_LOCK_NAMESPACE = 0x5550_4752;
+
 export type SyncLockOutcome<T> =
   | { acquired: true; value: T }
   | { acquired: false };

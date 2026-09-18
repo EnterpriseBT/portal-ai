@@ -1,7 +1,21 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
 import { Box, Typography } from "@portalai/core/ui";
-import { Auth0Provider } from "@auth0/auth0-react";
+import { AuthContext, NormalizedAuth } from "../providers/Auth.provider";
+
+// Provide the normalized auth seam directly (#607) so stories render without
+// mounting a real Auth0/OIDC provider.
+const mockAuth: NormalizedAuth = {
+  session: {
+    user: { name: "Test User", picture: "https://example.com/pic.jpg" },
+    isAuthenticated: true,
+    isLoading: false,
+    error: undefined,
+  },
+  getToken: async () => "story-token",
+  login: { withGoogle: () => {}, withUniversal: () => {} },
+  logout: () => {},
+};
 
 const meta = {
   title: "Layouts/AuthorizedLayout",
@@ -12,15 +26,9 @@ const meta = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <Auth0Provider
-        domain="dev-example.auth0.com"
-        clientId="mock-client-id"
-        authorizationParams={{
-          redirect_uri: window.location.origin,
-        }}
-      >
+      <AuthContext.Provider value={mockAuth}>
         <Story />
-      </Auth0Provider>
+      </AuthContext.Provider>
     ),
   ],
 } satisfies Meta<typeof AuthorizedLayout>;

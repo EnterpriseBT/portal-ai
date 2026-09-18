@@ -33,7 +33,7 @@ export { mapDissolveGeometries } from "./map-dissolve-geometries.table.js";
 export { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 export { tiers } from "./tiers.table.js";
 export { usage } from "./usage.table.js";
-export { stripeEvents } from "./stripe-events.table.js";
+export { commercialEvents } from "./commercial-events.table.js";
 export { toolUsageLedger } from "./tool-usage-ledger.table.js";
 export { auditLog } from "./audit-log.table.js";
 export { invitations } from "./invitations.table.js";

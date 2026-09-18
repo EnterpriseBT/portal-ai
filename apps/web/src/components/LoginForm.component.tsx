@@ -1,6 +1,7 @@
 import React from "react";
 import MuiLink from "@mui/material/Link";
 import { sdk } from "../api/sdk";
+import { getRuntimeConfig } from "../utils/runtime-config.util";
 import {
   Box,
   Paper,
@@ -14,33 +15,25 @@ import {
 } from "@portalai/core/ui";
 
 import { TERMS_URL, PRIVACY_URL } from "../utils/site-origin.util";
-import { resolveDeployMode } from "../utils/deploy-mode.util";
-import {
-  takeReturnTo,
-  PRE_LOGIN_RETURN_TO_KEY,
-} from "../utils/post-login-return-to.util";
 
 export interface LoginFormUIProps {
-  /** The primary sign-in action. Named for the SaaS default (Google), but the
-   *  container may wire it to Universal Login under self-hosted (#577). */
   onClickGoogleLogin: () => void;
-  /** Primary button label. Defaults to "Sign in with Google" (SaaS); the
-   *  self-hosted container passes a generic label (#577). */
-  primaryLabel?: string;
-  /** Whether to show the Google icon on the primary button. Default true
-   *  (SaaS); false under self-hosted, where login isn't Google (#577). */
-  showGoogleIcon?: boolean;
   /** Dev/test-only E2E sign-in (#304). Rendered only when provided — the
    *  container supplies it solely under its dev guard, so it is absent for
    *  normal users and in production bundles. */
   onClickDevLogin?: () => void;
+  /** Primary-button copy. Defaults to the SaaS Google label; a residency
+   *  (OIDC) install passes a generic "Sign in" (#607). */
+  primaryLabel?: string;
+  /** Whether to show the Google icon on the primary button (SaaS only). */
+  showProviderIcon?: boolean;
 }
 
 export const LoginFormUI: React.FC<LoginFormUIProps> = ({
   onClickGoogleLogin,
-  primaryLabel = "Sign in with Google",
-  showGoogleIcon = true,
   onClickDevLogin,
+  primaryLabel = "Sign in with Google",
+  showProviderIcon = true,
 }) => {
   return (
     <Container maxWidth="sm">
@@ -75,7 +68,7 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
               fullWidth
               onClick={onClickGoogleLogin}
               startIcon={
-                showGoogleIcon ? <Icon name={IconName.Google} /> : undefined
+                showProviderIcon ? <Icon name={IconName.Google} /> : undefined
               }
               sx={{
                 py: 1.5,
@@ -134,20 +127,11 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
 
 export const LoginForm = () => {
   const { withGoogle, withUniversal } = sdk.auth.login();
-  // #577: self-hosted installs authenticate against the customer's own IdP via
-  // Auth0 Universal Login (no Google pin); SaaS keeps the one-click Google
-  // button. Read at build time, defaulting to saas.
-  const selfHosted =
-    resolveDeployMode(import.meta.env.VITE_DEPLOY_MODE) === "self_hosted";
+  // Residency (OIDC) login is IdP-hosted, not Google — use generic copy (#607).
+  const isOidc = getRuntimeConfig().authProvider === "oidc";
 
   const handleGoogleLogin = () => {
-    if (selfHosted) {
-      withUniversal();
-      return;
-    }
-    // `Authorized` stashed the path the invitee was headed for; carry it through
-    // login so they return to their accept link afterwards (#585).
-    withGoogle(takeReturnTo(PRE_LOGIN_RETURN_TO_KEY) ?? undefined);
+    withGoogle();
   };
 
   // Dev/test-only sign-in for the E2E harness (#304). The app's normal login
@@ -157,15 +141,15 @@ export const LoginForm = () => {
   // builds (`import.meta.env.DEV` — stripped from production bundles) AND only
   // when explicitly requested via `?e2e`, so it never appears for normal users.
   const showDevLogin =
-    import.meta.env.DEV &&
+    !!import.meta.env?.DEV &&
     new URLSearchParams(window.location.search).has("e2e");
 
   return (
     <LoginFormUI
       onClickGoogleLogin={handleGoogleLogin}
-      primaryLabel={selfHosted ? "Sign in with SSO" : undefined}
-      showGoogleIcon={!selfHosted}
       onClickDevLogin={showDevLogin ? () => withUniversal() : undefined}
+      primaryLabel={isOidc ? "Sign in" : "Sign in with Google"}
+      showProviderIcon={!isOidc}
     />
   );
 };

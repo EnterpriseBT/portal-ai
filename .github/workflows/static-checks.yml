@@ -76,3 +76,15 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Helm chart render + invariant checks (#566). The chart is outside the
+      # turbo build graph and jest, so this is its only CI gate short of a live
+      # `helm install` (the EKS smoke). Pinned to the same helm version the
+      # devcontainer installs so local and CI renders match.
+      - name: Install helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Helm chart check
+        run: npm run lint:helm

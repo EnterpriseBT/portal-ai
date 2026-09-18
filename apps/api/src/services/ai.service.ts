@@ -6,9 +6,38 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "ai-codegen" });
 
-const anthropic = createAnthropic({
-  apiKey: environment.ANTHROPIC_API_KEY,
-});
+type AnthropicProvider = ReturnType<typeof createAnthropic>;
+type AnthropicSettings = NonNullable<Parameters<typeof createAnthropic>[0]>;
+
+/**
+ * Build the Anthropic provider settings from environment (#567). When
+ * `ANTHROPIC_BASE_URL` is set, the client routes through that prefix (a proxy
+ * / self-hosted gateway seam for off-AWS / residency installs); unset leaves
+ * the SDK default (https://api.anthropic.com/v1) untouched.
+ */
+export function buildAnthropicSettings(
+  env: Pick<typeof environment, "ANTHROPIC_API_KEY" | "ANTHROPIC_BASE_URL">
+): AnthropicSettings {
+  return {
+    apiKey: env.ANTHROPIC_API_KEY,
+    ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}),
+  };
+}
+
+/**
+ * The Anthropic provider, constructed lazily and memoized (#579). Building it
+ * at module load would instantiate a vendor client on every boot — including
+ * an agent-less `residency` install that never calls the model. Deferring
+ * construction to first use means a residency deployment that doesn't use the
+ * agent creates no outbound vendor client at boot. Behavior when the agent IS
+ * used is identical.
+ */
+let anthropicProvider: AnthropicProvider | undefined;
+export function getAnthropic(): AnthropicProvider {
+  return (anthropicProvider ??= createAnthropic(
+    buildAnthropicSettings(environment)
+  ));
+}
 
 // claude-sonnet-4-6 is the current Sonnet. The prior pin,
 // claude-sonnet-4-20250514 (Sonnet 4), retired 2026-06-15 and now
@@ -33,7 +62,7 @@ export type CodegenEffort = "low" | "medium" | "high" | "xhigh" | "max";
 /** Test seam mirroring spreadsheet-parsing-llm.service — the AI SDK's
  *  `generateText`, narrowed to what `generateCode` needs. */
 type GenerateTextFn = (args: {
-  model: ReturnType<typeof anthropic>;
+  model: ReturnType<AnthropicProvider>;
   system: string;
   prompt: string;
   providerOptions: { anthropic: Record<string, unknown> };
@@ -59,7 +88,7 @@ export class AiService {
 
   static get providers() {
     return {
-      anthropic,
+      anthropic: getAnthropic(),
     };
   }
 
@@ -81,7 +110,7 @@ export class AiService {
     const gen = params.generateText ?? (defaultGenerateText as GenerateTextFn);
     const model = params.model ?? CODEGEN_MODEL;
     const { text, usage } = await gen({
-      model: anthropic(model),
+      model: getAnthropic()(model),
       system: params.system,
       prompt: params.prompt,
       providerOptions: {

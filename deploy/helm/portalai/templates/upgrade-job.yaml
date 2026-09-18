@@ -1,0 +1,47 @@
+{{- if .Values.upgrade.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "portalai.fullname" . }}-upgrade
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: upgrade
+  annotations:
+    # The single upgrade signal (#581). On `helm upgrade` the DB already exists,
+    # so schema migrations + the idempotent global seed run in ONE job before the
+    # api pods roll — `db:upgrade` holds a session advisory lock across both, so
+    # two concurrent passes never both migrate. It prints "UPGRADE COMPLETE" and
+    # exits non-zero on failure; run `helm upgrade --atomic` to roll the
+    # workloads back (the schema is expand-only and stays valid). First install
+    # uses the separate migrate (pre-install) + seed (post-install) jobs.
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "portalai.labels" . | nindent 8 }}
+        app.kubernetes.io/component: upgrade
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      containers:
+        - name: upgrade
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          command: ["node", "dist/scripts/db-upgrade.js"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "portalai.fullname" . }}-config
+            - secretRef:
+                name: {{ include "portalai.secretName" . }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- end }}

@@ -35,7 +35,7 @@ import { mapDissolveGeometries } from "./map-dissolve-geometries.table.js";
 import { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import { tiers } from "./tiers.table.js";
 import { usage } from "./usage.table.js";
-import { stripeEvents } from "./stripe-events.table.js";
+import { commercialEvents } from "./commercial-events.table.js";
 import { toolUsageLedger } from "./tool-usage-ledger.table.js";
 import { auditLog } from "./audit-log.table.js";
 import { invitations } from "./invitations.table.js";
@@ -88,17 +88,17 @@ export const UsageInsertSchema = createInsertSchema(usage);
 export type UsageSelect = z.infer<typeof UsageSelectSchema>;
 export type UsageInsert = z.infer<typeof UsageInsertSchema>;
 
-// ── Stripe Events ─────────────────────────────────────────────────────
+// ── Commercial Events ─────────────────────────────────────────────────
 
-/** Zod schema for a `stripe_events` row returned by SELECT. */
-export const StripeEventSelectSchema = createSelectSchema(stripeEvents);
+/** Zod schema for a `commercial_events` row returned by SELECT. */
+export const CommercialEventSelectSchema = createSelectSchema(commercialEvents);
 
-/** Zod schema for inserting into `stripe_events`. */
-export const StripeEventInsertSchema = createInsertSchema(stripeEvents);
+/** Zod schema for inserting into `commercial_events`. */
+export const CommercialEventInsertSchema = createInsertSchema(commercialEvents);
 
 /** Inferred types */
-export type StripeEventSelect = z.infer<typeof StripeEventSelectSchema>;
-export type StripeEventInsert = z.infer<typeof StripeEventInsertSchema>;
+export type CommercialEventSelect = z.infer<typeof CommercialEventSelectSchema>;
+export type CommercialEventInsert = z.infer<typeof CommercialEventInsertSchema>;
 
 // ── Tool Usage Ledger ─────────────────────────────────────────────────
 

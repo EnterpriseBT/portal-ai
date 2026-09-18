@@ -55,6 +55,7 @@ import {
   PublicSitePriceSchema,
   PublicSiteTierSchema,
   PublicSiteConfigResponseSchema,
+  ConnectorConfigResponseSchema,
   DeltaEventSchema,
   ToolCallEventSchema,
   ToolCallEndEventSchema,
@@ -443,6 +444,10 @@ const publicSiteSchemas: Record<string, unknown> = {
     PublicSiteConfigResponseSchema,
     JSON_SCHEMA_OPTS
   ),
+  ConnectorConfigResponse: z.toJSONSchema(
+    ConnectorConfigResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
 };
 
 /**
@@ -617,6 +622,37 @@ const options: swaggerJsdoc.Options = {
               format: "date-time",
               example: "2024-01-01T00:00:00.000Z",
               description: "Current server timestamp",
+            },
+          },
+        },
+        HealthReadyResponse: {
+          type: "object",
+          required: ["ready", "checks", "timestamp"],
+          properties: {
+            ready: {
+              type: "boolean",
+              description:
+                "True only when every backing dependency is reachable",
+            },
+            checks: {
+              type: "object",
+              required: ["db", "redis"],
+              description: "Per-dependency reachability",
+              properties: {
+                db: {
+                  type: "boolean",
+                  description: "PostgreSQL reachable",
+                },
+                redis: {
+                  type: "boolean",
+                  description: "Redis reachable",
+                },
+              },
+            },
+            timestamp: {
+              type: "string",
+              format: "date-time",
+              description: "Server timestamp when the probe ran",
             },
           },
         },

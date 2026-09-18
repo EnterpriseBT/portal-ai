@@ -1,6 +1,6 @@
-import { useAuth0 } from "@auth0/auth0-react";
 import { useCallback } from "react";
 
+import { useAuth } from "../providers/Auth.provider";
 import { resolveApiUrl } from "../utils/api.util";
 
 /**
@@ -8,23 +8,20 @@ import { resolveApiUrl } from "../utils/api.util";
  *
  * The token is passed as a query parameter because the EventSource API
  * does not support custom headers (no Authorization header possible).
+ * The token comes from the auth seam (#607), not a vendor SDK directly.
  */
 function useCreate() {
-  const { getAccessTokenSilently } = useAuth0();
+  const { getToken } = useAuth();
 
   const connect = useCallback(
     async (path: string): Promise<EventSource> => {
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-        },
-      });
+      const token = await getToken();
       const url = resolveApiUrl(
         `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
       );
       return new EventSource(url);
     },
-    [getAccessTokenSilently]
+    [getToken]
   );
 
   return connect;

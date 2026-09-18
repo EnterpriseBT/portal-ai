@@ -16,9 +16,13 @@ jest.unstable_mockModule("@portalai/cli-env", () => cliEnvMockModule());
 const runResetMock = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("../reset.js", () => ({ runReset: runResetMock }));
 const runSeedTaskMock = jest.fn<() => Promise<unknown>>();
-jest.unstable_mockModule("../ecs.js", () => ({ runSeedTask: runSeedTaskMock }));
+const runUpgradeTaskMock = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule("../ecs.js", () => ({
+  runSeedTask: runSeedTaskMock,
+  runUpgradeTask: runUpgradeTaskMock,
+}));
 
-const { dbTunnel, dbPsql, dbSeed, dbResetSeed, dbUrl } =
+const { dbTunnel, dbPsql, dbSeed, dbResetSeed, dbUpgrade, dbUrl } =
   await import("../commands/db.js");
 
 type RunApiScript = (
@@ -52,6 +56,9 @@ beforeEach(() => {
   runSeedTaskMock
     .mockReset()
     .mockResolvedValue({ taskArn: "arn", exitCode: 0 });
+  runUpgradeTaskMock
+    .mockReset()
+    .mockResolvedValue({ taskArn: "up-arn", exitCode: 0 });
   mocks.resolveEnvConnection.mockResolvedValue(connection());
 });
 
@@ -153,6 +160,63 @@ describe("dbSeed", () => {
       .mockRejectedValue(new EnvInfraError("db:seed failed (exit 1): boom"));
 
     await expect(dbSeed(local, {}, runScript)).rejects.toBeInstanceOf(
+      EnvInfraError
+    );
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("dbUpgrade", () => {
+  it("deployed env → ECS one-off db:upgrade:ci, guarded + audited (case 14)", async () => {
+    const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
+    const out = await dbUpgrade(appDev, { yes: true }, runScript);
+
+    expect(out).toEqual({ via: "ecs", taskArn: "up-arn", exitCode: 0 });
+    expect(runUpgradeTaskMock).toHaveBeenCalled();
+    expect(runScript).not.toHaveBeenCalled();
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
+      destructive: false,
+      confirmed: true,
+      prodConfirmed: false,
+    });
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "db upgrade" })
+    );
+  });
+
+  it("local (no ECS) → spawns the app's db:upgrade script (case 15)", async () => {
+    const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
+    const out = await dbUpgrade(local, {}, runScript);
+
+    expect(out).toEqual({ via: "local", script: "db:upgrade" });
+    expect(runScript).toHaveBeenCalledWith(local, "db:upgrade", []);
+    expect(runUpgradeTaskMock).not.toHaveBeenCalled();
+  });
+
+  // The CLI's EnvironmentDefinition has NO deploy-mode field, so routing cannot
+  // branch on saas/residency by construction — it keys only on env SHAPE
+  // (def.aws). Two deployed envs of different name/kind route identically.
+  it("routes by env shape only, never a deploy mode (case 16)", async () => {
+    const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
+    const a = await dbUpgrade(appDev, { yes: true }, runScript);
+    const b = await dbUpgrade(
+      prodLike,
+      { yes: true, confirmProd: true },
+      runScript
+    );
+
+    expect(a.via).toBe("ecs");
+    expect(b.via).toBe("ecs");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(runUpgradeTaskMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a failing upgrade and does not audit a failure (case 17)", async () => {
+    const runScript = jest
+      .fn<RunApiScript>()
+      .mockRejectedValue(new EnvInfraError("db:upgrade failed (exit 1): boom"));
+
+    await expect(dbUpgrade(local, {}, runScript)).rejects.toBeInstanceOf(
       EnvInfraError
     );
     expect(mocks.recordAudit).not.toHaveBeenCalled();

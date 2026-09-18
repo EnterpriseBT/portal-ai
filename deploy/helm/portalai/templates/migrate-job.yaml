@@ -1,0 +1,44 @@
+{{- if .Values.migrate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "portalai.fullname" . }}-migrate
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    # First-install schema only (#581). The `pre-upgrade` path moved to
+    # `upgrade-job.yaml`, which runs migrate + seed as one signalled operation.
+    # On a FIRST install with the bundled DB, see README (the DB is created in
+    # the main phase — point at an external DB or migrate after it is up).
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "portalai.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          command: ["node", "dist/scripts/db-migrate.js"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "portalai.fullname" . }}-config
+            - secretRef:
+                name: {{ include "portalai.secretName" . }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- end }}
