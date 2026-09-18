@@ -43,6 +43,26 @@ export class OrganizationUsersRepository extends Repository<
     return this.findMany(eq(organizationUsers.userId, userId), {}, client);
   }
 
+  /** The membership row for a specific user in a specific org, or undefined. */
+  async findByOrganizationAndUser(
+    organizationId: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<OrganizationUserSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(organizationUsers.organizationId, organizationId),
+          eq(organizationUsers.userId, userId),
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return row as OrganizationUserSelect | undefined;
+  }
+
   /** Check whether a specific user belongs to a specific organization. */
   async exists(
     organizationId: string,

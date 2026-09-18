@@ -39,6 +39,8 @@ import type {
   Usage,
   CommercialEvent,
   ToolUsageLedgerEntry,
+  AuditLogEntry,
+  Invitation,
 } from "@portalai/core/models";
 import type {
   UserSelect,
@@ -65,6 +67,8 @@ import type {
   UsageSelect,
   CommercialEventSelect,
   ToolUsageLedgerSelect,
+  AuditLogSelect,
+  InvitationSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { EntityRecordHydrated } from "../repositories/entity-records.repository.js";
@@ -96,6 +100,8 @@ import type { tiers } from "./tiers.table.js";
 import type { usage } from "./usage.table.js";
 import type { commercialEvents } from "./commercial-events.table.js";
 import type { toolUsageLedger } from "./tool-usage-ledger.table.js";
+import type { auditLog } from "./audit-log.table.js";
+import type { invitations } from "./invitations.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
   ConnectorInstanceLayoutPlanSelect,
@@ -219,6 +225,39 @@ type _LedgerInferredToModel = IsAssignable<
   ToolUsageLedgerEntry
 >;
 const _ledgerInferredToModel: _LedgerInferredToModel = true;
+
+// ── AuditLogEntry ────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _AuditDrizzleToModel = IsAssignable<AuditLogSelect, AuditLogEntry>;
+const _auditDrizzleToModel: _AuditDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _AuditModelToDrizzle = IsAssignable<AuditLogEntry, AuditLogSelect>;
+const _auditModelToDrizzle: _AuditModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _AuditInferredRow = InferSelectModel<typeof auditLog>;
+type _AuditInferredToModel = IsAssignable<_AuditInferredRow, AuditLogEntry>;
+const _auditInferredToModel: _AuditInferredToModel = true;
+
+// ── Invitation ───────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _InvitationDrizzleToModel = IsAssignable<InvitationSelect, Invitation>;
+const _invitationDrizzleToModel: _InvitationDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _InvitationModelToDrizzle = IsAssignable<Invitation, InvitationSelect>;
+const _invitationModelToDrizzle: _InvitationModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _InvitationInferredRow = InferSelectModel<typeof invitations>;
+type _InvitationInferredToModel = IsAssignable<
+  _InvitationInferredRow,
+  Invitation
+>;
+const _invitationInferredToModel: _InvitationInferredToModel = true;
 
 // ── OrganizationUser ─────────────────────────────────────────────
 

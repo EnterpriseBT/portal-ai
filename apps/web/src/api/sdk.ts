@@ -1,3 +1,4 @@
+import { auditLog } from "./audit-log.api";
 import { auth } from "./auth.api";
 import { billing } from "./billing.api";
 import { connectorConfig } from "./connector-config.api";
@@ -18,6 +19,8 @@ import { health } from "./health.api";
 import { layoutPlans } from "./layout-plans.api";
 import { jobs } from "./jobs.api";
 import { organizations } from "./organizations.api";
+import { members } from "./members.api";
+import { invitations } from "./invitations.api";
 import { portalResults } from "./portal-results.api";
 import { portalSql } from "./portal-sql.api";
 import { portals } from "./portals.api";
@@ -29,6 +32,7 @@ import { apiConnector } from "./api-connector.api";
 export { queryKeys } from "./keys";
 
 export const sdk = {
+  auditLog,
   auth,
   billing,
   connectorConfig,
@@ -49,6 +53,8 @@ export const sdk = {
   layoutPlans,
   jobs,
   organizations,
+  members,
+  invitations,
   portalResults,
   portalSql,
   portals,

@@ -32,6 +32,8 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { AuditService } from "../services/audit.service.js";
+import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
@@ -935,6 +937,15 @@ connectorEntityRouter.delete(
         { id, cascaded },
         "Connector entity soft-deleted with cascade"
       );
+
+      // #575: audit the data deletion (post-commit, fail-open).
+      void AuditService.record({
+        ...auditContextFromRequest(req),
+        action: "data.delete",
+        targetType: "connector_entity",
+        targetId: id,
+        metadata: { cascaded },
+      });
 
       return HttpService.success<ConnectorEntityDeleteResponsePayload>(res, {
         id,

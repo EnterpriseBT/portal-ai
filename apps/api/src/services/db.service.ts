@@ -37,6 +37,8 @@ import {
   usageRepo,
   commercialEventsRepo,
   toolUsageLedgerRepo,
+  auditLogRepo,
+  invitationsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -118,6 +120,8 @@ export class DbService {
       usage: usageRepo,
       commercialEvents: commercialEventsRepo,
       toolUsageLedger: toolUsageLedgerRepo,
+      auditLog: auditLogRepo,
+      invitations: invitationsRepo,
     };
   }
 }

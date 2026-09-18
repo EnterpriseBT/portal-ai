@@ -29,6 +29,10 @@ export const ENTITY_RECORD_RETENTION_PURGE_JOB =
 export const MESSAGE_DISSOLVE_RETENTION_PURGE_JOB =
   "message-dissolve-retention-purge";
 
+/** Job name AND scheduler id for the daily security audit-log retention purge
+ *  (#575). Same one-const contract as the other purges. */
+export const AUDIT_LOG_RETENTION_PURGE_JOB = "audit-log-retention-purge";
+
 let _maintenanceQueue: Queue | null = null;
 
 /**
@@ -93,5 +97,12 @@ export const registerMaintenanceSchedulers = async (): Promise<void> => {
     // for the worker's single slot.
     { pattern: "0 5 * * *" },
     { name: MESSAGE_DISSOLVE_RETENTION_PURGE_JOB }
+  );
+  await getMaintenanceQueue().upsertJobScheduler(
+    AUDIT_LOG_RETENTION_PURGE_JOB,
+    // Daily 05:30 UTC — after the message-dissolve purge, so the two never
+    // contend for the worker's single slot.
+    { pattern: "30 5 * * *" },
+    { name: AUDIT_LOG_RETENTION_PURGE_JOB }
   );
 };

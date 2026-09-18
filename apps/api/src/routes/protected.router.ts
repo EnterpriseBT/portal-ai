@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { jwtCheck } from "../middleware/auth.middleware.js";
+import { authenticatedRateLimit } from "../middleware/authenticated-rate-limit.middleware.js";
+import { environment } from "../environment.js";
 import { requireOrgWritable } from "../middleware/require-org-writable.middleware.js";
 import { connectorConfigRouter } from "./connector-config.router.js";
 import { profileRouter } from "./profile.router.js";
@@ -32,6 +34,13 @@ export const protectedRouter = Router();
 // All routes in this router require a valid JWT
 protectedRouter.use(jwtCheck);
 
+// Per-user fixed-window rate limit on the authenticated API (#574). Mounted
+// here so it covers every authenticated route and nothing else — SSE, health,
+// and the anonymous public router are mounted outside this router. Fail-open
+// on a Redis outage; keyed by the Auth0 subject.
+protectedRouter.use(
+  authenticatedRateLimit(environment.AUTH_API_RATE_LIMIT_PER_MIN)
+);
 // Read-only degradation for a lapsed marketplace entitlement (#568): mutating
 // methods are gated when the org's term has expired; reads always pass.
 protectedRouter.use(requireOrgWritable);

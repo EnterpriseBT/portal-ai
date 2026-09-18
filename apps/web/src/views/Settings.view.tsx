@@ -20,6 +20,8 @@ import {
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
+import { AuditLogActivity } from "../components/AuditLogActivity.component";
+import { MembersTab } from "../components/MembersTab.component";
 import { DataResult } from "../components/DataResult.component";
 import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
 import { UsageLedgerDialog } from "../components/UsageLedgerDialog.component";
@@ -28,8 +30,14 @@ import { sdk } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
+import { useRole } from "../utils/use-role.util";
 import { formatUsageValue } from "../utils/usage-format.util";
-import { settingsTabIndexFromSearch } from "../utils/routes.util";
+import { formatSeats } from "../utils/tier-format.util";
+import {
+  SETTINGS_TAB_INDEX,
+  SettingsTab,
+  settingsTabIndexFromSearch,
+} from "../utils/routes.util";
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierName = (slug: string): string =>
@@ -43,7 +51,7 @@ export const SettingsView = () => {
   // #284: unentitled-toolpack affordances link to /settings?tab=billing, so
   // the tab is seeded from the param at mount. Read the same way as the
   // ?billing= checkout return below; clicking a tab does not rewrite it.
-  const { tabsProps, getTabProps, getTabPanelProps } = useTabs(
+  const { tabsProps, getTabProps, getTabPanelProps, setValue } = useTabs(
     settingsTabIndexFromSearch(window.location.search)
   );
   const theme = useTheme();
@@ -95,6 +103,25 @@ export const SettingsView = () => {
   const organizationResult = sdk.organizations.current();
   const usageResult = sdk.organizations.usage();
 
+  // Role-aware gating (#576). Single source: sdk.organizations.current() via
+  // useRole(); the server's PermissionService is the real boundary, this hides
+  // affordances a role can't use. The Activity (audit-log) tab is owner+admin
+  // (the #596→#576 widen); billing + danger zone stay owner-only.
+  const { role, isOwner, isAdminOrOwner, roleKnown } = useRole();
+
+  // A member who deep-linked ?tab=activity lands on a tab that isn't rendered
+  // for them — once the role resolves, fall back to the first tab.
+  // Adjust-state-during-render (converges: after the reset the guard is
+  // false), the same pattern UsageLedgerDialog uses for reopen.
+  if (
+    roleKnown &&
+    !isAdminOrOwner &&
+    // Members + Activity are the owner/admin-only tabs (indices ≥ Members).
+    tabsProps.value >= SETTINGS_TAB_INDEX[SettingsTab.Members]
+  ) {
+    setValue(0);
+  }
+
   // Danger zone (#197): delete the org, then end the session — logout is
   // unconditional on success, even for multi-org users.
   const { logout } = sdk.auth.logout();
@@ -115,6 +142,8 @@ export const SettingsView = () => {
         <Tab label="Profile" {...getTabProps(0)} />
         <Tab label="Organization" {...getTabProps(1)} />
         <Tab label="Subscription & Billing" {...getTabProps(2)} />
+        {isAdminOrOwner && <Tab label="Members" {...getTabProps(3)} />}
+        {isAdminOrOwner && <Tab label="Activity" {...getTabProps(4)} />}
       </Tabs>
       <TabPanel {...getTabPanelProps(0)}>
         <PageSection title="Profile" variant="outlined">
@@ -175,6 +204,14 @@ export const SettingsView = () => {
                     direction="vertical"
                     items={[
                       { label: "Email", value: profile.email },
+                      {
+                        label: "Role",
+                        // The caller's role in the current org (#576).
+                        value: role
+                          ? role.charAt(0).toUpperCase() + role.slice(1)
+                          : "",
+                        hidden: !role,
+                      },
                       {
                         label: "Last login",
                         value: profileResult.lastLogin
@@ -258,6 +295,13 @@ export const SettingsView = () => {
                           icon: <Icon name={IconName.Star} fontSize="small" />,
                         },
                         {
+                          label: "Seats",
+                          value: formatSeats(tier.maxSeats),
+                          icon: (
+                            <Icon name={IconName.Person} fontSize="small" />
+                          ),
+                        },
+                        {
                           label: "Metered usage",
                           value: formatUsageValue(usage.byClass.metered),
                           icon: (
@@ -311,6 +355,7 @@ export const SettingsView = () => {
                       type="button"
                       variant="outlined"
                       color="error"
+                      disabled={!isOwner}
                       onClick={() => setDeleteDialogOpen(true)}
                     >
                       Delete organization
@@ -338,6 +383,24 @@ export const SettingsView = () => {
           {tabsProps.value === 2 && <SubscriptionBilling />}
         </PageSection>
       </TabPanel>
+      {isAdminOrOwner && (
+        <TabPanel {...getTabPanelProps(3)}>
+          <PageSection title="Members" variant="outlined">
+            {/* Mounted only while active so the members/invitations queries
+                fire only on this tab (#585). */}
+            {tabsProps.value === 3 && <MembersTab />}
+          </PageSection>
+        </TabPanel>
+      )}
+      {isAdminOrOwner && (
+        <TabPanel {...getTabPanelProps(4)}>
+          <PageSection title="Activity" variant="outlined">
+            {/* Mounted only while active so the audit-log query fires only
+                on this tab (#596). */}
+            {tabsProps.value === 4 && <AuditLogActivity />}
+          </PageSection>
+        </TabPanel>
+      )}
     </Box>
   );
 };

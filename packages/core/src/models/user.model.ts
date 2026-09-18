@@ -15,6 +15,10 @@ export const UserSchema = CoreSchema.extend({
   name: z.string().nullable(),
   picture: z.string().nullable(),
   lastLogin: z.number().nullable(),
+  // #577: last-seen login-session marker. `.default(null)` keeps the inferred
+  // type `string | null` (matching the Drizzle `UserSelect`) while letting every
+  // existing creation site omit it — it parses to null rather than failing.
+  lastLoginSession: z.string().nullable().default(null),
 });
 
 export type User = z.infer<typeof UserSchema>;

@@ -37,6 +37,8 @@ import { tiers } from "./tiers.table.js";
 import { usage } from "./usage.table.js";
 import { commercialEvents } from "./commercial-events.table.js";
 import { toolUsageLedger } from "./tool-usage-ledger.table.js";
+import { auditLog } from "./audit-log.table.js";
+import { invitations } from "./invitations.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -109,6 +111,30 @@ export const ToolUsageLedgerInsertSchema = createInsertSchema(toolUsageLedger);
 /** Inferred types */
 export type ToolUsageLedgerSelect = z.infer<typeof ToolUsageLedgerSelectSchema>;
 export type ToolUsageLedgerInsert = z.infer<typeof ToolUsageLedgerInsertSchema>;
+
+// ── Audit Log ─────────────────────────────────────────────────────────
+
+/** Zod schema for an `audit_log` row returned by SELECT. */
+export const AuditLogSelectSchema = createSelectSchema(auditLog);
+
+/** Zod schema for inserting into `audit_log`. */
+export const AuditLogInsertSchema = createInsertSchema(auditLog);
+
+/** Inferred types */
+export type AuditLogSelect = z.infer<typeof AuditLogSelectSchema>;
+export type AuditLogInsert = z.infer<typeof AuditLogInsertSchema>;
+
+// ── Invitations ───────────────────────────────────────────────────────
+
+/** Zod schema for an `invitations` row returned by SELECT. */
+export const InvitationSelectSchema = createSelectSchema(invitations);
+
+/** Zod schema for inserting into `invitations`. */
+export const InvitationInsertSchema = createInsertSchema(invitations);
+
+/** Inferred types */
+export type InvitationSelect = z.infer<typeof InvitationSelectSchema>;
+export type InvitationInsert = z.infer<typeof InvitationInsertSchema>;
 
 // ── Organization Users ────────────────────────────────────────────────
 

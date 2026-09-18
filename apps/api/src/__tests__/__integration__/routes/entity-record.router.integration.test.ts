@@ -210,8 +210,11 @@ function createEntityRecord(
 }
 
 /** Seed the full chain: user, org, definition, instance, entity, column definitions, field mappings. */
-async function seedFullStack(db: ReturnType<typeof drizzle>) {
-  const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+async function seedFullStack(
+  db: ReturnType<typeof drizzle>,
+  auth0Id: string = AUTH0_ID
+) {
+  const { userId, organizationId } = await seedUserAndOrg(db, auth0Id);
 
   const def = createConnectorDefinition();
   await db.insert(connectorDefinitions).values(def as never);
@@ -1856,7 +1859,10 @@ describe("Entity Record Router — GET /:recordId", () => {
     const { userId, organizationId, connectorEntityId } =
       await seedFullStack(db);
 
-    const stack2 = await seedFullStack(db);
+    // A genuinely separate org/user — distinct auth0 sub so the unique
+    // users.auth0_id index (#583) is satisfied (the two stacks are different
+    // tenants, which is the whole point of this cross-entity isolation test).
+    const stack2 = await seedFullStack(db, `auth0|other-${generateId()}`);
 
     const row = createEntityRecord(
       organizationId,

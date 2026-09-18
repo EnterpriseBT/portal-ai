@@ -13,6 +13,9 @@ interface ImportMetaEnv {
   /** Marketing-site origin (#506) — where the login consent links point.
    *  Per-env (prod `www.`, app-dev `site-dev.`); injected at build time. */
   readonly VITE_SITE_URL: string;
+  /** Deploy model (#577). `saas` (default/unset) → the Google login button;
+   *  `self_hosted` → Auth0 Universal Login against the customer's own IdP. */
+  readonly VITE_DEPLOY_MODE?: "saas" | "self_hosted";
 }
 
 interface ImportMeta {

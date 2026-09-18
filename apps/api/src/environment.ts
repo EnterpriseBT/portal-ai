@@ -10,11 +10,20 @@ export const environment = {
   AUTH0_DOMAIN: process.env.AUTH0_DOMAIN,
   // Deploy-mode seam (#579): `saas` (default, multi-tenant + central) or
   // `residency` (single-tenant, self-contained in the customer's cloud).
-  // Validated by the boot guard in config/deploy-mode.ts; unset ⇒ saas.
+  // Validated by the boot guard in config/deploy-mode.ts; unset ⇒ saas. The
+  // mode's union type lives in config/deploy-mode.ts (parseDeployMode).
   DEPLOY_MODE: process.env.DEPLOY_MODE ?? "saas",
-  // Residency identity (#579/#577): the customer's own OIDC issuer URL +
-  // token audience, used instead of AUTH0_* when DEPLOY_MODE=residency.
-  // Empty in saas; the boot guard requires both when residency.
+  // Enterprise SSO (#577) — saas-mode enterprise federation. SSO_ISSUERS: a
+  // JSON array of { issuer, audience, alg? }; unset ⇒ derived from AUTH0_DOMAIN
+  // + AUTH0_AUDIENCE (the SaaS default). SSO_ENTERPRISE_CLAIM(+_VALUE): the
+  // token claim (and optional expected value) marking a login enterprise-
+  // federated, so SaaS provisioning can invite-gate it. Parsed by SsoConfig.
+  SSO_ISSUERS: process.env.SSO_ISSUERS,
+  SSO_ENTERPRISE_CLAIM: process.env.SSO_ENTERPRISE_CLAIM,
+  SSO_ENTERPRISE_CLAIM_VALUE: process.env.SSO_ENTERPRISE_CLAIM_VALUE,
+  // Residency identity (#579) — the customer's own OIDC issuer URL + token
+  // audience, used instead of AUTH0_* when DEPLOY_MODE=residency. Empty in
+  // saas; the boot guard (config/deploy-mode.ts) requires both when residency.
   OIDC_ISSUER: process.env.OIDC_ISSUER ?? "",
   OIDC_AUDIENCE: process.env.OIDC_AUDIENCE ?? "",
   // Logging configuration
@@ -37,8 +46,6 @@ export const environment = {
   DB_PASSWORD_CACHE_TTL_MS: process.env.DB_PASSWORD_CACHE_TTL_MS
     ? Number(process.env.DB_PASSWORD_CACHE_TTL_MS)
     : undefined,
-  // Auth0 webhook
-  AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
   // ── Stripe subscription billing (#176). Per-env keys — test mode
   //    everywhere except prod. Absent keys ⇒ billing endpoints 503 and the
   //    webhook 503s (Stripe retries until configured); the app boots fine.
@@ -91,6 +98,11 @@ export const environment = {
   // to `GET /api/webhook/handle/:id` (#124). Defaults to the local dev API.
   PUBLIC_API_BASE_URL:
     process.env.PUBLIC_API_BASE_URL || "http://localhost:3001",
+  // The web app's externally-reachable base, used to build shareable invite
+  // links (#584). Defaults to the local dev web app.
+  WEB_APP_URL: process.env.WEB_APP_URL || "http://localhost:3000",
+  // How long an org invitation stays acceptable before it expires (#584).
+  INVITATION_TTL_DAYS: parseInt(process.env.INVITATION_TTL_DAYS || "7", 10),
   // Emergency rollback flags. Both default false. Flip via env to
   // disable without redeploying: SSRF agent stops resolving+filtering
   // outbound IPs; signing stops appending HMAC headers. The static
@@ -141,11 +153,32 @@ export const environment = {
     process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN || "60",
     10
   ),
+  // Per-user fixed-window cap on the authenticated API (#574), keyed by the
+  // Auth0 subject. Generous by design: normal app usage bursts well under
+  // this, so anything near the ceiling is a runaway client or abuse. Fail-open
+  // on a Redis outage (see authenticated-rate-limit.middleware.ts).
+  AUTH_API_RATE_LIMIT_PER_MIN: parseInt(
+    process.env.AUTH_API_RATE_LIMIT_PER_MIN || "300",
+    10
+  ),
   // Retention window for the tool-usage audit ledger (#179 D5): rows older
   // than this many months are hard-deleted by the daily maintenance purge.
   // 24 months ≫ any dispute window; widening it is an env change + restart.
   LEDGER_RETENTION_MONTHS: parseInt(
     process.env.LEDGER_RETENTION_MONTHS || "24",
+    10
+  ),
+  // #575: how many trusted proxy hops sit in front of the API, so Express
+  // resolves `req.ip` to the real client IP for the audit log's `sourceIp`.
+  // Default 0 = trust nothing (local/dev: req.ip is the socket peer). Deployed
+  // envs set this to the exact chain length (CloudFront + ALB) — NOT `true`,
+  // which would let a client spoof its own audit-trail IP via X-Forwarded-For.
+  TRUST_PROXY_HOPS: parseInt(process.env.TRUST_PROXY_HOPS || "0", 10),
+  // #575: security audit-log retention. Rows older than this are hard-deleted
+  // by the daily maintenance purge. 24 months ≥ a typical SOC 2 review cycle;
+  // its own env (separate from the billing ledger) so the two tune apart.
+  AUDIT_LOG_RETENTION_MONTHS: parseInt(
+    process.env.AUDIT_LOG_RETENTION_MONTHS || "24",
     10
   ),
   // Retention windows for soft-deleted `entity_records` (#442). Two, split

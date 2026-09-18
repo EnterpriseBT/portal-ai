@@ -13,6 +13,9 @@ export * from "./health.contract.js";
 /** Organization contracts — schemas & types */
 export * from "./organization.contract.js";
 
+/** Organization invitation / seats contracts (#584) */
+export * from "./invitation.contract.js";
+
 /** User-Organization contracts — schemas & types */
 export * from "./user-organization.contract.js";
 
@@ -20,7 +23,6 @@ export * from "./user-organization.contract.js";
 export * from "./user-membership.contract.js";
 
 /** Webhook contracts — schemas & types */
-export * from "./webhook.contract.js";
 
 /** Connector Definition contracts — schemas & types */
 export * from "./connector-definition.contract.js";
@@ -93,6 +95,9 @@ export * from "./billing.contract.js";
 /** Usage-ledger endpoint contracts — schemas & types (#179) */
 export * from "./usage-ledger.contract.js";
 export * from "./maintenance.contract.js";
+
+/** Audit-log endpoint contracts — schemas & types (#575) */
+export * from "./audit-log.contract.js";
 
 /** Spreadsheet parsing contracts — re-exported from @portalai/spreadsheet-parsing */
 export * from "./spreadsheet-parsing.contract.js";

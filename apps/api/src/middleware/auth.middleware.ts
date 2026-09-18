@@ -1,53 +1,88 @@
 import { auth } from "express-oauth2-jwt-bearer";
-import type { RequestHandler } from "express";
-import { environment } from "../environment.js";
-import { deployMode, type DeployMode } from "../config/deploy-mode.js";
+import type { Request, Response, NextFunction, RequestHandler } from "express";
 
-type AuthEnv = Pick<
-  typeof environment,
-  "AUTH0_AUDIENCE" | "AUTH0_DOMAIN" | "OIDC_ISSUER" | "OIDC_AUDIENCE"
->;
+import { SsoConfig } from "../config/sso.config.js";
+import { ApiError } from "../services/http.service.js";
+import { ApiCode } from "../constants/api-codes.constants.js";
 
 /**
- * JWT verification config for the active deploy mode (#579):
- * - `saas` → the central Auth0 (issuer built from `AUTH0_DOMAIN`) — unchanged.
- * - `residency` → the customer's own OIDC issuer/audience (`OIDC_*`) verbatim.
+ * Multi-issuer JWT validation middleware (#577).
  *
- * `mode`/`env` are injectable for tests; both default to the live values.
+ * Builds one `express-oauth2-jwt-bearer` validator per configured issuer
+ * (`SsoConfig.issuers()`, which defaults to today's single Auth0 tenant when
+ * `SSO_ISSUERS` is unset — so SaaS behavior is unchanged). Each request is
+ * dispatched to the validator whose issuer matches the token's `iss` claim.
+ *
+ * The `iss` is read UNVERIFIED, purely to route; the selected validator then
+ * performs the real signature / audience / expiry verification and fetches the
+ * JWKS (cached internally). A well-formed token whose issuer is not configured
+ * is rejected 401 `SSO_UNKNOWN_ISSUER`; a missing/malformed token is 401
+ * `AUTH_UNAUTHORIZED`, the same code the single-issuer middleware produced.
  */
-export function resolveAuthConfig(
-  mode: DeployMode = deployMode,
-  env: AuthEnv = environment
-): { audience: string | undefined; issuerBaseURL: string } {
-  if (mode === "residency") {
-    return { audience: env.OIDC_AUDIENCE, issuerBaseURL: env.OIDC_ISSUER };
+function buildValidators(): Map<string, RequestHandler> {
+  const map = new Map<string, RequestHandler>();
+  for (const cfg of SsoConfig.issuers()) {
+    map.set(
+      cfg.issuer,
+      auth({
+        issuer: cfg.issuer,
+        issuerBaseURL: cfg.issuer.replace(/\/$/, ""),
+        audience: cfg.audience,
+        tokenSigningAlg: cfg.alg,
+      })
+    );
   }
-  return {
-    audience: env.AUTH0_AUDIENCE,
-    issuerBaseURL: `https://${env.AUTH0_DOMAIN}`,
-  };
+  return map;
 }
 
-/**
- * JWT validation middleware using `express-oauth2-jwt-bearer`.
- *
- * Extracts the Bearer token from the Authorization header, fetches the JWKS
- * from the mode-selected issuer (cached internally), and validates the JWT
- * signature, expiration, audience, and issuer. Populates req.auth with the
- * decoded token payload. Returns 401 on failure.
- *
- * The underlying `auth()` is built **lazily** on first request, not at module
- * load (#579): `auth()` asserts a non-empty `issuerBaseURL` at construction,
- * so an eager build would crash the *import* — before the deploy-mode boot
- * guard can report a clean `DEPLOY_MODE_CONFIG_INVALID` — for a residency
- * install missing its OIDC config. Deferring construction lets the guard run
- * first; a config that passes the guard always yields a valid issuer here.
- */
-let authMiddleware: RequestHandler | undefined;
-export const jwtCheck: RequestHandler = (req, res, next) => {
-  authMiddleware ??= auth({
-    ...resolveAuthConfig(),
-    tokenSigningAlg: "RS256",
-  });
-  return authMiddleware(req, res, next);
+// Built lazily on first request (not at module load), so the DEPLOY_MODE boot
+// guard (`assertDeployModeConsistency`, index.ts) runs and reports before any
+// `auth()` construction — an eager build would crash import before the guard
+// can exit cleanly. Fail-fast on a malformed `SSO_ISSUERS` is preserved by the
+// boot-time `SsoConfig.issuers()` call in index.ts `start()` (#616).
+let validators: Map<string, RequestHandler> | null = null;
+function getValidators(): Map<string, RequestHandler> {
+  if (validators === null) validators = buildValidators();
+  return validators;
+}
+
+/** Read the `iss` claim from a JWT without verifying it (routing only). */
+function unverifiedIssuer(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1], "base64url").toString("utf8")
+    ) as { iss?: unknown };
+    return typeof payload.iss === "string" ? payload.iss : null;
+  } catch {
+    return null;
+  }
+}
+
+export const jwtCheck: RequestHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const authz = req.headers.authorization;
+  if (!authz || !authz.startsWith("Bearer ")) {
+    return next(
+      new ApiError(401, ApiCode.AUTH_UNAUTHORIZED, "Missing bearer token")
+    );
+  }
+
+  const iss = unverifiedIssuer(authz.substring(7));
+  const validator = iss ? getValidators().get(iss) : undefined;
+  if (!validator) {
+    return next(
+      new ApiError(
+        401,
+        iss ? ApiCode.SSO_UNKNOWN_ISSUER : ApiCode.AUTH_UNAUTHORIZED,
+        iss ? "Token issuer is not configured" : "Malformed token"
+      )
+    );
+  }
+
+  return validator(req, res, next);
 };

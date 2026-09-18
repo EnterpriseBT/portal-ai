@@ -1,4 +1,7 @@
 import {
+  ORG_ROLES,
+  OrgRoleSchema,
+  OrganizationUserSchema,
   OrganizationUserModel,
   OrganizationUserModelFactory,
 } from "../../models/organization-user.model.js";
@@ -122,6 +125,7 @@ describe("OrganizationUserModelFactory", () => {
       model.update({
         organizationId: "org-1",
         userId: "usr-1",
+        role: "member",
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -186,5 +190,74 @@ describe("OrganizationUserModelFactory", () => {
         expect(paths).toContain("userId");
       }
     });
+  });
+});
+
+// ── role (#576) ──────────────────────────────────────────────────────
+
+describe("OrgRoleSchema (#576)", () => {
+  it("accepts owner, admin, and member", () => {
+    for (const role of ORG_ROLES) {
+      expect(OrgRoleSchema.safeParse(role).success).toBe(true);
+    }
+  });
+
+  it("rejects an unknown role (e.g. viewer)", () => {
+    expect(OrgRoleSchema.safeParse("viewer").success).toBe(false);
+  });
+
+  it("exposes exactly owner/admin/member in order", () => {
+    expect([...ORG_ROLES]).toEqual(["owner", "admin", "member"]);
+  });
+});
+
+describe("OrganizationUserSchema.role (#576)", () => {
+  const validFields = {
+    organizationId: "org-1",
+    userId: "user-1",
+    role: "member" as const,
+    lastLogin: 0,
+  };
+
+  it("round-trips an explicit role through the factory", () => {
+    const parsed = new OrganizationUserModelFactory()
+      .create("user-1")
+      .update({ ...validFields, role: "owner" })
+      .parse();
+    expect(parsed.role).toBe("owner");
+    expect(OrganizationUserSchema.safeParse(parsed).success).toBe(true);
+  });
+
+  it("accepts every declared role", () => {
+    for (const role of ORG_ROLES) {
+      const model = new OrganizationUserModelFactory()
+        .create("user-1")
+        .update({ ...validFields, role });
+      expect(model.validate().success).toBe(true);
+    }
+  });
+
+  it("rejects an unknown role", () => {
+    const model = new OrganizationUserModelFactory()
+      .create("user-1")
+      .update({ ...validFields, role: "superuser" as never });
+    expect(model.validate().success).toBe(false);
+  });
+
+  it("requires role — validation fails when omitted (no silent default)", () => {
+    const { role: _omitted, ...rest } = validFields;
+    const model = new OrganizationUserModelFactory()
+      .create("user-1")
+      .update(rest);
+    const result = model.validate();
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.path[0])).toContain("role");
+    }
+  });
+
+  it("exposes role via the model schema getter", () => {
+    const shape = new OrganizationUserModel({}).schema.shape;
+    expect(shape).toHaveProperty("role");
   });
 });

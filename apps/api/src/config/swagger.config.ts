@@ -36,12 +36,21 @@ import {
   OrganizationSwitchRequestSchema,
   OrganizationDeleteRequestSchema,
   OrganizationDeleteResponseSchema,
+  MemberRoleUpdateRequestSchema,
+  MemberRoleUpdateResponseSchema,
+  InviteCreateRequestSchema,
+  AcceptInvitationRequestSchema,
+  AcceptInvitationResponseSchema,
+  InvitationResponseSchema,
+  InvitationListResponseSchema,
+  MemberListResponseSchema,
   BillingTiersGetResponseSchema,
   BillingCheckoutRequestSchema,
   BillingCheckoutResponseSchema,
   BillingPortalRequestSchema,
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
+  AuditLogListResponseSchema,
   MaintenanceStatusResponseSchema,
   PublicSitePriceSchema,
   PublicSiteTierSchema,
@@ -80,6 +89,7 @@ import {
   PaginationConfigSchema,
   RestApiInstanceConfigSchema,
   ToolUsageLedgerEntrySchema,
+  AuditLogEntrySchema,
 } from "@portalai/core/models";
 
 import { environment } from "../environment.js";
@@ -336,6 +346,38 @@ const orgDeleteSchemas: Record<string, unknown> = {
     OrganizationDeleteResponseSchema,
     JSON_SCHEMA_OPTS
   ),
+  MemberRoleUpdateRequest: z.toJSONSchema(
+    MemberRoleUpdateRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  MemberRoleUpdateResponse: z.toJSONSchema(
+    MemberRoleUpdateResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  InviteCreateRequest: z.toJSONSchema(
+    InviteCreateRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  AcceptInvitationRequest: z.toJSONSchema(
+    AcceptInvitationRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  AcceptInvitationResponse: z.toJSONSchema(
+    AcceptInvitationResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  InvitationResponse: z.toJSONSchema(
+    InvitationResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  InvitationListResponse: z.toJSONSchema(
+    InvitationListResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  MemberListResponse: z.toJSONSchema(
+    MemberListResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
 };
 
 /**
@@ -380,6 +422,11 @@ const usageLedgerSchemas: Record<string, unknown> = {
   ),
   MaintenanceStatusResponse: z.toJSONSchema(
     MaintenanceStatusResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  AuditLogEntry: z.toJSONSchema(AuditLogEntrySchema, JSON_SCHEMA_OPTS),
+  AuditLogListResponse: z.toJSONSchema(
+    AuditLogListResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };

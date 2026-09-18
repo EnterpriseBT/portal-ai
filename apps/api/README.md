@@ -618,6 +618,8 @@ Two implementation notes that generalize to any purge here:
 
 Run summaries (`purgedOrphan`, `purgedLive`, `batches`, and both cutoffs) surface at `GET /api/admin/maintenance` as the run's `returnvalue`.
 
+**Security audit log (`audit_log`, #575).** An append-only, tamper-evident trail of security-relevant actions (logins, org/member changes, credential create/use, secret rotation, data delete). Emission goes through `AuditService.record` — **fail-open**: it is called *after* the audited action commits and never throws into the caller, so an audit-store outage means a logged, counted gap, never a blocked action. Tamper-evidence is a DB trigger (`audit_log_no_mutation`) that blocks every UPDATE and every DELETE *except* the retention purge, which opts in with `SET LOCAL app.audit_retention_purge = 'on'` (a `REVOKE` is a no-op against the table owner, and the app connects as owner until #397). The owner-gated read is `GET /api/organization/audit-log` (the owner predicate is what #576 later swaps for a role check). A daily purge (`audit-log-retention-purge.processor.ts`, 05:30 UTC) hard-deletes rows past `AUDIT_LOG_RETENTION_MONTHS` (default 24), surfaced at `GET /api/admin/maintenance` like the others. `req.ip` is the real client IP only when `TRUST_PROXY_HOPS` is set to the deployment's proxy-chain length.
+
 ## S3 bucket setup (streaming upload pipeline)
 
 The `FileUploadConnector` pipeline uploads raw bytes directly to S3 via presigned PUT URLs, then streams them back server-side during parse/interpret/commit. The frontend never ships workbook JSON over HTTP.

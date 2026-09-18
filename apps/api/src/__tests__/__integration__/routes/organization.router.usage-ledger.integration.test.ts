@@ -14,8 +14,11 @@ import type { User } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
-import { ApplicationService } from "../../../services/application.service.js";
-import { generateId, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  provisionTestOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|usage-ledger-user";
 
@@ -72,6 +75,7 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
       email: `owner-${generateId()}@example.com`,
       name: "Ledger Owner",
       lastLogin: now,
+      lastLoginSession: null,
       picture: null,
       created: now,
       createdBy: "SYSTEM_TEST",
@@ -123,6 +127,7 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
       email: `other-${generateId()}@example.com`,
       name: "Other User",
       lastLogin: now,
+      lastLoginSession: null,
       picture: null,
       created: now,
       createdBy: "SYSTEM_TEST",
@@ -162,7 +167,7 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
   // case 14 — newest-first page + total; limit/offset respected
   it("returns the org's rows newest-first with total; respects limit/offset", async () => {
     const owner = createOwner();
-    const result = await ApplicationService.setupOrganization(owner);
+    const result = await provisionTestOrg(owner);
     const orgId = result.organization.id;
 
     const base = Date.now();
@@ -195,7 +200,7 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
   // case 15 — filters + sortBy allow-map
   it("filters by periodId + toolName; unknown sortBy → 400", async () => {
     const owner = createOwner();
-    const result = await ApplicationService.setupOrganization(owner);
+    const result = await provisionTestOrg(owner);
     const orgId = result.organization.id;
 
     await seedLedgerRow(orgId, { toolName: "web_search", periodId: "2026-06" });
@@ -237,7 +242,7 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
   // case 16 — org isolation + anon rejection
   it("never returns another org's rows; rejects anonymous callers", async () => {
     const owner = createOwner();
-    const result = await ApplicationService.setupOrganization(owner);
+    const result = await provisionTestOrg(owner);
     const orgId = result.organization.id;
 
     const otherOrgId = await seedOtherOrg();

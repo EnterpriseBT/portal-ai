@@ -15,9 +15,20 @@ export enum ApiCode {
    *  middleware's InsufficientScopeError. 403 (#216). */
   AUTH_FORBIDDEN = "AUTH_FORBIDDEN",
 
+  // Enterprise SSO (#577)
+  /** A well-formed token whose `iss` claim matches no configured SSO issuer —
+   *  the multi-issuer validator has no validator to route it to. 401. */
+  SSO_UNKNOWN_ISSUER = "SSO_UNKNOWN_ISSUER",
+  /** A SaaS enterprise-federated identity that matched no pending invitation —
+   *  provisioning is invite-gated, so it is denied rather than given an org. 403. */
+  SSO_PROVISIONING_NOT_INVITED = "SSO_PROVISIONING_NOT_INVITED",
+
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",
   REQUEST_BODY_INVALID_JSON = "REQUEST_BODY_INVALID_JSON",
+  /** Per-user fixed-window limit exceeded on the authenticated API
+   *  (#574). Keyed by the Auth0 subject; fail-open on a Redis outage. 429. */
+  API_RATE_LIMITED = "API_RATE_LIMITED",
   /** Boot-time deploy-mode guard (#579): DEPLOY_MODE is unknown, or the
    *  config contradicts the mode (e.g. residency carrying central Stripe
    *  credentials). Logged at fatal; the process exits non-zero. No HTTP
@@ -41,6 +52,25 @@ export enum ApiCode {
   ORGANIZATION_CONFIRMATION_MISMATCH = "ORGANIZATION_CONFIRMATION_MISMATCH",
   /** DELETE cascade failed server-side (transaction rolled back). 500. */
   ORGANIZATION_DELETE_FAILED = "ORGANIZATION_DELETE_FAILED",
+
+  // Authorization / RBAC (#576)
+  /** The caller's role lacks the permission required for this action. 403. */
+  INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE",
+
+  // Seats / invitations (#584)
+  /** Invite target is already a live member of the org. 409. */
+  MEMBER_ALREADY_EXISTS = "MEMBER_ALREADY_EXISTS",
+  /** A live pending invite for this (org, email) already exists — resend it
+   *  rather than creating a duplicate. 409. */
+  INVITATION_ALREADY_PENDING = "INVITATION_ALREADY_PENDING",
+  /** The tier seat cap (accepted members + pending invites) is reached. 409. */
+  SEAT_LIMIT_EXCEEDED = "SEAT_LIMIT_EXCEEDED",
+  /** No live invitation for the given id/token. 404. */
+  INVITATION_NOT_FOUND = "INVITATION_NOT_FOUND",
+  /** The invitation has expired and can no longer be accepted. 410. */
+  INVITATION_EXPIRED = "INVITATION_EXPIRED",
+  /** Removing this member would strand the org with no owner. 409. */
+  LAST_OWNER_REMOVAL = "LAST_OWNER_REMOVAL",
 
   // Billing (#176)
   /** Stripe env keys absent in this environment. 503. */
@@ -669,6 +699,15 @@ export enum ApiCode {
   /** Maintenance-queue status read (schedulers + recent runs) failed. 500. */
   MAINTENANCE_FETCH_FAILED = "MAINTENANCE_FETCH_FAILED",
 
+  // Security audit log (#575)
+  /** Malformed audit-log query (unknown sortBy / bad pagination). 400. */
+  AUDIT_LOG_INVALID_QUERY = "AUDIT_LOG_INVALID_QUERY",
+  /** Caller is not the organization's owner (audit read is owner-gated;
+   *  widens to role='admin' with #576). 403. */
+  AUDIT_LOG_NOT_AUTHORIZED = "AUDIT_LOG_NOT_AUTHORIZED",
+  /** Audit-log read failed. 500. */
+  AUDIT_LOG_FETCH_FAILED = "AUDIT_LOG_FETCH_FAILED",
+
   // Compute-tool purity (#114)
   /** Compute input (rows resolved from a query handle, or inline rows)
    *  exceeded COMPUTE_MAX_ROWS — too many rows for an in-memory compute. 400. */
@@ -723,6 +762,7 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "This chart predates live refresh — re-run the prompt to regenerate it with current data.",
   [ApiCode.VIZ_REFRESH_RATE_LIMITED]:
     "Too many refreshes in a short window. Wait a moment and try again.",
+  [ApiCode.API_RATE_LIMITED]: "Too many requests. Wait a moment and try again.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:
     "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
   [ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED]:

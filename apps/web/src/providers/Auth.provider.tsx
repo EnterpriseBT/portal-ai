@@ -10,6 +10,31 @@ import {
   resolveAuth0Settings,
   resolveOidcSettings,
 } from "../utils/runtime-config.util";
+import {
+  PRE_LOGIN_RETURN_TO_KEY,
+  POST_LOGIN_RETURN_TO_KEY,
+  takeReturnTo,
+  stashReturnTo,
+} from "../utils/post-login-return-to.util";
+
+/**
+ * Post-login `returnTo` bridge (#585), Auth0 path. On login we seed Auth0
+ * `appState.returnTo` from the PRE key `Authorized` stashed; on the redirect
+ * back, `onRedirectCallback` re-stashes it under the POST key that
+ * `usePostLoginReturnTo` (in the router root) consumes to navigate. Auth0-only,
+ * as #585 always was — the router is created inside this provider, so the
+ * callback can't navigate directly. Residency OIDC login is IdP-hosted and out
+ * of #585's scope.
+ */
+const auth0OnRedirectCallback = (appState?: { returnTo?: string }): void => {
+  if (appState?.returnTo) {
+    stashReturnTo(POST_LOGIN_RETURN_TO_KEY, appState.returnTo);
+  }
+};
+const auth0ReturnToAppState = (): { returnTo?: string } => {
+  const returnTo = takeReturnTo(PRE_LOGIN_RETURN_TO_KEY);
+  return returnTo ? { returnTo } : {};
+};
 
 /**
  * Config-driven web auth (#607).
@@ -96,6 +121,7 @@ const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
         withGoogle: () =>
           loginWithRedirect({
             openUrl,
+            appState: auth0ReturnToAppState(),
             authorizationParams: {
               connection: "google-oauth2",
               redirect_uri: window.location.origin,
@@ -104,6 +130,7 @@ const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
         withUniversal: () =>
           loginWithRedirect({
             openUrl,
+            appState: auth0ReturnToAppState(),
             authorizationParams: { redirect_uri: window.location.origin },
           }),
       },
@@ -190,6 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           redirect_uri: window.location.origin,
           audience: settings.audience,
         }}
+        onRedirectCallback={auth0OnRedirectCallback}
         cacheLocation="localstorage"
         useRefreshTokens={true}
       >

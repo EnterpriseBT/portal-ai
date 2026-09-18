@@ -97,6 +97,11 @@ export const TierPolicySchema = z.object({
     perMin: z.number().int().nonnegative().nullable(),
     perDay: z.number().int().nonnegative().nullable(),
   }),
+  /** #584: max org seats (accepted members + pending invites). null =
+   *  unlimited. Carried on the resolved policy so both the billing tier card
+   *  and the org usage panel can surface it from the same resolution that
+   *  already handles org-scoped custom tiers. */
+  maxSeats: z.number().int().min(1).nullable(),
 });
 export type TierPolicy = z.infer<typeof TierPolicySchema>;
 
@@ -152,6 +157,10 @@ export const TierSchema = CoreSchema.extend({
   /** Per-client custom-tier scoping (#241): the org this tier is visible to.
    *  Null = public (all orgs). Set = private to that one org. */
   visibleToOrganizationId: z.string().nullable(),
+  /** Max org seats (accepted members + pending invites) on this tier (#584).
+   *  Null = unlimited (enterprise/custom), mirroring the allocation grid. DB
+   *  column `max_seats`, CHECK `max_seats IS NULL OR max_seats >= 1`. */
+  maxSeats: z.number().int().min(1).nullable(),
 });
 export type Tier = z.infer<typeof TierSchema>;
 

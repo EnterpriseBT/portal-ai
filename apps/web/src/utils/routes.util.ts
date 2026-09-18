@@ -4,6 +4,7 @@ export enum ApplicationRoute {
   Dashboard = "/",
   Settings = "/settings",
   Login = "/login",
+  AcceptInvitation = "/invitations/accept",
   Connectors = "/connectors",
   ConnectorInstance = "/connectors/$connectorInstanceId",
   Entities = "/entities",
@@ -25,23 +26,32 @@ export enum ApplicationRoute {
 
 // ── Settings tabs (#284) ─────────────────────────────────────────────
 //
-// `/settings` renders three tabs with local state. Entitlement
+// `/settings` renders its tabs with local state. Entitlement
 // affordances elsewhere in the app need to land the user on the billing
 // tab specifically — a link that names a plan limit and then opens the
 // General tab is not an upgrade path — so the tab becomes addressable
 // via `?tab=`.
+//
+// `Activity` (#596) is the owner-only audit-log view; it is rendered last
+// and only when the caller is the org owner, but it keeps a stable index
+// here so a deep link resolves the same whether or not the tab is shown.
 
 export enum SettingsTab {
   Profile = "profile",
   Organization = "organization",
   Billing = "billing",
+  Members = "members",
+  Activity = "activity",
 }
 
-/** Tab order as rendered by `Settings.view.tsx`. */
+/** Tab order as rendered by `Settings.view.tsx`. Members + Activity are both
+ *  owner/admin-only (#585/#596); a member deep-linking either lands on tab 0. */
 export const SETTINGS_TAB_INDEX: Record<SettingsTab, number> = {
   [SettingsTab.Profile]: 0,
   [SettingsTab.Organization]: 1,
   [SettingsTab.Billing]: 2,
+  [SettingsTab.Members]: 3,
+  [SettingsTab.Activity]: 4,
 };
 
 /**

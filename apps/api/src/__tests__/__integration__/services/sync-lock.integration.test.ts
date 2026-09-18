@@ -169,4 +169,71 @@ describe("sync lock against a real database (#460)", () => {
     );
     expect(again).toEqual({ acquired: true, value: "ran" });
   });
+
+  // ── the provisioning lock (#583) ───────────────────────────────────
+  //
+  // Unlike the sync lock (non-blocking: a loser aborts), the provisioning lock
+  // WAITS — the loser of a first-login race needs the winner's committed result
+  // before it can conclude there is nothing to provision. So the contract is
+  // serialization, not refusal.
+
+  const SUB_A = "auth0|prov-aaaa";
+  const SUB_B = "auth0|prov-bbbb";
+
+  it("two concurrent holders of one sub run serially, never interleaved", async () => {
+    const events: string[] = [];
+    const body = (tag: string) => async () => {
+      events.push(`start-${tag}`);
+      await new Promise((r) => setTimeout(r, 50));
+      events.push(`end-${tag}`);
+      return tag;
+    };
+
+    const [a, b] = await Promise.all([
+      SyncLockService.withProvisioningLock(SUB_A, body("A"), { pollMs: 10 }),
+      SyncLockService.withProvisioningLock(SUB_A, body("B"), { pollMs: 10 }),
+    ]);
+
+    expect([a, b].sort()).toEqual(["A", "B"]);
+    // Serialized: each holder's start is immediately followed by its own end —
+    // no [start-A, start-B, …] interleave.
+    expect(events.length).toBe(4);
+    expect(events[0].slice(-1)).toBe(events[1].slice(-1)); // start/end pair
+    expect(events[2].slice(-1)).toBe(events[3].slice(-1));
+    expect(events[0].startsWith("start")).toBe(true);
+    expect(events[2].startsWith("start")).toBe(true);
+  });
+
+  it("different subs do not block each other", async () => {
+    const running: string[] = [];
+    const body = (tag: string) => async () => {
+      running.push(tag);
+      // Both must be inside `fn` at the same time — a shared lock would prevent
+      // this, so it would be a noisy-neighbour bug (one user's first login
+      // blocking another's).
+      await new Promise((r) => setTimeout(r, 30));
+      expect(running.length).toBe(2);
+      return tag;
+    };
+
+    const [a, b] = await Promise.all([
+      SyncLockService.withProvisioningLock(SUB_A, body("A"), { pollMs: 10 }),
+      SyncLockService.withProvisioningLock(SUB_B, body("B"), { pollMs: 10 }),
+    ]);
+
+    expect([a, b].sort()).toEqual(["A", "B"]);
+  });
+
+  it("releases the sub lock on the success path so a later login re-acquires", async () => {
+    const first = await SyncLockService.withProvisioningLock(
+      SUB_A,
+      async () => "ran"
+    );
+    const second = await SyncLockService.withProvisioningLock(
+      SUB_A,
+      async () => "ran-again"
+    );
+    expect(first).toBe("ran");
+    expect(second).toBe("ran-again");
+  });
 });

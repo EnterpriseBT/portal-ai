@@ -7,8 +7,11 @@
  */
 
 import { drizzle } from "drizzle-orm/postgres-js";
+import { sql } from "drizzle-orm";
 import { UUIDv4Factory } from "@portalai/core/utils";
 import * as schema from "../../../db/schema/index.js";
+import { DbService } from "../../../services/db.service.js";
+import { ApplicationService } from "../../../services/application.service.js";
 
 const {
   users,
@@ -38,6 +41,8 @@ const {
   stations,
   usage,
   toolUsageLedger,
+  auditLog,
+  invitations,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -61,6 +66,7 @@ export function createUser(
     email: `user-${generateId()}@example.com`,
     name: "Test User",
     lastLogin: now,
+    lastLoginSession: null,
     picture: null,
     created: now,
     createdBy: "SYSTEM_TEST",
@@ -100,6 +106,7 @@ export function createOrganizationUser(
     id: generateId(),
     organizationId,
     userId,
+    role: "member",
     lastLogin: now,
     created: now,
     createdBy: "SYSTEM_TEST",
@@ -137,7 +144,9 @@ export async function seedUserAndOrg(
   const org = createOrganization(user.id);
   await db.insert(organizations).values(org as never);
 
-  const orgUser = createOrganizationUser(org.id, user.id);
+  // The seeded user is the org's owner (org.ownerUserId === user.id), so the
+  // membership carries the owner role (#576).
+  const orgUser = createOrganizationUser(org.id, user.id, { role: "owner" });
   await db.insert(organizationUsers).values(orgUser as never);
 
   return {
@@ -178,7 +187,36 @@ export async function teardownOrg(db: Db): Promise<void> {
   await db.delete(connectorDefinitions);
   await db.delete(usage);
   await db.delete(toolUsageLedger);
+  // #575: audit_log FK-references organizations and its append-only trigger
+  // blocks a plain DELETE — purge it (flagged) before the org rows it points at.
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL app.audit_retention_purge = 'on'`);
+    await tx.delete(auditLog);
+  });
+  await db.delete(invitations); // #584: FK → organizations + users
   await db.delete(organizationUsers);
   await db.delete(organizations);
   await db.delete(users);
+}
+
+/**
+ * Create the given user row, then provision their personal owner-org — the
+ * test-setup convenience that the removed `ApplicationService.setupOrganization`
+ * used to provide (#583). Built from the public provisioning core
+ * (`users.create` + `provisionOrganizationFor`) rather than a resurrected
+ * service method: `setupOrganization` had no non-test caller once the webhook
+ * moved to `ensureProvisioned`, and its create-user+provision role belongs in a
+ * test helper, not on the service. Preserves the caller-supplied `id` and
+ * returns the same `{ user, organization, organizationUser }` shape callers
+ * relied on. First-login idempotency/concurrency is covered directly by the
+ * `ensureProvisioned` integration tests.
+ */
+export async function provisionTestOrg(
+  owner: Record<string, unknown> & { id: string; auth0Id: string }
+) {
+  const user = await DbService.repository.users.create(owner as never);
+  const provisioned = await ApplicationService.provisionOrganizationFor(
+    user.id
+  );
+  return { user, ...provisioned };
 }

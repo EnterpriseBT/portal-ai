@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { UnauthorizedError } from "express-oauth2-jwt-bearer";
 import { ApiCode } from "./constants/api-codes.constants.js";
 import { healthRouter } from "./routes/health.router.js";
@@ -23,6 +24,15 @@ const logger = createLogger({ module: "app" });
 
 export const app = express();
 
+// #575: trust the deployment's proxy chain so `req.ip` is the real client IP
+// (recorded as the audit log's `sourceIp`), not the ALB/CloudFront hop. Set to
+// the exact number of trusted hops via TRUST_PROXY_HOPS — never `true`, which
+// would let a client spoof its own X-Forwarded-For. 0 (local/dev) leaves the
+// default (req.ip = socket peer).
+if (environment.TRUST_PROXY_HOPS > 0) {
+  app.set("trust proxy", environment.TRUST_PROXY_HOPS);
+}
+
 // Register all connector adapters
 registerAdapters();
 
@@ -32,6 +42,16 @@ app.use(httpLogger);
 // Propagate req.log into AsyncLocalStorage so service-layer loggers
 // inherit reqId/userId without needing to pass req through every call.
 app.use(requestContextMiddleware);
+
+// Security response headers (HSTS, nosniff, frame-deny, referrer policy, a
+// strict default CSP, X-Powered-By removed). CORP is set to cross-origin
+// because the SPA and MapLibre tiles consume this API from a different origin
+// in every deployed env — the CORS allowlist below is the access boundary,
+// not CORP (helmet's same-origin default would break those cross-origin
+// fetches). The strict global CSP is inert for the API's JSON responses
+// (CSP only constrains HTML rendering); the Swagger UI route relaxes it
+// locally to render its inline bundle — see swagger.router.ts.
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
 // Webhook routes must be mounted before express.json() so the webhook's
 // custom JSON parser can capture the raw body for HMAC signature verification.

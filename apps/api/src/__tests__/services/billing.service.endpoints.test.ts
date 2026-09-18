@@ -64,14 +64,26 @@ const { BillingService } = await import("../../services/billing.service.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-const OWNER = "user-owner";
-const MEMBER = "user-member";
+const OWNER_ID = "user-owner";
+const MEMBER_ID = "user-member";
+// #576: BillingService now takes a PermissionContext caller; billing.manage is
+// owner-only, so the caller's role is what the guard reads.
+const OWNER = {
+  userId: OWNER_ID,
+  organizationId: "org-fixture",
+  role: "owner" as const,
+};
+const MEMBER = {
+  userId: MEMBER_ID,
+  organizationId: "org-fixture",
+  role: "member" as const,
+};
 
 function orgFixture(overrides: Record<string, unknown> = {}) {
   return {
     id: "org-1",
     name: "Acme Corp",
-    ownerUserId: OWNER,
+    ownerUserId: OWNER_ID,
     tier: "standard",
     stripeCustomerId: null,
     stripeSubscriptionId: null,

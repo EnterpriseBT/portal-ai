@@ -120,7 +120,9 @@ describe("Billing router", () => {
     await db.insert(schema.organizations).values([org, otherOrg] as never);
     await db
       .insert(schema.organizationUsers)
-      .values(createOrganizationUser(org.id, owner.id) as never);
+      .values(
+        createOrganizationUser(org.id, owner.id, { role: "owner" }) as never
+      );
     await db
       .insert(schema.organizationUsers)
       .values(createOrganizationUser(org.id, member.id) as never);

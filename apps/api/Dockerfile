@@ -49,8 +49,20 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# curl is needed for ECS health checks; postgresql-client provides psql
-RUN apk add --no-cache curl postgresql-client
+# Patch OS packages to the latest in the pinned Alpine release, then install
+# runtime tools. `apk upgrade` keeps the base layer's OS packages (e.g. openssl)
+# current at build time — the deploy-time Trivy gate (#573) scans the whole
+# image for fixable CRITICAL/HIGH CVEs, so the image must ship patched.
+# curl is needed for ECS health checks; postgresql-client provides psql.
+RUN apk upgrade --no-cache && apk add --no-cache curl postgresql-client
+
+# Drop the base image's bundled npm/npx/corepack — the runtime never invokes
+# them (the service and the one-off migrate/seed tasks all run `node dist/...`
+# directly), and they carry their own transitive CVEs (bundled tar, pacote,
+# etc.) that the image scan would otherwise flag. Removing them shrinks the
+# attack surface and clears those findings from the gate (#573).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 # Copy built API
 COPY --from=build /app/apps/api/dist ./dist
@@ -75,6 +87,13 @@ COPY --from=build /app/packages/core/package.json ./node_modules/@portalai/core/
 # Copy built @portalai/spreadsheet-parsing into node_modules
 COPY --from=build /app/packages/spreadsheet-parsing/dist ./node_modules/@portalai/spreadsheet-parsing/dist
 COPY --from=build /app/packages/spreadsheet-parsing/package.json ./node_modules/@portalai/spreadsheet-parsing/
+
+# Drop root: run as the base image's built-in unprivileged user (uid/gid 1000).
+# No chown needed — the app never writes into /app at runtime (blobs live in S3,
+# spreadsheet parsing is in-memory), and the copied files are world-readable.
+# Placed after all root-only steps (apk add, COPY); migrations run this same
+# image via a command override (db:migrate:ci) and are read-only as this user.
+USER node
 
 EXPOSE 3001
 

@@ -33,6 +33,7 @@ const policy = {
   agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny" as const,
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
+  maxSeats: null,
 };
 
 beforeEach(() => {

@@ -21,7 +21,11 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
-import { generateId, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  provisionTestOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|maintenance-admin";
 
@@ -58,8 +62,6 @@ jest.unstable_mockModule("../../../queues/maintenance.queue.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { ApplicationService } =
-  await import("../../../services/application.service.js");
 
 describe("GET /api/admin/maintenance (#179 case 18b)", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -111,7 +113,7 @@ describe("GET /api/admin/maintenance (#179 case 18b)", () => {
       deleted: null,
       deletedBy: null,
     };
-    await ApplicationService.setupOrganization(user as never);
+    await provisionTestOrg(user as never);
   };
 
   it("returns the scheduler entry + a completed run's summary", async () => {

@@ -88,6 +88,7 @@ const usageData = {
     perToolCaps: null,
     agentTurns: { perMin: null, perDay: null },
     overage: "hard-deny",
+    maxSeats: 5,
   },
   usage: {
     periodId: "2026-07",
@@ -111,6 +112,7 @@ const tiersData = {
         agentTurns: { perMin: null, perDay: null },
         overage: "hard-deny",
         entitlements: { builtinToolpacks: [], customToolpacks: true },
+        maxSeats: 5,
       },
       description: null,
       cta: "none",

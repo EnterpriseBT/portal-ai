@@ -35,6 +35,8 @@ export { tiers } from "./tiers.table.js";
 export { usage } from "./usage.table.js";
 export { commercialEvents } from "./commercial-events.table.js";
 export { toolUsageLedger } from "./tool-usage-ledger.table.js";
+export { auditLog } from "./audit-log.table.js";
+export { invitations } from "./invitations.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";

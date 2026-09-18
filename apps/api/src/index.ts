@@ -16,6 +16,7 @@ import { FileUploadSessionService } from "./services/file-upload-session.service
 import { JobReconciliationService } from "./services/job-reconciliation.service.js";
 import { wideTableReconcilerService } from "./services/wide-table-reconciler.service.js";
 import { ApiCode } from "./constants/api-codes.constants.js";
+import { SsoConfig } from "./config/sso.config.js";
 import {
   assertDeployModeConsistency,
   deployMode,
@@ -46,6 +47,12 @@ async function start() {
   // and silently phone home. Fail-closed, mirroring the wide-table check.
   try {
     assertDeployModeConsistency();
+    // Fail-fast on a malformed SSO_ISSUERS at boot (#616): the multi-issuer
+    // validator (auth.middleware) is built lazily on first request, so without
+    // this a bad SSO_ISSUERS would surface as a per-request 500 instead of a
+    // clean boot refusal. Runs AFTER the deploy-mode guard so residency reports
+    // its own config errors first.
+    SsoConfig.issuers();
     logger.info({ deployMode }, "Deploy mode resolved");
   } catch (err) {
     logger.fatal(

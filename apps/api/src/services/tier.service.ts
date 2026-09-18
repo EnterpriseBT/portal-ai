@@ -61,6 +61,7 @@ export class TierService {
         builtinToolpacks: row.builtinToolpacks,
         customToolpacks: row.customToolpacks,
       },
+      maxSeats: row.maxSeats,
     };
   }
 
