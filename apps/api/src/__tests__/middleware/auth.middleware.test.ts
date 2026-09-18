@@ -93,3 +93,29 @@ describe("jwtCheck multi-issuer dispatch", () => {
     );
   });
 });
+
+describe("lazy validator build (#616)", () => {
+  it("does not build validators at import; builds on first jwtCheck", async () => {
+    jest.resetModules();
+    const issuersSpy = jest.fn(() => ISSUERS);
+    jest.unstable_mockModule("../../config/sso.config.js", () => ({
+      SsoConfig: { issuers: issuersSpy },
+    }));
+    jest.unstable_mockModule("express-oauth2-jwt-bearer", () => ({
+      auth: () => (_r: Request, _s: Response, next: NextFunction) => next(),
+    }));
+    const { jwtCheck } = await import("../../middleware/auth.middleware.js");
+    // Importing the module must NOT construct validators (the DEPLOY_MODE boot
+    // guard in index.ts runs first); issuers() is only read on the first request.
+    expect(issuersSpy).not.toHaveBeenCalled();
+
+    jwtCheck(
+      {
+        headers: { authorization: `Bearer ${tokenWithIss(ISSUERS[0].issuer)}` },
+      } as Request,
+      {} as Response,
+      jest.fn() as unknown as NextFunction
+    );
+    expect(issuersSpy).toHaveBeenCalledTimes(1);
+  });
+});
