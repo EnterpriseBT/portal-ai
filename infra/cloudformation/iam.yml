@@ -1,0 +1,1065 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Portals AI — account-global least-privilege IAM (#397). The assume-only
+  operator user and the per-env read/write operator roles it may assume.
+  This stack is account-global (it holds BOTH envs' operator roles), deployed
+  once out-of-band by an admin as "portalai-iam" — NOT per-env, NOT by the
+  deploy pipeline (a deploy role cannot grant its own scoped policy).
+  It also carries the scoped deploy-role policies (#397 slice 2), mined from
+  a real deploy's CloudTrail plus the CAPABILITY_NAMED_IAM write subset a
+  role-changing deploy needs, attached BY NAME to the existing console-created
+  github-cicd-deploy-{dev,prod} roles (no CFN import of those roles). They are
+  attached ALONGSIDE AdministratorAccess during rollout; admin is detached
+  per-env only after a real deploy proves the scoped policy (zero AccessDenied).
+
+# No Environment parameter: this stack is global and defines both envs'
+# operator roles, so each env is a literal per resource.
+
+Resources:
+  # ══════════════════════════════════════════════════════════
+  #  Operator identity — assume-only user
+  # ══════════════════════════════════════════════════════════
+  # SSO / IAM Identity Center is not set up in this account, so the operator
+  # identity is a low-privilege IAM user whose ONLY permission is to assume
+  # the per-env operator roles below. Standing credentials on a laptop are
+  # inert without an sts:AssumeRole step. (If Identity Center is enabled
+  # later, this user is swapped for a permission set that assumes the same
+  # roles — the roles stay.)
+  OperatorUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: portalai-operator
+      Tags:
+        - Key: Name
+          Value: portalai-operator
+
+  OperatorAssumePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-operator-assume
+      Users:
+        - !Ref OperatorUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeOperatorRoles
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource:
+              - !GetAtt DevOperatorReadRole.Arn
+              - !GetAtt DevOperatorWriteRole.Arn
+              - !GetAtt ProdOperatorReadRole.Arn
+              - !GetAtt ProdOperatorWriteRole.Arn
+
+  # ══════════════════════════════════════════════════════════
+  #  Read policies — the inspection surface (per env)
+  # ══════════════════════════════════════════════════════════
+  # Matches docs/AWS_CLI_OPS.md's documented read set, scoped to the env.
+  # Read-only account-wide Describe/List (ecs/rds/cfn/elb) are left broad:
+  # they are list-only, largely don't support resource scoping, and a
+  # too-tight read role is the fail-CLOSED risk (an operator locked out
+  # mid-incident). The SENSITIVE reads (secrets, params, the bastion tunnel)
+  # are tightly env-scoped.
+  DevOperatorReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-dev-operator-read
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LogsRead
+            Effect: Allow
+            Action:
+              - logs:GetLogEvents
+              - logs:FilterLogEvents
+              - logs:GetLogRecord
+              - logs:GetQueryResults
+              - logs:StartQuery
+              - logs:StopQuery
+              - logs:DescribeLogStreams
+              - logs:DescribeLogGroups
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/portalai-api-dev"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/portalai-api-dev:*"
+          - Sid: ServiceDescribeReadOnly
+            Effect: Allow
+            Action:
+              - ecs:Describe*
+              - ecs:List*
+              - rds:Describe*
+              - cloudformation:Describe*
+              - cloudformation:List*
+              - cloudformation:GetTemplate
+              - cloudformation:GetTemplateSummary
+              - elasticloadbalancing:Describe*
+            Resource: "*"
+          - Sid: S3UploadsRead
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:GetBucketLocation
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::portalai-dev-uploads"
+              - !Sub "arn:${AWS::Partition}:s3:::portalai-dev-uploads/*"
+          - Sid: SsmParamsRead
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+              - ssm:DescribeParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/dev/*"
+          - Sid: SecretsRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/dev/*"
+          # Bastion tunnel (db psql / studio). StartSession sits in READ:
+          # it is the operator's daily DB-inspection path, the DB-write guard
+          # is the CLI's prod barrier + --yes, and IAM cannot see the SQL
+          # inside the forwarded connection. Env-isolated by the bastion's
+          # Name tag so a dev session cannot tunnel to the prod bastion.
+          - Sid: SsmStartSessionBastion
+            Effect: Allow
+            Action:
+              - ssm:StartSession
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/Name: portalai-dev-bastion
+          - Sid: SsmStartSessionDocuments
+            Effect: Allow
+            Action:
+              - ssm:StartSession
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-StartPortForwardingSession"
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-StartPortForwardingSessionToRemoteHost"
+          - Sid: SsmSessionLifecycle
+            Effect: Allow
+            Action:
+              - ssm:TerminateSession
+              - ssm:ResumeSession
+              - ssm:DescribeSessions
+              - ssm:GetConnectionStatus
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+              - ssmmessages:OpenDataChannel
+            Resource: "*"
+
+  ProdOperatorReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-prod-operator-read
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LogsRead
+            Effect: Allow
+            Action:
+              - logs:GetLogEvents
+              - logs:FilterLogEvents
+              - logs:GetLogRecord
+              - logs:GetQueryResults
+              - logs:StartQuery
+              - logs:StopQuery
+              - logs:DescribeLogStreams
+              - logs:DescribeLogGroups
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/portalai-api-prod"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/portalai-api-prod:*"
+          - Sid: ServiceDescribeReadOnly
+            Effect: Allow
+            Action:
+              - ecs:Describe*
+              - ecs:List*
+              - rds:Describe*
+              - cloudformation:Describe*
+              - cloudformation:List*
+              - cloudformation:GetTemplate
+              - cloudformation:GetTemplateSummary
+              - elasticloadbalancing:Describe*
+            Resource: "*"
+          - Sid: S3UploadsRead
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:GetBucketLocation
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::portalai-prod-uploads"
+              - !Sub "arn:${AWS::Partition}:s3:::portalai-prod-uploads/*"
+          - Sid: SsmParamsRead
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+              - ssm:DescribeParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/prod/*"
+          - Sid: SecretsRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/prod/*"
+          - Sid: SsmStartSessionBastion
+            Effect: Allow
+            Action:
+              - ssm:StartSession
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/Name: portalai-prod-bastion
+          - Sid: SsmStartSessionDocuments
+            Effect: Allow
+            Action:
+              - ssm:StartSession
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-StartPortForwardingSession"
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-StartPortForwardingSessionToRemoteHost"
+          - Sid: SsmSessionLifecycle
+            Effect: Allow
+            Action:
+              - ssm:TerminateSession
+              - ssm:ResumeSession
+              - ssm:DescribeSessions
+              - ssm:GetConnectionStatus
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+              - ssmmessages:OpenDataChannel
+            Resource: "*"
+
+  # ══════════════════════════════════════════════════════════
+  #  Write policies — the mutation surface (per env)
+  # ══════════════════════════════════════════════════════════
+  # The small set of writes portalops performs: vars set (SSM param + secret),
+  # and the one-off ECS tasks (db seed / upgrade / reset). Attached to the
+  # WRITE role IN ADDITION to the read policy (write = read + these).
+  DevOperatorWritePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-dev-operator-write
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SsmParamsWrite
+            Effect: Allow
+            Action:
+              - ssm:PutParameter
+              - ssm:AddTagsToResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/dev/*"
+          - Sid: SecretsWrite
+            Effect: Allow
+            Action:
+              - secretsmanager:PutSecretValue
+              - secretsmanager:CreateSecret
+              - secretsmanager:TagResource
+              - secretsmanager:UpdateSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/dev/*"
+          - Sid: EcsRunOneOffTasks
+            Effect: Allow
+            Action:
+              - ecs:RunTask
+              - ecs:StopTask
+              - ecs:DescribeTasks
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/portalai-api-dev:*"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/portalai-dev/*"
+          - Sid: PassTaskRoles
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-dev-task-role"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-dev-task-execution-role"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ecs-tasks.amazonaws.com
+
+  ProdOperatorWritePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-prod-operator-write
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SsmParamsWrite
+            Effect: Allow
+            Action:
+              - ssm:PutParameter
+              - ssm:AddTagsToResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/prod/*"
+          - Sid: SecretsWrite
+            Effect: Allow
+            Action:
+              - secretsmanager:PutSecretValue
+              - secretsmanager:CreateSecret
+              - secretsmanager:TagResource
+              - secretsmanager:UpdateSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/prod/*"
+          - Sid: EcsRunOneOffTasks
+            Effect: Allow
+            Action:
+              - ecs:RunTask
+              - ecs:StopTask
+              - ecs:DescribeTasks
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/portalai-api-prod:*"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/portalai-prod/*"
+          - Sid: PassTaskRoles
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-prod-task-role"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-prod-task-execution-role"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ecs-tasks.amazonaws.com
+
+  # ══════════════════════════════════════════════════════════
+  #  Operator roles — assumed by portalai-operator
+  # ══════════════════════════════════════════════════════════
+  # Read is the default an operator holds; a mutation means explicitly
+  # assuming the write role. Env-scoped trust (a dev session cannot assume
+  # prod). Prod-write additionally requires MFA on AssumeRole — the IAM
+  # mirror of the CLI's --confirm-prod barrier.
+  DevOperatorReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: portalai-dev-operator-read
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt OperatorUser.Arn
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref DevOperatorReadPolicy
+
+  DevOperatorWriteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: portalai-dev-operator-write
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt OperatorUser.Arn
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref DevOperatorReadPolicy
+        - !Ref DevOperatorWritePolicy
+
+  ProdOperatorReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: portalai-prod-operator-read
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt OperatorUser.Arn
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref ProdOperatorReadPolicy
+
+  ProdOperatorWriteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: portalai-prod-operator-write
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt OperatorUser.Arn
+            Action: sts:AssumeRole
+            Condition:
+              Bool:
+                aws:MultiFactorAuthPresent: "true"
+      ManagedPolicyArns:
+        - !Ref ProdOperatorReadPolicy
+        - !Ref ProdOperatorWritePolicy
+
+  # ══════════════════════════════════════════════════════════
+  #  Scoped deploy-role policies (#397 slice 2)
+  # ══════════════════════════════════════════════════════════
+  # Replace AdministratorAccess on the GitHub-OIDC deploy roles. Mined from a
+  # real successful dev deploy's CloudTrail (466 events) + the IAM/EC2/ELB/ACM
+  # write actions a stack-CREATE or role-changing deploy needs (which a steady
+  # app deploy's CloudTrail under-represents). Scoped to the env's resources by
+  # name where the resource type allows; account-wide only for Describe/List
+  # and register-before-creation actions that cannot be resource-scoped.
+  # Split app/infra to stay under the 6144-char managed-policy limit. Attached
+  # by NAME to the existing console roles via the Roles property — no import.
+
+  # ── dev: app deploy surface (per-commit) ──────────────────
+  DeployDevAppPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-deploy-dev-app
+      Roles: [github-cicd-deploy-dev]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Sts
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: EcrAuth
+            Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+          - Sid: EcrPushPull
+            Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+              - ecr:DescribeRepositories
+              - ecr:DescribeImages
+              - ecr:ListImages
+              - ecr:ListImageReferrers
+              - ecr:ListTagsForResource
+              - ecr:GetRepositoryPolicy
+              - ecr:GetLifecyclePolicy
+              - ecr:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-api-dev"
+              - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-web-dev"
+          - Sid: EcsTaskDefs
+            Effect: Allow
+            Action:
+              - ecs:RegisterTaskDefinition
+              - ecs:DeregisterTaskDefinition
+              - ecs:DescribeTaskDefinition
+              - ecs:ListTaskDefinitions
+            Resource: "*"
+          - Sid: EcsServicesTasks
+            Effect: Allow
+            Action:
+              - ecs:CreateService
+              - ecs:UpdateService
+              - ecs:DeleteService
+              - ecs:DescribeServices
+              - ecs:DescribeClusters
+              - ecs:DescribeTasks
+              - ecs:ListTasks
+              - ecs:ListServices
+              - ecs:RunTask
+              - ecs:StopTask
+              - ecs:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/portalai-dev"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/portalai-dev/*"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/portalai-dev/*"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/portalai-*-dev:*"
+          - Sid: S3ContentSync
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:GetBucketLocation
+            Resource:
+              - "arn:aws:s3:::app-dev.portalsai.io"
+              - "arn:aws:s3:::app-dev.portalsai.io/*"
+              - "arn:aws:s3:::site-dev.portalsai.io"
+              - "arn:aws:s3:::site-dev.portalsai.io/*"
+          - Sid: CloudFrontInvalidate
+            Effect: Allow
+            Action:
+              - cloudfront:CreateInvalidation
+              - cloudfront:GetInvalidation
+              - cloudfront:GetDistribution
+              - cloudfront:GetDistributionConfig
+              - cloudfront:ListDistributions
+              - cloudfront:ListTagsForResource
+            Resource: "*"
+          - Sid: LambdaDeploy
+            Effect: Allow
+            Action:
+              - lambda:UpdateFunctionCode
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+              - lambda:UpdateFunctionConfiguration
+              - lambda:PublishVersion
+              - lambda:ListVersionsByFunction
+              - lambda:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:portalai-*"
+          - Sid: SsmConfig
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:PutParameter
+              - ssm:AddTagsToResource
+              - ssm:DescribeParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/dev/*"
+          - Sid: SecretsRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/dev/*"
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
+
+  # ── dev: infra / CloudFormation management surface ────────
+  DeployDevInfraPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-deploy-dev-infra
+      Roles: [github-cicd-deploy-dev]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # The bastion stack resolves its AMI from the AWS-managed public SSM
+          # parameter namespace (arn has an empty account id).
+          - Sid: SsmPublicParams
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/*"
+          - Sid: CloudFormationStacks
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:CreateChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResource
+              - cloudformation:DescribeStackResources
+              - cloudformation:ListStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:GetStackPolicy
+              - cloudformation:SetStackPolicy
+              - cloudformation:UpdateTerminationProtection
+              - cloudformation:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/portalai-*/*"
+          - Sid: CloudFormationGlobalRead
+            Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+              - cloudformation:GetTemplateSummary
+              - cloudformation:ListStacks
+              - cloudformation:ListExports
+            Resource: "*"
+          - Sid: IamManageStackRoles
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:UpdateRole
+              - iam:UpdateAssumeRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:GetRolePolicy
+              - iam:TagRole
+              - iam:UntagRole
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicyVersion
+              - iam:CreateInstanceProfile
+              - iam:DeleteInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+              - iam:TagInstanceProfile
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/portalai-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/portalai-*"
+          - Sid: IamReadOnly
+            Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:GetInstanceProfile
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+              - iam:ListPolicyVersions
+              - iam:ListInstanceProfilesForRole
+              - iam:ListPoliciesGrantingServiceAccess
+            Resource: "*"
+          - Sid: IamPassRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-*"
+            Condition:
+              StringEquals:
+                iam:PassedToService:
+                  - ecs-tasks.amazonaws.com
+                  - ec2.amazonaws.com
+                  - lambda.amazonaws.com
+          - Sid: Ec2Networking
+            Effect: Allow
+            Action:
+              - ec2:Describe*
+            Resource: "*"
+          - Sid: ElbManage
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:Describe*
+              - elasticloadbalancing:CreateLoadBalancer
+              - elasticloadbalancing:DeleteLoadBalancer
+              - elasticloadbalancing:ModifyLoadBalancerAttributes
+              - elasticloadbalancing:CreateTargetGroup
+              - elasticloadbalancing:DeleteTargetGroup
+              - elasticloadbalancing:ModifyTargetGroup
+              - elasticloadbalancing:ModifyTargetGroupAttributes
+              - elasticloadbalancing:CreateListener
+              - elasticloadbalancing:DeleteListener
+              - elasticloadbalancing:ModifyListener
+              - elasticloadbalancing:CreateRule
+              - elasticloadbalancing:ModifyRule
+              - elasticloadbalancing:AddTags
+              - elasticloadbalancing:RemoveTags
+            Resource: "*"
+          - Sid: Route53
+            Effect: Allow
+            Action:
+              - route53:GetHostedZone
+              - route53:ListHostedZones
+              - route53:ListResourceRecordSets
+              - route53:ChangeResourceRecordSets
+              - route53:GetChange
+            Resource: "*"
+          - Sid: Acm
+            Effect: Allow
+            Action:
+              - acm:RequestCertificate
+              - acm:DescribeCertificate
+              - acm:DeleteCertificate
+              - acm:ListCertificates
+              - acm:AddTagsToCertificate
+              - acm:ListTagsForCertificate
+            Resource: "*"
+          - Sid: Kms
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:GetKeyPolicy
+              - kms:GetKeyRotationStatus
+              - kms:ListResourceTags
+              - kms:CreateGrant
+              - kms:EnableKeyRotation
+              - kms:PutKeyPolicy
+              - kms:TagResource
+            Resource: "*"
+          - Sid: Logs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:PutRetentionPolicy
+              - logs:AssociateKmsKey
+              - logs:TagResource
+              - logs:DescribeLogGroups
+              - logs:ListTagsForResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/portalai-api-dev*"
+          - Sid: S3StackBuckets
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:GetBucket*
+              - s3:PutBucket*
+              - s3:GetAccelerateConfiguration
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:GetLifecycleConfiguration
+              - s3:PutLifecycleConfiguration
+              - s3:GetReplicationConfiguration
+              - s3:ListTagsForResource
+              - s3:GetAccountPublicAccessBlock
+              - s3:PutBucketTagging
+            Resource:
+              - "arn:aws:s3:::portalai-dev-*"
+              - "arn:aws:s3:::app-dev.portalsai.io"
+              - "arn:aws:s3:::app-dev.portalsai.io-access-logs"
+              - "arn:aws:s3:::site-dev.portalsai.io"
+              - "arn:aws:s3:::site-dev.portalsai.io-access-logs"
+
+  # ── prod: app deploy surface (per-commit) ─────────────────
+  DeployProdAppPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-deploy-prod-app
+      Roles: [github-cicd-deploy-prod]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Sts
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: EcrAuth
+            Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+          - Sid: EcrPushPull
+            Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+              - ecr:DescribeRepositories
+              - ecr:DescribeImages
+              - ecr:ListImages
+              - ecr:ListImageReferrers
+              - ecr:ListTagsForResource
+              - ecr:GetRepositoryPolicy
+              - ecr:GetLifecyclePolicy
+              - ecr:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-api-prod"
+          - Sid: RdsSnapshot
+            Effect: Allow
+            Action:
+              - rds:CreateDBSnapshot
+              - rds:DescribeDBSnapshots
+              - rds:DescribeDBInstances
+              - rds:AddTagsToResource
+            Resource: "*"
+          - Sid: EcsTaskDefs
+            Effect: Allow
+            Action:
+              - ecs:RegisterTaskDefinition
+              - ecs:DeregisterTaskDefinition
+              - ecs:DescribeTaskDefinition
+              - ecs:ListTaskDefinitions
+            Resource: "*"
+          - Sid: EcsServicesTasks
+            Effect: Allow
+            Action:
+              - ecs:CreateService
+              - ecs:UpdateService
+              - ecs:DeleteService
+              - ecs:DescribeServices
+              - ecs:DescribeClusters
+              - ecs:DescribeTasks
+              - ecs:ListTasks
+              - ecs:ListServices
+              - ecs:RunTask
+              - ecs:StopTask
+              - ecs:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/portalai-prod"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/portalai-prod/*"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/portalai-prod/*"
+              - !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/portalai-*-prod:*"
+          - Sid: S3ContentSync
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:GetBucketLocation
+            Resource:
+              - "arn:aws:s3:::app.portalsai.io"
+              - "arn:aws:s3:::app.portalsai.io/*"
+              - "arn:aws:s3:::www.portalsai.io"
+              - "arn:aws:s3:::www.portalsai.io/*"
+          - Sid: CloudFrontInvalidate
+            Effect: Allow
+            Action:
+              - cloudfront:CreateInvalidation
+              - cloudfront:GetInvalidation
+              - cloudfront:GetDistribution
+              - cloudfront:GetDistributionConfig
+              - cloudfront:ListDistributions
+              - cloudfront:ListTagsForResource
+            Resource: "*"
+          - Sid: LambdaDeploy
+            Effect: Allow
+            Action:
+              - lambda:UpdateFunctionCode
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+              - lambda:UpdateFunctionConfiguration
+              - lambda:PublishVersion
+              - lambda:ListVersionsByFunction
+              - lambda:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:portalai-*"
+          - Sid: SsmConfig
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:PutParameter
+              - ssm:AddTagsToResource
+              - ssm:DescribeParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/prod/*"
+          - Sid: SecretsRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/prod/*"
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
+
+  # ── prod: infra / CloudFormation management surface ───────
+  DeployProdInfraPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-deploy-prod-infra
+      Roles: [github-cicd-deploy-prod]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # The bastion stack resolves its AMI from the AWS-managed public SSM
+          # parameter namespace (arn has an empty account id).
+          - Sid: SsmPublicParams
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/*"
+          - Sid: CloudFormationStacks
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:CreateChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResource
+              - cloudformation:DescribeStackResources
+              - cloudformation:ListStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:GetStackPolicy
+              - cloudformation:SetStackPolicy
+              - cloudformation:UpdateTerminationProtection
+              - cloudformation:TagResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/portalai-*/*"
+          - Sid: CloudFormationGlobalRead
+            Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+              - cloudformation:GetTemplateSummary
+              - cloudformation:ListStacks
+              - cloudformation:ListExports
+            Resource: "*"
+          - Sid: IamManageStackRoles
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:UpdateRole
+              - iam:UpdateAssumeRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:GetRolePolicy
+              - iam:TagRole
+              - iam:UntagRole
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicyVersion
+              - iam:CreateInstanceProfile
+              - iam:DeleteInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+              - iam:TagInstanceProfile
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/portalai-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/portalai-*"
+          - Sid: IamReadOnly
+            Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:GetInstanceProfile
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+              - iam:ListPolicyVersions
+              - iam:ListInstanceProfilesForRole
+              - iam:ListPoliciesGrantingServiceAccess
+            Resource: "*"
+          - Sid: IamPassRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/portalai-*"
+            Condition:
+              StringEquals:
+                iam:PassedToService:
+                  - ecs-tasks.amazonaws.com
+                  - ec2.amazonaws.com
+                  - lambda.amazonaws.com
+          - Sid: Ec2Networking
+            Effect: Allow
+            Action:
+              - ec2:Describe*
+            Resource: "*"
+          - Sid: ElbManage
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:Describe*
+              - elasticloadbalancing:CreateLoadBalancer
+              - elasticloadbalancing:DeleteLoadBalancer
+              - elasticloadbalancing:ModifyLoadBalancerAttributes
+              - elasticloadbalancing:CreateTargetGroup
+              - elasticloadbalancing:DeleteTargetGroup
+              - elasticloadbalancing:ModifyTargetGroup
+              - elasticloadbalancing:ModifyTargetGroupAttributes
+              - elasticloadbalancing:CreateListener
+              - elasticloadbalancing:DeleteListener
+              - elasticloadbalancing:ModifyListener
+              - elasticloadbalancing:CreateRule
+              - elasticloadbalancing:ModifyRule
+              - elasticloadbalancing:AddTags
+              - elasticloadbalancing:RemoveTags
+            Resource: "*"
+          - Sid: Route53
+            Effect: Allow
+            Action:
+              - route53:GetHostedZone
+              - route53:ListHostedZones
+              - route53:ListResourceRecordSets
+              - route53:ChangeResourceRecordSets
+              - route53:GetChange
+            Resource: "*"
+          - Sid: Acm
+            Effect: Allow
+            Action:
+              - acm:RequestCertificate
+              - acm:DescribeCertificate
+              - acm:DeleteCertificate
+              - acm:ListCertificates
+              - acm:AddTagsToCertificate
+              - acm:ListTagsForCertificate
+            Resource: "*"
+          - Sid: Kms
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:GetKeyPolicy
+              - kms:GetKeyRotationStatus
+              - kms:ListResourceTags
+              - kms:CreateGrant
+              - kms:EnableKeyRotation
+              - kms:PutKeyPolicy
+              - kms:TagResource
+            Resource: "*"
+          - Sid: Logs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:PutRetentionPolicy
+              - logs:AssociateKmsKey
+              - logs:TagResource
+              - logs:DescribeLogGroups
+              - logs:ListTagsForResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/portalai-api-prod*"
+          - Sid: S3StackBuckets
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:GetBucket*
+              - s3:PutBucket*
+              - s3:GetAccelerateConfiguration
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:GetLifecycleConfiguration
+              - s3:PutLifecycleConfiguration
+              - s3:GetReplicationConfiguration
+              - s3:ListTagsForResource
+              - s3:GetAccountPublicAccessBlock
+              - s3:PutBucketTagging
+            Resource:
+              - "arn:aws:s3:::portalai-prod-*"
+              - "arn:aws:s3:::app.portalsai.io"
+              - "arn:aws:s3:::app.portalsai.io-access-logs"
+              - "arn:aws:s3:::www.portalsai.io"
+              - "arn:aws:s3:::www.portalsai.io-access-logs"
+
+# ══════════════════════════════════════════════════════════
+#  Exports — so a future SSO permission set or a CI reference
+#  can resolve the operator identities.
+# ══════════════════════════════════════════════════════════
+Outputs:
+  OperatorUserArn:
+    Value: !GetAtt OperatorUser.Arn
+    Export:
+      Name: portalai-operator-user-arn
+  DevOperatorReadRoleArn:
+    Value: !GetAtt DevOperatorReadRole.Arn
+    Export:
+      Name: portalai-dev-operator-read-arn
+  DevOperatorWriteRoleArn:
+    Value: !GetAtt DevOperatorWriteRole.Arn
+    Export:
+      Name: portalai-dev-operator-write-arn
+  ProdOperatorReadRoleArn:
+    Value: !GetAtt ProdOperatorReadRole.Arn
+    Export:
+      Name: portalai-prod-operator-read-arn
+  ProdOperatorWriteRoleArn:
+    Value: !GetAtt ProdOperatorWriteRole.Arn
+    Export:
+      Name: portalai-prod-operator-write-arn
