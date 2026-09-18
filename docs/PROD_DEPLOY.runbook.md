@@ -97,8 +97,9 @@ A prod config change republishes the site with no code change: `portalops vars s
 
 **This reverts the image, not the schema.** The deployment circuit breaker restores the last good task set; a migration that already applied stays applied. Two consequences:
 
-- **Migrations must remain backward-compatible with the previous image.** Additive columns, no destructive renames in the same release as the code that stops using them. This is a standing rule, not advice for the rollback moment — by then it is too late.
+- **Migrations must remain backward-compatible with the previous image.** Additive columns, no destructive renames in the same release as the code that stops using them. This is a standing rule, not advice for the rollback moment — by then it is too late. **CI now backs it (#581):** `npm run lint:migrations` fails a new migration carrying destructive DDL (`DROP`/`TRUNCATE`/type change) unless the statement carries an explicit `-- destructive-ok: <reason>` — so a schema-breaking change is a deliberate, reviewed act, never an accident.
 - Every deploy takes an RDS snapshot named `portalai-prod-premigrate-<sha>-<timestamp>` immediately before migrating. Restoring it is the escape hatch when a migration cannot be tolerated, and it is a **restore-to-new-instance** operation, not an in-place undo — treat it as an incident, not a rollback step.
+- **Manual migrate/upgrade escape hatch (#581).** `portalops db upgrade --env prod --yes --confirm-prod` runs migrations + the idempotent global seed as one advisory-locked ECS one-off — the same `db:upgrade` entrypoint the residency Helm chart runs on `pre-upgrade`. Use it when a migration must be applied outside the normal release (e.g. after a bootstrap). It is advisory-locked, so it cannot race the deploy pipeline's own migrate task.
 
 ## Recovery
 

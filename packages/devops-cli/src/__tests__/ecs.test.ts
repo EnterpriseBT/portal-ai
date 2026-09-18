@@ -36,7 +36,7 @@ jest.unstable_mockModule("@aws-sdk/client-ecs", () => ({
   waitUntilTasksStopped: waitMock,
 }));
 
-const { runSeedTask } = await import("../ecs.js");
+const { runSeedTask, runUpgradeTask } = await import("../ecs.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
 const local = BUILTIN_ENVIRONMENTS["local"];
@@ -111,6 +111,39 @@ describe("runSeedTask", () => {
     const p = runSeedTask(local);
     await expect(p).rejects.toBeInstanceOf(EnvNotConfiguredError);
     await expect(p).rejects.toThrow(/npm run db:seed/);
+    expect(ecsSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("runUpgradeTask", () => {
+  it("overrides the container command with db:upgrade:ci", async () => {
+    happyPath(0);
+    const out = await runUpgradeTask(appDev);
+    expect(out).toEqual({ taskArn: "arn:aws:ecs:task/abc", exitCode: 0 });
+
+    const runTask = ecsSend.mock.calls
+      .map((c) => c[0])
+      .find((c) => c.constructor.name === "RunTaskCommand")!;
+    expect(runTask.input).toMatchObject({
+      overrides: {
+        containerOverrides: [
+          { name: "api", command: ["npm", "run", "db:upgrade:ci"] },
+        ],
+      },
+    });
+  });
+
+  it("non-zero container exit → ENV_INFRA_ERROR naming CloudWatch", async () => {
+    happyPath(1);
+    const p = runUpgradeTask(appDev);
+    await expect(p).rejects.toBeInstanceOf(EnvInfraError);
+    await expect(p).rejects.toThrow(/CloudWatch/);
+  });
+
+  it("local (no AWS) → typed pointer at npm run db:upgrade", async () => {
+    const p = runUpgradeTask(local);
+    await expect(p).rejects.toBeInstanceOf(EnvNotConfiguredError);
+    await expect(p).rejects.toThrow(/npm run db:upgrade/);
     expect(ecsSend).not.toHaveBeenCalled();
   });
 });
