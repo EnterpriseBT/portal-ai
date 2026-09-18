@@ -50,11 +50,12 @@ Manual smoke test for [#581](https://github.com/EnterpriseBT/portal-ai/issues/58
 - [ ] `npm run lint:helm` → **Expected:** all checks pass, including `upgrade hook: pre-upgrade + db-upgrade command`, `migrate hook: pre-install only`, and (hooks-disabled scenario) `no migrate/seed/upgrade jobs render when disabled`.
 - [ ] `helm template p deploy/helm/portalai --set image.api.repository=x --set image.api.tag=t --set image.web.repository=y --set image.web.tag=t | grep -A2 'db-upgrade.js'` → **Expected:** the upgrade Job runs `["node", "dist/scripts/db-upgrade.js"]` under `"helm.sh/hook": pre-upgrade`.
 
-### §4b — live upgrade on a cluster (AC1 end-to-end, AC3 --atomic) — manual, needs EKS/k8s
+### §4b — live upgrade on a cluster (AC1 end-to-end, AC3 --atomic) — **DEFERRED to the #569 epic smoke**
 
-- [ ] On a real cluster with an existing release: `helm upgrade <release> deploy/helm/portalai --atomic …` with a new image tag.
-- [ ] **Expected:** the `<release>-upgrade` job runs before the API rolls; `kubectl logs job/<release>-upgrade` ends with `UPGRADE COMPLETE`; the API rolls to the new image.
-- [ ] **AC3 fail-closed:** deploy a build whose migrate step fails; **Expected:** the pre-upgrade job exits non-zero, `helm upgrade --atomic` rolls the workloads back, and the previous image serves against the (expand-only) schema. *(This is the residency/app-dev cluster smoke — not verifiable on the local stack.)*
+> **Deferred, recorded reason:** these two steps require a live EKS/k8s cluster with an existing release, which is not reproducible on the local dev stack (no cluster, no `helm install`). Per the user's direction (2026-09-18), anything not automatable locally defers to the **#569 enterprise-deployment epic smoke**, which runs against app-dev/residency infrastructure. The chart *render* (hook, weight, command) is verified locally in §4a; only the runtime rollout + rollback behavior is deferred here. The rest of #581 is fully verified locally (§1–§3, §4a, §5–§7).
+
+- [ ] *(epic smoke)* On a real cluster with an existing release: `helm upgrade <release> deploy/helm/portalai --atomic …` with a new image tag. **Expected:** the `<release>-upgrade` job runs before the API rolls; `kubectl logs job/<release>-upgrade` ends with `UPGRADE COMPLETE`; the API rolls to the new image.
+- [ ] *(epic smoke)* **AC3 fail-closed:** deploy a build whose migrate step fails. **Expected:** the pre-upgrade job exits non-zero, `helm upgrade --atomic` rolls the workloads back, and the previous image serves against the (expand-only) schema.
 
 ## §5 — `portalops db upgrade` (AC6) — manual (agent-runnable, local)
 
@@ -75,7 +76,8 @@ Manual smoke test for [#581](https://github.com/EnterpriseBT/portal-ai/issues/58
 
 ## Sign-off
 
-- [ ] Every section above verified (§4b on a cluster, or explicitly deferred to the app-dev/residency epic smoke with a recorded reason)
+- [ ] §1–§3, §4a, §5–§7 verified against a running stack (agent-walked evidence available on PR #611; re-confirm as desired)
+- [ ] §4b **deferred to the #569 epic smoke** — cluster-only, reason recorded above
 - [ ] <date + name> — confirmed against my own running stack
 
 ## Bug-filing template
