@@ -1,10 +1,14 @@
 import type { AnyColumn, SQL } from "drizzle-orm";
 import { eq, or } from "drizzle-orm";
-import type { OrgRole } from "@portalai/core/models";
+import type { OrgRole, PolicyPrincipalType } from "@portalai/core/models";
 
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { DbService } from "./db.service.js";
+import { db } from "../db/client.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
+import { PermissionSet } from "./permission-set.js";
 
 /**
  * The resolved caller context an authorization decision keys off — the same
@@ -61,6 +65,44 @@ const OWNER_ONLY: ReadonlySet<PermissionAction> = new Set([
  * {@link visibilityPredicate} without touching call sites.
  */
 export class PermissionService {
+  /**
+   * Load the caller's effective {@link PermissionSet} — the data-driven engine
+   * (#598). Gathers the statements of every policy attached to the caller's
+   * role (mapped from `ctx.role` → the seeded role of that name) plus any
+   * direct user attachments, org-scoped, in a couple of indexed reads. Resolve
+   * **once per request** (the metadata middleware attaches the result); never
+   * per check/row. On no role/attachments the set is empty ⇒ fail-closed.
+   *
+   * The static {@link check}/{@link visibilityPredicate} below are the retired
+   * #576 switch, kept until the slice-4 cutover migrates the call sites.
+   */
+  static async loadSet(
+    ctx: PermissionContext,
+    client: DbClient = db
+  ): Promise<PermissionSet> {
+    const repo = DbService.repository;
+    const principals: {
+      principalType: PolicyPrincipalType;
+      principalId: string;
+    }[] = [{ principalType: "user", principalId: ctx.userId }];
+    const role = await repo.roles.findByName(
+      ctx.organizationId,
+      ctx.role,
+      client
+    );
+    if (role) principals.push({ principalType: "role", principalId: role.id });
+
+    const attachments = (
+      await repo.policyAttachments.findByPrincipals(principals, client)
+    ).filter((a) => a.organizationId === ctx.organizationId);
+    const policyIds = [...new Set(attachments.map((a) => a.policyId))];
+    const statements = await repo.permissionStatements.findByPolicyIds(
+      policyIds,
+      client
+    );
+    return new PermissionSet(ctx, statements);
+  }
+
   /** Guard a mutation. Throws `ApiError(403, …)` on deny; returns on allow. */
   static check(
     ctx: PermissionContext,
