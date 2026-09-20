@@ -38,6 +38,8 @@ import {
   OrganizationDeleteResponseSchema,
   MemberRoleUpdateRequestSchema,
   MemberRoleUpdateResponseSchema,
+  MemberRolesSetRequestSchema,
+  MemberRolesSetResponseSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
   AcceptInvitationResponseSchema,
@@ -352,6 +354,14 @@ const orgDeleteSchemas: Record<string, unknown> = {
   ),
   MemberRoleUpdateResponse: z.toJSONSchema(
     MemberRoleUpdateResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  MemberRolesSetRequest: z.toJSONSchema(
+    MemberRolesSetRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  MemberRolesSetResponse: z.toJSONSchema(
+    MemberRolesSetResponseSchema,
     JSON_SCHEMA_OPTS
   ),
   InviteCreateRequest: z.toJSONSchema(

@@ -479,6 +479,14 @@ export class ApplicationService {
           memberModel.parse(),
           tx
         );
+        // #620: the membership's role lives in user_role (enum is a mirror).
+        await DbService.repository.userRole.assign(
+          member.id,
+          provisioned.organization.id,
+          "member",
+          systemId,
+          tx
+        );
         memberUserId = member.id;
       }
 

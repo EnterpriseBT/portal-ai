@@ -28,6 +28,8 @@ export const AUDIT_ACTIONS = [
   "member.remove",
   "member.switch",
   "member.role.change",
+  "member.role.add",
+  "member.role.remove",
   "member.invite",
   "member.invite.accept",
   "member.invite.revoke",

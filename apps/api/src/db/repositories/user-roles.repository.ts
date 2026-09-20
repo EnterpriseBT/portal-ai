@@ -6,6 +6,7 @@
 
 import { and, eq, isNull, count } from "drizzle-orm";
 import type { OrgRole } from "@portalai/core/models";
+import { UserRoleModelFactory } from "@portalai/core/models";
 
 import { userRole, roles, organizationUsers } from "../schema/index.js";
 import { db } from "../client.js";
@@ -91,6 +92,89 @@ export class UserRolesRepository extends Repository<
         )
       );
     return membership?.role ? [membership.role] : [];
+  }
+
+  /** The system role id for a role name in an org (`sysrole:<org>:<name>`) —
+   *  the deterministic id the seed/backfill assign. */
+  private static roleId(organizationId: string, roleName: OrgRole): string {
+    return `sysrole:${organizationId}:${roleName}`;
+  }
+
+  /** Assign a role to a user in an org (#620), idempotent: a no-op when the
+   *  user already holds a **live** row for it. A fresh id (not the deterministic
+   *  `sysur:` id) so a role removed then re-added does not collide on the PK. */
+  async assign(
+    userId: string,
+    organizationId: string,
+    roleName: OrgRole,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    const roleId = UserRolesRepository.roleId(organizationId, roleName);
+    const existing = await this.findMany(
+      and(
+        eq(userRole.userId, userId),
+        eq(userRole.organizationId, organizationId),
+        eq(userRole.roleId, roleId)
+      ),
+      {},
+      client
+    );
+    if (existing.length > 0) return;
+    const model = new UserRoleModelFactory()
+      .create(actor)
+      .update({ userId, organizationId, roleId });
+    await this.create(model.parse() as never, client);
+  }
+
+  /** Soft-delete a user's live assignment of a role by name (#620). No-op when
+   *  they don't hold it. */
+  async removeAssignment(
+    userId: string,
+    organizationId: string,
+    roleName: OrgRole,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    const roleId = UserRolesRepository.roleId(organizationId, roleName);
+    const [row] = await this.findMany(
+      and(
+        eq(userRole.userId, userId),
+        eq(userRole.organizationId, organizationId),
+        eq(userRole.roleId, roleId)
+      ),
+      {},
+      client
+    );
+    if (row) await this.softDelete(row.id, actor, client);
+  }
+
+  /** Soft-delete every live role a user holds in an org (#620) — used when the
+   *  membership itself is removed, so no orphaned assignments remain. */
+  async removeAllForUser(
+    userId: string,
+    organizationId: string,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    const live = await this.findByUserOrg(userId, organizationId, client);
+    for (const row of live) await this.softDelete(row.id, actor, client);
+  }
+
+  /** Ensure a user's `user_role` rows reflect their effective roles: if they
+   *  hold no live rows (a membership predating the write cutover), materialize
+   *  their `organization_users` enum role as a `user_role` row. Makes the
+   *  set-roles diff + owner counts authoritative over `user_role` alone. */
+  async materializeFromEnum(
+    userId: string,
+    organizationId: string,
+    enumRole: OrgRole,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    const live = await this.findByUserOrg(userId, organizationId, client);
+    if (live.length > 0) return;
+    await this.assign(userId, organizationId, enumRole, actor, client);
   }
 
   /** Count of distinct users holding a role by name in an org (the last-owner

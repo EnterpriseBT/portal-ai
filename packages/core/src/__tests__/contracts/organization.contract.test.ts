@@ -2,6 +2,7 @@ import {
   OrganizationDeleteRequestSchema,
   OrganizationDeleteResponseSchema,
   OrganizationGetResponseSchema,
+  MemberRolesSetRequestSchema,
 } from "../../contracts/organization.contract.js";
 import { OrganizationModelFactory } from "../../models/organization.model.js";
 
@@ -96,5 +97,32 @@ describe("OrganizationDeleteResponseSchema", () => {
   it("should reject a payload without id", () => {
     const result = OrganizationDeleteResponseSchema.safeParse({});
     expect(result.success).toBe(false);
+  });
+});
+
+// ── Set-the-set member roles request (#620, spec case 1) ─────────────
+
+describe("MemberRolesSetRequestSchema (#620)", () => {
+  it("accepts a non-empty roles array", () => {
+    expect(
+      MemberRolesSetRequestSchema.safeParse({ roles: ["admin", "member"] })
+        .success
+    ).toBe(true);
+  });
+
+  it("rejects an empty roles array (≥1-role guard at the edge)", () => {
+    expect(MemberRolesSetRequestSchema.safeParse({ roles: [] }).success).toBe(
+      false
+    );
+  });
+
+  it("rejects a missing roles field", () => {
+    expect(MemberRolesSetRequestSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("rejects an unknown role value", () => {
+    expect(
+      MemberRolesSetRequestSchema.safeParse({ roles: ["superuser"] }).success
+    ).toBe(false);
   });
 });

@@ -71,6 +71,10 @@ export enum ApiCode {
   INVITATION_EXPIRED = "INVITATION_EXPIRED",
   /** Removing this member would strand the org with no owner. 409. */
   LAST_OWNER_REMOVAL = "LAST_OWNER_REMOVAL",
+  /** A set-roles that would leave the member with no roles (≥1-role guard). 409. */
+  MEMBER_MIN_ONE_ROLE = "MEMBER_MIN_ONE_ROLE",
+  /** Removing the owner role from the org's last owner (#620). 409. */
+  LAST_OWNER_ROLE_REMOVAL = "LAST_OWNER_ROLE_REMOVAL",
 
   // Billing (#176)
   /** Stripe env keys absent in this environment. 503. */

@@ -70,3 +70,27 @@ export const MemberRoleUpdateResponseSchema = z.object({
 export type MemberRoleUpdateResponse = z.infer<
   typeof MemberRoleUpdateResponseSchema
 >;
+
+/**
+ * Set-the-set request for `PUT /organization/members/:userId/roles` (#620) —
+ * the desired **complete** role set for a member (the endpoint diffs it against
+ * their current roles and adds/removes to match). `.min(1)` is the ≥1-role
+ * guard at the schema edge (a member always holds at least one role).
+ */
+export const MemberRolesSetRequestSchema = z.object({
+  roles: z.array(OrgRoleSchema).min(1),
+});
+
+export type MemberRolesSetRequest = z.infer<typeof MemberRolesSetRequestSchema>;
+
+/** Response for a successful set-roles — the member's resulting role set. */
+export const MemberRolesSetResponseSchema = z.object({
+  member: z.object({
+    userId: z.string(),
+    roles: z.array(OrgRoleSchema),
+  }),
+});
+
+export type MemberRolesSetResponse = z.infer<
+  typeof MemberRolesSetResponseSchema
+>;
