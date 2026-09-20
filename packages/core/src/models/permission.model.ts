@@ -54,6 +54,23 @@ export type PermissionResourceType = z.infer<
 >;
 
 /**
+ * The data object types a member's ownership condition + object grants apply to
+ * — the user-created/connector-materialized entities, excluding the privileged
+ * pseudo-resources (`billing`/`org`/`member`/`audit`) and the `*` wildcard.
+ * `MemberAccess` is seeded as read/write over exactly these (D6/D8).
+ */
+export const DATA_RESOURCE_TYPES = [
+  "station",
+  "pin",
+  "view",
+  "portal",
+  "entity",
+  "entity_record",
+  "field_mapping",
+  "connector_instance",
+] as const satisfies readonly PermissionResourceType[];
+
+/**
  * The bounded, SQL-translatable condition vocabulary (#598 D6). Ownership is a
  * statement condition, not resolver code: `created_by_caller` ⇒ the object's
  * `createdBy === ctx.userId`; `created_by_system` ⇒ `=== SystemUtilities.id.system`.
