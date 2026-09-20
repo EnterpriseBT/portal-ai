@@ -589,6 +589,11 @@ export class ApplicationService {
     // ── System column definitions ────────────────────────────────────
     await new SeedService().seedSystemColumnDefinitions(organizationId, tx);
 
+    // ── RBAC system roles + policies (#598) ──────────────────────────
+    // The data-driven equivalent of #576's role switch. Existing orgs get
+    // these from the paired backfill migration; this covers new orgs + reset.
+    await new SeedService().seedRbacSystemPolicies(organizationId, tx);
+
     // ── Sandbox auto-provisioning ──────────────────────────────────
     const sandboxDef =
       await DbService.repository.connectorDefinitions.findBySlug("sandbox", tx);

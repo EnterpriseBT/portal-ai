@@ -301,7 +301,7 @@ organizationRouter.delete(
       // Owner-only (#576). Throws INSUFFICIENT_ROLE-mapped ORGANIZATION_NOT_OWNER
       // for a non-owner (admin included — org deletion is owner-exclusive); the
       // outer catch forwards it.
-      PermissionService.check(req.application!.metadata, "org.delete");
+      await PermissionService.check(req.application!.metadata, "org.delete");
 
       if (parsed.data.confirmationName.trim() !== organization.name.trim()) {
         return next(
@@ -425,7 +425,7 @@ organizationRouter.patch(
       const newRole = parsed.data.role;
 
       // Base authz: owner + admin may assign roles; members may not.
-      PermissionService.check(ctx, "member.role.assign");
+      await PermissionService.check(ctx, "member.role.assign");
 
       const target =
         await DbService.repository.organizationUsers.findByOrganizationAndUser(
@@ -1433,7 +1433,10 @@ organizationRouter.get(
 
       // Audit trail is owner + admin (#576 widened this from owner-only).
       // Throws INSUFFICIENT_ROLE for a member; the outer catch forwards it.
-      PermissionService.check(req.application!.metadata, "org.audit.read");
+      await PermissionService.check(
+        req.application!.metadata,
+        "org.audit.read"
+      );
 
       const { entries, total } = await DbService.repository.auditLog.findPage(
         organizationId,

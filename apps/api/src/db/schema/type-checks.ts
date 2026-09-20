@@ -25,6 +25,10 @@ import type {
   EntityRecord,
   EntityTag,
   EntityTagAssignment,
+  Policy,
+  PermissionStatement,
+  PolicyAttachment,
+  Role,
   EntityGroup,
   EntityGroupMember,
   Core,
@@ -54,6 +58,10 @@ import type {
   FieldMappingSelect,
   EntityTagSelect,
   EntityTagAssignmentSelect,
+  PolicySelect,
+  PermissionStatementSelect,
+  PolicyAttachmentSelect,
+  RoleSelect,
   EntityGroupSelect,
   EntityGroupMemberSelect,
   StationSelect,
@@ -83,6 +91,10 @@ import type { connectorEntities } from "./connector-entities.table.js";
 import type { fieldMappings } from "./field-mappings.table.js";
 import type { entityTags } from "./entity-tags.table.js";
 import type { entityTagAssignments } from "./entity-tag-assignments.table.js";
+import type { permissionPolicies } from "./permission-policies.table.js";
+import type { permissionStatements } from "./permission-statements.table.js";
+import type { policyAttachments } from "./policy-attachments.table.js";
+import type { roles } from "./roles.table.js";
 import type { entityGroups } from "./entity-groups.table.js";
 import type { entityGroupMembers } from "./entity-group-members.table.js";
 import type { stations } from "./stations.table.js";
@@ -756,3 +768,56 @@ type _AecSelectToInferred = IsAssignable<
   _AecInferredRow
 >;
 const _aecSelectToInferred: _AecSelectToInferred = true;
+
+// ── RBAC IAM engine (#598) ───────────────────────────────────────────
+
+// Policy
+type _PolicyDrizzleToModel = IsAssignable<PolicySelect, Policy>;
+const _policyDrizzleToModel: _PolicyDrizzleToModel = true;
+type _PolicyModelToDrizzle = IsAssignable<Policy, PolicySelect>;
+const _policyModelToDrizzle: _PolicyModelToDrizzle = true;
+type _PolicyInferredRow = InferSelectModel<typeof permissionPolicies>;
+type _PolicyInferredToModel = IsAssignable<_PolicyInferredRow, Policy>;
+const _policyInferredToModel: _PolicyInferredToModel = true;
+
+// PermissionStatement
+type _StmtDrizzleToModel = IsAssignable<
+  PermissionStatementSelect,
+  PermissionStatement
+>;
+const _stmtDrizzleToModel: _StmtDrizzleToModel = true;
+type _StmtModelToDrizzle = IsAssignable<
+  PermissionStatement,
+  PermissionStatementSelect
+>;
+const _stmtModelToDrizzle: _StmtModelToDrizzle = true;
+type _StmtInferredRow = InferSelectModel<typeof permissionStatements>;
+type _StmtInferredToModel = IsAssignable<_StmtInferredRow, PermissionStatement>;
+const _stmtInferredToModel: _StmtInferredToModel = true;
+
+// PolicyAttachment
+type _AttachDrizzleToModel = IsAssignable<
+  PolicyAttachmentSelect,
+  PolicyAttachment
+>;
+const _attachDrizzleToModel: _AttachDrizzleToModel = true;
+type _AttachModelToDrizzle = IsAssignable<
+  PolicyAttachment,
+  PolicyAttachmentSelect
+>;
+const _attachModelToDrizzle: _AttachModelToDrizzle = true;
+type _AttachInferredRow = InferSelectModel<typeof policyAttachments>;
+type _AttachInferredToModel = IsAssignable<
+  _AttachInferredRow,
+  PolicyAttachment
+>;
+const _attachInferredToModel: _AttachInferredToModel = true;
+
+// Role
+type _RoleDrizzleToModel = IsAssignable<RoleSelect, Role>;
+const _roleDrizzleToModel: _RoleDrizzleToModel = true;
+type _RoleModelToDrizzle = IsAssignable<Role, RoleSelect>;
+const _roleModelToDrizzle: _RoleModelToDrizzle = true;
+type _RoleInferredRow = InferSelectModel<typeof roles>;
+type _RoleInferredToModel = IsAssignable<_RoleInferredRow, Role>;
+const _roleInferredToModel: _RoleInferredToModel = true;

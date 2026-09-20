@@ -49,6 +49,29 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
+// #598: BillingService now calls the async, DB-backed PermissionService.check.
+// This unit suite tests billing logic + guard ORDER, not authz resolution
+// (the engine has its own tests), so mock the guard to the billing.manage
+// owner-only rule without touching the DB.
+jest.unstable_mockModule("../../services/permission.service.js", () => ({
+  PermissionService: {
+    check: jest.fn(
+      async (caller: { role?: string }, action: string): Promise<void> => {
+        if (action === "billing.manage" && caller?.role !== "owner") {
+          const { ApiError } = await import("../../services/http.service.js");
+          const { ApiCode } =
+            await import("../../constants/api-codes.constants.js");
+          throw new ApiError(
+            403,
+            ApiCode.BILLING_NOT_OWNER,
+            "Only the organization owner can manage billing"
+          );
+        }
+      }
+    ),
+  },
+}));
+
 // Env stub controls the settings-URL base; logger + namespace fields keep
 // transitive imports bootable.
 jest.unstable_mockModule("../../environment.js", () => ({

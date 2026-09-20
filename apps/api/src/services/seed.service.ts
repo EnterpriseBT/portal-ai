@@ -11,6 +11,13 @@ import {
 } from "@portalai/core/models";
 import type { ColumnDataType, GeoRole } from "@portalai/core/models";
 import {
+  DATA_RESOURCE_TYPES,
+  type PermissionEffect,
+  type PermissionVerb,
+  type PermissionResourceType,
+  type PermissionCondition,
+} from "@portalai/core/models";
+import {
   BuiltinToolpackSlugSchema,
   TIER_CATALOG_BY_SLUG,
 } from "@portalai/core/registries";
@@ -590,4 +597,159 @@ export class SeedService {
       await DbService.repository.columnDefinitions.upsertByKey(def, db);
     }
   }
+
+  /**
+   * Seeds the RBAC system roles + policies for one organization (#598).
+   *
+   * The three immutable system roles (`owner`/`admin`/`member`) and their
+   * policies (`FullAccess`/`AdminAccess`/`MemberAccess`) — the data-driven
+   * equivalent of #576's hardcoded switch. `owner` = FullAccess (`allow * *`);
+   * `admin` = FullAccess minus billing-manage + org-delete (deny wins);
+   * `member` = read/write your own data objects + read system-provisioned ones
+   * (the ownership condition, D6). Resolution maps `organization_users.role` →
+   * the role of the same name → its attached policy.
+   *
+   * Deterministic ids (`sys{role,pol,stmt,att}:<org>:…`) — the SAME scheme the
+   * existing-org backfill migration uses, so the two provisioning paths never
+   * collide. Idempotent: an early return when the owner role already exists
+   * (only reached at provisioning / after a reset — an existing org gets these
+   * from the paired backfill migration, per the note on backfills above).
+   */
+  async seedRbacSystemPolicies(organizationId: string, db: DbClient) {
+    const repo = DbService.repository;
+    if (await repo.roles.findByName(organizationId, "owner", db)) return;
+
+    const actor = SystemUtilities.id.system;
+    const audit = {
+      created: Date.now(),
+      createdBy: actor,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    const roleId = (name: string) => `sysrole:${organizationId}:${name}`;
+    const policyId = (name: string) => `syspol:${organizationId}:${name}`;
+
+    for (const name of ["owner", "admin", "member"] as const) {
+      await repo.roles.create(
+        { id: roleId(name), organizationId, name, kind: "system", ...audit },
+        db
+      );
+    }
+
+    for (const spec of SEED_SYSTEM_POLICIES) {
+      await repo.permissionPolicies.create(
+        {
+          id: policyId(spec.name),
+          organizationId,
+          name: spec.name,
+          kind: "system",
+          description: spec.description,
+          ...audit,
+        },
+        db
+      );
+      for (const s of spec.statements) {
+        await repo.permissionStatements.create(
+          {
+            id: `sysstmt:${organizationId}:${spec.name}:${s.effect}:${s.verb}:${s.resourceType}:${s.condition ?? "none"}`,
+            organizationId,
+            policyId: policyId(spec.name),
+            effect: s.effect,
+            verb: s.verb,
+            resourceType: s.resourceType,
+            resourceId: null,
+            condition: s.condition,
+            ...audit,
+          },
+          db
+        );
+      }
+      await repo.policyAttachments.create(
+        {
+          id: `sysatt:${organizationId}:${spec.role}`,
+          organizationId,
+          policyId: policyId(spec.name),
+          principalType: "role",
+          principalId: roleId(spec.role),
+          ...audit,
+        },
+        db
+      );
+    }
+  }
 }
+
+/** A system-policy statement spec (the seed's source of truth; the backfill
+ *  migration mirrors these rows). */
+interface SeedStatement {
+  effect: PermissionEffect;
+  verb: PermissionVerb;
+  resourceType: PermissionResourceType;
+  condition: PermissionCondition | null;
+}
+
+/**
+ * The three system policies as data (#598). `AdminAccess` is `allow * *` plus
+ * two deny carve-outs (a boundary exception — deny wins); `MemberAccess` is the
+ * ownership grant over each data object type. Reproduces the #576 switch exactly
+ * (switch-parity is the slice-3 gate).
+ */
+export const SEED_SYSTEM_POLICIES: {
+  name: string;
+  role: string;
+  description: string;
+  statements: SeedStatement[];
+}[] = [
+  {
+    name: "FullAccess",
+    role: "owner",
+    description: "Full access to the organization.",
+    statements: [
+      { effect: "allow", verb: "*", resourceType: "*", condition: null },
+    ],
+  },
+  {
+    name: "AdminAccess",
+    role: "admin",
+    description:
+      "Everything except billing management and organization deletion.",
+    statements: [
+      { effect: "allow", verb: "*", resourceType: "*", condition: null },
+      {
+        effect: "deny",
+        verb: "manage",
+        resourceType: "billing",
+        condition: null,
+      },
+      { effect: "deny", verb: "delete", resourceType: "org", condition: null },
+    ],
+  },
+  {
+    name: "MemberAccess",
+    role: "member",
+    description:
+      "Read and write the objects you create; read system-provisioned defaults.",
+    statements: DATA_RESOURCE_TYPES.flatMap((rt): SeedStatement[] => [
+      {
+        effect: "allow",
+        verb: "read",
+        resourceType: rt,
+        condition: "created_by_caller",
+      },
+      {
+        effect: "allow",
+        verb: "write",
+        resourceType: rt,
+        condition: "created_by_caller",
+      },
+      {
+        effect: "allow",
+        verb: "read",
+        resourceType: rt,
+        condition: "created_by_system",
+      },
+    ]),
+  },
+];

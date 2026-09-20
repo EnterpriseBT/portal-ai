@@ -93,9 +93,11 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 }));
 
 const mockSeedCols = jest.fn<(orgId: string, tx: unknown) => Promise<void>>();
+const mockSeedRbac = jest.fn<(orgId: string, tx: unknown) => Promise<void>>();
 jest.unstable_mockModule("../../services/seed.service.js", () => ({
   SeedService: class {
     seedSystemColumnDefinitions = mockSeedCols;
+    seedRbacSystemPolicies = mockSeedRbac;
   },
 }));
 

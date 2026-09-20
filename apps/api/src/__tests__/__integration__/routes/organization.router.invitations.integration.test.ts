@@ -28,6 +28,7 @@ import {
   createOrganization,
   createOrganizationUser,
   teardownOrg,
+  seedRbacForOrg,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|seats-caller";
@@ -66,6 +67,7 @@ describe("Organization seats routes (#584)", () => {
     await asDrizzle()
       .insert(schema.organizations)
       .values(org as never);
+    await seedRbacForOrg(asDrizzle(), org.id);
     await asDrizzle()
       .insert(schema.organizationUsers)
       .values(createOrganizationUser(org.id, u.id, { role }) as never);
@@ -183,6 +185,7 @@ describe("Organization seats routes (#584)", () => {
     await asDrizzle()
       .insert(schema.organizations)
       .values(orgB as never);
+    await seedRbacForOrg(asDrizzle(), orgB.id);
     await asDrizzle()
       .insert(schema.organizationUsers)
       .values(

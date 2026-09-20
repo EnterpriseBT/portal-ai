@@ -12,6 +12,7 @@ import { UUIDv4Factory } from "@portalai/core/utils";
 import * as schema from "../../../db/schema/index.js";
 import { DbService } from "../../../services/db.service.js";
 import { ApplicationService } from "../../../services/application.service.js";
+import { SeedService } from "../../../services/seed.service.js";
 
 const {
   users,
@@ -43,6 +44,10 @@ const {
   toolUsageLedger,
   auditLog,
   invitations,
+  permissionStatements,
+  policyAttachments,
+  permissionPolicies,
+  roles,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -127,6 +132,19 @@ export interface SeedResult {
 }
 
 /**
+ * #598: seed the RBAC system policies (owner/admin/member roles + policies)
+ * for a test org so `PermissionService.check` resolves. Production seeds these
+ * at provisioning / via the 0102 backfill; a test that builds an org by hand
+ * must call this or every guard fails closed. Idempotent.
+ */
+export async function seedRbacForOrg(
+  db: Db,
+  organizationId: string
+): Promise<void> {
+  await new SeedService().seedRbacSystemPolicies(organizationId, db as never);
+}
+
+/**
  * Seed a user, organization, and org-user link so that the
  * `getApplicationMetadata` middleware can resolve the request context.
  *
@@ -148,6 +166,10 @@ export async function seedUserAndOrg(
   // membership carries the owner role (#576).
   const orgUser = createOrganizationUser(org.id, user.id, { role: "owner" });
   await db.insert(organizationUsers).values(orgUser as never);
+
+  // #598: seed the RBAC system policies so PermissionService.check resolves
+  // (mirrors production provisioning; without it every guard fails closed).
+  await new SeedService().seedRbacSystemPolicies(org.id, db as never);
 
   return {
     userId: user.id,
@@ -194,6 +216,12 @@ export async function teardownOrg(db: Db): Promise<void> {
     await tx.delete(auditLog);
   });
   await db.delete(invitations); // #584: FK → organizations + users
+  // #598: RBAC engine — statements/attachments FK policies + organizations;
+  // policies + roles FK organizations. Delete before the org rows they point at.
+  await db.delete(permissionStatements);
+  await db.delete(policyAttachments);
+  await db.delete(permissionPolicies);
+  await db.delete(roles);
   await db.delete(organizationUsers);
   await db.delete(organizations);
   await db.delete(users);
