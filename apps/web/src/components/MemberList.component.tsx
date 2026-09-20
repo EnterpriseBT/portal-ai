@@ -6,6 +6,7 @@ import {
   IconButton,
   Tooltip,
   Chip,
+  Stack,
   type SelectChangeEvent,
 } from "@mui/material";
 
@@ -18,59 +19,84 @@ import {
 import type { OrgRole } from "@portalai/core/models";
 import type { Member } from "@portalai/core/contracts";
 
+const ALL_ROLES: OrgRole[] = ["owner", "admin", "member"];
+
 export interface MemberListUIProps {
   members: Member[];
-  /** The caller's role — the re-role Select is shown only to an owner. */
-  callerRole: OrgRole;
+  /** Whether the caller may assign roles (`can("member.role.assign")`) — the
+   *  multi-select editor is shown only then. The server enforces the finer
+   *  owner/admin gating (owner-only), surfacing a 403 the container toasts. */
+  canManageRoles: boolean;
   /** The caller's own user id — removing yourself is disabled. */
   callerUserId: string;
-  onChangeRole: (userId: string, role: OrgRole) => void;
+  /** Set a member's complete role set (#620 set-the-set). */
+  onSetRoles: (userId: string, roles: OrgRole[]) => void;
   onRemove: (member: Member) => void;
   /** A mutation is in flight — disable the row controls. */
   isPending?: boolean;
 }
 
 /**
- * Pure members table (#585). Re-role is owner-only (a `Select` on non-owner
- * rows for an owner caller; a static Chip otherwise) — the owner role is
- * immutable (#576). Remove is disabled for the caller's own row and for the
- * last remaining owner. The server enforces all of this; this only shapes the
- * affordances.
+ * Pure members table (#620). The Role column renders each member's `roles[]` as
+ * chips (by name); an owner/admin caller gets a multi-select to set the whole
+ * role set. Remove is disabled for the caller's own row and for the last
+ * remaining owner. The server enforces all of this (owner/admin assignment is
+ * owner-only, ≥1-role, last-owner) — this only shapes the affordances.
  */
 export const MemberListUI: React.FC<MemberListUIProps> = ({
   members,
-  callerRole,
+  canManageRoles,
   callerUserId,
-  onChangeRole,
+  onSetRoles,
   onRemove,
   isPending = false,
 }) => {
-  const ownerCount = members.filter((m) => m.role === "owner").length;
+  const ownerCount = members.filter((m) => m.roles.includes("owner")).length;
 
   const columns: DataTableColumn[] = [
     { key: "name", label: "Name", render: (v) => (v ? String(v) : "—") },
     { key: "email", label: "Email", render: (v) => (v ? String(v) : "—") },
     {
-      key: "role",
-      label: "Role",
+      key: "roles",
+      label: "Roles",
       render: (_v, row) => {
         const member = row as unknown as Member;
-        const editable = callerRole === "owner" && member.role !== "owner";
-        if (!editable) {
-          return <Chip size="small" variant="outlined" label={member.role} />;
+        if (!canManageRoles) {
+          return (
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+              {member.roles.map((r) => (
+                <Chip key={r} size="small" variant="outlined" label={r} />
+              ))}
+            </Stack>
+          );
         }
         return (
-          <Select
+          <Select<OrgRole[]>
             size="small"
-            value={member.role}
+            multiple
+            value={member.roles}
             disabled={isPending}
-            onChange={(e: SelectChangeEvent) =>
-              onChangeRole(member.userId, e.target.value as OrgRole)
-            }
-            aria-label={`Role for ${member.email ?? member.userId}`}
+            onChange={(e: SelectChangeEvent<OrgRole[]>) => {
+              const next = e.target.value;
+              onSetRoles(
+                member.userId,
+                typeof next === "string" ? (next.split(",") as OrgRole[]) : next
+              );
+            }}
+            renderValue={(selected) => (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                {selected.map((r) => (
+                  <Chip key={r} size="small" label={r} />
+                ))}
+              </Stack>
+            )}
+            aria-label={`Roles for ${member.email ?? member.userId}`}
           >
-            <MenuItem value="admin">admin</MenuItem>
-            <MenuItem value="member">member</MenuItem>
+            {ALL_ROLES.map((r) => (
+              <MenuItem key={r} value={r}>
+                {r}
+              </MenuItem>
+            ))}
           </Select>
         );
       },
@@ -86,7 +112,7 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
       render: (_v, row) => {
         const member = row as unknown as Member;
         const isSelf = member.userId === callerUserId;
-        const isLastOwner = member.role === "owner" && ownerCount <= 1;
+        const isLastOwner = member.roles.includes("owner") && ownerCount <= 1;
         const disabled = isPending || isSelf || isLastOwner;
         const reason = isSelf
           ? "You can't remove yourself"

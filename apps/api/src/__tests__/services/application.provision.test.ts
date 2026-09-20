@@ -55,6 +55,23 @@ const repos = {
         ) => Promise<Record<string, unknown>>
       >(),
   },
+  // #620: provisioning writes the owner's role via the user_role join.
+  userRole: {
+    create:
+      jest.fn<
+        (row: Record<string, unknown>, tx: unknown) => Promise<unknown>
+      >(),
+    assign:
+      jest.fn<
+        (
+          userId: string,
+          orgId: string,
+          role: string,
+          actor: string,
+          tx?: unknown
+        ) => Promise<void>
+      >(),
+  },
   connectorDefinitions: {
     findBySlug: jest.fn<
       () => Promise<{

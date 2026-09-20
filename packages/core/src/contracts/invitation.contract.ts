@@ -60,9 +60,6 @@ export const MemberSchema = z.object({
   name: z.string().nullable(),
   /** The member's roles in the org (#620), from the `user_role` join. */
   roles: z.array(OrgRoleSchema),
-  /** **Transitional** (#620 s4-removed): the member's highest role, kept while
-   *  the FE migrates to `roles[]`. */
-  role: OrgRoleSchema,
   /** The membership's `created` timestamp (epoch ms). */
   joinedAt: z.number(),
 });

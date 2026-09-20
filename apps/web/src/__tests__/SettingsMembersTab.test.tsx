@@ -3,21 +3,24 @@ import { jest } from "@jest/globals";
 // Mock the role source so we can drive tab gating; the rest of the view's sdk
 // calls resolve to loading/undefined under the test QueryClient, which the view
 // tolerates (see SettingsView.test).
-const mockUseRole = jest.fn();
-jest.unstable_mockModule("../utils/use-role.util", () => ({
-  useRole: mockUseRole,
+const mockUseCapabilities = jest.fn();
+jest.unstable_mockModule("../utils/use-capabilities.util", () => ({
+  useCapabilities: mockUseCapabilities,
 }));
 
 const { render, screen } = await import("./test-utils");
 const { SettingsView } = await import("../views/Settings.view");
 
-const asRole = (isAdminOrOwner: boolean) =>
-  mockUseRole.mockReturnValue({
-    role: isAdminOrOwner ? "owner" : "member",
-    isOwner: isAdminOrOwner,
-    isAdmin: false,
-    isAdminOrOwner,
-    roleKnown: true,
+// Elevated = the caller can manage members + view activity (owner/admin).
+const asRole = (elevated: boolean) =>
+  mockUseCapabilities.mockReturnValue({
+    roles: elevated ? ["owner"] : ["member"],
+    can: (action: string) =>
+      elevated &&
+      ["member.invite", "org.audit.read", "member.role.assign"].includes(
+        action
+      ),
+    capabilitiesKnown: true,
   });
 
 describe("Settings › Members tab gating (#585)", () => {

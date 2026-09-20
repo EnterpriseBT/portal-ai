@@ -5,7 +5,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
-import { highestRole, type OrgRole } from "@portalai/core/models";
+import type { OrgRole } from "@portalai/core/models";
 import { TierService } from "../services/tier.service.js";
 import { UsageService } from "../services/usage.service.js";
 import type {
@@ -15,7 +15,6 @@ import type {
   UsageLedgerListResponse,
   AuditLogListResponse,
   UserMembershipsGetResponse,
-  MemberRoleUpdateResponse,
   InvitationResponse,
   InvitationListResponse,
   MemberListResponse,
@@ -26,7 +25,6 @@ import {
   OrganizationSwitchRequestSchema,
   UsageLedgerListRequestQuerySchema,
   AuditLogListRequestQuerySchema,
-  MemberRoleUpdateRequestSchema,
   MemberRolesSetRequestSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
@@ -54,7 +52,7 @@ export const organizationRouter = Router();
  *  caller's `roles` (display) + server-computed `capabilities` (gating) + the
  *  transitional `role` (highest, removed once the FE reads capabilities). */
 async function orgRoleFields(userId: string, organizationId: string) {
-  const roles = (await DbService.repository.userRole.findRoleNames(
+  const roles = (await DbService.repository.userRole.findEffectiveRoleNames(
     userId,
     organizationId
   )) as OrgRole[];
@@ -63,7 +61,7 @@ async function orgRoleFields(userId: string, organizationId: string) {
     organizationId,
     roles,
   });
-  return { roles, capabilities, role: highestRole(roles) };
+  return { roles, capabilities };
 }
 
 /**
@@ -365,110 +363,6 @@ organizationRouter.delete(
               error instanceof Error
                 ? error.message
                 : "Failed to delete organization"
-            )
-      );
-    }
-  }
-);
-
-/**
- * @openapi
- * /api/organization/members/{userId}/role:
- *   patch:
- *     summary: Assign a member's role in the current organization
- *     description: >
- *       Owner and admin may assign the `member` role. Only the **owner** may
- *       mint or remove an `admin`; the `owner` role itself is immutable here
- *       (ownership transfer is out of scope). Emits `member.role.change` (#576).
- *     tags:
- *       - Organization
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *         description: The internal user id of the member whose role is changing.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/MemberRoleUpdateRequest'
- *     responses:
- *       200:
- *         description: Role updated
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/MemberRoleUpdateResponse'
- *       400:
- *         description: Invalid payload
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiErrorResponse'
- *       403:
- *         description: Caller's role may not assign this role
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiErrorResponse'
- *       404:
- *         description: Member not found in this organization
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiErrorResponse'
- */
-organizationRouter.patch(
-  "/members/:userId/role",
-  getApplicationMetadata,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const ctx = req.application!.metadata;
-      const targetUserId = req.params.userId;
-
-      const parsed = MemberRoleUpdateRequestSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return next(
-          new ApiError(
-            400,
-            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "role is required and must be one of owner|admin|member"
-          )
-        );
-      }
-
-      // #620: the single-role PATCH is now a thin shim over the set-the-set
-      // engine — setting exactly one role (equivalent while a member holds one
-      // role; the FE moves to PUT …/roles in slice 4). Guards + audit live in
-      // SeatService.setMemberRoles.
-      await SeatService.setMemberRoles(
-        ctx,
-        targetUserId,
-        [parsed.data.role],
-        auditContextFromRequest(req)
-      );
-
-      const updated =
-        await DbService.repository.organizationUsers.findByOrganizationAndUser(
-          ctx.organizationId,
-          targetUserId
-        );
-      return HttpService.success<MemberRoleUpdateResponse>(res, {
-        member: updated!,
-      });
-    } catch (error) {
-      return next(
-        error instanceof ApiError
-          ? error
-          : new ApiError(
-              500,
-              ApiCode.ORGANIZATION_FETCH_FAILED,
-              error instanceof Error ? error.message : "Failed to assign role"
             )
       );
     }

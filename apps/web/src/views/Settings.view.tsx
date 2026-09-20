@@ -17,6 +17,7 @@ import {
   PageHeader,
   PageSection,
 } from "@portalai/core/ui";
+import { Chip } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -30,7 +31,7 @@ import { sdk } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
-import { useRole } from "../utils/use-role.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { formatUsageValue } from "../utils/usage-format.util";
 import { formatSeats } from "../utils/tier-format.util";
 import {
@@ -103,23 +104,27 @@ export const SettingsView = () => {
   const organizationResult = sdk.organizations.current();
   const usageResult = sdk.organizations.usage();
 
-  // Role-aware gating (#576). Single source: sdk.organizations.current() via
-  // useRole(); the server's PermissionService is the real boundary, this hides
-  // affordances a role can't use. The Activity (audit-log) tab is owner+admin
-  // (the #596→#576 widen); billing + danger zone stay owner-only.
-  const { role, isOwner, isAdminOrOwner, roleKnown } = useRole();
+  // Capability-aware gating (#620). Single source: sdk.organizations.current()
+  // via useCapabilities(); the server's PermissionService is the real boundary,
+  // this hides affordances the caller can't use. Each elevated tab gates on the
+  // capability it needs — never a role name.
+  const { roles, can, capabilitiesKnown } = useCapabilities();
+  const canManageMembers = can("member.invite");
+  const canViewActivity = can("org.audit.read");
+  const canDeleteOrg = can("org.delete");
 
-  // A member who deep-linked ?tab=activity lands on a tab that isn't rendered
-  // for them — once the role resolves, fall back to the first tab.
-  // Adjust-state-during-render (converges: after the reset the guard is
-  // false), the same pattern UsageLedgerDialog uses for reopen.
-  if (
-    roleKnown &&
-    !isAdminOrOwner &&
-    // Members + Activity are the owner/admin-only tabs (indices ≥ Members).
-    tabsProps.value >= SETTINGS_TAB_INDEX[SettingsTab.Members]
-  ) {
-    setValue(0);
+  // A caller who deep-linked to an elevated tab they can't use falls back to
+  // the first tab once capabilities resolve. Adjust-state-during-render
+  // (converges: after the reset the guard is false), the same pattern
+  // UsageLedgerDialog uses for reopen.
+  if (capabilitiesKnown) {
+    const v = tabsProps.value;
+    if (
+      (v === SETTINGS_TAB_INDEX[SettingsTab.Members] && !canManageMembers) ||
+      (v === SETTINGS_TAB_INDEX[SettingsTab.Activity] && !canViewActivity)
+    ) {
+      setValue(0);
+    }
   }
 
   // Danger zone (#197): delete the org, then end the session — logout is
@@ -142,8 +147,8 @@ export const SettingsView = () => {
         <Tab label="Profile" {...getTabProps(0)} />
         <Tab label="Organization" {...getTabProps(1)} />
         <Tab label="Subscription & Billing" {...getTabProps(2)} />
-        {isAdminOrOwner && <Tab label="Members" {...getTabProps(3)} />}
-        {isAdminOrOwner && <Tab label="Activity" {...getTabProps(4)} />}
+        {canManageMembers && <Tab label="Members" {...getTabProps(3)} />}
+        {canViewActivity && <Tab label="Activity" {...getTabProps(4)} />}
       </Tabs>
       <TabPanel {...getTabPanelProps(0)}>
         <PageSection title="Profile" variant="outlined">
@@ -205,14 +210,6 @@ export const SettingsView = () => {
                     items={[
                       { label: "Email", value: profile.email },
                       {
-                        label: "Role",
-                        // The caller's role in the current org (#576).
-                        value: role
-                          ? role.charAt(0).toUpperCase() + role.slice(1)
-                          : "",
-                        hidden: !role,
-                      },
-                      {
                         label: "Last login",
                         value: profileResult.lastLogin
                           ? new Date(profileResult.lastLogin).toLocaleString()
@@ -221,6 +218,35 @@ export const SettingsView = () => {
                       },
                     ]}
                   />
+                  <Divider />
+                  {/* #620: the caller's roles + groups in the current org,
+                      shown by name (never a role-name heuristic). Groups are
+                      populated by #622. */}
+                  <Stack spacing={0.5}>
+                    <Typography variant="subtitle2">Your roles</Typography>
+                    <Stack
+                      direction="row"
+                      spacing={0.5}
+                      flexWrap="wrap"
+                      useFlexGap
+                    >
+                      {roles.length > 0 ? (
+                        roles.map((r) => (
+                          <Chip key={r} size="small" label={r} />
+                        ))
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          No roles assigned
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Stack>
+                  <Stack spacing={0.5}>
+                    <Typography variant="subtitle2">Your groups</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      You don&apos;t belong to any groups yet.
+                    </Typography>
+                  </Stack>
                 </Stack>
               );
             }}
@@ -355,7 +381,7 @@ export const SettingsView = () => {
                       type="button"
                       variant="outlined"
                       color="error"
-                      disabled={!isOwner}
+                      disabled={!canDeleteOrg}
                       onClick={() => setDeleteDialogOpen(true)}
                     >
                       Delete organization
@@ -383,7 +409,7 @@ export const SettingsView = () => {
           {tabsProps.value === 2 && <SubscriptionBilling />}
         </PageSection>
       </TabPanel>
-      {isAdminOrOwner && (
+      {canManageMembers && (
         <TabPanel {...getTabPanelProps(3)}>
           <PageSection title="Members" variant="outlined">
             {/* Mounted only while active so the members/invitations queries
@@ -392,7 +418,7 @@ export const SettingsView = () => {
           </PageSection>
         </TabPanel>
       )}
-      {isAdminOrOwner && (
+      {canViewActivity && (
         <TabPanel {...getTabPanelProps(4)}>
           <PageSection title="Activity" variant="outlined">
             {/* Mounted only while active so the audit-log query fires only

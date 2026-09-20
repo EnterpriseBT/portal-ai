@@ -8,16 +8,15 @@ const owner: Member = {
   email: "owner@x.com",
   name: "Owner",
   roles: ["owner"],
-  role: "owner",
   joinedAt: 1_784_000_000_000,
 };
 
 const base = {
   members: [owner],
   invitations: [],
-  callerRole: "owner" as const,
+  canManageRoles: true,
   callerUserId: "u-owner",
-  onChangeRole: jest.fn(),
+  onSetRoles: jest.fn(),
   onRemoveClick: jest.fn(),
   onInviteClick: jest.fn(),
   onResend: jest.fn(),

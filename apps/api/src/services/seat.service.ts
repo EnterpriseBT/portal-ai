@@ -198,12 +198,12 @@ export class SeatService {
       list.push(rr.name as OrgRole);
       rolesByUser.set(rr.userId, list);
     }
-    // #620 slice-2 transition: a member whose membership predates the write
-    // cutover (slice 3) has no user_role row yet — fall back to their enum role
-    // so the members list is identical to pre-#620. Removed with the enum.
-    return rows.map((r) => ({
-      ...r,
-      roles: rolesByUser.get(r.userId) ?? (r.role ? [r.role as OrgRole] : []),
+    // #620: the member's roles come from user_role; the enum is dropped from
+    // the response (kept only as an internal fallback for a membership that
+    // predates the write cutover, until the enum is retired).
+    return rows.map(({ role, ...rest }) => ({
+      ...rest,
+      roles: rolesByUser.get(rest.userId) ?? (role ? [role as OrgRole] : []),
     })) as Member[];
   }
 

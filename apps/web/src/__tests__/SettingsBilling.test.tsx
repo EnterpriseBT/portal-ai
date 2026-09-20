@@ -63,6 +63,15 @@ const profileData = {
   userId: "user-1",
 };
 const orgData = {
+  roles: ["owner"],
+  capabilities: {
+    "billing.manage": true,
+    "org.delete": true,
+    "org.audit.read": true,
+    "member.role.assign": true,
+    "member.invite": true,
+    "member.remove": true,
+  },
   organization: {
     id: "org-1",
     name: "Acme Corp",

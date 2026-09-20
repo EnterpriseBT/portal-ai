@@ -101,7 +101,7 @@ const managedTier: BillingTier = {
 
 const baseUIProps = {
   state: "unsubscribed" as const,
-  isOwner: true,
+  canManageBilling: true,
   currentTierName: "Standard",
   currentTierSlug: "standard",
   tiers: [standardTier, proTier],
@@ -331,7 +331,7 @@ describe("SubscriptionBillingUI — managed", () => {
 
 describe("SubscriptionBillingUI — non-owner", () => {
   it("disables Subscribe with the owner-only tooltip", async () => {
-    render(<SubscriptionBillingUI {...baseUIProps} isOwner={false} />);
+    render(<SubscriptionBillingUI {...baseUIProps} canManageBilling={false} />);
 
     const subscribe = screen.getByRole("button", { name: /subscribe/i });
     expect(subscribe).toBeDisabled();
@@ -339,7 +339,7 @@ describe("SubscriptionBillingUI — non-owner", () => {
     await userEvent.hover(subscribe.parentElement as HTMLElement);
     await waitFor(() =>
       expect(
-        screen.getByText(/only the organization owner can manage billing/i)
+        screen.getByText(/you don't have permission to manage billing/i)
       ).toBeInTheDocument()
     );
   });
@@ -349,7 +349,7 @@ describe("SubscriptionBillingUI — non-owner", () => {
       <SubscriptionBillingUI
         {...baseUIProps}
         state="subscribed"
-        isOwner={false}
+        canManageBilling={false}
       />
     );
     expect(
@@ -397,8 +397,17 @@ describe("SubscriptionBilling container", () => {
     isSuccess: true,
   });
 
+  const ownerCaps = {
+    "billing.manage": true,
+    "org.delete": true,
+    "org.audit.read": true,
+    "member.role.assign": true,
+    "member.invite": true,
+    "member.remove": true,
+  };
   const orgData = {
-    role: "owner",
+    roles: ["owner"],
+    capabilities: ownerCaps,
     organization: {
       id: "org-1",
       name: "Acme Corp",
@@ -498,7 +507,11 @@ describe("SubscriptionBilling container", () => {
     });
     // org.tier "ent_x" is NOT in [standard, pro] → managed state.
     mockCurrent.mockReturnValue(
-      loaded({ organization: { ...orgData.organization, tier: "ent_x" } })
+      loaded({
+        roles: ["owner"],
+        capabilities: ownerCaps,
+        organization: { ...orgData.organization, tier: "ent_x" },
+      })
     );
     mockUsage.mockReturnValue(
       loaded({
@@ -522,7 +535,8 @@ describe("SubscriptionBilling container", () => {
     );
     mockCurrent.mockReturnValue(
       loaded({
-        role: "owner",
+        roles: ["owner"],
+        capabilities: ownerCaps,
         organization: {
           ...orgData.organization,
           tier: "pro",

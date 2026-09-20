@@ -57,7 +57,7 @@ const noneTier: BillingTier = {
 
 const base = {
   isCurrentPlan: false,
-  isOwner: true,
+  canManageBilling: true,
   isPending: false,
   onSubscribe: jest.fn(),
 };
@@ -89,7 +89,9 @@ describe("TierCardUI — subscribe", () => {
   });
 
   it("disables Subscribe with the owner-only tooltip for a non-owner", async () => {
-    render(<TierCardUI {...base} tier={subscribeTier} isOwner={false} />);
+    render(
+      <TierCardUI {...base} tier={subscribeTier} canManageBilling={false} />
+    );
 
     const subscribe = screen.getByRole("button", { name: /subscribe/i });
     expect(subscribe).toBeDisabled();
@@ -97,7 +99,7 @@ describe("TierCardUI — subscribe", () => {
     await userEvent.hover(subscribe.parentElement as HTMLElement);
     await waitFor(() =>
       expect(
-        screen.getByText(/only the organization owner can manage billing/i)
+        screen.getByText(/you don't have permission to manage billing/i)
       ).toBeInTheDocument()
     );
   });
@@ -149,7 +151,7 @@ describe("TierCardUI — subscribe", () => {
         {...base}
         tier={subscribeTier}
         isSubscribed
-        isOwner={false}
+        canManageBilling={false}
         onSwitch={jest.fn()}
       />
     );
@@ -158,7 +160,7 @@ describe("TierCardUI — subscribe", () => {
     await userEvent.hover(sw.parentElement as HTMLElement);
     await waitFor(() =>
       expect(
-        screen.getByText(/only the organization owner can manage billing/i)
+        screen.getByText(/you don't have permission to manage billing/i)
       ).toBeInTheDocument()
     );
   });

@@ -287,7 +287,7 @@ describe("SeatService Integration Tests", () => {
     const members = await SeatService.listMembers(owner);
     expect(members).toHaveLength(1);
     expect(members[0].userId).toBe(ownerId);
-    expect(members[0].role).toBe("owner");
+    expect(members[0].roles).toEqual(["owner"]);
 
     const invitations = await SeatService.listInvitations(owner);
     expect(invitations).toHaveLength(1);
