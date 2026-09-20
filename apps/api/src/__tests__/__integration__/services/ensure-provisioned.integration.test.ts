@@ -31,6 +31,7 @@ import {
   createUser,
   createOrganization,
   createOrganizationUser,
+  seedRbacForOrg,
   teardownOrg,
 } from "../utils/application.util.js";
 
@@ -231,6 +232,9 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     await client.insert(users).values(inviter as never);
     const org = createOrganization(inviter.id);
     await client.insert(organizations).values(org as never);
+    // #620: accept → attachMembership writes a user_role, so the org needs its
+    // system roles seeded (as every provisioned org has).
+    await seedRbacForOrg(client, org.id);
     await client
       .insert(organizationUsers)
       .values(

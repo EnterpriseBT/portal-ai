@@ -56,6 +56,10 @@ describe("PUT /api/organization/members/:userId/roles (#620 set-the-set)", () =>
     db = drizzle(connection, { schema });
   });
   afterEach(async () => {
+    // setMemberRoles emits audit rows fire-and-forget (post-commit); let them
+    // land before teardown deletes the org, or the late insert violates the
+    // audit_log → organizations FK.
+    await new Promise((r) => setTimeout(r, 200));
     await teardownOrg(db);
   });
   afterAll(async () => {
