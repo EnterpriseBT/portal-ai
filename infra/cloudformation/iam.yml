@@ -635,9 +635,20 @@ Resources:
                   - lambda.amazonaws.com
           - Sid: Ec2Networking
             Effect: Allow
+            # EC2 write actions can't be ARN-scoped for create ops (RunInstances
+            # alone pulls in CreateNetworkInterface, CreateTags, volume/ENI
+            # resources, …) and the deploy role manages the full network +
+            # bastion EC2 infra via CFN. So this is service-scoped to EC2 and
+            # region-bounded — still far below AdministratorAccess. #397: the
+            # mined dev deploy only exercised ec2:Describe*, so the original
+            # scoped policy omitted the writes and a later bastion AMI roll
+            # (instance replacement → ec2:RunInstances) failed the app-dev deploy.
             Action:
-              - ec2:Describe*
+              - ec2:*
             Resource: "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: us-east-1
           - Sid: ElbManage
             Effect: Allow
             Action:
@@ -950,9 +961,20 @@ Resources:
                   - lambda.amazonaws.com
           - Sid: Ec2Networking
             Effect: Allow
+            # EC2 write actions can't be ARN-scoped for create ops (RunInstances
+            # alone pulls in CreateNetworkInterface, CreateTags, volume/ENI
+            # resources, …) and the deploy role manages the full network +
+            # bastion EC2 infra via CFN. So this is service-scoped to EC2 and
+            # region-bounded — still far below AdministratorAccess. #397: the
+            # mined dev deploy only exercised ec2:Describe*, so the original
+            # scoped policy omitted the writes and a later bastion AMI roll
+            # (instance replacement → ec2:RunInstances) failed the app-dev deploy.
             Action:
-              - ec2:Describe*
+              - ec2:*
             Resource: "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: us-east-1
           - Sid: ElbManage
             Effect: Allow
             Action:
