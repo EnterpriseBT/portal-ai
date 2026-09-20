@@ -3,6 +3,7 @@ import { describe, it, expect } from "@jest/globals";
 import { PermissionSet } from "../../services/permission-set.js";
 import { SEED_SYSTEM_POLICIES } from "../../services/seed.service.js";
 import { ApiError } from "../../services/http.service.js";
+import { ApiCode } from "../../constants/api-codes.constants.js";
 import { SystemUtilities } from "../../utils/system.util.js";
 import { stations } from "../../db/schema/index.js";
 import type { PermissionContext } from "../../services/permission.service.js";
@@ -103,6 +104,27 @@ describe("PermissionSet — evaluation (spec cases 3–6, 12)", () => {
     expect(set.can("resource.read", obj("user-1"))).toBe(false);
     expect(set.can("billing.manage")).toBe(false);
     expect(() => set.check("org.delete")).toThrow(ApiError);
+  });
+
+  it("check throws the mapped ApiCode per action (deny-code parity with #576)", () => {
+    const set = new PermissionSet(ctx("member"), []); // denies everything
+    const expectCode = (
+      action: Parameters<PermissionSet["check"]>[0],
+      code: ApiCode
+    ) => {
+      try {
+        set.check(action);
+        throw new Error("expected a deny");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(403);
+        expect((err as ApiError).code).toBe(code);
+      }
+    };
+    expectCode("billing.manage", ApiCode.BILLING_NOT_OWNER);
+    expectCode("org.delete", ApiCode.ORGANIZATION_NOT_OWNER);
+    expectCode("org.audit.read", ApiCode.AUDIT_LOG_NOT_AUTHORIZED);
+    expectCode("member.role.assign", ApiCode.INSUFFICIENT_ROLE);
   });
 });
 

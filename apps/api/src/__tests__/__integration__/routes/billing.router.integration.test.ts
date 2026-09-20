@@ -28,6 +28,7 @@ import {
   createUser,
   createOrganization,
   createOrganizationUser,
+  seedRbacForOrg,
 } from "../utils/application.util.js";
 
 // Stripe env keys must exist before environment.ts loads (isConfigured guard).
@@ -118,6 +119,8 @@ describe("Billing router", () => {
     orgId = org.id;
     const otherOrg = createOrganization(owner.id);
     await db.insert(schema.organizations).values([org, otherOrg] as never);
+    await seedRbacForOrg(db, org.id);
+    await seedRbacForOrg(db, otherOrg.id);
     await db
       .insert(schema.organizationUsers)
       .values(

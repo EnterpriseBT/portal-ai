@@ -21,6 +21,7 @@ import {
   createOrganizationUser,
   generateId,
   teardownOrg,
+  seedRbacForOrg,
 } from "../utils/application.util.js";
 
 const CALLER_AUTH0 = "auth0|role-assign-caller";
@@ -76,6 +77,7 @@ describe("PATCH /api/organization/members/:userId/role (#576)", () => {
 
     const org = createOrganization(ownerId);
     await db.insert(organizations).values(org as never);
+    await seedRbacForOrg(db as never, org.id);
 
     // Caller's membership is their current org (highest lastLogin).
     await db.insert(organizationUsers).values(

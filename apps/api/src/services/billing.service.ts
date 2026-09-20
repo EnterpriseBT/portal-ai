@@ -223,7 +223,7 @@ export class BillingService {
     // Owner-only (#576). check maps billing.manage deny → BILLING_NOT_OWNER,
     // preserving the contract; runs after the configured-503 guard so the
     // documented order (configured → owner) is unchanged.
-    PermissionService.check(caller, "billing.manage");
+    await PermissionService.check(caller, "billing.manage");
     if (org.stripeSubscriptionId) {
       throw new ApiError(
         409,
@@ -317,7 +317,7 @@ export class BillingService {
     // Owner-only (#576). check maps billing.manage deny → BILLING_NOT_OWNER,
     // preserving the contract; runs after the configured-503 guard so the
     // documented order (configured → owner) is unchanged.
-    PermissionService.check(caller, "billing.manage");
+    await PermissionService.check(caller, "billing.manage");
     if (!org.stripeCustomerId) {
       throw new ApiError(
         409,

@@ -62,7 +62,7 @@ export class SeatService {
     req: InviteCreateRequest,
     auditCtx: SeatAuditContext
   ): Promise<InvitationResponse> {
-    PermissionService.check(caller, "member.invite");
+    await PermissionService.check(caller, "member.invite");
     const orgId = caller.organizationId;
     const email = req.email.trim().toLowerCase();
 
@@ -142,7 +142,7 @@ export class SeatService {
   static async listInvitations(
     caller: PermissionContext
   ): Promise<InvitationResponse[]> {
-    PermissionService.check(caller, "member.invite");
+    await PermissionService.check(caller, "member.invite");
     const rows = await DbService.repository.invitations.listByOrg(
       caller.organizationId,
       { status: "pending" }
@@ -152,7 +152,7 @@ export class SeatService {
 
   /** The caller org's members (membership joined to user). Owner + admin only. */
   static async listMembers(caller: PermissionContext): Promise<Member[]> {
-    PermissionService.check(caller, "member.invite");
+    await PermissionService.check(caller, "member.invite");
     const rows = await (db as typeof db)
       .select({
         userId: organizationUsers.userId,
@@ -184,7 +184,7 @@ export class SeatService {
   static async seatUsage(
     caller: PermissionContext
   ): Promise<{ used: number; max: number | null }> {
-    PermissionService.check(caller, "member.invite");
+    await PermissionService.check(caller, "member.invite");
     const orgId = caller.organizationId;
     const now = SystemUtilities.utc.now().getTime();
     const members = await DbService.repository.organizationUsers.count(
@@ -209,7 +209,7 @@ export class SeatService {
     invitationId: string,
     auditCtx: SeatAuditContext
   ): Promise<InvitationResponse> {
-    PermissionService.check(caller, "member.invite");
+    await PermissionService.check(caller, "member.invite");
     const inv = await SeatService.requirePending(caller, invitationId);
     const updated = await DbService.repository.invitations.update(inv.id, {
       status: "revoked",
@@ -232,7 +232,7 @@ export class SeatService {
     invitationId: string,
     auditCtx: SeatAuditContext
   ): Promise<InvitationResponse> {
-    PermissionService.check(caller, "member.invite");
+    await PermissionService.check(caller, "member.invite");
     const inv = await SeatService.requirePending(caller, invitationId);
     const token = crypto.randomBytes(32).toString("hex");
     const updated = await DbService.repository.invitations.update(inv.id, {
@@ -394,7 +394,7 @@ export class SeatService {
     targetUserId: string,
     auditCtx: SeatAuditContext
   ): Promise<void> {
-    PermissionService.check(caller, "member.remove");
+    await PermissionService.check(caller, "member.remove");
     const orgId = caller.organizationId;
 
     await SyncLockService.withSeatLock(orgId, async () => {

@@ -25,6 +25,7 @@ import {
   createOrganization,
   createOrganizationUser,
   teardownOrg,
+  seedRbacForOrg,
 } from "../utils/application.util.js";
 
 const AUDIT = { sourceIp: "203.0.113.4", userAgent: "jest" };
@@ -72,6 +73,7 @@ describe("SeatService Integration Tests", () => {
       .insert(schema.organizations)
       .values(org as never);
     orgId = org.id;
+    await seedRbacForOrg(asDrizzle(), orgId);
     // The owner is a member (counts toward seats + appears in listMembers).
     await asDrizzle()
       .insert(schema.organizationUsers)

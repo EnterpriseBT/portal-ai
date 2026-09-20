@@ -27,6 +27,7 @@ import {
   generateId,
   provisionTestOrg,
   teardownOrg,
+  seedRbacForOrg,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|audit-log-user";
@@ -179,6 +180,7 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
       deleted: null,
       deletedBy: null,
     } as never);
+    await seedRbacForOrg(db as never, orgId);
     await (db as ReturnType<typeof drizzle>).insert(organizationUsers).values({
       id: generateId(),
       organizationId: orgId,
