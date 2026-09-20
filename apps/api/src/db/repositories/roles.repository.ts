@@ -2,7 +2,7 @@
  * Repository for the `roles` table (#598).
  */
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 
 import { roles } from "../schema/index.js";
 import { db } from "../client.js";
@@ -37,6 +37,20 @@ export class RolesRepository extends Repository<
       )
       .limit(1);
     return row as RoleSelect | undefined;
+  }
+
+  /** Resolve several role names in one org (#620 loadSet gathers per role). */
+  async findByNames(
+    organizationId: string,
+    names: string[],
+    client: DbClient = db
+  ): Promise<RoleSelect[]> {
+    if (names.length === 0) return [];
+    return this.findMany(
+      and(eq(roles.organizationId, organizationId), inArray(roles.name, names)),
+      {},
+      client
+    );
   }
 }
 

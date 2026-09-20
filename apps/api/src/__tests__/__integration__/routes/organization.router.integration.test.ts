@@ -141,6 +141,17 @@ describe("Organization Router", () => {
       expect(res.body.payload.organization.tier).toBe("standard");
       // #576 slice 5: the caller's role rides the current-org response.
       expect(res.body.payload.role).toBe("owner");
+      // #620 slice 2: roles[] + the server-computed capability map ride the
+      // response so the FE gates on capabilities, never a role-name heuristic.
+      expect(res.body.payload.roles).toEqual(["owner"]);
+      expect(res.body.payload.capabilities).toEqual({
+        "billing.manage": true,
+        "org.delete": true,
+        "org.audit.read": true,
+        "member.role.assign": true,
+        "member.invite": true,
+        "member.remove": true,
+      });
     });
 
     it("should return the organization with the most recent login", async () => {

@@ -7,6 +7,7 @@ const owner: Member = {
   userId: "u-owner",
   email: "owner@x.com",
   name: "Owner",
+  roles: ["owner"],
   role: "owner",
   joinedAt: 1_784_000_000_000,
 };

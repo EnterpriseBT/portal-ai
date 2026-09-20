@@ -5,6 +5,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { highestRole, type OrgRole } from "@portalai/core/models";
 import { TierService } from "../services/tier.service.js";
 import { UsageService } from "../services/usage.service.js";
 import type {
@@ -46,6 +47,22 @@ import { auditContextFromRequest } from "../utils/audit-context.util.js";
 const logger = createLogger({ module: "organization" });
 
 export const organizationRouter = Router();
+
+/** The role/capability fields on an `OrganizationGetResponse` (#620): the
+ *  caller's `roles` (display) + server-computed `capabilities` (gating) + the
+ *  transitional `role` (highest, removed once the FE reads capabilities). */
+async function orgRoleFields(userId: string, organizationId: string) {
+  const roles = (await DbService.repository.userRole.findRoleNames(
+    userId,
+    organizationId
+  )) as OrgRole[];
+  const capabilities = await PermissionService.capabilities({
+    userId,
+    organizationId,
+    roles,
+  });
+  return { roles, capabilities, role: highestRole(roles) };
+}
 
 /**
  * @openapi
@@ -457,7 +474,7 @@ organizationRouter.patch(
       // OQ2: only the owner may mint or remove an `admin`.
       if (
         (newRole === "admin" || target.role === "admin") &&
-        ctx.role !== "owner"
+        !ctx.roles.includes("owner")
       ) {
         return next(
           new ApiError(
@@ -922,7 +939,7 @@ organizationRouter.get(
 
       return HttpService.success<OrganizationGetResponse>(res, {
         organization: result.organization,
-        role: result.organizationUser.role,
+        ...(await orgRoleFields(user.id, result.organization.id)),
       });
     } catch (error) {
       logger.error(
@@ -1074,7 +1091,7 @@ organizationRouter.post(
 
       return HttpService.success<OrganizationGetResponse>(res, {
         organization: result.organization,
-        role: result.role,
+        ...(await orgRoleFields(user.id, result.organization.id)),
       });
     } catch (error) {
       return next(

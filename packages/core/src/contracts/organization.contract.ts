@@ -4,14 +4,19 @@ import {
   OrgRoleSchema,
   OrganizationUserSchema,
 } from "../models/organization-user.model.js";
+import { CapabilityMapSchema } from "../models/permission.model.js";
 
 /**
- * Response payload for the caller's current organization — the org plus the
- * caller's `role` in it (#576), the single source the web app derives role-aware
- * gating from (never recomputed from `ownerUserId`).
+ * Response payload for the caller's current organization (#576/#620).
+ * - `roles` — the caller's roles in the org (display), from the `user_role` join.
+ * - `capabilities` — the server-computed gating map; the FE gates on these.
+ * - `role` — **deprecated/transitional**: the caller's highest role, kept while
+ *   the FE migrates to `capabilities`; removed once nothing reads it (#620 s4).
  */
 export const OrganizationGetResponseSchema = z.object({
   organization: OrganizationSchema,
+  roles: z.array(OrgRoleSchema),
+  capabilities: CapabilityMapSchema,
   role: OrgRoleSchema,
 });
 

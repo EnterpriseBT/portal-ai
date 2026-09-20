@@ -1,10 +1,11 @@
 import crypto from "crypto";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 
 import {
   InvitationModelFactory,
   OrganizationUserModelFactory,
   UserModelFactory,
+  type OrgRole,
 } from "@portalai/core/models";
 import type {
   InviteCreateRequest,
@@ -22,6 +23,8 @@ import type {
 import { db } from "../db/client.js";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { users } from "../db/schema/users.table.js";
+import { userRole } from "../db/schema/user-role.table.js";
+import { roles } from "../db/schema/roles.table.js";
 import { DbService } from "./db.service.js";
 import { AuditService } from "./audit.service.js";
 import { Auth0Service } from "./auth0.service.js";
@@ -171,7 +174,36 @@ export class SeatService {
           isNull(users.deleted)
         )
       );
-    return rows as Member[];
+
+    // #620: batch-load each member's roles from the user_role join (one query).
+    const userIds = rows.map((r) => r.userId);
+    const roleRows = userIds.length
+      ? await (db as typeof db)
+          .select({ userId: userRole.userId, name: roles.name })
+          .from(userRole)
+          .innerJoin(roles, eq(userRole.roleId, roles.id))
+          .where(
+            and(
+              eq(userRole.organizationId, caller.organizationId),
+              inArray(userRole.userId, userIds),
+              isNull(userRole.deleted),
+              isNull(roles.deleted)
+            )
+          )
+      : [];
+    const rolesByUser = new Map<string, OrgRole[]>();
+    for (const rr of roleRows) {
+      const list = rolesByUser.get(rr.userId) ?? [];
+      list.push(rr.name as OrgRole);
+      rolesByUser.set(rr.userId, list);
+    }
+    // #620 slice-2 transition: a member whose membership predates the write
+    // cutover (slice 3) has no user_role row yet — fall back to their enum role
+    // so the members list is identical to pre-#620. Removed with the enum.
+    return rows.map((r) => ({
+      ...r,
+      roles: rolesByUser.get(r.userId) ?? (r.role ? [r.role as OrgRole] : []),
+    })) as Member[];
   }
 
   /**

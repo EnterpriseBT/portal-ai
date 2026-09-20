@@ -6,7 +6,10 @@ import {
   PolicyModelFactory,
   PolicyAttachmentModelFactory,
   RoleModelFactory,
+  CALLER_CAPABILITY_ACTIONS,
+  CapabilityMapSchema,
 } from "../../models/permission.model.js";
+import { highestRole } from "../../models/organization-user.model.js";
 
 // ── Tests (spec cases 1–2) ───────────────────────────────────────────
 
@@ -137,5 +140,62 @@ describe("Policy / Role / PolicyAttachment (spec case 2)", () => {
       .parse();
     expect(parsed.principalType).toBe("role");
     expect(parsed.principalId).toBe("role-1");
+  });
+});
+
+// ── Caller capability map (#620, spec case 2) ────────────────────────
+
+describe("CapabilityMapSchema (#620)", () => {
+  const fullMap = Object.fromEntries(
+    CALLER_CAPABILITY_ACTIONS.map((a) => [a, true])
+  );
+
+  it("accepts a map keyed by every caller-capability action", () => {
+    const result = CapabilityMapSchema.safeParse(fullMap);
+    expect(result.success).toBe(true);
+  });
+
+  it("is exhaustive — a partial map is rejected (the server always returns all keys)", () => {
+    const result = CapabilityMapSchema.safeParse({ "billing.manage": false });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an unknown action key", () => {
+    const result = CapabilityMapSchema.safeParse({
+      ...fullMap,
+      "not.a.capability": true,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a non-boolean value", () => {
+    const result = CapabilityMapSchema.safeParse({
+      ...fullMap,
+      "org.delete": "yes",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("exposes the app-level actions the FE gates on, and no object-level ones", () => {
+    expect(CALLER_CAPABILITY_ACTIONS).toContain("billing.manage");
+    expect(CALLER_CAPABILITY_ACTIONS).toContain("member.role.assign");
+    // Object-level (resource.*) gates stay per-object (#621), never in this map.
+    expect(
+      CALLER_CAPABILITY_ACTIONS.some((a) => a.startsWith("resource."))
+    ).toBe(false);
+  });
+});
+
+// ── highestRole (#620 transitional derivation) ───────────────────────
+
+describe("highestRole (#620)", () => {
+  it("ranks owner > admin > member", () => {
+    expect(highestRole(["member", "owner", "admin"])).toBe("owner");
+    expect(highestRole(["member", "admin"])).toBe("admin");
+    expect(highestRole(["member"])).toBe("member");
+  });
+
+  it("defaults to member for an empty role set", () => {
+    expect(highestRole([])).toBe("member");
   });
 });

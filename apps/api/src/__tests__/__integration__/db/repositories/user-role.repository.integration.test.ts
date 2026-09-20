@@ -135,4 +135,48 @@ describe("user_role repo + backfill + provisioning (#620 slice 1)", () => {
     const roleNames = await repo.findRoleNames(created.id, organization.id, db);
     expect(roleNames).toContain("owner");
   });
+
+  // ── #620 slice-2 effective-roles fallback (parity gate) ────────────
+
+  it("findEffectiveRoleNames falls back to the enum when no user_role exists", async () => {
+    const { userId, orgId } = await seedOrgWithRoles();
+    // A membership created before the write cutover: enum only, no user_role.
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(orgId, userId, { role: "admin" }) as never
+      );
+    expect(await repo.findByUserOrg(userId, orgId, db)).toHaveLength(0);
+
+    // Effective roles = the single enum role — identical to pre-#620.
+    expect(await repo.findEffectiveRoleNames(userId, orgId, db)).toEqual([
+      "admin",
+    ]);
+    // findRoleNames (no fallback) still sees nothing.
+    expect(await repo.findRoleNames(userId, orgId, db)).toEqual([]);
+  });
+
+  it("findEffectiveRoleNames prefers user_role rows over the enum once present", async () => {
+    const { userId, orgId } = await seedOrgWithRoles();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(orgId, userId, { role: "member" }) as never
+      );
+    // Two explicit roles supersede the "member" enum entirely.
+    for (const r of ["admin", "member"]) {
+      await repo.create(
+        {
+          id: generateId(),
+          userId,
+          organizationId: orgId,
+          roleId: `sysrole:${orgId}:${r}`,
+          ...audit(userId),
+        } as never,
+        db
+      );
+    }
+    const effective = await repo.findEffectiveRoleNames(userId, orgId, db);
+    expect(effective.sort()).toEqual(["admin", "member"]);
+  });
 });

@@ -80,7 +80,7 @@ describe("SeatService Integration Tests", () => {
       .values(
         createOrganizationUser(orgId, ownerId, { role: "owner" }) as never
       );
-    owner = { userId: ownerId, organizationId: orgId, role: "owner" };
+    owner = { userId: ownerId, organizationId: orgId, roles: ["owner"] };
     tierSlug = `seat-cap-test-${generateId()}`;
   });
 
@@ -262,7 +262,7 @@ describe("SeatService Integration Tests", () => {
     const member: PermissionContext = {
       userId: "u-member",
       organizationId: orgId,
-      role: "member",
+      roles: ["member"],
     };
     await expect(
       SeatService.invite(member, { email: "x@x.com", role: "member" }, AUDIT)
@@ -271,7 +271,7 @@ describe("SeatService Integration Tests", () => {
     const admin: PermissionContext = {
       userId: ownerId,
       organizationId: orgId,
-      role: "admin",
+      roles: ["admin"],
     };
     await expect(
       SeatService.invite(admin, { email: "y@x.com", role: "member" }, AUDIT)
@@ -444,7 +444,7 @@ describe("SeatService Integration Tests", () => {
     const member: PermissionContext = {
       userId: "u-m",
       organizationId: orgId,
-      role: "member",
+      roles: ["member"],
     };
     await expect(
       SeatService.removeMember(member, ownerId, AUDIT)

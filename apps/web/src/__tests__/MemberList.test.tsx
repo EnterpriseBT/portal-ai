@@ -8,6 +8,7 @@ const member = (over: Partial<Member> = {}): Member => ({
   userId: "u-x",
   email: "x@example.com",
   name: "X",
+  roles: ["member"],
   role: "member",
   joinedAt: 1_784_000_000_000,
   ...over,

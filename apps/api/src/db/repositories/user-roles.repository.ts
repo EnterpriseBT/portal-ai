@@ -7,7 +7,7 @@
 import { and, eq, isNull, count } from "drizzle-orm";
 import type { OrgRole } from "@portalai/core/models";
 
-import { userRole, roles } from "../schema/index.js";
+import { userRole, roles, organizationUsers } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
 import type { UserRoleSelect, UserRoleInsert } from "../schema/zod.js";
@@ -57,6 +57,40 @@ export class UserRolesRepository extends Repository<
         )
       );
     return rows.map((r) => r.name);
+  }
+
+  /**
+   * A user's **effective** role names in an org: `user_role` when present,
+   * else a single-element fallback to the `organization_users` enum role.
+   *
+   * #620 slice-2 transition shim. Reads cut over to `user_role` (slice 2)
+   * before writes do (slice 3), so a membership created between the 0104
+   * backfill and the write-cutover — a new invite-accept, or a test fixture
+   * that inserts `organization_users` directly — has no `user_role` row yet.
+   * The enum fallback keeps such a member's authorization identical to
+   * pre-#620 (exactly one role = their enum), which is the single-role parity
+   * guarantee. Remove this method (callers revert to `findRoleNames`) once the
+   * enum is retired — see the #620 follow-up. Not used by list/batch surfaces,
+   * which fall back per-row against the membership they already hold.
+   */
+  async findEffectiveRoleNames(
+    userId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<string[]> {
+    const names = await this.findRoleNames(userId, organizationId, client);
+    if (names.length > 0) return names;
+    const [membership] = await (client as typeof db)
+      .select({ role: organizationUsers.role })
+      .from(organizationUsers)
+      .where(
+        and(
+          eq(organizationUsers.userId, userId),
+          eq(organizationUsers.organizationId, organizationId),
+          isNull(organizationUsers.deleted)
+        )
+      );
+    return membership?.role ? [membership.role] : [];
   }
 
   /** Count of distinct users holding a role by name in an org (the last-owner

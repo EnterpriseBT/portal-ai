@@ -13,7 +13,7 @@ const SYSTEM = SystemUtilities.id.system;
 const ctx = (role: "owner" | "admin" | "member"): PermissionContext => ({
   userId: "user-1",
   organizationId: "org-1",
-  role,
+  roles: [role],
 });
 
 let seq = 0;
