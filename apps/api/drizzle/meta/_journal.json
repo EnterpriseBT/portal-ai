@@ -708,6 +708,13 @@
       "when": 1789675181739,
       "tag": "0100_add-user-last-login-session",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1789920598306,
+      "tag": "0101_add_rbac_engine",
+      "breakpoints": true
     }
   ]
 }

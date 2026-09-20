@@ -19,6 +19,10 @@ import { fieldMappings } from "./field-mappings.table.js";
 import { entityRecords } from "./entity-records.table.js";
 import { entityTags } from "./entity-tags.table.js";
 import { entityTagAssignments } from "./entity-tag-assignments.table.js";
+import { permissionPolicies } from "./permission-policies.table.js";
+import { permissionStatements } from "./permission-statements.table.js";
+import { policyAttachments } from "./policy-attachments.table.js";
+import { roles } from "./roles.table.js";
 import { entityGroups } from "./entity-groups.table.js";
 import { entityGroupMembers } from "./entity-group-members.table.js";
 import { stations } from "./stations.table.js";
@@ -493,3 +497,45 @@ export type ApiEndpointConfigSelect = z.infer<
 export type ApiEndpointConfigInsert = z.infer<
   typeof ApiEndpointConfigInsertSchema
 >;
+
+// ── RBAC IAM engine (#598) ───────────────────────────────────────────
+
+/** Zod schema for a `permission_policies` row returned by SELECT. */
+export const PolicySelectSchema = createSelectSchema(permissionPolicies);
+/** Zod schema for inserting into `permission_policies`. */
+export const PolicyInsertSchema = createInsertSchema(permissionPolicies);
+export type PolicySelect = z.infer<typeof PolicySelectSchema>;
+export type PolicyInsert = z.infer<typeof PolicyInsertSchema>;
+
+/** Zod schema for a `permission_statements` row returned by SELECT. */
+export const PermissionStatementSelectSchema =
+  createSelectSchema(permissionStatements);
+/** Zod schema for inserting into `permission_statements`. */
+export const PermissionStatementInsertSchema =
+  createInsertSchema(permissionStatements);
+export type PermissionStatementSelect = z.infer<
+  typeof PermissionStatementSelectSchema
+>;
+export type PermissionStatementInsert = z.infer<
+  typeof PermissionStatementInsertSchema
+>;
+
+/** Zod schema for a `policy_attachments` row returned by SELECT. */
+export const PolicyAttachmentSelectSchema =
+  createSelectSchema(policyAttachments);
+/** Zod schema for inserting into `policy_attachments`. */
+export const PolicyAttachmentInsertSchema =
+  createInsertSchema(policyAttachments);
+export type PolicyAttachmentSelect = z.infer<
+  typeof PolicyAttachmentSelectSchema
+>;
+export type PolicyAttachmentInsert = z.infer<
+  typeof PolicyAttachmentInsertSchema
+>;
+
+/** Zod schema for a `roles` row returned by SELECT. */
+export const RoleSelectSchema = createSelectSchema(roles);
+/** Zod schema for inserting into `roles`. */
+export const RoleInsertSchema = createInsertSchema(roles);
+export type RoleSelect = z.infer<typeof RoleSelectSchema>;
+export type RoleInsert = z.infer<typeof RoleInsertSchema>;

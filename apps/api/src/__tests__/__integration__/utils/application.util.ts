@@ -43,6 +43,10 @@ const {
   toolUsageLedger,
   auditLog,
   invitations,
+  permissionStatements,
+  policyAttachments,
+  permissionPolicies,
+  roles,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -194,6 +198,12 @@ export async function teardownOrg(db: Db): Promise<void> {
     await tx.delete(auditLog);
   });
   await db.delete(invitations); // #584: FK → organizations + users
+  // #598: RBAC engine — statements/attachments FK policies + organizations;
+  // policies + roles FK organizations. Delete before the org rows they point at.
+  await db.delete(permissionStatements);
+  await db.delete(policyAttachments);
+  await db.delete(permissionPolicies);
+  await db.delete(roles);
   await db.delete(organizationUsers);
   await db.delete(organizations);
   await db.delete(users);
