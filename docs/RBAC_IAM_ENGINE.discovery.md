@@ -4,7 +4,13 @@
 
 **Why this exists.** #576 shipped the org role model as a **hardcoded `switch`** in `permission.service.ts` — `owner`/`admin`/`member` decided in code, with the `resolveEffect` + `visibilityPredicate` seam built *grant-ready* but backed by no schema. The role enum alone can't express object-level access, read-only overrides, or sharing. This ticket stands up the data-driven authorization **engine** behind #576's seam — policies as allow/deny statements over `action × resource`, roles and groups as policy-attachment principals, object grants, and sharing — modelled on **AWS IAM** so the semantics are ones every security reviewer already knows. This is the engine that turns the coarse role switch into data and makes sharing fall out of RBAC rather than being bolted on.
 
-*Design converged with the ticket owner in a pre-discovery architecture walk; the decisions below are recorded as agreed (D1–D8), not as open leans.*
+*Design converged with the ticket owner in a pre-discovery architecture walk; the decisions below are recorded as agreed (D1–D10), not as open leans.*
+
+**This is the whole-engine design record; it is realized across four #578 children** (each gets its own spec/plan — this doc is their shared reference):
+- **#598** (this ticket) — the engine + system policies (data-driven roles) + both provisioning paths + **switch retirement**. Behavior-preserving; `visibilityPredicate`/object checks are built but **not wired into routes**.
+- **#620** — multi-role (`user_role` + enum cutover + multi-role Members UI).
+- **#621** — object grants + sharing (`permission_grants` + wiring object-level enforcement into station/pin + `ShareDialog`).
+- **#622** — custom roles, policies & groups (authoring UI; `groups`/`user_group`/`group` principal).
 
 ## The current shape
 
@@ -129,10 +135,13 @@ Sharing is a permission **action** (`grant.create`), governed by the engine and 
 
 - **Data exposure through shared objects** (definer's rights, curated column/row filters, per-caller tool-auth) + the **`views` entity** — **#599**. #598 grants the *object*; #599 governs the *data* and introduces views (the ABAC substitute).
 - **Member scoping of data-plane objects** (entity records, field mappings) — arrives with #599's views; #598 leaves them org-scoped/admin-configured (no regression).
-- **Admin UI to author custom roles/policies/groups** — a later child; the schema + engine support them now.
+- **Multi-role** (a user holding several roles: `user_role` + the enum→join cutover + multi-role Members UI) — **#620**.
+- **Object grants + sharing** (`permission_grants`, the grants API, `ShareDialog`, and wiring `visibilityPredicate`/object checks into station/pin) — **#621**. Wiring lands here (not #598) so member visibility tightens *with* the grant mechanism.
+- **Groups + custom roles/policies + the authoring UI** (`groups`/`user_group`/`group` principal, custom CRUD/assignment) — **#622**; the schema + engine are shaped for them now.
+- **Data exposure through shared objects** + the **`views` entity** + data-plane member scoping — **#599** (the ABAC substitute).
 - **General/parameterized ABAC `Condition` grants** — a later child, likely unneeded (views cover data-attribute slicing).
-- **Per-user provenance on agent-driven data-plane writes** — an attribution/audit refinement (make the row's `createdBy` the acting user), separable from authz; a candidate for its own small ticket, not a #598 blocker.
+- **Per-user provenance on agent-driven data-plane writes** — an attribution/audit refinement, separable from authz; its own small ticket if wanted.
 
 ## Next step
 
-`docs/RBAC_IAM_ENGINE.spec.md` pins the tables (+ dual-schema layers), the system-policy seed rows + backfill migration, the `resolveEffect` order (D7) + condition translation + the `visibilityPredicate` SQL shape, the `permission_grants` shape, the `AUDIT_ACTIONS` additions, the `grants` API + `ShareDialog`/`ShareCreateRequestSchema` contract, the permissions-boundary check, and the D8 object-type governance table. `docs/RBAC_IAM_ENGINE.plan.md` slices it: (1) schema + models + system policies + seed/backfill (engine dormant, switch-parity proven); (2) `resolveEffect` data-driven + wire `visibilityPredicate` into station/pin lists (switch retired); (3) `permission_grants` + object grants + permissions boundary + lifecycle cascades; (4) sharing API + `ShareDialog` + member picker; each a green commit on `feat/598-rbac-iam-engine`.
+**This doc's contract is split across four specs** (the design record stays whole here). **#598's** `docs/RBAC_IAM_ENGINE.spec.md` pins only the **engine foundation**: the four tables (`permission_policies`/`permission_statements`/`policy_attachments`/`roles`) + dual-schema, the system-policy seed rows + existing-org backfill, the `PermissionSet` engine (`loadSet` + `check`/`visibilityPredicate`/`assertWithinBoundary` + condition translation, `visibilityPredicate` tested-but-unwired), and the privileged `check` call-site migration + **switch retirement** (switch-parity the gate). #598's plan slices it: (1) schema + models + system policies + seed/backfill (engine dormant, parity proven); (2) `PermissionSet` + `loadSet` + middleware attach + migrate the `check` sites + delete the switch. `permission_grants` + object-enforcement wiring (#621), `user_role`/multi-role (#620), and `groups`/custom-authoring (#622) get their own specs/plans on their own branches.
