@@ -1,6 +1,7 @@
 import {
   OrganizationModelFactory,
   OrganizationUserModelFactory,
+  UserRoleModelFactory,
   ConnectorInstanceModelFactory,
   StationModelFactory,
   StationInstanceModelFactory,
@@ -559,6 +560,22 @@ export class ApplicationService {
         createdOrg.id,
         tx
       );
+
+    // #620: assign the owner their role via the user_role join (the seeded
+    // roles were created by provisionOrganizationWorkspace above). Deterministic
+    // id matches the enum→user_role backfill so the two paths never collide.
+    await DbService.repository.userRole.create(
+      new UserRoleModelFactory()
+        .create(systemId)
+        .update({
+          id: `sysur:${userId}:${createdOrg.id}:owner`,
+          userId,
+          organizationId: createdOrg.id,
+          roleId: `sysrole:${createdOrg.id}:owner`,
+        })
+        .parse(),
+      tx
+    );
 
     return {
       organization: { ...createdOrg, defaultStationId: stationId },
