@@ -743,6 +743,13 @@
       "when": 1790015799163,
       "tag": "0105_add_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1790015799164,
+      "tag": "0106_backfill-member-share-delete",
+      "breakpoints": true
     }
   ]
 }

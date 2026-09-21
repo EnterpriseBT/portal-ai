@@ -474,6 +474,13 @@ export class SeatService {
         orgId,
         caller.userId
       );
+      // #621: revoke every object grant naming the removed member (their
+      // shares no longer resolve to a member).
+      await DbService.repository.permissionGrants.hardDeleteByPrincipal(
+        orgId,
+        "user",
+        target.userId
+      );
       void AuditService.record({
         organizationId: orgId,
         userId: caller.userId,

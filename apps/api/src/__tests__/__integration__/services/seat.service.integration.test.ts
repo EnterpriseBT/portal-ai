@@ -418,6 +418,36 @@ describe("SeatService Integration Tests", () => {
     expect(await auditRows("member.remove")).toHaveLength(1);
   });
 
+  it("removeMember revokes the member's object grants (#621)", async () => {
+    const memberId = await addMember("member");
+    await DbService.repository.permissionGrants.create({
+      id: `pg-${Date.now()}`,
+      created: Date.now(),
+      createdBy: "system",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: orgId,
+      principalType: "user",
+      principalId: memberId,
+      effect: "allow",
+      verb: "read",
+      resourceType: "station",
+      resourceId: "st-shared",
+      condition: null,
+    } as never);
+
+    await SeatService.removeMember(owner, memberId, AUDIT);
+
+    expect(
+      await DbService.repository.permissionGrants.findByPrincipals(
+        [{ principalType: "user", principalId: memberId }],
+        orgId
+      )
+    ).toHaveLength(0);
+  });
+
   it("refuses to remove the last owner (LAST_OWNER_REMOVAL)", async () => {
     await expect(
       SeatService.removeMember(owner, ownerId, AUDIT)

@@ -104,6 +104,25 @@ export class PermissionSet {
   }
 
   /**
+   * The permissions boundary (#621): a granter can only *give away* access they
+   * themselves hold. Each `verb` a share materializes must be within THIS (the
+   * granter's) set on the target object; the first one that isn't throws
+   * `RBAC_GRANT_EXCEEDS_BOUNDARY`. Deny grants are always in-boundary
+   * (restricting is safe). Called on the granter's resolved set at share time.
+   */
+  assertWithinBoundary(object: PermissionObject, verbs: string[]): void {
+    for (const verb of verbs) {
+      if (!this.can(`resource.${verb}` as PermissionAction, object)) {
+        throw new ApiError(
+          403,
+          ApiCode.RBAC_GRANT_EXCEEDS_BOUNDARY,
+          "You cannot grant access you do not have on this object"
+        );
+      }
+    }
+  }
+
+  /**
    * A SQL predicate to AND into a list query's `where` for `read` on
    * `resourceType`, or `undefined` when the caller may see every row (an
    * unconditional class-level allow). Fail-closed: when no allow applies,
@@ -168,9 +187,11 @@ export class PermissionSet {
     action: PermissionAction,
     object?: PermissionObject
   ): NormalizedAction {
-    if (action === "resource.read" || action === "resource.write") {
+    // `resource.<verb>` (read | write | delete | share) — the verb is the
+    // suffix and the resourceType comes from the object (#621 adds delete/share).
+    if (action.startsWith("resource.")) {
       return {
-        verb: action === "resource.read" ? "read" : "write",
+        verb: action.slice("resource.".length),
         resourceType: object?.type ?? "",
         resourceId: object?.id,
         createdBy: object?.createdBy,

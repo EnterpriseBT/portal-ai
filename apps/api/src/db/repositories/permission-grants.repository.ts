@@ -90,6 +90,52 @@ export class PermissionGrantsRepository extends Repository<
     );
   }
 
+  /** Every live grant for one principal on one object (the "share" unit). */
+  async findShare(
+    organizationId: string,
+    principalType: PolicyPrincipalType,
+    principalId: string,
+    resourceType: PermissionResourceType,
+    resourceId: string,
+    client: DbClient = db
+  ): Promise<PermissionGrantSelect[]> {
+    return this.findMany(
+      and(
+        eq(permissionGrants.organizationId, organizationId),
+        eq(permissionGrants.principalType, principalType),
+        eq(permissionGrants.principalId, principalId),
+        eq(permissionGrants.resourceType, resourceType),
+        eq(permissionGrants.resourceId, resourceId)
+      ),
+      {},
+      client
+    );
+  }
+
+  /** Hard-delete one principal's whole share of one object (re-share replace +
+   *  DELETE /:id revoke). */
+  async hardDeleteShare(
+    organizationId: string,
+    principalType: PolicyPrincipalType,
+    principalId: string,
+    resourceType: PermissionResourceType,
+    resourceId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await this.findShare(
+      organizationId,
+      principalType,
+      principalId,
+      resourceType,
+      resourceId,
+      client
+    );
+    return this.hardDeleteMany(
+      rows.map((r) => r.id),
+      client
+    );
+  }
+
   /** Hard-delete every grant naming a principal (member-removal revoke). */
   async hardDeleteByPrincipal(
     organizationId: string,

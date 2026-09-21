@@ -230,3 +230,41 @@ describe("PermissionSet — switch parity (spec case 8)", () => {
     }
   );
 });
+
+describe("PermissionSet — assertWithinBoundary (#621)", () => {
+  it("passes when every granted verb is within the granter's own set", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "read", condition: "created_by_caller" }),
+      S({ verb: "write", condition: "created_by_caller" }),
+    ]);
+    expect(() =>
+      set.assertWithinBoundary(obj("user-1"), ["read"])
+    ).not.toThrow();
+    expect(() =>
+      set.assertWithinBoundary(obj("user-1"), ["read", "write"])
+    ).not.toThrow();
+  });
+
+  it("throws RBAC_GRANT_EXCEEDS_BOUNDARY for a verb outside the granter's set", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "read", condition: "created_by_caller" }),
+    ]);
+    try {
+      set.assertWithinBoundary(obj("user-1"), ["write"]);
+      throw new Error("expected a boundary throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(403);
+      expect((err as ApiError).code).toBe(ApiCode.RBAC_GRANT_EXCEEDS_BOUNDARY);
+    }
+  });
+
+  it("an owner (allow * *) is within boundary for any verb on any object", () => {
+    const set = new PermissionSet(ctx("owner"), [
+      S({ verb: "*", resourceType: "*", condition: null }),
+    ]);
+    expect(() =>
+      set.assertWithinBoundary(obj("someone-else"), ["read", "write"])
+    ).not.toThrow();
+  });
+});

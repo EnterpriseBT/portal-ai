@@ -39,7 +39,9 @@ export type PermissionAction =
   | "member.invite"
   | "member.remove"
   | "resource.read"
-  | "resource.write";
+  | "resource.write"
+  | "resource.delete"
+  | "resource.share";
 
 /** The object a `resource.*` action targets. `createdBy` drives the ownership
  *  condition; `id` selects instance-level statements/grants. */

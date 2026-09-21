@@ -59,6 +59,12 @@ describe("AuditLogEntrySchema", () => {
     expect(AUDIT_ACTIONS).toContain("member.role.change");
   });
 
+  it("includes the object-grant actions (#621)", () => {
+    expect(AUDIT_ACTIONS).toEqual(
+      expect.arrayContaining(["grant.create", "grant.revoke"])
+    );
+  });
+
   it("includes the invitation lifecycle actions (#584)", () => {
     expect(AUDIT_ACTIONS).toEqual(
       expect.arrayContaining([

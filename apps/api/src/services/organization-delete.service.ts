@@ -49,6 +49,7 @@ import {
   stationToolpacks,
   stations,
   wideTableColumns,
+  permissionGrants,
 } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -252,6 +253,13 @@ export class OrganizationDeleteService {
 
       // Operational bookkeeping, not billing truth — hard-deleted.
       await tx.delete(jobs).where(eq(jobs.organizationId, organizationId));
+
+      // #621: the org's stations/pins are hard-deleted above, so their object
+      // grants go with them (grants die with their object's hard-delete). Role
+      // policies/statements validly persist against the tombstoned org row.
+      await tx
+        .delete(permissionGrants)
+        .where(eq(permissionGrants.organizationId, organizationId));
 
       // Tombstones: memberships (owner included) + the org row itself.
       // `usage` rows are deliberately untouched — the tombstoned org row
