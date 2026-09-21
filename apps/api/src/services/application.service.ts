@@ -6,13 +6,17 @@ import {
   StationModelFactory,
   StationInstanceModelFactory,
   UserModelFactory,
+  type OrgRole,
 } from "@portalai/core/models";
 import { eq, and, isNull, desc, sql, type SQL } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { organizations } from "../db/schema/organizations.table.js";
 import { users } from "../db/schema/users.table.js";
 import { db } from "../db/client.js";
-import type { DbClient } from "../db/repositories/base.repository.js";
+import type {
+  DbClient,
+  DbTransaction,
+} from "../db/repositories/base.repository.js";
 import type {
   UserSelect,
   OrganizationSelect,
@@ -412,6 +416,13 @@ export class ApplicationService {
    *  org is enterable from the app. */
   static async seedOrganization(opts: {
     name: string;
+    /** Make this **existing** real user the org owner (so the org is enterable
+     *  as an owner). When omitted, a synthetic placeholder owner is created
+     *  (the pre-#620 behavior). */
+    ownerEmail?: string;
+    /** Add this existing real user as an `admin` (#620 multi-role e2e). */
+    adminEmail?: string;
+    /** Add this existing real user as a `member`. */
     memberEmail?: string;
     /** Assign this tier slug to the org (idempotent — applied whether the org
      *  is freshly seeded or already exists). Validated against live tiers; a
@@ -420,75 +431,115 @@ export class ApplicationService {
   }) {
     const systemId = SystemUtilities.id.system;
 
+    // Resolve every named real user up front (fail fast if one hasn't logged
+    // in yet — `seedOrganization` links existing rows, it doesn't mint logins).
+    const resolveUser = async (email?: string) => {
+      if (!email) return null;
+      const user = await DbService.repository.users.findByEmail(email);
+      if (!user) throw new Error(`User ${email} not found`);
+      return user;
+    };
+    const ownerUser = await resolveUser(opts.ownerEmail);
+    const adminUser = await resolveUser(opts.adminEmail);
+    const memberUser = await resolveUser(opts.memberEmail);
+    const roleAssignments: Array<{ userId: string; role: OrgRole }> = [
+      ...(adminUser
+        ? [{ userId: adminUser.id, role: "admin" as OrgRole }]
+        : []),
+      ...(memberUser
+        ? [{ userId: memberUser.id, role: "member" as OrgRole }]
+        : []),
+    ];
+
+    // Idempotently attach a role to a membership (org_user enum mirror +
+    // user_role source of truth). lastLogin: 0 so the seeded membership never
+    // hijacks the user's current-org selector (`last_login DESC`, NULLS FIRST)
+    // — they switch into it explicitly.
+    const ensureMembership = async (
+      tx: DbTransaction,
+      organizationId: string,
+      userId: string,
+      role: OrgRole
+    ) => {
+      const existingMembership =
+        await DbService.repository.organizationUsers.findByOrganizationAndUser(
+          organizationId,
+          userId
+        );
+      if (existingMembership) {
+        await DbService.repository.organizationUsers.update(
+          existingMembership.id,
+          { role },
+          tx
+        );
+      } else {
+        await DbService.repository.organizationUsers.create(
+          new OrganizationUserModelFactory()
+            .create(systemId)
+            .update({ organizationId, userId, role, lastLogin: 0 })
+            .parse(),
+          tx
+        );
+      }
+      await DbService.repository.userRole.assign(
+        userId,
+        organizationId,
+        role,
+        systemId,
+        tx
+      );
+    };
+
     const existing = await DbService.repository.organizations.findByName(
       opts.name
     );
     if (existing) {
       if (opts.tier)
         await ApplicationService.assignOrgTier(existing.id, opts.tier);
+      // Ensure the role memberships even on an already-seeded org, so re-running
+      // the seed converges the role matrix without a reset.
+      await DbService.transaction(async (tx) => {
+        for (const { userId, role } of roleAssignments)
+          await ensureMembership(tx, existing.id, userId, role);
+      });
       return {
         organizationId: existing.id,
         ownerUserId: existing.ownerUserId,
+        adminUserId: adminUser?.id,
+        memberUserId: memberUser?.id,
         tier: opts.tier,
         existing: true as const,
       };
     }
 
-    const member = opts.memberEmail
-      ? await DbService.repository.users.findByEmail(opts.memberEmail)
-      : null;
-    if (opts.memberEmail && !member) {
-      throw new Error(`User ${opts.memberEmail} not found`);
-    }
-
     return DbService.transaction(async (tx) => {
-      const slug = opts.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const ownerModel = new UserModelFactory().create(systemId).update({
-        auth0Id: `seed|${SystemUtilities.id.v4.generate()}`,
-        email: `seed+${slug}@portalsai.io`,
-        name: `${opts.name} Owner`,
-        picture: null,
-        lastLogin: null,
-      });
-      const owner = await DbService.repository.users.create(
-        ownerModel.parse(),
-        tx
-      );
+      let ownerId: string;
+      if (ownerUser) {
+        ownerId = ownerUser.id;
+      } else {
+        const slug = opts.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        const ownerModel = new UserModelFactory().create(systemId).update({
+          auth0Id: `seed|${SystemUtilities.id.v4.generate()}`,
+          email: `seed+${slug}@portalsai.io`,
+          name: `${opts.name} Owner`,
+          picture: null,
+          lastLogin: null,
+        });
+        const owner = await DbService.repository.users.create(
+          ownerModel.parse(),
+          tx
+        );
+        ownerId = owner.id;
+      }
 
       const provisioned = await ApplicationService.provisionOrganizationInTx(
-        owner.id,
+        ownerId,
         tx,
         { name: opts.name }
       );
 
-      let memberUserId: string | undefined;
-      if (member) {
-        // lastLogin: 0 (not null) so this membership doesn't hijack the
-        // member's current-org selector — the app orders `last_login DESC`
-        // and Postgres sorts NULLS FIRST. The user stays in their real org
-        // until they `portalai member switch` into this seeded one.
-        const memberModel = new OrganizationUserModelFactory()
-          .create(systemId)
-          .update({
-            organizationId: provisioned.organization.id,
-            userId: member.id,
-            role: "member",
-            lastLogin: 0,
-          });
-        await DbService.repository.organizationUsers.create(
-          memberModel.parse(),
-          tx
-        );
-        // #620: the membership's role lives in user_role (enum is a mirror).
-        await DbService.repository.userRole.assign(
-          member.id,
-          provisioned.organization.id,
-          "member",
-          systemId,
-          tx
-        );
-        memberUserId = member.id;
-      }
+      for (const { userId, role } of roleAssignments)
+        await ensureMembership(tx, provisioned.organization.id, userId, role);
 
       if (opts.tier)
         await ApplicationService.assignOrgTier(
@@ -499,8 +550,9 @@ export class ApplicationService {
 
       return {
         organizationId: provisioned.organization.id,
-        ownerUserId: owner.id,
-        memberUserId,
+        ownerUserId: ownerId,
+        adminUserId: adminUser?.id,
+        memberUserId: memberUser?.id,
         tier: opts.tier,
         existing: false as const,
       };

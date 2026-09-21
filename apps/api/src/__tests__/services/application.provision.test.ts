@@ -54,6 +54,12 @@ const repos = {
           tx: unknown
         ) => Promise<Record<string, unknown>>
       >(),
+    // #620: seedOrganization.ensureMembership upserts (looks up first).
+    findByOrganizationAndUser:
+      jest.fn<
+        (orgId: string, userId: string) => Promise<unknown | undefined>
+      >(),
+    update: jest.fn<() => Promise<unknown>>(),
   },
   // #620: provisioning writes the owner's role via the user_role join.
   userRole: {
@@ -288,6 +294,48 @@ describe("seedOrganization", () => {
     if (out.existing === false) {
       expect(out.memberUserId).toBe("u-ben");
     }
+  });
+
+  it("owner-email uses a real owner; admin/member-email add real users with those roles (#620)", async () => {
+    repos.organizations.findByName.mockResolvedValue(null);
+    repos.users.findByEmail.mockImplementation(
+      async (email: string) =>
+        ({
+          "owner@portalsai.io": { id: "u-owner" },
+          "admin@portalsai.io": { id: "u-admin" },
+          "member@portalsai.io": { id: "u-member" },
+        })[email] ?? null
+    );
+    repos.organizationUsers.findByOrganizationAndUser.mockResolvedValue(
+      undefined
+    );
+
+    const out = await ApplicationService.seedOrganization({
+      name: "QA Org",
+      ownerEmail: "owner@portalsai.io",
+      adminEmail: "admin@portalsai.io",
+      memberEmail: "member@portalsai.io",
+    });
+
+    // No synthetic owner is minted when a real owner-email is given.
+    expect(repos.users.create).not.toHaveBeenCalled();
+    // The org is provisioned under the real owner.
+    expect(out.existing).toBe(false);
+    if (out.existing === false) {
+      expect(out.ownerUserId).toBe("u-owner");
+      expect(out.adminUserId).toBe("u-admin");
+      expect(out.memberUserId).toBe("u-member");
+    }
+    // Each role is written to user_role with its role name.
+    const assigns = (
+      repos.userRole.assign.mock.calls as unknown as unknown[][]
+    ).map((c) => ({ userId: c[0], role: c[2] }));
+    expect(assigns).toEqual(
+      expect.arrayContaining([
+        { userId: "u-admin", role: "admin" },
+        { userId: "u-member", role: "member" },
+      ])
+    );
   });
 
   it("unknown --member-email → throws before any creation", async () => {
