@@ -117,15 +117,22 @@ export const SettingsView = () => {
   // the first tab once capabilities resolve. Adjust-state-during-render
   // (converges: after the reset the guard is false), the same pattern
   // UsageLedgerDialog uses for reopen.
-  if (capabilitiesKnown) {
-    const v = tabsProps.value;
-    if (
-      (v === SETTINGS_TAB_INDEX[SettingsTab.Members] && !canManageMembers) ||
-      (v === SETTINGS_TAB_INDEX[SettingsTab.Activity] && !canViewActivity)
-    ) {
-      setValue(0);
-    }
+  const elevatedTabUnavailable =
+    (tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Members] &&
+      !canManageMembers) ||
+    (tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Activity] &&
+      !canViewActivity);
+  if (capabilitiesKnown && elevatedTabUnavailable) {
+    setValue(0);
   }
+  // Clamp the value handed to MUI Tabs to a currently-rendered index: while
+  // capabilities are still loading, a `?tab=members|activity` deep-link seeds
+  // index 3/4 before those tabs mount, and MUI warns "value … none of the
+  // children match". The setValue(0) reset above only fires once capabilities
+  // are known, so the clamp covers the loading window (and the not-allowed
+  // case until the reset lands). Once the elevated tab renders, the raw value
+  // is valid and honored.
+  const activeTabValue = elevatedTabUnavailable ? 0 : tabsProps.value;
 
   // Danger zone (#197): delete the org, then end the session — logout is
   // unconditional on success, even for multi-org users.
@@ -143,7 +150,7 @@ export const SettingsView = () => {
     <Box>
       <PageHeader title="Settings" icon={<Icon name={IconName.Settings} />} />
 
-      <Tabs {...tabsProps} variant="scrollable">
+      <Tabs {...tabsProps} value={activeTabValue} variant="scrollable">
         <Tab label="Profile" {...getTabProps(0)} />
         <Tab label="Organization" {...getTabProps(1)} />
         <Tab label="Subscription & Billing" {...getTabProps(2)} />
