@@ -12,6 +12,7 @@ import {
 import type { ColumnDataType, GeoRole } from "@portalai/core/models";
 import {
   DATA_RESOURCE_TYPES,
+  SHAREABLE_RESOURCE_TYPES,
   type PermissionEffect,
   type PermissionVerb,
   type PermissionResourceType,
@@ -731,25 +732,44 @@ export const SEED_SYSTEM_POLICIES: {
     role: "member",
     description:
       "Read and write the objects you create; read system-provisioned defaults.",
-    statements: DATA_RESOURCE_TYPES.flatMap((rt): SeedStatement[] => [
-      {
-        effect: "allow",
-        verb: "read",
-        resourceType: rt,
-        condition: "created_by_caller",
-      },
-      {
-        effect: "allow",
-        verb: "write",
-        resourceType: rt,
-        condition: "created_by_caller",
-      },
-      {
-        effect: "allow",
-        verb: "read",
-        resourceType: rt,
-        condition: "created_by_system",
-      },
-    ]),
+    statements: [
+      ...DATA_RESOURCE_TYPES.flatMap((rt): SeedStatement[] => [
+        {
+          effect: "allow",
+          verb: "read",
+          resourceType: rt,
+          condition: "created_by_caller",
+        },
+        {
+          effect: "allow",
+          verb: "write",
+          resourceType: rt,
+          condition: "created_by_caller",
+        },
+        {
+          effect: "allow",
+          verb: "read",
+          resourceType: rt,
+          condition: "created_by_system",
+        },
+      ]),
+      // #621: a member fully controls the shareable objects they create — they
+      // can also delete and share their own station/pin. Owner/admin already
+      // hold these via `* *`. (Existing orgs get these via the 0106 backfill.)
+      ...SHAREABLE_RESOURCE_TYPES.flatMap((rt): SeedStatement[] => [
+        {
+          effect: "allow",
+          verb: "delete",
+          resourceType: rt,
+          condition: "created_by_caller",
+        },
+        {
+          effect: "allow",
+          verb: "share",
+          resourceType: rt,
+          condition: "created_by_caller",
+        },
+      ]),
+    ],
   },
 ];

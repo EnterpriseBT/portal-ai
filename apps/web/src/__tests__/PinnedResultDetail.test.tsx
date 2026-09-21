@@ -33,9 +33,21 @@ jest.unstable_mockModule("../api/sdk", () => ({
     portalSql: {
       widgetRefresh: () => ({ mutateAsync: jest.fn() }),
     },
+    // #621: the container mounts ShareDialog, which instantiates these even
+    // while closed (enabled:false). Stub them as inert query/mutation handles.
+    members: { list: () => ({ data: undefined, isLoading: false }) },
+    grants: {
+      list: () => ({ data: undefined, isLoading: false }),
+      share: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+      revoke: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+    },
   },
   queryKeys: {
     portalResults: { root: ["portalResults"], get: (id: string) => ["pr", id] },
+    grants: {
+      root: ["grants"],
+      list: (rt: string, rid: string) => ["grants", rt, rid],
+    },
   },
 }));
 
@@ -86,6 +98,11 @@ const makePinnedResult = (
 
 const defaultProps = {
   result: makePinnedResult(),
+  // #621: default to a full-capability caller so the action-exercising tests
+  // still see Rename/Delete/Unpin; the read-only gating is covered separately.
+  canShare: true,
+  canWrite: true,
+  canDelete: true,
   onRename: jest.fn(),
   onDelete: jest.fn(),
   onUnpin: jest.fn(),
@@ -316,6 +333,54 @@ describe("PinnedResultDetailUI", () => {
     );
     expect(screen.queryByTestId("open-portal-btn")).not.toBeInTheDocument();
   });
+
+  // ── #621: per-object capability gating of the action affordances ──────
+
+  it("hides Unpin, and the Rename/Delete/Share actions, for a read-only grantee", () => {
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        canShare={false}
+        canWrite={false}
+        canDelete={false}
+      />
+    );
+    // Unpin (a delete) is hidden.
+    expect(screen.queryByTestId("unpin-btn")).not.toBeInTheDocument();
+    // The actions menu carries only Open Source Portal — no Rename/Delete/Share.
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    expect(
+      screen.queryByRole("menuitem", { name: /Rename/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Delete/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Share/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Open Source Portal/i })
+    ).toBeInTheDocument();
+  });
+
+  it("shows Rename but not Delete/Unpin for a read-write (non-delete) grantee", () => {
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        canShare={false}
+        canWrite={true}
+        canDelete={false}
+      />
+    );
+    expect(screen.queryByTestId("unpin-btn")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    expect(
+      screen.getByRole("menuitem", { name: /Rename/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Delete/i })
+    ).not.toBeInTheDocument();
+  });
 });
 
 // ── Container wiring (#286) ───────────────────────────────────────────
@@ -421,7 +486,13 @@ describe("PinnedResultDetailView container — remove", () => {
     jest.clearAllMocks();
     mockRemove.mockReset().mockResolvedValue(undefined);
     currentGetQuery = {
-      data: { portalResult: makePinnedResult() },
+      data: {
+        portalResult: makePinnedResult(),
+        // #621: the container gates Unpin/Delete on these server capabilities.
+        canShare: true,
+        canWrite: true,
+        canDelete: true,
+      },
       isLoading: false,
       error: null,
     };

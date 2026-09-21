@@ -156,7 +156,12 @@ export class SeatService {
 
   /** The caller org's members (membership joined to user). Owner + admin only. */
   static async listMembers(caller: PermissionContext): Promise<Member[]> {
-    await PermissionService.check(caller, "member.invite");
+    // #621 (Finding B): reading the roster requires only org membership — every
+    // member can see who else is in the org (the ShareDialog's grantee picker
+    // depends on this, and it's the "actions vs viewing are separate surfaces"
+    // rule: invite/remove/role changes stay capability-gated on their own
+    // routes). `getApplicationMetadata` already proved the caller belongs to
+    // `caller.organizationId`, which is the boundary here.
     const rows = await (db as typeof db)
       .select({
         userId: organizationUsers.userId,
@@ -212,12 +217,13 @@ export class SeatService {
    * invites; `max` = the org's tier cap, or **null** (unlimited) when the tier
    * has no cap OR can't be resolved. Deliberately **non-throwing** — a display
    * value must never block the members list; the cap is *enforced* on invite by
-   * `admit` (which fail-closes). Owner + admin only, same gate as listMembers.
+   * `admit` (which fail-closes). Readable by any org member — it rides the
+   * members-list response, which is now a roster read for everyone (#621
+   * Finding B); the cap is only *enforced* on the capability-gated invite path.
    */
   static async seatUsage(
     caller: PermissionContext
   ): Promise<{ used: number; max: number | null }> {
-    await PermissionService.check(caller, "member.invite");
     const orgId = caller.organizationId;
     const now = SystemUtilities.utc.now().getTime();
     const members = await DbService.repository.organizationUsers.count(
@@ -473,6 +479,13 @@ export class SeatService {
         target.userId,
         orgId,
         caller.userId
+      );
+      // #621: revoke every object grant naming the removed member (their
+      // shares no longer resolve to a member).
+      await DbService.repository.permissionGrants.hardDeleteByPrincipal(
+        orgId,
+        "user",
+        target.userId
       );
       void AuditService.record({
         organizationId: orgId,

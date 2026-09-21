@@ -22,12 +22,14 @@ import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ShareIcon from "@mui/icons-material/IosShare";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { ShareDialog } from "../components/ShareDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
@@ -69,6 +71,12 @@ const isSnapshotless = (result: PortalResult): boolean => {
 
 export interface PinnedResultDetailUIProps {
   result: PortalResult;
+  /** #621: per-object capabilities — gate Share / Rename / Delete+Unpin so a
+   *  read-only grantee isn't shown an action that 403s. */
+  canShare?: boolean;
+  canWrite?: boolean;
+  canDelete?: boolean;
+  onShareClick?: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
   onUnpin: () => void;
@@ -79,6 +87,10 @@ export interface PinnedResultDetailUIProps {
 
 export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   result,
+  canShare = false,
+  canWrite = false,
+  canDelete = false,
+  onShareClick,
   onRename,
   onDelete,
   onUnpin,
@@ -118,25 +130,44 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           title={result.name}
           icon={<Icon name={IconName.PushPin} />}
           primaryAction={
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<PushPinIcon />}
-              onClick={onUnpin}
-              data-testid="unpin-btn"
-            >
-              Unpin
-            </Button>
+            // #621: Unpin removes the pin (a delete) — gated on canDelete so a
+            // read-only grantee can view but not remove someone else's pin.
+            canDelete ? (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<PushPinIcon />}
+                onClick={onUnpin}
+                data-testid="unpin-btn"
+              >
+                Unpin
+              </Button>
+            ) : undefined
           }
           secondaryActions={[
-            {
-              label: "Rename",
-              icon: <EditIcon />,
-              onClick: () => {
-                setRenameValue(result.name);
-                setRenameOpen(true);
-              },
-            },
+            // #621: Rename is a write — gated on canWrite.
+            ...(canWrite
+              ? [
+                  {
+                    label: "Rename",
+                    icon: <EditIcon />,
+                    onClick: () => {
+                      setRenameValue(result.name);
+                      setRenameOpen(true);
+                    },
+                  },
+                ]
+              : []),
+            // #621: Share gated on server-computed canShare (owner/admin/creator).
+            ...(canShare && onShareClick
+              ? [
+                  {
+                    label: "Share",
+                    icon: <ShareIcon />,
+                    onClick: onShareClick,
+                  },
+                ]
+              : []),
             ...(result.portalId
               ? [
                   {
@@ -147,12 +178,17 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
                   },
                 ]
               : []),
-            {
-              label: "Delete",
-              icon: <DeleteIcon />,
-              onClick: () => setDeleteOpen(true),
-              color: "error" as const,
-            },
+            // #621: Delete gated on canDelete (a grantee never gets delete).
+            ...(canDelete
+              ? [
+                  {
+                    label: "Delete",
+                    icon: <DeleteIcon />,
+                    onClick: () => setDeleteOpen(true),
+                    color: "error" as const,
+                  },
+                ]
+              : []),
           ]}
         >
           <MetadataList
@@ -335,24 +371,39 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   // threaded down below. Keeping a page-level control duplicated the chrome
   // AND double-fired the mount auto-refresh against the per-org rate cap.
   const resultQuery = sdk.portalResults.get(portalResultId);
-  const portalResult = (
-    resultQuery.data as unknown as PortalResultPayload | undefined
-  )?.portalResult as PortalResult | undefined;
+  const payload = resultQuery.data as unknown as
+    | PortalResultPayload
+    | undefined;
+  const portalResult = payload?.portalResult as PortalResult | undefined;
+  const [shareOpen, setShareOpen] = useState(false);
 
   return (
     <DataResult results={{ result: resultQuery }}>
       {() => {
         if (!portalResult) return null;
         return (
-          <PinnedResultDetailUI
-            result={portalResult}
-            onRename={handleRename}
-            onDelete={handleRemove}
-            onUnpin={handleRemove}
-            onOpenPortal={handleOpenPortal}
-            onNavigate={handleNavigate}
-            renamePending={renameMutation.isPending}
-          />
+          <>
+            <PinnedResultDetailUI
+              result={portalResult}
+              canShare={payload?.canShare ?? false}
+              canWrite={payload?.canWrite ?? false}
+              canDelete={payload?.canDelete ?? false}
+              onShareClick={() => setShareOpen(true)}
+              onRename={handleRename}
+              onDelete={handleRemove}
+              onUnpin={handleRemove}
+              onOpenPortal={handleOpenPortal}
+              onNavigate={handleNavigate}
+              renamePending={renameMutation.isPending}
+            />
+            <ShareDialog
+              open={shareOpen}
+              onClose={() => setShareOpen(false)}
+              resourceType="pin"
+              resourceId={portalResultId}
+              resourceLabel={portalResult.name}
+            />
+          </>
         );
       }}
     </DataResult>

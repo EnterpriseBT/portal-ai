@@ -22,6 +22,7 @@ import { entityTagAssignments } from "./entity-tag-assignments.table.js";
 import { permissionPolicies } from "./permission-policies.table.js";
 import { permissionStatements } from "./permission-statements.table.js";
 import { policyAttachments } from "./policy-attachments.table.js";
+import { permissionGrants } from "./permission-grants.table.js";
 import { roles } from "./roles.table.js";
 import { userRole } from "./user-role.table.js";
 import { entityGroups } from "./entity-groups.table.js";
@@ -533,6 +534,13 @@ export type PolicyAttachmentSelect = z.infer<
 export type PolicyAttachmentInsert = z.infer<
   typeof PolicyAttachmentInsertSchema
 >;
+
+/** Zod schema for a `permission_grants` row returned by SELECT (#621). */
+export const PermissionGrantSelectSchema = createSelectSchema(permissionGrants);
+/** Zod schema for inserting into `permission_grants`. */
+export const PermissionGrantInsertSchema = createInsertSchema(permissionGrants);
+export type PermissionGrantSelect = z.infer<typeof PermissionGrantSelectSchema>;
+export type PermissionGrantInsert = z.infer<typeof PermissionGrantInsertSchema>;
 
 /** Zod schema for a `roles` row returned by SELECT. */
 export const RoleSelectSchema = createSelectSchema(roles);

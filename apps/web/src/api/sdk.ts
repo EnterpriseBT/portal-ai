@@ -20,6 +20,7 @@ import { layoutPlans } from "./layout-plans.api";
 import { jobs } from "./jobs.api";
 import { organizations } from "./organizations.api";
 import { members } from "./members.api";
+import { grants } from "./grants.api";
 import { invitations } from "./invitations.api";
 import { portalResults } from "./portal-results.api";
 import { portalSql } from "./portal-sql.api";
@@ -54,6 +55,7 @@ export const sdk = {
   jobs,
   organizations,
   members,
+  grants,
   invitations,
   portalResults,
   portalSql,

@@ -16,6 +16,9 @@ export * from "./organization.contract.js";
 /** Organization invitation / seats contracts (#584) */
 export * from "./invitation.contract.js";
 
+/** RBAC object grants + sharing contracts (#621) */
+export * from "./grant.contract.js";
+
 /** User-Organization contracts — schemas & types */
 export * from "./user-organization.contract.js";
 

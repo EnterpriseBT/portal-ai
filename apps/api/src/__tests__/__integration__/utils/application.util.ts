@@ -46,6 +46,7 @@ const {
   invitations,
   permissionStatements,
   policyAttachments,
+  permissionGrants,
   permissionPolicies,
   roles,
   userRole,
@@ -220,6 +221,7 @@ export async function teardownOrg(db: Db): Promise<void> {
   // #598: RBAC engine — statements/attachments FK policies + organizations;
   // policies + roles FK organizations. Delete before the org rows they point at.
   await db.delete(userRole);
+  await db.delete(permissionGrants);
   await db.delete(permissionStatements);
   await db.delete(policyAttachments);
   await db.delete(permissionPolicies);

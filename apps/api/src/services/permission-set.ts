@@ -13,6 +13,16 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import type { PermissionStatementSelect } from "../db/schema/zod.js";
+
+/**
+ * The structural fields the resolver reads — the common shape of a policy
+ * `PermissionStatementSelect` and an ad-hoc `PermissionGrantSelect` (#621), so
+ * the engine unions both without caring which table a rule came from.
+ */
+export type EffectiveStatement = Pick<
+  PermissionStatementSelect,
+  "effect" | "verb" | "resourceType" | "resourceId" | "condition"
+>;
 import type {
   PermissionContext,
   PermissionAction,
@@ -79,7 +89,7 @@ function denyMessage(action: PermissionAction): string {
 export class PermissionSet {
   constructor(
     private readonly ctx: PermissionContext,
-    private readonly statements: PermissionStatementSelect[]
+    private readonly statements: EffectiveStatement[]
   ) {}
 
   /** Guard a mutation — throws `ApiError(403, …)` on deny, returns on allow. */
@@ -91,6 +101,25 @@ export class PermissionSet {
   /** Non-throwing allow/deny decision. */
   can(action: PermissionAction, object?: PermissionObject): boolean {
     return this.resolve(this.normalize(action, object)) === "allow";
+  }
+
+  /**
+   * The permissions boundary (#621): a granter can only *give away* access they
+   * themselves hold. Each `verb` a share materializes must be within THIS (the
+   * granter's) set on the target object; the first one that isn't throws
+   * `RBAC_GRANT_EXCEEDS_BOUNDARY`. Deny grants are always in-boundary
+   * (restricting is safe). Called on the granter's resolved set at share time.
+   */
+  assertWithinBoundary(object: PermissionObject, verbs: string[]): void {
+    for (const verb of verbs) {
+      if (!this.can(`resource.${verb}` as PermissionAction, object)) {
+        throw new ApiError(
+          403,
+          ApiCode.RBAC_GRANT_EXCEEDS_BOUNDARY,
+          "You cannot grant access you do not have on this object"
+        );
+      }
+    }
   }
 
   /**
@@ -158,9 +187,11 @@ export class PermissionSet {
     action: PermissionAction,
     object?: PermissionObject
   ): NormalizedAction {
-    if (action === "resource.read" || action === "resource.write") {
+    // `resource.<verb>` (read | write | delete | share) — the verb is the
+    // suffix and the resourceType comes from the object (#621 adds delete/share).
+    if (action.startsWith("resource.")) {
       return {
-        verb: action === "resource.read" ? "read" : "write",
+        verb: action.slice("resource.".length),
         resourceType: object?.type ?? "",
         resourceId: object?.id,
         createdBy: object?.createdBy,
@@ -186,10 +217,7 @@ export class PermissionSet {
     return hasDeny ? "deny" : hasAllow ? "allow" : "deny";
   }
 
-  private matches(
-    s: PermissionStatementSelect,
-    norm: NormalizedAction
-  ): boolean {
+  private matches(s: EffectiveStatement, norm: NormalizedAction): boolean {
     const verbOk = s.verb === "*" || s.verb === norm.verb;
     const typeOk =
       s.resourceType === "*" || s.resourceType === norm.resourceType;

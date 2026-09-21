@@ -26,6 +26,13 @@ export interface PortalResultsListPayload {
 
 export interface PortalResultPayload {
   portalResult: unknown;
+  /** #621: per-object capabilities the caller holds on this pin — gate the
+   *  Share / Rename / Delete+Unpin entry points so a read-only grantee isn't
+   *  shown an action that 403s. Present on the GET-by-id response; absent on
+   *  mutation responses. */
+  canShare?: boolean;
+  canWrite?: boolean;
+  canDelete?: boolean;
 }
 
 export interface RenamePortalResultBody {

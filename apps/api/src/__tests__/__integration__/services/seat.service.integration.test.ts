@@ -278,6 +278,21 @@ describe("SeatService Integration Tests", () => {
     ).resolves.toBeDefined();
   });
 
+  it("a member caller CAN read the roster + seat usage (#621 Finding B)", async () => {
+    await setSeatCap(null);
+    const member: PermissionContext = {
+      userId: "u-member",
+      organizationId: orgId,
+      roles: ["member"],
+    };
+    // Reading the members list requires only org membership — a member can see
+    // who else is in the org (invite/remove/role changes stay gated above).
+    const members = await SeatService.listMembers(member);
+    expect(members.map((m) => m.userId)).toContain(ownerId);
+    const usage = await SeatService.seatUsage(member);
+    expect(usage.used).toBeGreaterThanOrEqual(1);
+  });
+
   // ── listing ─────────────────────────────────────────────────────────
 
   it("listMembers returns the owner; listInvitations returns pending", async () => {
@@ -416,6 +431,36 @@ describe("SeatService Integration Tests", () => {
     expect(live).toBeUndefined(); // soft-deleted → excluded from live reads
     await new Promise((r) => setTimeout(r, 60));
     expect(await auditRows("member.remove")).toHaveLength(1);
+  });
+
+  it("removeMember revokes the member's object grants (#621)", async () => {
+    const memberId = await addMember("member");
+    await DbService.repository.permissionGrants.create({
+      id: `pg-${Date.now()}`,
+      created: Date.now(),
+      createdBy: "system",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: orgId,
+      principalType: "user",
+      principalId: memberId,
+      effect: "allow",
+      verb: "read",
+      resourceType: "station",
+      resourceId: "st-shared",
+      condition: null,
+    } as never);
+
+    await SeatService.removeMember(owner, memberId, AUDIT);
+
+    expect(
+      await DbService.repository.permissionGrants.findByPrincipals(
+        [{ principalType: "user", principalId: memberId }],
+        orgId
+      )
+    ).toHaveLength(0);
   });
 
   it("refuses to remove the last owner (LAST_OWNER_REMOVAL)", async () => {

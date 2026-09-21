@@ -11,6 +11,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalResultPinService } from "../services/portal-result-pin.service.js";
@@ -121,7 +122,14 @@ portalResultsRouter.post(
         );
       }
 
-      const { organizationId, userId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
+      // #621: pinning creates a pin owned by the caller (createdBy = caller);
+      // every member may create their own.
+      await PermissionService.check(ctx, "resource.write", {
+        type: "pin",
+        createdBy: userId,
+      });
       const { portalId, messageId, blockIndex, name } = parsed.data;
 
       // Load portal to get stationId + verify org
@@ -309,7 +317,8 @@ portalResultsRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application!.metadata.organizationId;
+      const ctx = req.application!.metadata;
+      const organizationId = ctx.organizationId;
 
       // Per-org rate limit — the same window as the message-block
       // widget-refresh (one budget across both addressers). Fail-open on a
@@ -333,6 +342,27 @@ portalResultsRouter.post(
           "viz-refresh rate limiter unavailable; failing open"
         );
       }
+
+      // #621: a viz refresh mutates the pin's stored result — a write. Guard it
+      // (a read-only grantee can't refresh a shared pin); 404 when unreadable.
+      // After the cheap rate-limit gate so a nonexistent id is still bounded.
+      const target = await DbService.repository.portalResults.findById(
+        req.params.id
+      );
+      if (!target || target.organizationId !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Portal result not found"
+          )
+        );
+      }
+      await PermissionService.check(ctx, "resource.write", {
+        type: "pin",
+        id: target.id,
+        createdBy: target.createdBy,
+      });
 
       const payload = await PortalVizRefreshService.refreshPinnedResult({
         portalResultId: req.params.id,
@@ -414,7 +444,8 @@ portalResultsRouter.get(
     try {
       const { limit, offset, sortOrder, search, stationId, portalId, include } =
         PortalResultListRequestQuerySchema.parse(req.query);
-      const { organizationId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId } = ctx;
 
       const filters: SQL[] = [eq(portalResults.organizationId, organizationId)];
       if (stationId) {
@@ -426,6 +457,15 @@ portalResultsRouter.get(
       if (search) {
         filters.push(ilike(portalResults.name, `%${search}%`));
       }
+      // #621: object-level visibility — own + system + shared pins; undefined =
+      // see-all (owner/admin).
+      const visibility = (
+        await PermissionService.loadSet(ctx)
+      ).visibilityPredicate("pin", {
+        createdByCol: portalResults.createdBy,
+        idCol: portalResults.id,
+      });
+      if (visibility) filters.push(visibility);
       const where = and(...filters);
 
       const include_ = include
@@ -501,7 +541,8 @@ portalResultsRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId } = ctx;
 
       const portalResult =
         await DbService.repository.portalResults.findById(id);
@@ -515,7 +556,29 @@ portalResultsRouter.get(
         );
       }
 
-      return HttpService.success(res, { portalResult });
+      // #621: object-level read visibility (own + system + shared). A pin the
+      // caller can't see 404s, mirroring the list.
+      const set = await PermissionService.loadSet(ctx);
+      const object = { type: "pin", id, createdBy: portalResult.createdBy };
+      if (!set.can("resource.read", object)) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Portal result not found"
+          )
+        );
+      }
+      const canShare = set.can("resource.share", object);
+      const canWrite = set.can("resource.write", object);
+      const canDelete = set.can("resource.delete", object);
+
+      return HttpService.success(res, {
+        portalResult,
+        canShare,
+        canWrite,
+        canDelete,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown" },
@@ -604,7 +667,8 @@ portalResultsRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId, userId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
 
       const { name } = req.body as { name?: string };
       if (!name || typeof name !== "string" || name.trim() === "") {
@@ -623,6 +687,12 @@ portalResultsRouter.patch(
           )
         );
       }
+      // #621: renaming a pin is a write — own, owner/admin, or a read-write grant.
+      await PermissionService.check(ctx, "resource.write", {
+        type: "pin",
+        id,
+        createdBy: existing.createdBy,
+      });
 
       const portalResult = await DbService.repository.portalResults.update(id, {
         name,
@@ -705,7 +775,8 @@ portalResultsRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId, userId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
 
       const existing = await DbService.repository.portalResults.findById(id);
       if (!existing || existing.organizationId !== organizationId) {
@@ -717,6 +788,13 @@ portalResultsRouter.delete(
           )
         );
       }
+      // #621: deleting a pin requires resource.delete — creator or owner/admin;
+      // a read-write grantee cannot delete a shared pin.
+      await PermissionService.check(ctx, "resource.delete", {
+        type: "pin",
+        id,
+        createdBy: existing.createdBy,
+      });
 
       await DbService.repository.portalResults.softDelete(id, userId);
       logger.info({ id }, "Portal result soft-deleted");

@@ -56,6 +56,12 @@ export enum ApiCode {
   // Authorization / RBAC (#576)
   /** The caller's role lacks the permission required for this action. 403. */
   INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE",
+  /** A share/grant would give access the granter doesn't hold (boundary, #621). 403. */
+  RBAC_GRANT_EXCEEDS_BOUNDARY = "RBAC_GRANT_EXCEEDS_BOUNDARY",
+  /** The share grantee is not an active member of the organization (#621). 400. */
+  RBAC_GRANTEE_NOT_MEMBER = "RBAC_GRANTEE_NOT_MEMBER",
+  /** No grant with the given id in the caller's org (#621). 404. */
+  GRANT_NOT_FOUND = "GRANT_NOT_FOUND",
 
   // Seats / invitations (#584)
   /** Invite target is already a live member of the org. 409. */

@@ -23,6 +23,7 @@ import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ShareIcon from "@mui/icons-material/IosShare";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -31,6 +32,7 @@ import { PortalCardUI } from "../components/PortalCard.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
+import { ShareDialog } from "../components/ShareDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import {
@@ -40,6 +42,7 @@ import {
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useAuthFetch, toServerError } from "../utils/api.util";
+import { useToast } from "../utils/toast.context";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -76,6 +79,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { fetchWithAuth } = useAuthFetch();
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
@@ -88,6 +92,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const isDefaultStation = defaultStationId === stationId;
 
   const [editOpen, setEditOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [deleteStationOpen, setDeleteStationOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -116,8 +121,16 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
         queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
         navigate({ to: "/stations" });
       },
+      // The confirm dialog has no FormAlert, so a failure (e.g. a 403 or a
+      // job lock) must surface as a toast rather than fail silently (#621).
+      onError: (error) => {
+        setDeleteStationOpen(false);
+        toast.error(
+          toServerError(error)?.message ?? "Could not delete this station."
+        );
+      },
     });
-  }, [deleteStationMutation, queryClient, navigate]);
+  }, [deleteStationMutation, queryClient, navigate, toast]);
 
   const handleLaunchPortal = useCallback(() => {
     createPortalMutation.mutate(
@@ -183,17 +196,38 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         </Button>
                       }
                       secondaryActions={[
-                        {
-                          label: "Edit",
-                          icon: <EditIcon />,
-                          onClick: () => setEditOpen(true),
-                        },
-                        {
-                          label: "Delete",
-                          icon: <DeleteIcon />,
-                          onClick: () => setDeleteStationOpen(true),
-                          color: "error",
-                        },
+                        // #621: each action is gated on its server-computed
+                        // capability (owner/admin/creator, or a grant) — never a
+                        // client role check. A read-only grantee sees none of
+                        // Share/Edit/Delete rather than an action that 403s.
+                        ...(item.canShare
+                          ? [
+                              {
+                                label: "Share",
+                                icon: <ShareIcon />,
+                                onClick: () => setShareOpen(true),
+                              },
+                            ]
+                          : []),
+                        ...(item.canWrite
+                          ? [
+                              {
+                                label: "Edit",
+                                icon: <EditIcon />,
+                                onClick: () => setEditOpen(true),
+                              },
+                            ]
+                          : []),
+                        ...(item.canDelete
+                          ? [
+                              {
+                                label: "Delete",
+                                icon: <DeleteIcon />,
+                                onClick: () => setDeleteStationOpen(true),
+                                color: "error" as const,
+                              },
+                            ]
+                          : []),
                       ]}
                     >
                       {station.description && (
@@ -355,6 +389,13 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                     station={station}
                     onConfirm={handleDeleteStation}
                     isPending={deleteStationMutation.isPending}
+                  />
+                  <ShareDialog
+                    open={shareOpen}
+                    onClose={() => setShareOpen(false)}
+                    resourceType="station"
+                    resourceId={stationId}
+                    resourceLabel={station.name}
                   />
                 </>
               );

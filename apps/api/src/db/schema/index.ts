@@ -17,6 +17,7 @@ export { entityTagAssignments } from "./entity-tag-assignments.table.js";
 export { permissionPolicies } from "./permission-policies.table.js";
 export { permissionStatements } from "./permission-statements.table.js";
 export { policyAttachments } from "./policy-attachments.table.js";
+export { permissionGrants } from "./permission-grants.table.js";
 export { roles } from "./roles.table.js";
 export { userRole } from "./user-role.table.js";
 export { entityGroups } from "./entity-groups.table.js";

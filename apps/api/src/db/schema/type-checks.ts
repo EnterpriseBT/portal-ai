@@ -28,6 +28,7 @@ import type {
   Policy,
   PermissionStatement,
   PolicyAttachment,
+  PermissionGrant,
   Role,
   UserRole,
   EntityGroup,
@@ -62,6 +63,7 @@ import type {
   PolicySelect,
   PermissionStatementSelect,
   PolicyAttachmentSelect,
+  PermissionGrantSelect,
   RoleSelect,
   UserRoleSelect,
   EntityGroupSelect,
@@ -96,6 +98,7 @@ import type { entityTagAssignments } from "./entity-tag-assignments.table.js";
 import type { permissionPolicies } from "./permission-policies.table.js";
 import type { permissionStatements } from "./permission-statements.table.js";
 import type { policyAttachments } from "./policy-attachments.table.js";
+import type { permissionGrants } from "./permission-grants.table.js";
 import type { roles } from "./roles.table.js";
 import type { userRole } from "./user-role.table.js";
 import type { entityGroups } from "./entity-groups.table.js";
@@ -815,6 +818,21 @@ type _AttachInferredToModel = IsAssignable<
   PolicyAttachment
 >;
 const _attachInferredToModel: _AttachInferredToModel = true;
+
+// PermissionGrant (#621)
+type _GrantDrizzleToModel = IsAssignable<
+  PermissionGrantSelect,
+  PermissionGrant
+>;
+const _grantDrizzleToModel: _GrantDrizzleToModel = true;
+type _GrantModelToDrizzle = IsAssignable<
+  PermissionGrant,
+  PermissionGrantSelect
+>;
+const _grantModelToDrizzle: _GrantModelToDrizzle = true;
+type _GrantInferredRow = InferSelectModel<typeof permissionGrants>;
+type _GrantInferredToModel = IsAssignable<_GrantInferredRow, PermissionGrant>;
+const _grantInferredToModel: _GrantInferredToModel = true;
 
 // Role
 type _RoleDrizzleToModel = IsAssignable<RoleSelect, Role>;
