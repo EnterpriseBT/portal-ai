@@ -77,8 +77,9 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
       "MemberAccess",
     ]);
     expect(attachments).toHaveLength(3);
-    // FullAccess(1) + AdminAccess(3) + MemberAccess(8 data types × 3) = 28
-    expect(statements).toHaveLength(28);
+    // FullAccess(1) + AdminAccess(3)
+    // + MemberAccess(8 data types × 3 + station/pin × {delete,share} = 28) = 32 (#621)
+    expect(statements).toHaveLength(32);
     expect(policies.every((p) => p.kind === "system")).toBe(true);
 
     // Second call: no duplication (idempotent via the owner-role early return).
@@ -92,7 +93,7 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
       .from(schema.permissionStatements)
       .where(eq(schema.permissionStatements.organizationId, orgId));
     expect(rolesAfter).toHaveLength(3);
-    expect(stmtsAfter).toHaveLength(28);
+    expect(stmtsAfter).toHaveLength(32);
   });
 
   it("owner resolves to FullAccess via the seeded role attachment", async () => {
