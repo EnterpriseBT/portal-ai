@@ -1,741 +1,748 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1771288465669,
-			"tag": "0000_create_user_profiles",
-			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1771292101853,
-			"tag": "0001_rename_user_profiles_to_users",
-			"breakpoints": true
-		},
-		{
-			"idx": 2,
-			"version": "7",
-			"when": 1771372800000,
-			"tag": "0002_add_auth0_id",
-			"breakpoints": true
-		},
-		{
-			"idx": 3,
-			"version": "7",
-			"when": 1771363654410,
-			"tag": "0003_create_organizations",
-			"breakpoints": true
-		},
-		{
-			"idx": 4,
-			"version": "7",
-			"when": 1771364165998,
-			"tag": "0004_create_organization_users",
-			"breakpoints": true
-		},
-		{
-			"idx": 5,
-			"version": "7",
-			"when": 1771389186896,
-			"tag": "0005_add_owner_user_id_to_organizations",
-			"breakpoints": true
-		},
-		{
-			"idx": 6,
-			"version": "7",
-			"when": 1771444811820,
-			"tag": "0006_add_user_last_login",
-			"breakpoints": true
-		},
-		{
-			"idx": 7,
-			"version": "7",
-			"when": 1771870217357,
-			"tag": "0007_add_user-organization_last_login",
-			"breakpoints": true
-		},
-		{
-			"idx": 8,
-			"version": "7",
-			"when": 1741564800000,
-			"tag": "0008_create_connector_definitions",
-			"breakpoints": true
-		},
-		{
-			"idx": 9,
-			"version": "7",
-			"when": 1741651200000,
-			"tag": "0009_add_unique_slug_to_connector_definitions",
-			"breakpoints": true
-		},
-		{
-			"idx": 10,
-			"version": "7",
-			"when": 1741737600000,
-			"tag": "0010_create_connector_instances",
-			"breakpoints": true
-		},
-		{
-			"idx": 11,
-			"version": "7",
-			"when": 1741824000000,
-			"tag": "0011_encrypt_connector_instance_credentials",
-			"breakpoints": true
-		},
-		{
-			"idx": 12,
-			"version": "7",
-			"when": 1773359946246,
-			"tag": "0012_create_jobs",
-			"breakpoints": true
-		},
-		{
-			"idx": 13,
-			"version": "7",
-			"when": 1773441194397,
-			"tag": "0013_dashing_brother_voodoo",
-			"breakpoints": true
-		},
-		{
-			"idx": 14,
-			"version": "7",
-			"when": 1773690602969,
-			"tag": "0014_create_column_definitions_tables",
-			"breakpoints": true
-		},
-		{
-			"idx": 15,
-			"version": "7",
-			"when": 1773690665120,
-			"tag": "0015_add_column_definitions_self_reference_fk",
-			"breakpoints": true
-		},
-		{
-			"idx": 16,
-			"version": "7",
-			"when": 1773692275198,
-			"tag": "0016_add_currency",
-			"breakpoints": true
-		},
-		{
-			"idx": 17,
-			"version": "7",
-			"when": 1773695427557,
-			"tag": "0017_add-organization-id-to-connector-entities",
-			"breakpoints": true
-		},
-		{
-			"idx": 18,
-			"version": "7",
-			"when": 1773705531380,
-			"tag": "0018_add_awaiting_confirmation_job_status",
-			"breakpoints": true
-		},
-		{
-			"idx": 19,
-			"version": "7",
-			"when": 1773932716454,
-			"tag": "0019_create_entity_records",
-			"breakpoints": true
-		},
-		{
-			"idx": 20,
-			"version": "7",
-			"when": 1774037364246,
-			"tag": "0020_move_ref_fields_to_field_mappings",
-			"breakpoints": true
-		},
-		{
-			"idx": 21,
-			"version": "7",
-			"when": 1774212939048,
-			"tag": "0021_add_reference_array_type_and_bidirectional_field_mapping",
-			"breakpoints": true
-		},
-		{
-			"idx": 22,
-			"version": "7",
-			"when": 1774281136214,
-			"tag": "0022_add_entity_tags_and_assignments",
-			"breakpoints": true
-		},
-		{
-			"idx": 23,
-			"version": "7",
-			"when": 1774367702124,
-			"tag": "0023_create_entity_groups_and_members",
-			"breakpoints": true
-		},
-		{
-			"idx": 24,
-			"version": "7",
-			"when": 1774455979622,
-			"tag": "0024_add_stations_portals_tools",
-			"breakpoints": true
-		},
-		{
-			"idx": 25,
-			"version": "7",
-			"when": 1774542379622,
-			"tag": "0025_add_station_tool_packs",
-			"breakpoints": true
-		},
-		{
-			"idx": 26,
-			"version": "7",
-			"when": 1774571151909,
-			"tag": "0026_add_data_table_portal_result_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 27,
-			"version": "7",
-			"when": 1774645314894,
-			"tag": "0027_add-vega-portal-result-type",
-			"breakpoints": true
-		},
-		{
-			"idx": 28,
-			"version": "7",
-			"when": 1774646489134,
-			"tag": "0028_add-d3-tree-portal-result-type",
-			"breakpoints": true
-		},
-		{
-			"idx": 29,
-			"version": "7",
-			"when": 1774888074724,
-			"tag": "0029_add-message-id-and-block-index-to-portal-results",
-			"breakpoints": true
-		},
-		{
-			"idx": 30,
-			"version": "7",
-			"when": 1774986800569,
-			"tag": "0030_add_enabled_capability_flags",
-			"breakpoints": true
-		},
-		{
-			"idx": 31,
-			"version": "7",
-			"when": 1775101669310,
-			"tag": "0031_soft-delete-safe-unique-constraints",
-			"breakpoints": true
-		},
-		{
-			"idx": 32,
-			"version": "7",
-			"when": 1775230129776,
-			"tag": "0032_add_origin_to_entity_records",
-			"breakpoints": true
-		},
-		{
-			"idx": 33,
-			"version": "7",
-			"when": 1775400000000,
-			"tag": "0033_column_definition_refactor",
-			"breakpoints": true
-		},
-		{
-			"idx": 34,
-			"version": "7",
-			"when": 1775486400000,
-			"tag": "0034_add_revalidation_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 35,
-			"version": "7",
-			"when": 1775572800000,
-			"tag": "0035_add-ref-normalized-key",
-			"breakpoints": true
-		},
-		{
-			"idx": 36,
-			"version": "7",
-			"when": 1775659200000,
-			"tag": "0036_add_system_flag_to_column_definitions",
-			"breakpoints": true
-		},
-		{
-			"idx": 37,
-			"version": "7",
-			"when": 1775745600000,
-			"tag": "0037_add-portal-last-opened",
-			"breakpoints": true
-		},
-		{
-			"idx": 38,
-			"version": "7",
-			"when": 1776211200000,
-			"tag": "0038_rename_csv_to_file_upload_connector",
-			"breakpoints": true
-		},
-		{
-			"idx": 39,
-			"version": "7",
-			"when": 1776297600000,
-			"tag": "0039_rename_query_to_read_capability",
-			"breakpoints": true
-		},
-		{
-			"idx": 40,
-			"version": "7",
-			"when": 1776384000000,
-			"tag": "0040_add_connector_instance_layout_plans",
-			"breakpoints": true
-		},
-		{
-			"idx": 41,
-			"version": "7",
-			"when": 1776470400000,
-			"tag": "0041_remove_file_upload_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 42,
-			"version": "7",
-			"when": 1776556800000,
-			"tag": "0042_add_file_uploads",
-			"breakpoints": true
-		},
-		{
-			"idx": 43,
-			"version": "7",
-			"when": 1776643200000,
-			"tag": "0043_connector_entities_org_unique_key",
-			"breakpoints": true
-		},
-		{
-			"idx": 44,
-			"version": "7",
-			"when": 1776729600000,
-			"tag": "0044_add_gsheets_sync_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 45,
-			"version": "7",
-			"when": 1776816000000,
-			"tag": "0045_add_connector_sync_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 46,
-			"version": "7",
-			"when": 1778976000000,
-			"tag": "0046_drop_legacy_org_tools_and_station_tools",
-			"breakpoints": true
-		},
-		{
-			"idx": 47,
-			"version": "7",
-			"when": 1778979600000,
-			"tag": "0047_add_station_toolpacks",
-			"breakpoints": true
-		},
-		{
-			"idx": 48,
-			"version": "7",
-			"when": 1778983200000,
-			"tag": "0048_drop_stations_tool_packs",
-			"breakpoints": true
-		},
-		{
-			"idx": 49,
-			"version": "7",
-			"when": 1779062400000,
-			"tag": "0049_add_organization_toolpacks",
-			"breakpoints": true
-		},
-		{
-			"idx": 50,
-			"version": "7",
-			"when": 1779148800000,
-			"tag": "0050_encrypt_toolpack_auth_headers",
-			"breakpoints": true
-		},
-		{
-			"idx": 51,
-			"version": "7",
-			"when": 1779235200000,
-			"tag": "0051_add_toolpack_signing_secret",
-			"breakpoints": true
-		},
-		{
-			"idx": 52,
-			"version": "7",
-			"when": 1779321600000,
-			"tag": "0052_add_file_upload_parse_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 53,
-			"version": "7",
-			"when": 1779408000000,
-			"tag": "0053_add_layout_plan_commit_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 54,
-			"version": "7",
-			"when": 1779494400000,
-			"tag": "0054_wide_table_storage_phase_1",
-			"breakpoints": true
-		},
-		{
-			"idx": 55,
-			"version": "7",
-			"when": 1779580800000,
-			"tag": "0055_wide_table_storage_phase_2_source_id",
-			"breakpoints": true
-		},
-		{
-			"idx": 56,
-			"version": "7",
-			"when": 1779667200000,
-			"tag": "0056_entity_records_drop_normalized_data",
-			"breakpoints": true
-		},
-		{
-			"idx": 57,
-			"version": "7",
-			"when": 1779753600000,
-			"tag": "0057_api_connector_phase_1",
-			"breakpoints": true
-		},
-		{
-			"idx": 58,
-			"version": "7",
-			"when": 1779840000000,
-			"tag": "0058_api_connector_phase_3",
-			"breakpoints": true
-		},
-		{
-			"idx": 59,
-			"version": "7",
-			"when": 1779813834308,
-			"tag": "0059_add_transform_to_api_endpoint_configs",
-			"breakpoints": true
-		},
-		{
-			"idx": 60,
-			"version": "7",
-			"when": 1779826800000,
-			"tag": "0060_pagination_link_body",
-			"breakpoints": true
-		},
-		{
-			"idx": 61,
-			"version": "7",
-			"when": 1780436994716,
-			"tag": "0061_add_bulk_transform_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 62,
-			"version": "7",
-			"when": 1781465098396,
-			"tag": "0062_add-bulk-aggregate-job-type",
-			"breakpoints": true
-		},
-		{
-			"idx": 63,
-			"version": "7",
-			"when": 1782145213004,
-			"tag": "0063_add-sql-query-job-type",
-			"breakpoints": true
-		},
-		{
-			"idx": 64,
-			"version": "7",
-			"when": 1782429464541,
-			"tag": "0064_remove_bulk_aggregate_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 65,
-			"version": "7",
-			"when": 1783375962877,
-			"tag": "0065_create_tiers",
-			"breakpoints": true
-		},
-		{
-			"idx": 66,
-			"version": "7",
-			"when": 1783379115458,
-			"tag": "0066_add_org_tier",
-			"breakpoints": true
-		},
-		{
-			"idx": 67,
-			"version": "7",
-			"when": 1783439172460,
-			"tag": "0067_create_usage",
-			"breakpoints": true
-		},
-		{
-			"idx": 68,
-			"version": "7",
-			"when": 1784065390930,
-			"tag": "0068_add_stripe_billing_columns_and_events",
-			"breakpoints": true
-		},
-		{
-			"idx": 69,
-			"version": "7",
-			"when": 1784151790116,
-			"tag": "0069_add_tier_toolpack_entitlements",
-			"breakpoints": true
-		},
-		{
-			"idx": 70,
-			"version": "7",
-			"when": 1784238642503,
-			"tag": "0070_create_tool_usage_ledger",
-			"breakpoints": true
-		},
-		{
-			"idx": 71,
-			"version": "7",
-			"when": 1784429712384,
-			"tag": "0071_stripe_events_outcome_foreign",
-			"breakpoints": true
-		},
-		{
-			"idx": 72,
-			"version": "7",
-			"when": 1784764989931,
-			"tag": "0072_add_tier_cta_description_visibility",
-			"breakpoints": true
-		},
-		{
-			"idx": 73,
-			"version": "7",
-			"when": 1784934400723,
-			"tag": "0073_remove_vega_portal_result_types",
-			"breakpoints": true
-		},
-		{
-			"idx": 74,
-			"version": "7",
-			"when": 1785546579537,
-			"tag": "0074_widen-portal-result-type-live-pins",
-			"breakpoints": true
-		},
-		{
-			"idx": 75,
-			"version": "7",
-			"when": 1785774787148,
-			"tag": "0075_tier-public-display-order",
-			"breakpoints": true
-		},
-		{
-			"idx": 76,
-			"version": "7",
-			"when": 1785955406995,
-			"tag": "0076_enable-postgis",
-			"breakpoints": true
-		},
-		{
-			"idx": 77,
-			"version": "7",
-			"when": 1785957326321,
-			"tag": "0077_add-geometry-column-type",
-			"breakpoints": true
-		},
-		{
-			"idx": 78,
-			"version": "7",
-			"when": 1785965517906,
-			"tag": "0078_geometry-audit-helper",
-			"breakpoints": true
-		},
-		{
-			"idx": 79,
-			"version": "7",
-			"when": 1786475597563,
-			"tag": "0079_add-bulk-geocode-job-type",
-			"breakpoints": true
-		},
-		{
-			"idx": 80,
-			"version": "7",
-			"when": 1786475597564,
-			"tag": "0080_backfill-geospatial-column-definitions",
-			"breakpoints": true
-		},
-		{
-			"idx": 81,
-			"version": "7",
-			"when": 1787342955728,
-			"tag": "0081_entity-records-created-sort-index",
-			"breakpoints": true
-		},
-		{
-			"idx": 82,
-			"version": "7",
-			"when": 1787681876825,
-			"tag": "0082_entity-records-deleted-purge-index",
-			"breakpoints": true
-		},
-		{
-			"idx": 83,
-			"version": "7",
-			"when": 1787844827280,
-			"tag": "0083_add-jobs-lost-executions",
-			"breakpoints": true
-		},
-		{
-			"idx": 84,
-			"version": "7",
-			"when": 1787863042647,
-			"tag": "0084_wide-table-deleted-column",
-			"breakpoints": true
-		},
-		{
-			"idx": 85,
-			"version": "7",
-			"when": 1787946655706,
-			"tag": "0085_add_map_dissolve_geometries",
-			"breakpoints": true
-		},
-		{
-			"idx": 86,
-			"version": "7",
-			"when": 1787947372961,
-			"tag": "0086_add_dissolve_precompute_job_type",
-			"breakpoints": true
-		},
-		{
-			"idx": 87,
-			"version": "7",
-			"when": 1787950272646,
-			"tag": "0087_dissolve_pieces_index",
-			"breakpoints": true
-		},
-		{
-			"idx": 88,
-			"version": "7",
-			"when": 1788215908214,
-			"tag": "0088_add-entity-record-clear-job-type",
-			"breakpoints": true
-		},
-		{
-			"idx": 89,
-			"version": "7",
-			"when": 1788309585929,
-			"tag": "0089_add-progress-detail-and-endpoint-total-count",
-			"breakpoints": true
-		},
-		{
-			"idx": 90,
-			"version": "7",
-			"when": 1788469502620,
-			"tag": "0090_add-agent-turn-ceilings",
-			"breakpoints": true
-		},
-		{
-			"idx": 91,
-			"version": "7",
-			"when": 1788469503620,
-			"tag": "0091_set-standard-tier-public",
-			"breakpoints": true
-		},
-		{
-			"idx": 92,
-			"version": "7",
-			"when": 1788992387336,
-			"tag": "0092_dissolve_merged_representation",
-			"breakpoints": true
-		},
-		{
-			"idx": 93,
-			"version": "7",
-			"when": 1789002583631,
-			"tag": "0093_generalize_dissolve_ownership",
-			"breakpoints": true
-		},
-		{
-			"idx": 94,
-			"version": "7",
-			"when": 1789674043979,
-			"tag": "0094_rename_stripe_events_to_commercial_events",
-			"breakpoints": true
-		},
-		{
-			"idx": 95,
-			"version": "7",
-			"when": 1789675181734,
-			"tag": "0095_add_org_marketplace_entitlement_columns",
-			"breakpoints": true
-		},
-		{
-			"idx": 96,
-			"version": "7",
-			"when": 1789675181735,
-			"tag": "0096_add-audit-log-table",
-			"breakpoints": true
-		},
-		{
-			"idx": 97,
-			"version": "7",
-			"when": 1789675181736,
-			"tag": "0097_add_organization_user_role",
-			"breakpoints": true
-		},
-		{
-			"idx": 98,
-			"version": "7",
-			"when": 1789675181737,
-			"tag": "0098_add_users_auth0_id_unique_index",
-			"breakpoints": true
-		},
-		{
-			"idx": 99,
-			"version": "7",
-			"when": 1789675181738,
-			"tag": "0099_add_org_seats",
-			"breakpoints": true
-		},
-		{
-			"idx": 100,
-			"version": "7",
-			"when": 1789675181739,
-			"tag": "0100_add-user-last-login-session",
-			"breakpoints": true
-		},
-		{
-			"idx": 101,
-			"version": "7",
-			"when": 1789920598306,
-			"tag": "0101_add_rbac_engine",
-			"breakpoints": true
-		},
-		{
-			"idx": 102,
-			"version": "7",
-			"when": 1789920598307,
-			"tag": "0102_backfill-rbac-system-policies",
-			"breakpoints": true
-		},
-		{
-			"idx": 103,
-			"version": "7",
-			"when": 1789935616446,
-			"tag": "0103_add_user_role",
-			"breakpoints": true
-		},
-		{
-			"idx": 104,
-			"version": "7",
-			"when": 1789935616447,
-			"tag": "0104_backfill-user-roles",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1771288465669,
+      "tag": "0000_create_user_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771292101853,
+      "tag": "0001_rename_user_profiles_to_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771372800000,
+      "tag": "0002_add_auth0_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1771363654410,
+      "tag": "0003_create_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771364165998,
+      "tag": "0004_create_organization_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771389186896,
+      "tag": "0005_add_owner_user_id_to_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771444811820,
+      "tag": "0006_add_user_last_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771870217357,
+      "tag": "0007_add_user-organization_last_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1741564800000,
+      "tag": "0008_create_connector_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1741651200000,
+      "tag": "0009_add_unique_slug_to_connector_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1741737600000,
+      "tag": "0010_create_connector_instances",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1741824000000,
+      "tag": "0011_encrypt_connector_instance_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1773359946246,
+      "tag": "0012_create_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1773441194397,
+      "tag": "0013_dashing_brother_voodoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1773690602969,
+      "tag": "0014_create_column_definitions_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1773690665120,
+      "tag": "0015_add_column_definitions_self_reference_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1773692275198,
+      "tag": "0016_add_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1773695427557,
+      "tag": "0017_add-organization-id-to-connector-entities",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1773705531380,
+      "tag": "0018_add_awaiting_confirmation_job_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1773932716454,
+      "tag": "0019_create_entity_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1774037364246,
+      "tag": "0020_move_ref_fields_to_field_mappings",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1774212939048,
+      "tag": "0021_add_reference_array_type_and_bidirectional_field_mapping",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1774281136214,
+      "tag": "0022_add_entity_tags_and_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1774367702124,
+      "tag": "0023_create_entity_groups_and_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1774455979622,
+      "tag": "0024_add_stations_portals_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1774542379622,
+      "tag": "0025_add_station_tool_packs",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1774571151909,
+      "tag": "0026_add_data_table_portal_result_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1774645314894,
+      "tag": "0027_add-vega-portal-result-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1774646489134,
+      "tag": "0028_add-d3-tree-portal-result-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1774888074724,
+      "tag": "0029_add-message-id-and-block-index-to-portal-results",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1774986800569,
+      "tag": "0030_add_enabled_capability_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1775101669310,
+      "tag": "0031_soft-delete-safe-unique-constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1775230129776,
+      "tag": "0032_add_origin_to_entity_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1775400000000,
+      "tag": "0033_column_definition_refactor",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1775486400000,
+      "tag": "0034_add_revalidation_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1775572800000,
+      "tag": "0035_add-ref-normalized-key",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1775659200000,
+      "tag": "0036_add_system_flag_to_column_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1775745600000,
+      "tag": "0037_add-portal-last-opened",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1776211200000,
+      "tag": "0038_rename_csv_to_file_upload_connector",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1776297600000,
+      "tag": "0039_rename_query_to_read_capability",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1776384000000,
+      "tag": "0040_add_connector_instance_layout_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1776470400000,
+      "tag": "0041_remove_file_upload_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1776556800000,
+      "tag": "0042_add_file_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1776643200000,
+      "tag": "0043_connector_entities_org_unique_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1776729600000,
+      "tag": "0044_add_gsheets_sync_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1776816000000,
+      "tag": "0045_add_connector_sync_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1778976000000,
+      "tag": "0046_drop_legacy_org_tools_and_station_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1778979600000,
+      "tag": "0047_add_station_toolpacks",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1778983200000,
+      "tag": "0048_drop_stations_tool_packs",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1779062400000,
+      "tag": "0049_add_organization_toolpacks",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1779148800000,
+      "tag": "0050_encrypt_toolpack_auth_headers",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1779235200000,
+      "tag": "0051_add_toolpack_signing_secret",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1779321600000,
+      "tag": "0052_add_file_upload_parse_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1779408000000,
+      "tag": "0053_add_layout_plan_commit_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1779494400000,
+      "tag": "0054_wide_table_storage_phase_1",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1779580800000,
+      "tag": "0055_wide_table_storage_phase_2_source_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1779667200000,
+      "tag": "0056_entity_records_drop_normalized_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1779753600000,
+      "tag": "0057_api_connector_phase_1",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1779840000000,
+      "tag": "0058_api_connector_phase_3",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1779813834308,
+      "tag": "0059_add_transform_to_api_endpoint_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1779826800000,
+      "tag": "0060_pagination_link_body",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1780436994716,
+      "tag": "0061_add_bulk_transform_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1781465098396,
+      "tag": "0062_add-bulk-aggregate-job-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1782145213004,
+      "tag": "0063_add-sql-query-job-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1782429464541,
+      "tag": "0064_remove_bulk_aggregate_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1783375962877,
+      "tag": "0065_create_tiers",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1783379115458,
+      "tag": "0066_add_org_tier",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1783439172460,
+      "tag": "0067_create_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1784065390930,
+      "tag": "0068_add_stripe_billing_columns_and_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1784151790116,
+      "tag": "0069_add_tier_toolpack_entitlements",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1784238642503,
+      "tag": "0070_create_tool_usage_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1784429712384,
+      "tag": "0071_stripe_events_outcome_foreign",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1784764989931,
+      "tag": "0072_add_tier_cta_description_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1784934400723,
+      "tag": "0073_remove_vega_portal_result_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1785546579537,
+      "tag": "0074_widen-portal-result-type-live-pins",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1785774787148,
+      "tag": "0075_tier-public-display-order",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1785955406995,
+      "tag": "0076_enable-postgis",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1785957326321,
+      "tag": "0077_add-geometry-column-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1785965517906,
+      "tag": "0078_geometry-audit-helper",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1786475597563,
+      "tag": "0079_add-bulk-geocode-job-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1786475597564,
+      "tag": "0080_backfill-geospatial-column-definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1787342955728,
+      "tag": "0081_entity-records-created-sort-index",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1787681876825,
+      "tag": "0082_entity-records-deleted-purge-index",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1787844827280,
+      "tag": "0083_add-jobs-lost-executions",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1787863042647,
+      "tag": "0084_wide-table-deleted-column",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1787946655706,
+      "tag": "0085_add_map_dissolve_geometries",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1787947372961,
+      "tag": "0086_add_dissolve_precompute_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1787950272646,
+      "tag": "0087_dissolve_pieces_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1788215908214,
+      "tag": "0088_add-entity-record-clear-job-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1788309585929,
+      "tag": "0089_add-progress-detail-and-endpoint-total-count",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1788469502620,
+      "tag": "0090_add-agent-turn-ceilings",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1788469503620,
+      "tag": "0091_set-standard-tier-public",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1788992387336,
+      "tag": "0092_dissolve_merged_representation",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1789002583631,
+      "tag": "0093_generalize_dissolve_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1789674043979,
+      "tag": "0094_rename_stripe_events_to_commercial_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789675181734,
+      "tag": "0095_add_org_marketplace_entitlement_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1789675181735,
+      "tag": "0096_add-audit-log-table",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1789675181736,
+      "tag": "0097_add_organization_user_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1789675181737,
+      "tag": "0098_add_users_auth0_id_unique_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1789675181738,
+      "tag": "0099_add_org_seats",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1789675181739,
+      "tag": "0100_add-user-last-login-session",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1789920598306,
+      "tag": "0101_add_rbac_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1789920598307,
+      "tag": "0102_backfill-rbac-system-policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1789935616446,
+      "tag": "0103_add_user_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1789935616447,
+      "tag": "0104_backfill-user-roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1790015799163,
+      "tag": "0105_add_permission_grants",
+      "breakpoints": true
+    }
+  ]
 }

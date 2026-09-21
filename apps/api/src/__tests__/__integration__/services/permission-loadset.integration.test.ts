@@ -6,6 +6,10 @@ import { and, eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import { stations } from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
+import {
+  PermissionGrantModelFactory,
+  type OrgRole,
+} from "@portalai/core/models";
 import { SeedService } from "../../../services/seed.service.js";
 import { PermissionService } from "../../../services/permission.service.js";
 import { SystemUtilities } from "../../../utils/system.util.js";
@@ -222,5 +226,85 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
     expect(adminCaps["org.delete"]).toBe(false);
     expect(adminCaps["org.audit.read"]).toBe(true);
     expect(adminCaps["member.invite"]).toBe(true);
+  });
+
+  // ── #621 grant union ────────────────────────────────────────────────
+
+  const insertGrant = async (over: Record<string, unknown>) => {
+    const row = new PermissionGrantModelFactory()
+      .create(SystemUtilities.id.system)
+      .update({
+        organizationId: orgId,
+        principalType: "user",
+        principalId: memberId,
+        effect: "allow",
+        verb: "read",
+        resourceType: "station",
+        resourceId: "st-shared",
+        condition: null,
+        ...over,
+      })
+      .parse();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.permissionGrants)
+      .values(row as never);
+  };
+
+  it("a user-principal grant surfaces an object the member didn't create (#621)", async () => {
+    const ctx = {
+      userId: memberId,
+      organizationId: orgId,
+      roles: ["member"] as OrgRole[],
+    };
+    const other = {
+      type: "station",
+      id: "st-shared",
+      createdBy: "someone-else",
+    };
+    // Without a grant: no access to another user's station.
+    expect(
+      (await PermissionService.loadSet(ctx, db)).can("resource.read", other)
+    ).toBe(false);
+    await insertGrant({ verb: "read" });
+    const set = await PermissionService.loadSet(ctx, db);
+    expect(set.can("resource.read", other)).toBe(true);
+    expect(set.can("resource.write", other)).toBe(false); // read grant only
+  });
+
+  it("a role-principal grant reaches a member via their role (team share, #621)", async () => {
+    await insertGrant({
+      principalType: "role",
+      principalId: `sysrole:${orgId}:member`,
+      resourceId: "st-team",
+      verb: "read",
+    });
+    const set = await PermissionService.loadSet(
+      { userId: "any-member", organizationId: orgId, roles: ["member"] },
+      db
+    );
+    expect(
+      set.can("resource.read", {
+        type: "station",
+        id: "st-team",
+        createdBy: "x",
+      })
+    ).toBe(true);
+  });
+
+  it("a deny grant overrides an allow the member otherwise has (#621)", async () => {
+    const ctx = {
+      userId: memberId,
+      organizationId: orgId,
+      roles: ["member"] as OrgRole[],
+    };
+    const own = { type: "station", id: "st-own", createdBy: memberId };
+    // Member can write their own station (MemberAccess write created_by_caller).
+    expect(
+      (await PermissionService.loadSet(ctx, db)).can("resource.write", own)
+    ).toBe(true);
+    await insertGrant({ effect: "deny", verb: "write", resourceId: "st-own" });
+    expect(
+      (await PermissionService.loadSet(ctx, db)).can("resource.write", own)
+    ).toBe(false);
   });
 });

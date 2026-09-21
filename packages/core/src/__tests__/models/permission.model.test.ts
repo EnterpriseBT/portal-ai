@@ -8,6 +8,9 @@ import {
   RoleModelFactory,
   CALLER_CAPABILITY_ACTIONS,
   CapabilityMapSchema,
+  PermissionGrantSchema,
+  PermissionGrantModelFactory,
+  SHAREABLE_RESOURCE_TYPES,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -197,5 +200,62 @@ describe("highestRole (#620)", () => {
 
   it("defaults to member for an empty role set", () => {
     expect(highestRole([])).toBe("member");
+  });
+});
+
+// ── PermissionGrant (#621) ───────────────────────────────────────────
+
+describe("PermissionGrantSchema (#621)", () => {
+  const base = new PermissionGrantModelFactory()
+    .create("user-1")
+    .update({
+      organizationId: "org-1",
+      principalType: "user",
+      principalId: "u-2",
+      effect: "allow",
+      verb: "read",
+      resourceType: "station",
+      resourceId: "st-1",
+      condition: null,
+    })
+    .parse();
+
+  it("round-trips a principal-bearing grant", () => {
+    const r = PermissionGrantSchema.safeParse(base);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.principalType).toBe("user");
+      expect(r.data.verb).toBe("read");
+      expect(r.data.resourceId).toBe("st-1");
+    }
+  });
+
+  it("accepts a role principal (team share) + a deny effect", () => {
+    expect(
+      PermissionGrantSchema.safeParse({
+        ...base,
+        principalType: "role",
+        principalId: "sysrole:org-1:member",
+        effect: "deny",
+        verb: "write",
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects an unknown principalType", () => {
+    expect(
+      PermissionGrantSchema.safeParse({ ...base, principalType: "group" })
+        .success
+    ).toBe(false);
+  });
+
+  it("rejects an unknown verb", () => {
+    expect(
+      PermissionGrantSchema.safeParse({ ...base, verb: "frobnicate" }).success
+    ).toBe(false);
+  });
+
+  it("SHAREABLE_RESOURCE_TYPES is station + pin only", () => {
+    expect([...SHAREABLE_RESOURCE_TYPES]).toEqual(["station", "pin"]);
   });
 });

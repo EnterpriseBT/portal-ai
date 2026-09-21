@@ -71,6 +71,17 @@ export const DATA_RESOURCE_TYPES = [
 ] as const satisfies readonly PermissionResourceType[];
 
 /**
+ * The object types that carry ownership + object grants + **sharing** (#621, D8)
+ * — the ones with a `ShareDialog` and a member `delete`/`share` own-object seed.
+ * A subset of {@link DATA_RESOURCE_TYPES}; the rest are data-plane (governed by
+ * views + policies in #599), never user-shared.
+ */
+export const SHAREABLE_RESOURCE_TYPES = [
+  "station",
+  "pin",
+] as const satisfies readonly PermissionResourceType[];
+
+/**
  * The bounded, SQL-translatable condition vocabulary (#598 D6). Ownership is a
  * statement condition, not resolver code: `created_by_caller` ⇒ the object's
  * `createdBy === ctx.userId`; `created_by_system` ⇒ `=== SystemUtilities.id.system`.
@@ -180,6 +191,52 @@ export class PermissionStatementModelFactory extends ModelFactory<
 > {
   create(createdBy: string): PermissionStatementModel {
     return new PermissionStatementModel(
+      this._coreModelFactory.create(createdBy).toJSON()
+    );
+  }
+}
+
+// ── PermissionGrant (ad-hoc, principal-bearing object grants, #621) ───
+
+/**
+ * An ad-hoc object grant (#621) — the same five resolver fields as a
+ * {@link PermissionStatement}, but **principal-bearing** (`principalType` +
+ * `principalId`) instead of policy-attached. The resolver unions grants with
+ * policy statements by principal (the user + the user's roles) in exactly the
+ * deny→allow→implicit order — a grant is just a statement that lives on the
+ * principal, so it needs no resolver change. Grants are always instance-level
+ * (`resourceId` non-null) in #621: sharing conveys *one* object.
+ */
+export const PermissionGrantSchema = CoreSchema.extend({
+  organizationId: z.string(),
+  principalType: PolicyPrincipalTypeSchema,
+  principalId: z.string(),
+  effect: PermissionEffectSchema,
+  verb: PermissionVerbSchema,
+  resourceType: PermissionResourceTypeSchema,
+  resourceId: z.string().nullable(),
+  condition: PermissionConditionSchema.nullable(),
+});
+export type PermissionGrant = z.infer<typeof PermissionGrantSchema>;
+
+export class PermissionGrantModel extends CoreModel<PermissionGrant> {
+  get schema() {
+    return PermissionGrantSchema;
+  }
+  parse(): PermissionGrant {
+    return this.schema.parse(this._model);
+  }
+  validate(): z.ZodSafeParseResult<PermissionGrant> {
+    return this.schema.safeParse(this._model);
+  }
+}
+
+export class PermissionGrantModelFactory extends ModelFactory<
+  PermissionGrant,
+  PermissionGrantModel
+> {
+  create(createdBy: string): PermissionGrantModel {
+    return new PermissionGrantModel(
       this._coreModelFactory.create(createdBy).toJSON()
     );
   }

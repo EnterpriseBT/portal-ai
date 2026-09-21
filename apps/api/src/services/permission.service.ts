@@ -94,7 +94,15 @@ export class PermissionService {
       policyIds,
       client
     );
-    return new PermissionSet(ctx, statements);
+    // #621: union ad-hoc object grants for the same principals. Grants share the
+    // resolver fields, so they slot in as more statements — deny→allow→implicit
+    // order (and visibilityPredicate) need no change.
+    const grants = await repo.permissionGrants.findByPrincipals(
+      principals,
+      ctx.organizationId,
+      client
+    );
+    return new PermissionSet(ctx, [...statements, ...grants]);
   }
 
   /**

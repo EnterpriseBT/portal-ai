@@ -13,6 +13,16 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import type { PermissionStatementSelect } from "../db/schema/zod.js";
+
+/**
+ * The structural fields the resolver reads — the common shape of a policy
+ * `PermissionStatementSelect` and an ad-hoc `PermissionGrantSelect` (#621), so
+ * the engine unions both without caring which table a rule came from.
+ */
+export type EffectiveStatement = Pick<
+  PermissionStatementSelect,
+  "effect" | "verb" | "resourceType" | "resourceId" | "condition"
+>;
 import type {
   PermissionContext,
   PermissionAction,
@@ -79,7 +89,7 @@ function denyMessage(action: PermissionAction): string {
 export class PermissionSet {
   constructor(
     private readonly ctx: PermissionContext,
-    private readonly statements: PermissionStatementSelect[]
+    private readonly statements: EffectiveStatement[]
   ) {}
 
   /** Guard a mutation — throws `ApiError(403, …)` on deny, returns on allow. */
@@ -186,10 +196,7 @@ export class PermissionSet {
     return hasDeny ? "deny" : hasAllow ? "allow" : "deny";
   }
 
-  private matches(
-    s: PermissionStatementSelect,
-    norm: NormalizedAction
-  ): boolean {
+  private matches(s: EffectiveStatement, norm: NormalizedAction): boolean {
     const verbOk = s.verb === "*" || s.verb === norm.verb;
     const typeOk =
       s.resourceType === "*" || s.resourceType === norm.resourceType;

@@ -16,6 +16,7 @@ export * from "./entity-tags.repository.js";
 export * from "./permission-policies.repository.js";
 export * from "./permission-statements.repository.js";
 export * from "./policy-attachments.repository.js";
+export * from "./permission-grants.repository.js";
 export * from "./roles.repository.js";
 export * from "./user-roles.repository.js";
 export * from "./entity-tag-assignments.repository.js";
