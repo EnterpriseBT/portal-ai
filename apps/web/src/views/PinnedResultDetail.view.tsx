@@ -22,12 +22,14 @@ import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ShareIcon from "@mui/icons-material/IosShare";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { ShareDialog } from "../components/ShareDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
@@ -69,6 +71,9 @@ const isSnapshotless = (result: PortalResult): boolean => {
 
 export interface PinnedResultDetailUIProps {
   result: PortalResult;
+  /** #621: whether the caller may share this pin — gates the Share action. */
+  canShare?: boolean;
+  onShareClick?: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
   onUnpin: () => void;
@@ -79,6 +84,8 @@ export interface PinnedResultDetailUIProps {
 
 export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   result,
+  canShare = false,
+  onShareClick,
   onRename,
   onDelete,
   onUnpin,
@@ -137,6 +144,16 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
                 setRenameOpen(true);
               },
             },
+            // #621: Share gated on server-computed canShare (owner/admin/creator).
+            ...(canShare && onShareClick
+              ? [
+                  {
+                    label: "Share",
+                    icon: <ShareIcon />,
+                    onClick: onShareClick,
+                  },
+                ]
+              : []),
             ...(result.portalId
               ? [
                   {
@@ -335,24 +352,37 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   // threaded down below. Keeping a page-level control duplicated the chrome
   // AND double-fired the mount auto-refresh against the per-org rate cap.
   const resultQuery = sdk.portalResults.get(portalResultId);
-  const portalResult = (
-    resultQuery.data as unknown as PortalResultPayload | undefined
-  )?.portalResult as PortalResult | undefined;
+  const payload = resultQuery.data as unknown as
+    | PortalResultPayload
+    | undefined;
+  const portalResult = payload?.portalResult as PortalResult | undefined;
+  const [shareOpen, setShareOpen] = useState(false);
 
   return (
     <DataResult results={{ result: resultQuery }}>
       {() => {
         if (!portalResult) return null;
         return (
-          <PinnedResultDetailUI
-            result={portalResult}
-            onRename={handleRename}
-            onDelete={handleRemove}
-            onUnpin={handleRemove}
-            onOpenPortal={handleOpenPortal}
-            onNavigate={handleNavigate}
-            renamePending={renameMutation.isPending}
-          />
+          <>
+            <PinnedResultDetailUI
+              result={portalResult}
+              canShare={payload?.canShare ?? false}
+              onShareClick={() => setShareOpen(true)}
+              onRename={handleRename}
+              onDelete={handleRemove}
+              onUnpin={handleRemove}
+              onOpenPortal={handleOpenPortal}
+              onNavigate={handleNavigate}
+              renamePending={renameMutation.isPending}
+            />
+            <ShareDialog
+              open={shareOpen}
+              onClose={() => setShareOpen(false)}
+              resourceType="pin"
+              resourceId={portalResultId}
+              resourceLabel={portalResult.name}
+            />
+          </>
         );
       }}
     </DataResult>

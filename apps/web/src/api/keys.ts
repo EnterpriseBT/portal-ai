@@ -38,6 +38,11 @@ export const queryKeys = {
     root: ["members"] as const,
     list: () => [...queryKeys.members.root, "list"] as const,
   },
+  grants: {
+    root: ["grants"] as const,
+    list: (resourceType: string, resourceId: string) =>
+      [...queryKeys.grants.root, resourceType, resourceId] as const,
+  },
   invitations: {
     root: ["invitations"] as const,
     list: () => [...queryKeys.invitations.root, "list"] as const,

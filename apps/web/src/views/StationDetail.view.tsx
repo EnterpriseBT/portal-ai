@@ -23,6 +23,7 @@ import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ShareIcon from "@mui/icons-material/IosShare";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -31,6 +32,7 @@ import { PortalCardUI } from "../components/PortalCard.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
+import { ShareDialog } from "../components/ShareDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import {
@@ -88,6 +90,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const isDefaultStation = defaultStationId === stationId;
 
   const [editOpen, setEditOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [deleteStationOpen, setDeleteStationOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -183,6 +186,17 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         </Button>
                       }
                       secondaryActions={[
+                        // #621: Share is gated on the server-computed canShare
+                        // (owner/admin/creator) — never a client role check.
+                        ...(item.canShare
+                          ? [
+                              {
+                                label: "Share",
+                                icon: <ShareIcon />,
+                                onClick: () => setShareOpen(true),
+                              },
+                            ]
+                          : []),
                         {
                           label: "Edit",
                           icon: <EditIcon />,
@@ -355,6 +369,13 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                     station={station}
                     onConfirm={handleDeleteStation}
                     isPending={deleteStationMutation.isPending}
+                  />
+                  <ShareDialog
+                    open={shareOpen}
+                    onClose={() => setShareOpen(false)}
+                    resourceType="station"
+                    resourceId={stationId}
+                    resourceLabel={station.name}
                   />
                 </>
               );

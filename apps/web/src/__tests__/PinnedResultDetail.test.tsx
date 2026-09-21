@@ -33,9 +33,21 @@ jest.unstable_mockModule("../api/sdk", () => ({
     portalSql: {
       widgetRefresh: () => ({ mutateAsync: jest.fn() }),
     },
+    // #621: the container mounts ShareDialog, which instantiates these even
+    // while closed (enabled:false). Stub them as inert query/mutation handles.
+    members: { list: () => ({ data: undefined, isLoading: false }) },
+    grants: {
+      list: () => ({ data: undefined, isLoading: false }),
+      share: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+      revoke: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+    },
   },
   queryKeys: {
     portalResults: { root: ["portalResults"], get: (id: string) => ["pr", id] },
+    grants: {
+      root: ["grants"],
+      list: (rt: string, rid: string) => ["grants", rt, rid],
+    },
   },
 }));
 

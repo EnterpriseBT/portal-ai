@@ -26,6 +26,9 @@ export interface PortalResultsListPayload {
 
 export interface PortalResultPayload {
   portalResult: unknown;
+  /** #621: whether the caller may share this pin (`resource.share`). Present on
+   *  the GET-by-id response; absent on mutation responses. */
+  canShare?: boolean;
 }
 
 export interface RenamePortalResultBody {
