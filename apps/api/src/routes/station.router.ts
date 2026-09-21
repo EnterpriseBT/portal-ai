@@ -323,6 +323,8 @@ stationRouter.get(
         );
       }
       const canShare = set.can("resource.share", object);
+      const canWrite = set.can("resource.write", object);
+      const canDelete = set.can("resource.delete", object);
 
       const instances =
         await DbService.repository.stationInstances.findByStationId(id, {
@@ -344,6 +346,8 @@ stationRouter.get(
           enabledToolpacks,
         } as unknown as StationGetResponsePayload["station"],
         canShare,
+        canWrite,
+        canDelete,
       });
     } catch (error) {
       logger.error(

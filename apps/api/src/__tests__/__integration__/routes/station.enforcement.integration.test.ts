@@ -159,6 +159,9 @@ describe("station object enforcement — member perspective (#621 slice 3a)", ()
     const own = await auth(request(app).get(`/api/stations/${ownStation}`));
     expect(own.status).toBe(200);
     expect(own.body.payload.canShare).toBe(true); // creator can share own
+    // #621: the creator also fully controls their own object.
+    expect(own.body.payload.canWrite).toBe(true);
+    expect(own.body.payload.canDelete).toBe(true);
 
     const hidden = await auth(
       request(app).get(`/api/stations/${otherStation}`)
@@ -171,6 +174,9 @@ describe("station object enforcement — member perspective (#621 slice 3a)", ()
     );
     expect(shared.status).toBe(200);
     expect(shared.body.payload.canShare).toBe(false); // grantee can't re-share
+    // #621: a read grantee gets neither write nor delete on the shared object.
+    expect(shared.body.payload.canWrite).toBe(false);
+    expect(shared.body.payload.canDelete).toBe(false);
   });
 
   it("PATCH own → 200; a read grantee → 403; a read-write grantee → 200", async () => {

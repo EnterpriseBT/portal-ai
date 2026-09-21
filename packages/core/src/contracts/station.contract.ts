@@ -64,6 +64,12 @@ export const StationGetResponsePayloadSchema = z.object({
    *  the Share entry point. Server-computed per-object, never a client role
    *  heuristic. */
   canShare: z.boolean(),
+  /** #621: whether the caller may edit (`resource.write`) — gates the Edit
+   *  entry point, so a read-only grantee isn't shown an action that 403s. */
+  canWrite: z.boolean(),
+  /** #621: whether the caller may delete (`resource.delete`) — gates the Delete
+   *  entry point (a shared object's grantee never gets delete). */
+  canDelete: z.boolean(),
 });
 
 export type StationGetResponsePayload = z.infer<

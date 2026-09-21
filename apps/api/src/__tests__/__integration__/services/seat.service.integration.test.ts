@@ -278,6 +278,21 @@ describe("SeatService Integration Tests", () => {
     ).resolves.toBeDefined();
   });
 
+  it("a member caller CAN read the roster + seat usage (#621 Finding B)", async () => {
+    await setSeatCap(null);
+    const member: PermissionContext = {
+      userId: "u-member",
+      organizationId: orgId,
+      roles: ["member"],
+    };
+    // Reading the members list requires only org membership — a member can see
+    // who else is in the org (invite/remove/role changes stay gated above).
+    const members = await SeatService.listMembers(member);
+    expect(members.map((m) => m.userId)).toContain(ownerId);
+    const usage = await SeatService.seatUsage(member);
+    expect(usage.used).toBeGreaterThanOrEqual(1);
+  });
+
   // ── listing ─────────────────────────────────────────────────────────
 
   it("listMembers returns the owner; listInvitations returns pending", async () => {

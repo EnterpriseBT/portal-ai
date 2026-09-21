@@ -173,6 +173,9 @@ describe("pin object enforcement — member perspective (#621 slice 3b)", () => 
     const own = await auth(request(app).get(`/api/portal-results/${ownPin}`));
     expect(own.status).toBe(200);
     expect(own.body.payload.canShare).toBe(true);
+    // #621: the creator also fully controls their own pin.
+    expect(own.body.payload.canWrite).toBe(true);
+    expect(own.body.payload.canDelete).toBe(true);
 
     expect(
       (await auth(request(app).get(`/api/portal-results/${otherPin}`))).status
@@ -184,6 +187,9 @@ describe("pin object enforcement — member perspective (#621 slice 3b)", () => 
     );
     expect(shared.status).toBe(200);
     expect(shared.body.payload.canShare).toBe(false);
+    // #621: a read grantee gets neither write nor delete on the shared pin.
+    expect(shared.body.payload.canWrite).toBe(false);
+    expect(shared.body.payload.canDelete).toBe(false);
   });
 
   it("PATCH: read grantee 403, read-write grantee 200; DELETE shared 403", async () => {

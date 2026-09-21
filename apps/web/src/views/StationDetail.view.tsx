@@ -42,6 +42,7 @@ import {
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useAuthFetch, toServerError } from "../utils/api.util";
+import { useToast } from "../utils/toast.context";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -78,6 +79,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { fetchWithAuth } = useAuthFetch();
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
@@ -119,8 +121,16 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
         queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
         navigate({ to: "/stations" });
       },
+      // The confirm dialog has no FormAlert, so a failure (e.g. a 403 or a
+      // job lock) must surface as a toast rather than fail silently (#621).
+      onError: (error) => {
+        setDeleteStationOpen(false);
+        toast.error(
+          toServerError(error)?.message ?? "Could not delete this station."
+        );
+      },
     });
-  }, [deleteStationMutation, queryClient, navigate]);
+  }, [deleteStationMutation, queryClient, navigate, toast]);
 
   const handleLaunchPortal = useCallback(() => {
     createPortalMutation.mutate(
@@ -186,8 +196,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         </Button>
                       }
                       secondaryActions={[
-                        // #621: Share is gated on the server-computed canShare
-                        // (owner/admin/creator) — never a client role check.
+                        // #621: each action is gated on its server-computed
+                        // capability (owner/admin/creator, or a grant) — never a
+                        // client role check. A read-only grantee sees none of
+                        // Share/Edit/Delete rather than an action that 403s.
                         ...(item.canShare
                           ? [
                               {
@@ -197,17 +209,25 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                               },
                             ]
                           : []),
-                        {
-                          label: "Edit",
-                          icon: <EditIcon />,
-                          onClick: () => setEditOpen(true),
-                        },
-                        {
-                          label: "Delete",
-                          icon: <DeleteIcon />,
-                          onClick: () => setDeleteStationOpen(true),
-                          color: "error",
-                        },
+                        ...(item.canWrite
+                          ? [
+                              {
+                                label: "Edit",
+                                icon: <EditIcon />,
+                                onClick: () => setEditOpen(true),
+                              },
+                            ]
+                          : []),
+                        ...(item.canDelete
+                          ? [
+                              {
+                                label: "Delete",
+                                icon: <DeleteIcon />,
+                                onClick: () => setDeleteStationOpen(true),
+                                color: "error" as const,
+                              },
+                            ]
+                          : []),
                       ]}
                     >
                       {station.description && (

@@ -570,8 +570,15 @@ portalResultsRouter.get(
         );
       }
       const canShare = set.can("resource.share", object);
+      const canWrite = set.can("resource.write", object);
+      const canDelete = set.can("resource.delete", object);
 
-      return HttpService.success(res, { portalResult, canShare });
+      return HttpService.success(res, {
+        portalResult,
+        canShare,
+        canWrite,
+        canDelete,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown" },
