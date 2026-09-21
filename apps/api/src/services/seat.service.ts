@@ -1,10 +1,12 @@
 import crypto from "crypto";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 
 import {
   InvitationModelFactory,
   OrganizationUserModelFactory,
   UserModelFactory,
+  highestRole,
+  type OrgRole,
 } from "@portalai/core/models";
 import type {
   InviteCreateRequest,
@@ -22,6 +24,8 @@ import type {
 import { db } from "../db/client.js";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { users } from "../db/schema/users.table.js";
+import { userRole } from "../db/schema/user-role.table.js";
+import { roles } from "../db/schema/roles.table.js";
 import { DbService } from "./db.service.js";
 import { AuditService } from "./audit.service.js";
 import { Auth0Service } from "./auth0.service.js";
@@ -171,7 +175,36 @@ export class SeatService {
           isNull(users.deleted)
         )
       );
-    return rows as Member[];
+
+    // #620: batch-load each member's roles from the user_role join (one query).
+    const userIds = rows.map((r) => r.userId);
+    const roleRows = userIds.length
+      ? await (db as typeof db)
+          .select({ userId: userRole.userId, name: roles.name })
+          .from(userRole)
+          .innerJoin(roles, eq(userRole.roleId, roles.id))
+          .where(
+            and(
+              eq(userRole.organizationId, caller.organizationId),
+              inArray(userRole.userId, userIds),
+              isNull(userRole.deleted),
+              isNull(roles.deleted)
+            )
+          )
+      : [];
+    const rolesByUser = new Map<string, OrgRole[]>();
+    for (const rr of roleRows) {
+      const list = rolesByUser.get(rr.userId) ?? [];
+      list.push(rr.name as OrgRole);
+      rolesByUser.set(rr.userId, list);
+    }
+    // #620: the member's roles come from user_role; the enum is dropped from
+    // the response (kept only as an internal fallback for a membership that
+    // predates the write cutover, until the enum is retired).
+    return rows.map(({ role, ...rest }) => ({
+      ...rest,
+      roles: rolesByUser.get(rest.userId) ?? (role ? [role as OrgRole] : []),
+    })) as Member[];
   }
 
   /**
@@ -411,11 +444,17 @@ export class SeatService {
         );
       }
       if (target.role === "owner") {
-        const owners = await DbService.repository.organizationUsers.count(
-          and(
-            eq(organizationUsers.organizationId, orgId),
-            eq(organizationUsers.role, "owner")
-          )
+        // #620: owner-ness lives in user_role now — heal the target's enum then
+        // count owners there so a co-owner added via set-roles is seen.
+        await DbService.repository.userRole.materializeFromEnum(
+          target.userId,
+          orgId,
+          target.role,
+          caller.userId
+        );
+        const owners = await DbService.repository.userRole.countUsersWithRole(
+          orgId,
+          "owner"
         );
         if (owners <= 1) {
           throw new ApiError(
@@ -429,6 +468,12 @@ export class SeatService {
         target.id,
         caller.userId
       );
+      // #620: tombstone the member's role assignments along with the membership.
+      await DbService.repository.userRole.removeAllForUser(
+        target.userId,
+        orgId,
+        caller.userId
+      );
       void AuditService.record({
         organizationId: orgId,
         userId: caller.userId,
@@ -439,6 +484,153 @@ export class SeatService {
         userAgent: auditCtx.userAgent,
         metadata: { role: target.role },
       });
+    });
+  }
+
+  /**
+   * Set the **complete** role set for a member (#620) — the multi-role
+   * successor to the single-role PATCH. Diffs `desired` against the member's
+   * current roles and adds/removes to match. Rules preserved from #576:
+   * assigning any role requires `member.role.assign`; adding or removing
+   * `owner`/`admin` additionally requires the caller to be an owner (OQ2).
+   * Guards: ≥1-role (`MEMBER_MIN_ONE_ROLE`) and last-owner
+   * (`LAST_OWNER_ROLE_REMOVAL`), both re-checked under the seat lock. The
+   * `organization_users.role` enum is kept as a mirror (highest of the set).
+   * Audits `member.role.add` / `member.role.remove` per change (post-commit,
+   * fail-open).
+   */
+  static async setMemberRoles(
+    caller: PermissionContext,
+    targetUserId: string,
+    desired: OrgRole[],
+    auditCtx: SeatAuditContext
+  ): Promise<{ userId: string; roles: OrgRole[] }> {
+    await PermissionService.check(caller, "member.role.assign");
+    const orgId = caller.organizationId;
+    const desiredSet = [...new Set(desired)];
+    if (desiredSet.length === 0) {
+      throw new ApiError(
+        409,
+        ApiCode.MEMBER_MIN_ONE_ROLE,
+        "A member must have at least one role"
+      );
+    }
+
+    return SyncLockService.withSeatLock(orgId, async () => {
+      const target =
+        await DbService.repository.organizationUsers.findByOrganizationAndUser(
+          orgId,
+          targetUserId
+        );
+      if (!target) {
+        throw new ApiError(
+          404,
+          ApiCode.ORGANIZATION_USER_NOT_FOUND,
+          "Member not found in this organization"
+        );
+      }
+
+      // Heal a pre-cutover membership so the diff + owner count are authoritative
+      // over user_role alone.
+      await DbService.repository.userRole.materializeFromEnum(
+        targetUserId,
+        orgId,
+        target.role,
+        caller.userId
+      );
+      const baseline = (await DbService.repository.userRole.findRoleNames(
+        targetUserId,
+        orgId
+      )) as OrgRole[];
+      const baseSet = new Set(baseline);
+      const wantSet = new Set(desiredSet);
+      const toAdd = desiredSet.filter((r) => !baseSet.has(r));
+      const toRemove = baseline.filter((r) => !wantSet.has(r));
+
+      if (toAdd.length === 0 && toRemove.length === 0) {
+        return { userId: targetUserId, roles: baseline };
+      }
+
+      // OQ2: owner/admin add or remove is owner-only.
+      const callerIsOwner = caller.roles.includes("owner");
+      for (const r of [...toAdd, ...toRemove]) {
+        if ((r === "owner" || r === "admin") && !callerIsOwner) {
+          throw new ApiError(
+            403,
+            ApiCode.INSUFFICIENT_ROLE,
+            "Only the owner can assign or remove the owner or admin role"
+          );
+        }
+      }
+
+      // Last-owner: never strip the owner role from the org's last owner.
+      if (toRemove.includes("owner")) {
+        const owners = await DbService.repository.userRole.countUsersWithRole(
+          orgId,
+          "owner"
+        );
+        if (owners <= 1) {
+          throw new ApiError(
+            409,
+            ApiCode.LAST_OWNER_ROLE_REMOVAL,
+            "Cannot remove the owner role from the organization's last owner"
+          );
+        }
+      }
+
+      await DbService.transaction(async (tx) => {
+        for (const r of toAdd) {
+          await DbService.repository.userRole.assign(
+            targetUserId,
+            orgId,
+            r,
+            caller.userId,
+            tx
+          );
+        }
+        for (const r of toRemove) {
+          await DbService.repository.userRole.removeAssignment(
+            targetUserId,
+            orgId,
+            r,
+            caller.userId,
+            tx
+          );
+        }
+        // Enum mirror = highest of the resulting set.
+        await DbService.repository.organizationUsers.update(
+          target.id,
+          { role: highestRole(desiredSet) },
+          tx
+        );
+      });
+
+      for (const r of toAdd) {
+        void AuditService.record({
+          organizationId: orgId,
+          userId: caller.userId,
+          action: "member.role.add",
+          targetType: "user",
+          targetId: targetUserId,
+          sourceIp: auditCtx.sourceIp,
+          userAgent: auditCtx.userAgent,
+          metadata: { role: r },
+        });
+      }
+      for (const r of toRemove) {
+        void AuditService.record({
+          organizationId: orgId,
+          userId: caller.userId,
+          action: "member.role.remove",
+          targetType: "user",
+          targetId: targetUserId,
+          sourceIp: auditCtx.sourceIp,
+          userAgent: auditCtx.userAgent,
+          metadata: { role: r },
+        });
+      }
+
+      return { userId: targetUserId, roles: desiredSet };
     });
   }
 
@@ -489,6 +681,13 @@ export class SeatService {
         existing.id,
         { lastLogin }
       );
+      // #620: heal a pre-cutover membership that carries only the enum role.
+      await DbService.repository.userRole.materializeFromEnum(
+        userId,
+        organizationId,
+        existing.role,
+        SystemUtilities.id.system
+      );
       return updated ?? existing;
     }
     const model = new OrganizationUserModelFactory().create(userId).update({
@@ -497,7 +696,17 @@ export class SeatService {
       role,
       lastLogin,
     });
-    return DbService.repository.organizationUsers.create(model.parse());
+    const created = await DbService.repository.organizationUsers.create(
+      model.parse()
+    );
+    // #620: the membership's role now lives in user_role (the enum is a mirror).
+    await DbService.repository.userRole.assign(
+      userId,
+      organizationId,
+      role,
+      SystemUtilities.id.system
+    );
+    return created;
   }
 
   private static async requireOrg(

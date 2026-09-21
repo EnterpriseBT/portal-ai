@@ -1,7 +1,7 @@
 import type {
   MemberListResponse,
-  MemberRoleUpdateResponse,
-  MemberRoleUpdateRequest,
+  MemberRolesSetResponse,
+  MemberRolesSetRequest,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { queryKeys } from "./keys";
@@ -29,15 +29,16 @@ export const members = {
       body: () => undefined,
     }),
 
-  /** Change a member's role (owner-only, server-enforced). */
-  changeRole: () =>
+  /** Set a member's complete role set (#620 set-the-set; owner/admin, with
+   *  owner/admin changes owner-gated — all server-enforced). */
+  setRoles: () =>
     useAuthMutation<
-      MemberRoleUpdateResponse,
-      { userId: string } & MemberRoleUpdateRequest
+      MemberRolesSetResponse,
+      { userId: string } & MemberRolesSetRequest
     >({
       url: (v) =>
-        `/api/organization/members/${encodeURIComponent(v.userId)}/role`,
-      method: "PATCH",
-      body: (v) => ({ role: v.role }),
+        `/api/organization/members/${encodeURIComponent(v.userId)}/roles`,
+      method: "PUT",
+      body: (v) => ({ roles: v.roles }),
     }),
 };

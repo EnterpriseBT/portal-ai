@@ -12,8 +12,12 @@
     "type-check": "tsc --noEmit",
     "test:unit": "true",
     "test:integration": "true",
-    "e2e:seed": "dotenv -e .env -- sh -c 'npm --workspace @portalai/api run db:seed:org -- --name e2e-fixture --member-email \"$E2E_AUTH0_USERNAME\"'",
-    "e2e:auth": "dotenv -e .env -- tsx src/setup/auth.setup.ts"
+    "e2e:seed": "dotenv -e .env -- sh -c 'npm --workspace @portalai/api run db:seed:org -- --name e2e-fixture --owner-email \"$E2E_AUTH0_USERNAME\" --admin-email \"$E2E_AUTH0_USERNAME_ADMIN\" --member-email \"$E2E_AUTH0_USERNAME_MEMBER\"'",
+    "e2e:auth": "dotenv -e .env -- tsx src/setup/auth.setup.ts",
+    "e2e:auth:admin": "dotenv -e .env -- tsx src/setup/auth.setup.ts --identity admin",
+    "e2e:auth:member": "dotenv -e .env -- tsx src/setup/auth.setup.ts --identity member",
+    "e2e:auth:all": "npm run e2e:auth && npm run e2e:auth:admin && npm run e2e:auth:member",
+    "e2e:use": "sh -c 'test -n \"$0\" && cp .auth/\"$0\".storageState.json .auth/storageState.json && echo \"active MCP identity: $0 (restart the MCP session to load it)\" || echo \"usage: npm run e2e:use <admin|member>  (owner/default is the plain storageState.json)\"'"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

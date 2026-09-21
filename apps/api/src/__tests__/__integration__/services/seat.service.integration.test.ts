@@ -80,7 +80,7 @@ describe("SeatService Integration Tests", () => {
       .values(
         createOrganizationUser(orgId, ownerId, { role: "owner" }) as never
       );
-    owner = { userId: ownerId, organizationId: orgId, role: "owner" };
+    owner = { userId: ownerId, organizationId: orgId, roles: ["owner"] };
     tierSlug = `seat-cap-test-${generateId()}`;
   });
 
@@ -262,7 +262,7 @@ describe("SeatService Integration Tests", () => {
     const member: PermissionContext = {
       userId: "u-member",
       organizationId: orgId,
-      role: "member",
+      roles: ["member"],
     };
     await expect(
       SeatService.invite(member, { email: "x@x.com", role: "member" }, AUDIT)
@@ -271,7 +271,7 @@ describe("SeatService Integration Tests", () => {
     const admin: PermissionContext = {
       userId: ownerId,
       organizationId: orgId,
-      role: "admin",
+      roles: ["admin"],
     };
     await expect(
       SeatService.invite(admin, { email: "y@x.com", role: "member" }, AUDIT)
@@ -287,7 +287,7 @@ describe("SeatService Integration Tests", () => {
     const members = await SeatService.listMembers(owner);
     expect(members).toHaveLength(1);
     expect(members[0].userId).toBe(ownerId);
-    expect(members[0].role).toBe("owner");
+    expect(members[0].roles).toEqual(["owner"]);
 
     const invitations = await SeatService.listInvitations(owner);
     expect(invitations).toHaveLength(1);
@@ -424,16 +424,18 @@ describe("SeatService Integration Tests", () => {
     ).rejects.toMatchObject({ code: ApiCode.LAST_OWNER_REMOVAL });
   });
 
-  it("allows removing an owner when another owner remains", async () => {
+  it("allows removing an owner when another owner remains (last-owner counts user_role, case 8)", async () => {
     const secondOwner = await addMember("member");
-    // Promote directly to a second owner.
-    await asDrizzle()
-      .update(schema.organizationUsers)
-      .set({ role: "owner" })
-      .where(eq(schema.organizationUsers.userId, secondOwner));
+    // Promote to a second owner via the set-the-set engine (writes user_role,
+    // the source of truth the last-owner guard now counts).
+    await SeatService.setMemberRoles(owner, secondOwner, ["owner"], AUDIT);
     await expect(
       SeatService.removeMember(owner, ownerId, AUDIT)
     ).resolves.toBeUndefined();
+    // The removed owner's role assignments are tombstoned too.
+    expect(
+      await DbService.repository.userRole.findByUserOrg(ownerId, orgId)
+    ).toHaveLength(0);
   });
 
   it("404s removing a non-member; a member caller is denied", async () => {
@@ -444,10 +446,34 @@ describe("SeatService Integration Tests", () => {
     const member: PermissionContext = {
       userId: "u-m",
       organizationId: orgId,
-      role: "member",
+      roles: ["member"],
     };
     await expect(
       SeatService.removeMember(member, ownerId, AUDIT)
     ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("setMemberRoles rejects an empty desired set (MEMBER_MIN_ONE_ROLE, case 7)", async () => {
+    const target = await addMember("member");
+    await expect(
+      SeatService.setMemberRoles(owner, target, [], AUDIT)
+    ).rejects.toMatchObject({ code: ApiCode.MEMBER_MIN_ONE_ROLE });
+  });
+
+  it("setMemberRoles dedupes a repeated role — a role is never assigned twice", async () => {
+    const target = await addMember("member");
+    const result = await SeatService.setMemberRoles(
+      owner,
+      target,
+      ["admin", "admin"],
+      AUDIT
+    );
+    expect(result.roles).toEqual(["admin"]);
+    const live = await DbService.repository.userRole.findByUserOrg(
+      target,
+      orgId
+    );
+    // Exactly one live row for admin (the unique index also enforces this).
+    expect(live).toHaveLength(1);
   });
 });

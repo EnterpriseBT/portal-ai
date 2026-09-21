@@ -7,6 +7,7 @@ import { DbService } from "../services/db.service.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
+import type { OrgRole } from "@portalai/core/models";
 
 const logger = createLogger({ module: "metadata-middleware" });
 
@@ -90,7 +91,10 @@ export const getApplicationMetadata = async (
         metadata: {
           userId: ensured.user.id,
           organizationId: ensured.organization.id,
-          role: ensured.organizationUser.role,
+          roles: (await DbService.repository.userRole.findEffectiveRoleNames(
+            ensured.user.id,
+            ensured.organization.id
+          )) as OrgRole[],
         },
       };
 
@@ -127,7 +131,10 @@ export const getApplicationMetadata = async (
       metadata: {
         userId: user.id,
         organizationId: orgResult.organization.id,
-        role: orgResult.organizationUser.role,
+        roles: (await DbService.repository.userRole.findEffectiveRoleNames(
+          user.id,
+          orgResult.organization.id
+        )) as OrgRole[],
       },
     };
 

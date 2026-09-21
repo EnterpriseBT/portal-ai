@@ -11,12 +11,24 @@
  * writes its own cache on the callback, so `storageState` captures the real
  * session shape — nothing is hand-assembled.
  *
+ * Multiple identities (#620): pass `--identity <name>` (or `E2E_IDENTITY`) to
+ * capture a named role's session. For identity `X`, creds come from
+ * `E2E_AUTH0_USERNAME_<X>` / `E2E_AUTH0_PASSWORD_<X>` (uppercased) and the
+ * session is written to `.auth/<x>.storageState.json`. The unnamed default
+ * uses `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD` → `.auth/storageState.json`
+ * (the path `.mcp.json` loads at MCP-session start — copy a named file over it,
+ * or restart the MCP session, to boot as a different role; within a live
+ * session, switch by logging out and re-running the dev sign-in as another
+ * user). Each identity needs its own dev-tenant Database user.
+ *
  * Prerequisites (operator, not code — see packages/e2e/README.md):
  *   - the dev stack is running (`npm run dev`),
- *   - the dev Auth0 tenant has a Database connection with a test user,
- *   - env: E2E_AUTH0_USERNAME, E2E_AUTH0_PASSWORD — from packages/e2e/.env
- *     (git-ignored; copy .env.example) or the dev shell (shell wins); never
- *     committed. Optional E2E_BASE_URL (default http://localhost:3000).
+ *   - the dev Auth0 tenant has a Database connection with a test user per
+ *     identity,
+ *   - env: E2E_AUTH0_USERNAME[_<ID>], E2E_AUTH0_PASSWORD[_<ID>] — from
+ *     packages/e2e/.env (git-ignored; copy .env.example) or the dev shell
+ *     (shell wins); never committed. Optional E2E_BASE_URL (default
+ *     http://localhost:3000).
  *
  * Selectors for the Auth0-hosted form are best-effort against New Universal
  * Login and may need a one-time tune on first run against the real tenant.
@@ -26,9 +38,42 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
-const USERNAME = process.env.E2E_AUTH0_USERNAME;
-const PASSWORD = process.env.E2E_AUTH0_PASSWORD;
-const STORAGE_STATE = resolve(process.cwd(), ".auth/storageState.json");
+
+/** Resolve the identity from `--identity <name>` or `E2E_IDENTITY`; unnamed is
+ *  the default (back-compat env vars + storageState path). */
+function resolveIdentity(): {
+  name: string | null;
+  username?: string;
+  password?: string;
+  storagePath: string;
+} {
+  const argIdx = process.argv.indexOf("--identity");
+  const name =
+    (argIdx >= 0 ? process.argv[argIdx + 1] : process.env.E2E_IDENTITY) || null;
+  if (!name) {
+    return {
+      name: null,
+      username: process.env.E2E_AUTH0_USERNAME,
+      password: process.env.E2E_AUTH0_PASSWORD,
+      storagePath: resolve(process.cwd(), ".auth/storageState.json"),
+    };
+  }
+  const key = name.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  return {
+    name,
+    username: process.env[`E2E_AUTH0_USERNAME_${key}`],
+    password: process.env[`E2E_AUTH0_PASSWORD_${key}`],
+    storagePath: resolve(
+      process.cwd(),
+      `.auth/${name.toLowerCase()}.storageState.json`
+    ),
+  };
+}
+
+const IDENTITY = resolveIdentity();
+const USERNAME = IDENTITY.username;
+const PASSWORD = IDENTITY.password;
+const STORAGE_STATE = IDENTITY.storagePath;
 
 function fail(message: string): never {
   console.error(`[e2e:auth] ${message}`);
@@ -37,9 +82,12 @@ function fail(message: string): never {
 
 async function main(): Promise<void> {
   if (!USERNAME || !PASSWORD) {
+    const suffix = IDENTITY.name
+      ? `_${IDENTITY.name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`
+      : "";
     fail(
-      "E2E_AUTH0_USERNAME and E2E_AUTH0_PASSWORD must be set (the dev-tenant " +
-        "Database-connection test user). See packages/e2e/README.md."
+      `E2E_AUTH0_USERNAME${suffix} and E2E_AUTH0_PASSWORD${suffix} must be set ` +
+        "(the dev-tenant Database-connection test user). See packages/e2e/README.md."
     );
   }
 

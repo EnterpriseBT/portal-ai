@@ -26,7 +26,7 @@ import type {
 
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
-import { useRole } from "../utils/use-role.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { MemberListUI } from "./MemberList.component";
@@ -40,9 +40,10 @@ export interface MembersTabUIProps {
   members: Member[];
   seatUsage: SeatUsage;
   invitations: InvitationResponse[];
-  callerRole: OrgRole;
+  /** Whether the caller may assign roles (`can("member.role.assign")`). */
+  canManageRoles: boolean;
   callerUserId: string;
-  onChangeRole: (userId: string, role: OrgRole) => void;
+  onSetRoles: (userId: string, roles: OrgRole[]) => void;
   onRemoveClick: (member: Member) => void;
   onInviteClick: () => void;
   onResend: (invitation: InvitationResponse) => void;
@@ -71,9 +72,9 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
   members,
   seatUsage,
   invitations,
-  callerRole,
+  canManageRoles,
   callerUserId,
-  onChangeRole,
+  onSetRoles,
   onRemoveClick,
   onInviteClick,
   onResend,
@@ -147,9 +148,9 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
     ) : (
       <MemberListUI
         members={members}
-        callerRole={callerRole}
+        canManageRoles={canManageRoles}
         callerUserId={callerUserId}
-        onChangeRole={onChangeRole}
+        onSetRoles={onSetRoles}
         onRemove={onRemoveClick}
         isPending={mutating}
       />
@@ -177,11 +178,11 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
  * resent (fresh link) or revoked.
  */
 export const MembersTab: React.FC = () => {
-  const { role } = useRole();
+  const { can } = useCapabilities();
   const profileQuery = sdk.auth.profile();
   const membersQuery = sdk.members.list();
   const invitationsQuery = sdk.invitations.list();
-  const changeRole = sdk.members.changeRole();
+  const setRoles = sdk.members.setRoles();
   const remove = sdk.members.remove();
   const inviteCreate = sdk.invitations.create();
   const invitationResend = sdk.invitations.resend();
@@ -219,16 +220,20 @@ export const MembersTab: React.FC = () => {
   const invalidateInvitations = () =>
     queryClient.invalidateQueries({ queryKey: queryKeys.invitations.root });
 
-  const handleChangeRole = (userId: string, newRole: OrgRole) => {
-    changeRole.mutate(
-      { userId, role: newRole },
+  const handleSetRoles = (userId: string, roles: OrgRole[]) => {
+    setRoles.mutate(
+      { userId, roles },
       {
         onSuccess: () => {
           invalidateMembers();
-          toast.success("Role updated");
+          // A caller changing their own roles changes their capabilities.
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.organizations.root,
+          });
+          toast.success("Roles updated");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to change role"),
+          toast.error(toServerError(error)?.message ?? "Failed to set roles"),
       }
     );
   };
@@ -308,9 +313,9 @@ export const MembersTab: React.FC = () => {
         members={members}
         seatUsage={seatUsage}
         invitations={invitations}
-        callerRole={role ?? "member"}
+        canManageRoles={can("member.role.assign")}
         callerUserId={callerUserId}
-        onChangeRole={handleChangeRole}
+        onSetRoles={handleSetRoles}
         onRemoveClick={setRemoveTarget}
         onInviteClick={() => setInviteOpen(true)}
         onResend={handleResend}
@@ -322,7 +327,7 @@ export const MembersTab: React.FC = () => {
         onDismissLink={() => setLastInviteUrl(null)}
         isLoading={membersQuery.isLoading}
         error={membersQuery.error}
-        mutating={changeRole.isPending || remove.isPending}
+        mutating={setRoles.isPending || remove.isPending}
         invitesMutating={
           invitationResend.isPending || invitationRevoke.isPending
         }

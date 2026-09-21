@@ -56,8 +56,26 @@ const profileData = {
   lastLogin: 1_700_000_000_000,
 };
 
+const ownerCaps = {
+  "billing.manage": true,
+  "org.delete": true,
+  "org.audit.read": true,
+  "member.role.assign": true,
+  "member.invite": true,
+  "member.remove": true,
+};
+const memberCaps = {
+  "billing.manage": false,
+  "org.delete": false,
+  "org.audit.read": false,
+  "member.role.assign": false,
+  "member.invite": false,
+  "member.remove": false,
+};
+
 const orgData = {
-  role: "owner",
+  roles: ["owner"],
+  capabilities: ownerCaps,
   organization: {
     id: "org-1",
     name: "Acme Corp",
@@ -112,7 +130,7 @@ const openOrganizationTab = async () => {
 describe("SettingsView — Danger zone (#197 slice 5)", () => {
   it("disables Delete for a non-owner (member) — #576 role gating", async () => {
     mockCurrent.mockReturnValue(
-      loaded({ ...orgData, role: "member" as const })
+      loaded({ ...orgData, roles: ["member"], capabilities: memberCaps })
     );
     await openOrganizationTab();
     expect(
@@ -175,18 +193,20 @@ describe("SettingsView — Danger zone (#197 slice 5)", () => {
   });
 });
 
-describe("SettingsView — Profile role (#576)", () => {
-  it("shows the caller's role on the Profile tab (Owner)", () => {
+describe("SettingsView — Profile roles + groups (#620)", () => {
+  it("lists the caller's roles as chips on the Profile tab", () => {
     render(<SettingsView />); // Profile is the default tab
-    const roleLabel = screen.getByText("Role");
-    expect(roleLabel).toBeInTheDocument();
-    expect(screen.getByText("Owner")).toBeInTheDocument();
+    expect(screen.getByText("Your roles")).toBeInTheDocument();
+    expect(screen.getByText("Your groups")).toBeInTheDocument();
+    expect(screen.getByText("owner")).toBeInTheDocument();
   });
 
-  it("shows Member when the caller is a member", () => {
-    mockCurrent.mockReturnValue(loaded({ ...orgData, role: "member" }));
+  it("shows member when the caller is a member", () => {
+    mockCurrent.mockReturnValue(
+      loaded({ ...orgData, roles: ["member"], capabilities: memberCaps })
+    );
     render(<SettingsView />);
-    expect(screen.getByText("Role")).toBeInTheDocument();
-    expect(screen.getByText("Member")).toBeInTheDocument();
+    expect(screen.getByText("Your roles")).toBeInTheDocument();
+    expect(screen.getByText("member")).toBeInTheDocument();
   });
 });

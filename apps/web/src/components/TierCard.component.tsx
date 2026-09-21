@@ -28,7 +28,7 @@ import {
 
 import type { BillingTier } from "@portalai/core/contracts";
 
-const OWNER_ONLY_TOOLTIP = "Only the organization owner can manage billing";
+const BILLING_GATE_TOOLTIP = "You don't have permission to manage billing";
 
 /** A `contact` tier shown as an upgrade teaser (not the org's current plan)
  *  presents generically — the operator's specific plan name + blurb are shown
@@ -38,13 +38,13 @@ const GENERIC_CONTACT_TIER_LABEL = "Enterprise";
 /** Wrap a disabled action in the owner-only tooltip (the `span` keeps the
  *  tooltip firing on a disabled MUI button). Plain function, not a component. */
 const withOwnerGate = (
-  isOwner: boolean,
+  canManageBilling: boolean,
   action: React.ReactElement
 ): React.ReactElement =>
-  isOwner ? (
+  canManageBilling ? (
     action
   ) : (
-    <Tooltip title={OWNER_ONLY_TOOLTIP}>
+    <Tooltip title={BILLING_GATE_TOOLTIP}>
       <span>{action}</span>
     </Tooltip>
   );
@@ -55,7 +55,7 @@ export interface TierCardUIProps {
   /** Whether this tier is the org's current plan (drives the grid + CTA copy). */
   isCurrentPlan: boolean;
   /** Owner-only actions render disabled + tooltip for non-owners. */
-  isOwner: boolean;
+  canManageBilling: boolean;
   /** True while a checkout session is being minted. */
   isPending: boolean;
   /** Invoked with the tier slug for a `subscribe` tier (new subscription). */
@@ -76,7 +76,7 @@ export interface TierCardUIProps {
 export const TierCardUI: React.FC<TierCardUIProps> = ({
   tier,
   isCurrentPlan,
-  isOwner,
+  canManageBilling,
   isPending,
   onSubscribe,
   isSubscribed = false,
@@ -212,11 +212,11 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
           {cta === "subscribe" &&
             !isCurrentPlan &&
             withOwnerGate(
-              isOwner,
+              canManageBilling,
               <Button
                 type="button"
                 variant="contained"
-                disabled={!isOwner || isPending}
+                disabled={!canManageBilling || isPending}
                 onClick={() =>
                   isSubscribed ? onSwitch?.(tier.slug) : onSubscribe(tier.slug)
                 }

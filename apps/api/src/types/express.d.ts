@@ -46,8 +46,9 @@ export interface ApplicationMetadata {
   userId: string;
   /** Current organization ID for the authenticated user */
   organizationId: string;
-  /** The caller's role in the current organization (#576). */
-  role: OrgRole;
+  /** The caller's roles in the current organization (#620) — the engine unions
+   *  their policies. */
+  roles: OrgRole[];
 }
 
 declare global {

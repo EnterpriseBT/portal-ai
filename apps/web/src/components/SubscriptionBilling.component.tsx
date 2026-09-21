@@ -60,18 +60,18 @@ const synthesizeCurrentPlanTier = (
   price: null,
 });
 
-const OWNER_ONLY_TOOLTIP = "Only the organization owner can manage billing";
+const BILLING_GATE_TOOLTIP = "You don't have permission to manage billing";
 
 /** Wrap a disabled action in the owner-only tooltip (the `span` keeps the
  *  tooltip firing on a disabled MUI button). Plain function, not a component. */
-const withOwnerGate = (
-  isOwner: boolean,
+const withBillingGate = (
+  canManageBilling: boolean,
   action: React.ReactElement
 ): React.ReactElement =>
-  isOwner ? (
+  canManageBilling ? (
     action
   ) : (
-    <Tooltip title={OWNER_ONLY_TOOLTIP}>
+    <Tooltip title={BILLING_GATE_TOOLTIP}>
       <span>{action}</span>
     </Tooltip>
   );
@@ -87,7 +87,7 @@ export interface SubscriptionBillingUIProps {
   /** Which of the tab's states to render (derived by the container). */
   state: SubscriptionBillingState;
   /** Owner-only actions render disabled + tooltip for non-owners. */
-  isOwner: boolean;
+  canManageBilling: boolean;
   /** Human label of the org's current plan. */
   currentTierName: string;
   /** The org's current plan slug — flags the matching card. */
@@ -108,7 +108,7 @@ export interface SubscriptionBillingUIProps {
 
 export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   state,
-  isOwner,
+  canManageBilling,
   currentTierName,
   currentTierSlug,
   tiers,
@@ -157,7 +157,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
           <TierCardUI
             tier={currentPlanTier}
             isCurrentPlan
-            isOwner={isOwner}
+            canManageBilling={canManageBilling}
             isPending={isPending}
             onSubscribe={onSubscribe}
           />
@@ -181,7 +181,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
                 key={tier.slug}
                 tier={tier}
                 isCurrentPlan={tier.slug === currentTierSlug}
-                isOwner={isOwner}
+                canManageBilling={canManageBilling}
                 isPending={isPending}
                 onSubscribe={onSubscribe}
                 isSubscribed={state === "subscribed"}
@@ -199,12 +199,12 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
 
       {state === "subscribed" && (
         <Box>
-          {withOwnerGate(
-            isOwner,
+          {withBillingGate(
+            canManageBilling,
             <Button
               type="button"
               variant="contained"
-              disabled={!isOwner || isPending}
+              disabled={!canManageBilling || isPending}
               onClick={onManage}
             >
               {isPending ? "Opening…" : "Manage subscription"}
@@ -259,7 +259,7 @@ export const SubscriptionBilling: React.FC = () => {
   return (
     <DataResult results={{ organizationResult, tiersResult }}>
       {({ organizationResult, tiersResult }) => {
-        const { organization, role } = organizationResult;
+        const { organization, capabilities } = organizationResult;
         const { tiers } = tiersResult;
 
         // State derivation (spec D5/#241 D6): a live subscription wins;
@@ -293,7 +293,7 @@ export const SubscriptionBilling: React.FC = () => {
         return (
           <SubscriptionBillingUI
             state={state}
-            isOwner={role === "owner"}
+            canManageBilling={capabilities["billing.manage"]}
             currentTierName={currentTierName}
             currentTierSlug={organization.tier}
             tiers={tiers}

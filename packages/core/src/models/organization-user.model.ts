@@ -19,6 +19,18 @@ export const OrgRoleSchema = z.enum(ORG_ROLES);
 export type OrgRole = z.infer<typeof OrgRoleSchema>;
 
 /**
+ * The highest-privilege role in a set (owner > admin > member), or `member` when
+ * empty. #620 transitional: the single scalar `role` on responses is derived
+ * from the caller's `roles[]` via this while the FE migrates to `capabilities`;
+ * it is **not** an authorization heuristic (the engine unions all roles' policies).
+ */
+export function highestRole(roles: readonly OrgRole[]): OrgRole {
+  if (roles.includes("owner")) return "owner";
+  if (roles.includes("admin")) return "admin";
+  return "member";
+}
+
+/**
  * Organization–User join model (many-to-many).
  * Extends CoreModel with foreign-key references to both tables.
  *

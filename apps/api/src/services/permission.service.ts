@@ -1,4 +1,9 @@
-import type { OrgRole, PolicyPrincipalType } from "@portalai/core/models";
+import {
+  CALLER_CAPABILITY_ACTIONS,
+  type OrgRole,
+  type PolicyPrincipalType,
+  type CapabilityMap,
+} from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
 import { db } from "../db/client.js";
@@ -6,14 +11,15 @@ import type { DbClient } from "../db/repositories/base.repository.js";
 import { PermissionSet } from "./permission-set.js";
 
 /**
- * The resolved caller context an authorization decision keys off — the same
- * `(userId, organizationId, role)` the metadata middleware attaches to
- * `req.application.metadata` (#576).
+ * The resolved caller context an authorization decision keys off — the
+ * `(userId, organizationId, roles)` the metadata middleware attaches to
+ * `req.application.metadata`. `roles` is the caller's full role set (#620); the
+ * engine unions their policies.
  */
 export interface PermissionContext {
   userId: string;
   organizationId: string;
-  role: OrgRole;
+  roles: OrgRole[];
 }
 
 /**
@@ -70,12 +76,15 @@ export class PermissionService {
       principalType: PolicyPrincipalType;
       principalId: string;
     }[] = [{ principalType: "user", principalId: ctx.userId }];
-    const role = await repo.roles.findByName(
+    // Gather a role principal per role the caller holds (#620) — the engine
+    // unions their statements. One query resolves all names → role rows.
+    const roleRows = await repo.roles.findByNames(
       ctx.organizationId,
-      ctx.role,
+      ctx.roles,
       client
     );
-    if (role) principals.push({ principalType: "role", principalId: role.id });
+    for (const role of roleRows)
+      principals.push({ principalType: "role", principalId: role.id });
 
     const attachments = (
       await repo.policyAttachments.findByPrincipals(principals, client)
@@ -99,5 +108,20 @@ export class PermissionService {
     object?: PermissionObject
   ): Promise<void> {
     (await PermissionService.loadSet(ctx)).check(action, object);
+  }
+
+  /**
+   * The caller's capability map (#620) — `can(a)` for each app-level gating
+   * action, computed from one `loadSet`. The FE gates on this instead of role
+   * names; object-level (`resource.*`) gates stay per-object (#621).
+   */
+  static async capabilities(
+    ctx: PermissionContext,
+    client: DbClient = db
+  ): Promise<CapabilityMap> {
+    const set = await PermissionService.loadSet(ctx, client);
+    return Object.fromEntries(
+      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
+    ) as CapabilityMap;
   }
 }

@@ -29,6 +29,7 @@ import type {
   PermissionStatement,
   PolicyAttachment,
   Role,
+  UserRole,
   EntityGroup,
   EntityGroupMember,
   Core,
@@ -62,6 +63,7 @@ import type {
   PermissionStatementSelect,
   PolicyAttachmentSelect,
   RoleSelect,
+  UserRoleSelect,
   EntityGroupSelect,
   EntityGroupMemberSelect,
   StationSelect,
@@ -95,6 +97,7 @@ import type { permissionPolicies } from "./permission-policies.table.js";
 import type { permissionStatements } from "./permission-statements.table.js";
 import type { policyAttachments } from "./policy-attachments.table.js";
 import type { roles } from "./roles.table.js";
+import type { userRole } from "./user-role.table.js";
 import type { entityGroups } from "./entity-groups.table.js";
 import type { entityGroupMembers } from "./entity-group-members.table.js";
 import type { stations } from "./stations.table.js";
@@ -821,3 +824,12 @@ const _roleModelToDrizzle: _RoleModelToDrizzle = true;
 type _RoleInferredRow = InferSelectModel<typeof roles>;
 type _RoleInferredToModel = IsAssignable<_RoleInferredRow, Role>;
 const _roleInferredToModel: _RoleInferredToModel = true;
+
+// UserRole (#620)
+type _UserRoleDrizzleToModel = IsAssignable<UserRoleSelect, UserRole>;
+const _userRoleDrizzleToModel: _UserRoleDrizzleToModel = true;
+type _UserRoleModelToDrizzle = IsAssignable<UserRole, UserRoleSelect>;
+const _userRoleModelToDrizzle: _UserRoleModelToDrizzle = true;
+type _UserRoleInferredRow = InferSelectModel<typeof userRole>;
+type _UserRoleInferredToModel = IsAssignable<_UserRoleInferredRow, UserRole>;
+const _userRoleInferredToModel: _UserRoleInferredToModel = true;

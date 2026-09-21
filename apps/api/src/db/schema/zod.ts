@@ -23,6 +23,7 @@ import { permissionPolicies } from "./permission-policies.table.js";
 import { permissionStatements } from "./permission-statements.table.js";
 import { policyAttachments } from "./policy-attachments.table.js";
 import { roles } from "./roles.table.js";
+import { userRole } from "./user-role.table.js";
 import { entityGroups } from "./entity-groups.table.js";
 import { entityGroupMembers } from "./entity-group-members.table.js";
 import { stations } from "./stations.table.js";
@@ -539,3 +540,10 @@ export const RoleSelectSchema = createSelectSchema(roles);
 export const RoleInsertSchema = createInsertSchema(roles);
 export type RoleSelect = z.infer<typeof RoleSelectSchema>;
 export type RoleInsert = z.infer<typeof RoleInsertSchema>;
+
+/** Zod schema for a `user_role` row returned by SELECT (#620). */
+export const UserRoleSelectSchema = createSelectSchema(userRole);
+/** Zod schema for inserting into `user_role`. */
+export const UserRoleInsertSchema = createInsertSchema(userRole);
+export type UserRoleSelect = z.infer<typeof UserRoleSelectSchema>;
+export type UserRoleInsert = z.infer<typeof UserRoleInsertSchema>;

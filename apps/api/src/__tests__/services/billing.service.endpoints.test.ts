@@ -5,6 +5,7 @@
  */
 
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import type { OrgRole } from "@portalai/core/models";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -56,8 +57,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 jest.unstable_mockModule("../../services/permission.service.js", () => ({
   PermissionService: {
     check: jest.fn(
-      async (caller: { role?: string }, action: string): Promise<void> => {
-        if (action === "billing.manage" && caller?.role !== "owner") {
+      async (caller: { roles?: string[] }, action: string): Promise<void> => {
+        if (action === "billing.manage" && !caller?.roles?.includes("owner")) {
           const { ApiError } = await import("../../services/http.service.js");
           const { ApiCode } =
             await import("../../constants/api-codes.constants.js");
@@ -94,12 +95,12 @@ const MEMBER_ID = "user-member";
 const OWNER = {
   userId: OWNER_ID,
   organizationId: "org-fixture",
-  role: "owner" as const,
+  roles: ["owner"] as OrgRole[],
 };
 const MEMBER = {
   userId: MEMBER_ID,
   organizationId: "org-fixture",
-  role: "member" as const,
+  roles: ["member"] as OrgRole[],
 };
 
 function orgFixture(overrides: Record<string, unknown> = {}) {

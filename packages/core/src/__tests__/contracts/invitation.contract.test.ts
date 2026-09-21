@@ -95,6 +95,7 @@ describe("MemberListResponseSchema (#585)", () => {
     userId: "u-1",
     email: "a@b.com",
     name: "A",
+    roles: ["member" as const],
     role: "member" as const,
     joinedAt: 1,
   };
@@ -106,6 +107,22 @@ describe("MemberListResponseSchema (#585)", () => {
     expect(
       MemberListResponseSchema.safeParse({
         members: [member],
+        seatUsage: { used: 1, max: 3 },
+      }).success
+    ).toBe(true);
+  });
+
+  it("requires roles[] on each member, and accepts multiple (#620)", () => {
+    const { roles: _omit, ...withoutRoles } = member;
+    expect(
+      MemberListResponseSchema.safeParse({
+        members: [withoutRoles],
+        seatUsage: { used: 1, max: 3 },
+      }).success
+    ).toBe(false);
+    expect(
+      MemberListResponseSchema.safeParse({
+        members: [{ ...member, roles: ["admin", "member"], role: "admin" }],
         seatUsage: { used: 1, max: 3 },
       }).success
     ).toBe(true);

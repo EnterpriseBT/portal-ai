@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { render, screen, fireEvent } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { MemberListUI } from "../components/MemberList.component";
 import type { Member } from "@portalai/core/contracts";
@@ -8,7 +8,7 @@ const member = (over: Partial<Member> = {}): Member => ({
   userId: "u-x",
   email: "x@example.com",
   name: "X",
-  role: "member",
+  roles: ["member"],
   joinedAt: 1_784_000_000_000,
   ...over,
 });
@@ -16,57 +16,59 @@ const member = (over: Partial<Member> = {}): Member => ({
 const owner = member({
   userId: "u-owner",
   email: "owner@x.com",
-  role: "owner",
+  roles: ["owner"],
 });
 const admin = member({
   userId: "u-admin",
   email: "admin@x.com",
-  role: "admin",
+  roles: ["admin"],
 });
 const plain = member({
   userId: "u-plain",
   email: "plain@x.com",
-  role: "member",
+  roles: ["member"],
 });
 
-describe("MemberListUI", () => {
-  it("owner caller: role Select on non-owner rows, none on the owner row", () => {
+describe("MemberListUI (#620)", () => {
+  it("canManageRoles: every row shows a roles multi-select", () => {
     render(
       <MemberListUI
         members={[owner, admin]}
-        callerRole="owner"
+        canManageRoles
         callerUserId="u-owner"
-        onChangeRole={jest.fn()}
+        onSetRoles={jest.fn()}
         onRemove={jest.fn()}
       />
     );
-    expect(screen.getByLabelText("Role for admin@x.com")).toBeInTheDocument();
-    // The owner row shows a static chip, not an editable select.
-    expect(
-      screen.queryByLabelText("Role for owner@x.com")
-    ).not.toBeInTheDocument();
+    // The owner/admin gating is server-enforced — the editor is shown on all
+    // rows when the caller can assign roles.
+    expect(screen.getByLabelText("Roles for admin@x.com")).toBeInTheDocument();
+    expect(screen.getByLabelText("Roles for owner@x.com")).toBeInTheDocument();
   });
 
-  it("admin caller: no role Selects (re-role is owner-only)", () => {
+  it("without canManageRoles: roles render as chips, no selects", () => {
     render(
       <MemberListUI
         members={[owner, admin, plain]}
-        callerRole="admin"
+        canManageRoles={false}
         callerUserId="u-admin"
-        onChangeRole={jest.fn()}
+        onSetRoles={jest.fn()}
         onRemove={jest.fn()}
       />
     );
-    expect(screen.queryByLabelText(/^Role for /)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Roles for /)).not.toBeInTheDocument();
+    // Each member's roles are shown by name as chips.
+    expect(screen.getAllByText("owner").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("admin").length).toBeGreaterThan(0);
   });
 
   it("remove is disabled for self and for the last owner", () => {
     render(
       <MemberListUI
         members={[owner, plain]}
-        callerRole="owner"
+        canManageRoles
         callerUserId="u-plain" // caller is the plain member (self)
-        onChangeRole={jest.fn()}
+        onSetRoles={jest.fn()}
         onRemove={jest.fn()}
       />
     );
@@ -81,13 +83,36 @@ describe("MemberListUI", () => {
     render(
       <MemberListUI
         members={[owner, admin]} // caller is owner; admin is removable
-        callerRole="owner"
+        canManageRoles
         callerUserId="u-owner"
-        onChangeRole={jest.fn()}
+        onSetRoles={jest.fn()}
         onRemove={onRemove}
       />
     );
     await userEvent.click(screen.getByLabelText("Remove admin@x.com"));
     expect(onRemove).toHaveBeenCalledWith(admin);
+  });
+
+  it("selecting an additional role fires onSetRoles with the full set", async () => {
+    const onSetRoles = jest.fn();
+    render(
+      <MemberListUI
+        members={[
+          member({ userId: "u-1", email: "m@x.com", roles: ["member"] }),
+        ]}
+        canManageRoles
+        callerUserId="u-owner"
+        onSetRoles={onSetRoles}
+        onRemove={jest.fn()}
+      />
+    );
+    // Open the multi-select (MUI opens on mouseDown of the combobox) and add
+    // "admin" to the existing "member".
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    await userEvent.click(screen.getByRole("option", { name: "admin" }));
+    expect(onSetRoles).toHaveBeenCalledWith(
+      "u-1",
+      expect.arrayContaining(["member", "admin"])
+    );
   });
 });

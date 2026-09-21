@@ -84,6 +84,32 @@ export const PERMISSION_CONDITIONS = [
 export const PermissionConditionSchema = z.enum(PERMISSION_CONDITIONS);
 export type PermissionCondition = z.infer<typeof PermissionConditionSchema>;
 
+/**
+ * The app-level (non-object) actions the frontend gates on (#620) — the server
+ * evaluates the caller's `PermissionSet.can(a)` for each and returns a
+ * {@link CapabilityMap} on `current()`, so the FE gates on *capabilities*, never
+ * role-name heuristics. Object-level (`resource.*`) gates stay per-object (#621).
+ * Revisited during the smoke walk.
+ */
+export const CALLER_CAPABILITY_ACTIONS = [
+  "billing.manage",
+  "org.delete",
+  "org.audit.read",
+  "member.role.assign",
+  "member.invite",
+  "member.remove",
+] as const;
+export const CallerCapabilityActionSchema = z.enum(CALLER_CAPABILITY_ACTIONS);
+export type CallerCapabilityAction = z.infer<
+  typeof CallerCapabilityActionSchema
+>;
+
+export const CapabilityMapSchema = z.record(
+  CallerCapabilityActionSchema,
+  z.boolean()
+);
+export type CapabilityMap = z.infer<typeof CapabilityMapSchema>;
+
 /** A policy/role is `system` (immutable, seeded) or `custom` (org-defined). */
 export const RBAC_KINDS = ["system", "custom"] as const;
 export const RbacKindSchema = z.enum(RBAC_KINDS);

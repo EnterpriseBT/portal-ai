@@ -32,7 +32,7 @@ export const billingRouter = Router();
 async function resolveCallerOrg(req: Request): Promise<{
   user: UserSelect;
   organization: OrganizationSelect;
-  role: OrgRole;
+  roles: OrgRole[];
 }> {
   const auth0Id = req.auth?.payload.sub as string;
   const user = await DbService.repository.users.findByAuth0Id(auth0Id);
@@ -51,11 +51,11 @@ async function resolveCallerOrg(req: Request): Promise<{
       "No organization found for user"
     );
   }
-  return {
-    user,
-    organization: result.organization,
-    role: result.organizationUser.role,
-  };
+  const roles = (await DbService.repository.userRole.findEffectiveRoleNames(
+    user.id,
+    result.organization.id
+  )) as OrgRole[];
+  return { user, organization: result.organization, roles };
 }
 
 /**
@@ -171,10 +171,10 @@ billingRouter.post(
           )
         );
       }
-      const { user, organization, role } = await resolveCallerOrg(req);
+      const { user, organization, roles } = await resolveCallerOrg(req);
       const result = await BillingService.createCheckout(
         organization,
-        { userId: user.id, organizationId: organization.id, role },
+        { userId: user.id, organizationId: organization.id, roles },
         parsed.data.tier
       );
       return HttpService.success<BillingCheckoutResponse>(res, result);
@@ -256,10 +256,10 @@ billingRouter.post(
           )
         );
       }
-      const { user, organization, role } = await resolveCallerOrg(req);
+      const { user, organization, roles } = await resolveCallerOrg(req);
       const result = await BillingService.createPortal(
         organization,
-        { userId: user.id, organizationId: organization.id, role },
+        { userId: user.id, organizationId: organization.id, roles },
         parsed.data.tier
       );
       return HttpService.success<BillingPortalResponse>(res, result);

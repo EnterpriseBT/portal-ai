@@ -6,10 +6,14 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 const mockFindByAuth0Id = jest.fn<(id: string) => Promise<unknown>>();
+const mockFindEffectiveRoleNames =
+  jest.fn<(userId: string, orgId: string) => Promise<string[]>>();
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       users: { findByAuth0Id: mockFindByAuth0Id },
+      // #620: the middleware resolves ctx.roles from user_role (enum fallback).
+      userRole: { findEffectiveRoleNames: mockFindEffectiveRoleNames },
     },
   },
 }));
@@ -80,6 +84,8 @@ function createMocks(authPayload?: Record<string, unknown>) {
 describe("getApplicationMetadata", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default the roles lookup; individual tests override the expected role.
+    mockFindEffectiveRoleNames.mockResolvedValue(["owner"]);
   });
 
   it("should call next with error when auth payload is missing", async () => {
@@ -132,7 +138,7 @@ describe("getApplicationMetadata", () => {
       metadata: {
         userId: "user-1",
         organizationId: "org-1",
-        role: "owner",
+        roles: ["owner"],
       },
     });
     expect(next).toHaveBeenCalledWith();
@@ -165,6 +171,7 @@ describe("getApplicationMetadata", () => {
       organization: { id: "org-1" },
       organizationUser: { id: "org-user-1", role: "admin" },
     });
+    mockFindEffectiveRoleNames.mockResolvedValue(["admin"]);
     const { req, res, next } = createMocks({ sub: "auth0|abc123" });
 
     await getApplicationMetadata(req, res, next);
@@ -173,7 +180,7 @@ describe("getApplicationMetadata", () => {
       metadata: {
         userId: "user-1",
         organizationId: "org-1",
-        role: "admin",
+        roles: ["admin"],
       },
     });
     expect(mockEnsureProvisioned).not.toHaveBeenCalled();

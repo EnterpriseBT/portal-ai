@@ -1,18 +1,17 @@
 import { z } from "zod";
 import { OrganizationSchema } from "../models/organization.model.js";
-import {
-  OrgRoleSchema,
-  OrganizationUserSchema,
-} from "../models/organization-user.model.js";
+import { OrgRoleSchema } from "../models/organization-user.model.js";
+import { CapabilityMapSchema } from "../models/permission.model.js";
 
 /**
- * Response payload for the caller's current organization — the org plus the
- * caller's `role` in it (#576), the single source the web app derives role-aware
- * gating from (never recomputed from `ownerUserId`).
+ * Response payload for the caller's current organization (#576/#620).
+ * - `roles` — the caller's roles in the org (display), from the `user_role` join.
+ * - `capabilities` — the server-computed gating map; the FE gates on these.
  */
 export const OrganizationGetResponseSchema = z.object({
   organization: OrganizationSchema,
-  role: OrgRoleSchema,
+  roles: z.array(OrgRoleSchema),
+  capabilities: CapabilityMapSchema,
 });
 
 export type OrganizationGetResponse = z.infer<
@@ -45,23 +44,25 @@ export type OrganizationDeleteResponse = z.infer<
 >;
 
 /**
- * Request body for PATCH /api/organization/members/:userId/role (#576) — assign
- * a membership role. Owner + admin may call it; only the owner may mint/remove
- * `admin` or `owner` (enforced in the route, OQ2).
+ * Set-the-set request for `PUT /organization/members/:userId/roles` (#620) —
+ * the desired **complete** role set for a member (the endpoint diffs it against
+ * their current roles and adds/removes to match). `.min(1)` is the ≥1-role
+ * guard at the schema edge (a member always holds at least one role).
  */
-export const MemberRoleUpdateRequestSchema = z.object({
-  role: OrgRoleSchema,
+export const MemberRolesSetRequestSchema = z.object({
+  roles: z.array(OrgRoleSchema).min(1),
 });
 
-export type MemberRoleUpdateRequest = z.infer<
-  typeof MemberRoleUpdateRequestSchema
->;
+export type MemberRolesSetRequest = z.infer<typeof MemberRolesSetRequestSchema>;
 
-/** Response payload for a successful role assignment — the updated membership. */
-export const MemberRoleUpdateResponseSchema = z.object({
-  member: OrganizationUserSchema,
+/** Response for a successful set-roles — the member's resulting role set. */
+export const MemberRolesSetResponseSchema = z.object({
+  member: z.object({
+    userId: z.string(),
+    roles: z.array(OrgRoleSchema),
+  }),
 });
 
-export type MemberRoleUpdateResponse = z.infer<
-  typeof MemberRoleUpdateResponseSchema
+export type MemberRolesSetResponse = z.infer<
+  typeof MemberRolesSetResponseSchema
 >;

@@ -139,8 +139,19 @@ describe("Organization Router", () => {
       expect(res.body.payload.organization.name).toBe("My Organization");
       // #172 slice 2: `tier` flows onto OrganizationGetResponse with no mapper.
       expect(res.body.payload.organization.tier).toBe("standard");
-      // #576 slice 5: the caller's role rides the current-org response.
-      expect(res.body.payload.role).toBe("owner");
+      // #620: roles[] + the server-computed capability map ride the response
+      // so the FE gates on capabilities, never a role-name heuristic. The
+      // scalar `role` was removed with the FE cutover (slice 4).
+      expect(res.body.payload.role).toBeUndefined();
+      expect(res.body.payload.roles).toEqual(["owner"]);
+      expect(res.body.payload.capabilities).toEqual({
+        "billing.manage": true,
+        "org.delete": true,
+        "org.audit.read": true,
+        "member.role.assign": true,
+        "member.invite": true,
+        "member.remove": true,
+      });
     });
 
     it("should return the organization with the most recent login", async () => {
