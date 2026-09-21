@@ -60,6 +60,10 @@ export const StationGetResponsePayloadSchema = z.object({
   station: StationWithToolpacksSchema.extend({
     instances: z.array(StationInstanceWithConnectorInstanceSchema).optional(),
   }),
+  /** #621: whether the caller may share this station (`resource.share`) — gates
+   *  the Share entry point. Server-computed per-object, never a client role
+   *  heuristic. */
+  canShare: z.boolean(),
 });
 
 export type StationGetResponsePayload = z.infer<

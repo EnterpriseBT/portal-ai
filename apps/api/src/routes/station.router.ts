@@ -16,6 +16,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -158,12 +159,22 @@ stationRouter.get(
     try {
       const { limit, offset, sortBy, sortOrder, search } =
         StationListRequestQuerySchema.parse(req.query);
-      const { organizationId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId } = ctx;
 
       const filters: SQL[] = [eq(stations.organizationId, organizationId)];
       if (search) {
         filters.push(ilike(stations.name, `%${search}%`));
       }
+      // #621: object-level visibility — AND the caller's read predicate (own +
+      // system + shared) into the list. `undefined` = see-all (owner/admin).
+      const visibility = (
+        await PermissionService.loadSet(ctx)
+      ).visibilityPredicate("station", {
+        createdByCol: stations.createdBy,
+        idCol: stations.id,
+      });
+      if (visibility) filters.push(visibility);
       const where = and(...filters);
 
       const column = sortBy === "name" ? stations.name : stations.created;
@@ -286,7 +297,8 @@ stationRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId } = ctx;
 
       const include_ =
         (req.query.include as string | undefined)
@@ -300,6 +312,17 @@ stationRouter.get(
           new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
         );
       }
+
+      // #621: object-level read visibility (own + system + shared). A station
+      // the caller can't see 404s — same as it being absent from the list.
+      const set = await PermissionService.loadSet(ctx);
+      const object = { type: "station", id, createdBy: station.createdBy };
+      if (!set.can("resource.read", object)) {
+        return next(
+          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+        );
+      }
+      const canShare = set.can("resource.share", object);
 
       const instances =
         await DbService.repository.stationInstances.findByStationId(id, {
@@ -320,6 +343,7 @@ stationRouter.get(
           instances,
           enabledToolpacks,
         } as unknown as StationGetResponsePayload["station"],
+        canShare,
       });
     } catch (error) {
       logger.error(
@@ -427,7 +451,14 @@ stationRouter.post(
         );
       }
 
-      const { organizationId, userId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
+      // #621: creating a station is a write on a to-be-owned object
+      // (createdBy = caller) — every member can create their own.
+      await PermissionService.check(ctx, "resource.write", {
+        type: "station",
+        createdBy: userId,
+      });
       const { name, description, connectorInstanceIds, toolPacks } =
         parsed.data;
 
@@ -614,7 +645,8 @@ stationRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId, userId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
 
       const parsed = UpdateStationBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -633,6 +665,13 @@ stationRouter.patch(
           new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
         );
       }
+      // #621: writing a station requires resource.write on it (own via
+      // MemberAccess, any via owner/admin, or a read-write grant).
+      await PermissionService.check(ctx, "resource.write", {
+        type: "station",
+        id,
+        createdBy: existing.createdBy,
+      });
 
       const { name, description, connectorInstanceIds, toolPacks } =
         parsed.data;
@@ -810,7 +849,8 @@ stationRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId, userId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
 
       const existing = await DbService.repository.stations.findById(id);
       if (!existing || existing.organizationId !== organizationId) {
@@ -818,6 +858,13 @@ stationRouter.delete(
           new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
         );
       }
+      // #621: deleting a station requires resource.delete — its creator (own),
+      // or owner/admin. A read-write grantee cannot delete a shared station.
+      await PermissionService.check(ctx, "resource.delete", {
+        type: "station",
+        id,
+        createdBy: existing.createdBy,
+      });
 
       await DbService.transaction(async (tx) => {
         const stationPortals = await DbService.repository.portals.findByStation(
