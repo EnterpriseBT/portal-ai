@@ -13,6 +13,7 @@ import {
   PolicyAttachmentModelFactory,
 } from "@portalai/core/models";
 import type { RoleUpsertRequest, RoleView } from "@portalai/core/contracts";
+import { contentEntrySlug } from "@portalai/core/content";
 
 import { DbService } from "./db.service.js";
 import {
@@ -93,6 +94,25 @@ export class RoleService {
         ApiCode.RBAC_NAME_CONFLICT,
         `A role named "${name}" already exists`
       );
+    }
+  }
+
+  /** Derive a unique per-org slug for a new custom role from its name (#622).
+   *  Slugs are stable — set once at creation, never recomputed on rename — so an
+   *  assignment keyed by slug survives a display-name change. Disambiguates a
+   *  collision with a `-2`, `-3`, … suffix. */
+  private static async freeSlug(
+    caller: PermissionContext,
+    name: string
+  ): Promise<string> {
+    const base = contentEntrySlug(name) || "role";
+    for (let n = 1; ; n++) {
+      const candidate = n === 1 ? base : `${base}-${n}`;
+      const existing = await DbService.repository.roles.findBySlug(
+        caller.organizationId,
+        candidate
+      );
+      if (!existing) return candidate;
     }
   }
 
@@ -206,6 +226,7 @@ export class RoleService {
     return roles.map((r) => ({
       id: r.id,
       name: r.name,
+      slug: r.slug,
       kind: r.kind,
       policyIds: byRole.get(r.id) ?? [],
     }));
@@ -218,6 +239,7 @@ export class RoleService {
     return {
       id: role.id,
       name: role.name,
+      slug: role.slug,
       kind: role.kind,
       policyIds: current.map((c) => c.policyId),
     };
@@ -231,12 +253,14 @@ export class RoleService {
     await RoleService.gate(caller);
     await RoleService.assertPoliciesWithinBoundary(caller, req.policyIds);
     await RoleService.assertNameFree(caller, req.name);
+    const slug = await RoleService.freeSlug(caller, req.name);
 
     const role = new RoleModelFactory()
       .create(caller.userId)
       .update({
         organizationId: caller.organizationId,
         name: req.name,
+        slug,
         kind: "custom",
       })
       .parse();
@@ -261,6 +285,7 @@ export class RoleService {
     return {
       id: role.id,
       name: role.name,
+      slug: role.slug,
       kind: role.kind,
       policyIds: req.policyIds,
     };
@@ -302,6 +327,8 @@ export class RoleService {
     return {
       id,
       name: req.name,
+      // Slug is stable across renames (#622) — the loaded role keeps its slug.
+      slug: role.slug,
       kind: role.kind,
       policyIds: req.policyIds,
     };

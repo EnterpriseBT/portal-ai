@@ -130,9 +130,15 @@ describe("Policy / Role / PolicyAttachment (spec case 2)", () => {
   it("Role round-trips", () => {
     const parsed = new RoleModelFactory()
       .create("system")
-      .update({ organizationId: "org-1", name: "admin", kind: "system" })
+      .update({
+        organizationId: "org-1",
+        name: "admin",
+        slug: "admin",
+        kind: "system",
+      })
       .parse();
     expect(parsed.name).toBe("admin");
+    expect(parsed.slug).toBe("admin");
     expect(parsed.kind).toBe("system");
   });
 

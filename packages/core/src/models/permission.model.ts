@@ -280,6 +280,11 @@ export class PolicyAttachmentModelFactory extends ModelFactory<
 export const RoleSchema = CoreSchema.extend({
   organizationId: z.string(),
   name: z.string().min(1),
+  /** Stable, human-readable identifier (#622) — the key role assignment uses,
+   *  decoupled from `name` so a rename never breaks existing assignments.
+   *  System roles: `owner`/`admin`/`member`; custom: slugified from the name at
+   *  creation. Unique per org. */
+  slug: z.string().min(1),
   kind: RbacKindSchema,
 });
 export type Role = z.infer<typeof RoleSchema>;

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { InvitationSchema } from "../models/invitation.model.js";
 import { OrganizationSchema } from "../models/organization.model.js";
 import { OrgRoleSchema } from "../models/organization-user.model.js";
+import { RbacKindSchema } from "../models/permission.model.js";
 
 /**
  * Wire contracts for org seats / invitations (#584). The invite-link flow is
@@ -58,12 +59,32 @@ export const MemberSchema = z.object({
   userId: z.string(),
   email: z.string().nullable(),
   name: z.string().nullable(),
-  /** The member's roles in the org (#620), from the `user_role` join. */
+  /** The member's **system** roles in the org (#620), from the `user_role`
+   *  join — for display + owner/self UI logic. Custom roles are surfaced via
+   *  `roleSlugs`, not here. */
   roles: z.array(OrgRoleSchema),
+  /** The slugs of **all** roles the member holds (#622) — system + custom, the
+   *  complete assignment set the Members-tab multiselect edits. Defaulted so
+   *  callers/fixtures predating custom roles still parse. */
+  roleSlugs: z.array(z.string()).default([]),
+  /** The custom groups the member belongs to (#622), from the `user_group`
+   *  join — group ids. Empty unless the org authors custom groups. Defaulted so
+   *  callers/fixtures predating groups still parse. */
+  groupIds: z.array(z.string()).default([]),
   /** The membership's `created` timestamp (epoch ms). */
   joinedAt: z.number(),
 });
 export type Member = z.infer<typeof MemberSchema>;
+
+/** A role the caller may assign to members (#622) — the option set for the
+ *  Members-tab role multiselect (system roles always; custom when authored).
+ *  `slug` is the stable assignment key. */
+export const RoleRefSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  kind: RbacKindSchema,
+});
+export type RoleRef = z.infer<typeof RoleRefSchema>;
 
 /**
  * Org seat usage (#585) — `used` = accepted members + pending-active invites;
@@ -81,6 +102,10 @@ export type SeatUsage = z.infer<typeof SeatUsageSchema>;
 export const MemberListResponseSchema = z.object({
   members: z.array(MemberSchema),
   seatUsage: SeatUsageSchema,
+  /** The roles the caller may assign here (#622) — the multiselect's options.
+   *  System roles always; custom roles only when the org authored them.
+   *  Defaulted so pre-#622 callers/fixtures still parse. */
+  assignableRoles: z.array(RoleRefSchema).default([]),
 });
 export type MemberListResponse = z.infer<typeof MemberListResponseSchema>;
 

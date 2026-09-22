@@ -2,6 +2,7 @@ import type {
   MemberListResponse,
   MemberRolesSetResponse,
   MemberRolesSetRequest,
+  MemberGroupsSetRequest,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { queryKeys } from "./keys";
@@ -29,8 +30,8 @@ export const members = {
       body: () => undefined,
     }),
 
-  /** Set a member's complete role set (#620 set-the-set; owner/admin, with
-   *  owner/admin changes owner-gated — all server-enforced). */
+  /** Set a member's complete role set by slug (#620/#622 set-the-set; system +
+   *  custom, owner/admin changes owner-gated — all server-enforced). */
   setRoles: () =>
     useAuthMutation<
       MemberRolesSetResponse,
@@ -39,6 +40,19 @@ export const members = {
       url: (v) =>
         `/api/organization/members/${encodeURIComponent(v.userId)}/roles`,
       method: "PUT",
-      body: (v) => ({ roles: v.roles }),
+      body: (v) => ({ roleSlugs: v.roleSlugs }),
+    }),
+
+  /** Set a member's complete custom-group set (#622 member-centric set-the-set;
+   *  owner/admin + `customRbac`-entitled, all server-enforced). */
+  setGroups: () =>
+    useAuthMutation<
+      { userId: string; groupIds: string[] },
+      { userId: string } & MemberGroupsSetRequest
+    >({
+      url: (v) =>
+        `/api/organization/members/${encodeURIComponent(v.userId)}/groups`,
+      method: "PUT",
+      body: (v) => ({ groupIds: v.groupIds }),
     }),
 };

@@ -18,11 +18,18 @@ export const roles = pgTable(
       .notNull()
       .references(() => organizations.id),
     name: text("name").notNull(),
+    /** Stable per-org assignment key (#622), decoupled from `name` so a rename
+     *  never breaks assignments. System roles use their name; custom roles are
+     *  slugified at creation. */
+    slug: text("slug").notNull(),
     kind: text("kind", { enum: RBAC_KINDS }).notNull(),
   },
   (t) => [
     uniqueIndex("roles_org_name_unique")
       .on(t.organizationId, t.name)
+      .where(sql`${t.deleted} IS NULL`),
+    uniqueIndex("roles_org_slug_unique")
+      .on(t.organizationId, t.slug)
       .where(sql`${t.deleted} IS NULL`),
     check("roles_kind_check", sql`${t.kind} IN ('system', 'custom')`),
   ]

@@ -16,9 +16,9 @@ import {
   Typography,
   StatusMessage,
 } from "@portalai/core/ui";
-import type { OrgRole } from "@portalai/core/models";
 import type {
   Member,
+  RoleRef,
   SeatUsage,
   InvitationResponse,
   InviteCreateRequest,
@@ -27,9 +27,10 @@ import type {
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { useCustomRbacEntitled } from "../utils/use-custom-rbac-entitled.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
-import { MemberListUI } from "./MemberList.component";
+import { MemberListUI, type GroupOption } from "./MemberList.component";
 import { RemoveMemberDialog } from "./RemoveMemberDialog.component";
 import { InviteMemberDialog } from "./InviteMemberDialog.component";
 import { PendingInvitationListUI } from "./PendingInvitationList.component";
@@ -43,7 +44,15 @@ export interface MembersTabUIProps {
   /** Whether the caller may assign roles (`can("member.role.assign")`). */
   canManageRoles: boolean;
   callerUserId: string;
-  onSetRoles: (userId: string, roles: OrgRole[]) => void;
+  /** #622: the roles assignable here (system + custom) — the multiselect's
+   *  options, keyed by slug. */
+  assignableRoles: RoleRef[];
+  onSetRoles: (userId: string, roleSlugs: string[]) => void;
+  /** #622: the org's custom groups + whether the member-centric group column
+   *  shows (entitled + capable) + its set-the-set handler. */
+  groups?: GroupOption[];
+  canManageGroups?: boolean;
+  onSetGroups?: (userId: string, groupIds: string[]) => void;
   onRemoveClick: (member: Member) => void;
   onInviteClick: () => void;
   onResend: (invitation: InvitationResponse) => void;
@@ -74,7 +83,11 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
   invitations,
   canManageRoles,
   callerUserId,
+  assignableRoles,
   onSetRoles,
+  groups = [],
+  canManageGroups = false,
+  onSetGroups,
   onRemoveClick,
   onInviteClick,
   onResend,
@@ -150,7 +163,11 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
         members={members}
         canManageRoles={canManageRoles}
         callerUserId={callerUserId}
+        assignableRoles={assignableRoles}
         onSetRoles={onSetRoles}
+        groups={groups}
+        canManageGroups={canManageGroups}
+        onSetGroups={onSetGroups}
         onRemove={onRemoveClick}
         isPending={mutating}
       />
@@ -179,10 +196,17 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
  */
 export const MembersTab: React.FC = () => {
   const { can } = useCapabilities();
+  // #622: member-centric group assignment shows only for an entitled org whose
+  // caller can manage roles (the same owner/admin capability gates both). Both
+  // hooks are called unconditionally (Rules of Hooks) before combining.
+  const rbacEntitled = useCustomRbacEntitled();
+  const canManageGroups = can("member.role.assign") && rbacEntitled;
   const profileQuery = sdk.auth.profile();
   const membersQuery = sdk.members.list();
   const invitationsQuery = sdk.invitations.list();
+  const groupsQuery = sdk.groups.list({ enabled: canManageGroups });
   const setRoles = sdk.members.setRoles();
+  const setGroups = sdk.members.setGroups();
   const remove = sdk.members.remove();
   const inviteCreate = sdk.invitations.create();
   const invitationResend = sdk.invitations.resend();
@@ -202,6 +226,11 @@ export const MembersTab: React.FC = () => {
   const invitations = (invitationsQuery.data?.invitations ?? []).filter(
     (i) => i.status === "pending"
   );
+  const groups: GroupOption[] = (groupsQuery.data?.groups ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+  }));
+  const assignableRoles = membersQuery.data?.assignableRoles ?? [];
   const capReached = seatUsage.max !== null && seatUsage.used >= seatUsage.max;
   const inviteDisabledReason = capReached
     ? `Seat limit reached (${seatUsage.used} / ${seatUsage.max}). Remove a member or upgrade to invite more.`
@@ -220,9 +249,9 @@ export const MembersTab: React.FC = () => {
   const invalidateInvitations = () =>
     queryClient.invalidateQueries({ queryKey: queryKeys.invitations.root });
 
-  const handleSetRoles = (userId: string, roles: OrgRole[]) => {
+  const handleSetRoles = (userId: string, roleSlugs: string[]) => {
     setRoles.mutate(
-      { userId, roles },
+      { userId, roleSlugs },
       {
         onSuccess: () => {
           invalidateMembers();
@@ -234,6 +263,23 @@ export const MembersTab: React.FC = () => {
         },
         onError: (error) =>
           toast.error(toServerError(error)?.message ?? "Failed to set roles"),
+      }
+    );
+  };
+
+  const handleSetGroups = (userId: string, groupIds: string[]) => {
+    setGroups.mutate(
+      { userId, groupIds },
+      {
+        onSuccess: () => {
+          invalidateMembers();
+          // A member's group set changes their effective access; refresh the
+          // groups list too so memberCount stays accurate.
+          queryClient.invalidateQueries({ queryKey: queryKeys.groups.root });
+          toast.success("Groups updated");
+        },
+        onError: (error) =>
+          toast.error(toServerError(error)?.message ?? "Failed to set groups"),
       }
     );
   };
@@ -315,7 +361,11 @@ export const MembersTab: React.FC = () => {
         invitations={invitations}
         canManageRoles={can("member.role.assign")}
         callerUserId={callerUserId}
+        assignableRoles={assignableRoles}
         onSetRoles={handleSetRoles}
+        groups={groups}
+        canManageGroups={canManageGroups}
+        onSetGroups={handleSetGroups}
         onRemoveClick={setRemoveTarget}
         onInviteClick={() => setInviteOpen(true)}
         onResend={handleResend}
@@ -327,7 +377,7 @@ export const MembersTab: React.FC = () => {
         onDismissLink={() => setLastInviteUrl(null)}
         isLoading={membersQuery.isLoading}
         error={membersQuery.error}
-        mutating={setRoles.isPending || remove.isPending}
+        mutating={setRoles.isPending || setGroups.isPending || remove.isPending}
         invitesMutating={
           invitationResend.isPending || invitationRevoke.isPending
         }

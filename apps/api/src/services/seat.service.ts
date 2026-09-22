@@ -26,6 +26,7 @@ import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { users } from "../db/schema/users.table.js";
 import { userRole } from "../db/schema/user-role.table.js";
 import { roles } from "../db/schema/roles.table.js";
+import { userGroup } from "../db/schema/user-group.table.js";
 import { DbService } from "./db.service.js";
 import { AuditService } from "./audit.service.js";
 import { Auth0Service } from "./auth0.service.js";
@@ -181,11 +182,18 @@ export class SeatService {
         )
       );
 
-    // #620: batch-load each member's roles from the user_role join (one query).
+    // #620/#622: batch-load each member's roles from the user_role join (one
+    // query) — the system role names (display + owner logic) and every role's
+    // slug (the complete assignment set the Members-tab multiselect edits).
     const userIds = rows.map((r) => r.userId);
     const roleRows = userIds.length
       ? await (db as typeof db)
-          .select({ userId: userRole.userId, name: roles.name })
+          .select({
+            userId: userRole.userId,
+            name: roles.name,
+            slug: roles.slug,
+            kind: roles.kind,
+          })
           .from(userRole)
           .innerJoin(roles, eq(userRole.roleId, roles.id))
           .where(
@@ -198,10 +206,36 @@ export class SeatService {
           )
       : [];
     const rolesByUser = new Map<string, OrgRole[]>();
+    const roleSlugsByUser = new Map<string, string[]>();
     for (const rr of roleRows) {
-      const list = rolesByUser.get(rr.userId) ?? [];
-      list.push(rr.name as OrgRole);
-      rolesByUser.set(rr.userId, list);
+      if (rr.kind === "system") {
+        const list = rolesByUser.get(rr.userId) ?? [];
+        list.push(rr.name as OrgRole);
+        rolesByUser.set(rr.userId, list);
+      }
+      const slugs = roleSlugsByUser.get(rr.userId) ?? [];
+      slugs.push(rr.slug);
+      roleSlugsByUser.set(rr.userId, slugs);
+    }
+    // #622: batch-load each member's custom-group ids from the user_group join
+    // (one query) so the Members tab can offer member-centric group assignment.
+    const groupRows = userIds.length
+      ? await (db as typeof db)
+          .select({ userId: userGroup.userId, groupId: userGroup.groupId })
+          .from(userGroup)
+          .where(
+            and(
+              eq(userGroup.organizationId, caller.organizationId),
+              inArray(userGroup.userId, userIds),
+              isNull(userGroup.deleted)
+            )
+          )
+      : [];
+    const groupsByUser = new Map<string, string[]>();
+    for (const gr of groupRows) {
+      const list = groupsByUser.get(gr.userId) ?? [];
+      list.push(gr.groupId);
+      groupsByUser.set(gr.userId, list);
     }
     // #620: the member's roles come from user_role; the enum is dropped from
     // the response (kept only as an internal fallback for a membership that
@@ -209,7 +243,25 @@ export class SeatService {
     return rows.map(({ role, ...rest }) => ({
       ...rest,
       roles: rolesByUser.get(rest.userId) ?? (role ? [role as OrgRole] : []),
+      roleSlugs: roleSlugsByUser.get(rest.userId) ?? (role ? [role] : []),
+      groupIds: groupsByUser.get(rest.userId) ?? [],
     })) as Member[];
+  }
+
+  /**
+   * The roles the caller may assign here (#622) — the Members-tab role
+   * multiselect's options. Every org's three system roles, plus any custom roles
+   * the org authored; `slug` is the stable assignment key. Readable by any
+   * member (role names aren't sensitive); the multiselect only renders for a
+   * caller with `member.role.assign`.
+   */
+  static async assignableRoles(
+    caller: PermissionContext
+  ): Promise<{ slug: string; name: string; kind: "system" | "custom" }[]> {
+    const orgRoles = await DbService.repository.roles.findByOrganizationId(
+      caller.organizationId
+    );
+    return orgRoles.map((r) => ({ slug: r.slug, name: r.name, kind: r.kind }));
   }
 
   /**
@@ -501,27 +553,29 @@ export class SeatService {
   }
 
   /**
-   * Set the **complete** role set for a member (#620) — the multi-role
-   * successor to the single-role PATCH. Diffs `desired` against the member's
-   * current roles and adds/removes to match. Rules preserved from #576:
-   * assigning any role requires `member.role.assign`; adding or removing
-   * `owner`/`admin` additionally requires the caller to be an owner (OQ2).
-   * Guards: ≥1-role (`MEMBER_MIN_ONE_ROLE`) and last-owner
-   * (`LAST_OWNER_ROLE_REMOVAL`), both re-checked under the seat lock. The
-   * `organization_users.role` enum is kept as a mirror (highest of the set).
-   * Audits `member.role.add` / `member.role.remove` per change (post-commit,
-   * fail-open).
+   * Set the **complete** role set for a member (#620, extended #622) — the
+   * multi-role successor to the single-role PATCH, addressed by **slug** so
+   * custom roles assign through the same path as the system ones. Diffs the
+   * desired set against the member's current roles (by role id) and adds/removes
+   * to match. Rules preserved from #576: assigning any role requires
+   * `member.role.assign`; adding or removing the system `owner`/`admin` role
+   * additionally requires the caller to be an owner (OQ2). Guards: ≥1 **system**
+   * role (`MEMBER_MIN_ONE_ROLE` — every member keeps a base org role, so the
+   * `organization_users.role` enum mirror stays defined) and last-owner
+   * (`LAST_OWNER_ROLE_REMOVAL`), both re-checked under the seat lock. Custom
+   * roles are free additive grants. Audits `member.role.add` /
+   * `member.role.remove` per change (post-commit, fail-open).
    */
   static async setMemberRoles(
     caller: PermissionContext,
     targetUserId: string,
-    desired: OrgRole[],
+    desiredSlugs: string[],
     auditCtx: SeatAuditContext
-  ): Promise<{ userId: string; roles: OrgRole[] }> {
+  ): Promise<{ userId: string; roles: OrgRole[]; roleSlugs: string[] }> {
     await PermissionService.check(caller, "member.role.assign");
     const orgId = caller.organizationId;
-    const desiredSet = [...new Set(desired)];
-    if (desiredSet.length === 0) {
+    const desiredSlugSet = [...new Set(desiredSlugs)];
+    if (desiredSlugSet.length === 0) {
       throw new ApiError(
         409,
         ApiCode.MEMBER_MIN_ONE_ROLE,
@@ -543,6 +597,36 @@ export class SeatService {
         );
       }
 
+      // Resolve the org's roles → slug/id maps; every desired slug must exist.
+      const orgRoles =
+        await DbService.repository.roles.findByOrganizationId(orgId);
+      const bySlug = new Map(orgRoles.map((r) => [r.slug, r]));
+      const byId = new Map(orgRoles.map((r) => [r.id, r]));
+      const desiredRoles = desiredSlugSet.map((slug) => {
+        const role = bySlug.get(slug);
+        if (!role) {
+          throw new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            `Unknown role slug "${slug}"`
+          );
+        }
+        return role;
+      });
+
+      // ≥1 system role: keeps the enum mirror defined and every member anchored
+      // to a base org role. Custom roles are additive on top.
+      const desiredSystemNames = desiredRoles
+        .filter((r) => r.kind === "system")
+        .map((r) => r.name as OrgRole);
+      if (desiredSystemNames.length === 0) {
+        throw new ApiError(
+          409,
+          ApiCode.MEMBER_MIN_ONE_ROLE,
+          "A member must have at least one organization role (owner, admin, or member)"
+        );
+      }
+
       // Heal a pre-cutover membership so the diff + owner count are authoritative
       // over user_role alone.
       await DbService.repository.userRole.materializeFromEnum(
@@ -551,23 +635,33 @@ export class SeatService {
         target.role,
         caller.userId
       );
-      const baseline = (await DbService.repository.userRole.findRoleNames(
+      const baselineIds = await DbService.repository.userRole.findRoleIds(
         targetUserId,
         orgId
-      )) as OrgRole[];
-      const baseSet = new Set(baseline);
-      const wantSet = new Set(desiredSet);
-      const toAdd = desiredSet.filter((r) => !baseSet.has(r));
-      const toRemove = baseline.filter((r) => !wantSet.has(r));
+      );
+      const baseSet = new Set(baselineIds);
+      const desiredIds = desiredRoles.map((r) => r.id);
+      const wantSet = new Set(desiredIds);
+      const toAdd = desiredIds.filter((id) => !baseSet.has(id));
+      const toRemove = baselineIds.filter((id) => !wantSet.has(id));
 
       if (toAdd.length === 0 && toRemove.length === 0) {
-        return { userId: targetUserId, roles: baseline };
+        return {
+          userId: targetUserId,
+          roles: desiredSystemNames,
+          roleSlugs: desiredSlugSet,
+        };
       }
 
-      // OQ2: owner/admin add or remove is owner-only.
+      // OQ2: adding or removing the system owner/admin role is owner-only.
       const callerIsOwner = caller.roles.includes("owner");
-      for (const r of [...toAdd, ...toRemove]) {
-        if ((r === "owner" || r === "admin") && !callerIsOwner) {
+      for (const id of [...toAdd, ...toRemove]) {
+        const role = byId.get(id);
+        if (
+          role?.kind === "system" &&
+          (role.name === "owner" || role.name === "admin") &&
+          !callerIsOwner
+        ) {
           throw new ApiError(
             403,
             ApiCode.INSUFFICIENT_ROLE,
@@ -576,8 +670,11 @@ export class SeatService {
         }
       }
 
-      // Last-owner: never strip the owner role from the org's last owner.
-      if (toRemove.includes("owner")) {
+      // Last-owner: never strip the system owner role from the org's last owner.
+      const ownerRole = orgRoles.find(
+        (r) => r.kind === "system" && r.name === "owner"
+      );
+      if (ownerRole && toRemove.includes(ownerRole.id)) {
         const owners = await DbService.repository.userRole.countUsersWithRole(
           orgId,
           "owner"
@@ -592,33 +689,33 @@ export class SeatService {
       }
 
       await DbService.transaction(async (tx) => {
-        for (const r of toAdd) {
-          await DbService.repository.userRole.assign(
+        for (const id of toAdd) {
+          await DbService.repository.userRole.assignById(
             targetUserId,
             orgId,
-            r,
+            id,
             caller.userId,
             tx
           );
         }
-        for (const r of toRemove) {
-          await DbService.repository.userRole.removeAssignment(
+        for (const id of toRemove) {
+          await DbService.repository.userRole.removeAssignmentById(
             targetUserId,
             orgId,
-            r,
+            id,
             caller.userId,
             tx
           );
         }
-        // Enum mirror = highest of the resulting set.
+        // Enum mirror = highest of the resulting **system** roles.
         await DbService.repository.organizationUsers.update(
           target.id,
-          { role: highestRole(desiredSet) },
+          { role: highestRole(desiredSystemNames) },
           tx
         );
       });
 
-      for (const r of toAdd) {
+      for (const id of toAdd) {
         void AuditService.record({
           organizationId: orgId,
           userId: caller.userId,
@@ -627,10 +724,10 @@ export class SeatService {
           targetId: targetUserId,
           sourceIp: auditCtx.sourceIp,
           userAgent: auditCtx.userAgent,
-          metadata: { role: r },
+          metadata: { role: byId.get(id)?.slug ?? id },
         });
       }
-      for (const r of toRemove) {
+      for (const id of toRemove) {
         void AuditService.record({
           organizationId: orgId,
           userId: caller.userId,
@@ -639,11 +736,15 @@ export class SeatService {
           targetId: targetUserId,
           sourceIp: auditCtx.sourceIp,
           userAgent: auditCtx.userAgent,
-          metadata: { role: r },
+          metadata: { role: byId.get(id)?.slug ?? id },
         });
       }
 
-      return { userId: targetUserId, roles: desiredSet };
+      return {
+        userId: targetUserId,
+        roles: desiredSystemNames,
+        roleSlugs: desiredSlugSet,
+      };
     });
   }
 

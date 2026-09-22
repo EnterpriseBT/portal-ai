@@ -113,6 +113,7 @@ describe("RBAC authoring contracts — role (#622)", () => {
     const view = {
       id: "role-1",
       name: "Analyst",
+      slug: "analyst",
       kind: "custom" as const,
       policyIds: ["pol-1"],
     };

@@ -16,10 +16,13 @@ import {
   IconName,
   type DataTableColumn,
 } from "@portalai/core/ui";
-import type { OrgRole } from "@portalai/core/models";
-import type { Member } from "@portalai/core/contracts";
+import type { Member, RoleRef } from "@portalai/core/contracts";
 
-const ALL_ROLES: OrgRole[] = ["owner", "admin", "member"];
+/** A selectable custom group for the member-centric assignment column (#622). */
+export interface GroupOption {
+  id: string;
+  name: string;
+}
 
 export interface MemberListUIProps {
   members: Member[];
@@ -29,11 +32,21 @@ export interface MemberListUIProps {
   canManageRoles: boolean;
   /** The caller's own user id — removing yourself is disabled. */
   callerUserId: string;
-  /** Set a member's complete role set (#620 set-the-set). */
-  onSetRoles: (userId: string, roles: OrgRole[]) => void;
+  /** The roles assignable here (#622) — the multiselect options (system +
+   *  custom); `slug` is the set-the-set key. */
+  assignableRoles: RoleRef[];
+  /** Set a member's complete role set by slug (#620/#622 set-the-set). */
+  onSetRoles: (userId: string, roleSlugs: string[]) => void;
   onRemove: (member: Member) => void;
   /** A mutation is in flight — disable the row controls. */
   isPending?: boolean;
+  /** #622: the org's custom groups, shown as a member-centric assignment column
+   *  only when the org is `customRbac`-entitled. Empty/omitted → no column. */
+  groups?: GroupOption[];
+  /** Whether to show the group-assignment column (entitled + capable). */
+  canManageGroups?: boolean;
+  /** Set a member's complete group set (#622 member-centric set-the-set). */
+  onSetGroups?: (userId: string, groupIds: string[]) => void;
 }
 
 /**
@@ -47,11 +60,69 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
   members,
   canManageRoles,
   callerUserId,
+  assignableRoles,
   onSetRoles,
   onRemove,
   isPending = false,
+  groups = [],
+  canManageGroups = false,
+  onSetGroups,
 }) => {
   const ownerCount = members.filter((m) => m.roles.includes("owner")).length;
+  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
+  const roleNameBySlug = new Map(assignableRoles.map((r) => [r.slug, r.name]));
+
+  const groupColumn: DataTableColumn = {
+    key: "groupIds",
+    label: "Groups",
+    render: (_v, row) => {
+      const member = row as unknown as Member;
+      return (
+        <Select<string[]>
+          size="small"
+          multiple
+          displayEmpty
+          value={member.groupIds}
+          disabled={isPending}
+          onChange={(e: SelectChangeEvent<string[]>) => {
+            const next = e.target.value;
+            onSetGroups?.(
+              member.userId,
+              typeof next === "string" ? next.split(",") : next
+            );
+          }}
+          renderValue={(selected) =>
+            selected.length === 0 ? (
+              "—"
+            ) : (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                {selected.map((id) => (
+                  <Chip
+                    key={id}
+                    size="small"
+                    label={groupNameById.get(id) ?? id}
+                  />
+                ))}
+              </Stack>
+            )
+          }
+          aria-label={`Groups for ${member.email ?? member.userId}`}
+        >
+          {groups.length === 0 ? (
+            <MenuItem disabled value="">
+              No groups yet
+            </MenuItem>
+          ) : (
+            groups.map((g) => (
+              <MenuItem key={g.id} value={g.id}>
+                {g.name}
+              </MenuItem>
+            ))
+          )}
+        </Select>
+      );
+    },
+  };
 
   const columns: DataTableColumn[] = [
     { key: "name", label: "Name", render: (v) => (v ? String(v) : "—") },
@@ -64,37 +135,46 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
         if (!canManageRoles) {
           return (
             <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-              {member.roles.map((r) => (
-                <Chip key={r} size="small" variant="outlined" label={r} />
+              {member.roleSlugs.map((slug) => (
+                <Chip
+                  key={slug}
+                  size="small"
+                  variant="outlined"
+                  label={roleNameBySlug.get(slug) ?? slug}
+                />
               ))}
             </Stack>
           );
         }
         return (
-          <Select<OrgRole[]>
+          <Select<string[]>
             size="small"
             multiple
-            value={member.roles}
+            value={member.roleSlugs}
             disabled={isPending}
-            onChange={(e: SelectChangeEvent<OrgRole[]>) => {
+            onChange={(e: SelectChangeEvent<string[]>) => {
               const next = e.target.value;
               onSetRoles(
                 member.userId,
-                typeof next === "string" ? (next.split(",") as OrgRole[]) : next
+                typeof next === "string" ? next.split(",") : next
               );
             }}
             renderValue={(selected) => (
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                {selected.map((r) => (
-                  <Chip key={r} size="small" label={r} />
+                {selected.map((slug) => (
+                  <Chip
+                    key={slug}
+                    size="small"
+                    label={roleNameBySlug.get(slug) ?? slug}
+                  />
                 ))}
               </Stack>
             )}
             aria-label={`Roles for ${member.email ?? member.userId}`}
           >
-            {ALL_ROLES.map((r) => (
-              <MenuItem key={r} value={r}>
-                {r}
+            {assignableRoles.map((r) => (
+              <MenuItem key={r.slug} value={r.slug}>
+                {r.name}
               </MenuItem>
             ))}
           </Select>
@@ -137,6 +217,10 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
       },
     },
   ];
+
+  // #622: the member-centric group column sits after Roles, only when the org is
+  // entitled and the caller can manage groups.
+  if (canManageGroups) columns.splice(3, 0, groupColumn);
 
   return (
     <DataTable

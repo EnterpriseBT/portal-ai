@@ -445,7 +445,7 @@ organizationRouter.put(
           new ApiError(
             400,
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "roles is required and must be a non-empty array of owner|admin|member"
+            "roleSlugs is required and must be a non-empty array of role slugs"
           )
         );
       }
@@ -453,12 +453,16 @@ organizationRouter.put(
       const result = await SeatService.setMemberRoles(
         ctx,
         targetUserId,
-        parsed.data.roles,
+        parsed.data.roleSlugs,
         auditContextFromRequest(req)
       );
 
       return HttpService.success<MemberRolesSetResponse>(res, {
-        member: { userId: result.userId, roles: result.roles },
+        member: {
+          userId: result.userId,
+          roles: result.roles,
+          roleSlugs: result.roleSlugs,
+        },
       });
     } catch (error) {
       return next(
@@ -762,13 +766,15 @@ organizationRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const ctx = req.application!.metadata;
-      const [members, seatUsage] = await Promise.all([
+      const [members, seatUsage, assignableRoles] = await Promise.all([
         SeatService.listMembers(ctx),
         SeatService.seatUsage(ctx),
+        SeatService.assignableRoles(ctx),
       ]);
       return HttpService.success<MemberListResponse>(res, {
         members,
         seatUsage,
+        assignableRoles,
       });
     } catch (error) {
       return next(

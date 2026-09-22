@@ -764,6 +764,13 @@
       "when": 1790051949010,
       "tag": "0108_add_tiers_custom_rbac",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1790102880338,
+      "tag": "0109_add-roles-slug",
+      "breakpoints": true
     }
   ]
 }

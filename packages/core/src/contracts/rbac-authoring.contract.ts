@@ -73,6 +73,8 @@ export type RoleUpsertRequest = z.infer<typeof RoleUpsertRequestSchema>;
 export const RoleViewSchema = z.object({
   id: z.string(),
   name: z.string(),
+  /** Stable assignment key (#622) — decoupled from `name`. */
+  slug: z.string(),
   kind: RbacKindSchema,
   policyIds: z.array(z.string()),
 });

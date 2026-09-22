@@ -106,11 +106,13 @@ describe("PUT /api/organization/members/:userId/roles (#620 set-the-set)", () =>
     return u.id;
   }
 
+  // #622: assignment is by slug; for system roles slug === name, so the
+  // existing owner/admin/member bodies are already valid slugs.
   const putRoles = (userId: string, rolesBody: string[]) =>
     request(app)
       .put(`/api/organization/members/${userId}/roles`)
       .set("Authorization", "Bearer test-token")
-      .send({ roles: rolesBody });
+      .send({ roleSlugs: rolesBody });
 
   async function roleNames(userId: string, orgId: string): Promise<string[]> {
     const rows = await db
