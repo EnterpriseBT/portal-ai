@@ -56,6 +56,20 @@ export class PolicyAttachmentsRepository extends Repository<
       client
     );
   }
+
+  /** Soft-delete every live attachment of a policy (#622 delete cascade). */
+  async softDeleteByPolicyId(
+    policyId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: Date.now(), deletedBy })
+      .where(and(eq(policyAttachments.policyId, policyId), this.notDeleted()))
+      .returning();
+    return rows.length;
+  }
 }
 
 export const policyAttachmentsRepo = new PolicyAttachmentsRepository();

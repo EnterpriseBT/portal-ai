@@ -41,6 +41,9 @@ import {
   ShareGrantRequestSchema,
   ShareGrantResponseSchema,
   GrantListResponseSchema,
+  PolicyUpsertRequestSchema,
+  PolicyResponseSchema,
+  PolicyListResponseSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
   AcceptInvitationResponseSchema,
@@ -363,6 +366,15 @@ const orgDeleteSchemas: Record<string, unknown> = {
     JSON_SCHEMA_OPTS
   ),
   GrantListResponse: z.toJSONSchema(GrantListResponseSchema, JSON_SCHEMA_OPTS),
+  PolicyUpsertRequest: z.toJSONSchema(
+    PolicyUpsertRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  PolicyResponse: z.toJSONSchema(PolicyResponseSchema, JSON_SCHEMA_OPTS),
+  PolicyListResponse: z.toJSONSchema(
+    PolicyListResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
   InviteCreateRequest: z.toJSONSchema(
     InviteCreateRequestSchema,
     JSON_SCHEMA_OPTS

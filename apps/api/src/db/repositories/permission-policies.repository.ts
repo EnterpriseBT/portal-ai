@@ -37,6 +37,18 @@ export class PermissionPoliciesRepository extends Repository<
       .limit(1);
     return row as PolicySelect | undefined;
   }
+
+  /** Every live policy in an org (the Access-tab list, #622). */
+  async findByOrganizationId(
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<PolicySelect[]> {
+    return this.findMany(
+      eq(permissionPolicies.organizationId, organizationId),
+      {},
+      client
+    );
+  }
 }
 
 export const permissionPoliciesRepo = new PermissionPoliciesRepository();

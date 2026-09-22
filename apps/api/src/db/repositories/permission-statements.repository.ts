@@ -46,6 +46,20 @@ export class PermissionStatementsRepository extends Repository<
       client
     );
   }
+
+  /** Replace a policy's statement set (#622) — hard-delete the existing rows
+   *  (config, not soft-deleted) and insert the new set. Empty `rows` clears
+   *  them (used by policy delete). Call inside a transaction. */
+  async replaceForPolicy(
+    policyId: string,
+    rows: PermissionStatementInsert[],
+    client: DbClient = db
+  ): Promise<void> {
+    await (client as typeof db)
+      .delete(this.table)
+      .where(eq(permissionStatements.policyId, policyId));
+    if (rows.length > 0) await this.createMany(rows, client);
+  }
 }
 
 export const permissionStatementsRepo = new PermissionStatementsRepository();
