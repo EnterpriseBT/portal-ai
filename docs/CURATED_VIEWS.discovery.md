@@ -4,6 +4,8 @@
 
 **Why this exists.** Members today query connector data through the raw entity passthrough: `buildSessionViews` (`apps/api/src/services/portal-sql.service.ts:143`) exposes one temp view per readable **entity**, projecting every non-hidden column of its wide table. That is the read/exposure layer for almost all member data access, and it is all-or-nothing per entity — there is no way to grant a member a *slice* (some rows, some columns) of an entity, and "sharing = grant" is unsafe because the only grantable data object is the whole connector/entity. The #598/#620/#622 RBAC work built the grant + policy engine and even reserved `view` as a resource type (`packages/core/src/models/permission.model.ts:36`), but **nothing populates, grants, or reads a view yet**. This ticket adds the **view object** (a per-entity curated slice: row filter + column projection), the **`station_views`** attachment, the **per-user session-view engine**, **definer's-rights always-live pins**, a **per-caller tool-authorization gate**, and a **Views admin page** with role-gated navigation. This is the read/exposure layer that makes member data access curated and "sharing = grant" safe.
 
+> **Descoped after review (2026-09-22).** Two of the seven decisions below were split into their own focused tickets that land *first* (they operate on already-shipped RBAC objects, no views needed): **Decisions 5 & 6** (per-caller tool-authorization gate + governance toolpack) → **#629**, and **Decision 7's navigation gating** (role-gated `SidebarNav`) → **#630**. This ticket keeps the view schema, `station_views`, the `resolveViewsForSession` rewrite, definer's-rights pins, and the Views *admin page* (which plugs its nav item into #630's pattern). #599 gets a fresh, deeper discovery once #629 + #630 land — the sections below are preserved as the reference that motivated the split, not the final #599 design.
+
 ## The current shape
 
 ### Connector → entity → station data model
@@ -77,15 +79,15 @@ The station's current exposed attachment is the **connector instance**; there is
 
 **Lean: A.** Drop embedded rows from refreshable pins; add a first-class **`definer_principal_type` + `definer_principal_id`** on `portal_results` (user first cut per OQ8; queryable so offboard can sweep). Render/refresh executes `content.pipeline` under the **definer's** `resolveViewsForSession` — so a shared pin shows the definer's current data and empties when their access is gone. Rebinding a definer to a role is a later config flip, not a migration.
 
-### Decision 5 — Per-caller tool-authorization gate
+### Decision 5 — Per-caller tool-authorization gate  → split to #629
 
 **Lean: a build-time wrapper** (mirroring `wrapWithCostGate`) that, for every tool with non-empty `ToolCapability.writes[]`, calls `PermissionService.check(callerUserId, action, object)` before `execute` and returns a **typed refusal** on deny (never a throw the agent can't relay). Injected in `buildAnalyticsTools` alongside the cost gate; a guard test asserts every write tool is wrapped. This is the standing rule — *safety gates get server enforcement, not prompt instructions*.
 
-### Decision 6 — Governance toolpack entitlement
+### Decision 6 — Governance toolpack entitlement  → split to #629
 
 **Lean: `alwaysAvailable`** (never tier-gated) — RBAC/view administration is a security feature, not a monetization axis (OQ9). Availability ≠ authorization: the pack is present for everyone, but each of its tools is still per-caller `PermissionService.check`-gated (Decision 5), so only admins can actually use it.
 
-### Decision 7 — Views admin UI + role-gated nav
+### Decision 7 — Views admin UI + role-gated nav  (nav gating → #630; the Views admin page stays in #599)
 
 **Lean:** add a `view.manage` capability action (`CALLER_CAPABILITY_ACTIONS`), held by the system `owner`/`admin` roles so custom RBAC can grant it. Gate `SidebarNav` per capability: **members** see Stations / Portals / granted views; **admins** additionally see the raw plumbing (Connectors, Entities, Column Definitions, …) + a new **Views** admin page (CRUD row-filter + projection, attach, grant — mirroring `modules/AccessAuthoring/`). Every route is server-authoritative.
 
