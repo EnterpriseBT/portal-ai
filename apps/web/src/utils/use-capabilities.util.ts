@@ -5,6 +5,9 @@ import { sdk } from "../api/sdk";
 export interface CapabilityState {
   /** The caller's roles in the current org (empty until resolved). */
   roles: OrgRole[];
+  /** The caller's custom group names in the current org (#622; empty until
+   *  resolved or when the org authors no groups). */
+  groups: string[];
   /**
    * Whether the caller may perform an app-level action, computed server-side
    * from their attached policies (#620). This is the FE's only gating
@@ -29,6 +32,7 @@ export function useCapabilities(): CapabilityState {
   const capabilities = data?.capabilities;
   return {
     roles: data?.roles ?? [],
+    groups: data?.groups ?? [],
     can: (action) => capabilities?.[action] ?? false,
     capabilitiesKnown: data !== undefined,
   };

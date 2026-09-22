@@ -100,6 +100,75 @@ export class UserRolesRepository extends Repository<
     return `sysrole:${organizationId}:${roleName}`;
   }
 
+  /** A user's live role **ids** in an org (#622) — the baseline the members-tab
+   *  set-the-set diffs against (system + custom, addressed by id internally). */
+  async findRoleIds(
+    userId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<string[]> {
+    const rows = await (client as typeof db)
+      .select({ roleId: userRole.roleId })
+      .from(userRole)
+      .innerJoin(roles, eq(userRole.roleId, roles.id))
+      .where(
+        and(
+          eq(userRole.userId, userId),
+          eq(userRole.organizationId, organizationId),
+          isNull(userRole.deleted),
+          isNull(roles.deleted)
+        )
+      );
+    return rows.map((r) => r.roleId);
+  }
+
+  /** Assign a role to a user by its **id** (#622), idempotent — a no-op when a
+   *  live row already exists. Works for system (`sysrole:…`) and custom role
+   *  ids alike; the caller validates the id belongs to the org. */
+  async assignById(
+    userId: string,
+    organizationId: string,
+    roleId: string,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    const existing = await this.findMany(
+      and(
+        eq(userRole.userId, userId),
+        eq(userRole.organizationId, organizationId),
+        eq(userRole.roleId, roleId)
+      ),
+      {},
+      client
+    );
+    if (existing.length > 0) return;
+    const model = new UserRoleModelFactory()
+      .create(actor)
+      .update({ userId, organizationId, roleId });
+    await this.create(model.parse() as never, client);
+  }
+
+  /** Soft-delete a user's live assignment of a role by **id** (#622). No-op when
+   *  they don't hold it. */
+  async removeAssignmentById(
+    userId: string,
+    organizationId: string,
+    roleId: string,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    const [row] = await this.findMany(
+      and(
+        eq(userRole.userId, userId),
+        eq(userRole.organizationId, organizationId),
+        eq(userRole.roleId, roleId)
+      ),
+      {},
+      client
+    );
+    if (row) await this.softDelete(row.id, actor, client);
+  }
+
   /** Assign a role to a user in an org (#620), idempotent: a no-op when the
    *  user already holds a **live** row for it. A fresh id (not the deterministic
    *  `sysur:` id) so a role removed then re-added does not collide on the PK. */
@@ -159,6 +228,21 @@ export class UserRolesRepository extends Repository<
   ): Promise<void> {
     const live = await this.findByUserOrg(userId, organizationId, client);
     for (const row of live) await this.softDelete(row.id, actor, client);
+  }
+
+  /** Soft-delete every live assignment of a role — the #622 delete cascade
+   *  (removing a custom role drops it from everyone who held it). */
+  async softDeleteByRoleId(
+    roleId: string,
+    actor: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await (client as typeof db)
+      .update(userRole)
+      .set({ deleted: Date.now(), deletedBy: actor })
+      .where(and(eq(userRole.roleId, roleId), isNull(userRole.deleted)))
+      .returning();
+    return rows.length;
   }
 
   /** Ensure a user's `user_role` rows reflect their effective roles: if they

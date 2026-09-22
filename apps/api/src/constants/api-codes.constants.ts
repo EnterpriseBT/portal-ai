@@ -62,6 +62,20 @@ export enum ApiCode {
   RBAC_GRANTEE_NOT_MEMBER = "RBAC_GRANTEE_NOT_MEMBER",
   /** No grant with the given id in the caller's org (#621). 404. */
   GRANT_NOT_FOUND = "GRANT_NOT_FOUND",
+  /** A custom policy statement grants access the author doesn't hold (#622). 403. */
+  RBAC_POLICY_EXCEEDS_BOUNDARY = "RBAC_POLICY_EXCEEDS_BOUNDARY",
+  /** A system (immutable, seeded) role/policy cannot be edited or deleted (#622). 403. */
+  RBAC_SYSTEM_IMMUTABLE = "RBAC_SYSTEM_IMMUTABLE",
+  /** The org's tier does not include custom RBAC authoring (#622). 403. */
+  RBAC_CUSTOM_NOT_ENTITLED = "RBAC_CUSTOM_NOT_ENTITLED",
+  /** A per-org RBAC name (policy/role/group) collides with a live one (#622). 409. */
+  RBAC_NAME_CONFLICT = "RBAC_NAME_CONFLICT",
+  /** No custom policy with the given id in the caller's org (#622). 404. */
+  POLICY_NOT_FOUND = "POLICY_NOT_FOUND",
+  /** No custom role with the given id in the caller's org (#622). 404. */
+  ROLE_NOT_FOUND = "ROLE_NOT_FOUND",
+  /** No group with the given id in the caller's org (#622). 404. */
+  GROUP_NOT_FOUND = "GROUP_NOT_FOUND",
 
   // Seats / invitations (#584)
   /** Invite target is already a live member of the org. 409. */

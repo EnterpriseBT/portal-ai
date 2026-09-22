@@ -209,4 +209,21 @@ describe("SettingsView — Profile roles + groups (#620)", () => {
     expect(screen.getByText("Your roles")).toBeInTheDocument();
     expect(screen.getByText("member")).toBeInTheDocument();
   });
+
+  it("#622: lists the caller's groups as chips when they belong to any", () => {
+    mockCurrent.mockReturnValue(
+      loaded({ ...orgData, roles: ["member"], groups: ["West", "East"] })
+    );
+    render(<SettingsView />);
+    expect(screen.getByText("West")).toBeInTheDocument();
+    expect(screen.getByText("East")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/don't belong to any groups/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("#622: shows the empty-groups message when the caller has none", () => {
+    render(<SettingsView />); // orgData has no groups
+    expect(screen.getByText(/don't belong to any groups/i)).toBeInTheDocument();
+  });
 });

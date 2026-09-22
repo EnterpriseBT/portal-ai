@@ -8,6 +8,8 @@ const owner: Member = {
   email: "owner@x.com",
   name: "Owner",
   roles: ["owner"],
+  roleSlugs: ["owner"],
+  groupIds: [],
   joinedAt: 1_784_000_000_000,
 };
 
@@ -16,6 +18,11 @@ const base = {
   invitations: [],
   canManageRoles: true,
   callerUserId: "u-owner",
+  assignableRoles: [
+    { slug: "owner", name: "owner", kind: "system" as const },
+    { slug: "admin", name: "admin", kind: "system" as const },
+    { slug: "member", name: "member", kind: "system" as const },
+  ],
   onSetRoles: jest.fn(),
   onRemoveClick: jest.fn(),
   onInviteClick: jest.fn(),

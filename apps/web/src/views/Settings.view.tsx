@@ -23,6 +23,8 @@ import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { AuditLogActivity } from "../components/AuditLogActivity.component";
 import { MembersTab } from "../components/MembersTab.component";
+import { AccessAuthoring } from "../modules/AccessAuthoring";
+import { useCustomRbacEntitled } from "../utils/use-custom-rbac-entitled.util";
 import { DataResult } from "../components/DataResult.component";
 import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
 import { UsageLedgerDialog } from "../components/UsageLedgerDialog.component";
@@ -108,10 +110,14 @@ export const SettingsView = () => {
   // via useCapabilities(); the server's PermissionService is the real boundary,
   // this hides affordances the caller can't use. Each elevated tab gates on the
   // capability it needs — never a role name.
-  const { roles, can, capabilitiesKnown } = useCapabilities();
+  const { roles, groups, can, capabilitiesKnown } = useCapabilities();
   const canManageMembers = can("member.invite");
   const canViewActivity = can("org.audit.read");
   const canDeleteOrg = can("org.delete");
+  // #622: the Access (custom RBAC) tab shows to owner/admin (the capability);
+  // the entitlement toggles the authoring module vs. a locked upgrade state.
+  const canAuthorAccess = can("member.role.assign");
+  const rbacEntitled = useCustomRbacEntitled();
 
   // A caller who deep-linked to an elevated tab they can't use falls back to
   // the first tab once capabilities resolve. Adjust-state-during-render
@@ -121,7 +127,9 @@ export const SettingsView = () => {
     (tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Members] &&
       !canManageMembers) ||
     (tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Activity] &&
-      !canViewActivity);
+      !canViewActivity) ||
+    (tabsProps.value === SETTINGS_TAB_INDEX[SettingsTab.Access] &&
+      !canAuthorAccess);
   if (capabilitiesKnown && elevatedTabUnavailable) {
     setValue(0);
   }
@@ -156,6 +164,7 @@ export const SettingsView = () => {
         <Tab label="Subscription & Billing" {...getTabProps(2)} />
         {canManageMembers && <Tab label="Members" {...getTabProps(3)} />}
         {canViewActivity && <Tab label="Activity" {...getTabProps(4)} />}
+        {canAuthorAccess && <Tab label="Access" {...getTabProps(5)} />}
       </Tabs>
       <TabPanel {...getTabPanelProps(0)}>
         <PageSection title="Profile" variant="outlined">
@@ -250,9 +259,22 @@ export const SettingsView = () => {
                   </Stack>
                   <Stack spacing={0.5}>
                     <Typography variant="subtitle2">Your groups</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      You don&apos;t belong to any groups yet.
-                    </Typography>
+                    {groups.length > 0 ? (
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        flexWrap="wrap"
+                        useFlexGap
+                      >
+                        {groups.map((g) => (
+                          <Chip key={g} size="small" label={g} />
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        You don&apos;t belong to any groups yet.
+                      </Typography>
+                    )}
                   </Stack>
                 </Stack>
               );
@@ -431,6 +453,30 @@ export const SettingsView = () => {
             {/* Mounted only while active so the audit-log query fires only
                 on this tab (#596). */}
             {tabsProps.value === 4 && <AuditLogActivity />}
+          </PageSection>
+        </TabPanel>
+      )}
+      {canAuthorAccess && (
+        <TabPanel {...getTabPanelProps(5)}>
+          <PageSection title="Access" variant="outlined">
+            {/* #622: the module renders only when the org's tier grants custom
+                RBAC; otherwise a locked upgrade state (the server is the real
+                gate). Mounted only while active so its queries fire on-tab. */}
+            {tabsProps.value === 5 &&
+              (rbacEntitled ? (
+                <AccessAuthoring />
+              ) : (
+                <Stack spacing={1}>
+                  <Typography variant="body1">
+                    Custom roles, policies, and groups are an enterprise
+                    feature.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Your current plan includes the built-in owner, admin, and
+                    member roles. Upgrade to author custom access.
+                  </Typography>
+                </Stack>
+              ))}
           </PageSection>
         </TabPanel>
       )}

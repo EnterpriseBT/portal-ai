@@ -8,6 +8,11 @@ import { stations } from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   PermissionGrantModelFactory,
+  GroupModelFactory,
+  UserGroupModelFactory,
+  PolicyModelFactory,
+  PermissionStatementModelFactory,
+  PolicyAttachmentModelFactory,
   type OrgRole,
 } from "@portalai/core/models";
 import { SeedService } from "../../../services/seed.service.js";
@@ -306,5 +311,76 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
     expect(
       (await PermissionService.loadSet(ctx, db)).can("resource.write", own)
     ).toBe(false);
+  });
+
+  it("unions a group principal's policy — a member inherits a group's grant (#622)", async () => {
+    const ctx = {
+      userId: memberId,
+      organizationId: orgId,
+      roles: ["member"] as OrgRole[],
+    };
+    // A member cannot read the audit log by default (owner/admin capability).
+    expect(
+      (await PermissionService.loadSet(ctx, db)).can("org.audit.read")
+    ).toBe(false);
+
+    // Author a custom group + policy granting `read audit`, attach the policy to
+    // the group. Not yet a member → still denied.
+    const group = new GroupModelFactory()
+      .create("system")
+      .update({ organizationId: orgId, name: "Auditors", description: null })
+      .parse();
+    const policy = new PolicyModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        name: "AuditRead",
+        kind: "custom",
+        description: null,
+      })
+      .parse();
+    const statement = new PermissionStatementModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        policyId: policy.id,
+        effect: "allow",
+        verb: "read",
+        resourceType: "audit",
+        resourceId: null,
+        condition: null,
+      })
+      .parse();
+    const attachment = new PolicyAttachmentModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        policyId: policy.id,
+        principalType: "group",
+        principalId: group.id,
+      })
+      .parse();
+    const drizzleDb = db as ReturnType<typeof drizzle>;
+    await drizzleDb.insert(schema.groups).values(group as never);
+    await drizzleDb.insert(schema.permissionPolicies).values(policy as never);
+    await drizzleDb
+      .insert(schema.permissionStatements)
+      .values(statement as never);
+    await drizzleDb
+      .insert(schema.policyAttachments)
+      .values(attachment as never);
+    expect(
+      (await PermissionService.loadSet(ctx, db)).can("org.audit.read")
+    ).toBe(false);
+
+    // Add the member to the group → loadSet unions the group's policy.
+    const membership = new UserGroupModelFactory()
+      .create("system")
+      .update({ organizationId: orgId, userId: memberId, groupId: group.id })
+      .parse();
+    await drizzleDb.insert(schema.userGroup).values(membership as never);
+    expect(
+      (await PermissionService.loadSet(ctx, db)).can("org.audit.read")
+    ).toBe(true);
   });
 });

@@ -2,16 +2,28 @@ import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { MemberListUI } from "../components/MemberList.component";
-import type { Member } from "@portalai/core/contracts";
+import type { Member, RoleRef } from "@portalai/core/contracts";
 
-const member = (over: Partial<Member> = {}): Member => ({
-  userId: "u-x",
-  email: "x@example.com",
-  name: "X",
-  roles: ["member"],
-  joinedAt: 1_784_000_000_000,
-  ...over,
-});
+// System roles are always assignable; slug == name for them.
+const ASSIGNABLE_ROLES: RoleRef[] = [
+  { slug: "owner", name: "owner", kind: "system" },
+  { slug: "admin", name: "admin", kind: "system" },
+  { slug: "member", name: "member", kind: "system" },
+];
+
+const member = (over: Partial<Member> = {}): Member => {
+  const merged = {
+    userId: "u-x",
+    email: "x@example.com",
+    name: "X",
+    roles: ["member"] as Member["roles"],
+    groupIds: [],
+    joinedAt: 1_784_000_000_000,
+    ...over,
+  };
+  // Default the slug set to mirror the system roles unless a test overrides it.
+  return { ...merged, roleSlugs: over.roleSlugs ?? [...merged.roles] };
+};
 
 const owner = member({
   userId: "u-owner",
@@ -36,6 +48,7 @@ describe("MemberListUI (#620)", () => {
         members={[owner, admin]}
         canManageRoles
         callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
         onSetRoles={jest.fn()}
         onRemove={jest.fn()}
       />
@@ -46,12 +59,64 @@ describe("MemberListUI (#620)", () => {
     expect(screen.getByLabelText("Roles for owner@x.com")).toBeInTheDocument();
   });
 
+  it("#622: shows the Groups column only when canManageGroups", () => {
+    const { rerender } = render(
+      <MemberListUI
+        members={[owner]}
+        canManageRoles
+        callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
+        onSetRoles={jest.fn()}
+        onRemove={jest.fn()}
+      />
+    );
+    // No group column by default.
+    expect(screen.queryByLabelText(/^Groups for /)).not.toBeInTheDocument();
+
+    rerender(
+      <MemberListUI
+        members={[owner]}
+        canManageRoles
+        callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
+        onSetRoles={jest.fn()}
+        onRemove={jest.fn()}
+        canManageGroups
+        groups={[{ id: "g-1", name: "West" }]}
+        onSetGroups={jest.fn()}
+      />
+    );
+    expect(screen.getByLabelText("Groups for owner@x.com")).toBeInTheDocument();
+  });
+
+  it("#622: the Groups column renders a member's current groups by name", () => {
+    render(
+      <MemberListUI
+        members={[member({ email: "m@x.com", groupIds: ["g-1"] })]}
+        canManageRoles
+        callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
+        onSetRoles={jest.fn()}
+        onRemove={jest.fn()}
+        canManageGroups
+        groups={[
+          { id: "g-1", name: "West" },
+          { id: "g-2", name: "East" },
+        ]}
+        onSetGroups={jest.fn()}
+      />
+    );
+    // The assigned group renders by name, not by id.
+    expect(screen.getByText("West")).toBeInTheDocument();
+  });
+
   it("without canManageRoles: roles render as chips, no selects", () => {
     render(
       <MemberListUI
         members={[owner, admin, plain]}
         canManageRoles={false}
         callerUserId="u-admin"
+        assignableRoles={ASSIGNABLE_ROLES}
         onSetRoles={jest.fn()}
         onRemove={jest.fn()}
       />
@@ -68,6 +133,7 @@ describe("MemberListUI (#620)", () => {
         members={[owner, plain]}
         canManageRoles
         callerUserId="u-plain" // caller is the plain member (self)
+        assignableRoles={ASSIGNABLE_ROLES}
         onSetRoles={jest.fn()}
         onRemove={jest.fn()}
       />
@@ -85,6 +151,7 @@ describe("MemberListUI (#620)", () => {
         members={[owner, admin]} // caller is owner; admin is removable
         canManageRoles
         callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
         onSetRoles={jest.fn()}
         onRemove={onRemove}
       />
@@ -102,6 +169,7 @@ describe("MemberListUI (#620)", () => {
         ]}
         canManageRoles
         callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
         onSetRoles={onSetRoles}
         onRemove={jest.fn()}
       />
@@ -113,6 +181,31 @@ describe("MemberListUI (#620)", () => {
     expect(onSetRoles).toHaveBeenCalledWith(
       "u-1",
       expect.arrayContaining(["member", "admin"])
+    );
+  });
+
+  it("#622: a custom role is assignable and fires onSetRoles with its slug", async () => {
+    const onSetRoles = jest.fn();
+    render(
+      <MemberListUI
+        members={[member({ userId: "u-1", email: "m@x.com" })]}
+        canManageRoles
+        callerUserId="u-owner"
+        assignableRoles={[
+          ...ASSIGNABLE_ROLES,
+          { slug: "analyst", name: "Analyst", kind: "custom" },
+        ]}
+        onSetRoles={onSetRoles}
+        onRemove={jest.fn()}
+      />
+    );
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    // The custom role shows by display NAME…
+    await userEvent.click(screen.getByRole("option", { name: "Analyst" }));
+    // …but the set-the-set fires with its SLUG.
+    expect(onSetRoles).toHaveBeenCalledWith(
+      "u-1",
+      expect.arrayContaining(["member", "analyst"])
     );
   });
 });

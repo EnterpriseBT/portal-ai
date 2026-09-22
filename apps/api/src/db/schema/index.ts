@@ -20,6 +20,8 @@ export { policyAttachments } from "./policy-attachments.table.js";
 export { permissionGrants } from "./permission-grants.table.js";
 export { roles } from "./roles.table.js";
 export { userRole } from "./user-role.table.js";
+export { groups } from "./groups.table.js";
+export { userGroup } from "./user-group.table.js";
 export { entityGroups } from "./entity-groups.table.js";
 export { entityGroupMembers } from "./entity-group-members.table.js";
 export { stations } from "./stations.table.js";

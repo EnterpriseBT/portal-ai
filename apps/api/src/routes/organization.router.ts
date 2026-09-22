@@ -26,11 +26,13 @@ import {
   UsageLedgerListRequestQuerySchema,
   AuditLogListRequestQuerySchema,
   MemberRolesSetRequestSchema,
+  MemberGroupsSetRequestSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
 } from "@portalai/core/contracts";
 import type { MemberRolesSetResponse } from "@portalai/core/contracts";
 import { SeatService } from "../services/seat.service.js";
+import { GroupService } from "../services/group.service.js";
 import {
   TOOL_USAGE_LEDGER_SORT_KEYS,
   type ToolUsageLedgerSortBy,
@@ -56,12 +58,15 @@ async function orgRoleFields(userId: string, organizationId: string) {
     userId,
     organizationId
   )) as OrgRole[];
-  const capabilities = await PermissionService.capabilities({
-    userId,
-    organizationId,
-    roles,
-  });
-  return { roles, capabilities };
+  const [capabilities, groups] = await Promise.all([
+    PermissionService.capabilities({ userId, organizationId, roles }),
+    // #622: the caller's custom group names, shown on their profile.
+    DbService.repository.userGroups.findGroupNamesByUser(
+      userId,
+      organizationId
+    ),
+  ]);
+  return { roles, groups, capabilities };
 }
 
 /**
@@ -443,7 +448,7 @@ organizationRouter.put(
           new ApiError(
             400,
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "roles is required and must be a non-empty array of owner|admin|member"
+            "roleSlugs is required and must be a non-empty array of role slugs"
           )
         );
       }
@@ -451,12 +456,16 @@ organizationRouter.put(
       const result = await SeatService.setMemberRoles(
         ctx,
         targetUserId,
-        parsed.data.roles,
+        parsed.data.roleSlugs,
         auditContextFromRequest(req)
       );
 
       return HttpService.success<MemberRolesSetResponse>(res, {
-        member: { userId: result.userId, roles: result.roles },
+        member: {
+          userId: result.userId,
+          roles: result.roles,
+          roleSlugs: result.roleSlugs,
+        },
       });
     } catch (error) {
       return next(
@@ -468,6 +477,76 @@ organizationRouter.put(
               error instanceof Error ? error.message : "Failed to set roles"
             )
       );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/members/{userId}/groups:
+ *   put:
+ *     summary: Set a member's groups (member-centric, #622)
+ *     tags: [Organization]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MemberGroupsSetRequest'
+ *     responses:
+ *       200:
+ *         description: The member's groups were set
+ *       400:
+ *         description: The target user is not an org member
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: Not entitled to custom RBAC, or not an owner/admin
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: A named group is not in the org
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+organizationRouter.put(
+  "/members/:userId/groups",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = MemberGroupsSetRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "groupIds is required and must be an array"
+          )
+        );
+      }
+      const result = await GroupService.setGroupsForUser(
+        req.application!.metadata,
+        req.params.userId,
+        parsed.data.groupIds,
+        auditContextFromRequest(req)
+      );
+      return HttpService.success(res, result);
+    } catch (error) {
+      return next(error);
     }
   }
 );
@@ -690,13 +769,15 @@ organizationRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const ctx = req.application!.metadata;
-      const [members, seatUsage] = await Promise.all([
+      const [members, seatUsage, assignableRoles] = await Promise.all([
         SeatService.listMembers(ctx),
         SeatService.seatUsage(ctx),
+        SeatService.assignableRoles(ctx),
       ]);
       return HttpService.success<MemberListResponse>(res, {
         members,
         seatUsage,
+        assignableRoles,
       });
     } catch (error) {
       return next(

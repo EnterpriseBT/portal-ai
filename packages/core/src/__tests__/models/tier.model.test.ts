@@ -26,6 +26,7 @@ const validPolicy = {
   entitlements: {
     builtinToolpacks: ["data_query", "web_search"],
     customToolpacks: true,
+    customRbac: false,
   },
   maxSeats: null,
 };
@@ -49,6 +50,7 @@ const validRowFields = {
   selectable: true,
   builtinToolpacks: ["data_query", "web_search"],
   customToolpacks: true,
+  customRbac: false,
   cta: "none",
   // #311: marketing-site fields.
   public: false,
@@ -249,12 +251,14 @@ describe("TierEntitlementsSchema (#214)", () => {
       TierEntitlementsSchema.safeParse({
         builtinToolpacks: [],
         customToolpacks: false,
+        customRbac: false,
       }).success
     ).toBe(true);
     expect(
       TierEntitlementsSchema.safeParse({
         builtinToolpacks: ["data_query", "statistics", "web_search"],
         customToolpacks: true,
+        customRbac: true,
       }).success
     ).toBe(true);
   });
@@ -314,5 +318,24 @@ describe("agent turn ceiling fields (#498)", () => {
         agentTurnsPerDay: null,
       }).success
     ).toBe(true);
+  });
+});
+
+describe("TierEntitlementsSchema (#622 customRbac)", () => {
+  it("requires customRbac alongside customToolpacks + builtinToolpacks", () => {
+    expect(
+      TierEntitlementsSchema.safeParse({
+        builtinToolpacks: [],
+        customToolpacks: false,
+        customRbac: true,
+      }).success
+    ).toBe(true);
+    // Missing customRbac is rejected (fail-closed contract, no implicit default).
+    expect(
+      TierEntitlementsSchema.safeParse({
+        builtinToolpacks: [],
+        customToolpacks: false,
+      }).success
+    ).toBe(false);
   });
 });

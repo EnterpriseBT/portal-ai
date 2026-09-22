@@ -129,10 +129,20 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
       .where(eq(schema.roles.organizationId, orgId));
     expect(before).toHaveLength(0);
 
+    // The 0102 backfill predates `roles.slug` (added by 0109). In the real
+    // forward sequence 0102 runs before the column exists and 0109 backfills it;
+    // replaying 0102 alone against the current (post-0109) schema would violate
+    // slug NOT NULL. Inject the slug the 0109 backfill sets — for system roles
+    // that is the role name — so the replay mirrors the fully-migrated state.
     const migrationSql = readFileSync(
       join(process.cwd(), "drizzle/0102_backfill-rbac-system-policies.sql"),
       "utf8"
-    );
+    )
+      .replace(
+        '"organization_id", "name", "kind"\n)',
+        '"organization_id", "name", "slug", "kind"\n)'
+      )
+      .replace("o.id, r.name, 'system'\n", "o.id, r.name, r.name, 'system'\n");
     await connection.unsafe(migrationSql);
 
     const roles = await db

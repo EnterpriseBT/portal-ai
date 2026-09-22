@@ -11,6 +11,11 @@ import {
   PermissionGrantSchema,
   PermissionGrantModelFactory,
   SHAREABLE_RESOURCE_TYPES,
+  POLICY_PRINCIPAL_TYPES,
+  GroupSchema,
+  GroupModelFactory,
+  UserGroupSchema,
+  UserGroupModelFactory,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -125,9 +130,15 @@ describe("Policy / Role / PolicyAttachment (spec case 2)", () => {
   it("Role round-trips", () => {
     const parsed = new RoleModelFactory()
       .create("system")
-      .update({ organizationId: "org-1", name: "admin", kind: "system" })
+      .update({
+        organizationId: "org-1",
+        name: "admin",
+        slug: "admin",
+        kind: "system",
+      })
       .parse();
     expect(parsed.name).toBe("admin");
+    expect(parsed.slug).toBe("admin");
     expect(parsed.kind).toBe("system");
   });
 
@@ -242,9 +253,19 @@ describe("PermissionGrantSchema (#621)", () => {
     ).toBe(true);
   });
 
+  it("accepts a group principal (#622)", () => {
+    expect(
+      PermissionGrantSchema.safeParse({
+        ...base,
+        principalType: "group",
+        principalId: "grp-1",
+      }).success
+    ).toBe(true);
+  });
+
   it("rejects an unknown principalType", () => {
     expect(
-      PermissionGrantSchema.safeParse({ ...base, principalType: "group" })
+      PermissionGrantSchema.safeParse({ ...base, principalType: "team" })
         .success
     ).toBe(false);
   });
@@ -257,5 +278,46 @@ describe("PermissionGrantSchema (#621)", () => {
 
   it("SHAREABLE_RESOURCE_TYPES is station + pin only", () => {
     expect([...SHAREABLE_RESOURCE_TYPES]).toEqual(["station", "pin"]);
+  });
+});
+
+// ── Group + UserGroup (#622 slice 1) ─────────────────────────────────
+
+describe("Group / UserGroup schemas (#622)", () => {
+  it("POLICY_PRINCIPAL_TYPES includes group", () => {
+    expect([...POLICY_PRINCIPAL_TYPES]).toEqual(["user", "role", "group"]);
+  });
+
+  it("GroupModelFactory produces a valid group with a nullable description", () => {
+    const g = new GroupModelFactory()
+      .create("user-1")
+      .update({ organizationId: "org-1", name: "Analysts", description: null });
+    const r = GroupSchema.safeParse(g.toJSON());
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.name).toBe("Analysts");
+      expect(r.data.description).toBeNull();
+    }
+  });
+
+  it("GroupSchema rejects an empty name", () => {
+    const g = new GroupModelFactory()
+      .create("user-1")
+      .update({ organizationId: "org-1", name: "", description: null });
+    expect(GroupSchema.safeParse(g.toJSON()).success).toBe(false);
+  });
+
+  it("UserGroupModelFactory round-trips a membership edge", () => {
+    const m = new UserGroupModelFactory().create("user-1").update({
+      organizationId: "org-1",
+      userId: "user-2",
+      groupId: "grp-1",
+    });
+    const r = UserGroupSchema.safeParse(m.toJSON());
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.userId).toBe("user-2");
+      expect(r.data.groupId).toBe("grp-1");
+    }
   });
 });

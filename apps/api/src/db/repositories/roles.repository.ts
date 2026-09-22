@@ -39,6 +39,34 @@ export class RolesRepository extends Repository<
     return row as RoleSelect | undefined;
   }
 
+  /** Find an org's role by its stable slug (#622) — the assignment key. */
+  async findBySlug(
+    organizationId: string,
+    slug: string,
+    client: DbClient = db
+  ): Promise<RoleSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(roles.organizationId, organizationId),
+          eq(roles.slug, slug),
+          isNull(roles.deleted)
+        )
+      )
+      .limit(1);
+    return row as RoleSelect | undefined;
+  }
+
+  /** Every live role in an org (the Access-tab list, #622). */
+  async findByOrganizationId(
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<RoleSelect[]> {
+    return this.findMany(eq(roles.organizationId, organizationId), {}, client);
+  }
+
   /** Resolve several role names in one org (#620 loadSet gathers per role). */
   async findByNames(
     organizationId: string,

@@ -70,6 +70,8 @@ export type PerToolCaps = z.infer<typeof PerToolCapsSchema>;
 export const TierEntitlementsSchema = z.object({
   builtinToolpacks: z.array(z.string()),
   customToolpacks: z.boolean(),
+  /** #622: custom RBAC authoring (roles/policies/groups). Fail-closed. */
+  customRbac: z.boolean(),
 });
 export type TierEntitlements = z.infer<typeof TierEntitlementsSchema>;
 
@@ -140,6 +142,9 @@ export const TierSchema = CoreSchema.extend({
   /** Whether orgs on this tier may register/use custom (webhook)
    *  toolpacks (#214). */
   customToolpacks: z.boolean(),
+  /** Whether orgs on this tier may author custom RBAC (roles/policies/groups)
+   *  (#622). Fail-closed default false. DB column `custom_rbac`. */
+  customRbac: z.boolean(),
   /** Card call-to-action (#241). `text` column, CHECK-constrained to the
    *  {@link TierCtaSchema} set; narrowed to the enum on the billing contract
    *  (kept `string` here so the dual-schema `IsAssignable` guard holds — the

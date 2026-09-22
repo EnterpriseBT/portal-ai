@@ -25,6 +25,8 @@ import { policyAttachments } from "./policy-attachments.table.js";
 import { permissionGrants } from "./permission-grants.table.js";
 import { roles } from "./roles.table.js";
 import { userRole } from "./user-role.table.js";
+import { groups } from "./groups.table.js";
+import { userGroup } from "./user-group.table.js";
 import { entityGroups } from "./entity-groups.table.js";
 import { entityGroupMembers } from "./entity-group-members.table.js";
 import { stations } from "./stations.table.js";
@@ -555,3 +557,19 @@ export const UserRoleSelectSchema = createSelectSchema(userRole);
 export const UserRoleInsertSchema = createInsertSchema(userRole);
 export type UserRoleSelect = z.infer<typeof UserRoleSelectSchema>;
 export type UserRoleInsert = z.infer<typeof UserRoleInsertSchema>;
+
+// ── Groups + membership (#622) ──────────────────────────────────────
+
+/** Zod schema for a `groups` row returned by SELECT (#622). */
+export const GroupSelectSchema = createSelectSchema(groups);
+/** Zod schema for inserting into `groups`. */
+export const GroupInsertSchema = createInsertSchema(groups);
+export type GroupSelect = z.infer<typeof GroupSelectSchema>;
+export type GroupInsert = z.infer<typeof GroupInsertSchema>;
+
+/** Zod schema for a `user_group` row returned by SELECT (#622). */
+export const UserGroupSelectSchema = createSelectSchema(userGroup);
+/** Zod schema for inserting into `user_group`. */
+export const UserGroupInsertSchema = createInsertSchema(userGroup);
+export type UserGroupSelect = z.infer<typeof UserGroupSelectSchema>;
+export type UserGroupInsert = z.infer<typeof UserGroupInsertSchema>;

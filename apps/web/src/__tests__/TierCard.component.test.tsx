@@ -24,7 +24,11 @@ const policy = (tier: string): BillingTier["policy"] => ({
   perToolCaps: null,
   agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny",
-  entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
+  entitlements: {
+    builtinToolpacks: ["data_query"],
+    customToolpacks: true,
+    customRbac: false,
+  },
   maxSeats: 5,
 });
 

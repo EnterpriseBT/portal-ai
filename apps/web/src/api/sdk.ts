@@ -21,6 +21,9 @@ import { jobs } from "./jobs.api";
 import { organizations } from "./organizations.api";
 import { members } from "./members.api";
 import { grants } from "./grants.api";
+import { policies } from "./policies.api";
+import { roles } from "./roles.api";
+import { groups } from "./groups.api";
 import { invitations } from "./invitations.api";
 import { portalResults } from "./portal-results.api";
 import { portalSql } from "./portal-sql.api";
@@ -56,6 +59,9 @@ export const sdk = {
   organizations,
   members,
   grants,
+  policies,
+  roles,
+  groups,
   invitations,
   portalResults,
   portalSql,

@@ -102,27 +102,36 @@ describe("OrganizationDeleteResponseSchema", () => {
 
 // ── Set-the-set member roles request (#620, spec case 1) ─────────────
 
-describe("MemberRolesSetRequestSchema (#620)", () => {
-  it("accepts a non-empty roles array", () => {
+describe("MemberRolesSetRequestSchema (#620/#622)", () => {
+  it("accepts a non-empty roleSlugs array (system + custom slugs)", () => {
     expect(
-      MemberRolesSetRequestSchema.safeParse({ roles: ["admin", "member"] })
-        .success
+      MemberRolesSetRequestSchema.safeParse({
+        roleSlugs: ["admin", "member", "analyst"],
+      }).success
     ).toBe(true);
   });
 
-  it("rejects an empty roles array (≥1-role guard at the edge)", () => {
-    expect(MemberRolesSetRequestSchema.safeParse({ roles: [] }).success).toBe(
-      false
-    );
+  it("rejects an empty roleSlugs array (≥1-role guard at the edge)", () => {
+    expect(
+      MemberRolesSetRequestSchema.safeParse({ roleSlugs: [] }).success
+    ).toBe(false);
   });
 
-  it("rejects a missing roles field", () => {
+  it("rejects a missing roleSlugs field", () => {
     expect(MemberRolesSetRequestSchema.safeParse({}).success).toBe(false);
   });
 
-  it("rejects an unknown role value", () => {
+  it("rejects an empty-string slug (per-element min length)", () => {
     expect(
-      MemberRolesSetRequestSchema.safeParse({ roles: ["superuser"] }).success
+      MemberRolesSetRequestSchema.safeParse({ roleSlugs: [""] }).success
     ).toBe(false);
+  });
+
+  it("does not gate slug validity at the schema — the service resolves it (#622)", () => {
+    // Unlike the old enum, an arbitrary slug parses; whether it names a real
+    // role is checked server-side against the org's roles.
+    expect(
+      MemberRolesSetRequestSchema.safeParse({ roleSlugs: ["anything"] }).success
+    ).toBe(true);
   });
 });

@@ -46,6 +46,9 @@ export const TierCatalogEntrySchema = z.object({
   builtinToolpacks: z.array(BuiltinToolpackSlugSchema),
   /** Whether orgs on this tier may register/use custom toolpacks (#214). */
   customToolpacks: z.boolean(),
+  /** Whether orgs on this tier may author custom RBAC (roles/policies/groups)
+   *  (#622) — an enterprise-tailoring entitlement. */
+  customRbac: z.boolean(),
   /** Card call-to-action (#241) — converged from the catalog. `subscribe`
    *  requires a resolvable `stripeLookupKey`; `none` is the free default. */
   cta: TierCtaSchema,
@@ -124,6 +127,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       selectable: true,
       builtinToolpacks: ["data_query", "web_search", "entity_management"],
       customToolpacks: false,
+      customRbac: false,
       cta: "none",
       public: true,
       displayOrder: 1,
@@ -159,6 +163,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
         "entity_management",
       ],
       customToolpacks: false,
+      customRbac: false,
       cta: "subscribe",
       public: true,
       displayOrder: 2,
@@ -188,6 +193,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
+      customRbac: false,
       cta: "subscribe",
       public: true,
       displayOrder: 3,
@@ -215,6 +221,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
+      customRbac: true,
       cta: "contact",
       public: true,
       displayOrder: 4,

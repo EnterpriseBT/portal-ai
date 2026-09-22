@@ -634,7 +634,15 @@ export class SeedService {
 
     for (const name of ["owner", "admin", "member"] as const) {
       await repo.roles.create(
-        { id: roleId(name), organizationId, name, kind: "system", ...audit },
+        {
+          id: roleId(name),
+          organizationId,
+          name,
+          // System role names are already slugs (#622).
+          slug: name,
+          kind: "system",
+          ...audit,
+        },
         db
       );
     }

@@ -55,7 +55,7 @@ export const permissionGrants = pgTable(
     ),
     check(
       "permission_grants_principal_type_check",
-      sql`${t.principalType} IN ('user', 'role')`
+      sql`${t.principalType} IN ('user', 'role', 'group')`
     ),
     check(
       "permission_grants_condition_check",

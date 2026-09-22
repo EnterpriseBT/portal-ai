@@ -60,6 +60,9 @@ export const tiers = pgTable(
       .default([]),
     /** #214: custom (webhook) toolpack entitlement. Fail-closed default. */
     customToolpacks: boolean("custom_toolpacks").notNull().default(false),
+    /** #622: custom RBAC authoring (roles/policies/groups) entitlement.
+     *  Fail-closed default — authoring is locked unless the tier grants it. */
+    customRbac: boolean("custom_rbac").notNull().default(false),
     /** #241: the single source of truth for the Settings card's action —
      *  `subscribe | contact | none` (CHECK-constrained below). Default `none`
      *  is the fail-closed baseline (no CTA); `tier apply` converges it from the
