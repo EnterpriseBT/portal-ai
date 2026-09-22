@@ -186,3 +186,12 @@ The whole FE: SDK domains, the entitlement hook, the tab, the authoring module (
 ## Next step
 
 Implementation begins on `feat/622-rbac-custom-authoring`, slice 1 first (tests-first, one commit per slice), only after discovery + spec + plan are reviewed and confirmed.
+
+## Amendment — Slice 7 (post-smoke): member assignment surfaces (#622)
+
+Slice 6 shipped the Access-tab authoring but not the *assignment* surfaces the spec promised. Added in-branch after the smoke walk (one feature commit, tests-first):
+
+- **Groups on the Members tab (member-centric)** — `Member.groupIds` + `SeatService.listMembers` group batch-load; `sdk.members.setGroups` → the existing `PUT /members/:userId/groups`; a Groups column shown only when `customRbac`-entitled.
+- **Custom-role assignment by slug** — `roles.slug` column (`0109_add-roles-slug`, backfilled); the #620 role multiselect lists custom roles; `MemberRolesSetRequest` → `roleSlugs`; `setMemberRoles` resolves slug→role keeping owner/last-owner guards (≥1 system role); `MemberListResponse.assignableRoles`.
+
+Also folded in from the walk: the StatementEditor mount-emit fix (empty-statements 400), the "New policy" label, read-only statement fields, the view (eye) affordance for system rows, and natural count pluralization. Suites green (core/web/api unit).

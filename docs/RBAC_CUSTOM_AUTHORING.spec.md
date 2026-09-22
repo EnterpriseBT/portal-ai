@@ -176,3 +176,13 @@ The instance picker's search: visibility-scoped candidates by `resourceType` (a 
 ## Next step
 
 `/plan 622` slices this on this branch, roughly: (1) `groups`/`user_group` schema + `group` principal in `loadSet` + the CHECK/tier migration (engine sees groups, un-wired); (2) `assertStatementsWithinBoundary` + `customRbac` entitlement; (3) policy CRUD API (boundary + audit + gates); (4) role CRUD API; (5) group CRUD + membership API (both endpoints); (6) the Access-tab UI + statement editor + Members group assignment — each behind a green suite.
+
+## Amendment — assignment surfaces (post-smoke, #622)
+
+The #622 smoke walk found that the spec's "assignment reuses #620's multi-role UI" (key decision 4) was not actually wired, and the member-centric group surface (§ Frontend, spec above) had shipped no UI. Both were built in-branch; the contract landed as:
+
+- **`roles.slug`** — a stable, per-org assignment key (migration `0109_add-roles-slug`, backfilled from `name`; system role slugs == their names). A role is **assigned by slug**, never by opaque id, so a rename never breaks an assignment. `RoleSchema`/`RoleView`/`RoleRef` carry `slug`.
+- **`MemberRolesSetRequest` is `{ roleSlugs: string[] }`** (was `{ roles: OrgRole[] }`). `SeatService.setMemberRoles` resolves each slug → role, diffs by role id, and keeps the owner-only + last-owner guards on the **system** roles while treating custom roles as free additive grants; a member must retain **≥1 system role** (the `organization_users.role` enum mirror stays defined). The #620 Members multiselect lists custom roles alongside owner/admin/member.
+- **`MemberListResponse.assignableRoles: RoleRef[]`** — the multiselect's options (system always; custom when authored), so it needs no entitlement-gated fetch. **`Member.roleSlugs`** is the member's complete role set; **`Member.groupIds`** + `sdk.members.setGroups` + a `customRbac`-gated **Groups column** provide the member-centric group assignment.
+
+Slug validity is **not** gated at the Zod edge (any non-empty string parses); the service resolves it against the org's roles (400 on an unknown slug). All of the above is boundary/entitlement-gated on the same routes as before — the gate layering (decision 8) is unchanged.
