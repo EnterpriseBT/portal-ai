@@ -24,7 +24,9 @@ CREATE TABLE "user_group" (
 	"group_id" text NOT NULL
 );
 --> statement-breakpoint
+-- destructive-ok: widening the principal-type CHECK to admit 'group'; the new (superset) CHECK is re-added below, so every existing 'user'/'role' row still satisfies it (#622).
 ALTER TABLE "permission_grants" DROP CONSTRAINT "permission_grants_principal_type_check";--> statement-breakpoint
+-- destructive-ok: widening the principal-type CHECK to admit 'group'; the new (superset) CHECK is re-added below, so every existing 'user'/'role' row still satisfies it (#622).
 ALTER TABLE "policy_attachments" DROP CONSTRAINT "policy_attachments_principal_type_check";--> statement-breakpoint
 ALTER TABLE "groups" ADD CONSTRAINT "groups_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_group" ADD CONSTRAINT "user_group_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
