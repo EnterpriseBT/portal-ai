@@ -49,6 +49,8 @@ describe("settingsTabIndexFromSearch", () => {
       [SettingsTab.Billing]: 2,
       [SettingsTab.Members]: 3,
       [SettingsTab.Activity]: 4,
+      // #622: appended so existing indices stay stable for deep links.
+      [SettingsTab.Access]: 5,
     });
   });
 });
