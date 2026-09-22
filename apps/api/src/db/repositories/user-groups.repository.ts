@@ -7,7 +7,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { UserGroupModelFactory } from "@portalai/core/models";
 
-import { userGroup } from "../schema/index.js";
+import { userGroup, groups } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
 import type { UserGroupSelect, UserGroupInsert } from "../schema/zod.js";
@@ -44,6 +44,28 @@ export class UserGroupsRepository extends Repository<
         )
       );
     return rows.map((r) => r.groupId);
+  }
+
+  /** The live group **names** a user belongs to in an org (⋈ `groups`) — the
+   *  caller's groups shown on their profile (#622). */
+  async findGroupNamesByUser(
+    userId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<string[]> {
+    const rows = await (client as typeof db)
+      .select({ name: groups.name })
+      .from(this.table)
+      .innerJoin(groups, eq(groups.id, userGroup.groupId))
+      .where(
+        and(
+          eq(userGroup.userId, userId),
+          eq(userGroup.organizationId, organizationId),
+          isNull(userGroup.deleted),
+          isNull(groups.deleted)
+        )
+      );
+    return rows.map((r) => r.name);
   }
 
   /** The live member user ids of a group. */

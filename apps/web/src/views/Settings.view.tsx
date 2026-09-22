@@ -110,7 +110,7 @@ export const SettingsView = () => {
   // via useCapabilities(); the server's PermissionService is the real boundary,
   // this hides affordances the caller can't use. Each elevated tab gates on the
   // capability it needs — never a role name.
-  const { roles, can, capabilitiesKnown } = useCapabilities();
+  const { roles, groups, can, capabilitiesKnown } = useCapabilities();
   const canManageMembers = can("member.invite");
   const canViewActivity = can("org.audit.read");
   const canDeleteOrg = can("org.delete");
@@ -259,9 +259,22 @@ export const SettingsView = () => {
                   </Stack>
                   <Stack spacing={0.5}>
                     <Typography variant="subtitle2">Your groups</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      You don&apos;t belong to any groups yet.
-                    </Typography>
+                    {groups.length > 0 ? (
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        flexWrap="wrap"
+                        useFlexGap
+                      >
+                        {groups.map((g) => (
+                          <Chip key={g} size="small" label={g} />
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        You don&apos;t belong to any groups yet.
+                      </Typography>
+                    )}
                   </Stack>
                 </Stack>
               );

@@ -11,6 +11,10 @@ import { CapabilityMapSchema } from "../models/permission.model.js";
 export const OrganizationGetResponseSchema = z.object({
   organization: OrganizationSchema,
   roles: z.array(OrgRoleSchema),
+  /** The caller's custom group names in this org (#622) — displayed on the
+   *  profile; empty unless the org authors groups. Defaulted so pre-#622
+   *  callers/fixtures still parse. */
+  groups: z.array(z.string()).default([]),
   capabilities: CapabilityMapSchema,
 });
 
