@@ -161,6 +161,21 @@ export class UserRolesRepository extends Repository<
     for (const row of live) await this.softDelete(row.id, actor, client);
   }
 
+  /** Soft-delete every live assignment of a role — the #622 delete cascade
+   *  (removing a custom role drops it from everyone who held it). */
+  async softDeleteByRoleId(
+    roleId: string,
+    actor: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await (client as typeof db)
+      .update(userRole)
+      .set({ deleted: Date.now(), deletedBy: actor })
+      .where(and(eq(userRole.roleId, roleId), isNull(userRole.deleted)))
+      .returning();
+    return rows.length;
+  }
+
   /** Ensure a user's `user_role` rows reflect their effective roles: if they
    *  hold no live rows (a membership predating the write cutover), materialize
    *  their `organization_users` enum role as a `user_role` row. Makes the

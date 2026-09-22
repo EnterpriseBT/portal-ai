@@ -57,3 +57,31 @@ export const PolicyListResponseSchema = z.object({
   policies: z.array(PolicyViewSchema),
 });
 export type PolicyListResponse = z.infer<typeof PolicyListResponseSchema>;
+
+// ── Role (a named policy bundle, #622 slice 4) ────────────────────────
+
+/** `POST /api/roles` / `PUT /api/roles/:id` — a custom role bundling policies
+ *  (the set of attached policy ids). Assignment to members reuses #620. */
+export const RoleUpsertRequestSchema = z.object({
+  name: z.string().min(1),
+  policyIds: z.array(z.string()),
+});
+export type RoleUpsertRequest = z.infer<typeof RoleUpsertRequestSchema>;
+
+/** A role as the UI reads it — its attached policy ids. `kind` is `system`
+ *  (read-only) or `custom`. */
+export const RoleViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: RbacKindSchema,
+  policyIds: z.array(z.string()),
+});
+export type RoleView = z.infer<typeof RoleViewSchema>;
+
+export const RoleResponseSchema = z.object({ role: RoleViewSchema });
+export type RoleResponse = z.infer<typeof RoleResponseSchema>;
+
+export const RoleListResponseSchema = z.object({
+  roles: z.array(RoleViewSchema),
+});
+export type RoleListResponse = z.infer<typeof RoleListResponseSchema>;

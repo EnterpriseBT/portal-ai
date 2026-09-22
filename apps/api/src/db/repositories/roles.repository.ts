@@ -39,6 +39,14 @@ export class RolesRepository extends Repository<
     return row as RoleSelect | undefined;
   }
 
+  /** Every live role in an org (the Access-tab list, #622). */
+  async findByOrganizationId(
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<RoleSelect[]> {
+    return this.findMany(eq(roles.organizationId, organizationId), {}, client);
+  }
+
   /** Resolve several role names in one org (#620 loadSet gathers per role). */
   async findByNames(
     organizationId: string,

@@ -44,6 +44,9 @@ import {
   PolicyUpsertRequestSchema,
   PolicyResponseSchema,
   PolicyListResponseSchema,
+  RoleUpsertRequestSchema,
+  RoleResponseSchema,
+  RoleListResponseSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
   AcceptInvitationResponseSchema,
@@ -375,6 +378,9 @@ const orgDeleteSchemas: Record<string, unknown> = {
     PolicyListResponseSchema,
     JSON_SCHEMA_OPTS
   ),
+  RoleUpsertRequest: z.toJSONSchema(RoleUpsertRequestSchema, JSON_SCHEMA_OPTS),
+  RoleResponse: z.toJSONSchema(RoleResponseSchema, JSON_SCHEMA_OPTS),
+  RoleListResponse: z.toJSONSchema(RoleListResponseSchema, JSON_SCHEMA_OPTS),
   InviteCreateRequest: z.toJSONSchema(
     InviteCreateRequestSchema,
     JSON_SCHEMA_OPTS

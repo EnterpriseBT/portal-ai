@@ -70,6 +70,28 @@ export class PolicyAttachmentsRepository extends Repository<
       .returning();
     return rows.length;
   }
+
+  /** Soft-delete every live attachment on a principal — the #622 delete cascade
+   *  for a role or group (drops all its attached policies). */
+  async softDeleteByPrincipal(
+    principalType: PolicyPrincipalType,
+    principalId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: Date.now(), deletedBy })
+      .where(
+        and(
+          eq(policyAttachments.principalType, principalType),
+          eq(policyAttachments.principalId, principalId),
+          this.notDeleted()
+        )
+      )
+      .returning();
+    return rows.length;
+  }
 }
 
 export const policyAttachmentsRepo = new PolicyAttachmentsRepository();

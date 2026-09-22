@@ -4,6 +4,9 @@ import {
   PolicyUpsertRequestSchema,
   PolicyViewSchema,
   PolicyListResponseSchema,
+  RoleUpsertRequestSchema,
+  RoleViewSchema,
+  RoleListResponseSchema,
 } from "../../contracts/rbac-authoring.contract.js";
 
 describe("RBAC authoring contracts — policy (#622)", () => {
@@ -81,5 +84,36 @@ describe("RBAC authoring contracts — policy (#622)", () => {
     expect(
       PolicyListResponseSchema.safeParse({ policies: [view] }).success
     ).toBe(true);
+  });
+});
+
+describe("RBAC authoring contracts — role (#622)", () => {
+  it("RoleUpsertRequest requires a name; policyIds may be empty", () => {
+    expect(
+      RoleUpsertRequestSchema.safeParse({ name: "Analyst", policyIds: [] })
+        .success
+    ).toBe(true);
+    expect(
+      RoleUpsertRequestSchema.safeParse({
+        name: "Analyst",
+        policyIds: ["pol-1", "pol-2"],
+      }).success
+    ).toBe(true);
+    expect(
+      RoleUpsertRequestSchema.safeParse({ name: "", policyIds: [] }).success
+    ).toBe(false);
+  });
+
+  it("RoleView + RoleListResponse shapes round-trip", () => {
+    const view = {
+      id: "role-1",
+      name: "Analyst",
+      kind: "custom" as const,
+      policyIds: ["pol-1"],
+    };
+    expect(RoleViewSchema.safeParse(view).success).toBe(true);
+    expect(RoleListResponseSchema.safeParse({ roles: [view] }).success).toBe(
+      true
+    );
   });
 });
