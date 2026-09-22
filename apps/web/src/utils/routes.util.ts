@@ -42,6 +42,7 @@ export enum SettingsTab {
   Billing = "billing",
   Members = "members",
   Activity = "activity",
+  Access = "access",
 }
 
 /** Tab order as rendered by `Settings.view.tsx`. Members + Activity are both
@@ -52,6 +53,8 @@ export const SETTINGS_TAB_INDEX: Record<SettingsTab, number> = {
   [SettingsTab.Billing]: 2,
   [SettingsTab.Members]: 3,
   [SettingsTab.Activity]: 4,
+  // #622: appended so existing indices stay stable for deep links.
+  [SettingsTab.Access]: 5,
 };
 
 /**

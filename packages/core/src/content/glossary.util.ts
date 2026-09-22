@@ -403,6 +403,42 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     relatedTerms: ["Column Definition", "Default Station"],
   },
   {
+    term: "Policy",
+    category: GlossaryCategory.Organization,
+    definition:
+      "A named bundle of access rules (statements). Each statement allows or denies a verb (read, write, delete, share, …) on a resource type, optionally scoped to specific objects or to what you created. Every org has the built-in system policies; on eligible plans, admins author custom ones.",
+    example:
+      'An "Analysts" policy that allows read on all stations but write only on the ones you created.',
+    relatedTerms: ["Role", "Group", "Permission Boundary"],
+  },
+  {
+    term: "Role",
+    category: GlossaryCategory.Organization,
+    definition:
+      "A named set of policies you assign to members. The three system roles — owner, admin, member — ship with every org; on eligible plans, admins create custom roles that bundle custom policies.",
+    example:
+      'A custom "Regional Analyst" role bundling a read-only analytics policy, assigned to several members.',
+    relatedTerms: ["Policy", "Group"],
+  },
+  {
+    term: "Group",
+    category: GlossaryCategory.Organization,
+    definition:
+      "A collection of members that policies attach to; every member of the group inherits its policies. Groups make it easy to grant a set of people the same access — for example a region or a team.",
+    example:
+      'A "West Region" group whose members all inherit read access to the West sales view.',
+    relatedTerms: ["Policy", "Role"],
+  },
+  {
+    term: "Permission Boundary",
+    category: GlossaryCategory.Organization,
+    definition:
+      "The guardrail on custom authoring: you can only grant access you hold yourself. It stops an admin from authoring a policy (or bundling one into a role/group) that would exceed their own permissions.",
+    example:
+      "An admin can't create a policy granting billing management, because their own role denies it.",
+    relatedTerms: ["Policy", "Role"],
+  },
+  {
     term: "Default Station",
     category: GlossaryCategory.System,
     definition:
