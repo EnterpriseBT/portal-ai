@@ -47,6 +47,12 @@ import {
   RoleUpsertRequestSchema,
   RoleResponseSchema,
   RoleListResponseSchema,
+  GroupUpsertRequestSchema,
+  GroupResponseSchema,
+  GroupListResponseSchema,
+  GroupMembersSetRequestSchema,
+  MemberGroupsSetRequestSchema,
+  RbacObjectSearchResponseSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
   AcceptInvitationResponseSchema,
@@ -381,6 +387,24 @@ const orgDeleteSchemas: Record<string, unknown> = {
   RoleUpsertRequest: z.toJSONSchema(RoleUpsertRequestSchema, JSON_SCHEMA_OPTS),
   RoleResponse: z.toJSONSchema(RoleResponseSchema, JSON_SCHEMA_OPTS),
   RoleListResponse: z.toJSONSchema(RoleListResponseSchema, JSON_SCHEMA_OPTS),
+  GroupUpsertRequest: z.toJSONSchema(
+    GroupUpsertRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  GroupResponse: z.toJSONSchema(GroupResponseSchema, JSON_SCHEMA_OPTS),
+  GroupListResponse: z.toJSONSchema(GroupListResponseSchema, JSON_SCHEMA_OPTS),
+  GroupMembersSetRequest: z.toJSONSchema(
+    GroupMembersSetRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  MemberGroupsSetRequest: z.toJSONSchema(
+    MemberGroupsSetRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  RbacObjectSearchResponse: z.toJSONSchema(
+    RbacObjectSearchResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
   InviteCreateRequest: z.toJSONSchema(
     InviteCreateRequestSchema,
     JSON_SCHEMA_OPTS

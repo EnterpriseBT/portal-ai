@@ -74,6 +74,8 @@ export enum ApiCode {
   POLICY_NOT_FOUND = "POLICY_NOT_FOUND",
   /** No custom role with the given id in the caller's org (#622). 404. */
   ROLE_NOT_FOUND = "ROLE_NOT_FOUND",
+  /** No group with the given id in the caller's org (#622). 404. */
+  GROUP_NOT_FOUND = "GROUP_NOT_FOUND",
 
   // Seats / invitations (#584)
   /** Invite target is already a live member of the org. 409. */

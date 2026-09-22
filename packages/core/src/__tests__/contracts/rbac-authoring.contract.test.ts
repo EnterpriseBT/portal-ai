@@ -7,6 +7,11 @@ import {
   RoleUpsertRequestSchema,
   RoleViewSchema,
   RoleListResponseSchema,
+  GroupUpsertRequestSchema,
+  GroupViewSchema,
+  GroupMembersSetRequestSchema,
+  MemberGroupsSetRequestSchema,
+  RbacObjectSearchResponseSchema,
 } from "../../contracts/rbac-authoring.contract.js";
 
 describe("RBAC authoring contracts — policy (#622)", () => {
@@ -115,5 +120,51 @@ describe("RBAC authoring contracts — role (#622)", () => {
     expect(RoleListResponseSchema.safeParse({ roles: [view] }).success).toBe(
       true
     );
+  });
+});
+
+describe("RBAC authoring contracts — group + object search (#622)", () => {
+  it("GroupUpsertRequest requires a name; GroupView carries policyIds + memberCount", () => {
+    expect(
+      GroupUpsertRequestSchema.safeParse({ name: "West", policyIds: [] })
+        .success
+    ).toBe(true);
+    expect(
+      GroupUpsertRequestSchema.safeParse({ name: "", policyIds: [] }).success
+    ).toBe(false);
+    expect(
+      GroupViewSchema.safeParse({
+        id: "grp-1",
+        name: "West",
+        description: null,
+        policyIds: ["pol-1"],
+        memberCount: 3,
+      }).success
+    ).toBe(true);
+    // memberCount must be a non-negative integer.
+    expect(
+      GroupViewSchema.safeParse({
+        id: "grp-1",
+        name: "West",
+        description: null,
+        policyIds: [],
+        memberCount: -1,
+      }).success
+    ).toBe(false);
+  });
+
+  it("membership set requests + object search response shapes round-trip", () => {
+    expect(
+      GroupMembersSetRequestSchema.safeParse({ userIds: ["u-1", "u-2"] })
+        .success
+    ).toBe(true);
+    expect(
+      MemberGroupsSetRequestSchema.safeParse({ groupIds: ["g-1"] }).success
+    ).toBe(true);
+    expect(
+      RbacObjectSearchResponseSchema.safeParse({
+        objects: [{ id: "st-1", label: "My Station" }],
+      }).success
+    ).toBe(true);
   });
 });

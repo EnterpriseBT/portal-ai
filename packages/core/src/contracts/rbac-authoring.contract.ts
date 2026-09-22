@@ -85,3 +85,67 @@ export const RoleListResponseSchema = z.object({
   roles: z.array(RoleViewSchema),
 });
 export type RoleListResponse = z.infer<typeof RoleListResponseSchema>;
+
+// ── Group (a member set + a policy bundle, #622 slice 5) ──────────────
+
+/** `POST /api/groups` / `PUT /api/groups/:id` — a group's metadata + the
+ *  policies it bundles (a member inherits them). Membership is set separately. */
+export const GroupUpsertRequestSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  policyIds: z.array(z.string()),
+});
+export type GroupUpsertRequest = z.infer<typeof GroupUpsertRequestSchema>;
+
+/** A group as the UI reads it — its attached policies + a live member count. */
+export const GroupViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  policyIds: z.array(z.string()),
+  memberCount: z.number().int().nonnegative(),
+});
+export type GroupView = z.infer<typeof GroupViewSchema>;
+
+export const GroupResponseSchema = z.object({ group: GroupViewSchema });
+export type GroupResponse = z.infer<typeof GroupResponseSchema>;
+
+export const GroupListResponseSchema = z.object({
+  groups: z.array(GroupViewSchema),
+});
+export type GroupListResponse = z.infer<typeof GroupListResponseSchema>;
+
+/** `PUT /api/groups/:id/members` — set the group's membership (group-centric). */
+export const GroupMembersSetRequestSchema = z.object({
+  userIds: z.array(z.string()),
+});
+export type GroupMembersSetRequest = z.infer<
+  typeof GroupMembersSetRequestSchema
+>;
+
+/** `PUT /api/organization/members/:userId/groups` — set a member's groups
+ *  (member-centric, the Members-tab path). */
+export const MemberGroupsSetRequestSchema = z.object({
+  groupIds: z.array(z.string()),
+});
+export type MemberGroupsSetRequest = z.infer<
+  typeof MemberGroupsSetRequestSchema
+>;
+
+// ── Instance-object picker (#622 slice 5) ─────────────────────────────
+
+/** `GET /api/rbac/objects?resourceType&search` — the searchable objects a
+ *  policy author may pick as an instance-statement target. `{ id, label }`
+ *  only, visibility-scoped to what the caller can see. */
+export const RbacObjectSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+});
+export type RbacObject = z.infer<typeof RbacObjectSchema>;
+
+export const RbacObjectSearchResponseSchema = z.object({
+  objects: z.array(RbacObjectSchema),
+});
+export type RbacObjectSearchResponse = z.infer<
+  typeof RbacObjectSearchResponseSchema
+>;

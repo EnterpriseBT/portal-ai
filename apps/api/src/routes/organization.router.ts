@@ -26,11 +26,13 @@ import {
   UsageLedgerListRequestQuerySchema,
   AuditLogListRequestQuerySchema,
   MemberRolesSetRequestSchema,
+  MemberGroupsSetRequestSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
 } from "@portalai/core/contracts";
 import type { MemberRolesSetResponse } from "@portalai/core/contracts";
 import { SeatService } from "../services/seat.service.js";
+import { GroupService } from "../services/group.service.js";
 import {
   TOOL_USAGE_LEDGER_SORT_KEYS,
   type ToolUsageLedgerSortBy,
@@ -468,6 +470,76 @@ organizationRouter.put(
               error instanceof Error ? error.message : "Failed to set roles"
             )
       );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/members/{userId}/groups:
+ *   put:
+ *     summary: Set a member's groups (member-centric, #622)
+ *     tags: [Organization]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MemberGroupsSetRequest'
+ *     responses:
+ *       200:
+ *         description: The member's groups were set
+ *       400:
+ *         description: The target user is not an org member
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: Not entitled to custom RBAC, or not an owner/admin
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: A named group is not in the org
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+organizationRouter.put(
+  "/members/:userId/groups",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = MemberGroupsSetRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "groupIds is required and must be an array"
+          )
+        );
+      }
+      const result = await GroupService.setGroupsForUser(
+        req.application!.metadata,
+        req.params.userId,
+        parsed.data.groupIds,
+        auditContextFromRequest(req)
+      );
+      return HttpService.success(res, result);
+    } catch (error) {
+      return next(error);
     }
   }
 );
