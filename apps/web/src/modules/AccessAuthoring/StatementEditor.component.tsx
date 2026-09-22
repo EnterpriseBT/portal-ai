@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
@@ -100,16 +100,30 @@ export interface StatementEditorUIProps {
   onChange: (statements: PolicyStatementInput[]) => void;
   /** Per-resourceType object search feeding the instance picker. */
   onSearch: (resourceType: string, query: string) => Promise<SelectOption[]>;
+  /** Read-only render (a system policy) — every control is disabled. */
+  readOnly?: boolean;
 }
 
 export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
   initialStatements,
   onChange,
   onSearch,
+  readOnly = false,
 }) => {
   const [rows, setRows] = useState<StatementRow[]>(() =>
     statementsToRows(initialStatements ?? [])
   );
+
+  // Sync the parent with the initially-rendered rows once at mount — a new
+  // policy shows a default row and an edit shows its seeded rows, but neither
+  // fires onChange until the user touches something. Without this, a Save with
+  // no edits sends an empty statement set and the visible row is silently
+  // dropped (400 ORGANIZATION_INVALID_PAYLOAD). onChange is a stable setter and
+  // rows is mount-seeded, so this runs exactly once.
+  useEffect(() => {
+    onChange(rowsToStatements(rows));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only sync; see comment above
+  }, []);
 
   const commit = useCallback(
     (next: StatementRow[]) => {
@@ -142,6 +156,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               onChange={(e) =>
                 patch(i, { effect: e.target.value as StatementRow["effect"] })
               }
+              disabled={readOnly}
               sx={{ minWidth: 100 }}
             >
               {PERMISSION_EFFECTS.map((v) => (
@@ -158,6 +173,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               onChange={(e) =>
                 patch(i, { verb: e.target.value as StatementRow["verb"] })
               }
+              disabled={readOnly}
               sx={{ minWidth: 100 }}
             >
               {PERMISSION_VERBS.map((v) => (
@@ -179,6 +195,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
                   objectIds: [],
                 })
               }
+              disabled={readOnly}
               sx={{ minWidth: 140 }}
             >
               {PERMISSION_RESOURCE_TYPES.map((v) => (
@@ -195,6 +212,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               onChange={(e) =>
                 patch(i, { scope: e.target.value as StatementRow["scope"] })
               }
+              disabled={readOnly}
               sx={{ minWidth: 120 }}
               slotProps={{ htmlInput: { "aria-label": `scope-${i}` } }}
             >
@@ -211,6 +229,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
                 value={row.objectIds}
                 onChange={(objectIds) => patch(i, { objectIds })}
                 onSearch={(q) => onSearch(row.resourceType, q)}
+                disabled={readOnly}
                 fullWidth
               />
             ) : (
@@ -224,6 +243,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
                     condition: e.target.value as StatementRow["condition"],
                   })
                 }
+                disabled={readOnly}
                 sx={{ minWidth: 160 }}
               >
                 <MenuItem value="">Any</MenuItem>
@@ -238,7 +258,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
             <IconButton
               size="small"
               aria-label={`remove statement ${i}`}
-              disabled={rows.length === 1}
+              disabled={readOnly || rows.length === 1}
               onClick={() => commit(rows.filter((_, idx) => idx !== i))}
             >
               <DeleteOutlineIcon fontSize="small" />
@@ -247,19 +267,25 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
         );
       })}
 
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={() => commit([...rows, emptyRow()])}
+      {!readOnly && (
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
         >
-          Add statement
-        </Button>
-        <Typography variant="caption" color="text.secondary">
-          Bounded to your own access — you can’t grant more than you hold.
-        </Typography>
-      </Stack>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => commit([...rows, emptyRow()])}
+          >
+            Add statement
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            Bounded to your own access — you can’t grant more than you hold.
+          </Typography>
+        </Stack>
+      )}
     </Stack>
   );
 };

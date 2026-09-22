@@ -21,19 +21,33 @@ describe("AccessAuthoringUI (#622)", () => {
     render(<AccessAuthoringUI {...baseProps} rows={rows} />);
     expect(screen.getByText("FullAccess")).toBeInTheDocument();
     expect(screen.getByText("Analysts")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /New polic/i }));
+    // Exact label — "policies" singularizes to "policy", not "policie".
+    fireEvent.click(screen.getByRole("button", { name: "New policy" }));
     expect(baseProps.onNew).toHaveBeenCalled();
   });
 
-  it("a system item is read-only — edit present, delete absent", () => {
+  it("singularizes each section's New button correctly", () => {
+    const { rerender } = render(
+      <AccessAuthoringUI {...baseProps} section="policies" rows={[]} />
+    );
+    expect(screen.getByRole("button", { name: "New policy" })).toBeTruthy();
+    rerender(<AccessAuthoringUI {...baseProps} section="roles" rows={[]} />);
+    expect(screen.getByRole("button", { name: "New role" })).toBeTruthy();
+    rerender(<AccessAuthoringUI {...baseProps} section="groups" rows={[]} />);
+    expect(screen.getByRole("button", { name: "New group" })).toBeTruthy();
+  });
+
+  it("a system item is read-only — view (not edit) present, delete absent", () => {
     render(<AccessAuthoringUI {...baseProps} rows={rows} />);
-    // System row: edit yes, delete no.
-    expect(screen.getByLabelText("edit FullAccess")).toBeInTheDocument();
+    // System row: a VIEW affordance (eye), no edit, no delete.
+    expect(screen.getByLabelText("view FullAccess")).toBeInTheDocument();
+    expect(screen.queryByLabelText("edit FullAccess")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("delete FullAccess")
     ).not.toBeInTheDocument();
-    // Custom row: both.
+    // Custom row: edit (pencil) + delete, no view.
     expect(screen.getByLabelText("edit Analysts")).toBeInTheDocument();
+    expect(screen.queryByLabelText("view Analysts")).not.toBeInTheDocument();
     expect(screen.getByLabelText("delete Analysts")).toBeInTheDocument();
   });
 

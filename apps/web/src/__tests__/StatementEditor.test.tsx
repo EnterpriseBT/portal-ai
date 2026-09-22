@@ -80,6 +80,46 @@ describe("rowsToStatements (#622 fan-out)", () => {
 });
 
 describe("StatementEditorUI (#622)", () => {
+  it("emits the default row at mount so a no-edit save is non-empty", () => {
+    // Regression: the parent's statements state must reflect the visible default
+    // row without any user edit — otherwise Save sends [] and the server rejects
+    // it (400 ORGANIZATION_INVALID_PAYLOAD) despite a row being shown.
+    const onChange = jest.fn();
+    render(<StatementEditorUI onChange={onChange} onSearch={noSearch} />);
+    expect(onChange).toHaveBeenCalled();
+    const first = onChange.mock.calls[0][0] as PolicyStatementInput[];
+    expect(first).toEqual([
+      {
+        effect: "allow",
+        verb: "read",
+        resourceType: "station",
+        resourceId: null,
+        condition: null,
+      },
+    ]);
+  });
+
+  it("emits the seeded statements at mount when editing", () => {
+    const onChange = jest.fn();
+    const initial: PolicyStatementInput[] = [
+      {
+        effect: "allow",
+        verb: "read",
+        resourceType: "view",
+        resourceId: "view-1",
+        condition: null,
+      },
+    ];
+    render(
+      <StatementEditorUI
+        onChange={onChange}
+        onSearch={noSearch}
+        initialStatements={initial}
+      />
+    );
+    expect(onChange.mock.calls[0][0]).toEqual(initial);
+  });
+
   it("renders a default class row and emits on adding a statement", () => {
     const onChange = jest.fn();
     render(<StatementEditorUI onChange={onChange} onSearch={noSearch} />);
@@ -91,6 +131,32 @@ describe("StatementEditorUI (#622)", () => {
     const calls = onChange.mock.calls;
     const last = calls[calls.length - 1][0] as PolicyStatementInput[];
     expect(last).toHaveLength(2);
+  });
+
+  it("disables every control and hides Add when readOnly", () => {
+    render(
+      <StatementEditorUI
+        onChange={jest.fn()}
+        onSearch={noSearch}
+        readOnly
+        initialStatements={[
+          {
+            effect: "allow",
+            verb: "*",
+            resourceType: "*",
+            resourceId: null,
+            condition: null,
+          },
+        ]}
+      />
+    );
+    // The Add affordance is gone in read-only.
+    expect(
+      screen.queryByRole("button", { name: /Add statement/i })
+    ).not.toBeInTheDocument();
+    // The statement selects are disabled (a system policy can't be edited here).
+    const effect = screen.getByRole("combobox", { name: /Effect/i });
+    expect(effect).toHaveAttribute("aria-disabled", "true");
   });
 
   it("seeds rows from initialStatements", () => {

@@ -10,6 +10,7 @@ import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -25,6 +26,18 @@ import { RoleEditorDialog } from "./RoleEditorDialog.component";
 import { GroupEditorDialog } from "./GroupEditorDialog.component";
 
 type Section = "policies" | "roles" | "groups";
+
+/** Singular of each section for the "New <singular>" button — `slice(0, -1)`
+ *  would mangle "policies" → "policie". */
+const SECTION_SINGULAR: Record<Section, string> = {
+  policies: "policy",
+  roles: "role",
+  groups: "group",
+};
+
+/** "1 policy" / "3 policies" — natural singular/plural, no "(s)" parenthetical. */
+const pluralize = (n: number, singular: string, plural: string): string =>
+  `${n} ${n === 1 ? singular : plural}`;
 
 interface Row {
   id: string;
@@ -76,7 +89,7 @@ export const AccessAuthoringUI: React.FC<AccessAuthoringUIProps> = ({
         startIcon={<AddIcon />}
         onClick={onNew}
       >
-        New {section.slice(0, -1)}
+        New {SECTION_SINGULAR[section]}
       </Button>
     </Stack>
 
@@ -98,10 +111,14 @@ export const AccessAuthoringUI: React.FC<AccessAuthoringUIProps> = ({
                 <Tooltip title={row.system ? "View" : "Edit"}>
                   <IconButton
                     size="small"
-                    aria-label={`edit ${row.name}`}
+                    aria-label={`${row.system ? "view" : "edit"} ${row.name}`}
                     onClick={() => onEdit(row.id)}
                   >
-                    <EditIcon fontSize="small" />
+                    {row.system ? (
+                      <VisibilityIcon fontSize="small" />
+                    ) : (
+                      <EditIcon fontSize="small" />
+                    )}
                   </IconButton>
                 </Tooltip>
                 {!row.system && (
@@ -169,20 +186,24 @@ export const AccessAuthoring: React.FC = () => {
           id: p.id,
           name: p.name,
           system: p.kind === "system",
-          detail: `${p.statements.length} statement(s)`,
+          detail: pluralize(p.statements.length, "statement", "statements"),
         }))
       : section === "roles"
         ? roles.map((r) => ({
             id: r.id,
             name: r.name,
             system: r.kind === "system",
-            detail: `${r.policyIds.length} policy(ies)`,
+            detail: pluralize(r.policyIds.length, "policy", "policies"),
           }))
         : groups.map((g) => ({
             id: g.id,
             name: g.name,
             system: false,
-            detail: `${g.memberCount} member(s) · ${g.policyIds.length} policy(ies)`,
+            detail: `${pluralize(g.memberCount, "member", "members")}, ${pluralize(
+              g.policyIds.length,
+              "policy",
+              "policies"
+            )}`,
           }));
 
   const isLoading =

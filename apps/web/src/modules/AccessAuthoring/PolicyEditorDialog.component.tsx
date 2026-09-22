@@ -115,6 +115,7 @@ export const PolicyEditorDialogUI: React.FC<PolicyEditorDialogUIProps> = ({
           initialStatements={policy?.statements}
           onChange={onStatementsChange}
           onSearch={onSearch}
+          readOnly={readOnly}
         />
       </Stack>
     </Modal>
