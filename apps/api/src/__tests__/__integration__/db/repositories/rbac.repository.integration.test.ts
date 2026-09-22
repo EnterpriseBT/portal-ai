@@ -89,6 +89,7 @@ describe("RBAC repositories Integration Tests (#598 slice 1)", () => {
         id,
         organizationId: orgId,
         name: "member",
+        slug: "member",
         kind: "system",
         ...baseAudit(),
       } as never,
