@@ -51,6 +51,7 @@ function makePolicy(
   entitlements = {
     builtinToolpacks: ["data_query", "web_search"],
     customToolpacks: false,
+    customRbac: false,
   },
   tier = "standard"
 ) {
@@ -98,6 +99,7 @@ describe("EntitlementService.splitBuiltinPacks (#284)", () => {
       makePolicy({
         builtinToolpacks: ["data_query", "not_a_real_pack"],
         customToolpacks: false,
+        customRbac: false,
       })
     );
 
@@ -142,9 +144,28 @@ describe("EntitlementService.customPacksEntitled (#284)", () => {
     expect(await EntitlementService.customPacksEntitled(ORG_ID)).toBe(false);
 
     mockResolveTier.mockResolvedValue(
-      makePolicy({ builtinToolpacks: [], customToolpacks: true }, "pro")
+      makePolicy(
+        { builtinToolpacks: [], customToolpacks: true, customRbac: false },
+        "pro"
+      )
     );
     expect(await EntitlementService.customPacksEntitled(ORG_ID)).toBe(true);
+  });
+});
+
+// ── customRbacEntitled (#622) ─────────────────────────────────────────
+
+describe("EntitlementService.customRbacEntitled (#622)", () => {
+  it("reflects the tier's customRbac boolean (fail-closed default false)", async () => {
+    expect(await EntitlementService.customRbacEntitled(ORG_ID)).toBe(false);
+
+    mockResolveTier.mockResolvedValue(
+      makePolicy(
+        { builtinToolpacks: [], customToolpacks: false, customRbac: true },
+        "enterprise"
+      )
+    );
+    expect(await EntitlementService.customRbacEntitled(ORG_ID)).toBe(true);
   });
 });
 
@@ -203,7 +224,11 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
 
   it("returns registered custom packs with their tool names", async () => {
     mockResolveTier.mockResolvedValue(
-      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: true })
+      makePolicy({
+        builtinToolpacks: ["data_query"],
+        customToolpacks: true,
+        customRbac: false,
+      })
     );
     mockFindByStationId_packs.mockResolvedValue([
       builtinRow("data_query", 1),
@@ -235,7 +260,11 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
     // `splitBuiltinPacks` would classify any non-builtin ref as a plan limit,
     // which is what sent the user to Subscription & Billing for a working pack.
     mockResolveTier.mockResolvedValue(
-      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: true })
+      makePolicy({
+        builtinToolpacks: ["data_query"],
+        customToolpacks: true,
+        customRbac: false,
+      })
     );
     mockFindByStationId_packs.mockResolvedValue([
       builtinRow("data_query", 1),
@@ -258,7 +287,11 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
     // #214: registrations stay untouched on a downgrade; their tools simply
     // stop being offered — so the inventory must stop naming them too.
     mockResolveTier.mockResolvedValue(
-      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: false })
+      makePolicy({
+        builtinToolpacks: ["data_query"],
+        customToolpacks: false,
+        customRbac: false,
+      })
     );
     mockFindByStationId_packs.mockResolvedValue([
       builtinRow("data_query", 1),
@@ -277,7 +310,11 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
 
   it("handles a custom-only station", async () => {
     mockResolveTier.mockResolvedValue(
-      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: true })
+      makePolicy({
+        builtinToolpacks: ["data_query"],
+        customToolpacks: true,
+        customRbac: false,
+      })
     );
     mockFindByStationId_packs.mockResolvedValue([customRow("otp-1", 1)]);
     mockFindManyByIds_customPacks.mockResolvedValue([

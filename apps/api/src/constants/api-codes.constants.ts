@@ -62,6 +62,8 @@ export enum ApiCode {
   RBAC_GRANTEE_NOT_MEMBER = "RBAC_GRANTEE_NOT_MEMBER",
   /** No grant with the given id in the caller's org (#621). 404. */
   GRANT_NOT_FOUND = "GRANT_NOT_FOUND",
+  /** A custom policy statement grants access the author doesn't hold (#622). 403. */
+  RBAC_POLICY_EXCEEDS_BOUNDARY = "RBAC_POLICY_EXCEEDS_BOUNDARY",
 
   // Seats / invitations (#584)
   /** Invite target is already a live member of the org. 409. */

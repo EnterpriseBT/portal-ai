@@ -60,6 +60,7 @@ export class TierService {
       entitlements: {
         builtinToolpacks: row.builtinToolpacks,
         customToolpacks: row.customToolpacks,
+        customRbac: row.customRbac,
       },
       maxSeats: row.maxSeats,
     };

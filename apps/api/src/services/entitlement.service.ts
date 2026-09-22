@@ -160,6 +160,12 @@ export class EntitlementService {
     return policy.entitlements.customToolpacks;
   }
 
+  /** Whether the org's tier includes custom RBAC authoring (#622). */
+  static async customRbacEntitled(organizationId: string): Promise<boolean> {
+    const policy = await EntitlementService.resolvePolicy(organizationId);
+    return policy.entitlements.customRbac;
+  }
+
   /**
    * Resolve the org's tier policy. A missing org row resolves the default
    * tier (`resolveTier` handles the empty slug), which keeps the behavior

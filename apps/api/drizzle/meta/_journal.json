@@ -757,6 +757,13 @@
       "when": 1790043120876,
       "tag": "0107_add_groups_and_user_group",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1790051949010,
+      "tag": "0108_add_tiers_custom_rbac",
+      "breakpoints": true
     }
   ]
 }

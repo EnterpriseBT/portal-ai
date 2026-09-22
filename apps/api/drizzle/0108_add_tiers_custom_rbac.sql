@@ -1,0 +1,1 @@
+ALTER TABLE "tiers" ADD COLUMN "custom_rbac" boolean DEFAULT false NOT NULL;

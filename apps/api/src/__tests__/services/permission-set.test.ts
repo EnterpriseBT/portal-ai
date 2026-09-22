@@ -268,3 +268,183 @@ describe("PermissionSet — assertWithinBoundary (#621)", () => {
     ).not.toThrow();
   });
 });
+
+// ── assertStatementsWithinBoundary (#622 slice 2) ─────────────────────
+
+describe("PermissionSet.assertStatementsWithinBoundary (#622)", () => {
+  const ownerSet = () =>
+    new PermissionSet(ctx("owner"), [S({ verb: "*", resourceType: "*" })]);
+  const adminSet = () =>
+    new PermissionSet(ctx("admin"), [
+      S({ verb: "*", resourceType: "*" }),
+      S({ effect: "deny", verb: "manage", resourceType: "billing" }),
+    ]);
+  const memberSet = () =>
+    new PermissionSet(ctx("member"), [
+      S({
+        verb: "read",
+        resourceType: "station",
+        condition: "created_by_caller",
+      }),
+      S({
+        verb: "write",
+        resourceType: "station",
+        condition: "created_by_caller",
+      }),
+      S({
+        verb: "read",
+        resourceType: "station",
+        condition: "created_by_system",
+      }),
+    ]);
+
+  // Stub object resolver: map resourceId → its real createdBy (null = absent).
+  const resolver =
+    (map: Record<string, string | null>) =>
+    async (_rt: string, rid: string): Promise<string | null> =>
+      rid in map ? map[rid] : null;
+  const noObjects = resolver({});
+
+  const boundary = { code: ApiCode.RBAC_POLICY_EXCEEDS_BOUNDARY };
+
+  // ── class-level ──
+  it("owner (* *) can author any statement, including allow * *", async () => {
+    await expect(
+      ownerSet().assertStatementsWithinBoundary(
+        [S({ verb: "*", resourceType: "*" })],
+        noObjects
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("admin is rejected for allow * * (the billing deny is out of boundary)", async () => {
+    await expect(
+      adminSet().assertStatementsWithinBoundary(
+        [S({ verb: "*", resourceType: "*" })],
+        noObjects
+      )
+    ).rejects.toMatchObject(boundary);
+  });
+
+  it("admin is rejected for allow manage billing", async () => {
+    await expect(
+      adminSet().assertStatementsWithinBoundary(
+        [S({ verb: "manage", resourceType: "billing" })],
+        noObjects
+      )
+    ).rejects.toMatchObject(boundary);
+  });
+
+  it("admin can author an admin-equivalent bundle (read station + invite member)", async () => {
+    await expect(
+      adminSet().assertStatementsWithinBoundary(
+        [
+          S({ verb: "read", resourceType: "station" }),
+          S({ verb: "invite", resourceType: "member" }),
+        ],
+        noObjects
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("member can author its own-scoped allow (read station created_by_caller)", async () => {
+    await expect(
+      memberSet().assertStatementsWithinBoundary(
+        [
+          S({
+            verb: "read",
+            resourceType: "station",
+            condition: "created_by_caller",
+          }),
+        ],
+        noObjects
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("member is rejected for the unconditional allow read station", async () => {
+    await expect(
+      memberSet().assertStatementsWithinBoundary(
+        [S({ verb: "read", resourceType: "station", condition: null })],
+        noObjects
+      )
+    ).rejects.toMatchObject(boundary);
+  });
+
+  it("member is rejected for read audit (a capability it lacks)", async () => {
+    await expect(
+      memberSet().assertStatementsWithinBoundary(
+        [S({ verb: "read", resourceType: "audit" })],
+        noObjects
+      )
+    ).rejects.toMatchObject(boundary);
+  });
+
+  it("a deny statement is always in-boundary, even one the author couldn't allow", async () => {
+    await expect(
+      memberSet().assertStatementsWithinBoundary(
+        [
+          S({
+            effect: "deny",
+            verb: "read",
+            resourceType: "station",
+            condition: null,
+          }),
+        ],
+        noObjects
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("a wildcard verb fans out — member can't author allow * station (lacks delete)", async () => {
+    await expect(
+      memberSet().assertStatementsWithinBoundary(
+        [
+          S({
+            verb: "*",
+            resourceType: "station",
+            condition: "created_by_caller",
+          }),
+        ],
+        noObjects
+      )
+    ).rejects.toMatchObject(boundary);
+  });
+
+  // ── instance-level (via the resolver) ──
+  it("member can grant read on an instance it created (created_by_caller covers)", async () => {
+    await expect(
+      memberSet().assertStatementsWithinBoundary(
+        [S({ verb: "read", resourceType: "station", resourceId: "st-mine" })],
+        resolver({ "st-mine": "user-1" }) // caller created it
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("member cannot grant read on an instance someone else created", async () => {
+    await expect(
+      memberSet().assertStatementsWithinBoundary(
+        [S({ verb: "read", resourceType: "station", resourceId: "st-other" })],
+        resolver({ "st-other": "other-user" })
+      )
+    ).rejects.toMatchObject(boundary);
+  });
+
+  it("owner's class allow covers any instance grant", async () => {
+    await expect(
+      ownerSet().assertStatementsWithinBoundary(
+        [S({ verb: "read", resourceType: "station", resourceId: "st-other" })],
+        resolver({ "st-other": "other-user" })
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("an unresolvable/absent instance object rejects", async () => {
+    await expect(
+      ownerSet().assertStatementsWithinBoundary(
+        [S({ verb: "read", resourceType: "station", resourceId: "gone" })],
+        noObjects // resolver returns null
+      )
+    ).rejects.toMatchObject(boundary);
+  });
+});
