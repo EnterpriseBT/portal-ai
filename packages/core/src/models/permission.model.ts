@@ -126,8 +126,8 @@ export const RBAC_KINDS = ["system", "custom"] as const;
 export const RbacKindSchema = z.enum(RBAC_KINDS);
 export type RbacKind = z.infer<typeof RbacKindSchema>;
 
-/** The principals a policy can attach to. `group` is added in #622. */
-export const POLICY_PRINCIPAL_TYPES = ["user", "role"] as const;
+/** The principals a policy can attach to (#622 adds `group`). */
+export const POLICY_PRINCIPAL_TYPES = ["user", "role", "group"] as const;
 export const PolicyPrincipalTypeSchema = z.enum(POLICY_PRINCIPAL_TYPES);
 export type PolicyPrincipalType = z.infer<typeof PolicyPrincipalTypeSchema>;
 
@@ -299,5 +299,72 @@ export class RoleModel extends CoreModel<Role> {
 export class RoleModelFactory extends ModelFactory<Role, RoleModel> {
   create(createdBy: string): RoleModel {
     return new RoleModel(this._coreModelFactory.create(createdBy).toJSON());
+  }
+}
+
+// ── Group (a policy-attachment principal, #622) ───────────────────────
+
+/**
+ * An org-defined **group** (#622) — a named `policy_attachment` principal
+ * alongside `user`/`role`. A member inherits the policies of every group they
+ * belong to (via `user_group`). Always org-defined — groups carry no
+ * `system`/`custom` kind (there are no system groups).
+ */
+export const GroupSchema = CoreSchema.extend({
+  organizationId: z.string(),
+  name: z.string().min(1),
+  description: z.string().nullable(),
+});
+export type Group = z.infer<typeof GroupSchema>;
+
+export class GroupModel extends CoreModel<Group> {
+  get schema() {
+    return GroupSchema;
+  }
+  parse(): Group {
+    return this.schema.parse(this._model);
+  }
+  validate(): z.ZodSafeParseResult<Group> {
+    return this.schema.safeParse(this._model);
+  }
+}
+
+export class GroupModelFactory extends ModelFactory<Group, GroupModel> {
+  create(createdBy: string): GroupModel {
+    return new GroupModel(this._coreModelFactory.create(createdBy).toJSON());
+  }
+}
+
+// ── UserGroup (the membership edge, #622) ─────────────────────────────
+
+/** A user's membership in a group (#622). Unique per `(userId, groupId)`
+ *  among live rows; a re-add is a no-op. */
+export const UserGroupSchema = CoreSchema.extend({
+  organizationId: z.string(),
+  userId: z.string(),
+  groupId: z.string(),
+});
+export type UserGroup = z.infer<typeof UserGroupSchema>;
+
+export class UserGroupModel extends CoreModel<UserGroup> {
+  get schema() {
+    return UserGroupSchema;
+  }
+  parse(): UserGroup {
+    return this.schema.parse(this._model);
+  }
+  validate(): z.ZodSafeParseResult<UserGroup> {
+    return this.schema.safeParse(this._model);
+  }
+}
+
+export class UserGroupModelFactory extends ModelFactory<
+  UserGroup,
+  UserGroupModel
+> {
+  create(createdBy: string): UserGroupModel {
+    return new UserGroupModel(
+      this._coreModelFactory.create(createdBy).toJSON()
+    );
   }
 }

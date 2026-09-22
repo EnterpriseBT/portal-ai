@@ -36,7 +36,7 @@ export const policyAttachments = pgTable(
       .where(sql`${t.deleted} IS NULL`),
     check(
       "policy_attachments_principal_type_check",
-      sql`${t.principalType} IN ('user', 'role')`
+      sql`${t.principalType} IN ('user', 'role', 'group')`
     ),
   ]
 );

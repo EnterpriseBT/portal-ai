@@ -31,6 +31,8 @@ import type {
   PermissionGrant,
   Role,
   UserRole,
+  Group,
+  UserGroup,
   EntityGroup,
   EntityGroupMember,
   Core,
@@ -66,6 +68,8 @@ import type {
   PermissionGrantSelect,
   RoleSelect,
   UserRoleSelect,
+  GroupSelect,
+  UserGroupSelect,
   EntityGroupSelect,
   EntityGroupMemberSelect,
   StationSelect,
@@ -100,6 +104,8 @@ import type { permissionStatements } from "./permission-statements.table.js";
 import type { policyAttachments } from "./policy-attachments.table.js";
 import type { permissionGrants } from "./permission-grants.table.js";
 import type { roles } from "./roles.table.js";
+import type { groups } from "./groups.table.js";
+import type { userGroup } from "./user-group.table.js";
 import type { userRole } from "./user-role.table.js";
 import type { entityGroups } from "./entity-groups.table.js";
 import type { entityGroupMembers } from "./entity-group-members.table.js";
@@ -851,3 +857,21 @@ const _userRoleModelToDrizzle: _UserRoleModelToDrizzle = true;
 type _UserRoleInferredRow = InferSelectModel<typeof userRole>;
 type _UserRoleInferredToModel = IsAssignable<_UserRoleInferredRow, UserRole>;
 const _userRoleInferredToModel: _UserRoleInferredToModel = true;
+
+// Group (#622)
+type _GroupDrizzleToModel = IsAssignable<GroupSelect, Group>;
+const _groupDrizzleToModel: _GroupDrizzleToModel = true;
+type _GroupModelToDrizzle = IsAssignable<Group, GroupSelect>;
+const _groupModelToDrizzle: _GroupModelToDrizzle = true;
+type _GroupInferredRow = InferSelectModel<typeof groups>;
+type _GroupInferredToModel = IsAssignable<_GroupInferredRow, Group>;
+const _groupInferredToModel: _GroupInferredToModel = true;
+
+// UserGroup (#622)
+type _UserGroupDrizzleToModel = IsAssignable<UserGroupSelect, UserGroup>;
+const _userGroupDrizzleToModel: _UserGroupDrizzleToModel = true;
+type _UserGroupModelToDrizzle = IsAssignable<UserGroup, UserGroupSelect>;
+const _userGroupModelToDrizzle: _UserGroupModelToDrizzle = true;
+type _UserGroupInferredRow = InferSelectModel<typeof userGroup>;
+type _UserGroupInferredToModel = IsAssignable<_UserGroupInferredRow, UserGroup>;
+const _userGroupInferredToModel: _UserGroupInferredToModel = true;

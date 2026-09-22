@@ -88,6 +88,17 @@ export class PermissionService {
     for (const role of roleRows)
       principals.push({ principalType: "role", principalId: role.id });
 
+    // #622: gather the caller's groups (one indexed read) and add a `group`
+    // principal per membership — the engine unions their attached policies just
+    // like a role's. `findByPrincipals` already iterates an arbitrary list.
+    const groupIds = await repo.userGroups.findGroupIdsByUser(
+      ctx.userId,
+      ctx.organizationId,
+      client
+    );
+    for (const groupId of groupIds)
+      principals.push({ principalType: "group", principalId: groupId });
+
     const attachments = (
       await repo.policyAttachments.findByPrincipals(principals, client)
     ).filter((a) => a.organizationId === ctx.organizationId);
