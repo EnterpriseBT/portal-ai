@@ -195,3 +195,5 @@ Slice 6 shipped the Access-tab authoring but not the *assignment* surfaces the s
 - **Custom-role assignment by slug** — `roles.slug` column (`0109_add-roles-slug`, backfilled); the #620 role multiselect lists custom roles; `MemberRolesSetRequest` → `roleSlugs`; `setMemberRoles` resolves slug→role keeping owner/last-owner guards (≥1 system role); `MemberListResponse.assignableRoles`.
 
 Also folded in from the walk: the StatementEditor mount-emit fix (empty-statements 400), the "New policy" label, read-only statement fields, the view (eye) affordance for system rows, and natural count pluralization. Suites green (core/web/api unit).
+
+Also folded in from the member-context walk: the Profile "Your groups" wiring (`OrganizationGetResponse.groups` → `useCapabilities` → chips), replacing a hardcoded "no groups" placeholder.

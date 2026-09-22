@@ -186,3 +186,5 @@ The #622 smoke walk found that the spec's "assignment reuses #620's multi-role U
 - **`MemberListResponse.assignableRoles: RoleRef[]`** — the multiselect's options (system always; custom when authored), so it needs no entitlement-gated fetch. **`Member.roleSlugs`** is the member's complete role set; **`Member.groupIds`** + `sdk.members.setGroups` + a `customRbac`-gated **Groups column** provide the member-centric group assignment.
 
 Slug validity is **not** gated at the Zod edge (any non-empty string parses); the service resolves it against the org's roles (400 on an unknown slug). All of the above is boundary/entitlement-gated on the same routes as before — the gate layering (decision 8) is unchanged.
+
+Also wired (member-context smoke): the Profile's **"Your groups"** — previously a hardcoded placeholder — now shows the caller's group names. `OrganizationGetResponse.groups: string[]` carries them (`orgRoleFields` → `userGroups.findGroupNamesByUser`), surfaced via `useCapabilities` and rendered as chips, mirroring `roles`.

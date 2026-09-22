@@ -4,7 +4,7 @@ Manual smoke test for [#622](https://github.com/EnterpriseBT/portal-ai/issues/62
 
 Walked across the multi-user `@portalai/e2e` org — **owner / admin / member** — via `e2e:use <role>` + `browser_close`/`browser_navigate`. Authoring is owner/admin; the member is the target whose inherited access is checked.
 
-> **Walk history:** the owner-context walk surfaced five issues, fixed in-branch before this doc was finalized — (1) policy create posted an empty statement set → 400; (2) "New policie" label; (3) system read-only left statement selects editable; (4) member-centric group assignment was never built; (5) custom roles could not be assigned to members. All are reflected in the expected results below (and covered by unit tests); the remaining unchecked boxes are the admin/member-context and DB/manual steps.
+> **Walk history:** the walk surfaced six issues, all fixed in-branch before this doc was finalized — (1) policy create posted an empty statement set → 400; (2) "New policie" label; (3) system read-only left statement selects editable; (4) member-centric group assignment was never built; (5) custom roles could not be assigned to members (now assignable by slug via the Members multiselect); (6) the Profile's "Your groups" was a dead placeholder. All are reflected in the expected results below (and covered by unit tests). Owner + admin + member browser contexts were walked (authoring, boundary rejections, no-tab, profile); the remaining unchecked boxes are the DB/manual cascade + audit steps (§5) and the class-only picker scoping (§6).
 
 ## Preflight
 
@@ -31,6 +31,7 @@ Walked across the multi-user `@portalai/e2e` org — **owner / admin / member** 
 - [ ] As **member**, open Settings. **Expected:** **no** Access tab (member lacks `member.role.assign`); deep-linking `?tab=access` falls back to Profile.
 - [ ] As **owner** on an org whose tier lacks `customRbac` (flip it false first), open Access. **Expected:** a **locked/upgrade** state ("Custom roles, policies, and groups are an enterprise feature"), not the authoring module. — manual (needs the tier toggled)
 - [ ] Restore `customRbac: true`; the Access tab now shows the Policies / Roles / Groups sub-nav.
+- [ ] As **member**, open Settings ▸ Profile. **Expected:** **Your roles** lists every role the member holds by name — including any assigned **custom** role — and **Your groups** lists their group names as chips (not the "you don't belong to any groups yet" placeholder when they do belong to one). — regression for the profile-groups wiring.
 
 ## §2 — Custom policy authoring (slices 3, 6) — AC: bounded create, instance picker, system read-only
 
