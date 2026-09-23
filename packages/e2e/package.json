@@ -12,7 +12,7 @@
     "type-check": "tsc --noEmit",
     "test:unit": "true",
     "test:integration": "true",
-    "e2e:seed": "dotenv -e .env -- sh -c 'npm --workspace @portalai/api run db:seed:org -- --name e2e-fixture --owner-email \"$E2E_AUTH0_USERNAME\" --admin-email \"$E2E_AUTH0_USERNAME_ADMIN\" --member-email \"$E2E_AUTH0_USERNAME_MEMBER\"'",
+    "e2e:seed": "dotenv -e .env -- sh -c 'npm --workspace @portalai/api run db:seed:org -- --name e2e-fixture --owner-email \"$E2E_AUTH0_USERNAME\" --admin-email \"$E2E_AUTH0_USERNAME_ADMIN\" --member-email \"$E2E_AUTH0_USERNAME_MEMBER\" --all-toolpacks'",
     "e2e:auth": "dotenv -e .env -- tsx src/setup/auth.setup.ts",
     "e2e:auth:admin": "dotenv -e .env -- tsx src/setup/auth.setup.ts --identity admin",
     "e2e:auth:member": "dotenv -e .env -- tsx src/setup/auth.setup.ts --identity member",
