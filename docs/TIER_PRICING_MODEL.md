@@ -147,6 +147,7 @@ T1's "pass" is exactly as strong as the expected-turn assumption (130/400) — t
   - **Top-up credit packs** — **rejected(premature):** hard-deny + the upgrade ladder is sufficient until quota denials actually appear in the ledger. Revisit on first organic `TOOL_USAGE_QUOTA_EXCEEDED` from a paying org.
   - **Per-seat pricing** — out of scope here (#198 RBAC), but noted as the durable fix: LLM cost scales with users, and org-flat pricing cannot track it forever.
 - **T4 custom-deal floor:** quote ≥ heavy-scenario variable cost at the negotiated allocations **+ $20/mo fixed share**, computed from this model at deal time.
+- **`rbac_management` pack entitlement (2026-09-23, #629):** the new RBAC-admin toolpack is **baseline on every tier** (added to `standard` + `plus`; `pro`/`enterprise` include it via the all-packs spread). Margin-neutral — every tool is `free`-class and touches no vendor cost. It is not gated by tier *availability* because member-role assignment and object sharing (two of its tools) are not custom-RBAC features and must work on every tier, mirroring the app UI; the custom-RBAC-authoring tools (policy/role/group) self-gate on the separate **`customRbac` entitlement** (enterprise-only today) at the service layer, returning a surfaced `TOOL_PERMISSION_DENIED` on tiers without it. So pack availability ≠ operation entitlement here — deliberately.
 
 ## 7. Re-run procedure
 

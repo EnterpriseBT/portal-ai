@@ -44,10 +44,13 @@ npm run --workspace @portalai/e2e e2e:auth:all  # owner + admin + member
 # 2. Seed the deterministic fixture org with all three roles
 npm run --workspace @portalai/e2e e2e:seed
 #   db:seed:org --name e2e-fixture --owner-email $E2E_AUTH0_USERNAME \
-#     --admin-email $E2E_AUTH0_USERNAME_ADMIN --member-email $E2E_AUTH0_USERNAME_MEMBER
+#     --admin-email $E2E_AUTH0_USERNAME_ADMIN --member-email $E2E_AUTH0_USERNAME_MEMBER \
+#     --all-toolpacks
 ```
 
 `e2e:auth*` is idempotent — re-run any identity when its session expires; it overwrites that identity's `storageState`. `e2e:seed` is idempotent-by-name and **convergent**: re-running against an existing `e2e-fixture` org re-applies the admin/member role memberships (owner is fixed at creation). The seeded admin/member memberships use `lastLogin: 0` so they never hijack each user's current-org selector; switch into `e2e-fixture` in-app or via `portalai member switch` when a walk needs it.
+
+`--all-toolpacks` (#629) enables **every** built-in toolpack on the fixture's station, not the minimal `data_query`-only default a new station gets — so an agent-guided smoke walk can exercise any pack's features (rbac_management, entity_management, gis, …). It is a fixture concern; production org provisioning keeps its minimal default. Re-run `e2e:seed` after a new built-in pack lands to enable it on an existing fixture (the enablement reconciles, so it's a safe no-op otherwise).
 
 ### Switching the MCP identity
 

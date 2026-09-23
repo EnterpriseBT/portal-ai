@@ -1,3 +1,4 @@
+import AdminPanelSettingsOutlined from "@mui/icons-material/AdminPanelSettingsOutlined";
 import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
 import ExtensionOutlined from "@mui/icons-material/ExtensionOutlined";
@@ -22,6 +23,9 @@ describe("ToolPackIconUtil.getIcon", () => {
     expect(ToolPackIconUtil.getIcon("web_search")).toBe(TravelExploreOutlined);
     expect(ToolPackIconUtil.getIcon("entity_management")).toBe(HubOutlined);
     expect(ToolPackIconUtil.getIcon("gis")).toBe(MapOutlined);
+    expect(ToolPackIconUtil.getIcon("rbac_management")).toBe(
+      AdminPanelSettingsOutlined
+    );
   });
 
   it("falls back to the Extension icon for unknown / custom packs", () => {

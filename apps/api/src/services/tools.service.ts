@@ -18,8 +18,13 @@ import {
   wrapWithCostGate,
   type GateableTool,
 } from "./cost-gate.service.js";
+import {
+  PermissionService,
+  type PermissionContext,
+} from "./permission.service.js";
+import { wrapWithPermissionGate } from "./permission-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import type { CostHint } from "@portalai/core/models";
+import type { CostHint, OrgRole } from "@portalai/core/models";
 
 // Tool classes
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
@@ -65,6 +70,35 @@ import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
 import { CurrentTimeTool } from "../tools/current-time.tool.js";
 import { TransformEntityRecordsTool } from "../tools/transform-entity-records.tool.js";
+import {
+  PolicyListTool,
+  PolicyCreateTool,
+  PolicyUpdateTool,
+  PolicyDeleteTool,
+} from "../tools/rbac/policy.tool.js";
+import {
+  RoleListTool,
+  RoleCreateTool,
+  RoleUpdateTool,
+  RoleDeleteTool,
+} from "../tools/rbac/role.tool.js";
+import {
+  GroupListTool,
+  GroupCreateTool,
+  GroupUpdateTool,
+  GroupDeleteTool,
+  GroupSetMembersTool,
+} from "../tools/rbac/group.tool.js";
+import {
+  MemberListTool,
+  MemberSetRolesTool,
+  MemberSetGroupsTool,
+} from "../tools/rbac/member.tool.js";
+import {
+  GrantShareTool,
+  GrantRevokeTool,
+  GrantListTool,
+} from "../tools/rbac/grant.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
@@ -199,6 +233,26 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "field_mapping_update",
   "field_mapping_delete",
   "transform_entity_records",
+  // rbac_management (#629)
+  "policy_list",
+  "policy_create",
+  "policy_update",
+  "policy_delete",
+  "role_list",
+  "role_create",
+  "role_update",
+  "role_delete",
+  "group_list",
+  "group_create",
+  "group_update",
+  "group_delete",
+  "group_set_members",
+  "member_list",
+  "member_set_roles",
+  "member_set_groups",
+  "grant_share",
+  "grant_revoke",
+  "grant_list",
 ]);
 
 export class ToolService {
@@ -461,6 +515,21 @@ export class ToolService {
 
     const tools: Record<string, Tool> = {};
 
+    // #629: the caller's permission context, resolved once per session. Used by
+    // the rbac_management pack's tools (each routes to a self-gating RBAC
+    // service) and by the per-caller tool-authorization gate below. `loadSet`
+    // unions roles ∪ direct grants ∪ group memberships.
+    const callerRoles =
+      (await DbService.repository.userRole.findEffectiveRoleNames(
+        userId,
+        organizationId
+      )) as OrgRole[];
+    const permissionContext: PermissionContext = {
+      userId,
+      organizationId,
+      roles: callerRoles,
+    };
+
     // #169 cost gate: track org-hosted (custom) tool names + their declared
     // costHint so the wrap can tag them `costBearer: "organization"` (never
     // charged — the who-pays rule) while surfacing their advisory cost class.
@@ -469,8 +538,12 @@ export class ToolService {
 
     // Capability projections (#121): the enablement + enforcement gates
     // below read declared capability instead of slug/name hardcodes.
-    const { SYSTEM_TOOL_CAPABILITIES, ALL_TOOL_CAPABILITIES, isWriteGated } =
-      await import("@portalai/core/registries");
+    const {
+      SYSTEM_TOOL_CAPABILITIES,
+      ALL_TOOL_CAPABILITIES,
+      isWriteGated,
+      TOOL_AUTHORIZATION,
+    } = await import("@portalai/core/registries");
 
     // -------------------------------------------------------------------
     // Always-available system tools (#121: driven by the `alwaysAvailable`
@@ -693,6 +766,43 @@ export class ToolService {
     }
 
     // -------------------------------------------------------------------
+    // Pack: rbac_management (#629)
+    // -------------------------------------------------------------------
+    // The agent-facing companion to the RBAC admin UI. Each tool routes to a
+    // self-gating RBAC service (entitlement + member.role.assign + statement
+    // boundary), so a caller who lacks the permission — or an org without
+    // custom-RBAC entitlement — gets a surfaced TOOL_PERMISSION_DENIED via the
+    // gate's catch-403. The pack is baseline-entitled on every tier; the
+    // per-tool service gate is the real enforcement.
+    if (enabledPacks.has("rbac_management")) {
+      tools.policy_list = new PolicyListTool().build(permissionContext);
+      tools.policy_create = new PolicyCreateTool().build(permissionContext);
+      tools.policy_update = new PolicyUpdateTool().build(permissionContext);
+      tools.policy_delete = new PolicyDeleteTool().build(permissionContext);
+      tools.role_list = new RoleListTool().build(permissionContext);
+      tools.role_create = new RoleCreateTool().build(permissionContext);
+      tools.role_update = new RoleUpdateTool().build(permissionContext);
+      tools.role_delete = new RoleDeleteTool().build(permissionContext);
+      tools.group_list = new GroupListTool().build(permissionContext);
+      tools.group_create = new GroupCreateTool().build(permissionContext);
+      tools.group_update = new GroupUpdateTool().build(permissionContext);
+      tools.group_delete = new GroupDeleteTool().build(permissionContext);
+      tools.group_set_members = new GroupSetMembersTool().build(
+        permissionContext
+      );
+      tools.member_list = new MemberListTool().build(permissionContext);
+      tools.member_set_roles = new MemberSetRolesTool().build(
+        permissionContext
+      );
+      tools.member_set_groups = new MemberSetGroupsTool().build(
+        permissionContext
+      );
+      tools.grant_share = new GrantShareTool().build(permissionContext);
+      tools.grant_revoke = new GrantRevokeTool().build(permissionContext);
+      tools.grant_list = new GrantListTool().build(permissionContext);
+    }
+
+    // -------------------------------------------------------------------
     // Custom toolpacks (#214: skipped entirely when the tier's
     // customToolpacks entitlement is false — registrations stay untouched,
     // their tools simply never construct; they reactivate on upgrade.)
@@ -766,6 +876,19 @@ export class ToolService {
         for (const name of writeGated) delete tools[name];
       }
     }
+
+    // #629 per-caller tool-authorization gate: authorize every write the agent
+    // attempts against the caller's RBAC (roles ∪ grants ∪ groups), per object,
+    // and surface any denial as a typed refusal. The context was resolved once
+    // above (shared with the rbac_management pack); the gate is applied OUTSIDE
+    // the cost gate, so a denied call never reaches admission.
+    const permissionSet = await PermissionService.loadSet(permissionContext);
+    wrapWithPermissionGate(
+      tools as unknown as Record<string, GateableTool>,
+      permissionSet,
+      { organizationId, userId },
+      (name) => TOOL_AUTHORIZATION[name]
+    );
 
     // #169 cost gate: wrap every tool's execute so each call charges/denies
     // against the org's tier allocation. `free` + org-hosted (custom) tools

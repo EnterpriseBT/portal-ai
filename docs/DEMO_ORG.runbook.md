@@ -136,7 +136,7 @@ Run these in order — each builds on the last. Every prompt names the **toolpac
     Custom webhook toolpack → its documented result.
     *Say:* "And you can plug in your own tools — this one is a custom webhook we host."
 
-All eight built-in toolpacks (`data_query`, `visualize`, `gis`, `statistics`, `regression`, `financial`, `web_search`, `entity_management`) plus the custom toolpack are each exercised at least once.
+All eight of the data & analysis built-in toolpacks (`data_query`, `visualize`, `gis`, `statistics`, `regression`, `financial`, `web_search`, `entity_management`) plus the custom toolpack are each exercised at least once. The ninth builtin pack, `rbac_management` (#629), performs RBAC admin actions (create policies/roles/groups, assign members, share objects) rather than reading or writing the demo dataset, so it is intentionally out of this walkthrough — its surface is covered by the #629 RBAC smoke instead.
 
 ## Notes
 

@@ -23,6 +23,7 @@ import type {
   ResultKind,
   ComputeShape,
   CostHint,
+  ToolAuthorization,
 } from "../models/tool-capability.model.js";
 
 export type { BulkDispatchMetadata };
@@ -36,6 +37,7 @@ export const BuiltinToolpackSlugSchema = z.enum([
   "financial",
   "web_search",
   "entity_management",
+  "rbac_management",
   "visualize",
   "gis",
 ]);
@@ -1047,6 +1049,306 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   ],
 };
 
+const statementItemSchema = {
+  type: "object",
+  properties: {
+    effect: { type: "string", enum: ["allow", "deny"] },
+    verb: stringField("The action, e.g. read / write / delete / share"),
+    resourceType: stringField("The resource type the statement governs"),
+    resourceId: {
+      type: ["string", "null"],
+      description: "null = class-level (all of the type); an id = one instance",
+    },
+    condition: {
+      type: ["string", "null"],
+      description:
+        "Ownership scope, e.g. created_by_caller; null = unconditional",
+    },
+  },
+  required: ["effect", "verb", "resourceType", "resourceId", "condition"],
+};
+
+const granteeSchema = {
+  type: "object",
+  description:
+    'Who to share with: { type: "user", userId } or { type: "team" }',
+  properties: {
+    type: { type: "string", enum: ["user", "team"] },
+    userId: stringField("Required when type is 'user'"),
+  },
+  required: ["type"],
+};
+
+/**
+ * RBAC management pack (#629) — the agent-facing companion to the RBAC admin UI
+ * (`AccessAuthoring` + `ShareDialog`). Mirrors what the UI lets an admin do:
+ * policy / role / group CRUD, group membership, member role + group assignment,
+ * and object sharing. Every tool routes to a self-gating RBAC service; a caller
+ * without the capability (or the org without custom-RBAC entitlement) gets a
+ * surfaced `TOOL_PERMISSION_DENIED`. Hand-authored to match the `Tool` classes in
+ * `apps/api/src/tools/rbac/*`.
+ */
+const RBAC_MANAGEMENT_PACK: BuiltinToolpackSpec = {
+  slug: "rbac_management",
+  name: "Access & Roles",
+  description:
+    "Manage the organization's access model in a session: create and edit permission policies, roles, and groups; set group membership; assign members' roles and groups; and share stations and pins. Requires custom-RBAC entitlement and the member.role.assign capability for changes.",
+  iconSlug: "AdminPanelSettings",
+  tools: [
+    {
+      name: "policy_list",
+      description:
+        "Lists the organization's permission policies (system and custom), each with its statements. Use this to discover policy ids before attaching them to a role or group.",
+      parameterSchema: objectSchema({}),
+      examples: [
+        {
+          title: "List policies before building a role",
+          input: {},
+          output: {
+            policies: [
+              {
+                id: "pol_123",
+                name: "Read all stations",
+                kind: "custom",
+                statements: [
+                  {
+                    effect: "allow",
+                    verb: "read",
+                    resourceType: "station",
+                    resourceId: null,
+                    condition: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      name: "policy_create",
+      description:
+        "Creates a custom permission policy from one or more allow/deny statements. Each statement grants or denies a verb on a resource type (optionally a specific instance, optionally owner-scoped). Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          name: stringField("Policy name"),
+          description: {
+            type: ["string", "null"],
+            description: "Optional description",
+          },
+          statements: {
+            type: "array",
+            items: statementItemSchema,
+            description: "One or more statements (≥1).",
+          },
+        },
+        ["name", "statements"]
+      ),
+    },
+    {
+      name: "policy_update",
+      description:
+        "Replaces a custom policy's name, description, and full statement set. System policies are immutable. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          id: stringField("Id of the custom policy to update"),
+          name: stringField("Policy name"),
+          description: {
+            type: ["string", "null"],
+            description: "Optional description",
+          },
+          statements: {
+            type: "array",
+            items: statementItemSchema,
+            description: "The replacement statement set (≥1).",
+          },
+        },
+        ["id", "name", "statements"]
+      ),
+    },
+    {
+      name: "policy_delete",
+      description:
+        "Deletes a custom permission policy. System policies cannot be deleted. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        { id: stringField("Id of the custom policy to delete") },
+        ["id"]
+      ),
+    },
+    {
+      name: "role_list",
+      description:
+        "Lists the organization's roles (system and custom) with each role's stable assignment slug and attached policy ids. Use this to discover role slugs before assigning them to a member.",
+      parameterSchema: objectSchema({}),
+    },
+    {
+      name: "role_create",
+      description:
+        "Creates a custom role bundling a set of existing policies (by id). Members assigned the role inherit its policies. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          name: stringField("Role name"),
+          policyIds: stringArrayField("Ids of the policies the role bundles"),
+        },
+        ["name", "policyIds"]
+      ),
+    },
+    {
+      name: "role_update",
+      description:
+        "Replaces a custom role's name and its attached policy set. System roles are immutable. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          id: stringField("Id of the custom role to update"),
+          name: stringField("Role name"),
+          policyIds: stringArrayField("The replacement policy id set"),
+        },
+        ["id", "name", "policyIds"]
+      ),
+    },
+    {
+      name: "role_delete",
+      description:
+        "Deletes a custom role. System roles cannot be deleted. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        { id: stringField("Id of the custom role to delete") },
+        ["id"]
+      ),
+    },
+    {
+      name: "group_list",
+      description:
+        "Lists the organization's groups with each group's attached policy ids and live member count. Use this to discover group ids before setting a member's groups.",
+      parameterSchema: objectSchema({}),
+    },
+    {
+      name: "group_create",
+      description:
+        "Creates a group that bundles a set of existing policies (by id); members of the group inherit them. Membership is set separately with group_set_members. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          name: stringField("Group name"),
+          description: {
+            type: ["string", "null"],
+            description: "Optional description",
+          },
+          policyIds: stringArrayField("Ids of the policies the group bundles"),
+        },
+        ["name", "policyIds"]
+      ),
+    },
+    {
+      name: "group_update",
+      description:
+        "Replaces a group's name, description, and attached policy set. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          id: stringField("Id of the group to update"),
+          name: stringField("Group name"),
+          description: {
+            type: ["string", "null"],
+            description: "Optional description",
+          },
+          policyIds: stringArrayField("The replacement policy id set"),
+        },
+        ["id", "name", "policyIds"]
+      ),
+    },
+    {
+      name: "group_delete",
+      description:
+        "Deletes a group. Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        { id: stringField("Id of the group to delete") },
+        ["id"]
+      ),
+    },
+    {
+      name: "group_set_members",
+      description:
+        "Sets a group's complete membership (the passed user ids replace the current members). Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          id: stringField("Id of the group whose membership to set"),
+          userIds: stringArrayField("The complete set of member user ids"),
+        },
+        ["id", "userIds"]
+      ),
+    },
+    {
+      name: "member_list",
+      description:
+        "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing with them, and to read a member's current role/group set before replacing it.",
+      parameterSchema: objectSchema({}),
+    },
+    {
+      name: "member_set_roles",
+      description:
+        "Sets a member's complete role assignment by role slug (the passed slugs replace their current roles). A member must keep at least one system role. Requires the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          userId: stringField("The member's user id"),
+          roleSlugs: stringArrayField(
+            "The complete set of role slugs to assign (≥1)"
+          ),
+        },
+        ["userId", "roleSlugs"]
+      ),
+    },
+    {
+      name: "member_set_groups",
+      description:
+        "Sets a member's complete group membership (the passed group ids replace their current groups). Requires custom-RBAC entitlement and the member.role.assign capability.",
+      parameterSchema: objectSchema(
+        {
+          userId: stringField("The member's user id"),
+          groupIds: stringArrayField("The complete set of group ids"),
+        },
+        ["userId", "groupIds"]
+      ),
+    },
+    {
+      name: "grant_share",
+      description:
+        "Shares a station or pin with an org member (or the whole team) at read or read-write access. read-write never conveys delete. The caller must be able to share the object.",
+      parameterSchema: objectSchema(
+        {
+          resourceType: { type: "string", enum: ["station", "pin"] },
+          resourceId: stringField("The object to share"),
+          grantee: granteeSchema,
+          access: { type: "string", enum: ["read", "read-write"] },
+        },
+        ["resourceType", "resourceId", "grantee", "access"]
+      ),
+    },
+    {
+      name: "grant_revoke",
+      description:
+        "Revokes a share (removes every access a principal holds on the object via that grant). The caller must be able to share the object.",
+      parameterSchema: objectSchema(
+        {
+          grantId: stringField(
+            "Id of the grant (share) to revoke, from grant_list"
+          ),
+        },
+        ["grantId"]
+      ),
+    },
+    {
+      name: "grant_list",
+      description:
+        "Lists who a station or pin is shared with and at what access. Use this to discover grant ids before revoking a share.",
+      parameterSchema: objectSchema(
+        {
+          resourceType: { type: "string", enum: ["station", "pin"] },
+          resourceId: stringField("The shared object's id"),
+        },
+        ["resourceType", "resourceId"]
+      ),
+    },
+  ],
+};
+
 // ── Capability matrix ──────────────────────────────────────────────────
 //
 // Every built-in tool's declared capability (#121 child A), in one place.
@@ -1173,6 +1475,48 @@ const entityWrite = (writes: string[], locks: string[]): ToolCapability => ({
   costHint: "free",
   locks,
   resultKind: "mutation-result",
+  production: { kind: "value" },
+  alwaysAvailable: false,
+});
+
+/**
+ * RBAC control-plane read (`rbac_management` list tools, #629). It hits the
+ * backend (so not `pure`) but touches no entity **data plane** — `writes`/`reads`
+ * are the entity-kind vocabulary the lock + tool-authorization machinery keys on,
+ * and RBAC config is neither. `resultKind:"scalar"` = the agent consumes the
+ * result (to pick an id), not an auto-surfaced data table. `writes:[]` keeps
+ * these tools off the per-object gate — they are authorized by their own service.
+ */
+const rbacRead = (): ToolCapability => ({
+  pure: false,
+  reads: [],
+  writes: [],
+  consumption: { mode: "none" },
+  computeShape: "scan",
+  costHint: "free",
+  locks: [],
+  resultKind: "scalar",
+  production: { kind: "value" },
+  alwaysAvailable: false,
+});
+
+/**
+ * RBAC control-plane mutation (`rbac_management` create/update/delete/assign/
+ * share/revoke, #629). Like {@link rbacRead} it declares `writes:[]` — the
+ * mutation is over the RBAC control plane, not the entity data plane, so it is
+ * NOT a `TOOL_AUTHORIZATION` gate target; its own service self-gates (entitlement
+ * + `member.role.assign` + statement boundary) and the gate's catch-403 surfaces
+ * a denial. `costHint:"free"` — RBAC admin is never metered.
+ */
+const rbacWrite = (): ToolCapability => ({
+  pure: false,
+  reads: [],
+  writes: [],
+  consumption: { mode: "none" },
+  computeShape: "mutate",
+  costHint: "free",
+  locks: [],
+  resultKind: "scalar",
   production: { kind: "value" },
   alwaysAvailable: false,
 });
@@ -1368,6 +1712,107 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     production: { kind: "value" },
     alwaysAvailable: false,
   },
+  // rbac_management (#629) — control-plane reads + mutations, service-self-gated.
+  policy_list: rbacRead(),
+  policy_create: rbacWrite(),
+  policy_update: rbacWrite(),
+  policy_delete: rbacWrite(),
+  role_list: rbacRead(),
+  role_create: rbacWrite(),
+  role_update: rbacWrite(),
+  role_delete: rbacWrite(),
+  group_list: rbacRead(),
+  group_create: rbacWrite(),
+  group_update: rbacWrite(),
+  group_delete: rbacWrite(),
+  group_set_members: rbacWrite(),
+  member_list: rbacRead(),
+  member_set_roles: rbacWrite(),
+  member_set_groups: rbacWrite(),
+  grant_share: rbacWrite(),
+  grant_revoke: rbacWrite(),
+  grant_list: rbacRead(),
+};
+
+/**
+ * Per-tool authorization descriptors for the per-caller tool-authorization gate
+ * (#629). One entry per data-plane **write** tool; the gate reads it to check
+ * each write per object (create → type-level; batch → every bounded item; bulk
+ * → the scan tool self-scopes via `visibilityPredicate`). Tools absent here are
+ * not data-plane writes the gate pre-flights — read/pure tools, and the
+ * `rbac_management` tools (authorized by their own service, surfaced by the
+ * gate's catch-403). A guard test asserts every `writes[]` tool is covered.
+ */
+export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
+  entity_record_create: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "create",
+  },
+  entity_record_update: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "entityRecordId",
+  },
+  entity_record_delete: {
+    verb: "delete",
+    resourceType: "entity_record",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "entityRecordId",
+  },
+  connector_entity_create: {
+    verb: "write",
+    resourceType: "entity",
+    mode: "create",
+  },
+  connector_entity_update: {
+    verb: "write",
+    resourceType: "entity",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "connectorEntityId",
+  },
+  connector_entity_delete: {
+    verb: "delete",
+    resourceType: "entity",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "connectorEntityId",
+  },
+  field_mapping_create: {
+    verb: "write",
+    resourceType: "field_mapping",
+    mode: "create",
+  },
+  field_mapping_update: {
+    verb: "write",
+    resourceType: "field_mapping",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "fieldMappingId",
+  },
+  field_mapping_delete: {
+    verb: "delete",
+    resourceType: "field_mapping",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "fieldMappingId",
+  },
+  // Unbounded scans over an entity — self-scope via visibilityPredicate (slice
+  // 2b); the gate does not pre-flight them.
+  bulk_geocode_records: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "bulk",
+  },
+  transform_entity_records: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "bulk",
+  },
 };
 
 /** Attach each tool's declared capability from the matrix; throw on any
@@ -1398,6 +1843,7 @@ export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
     FINANCIAL_PACK,
     WEB_SEARCH_PACK,
     ENTITY_MANAGEMENT_PACK,
+    RBAC_MANAGEMENT_PACK,
     GIS_PACK,
   ].map(attachCapabilities)
 );

@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  PermissionResourceTypeSchema,
+  type PermissionResourceType,
+} from "./permission.model.js";
+
 /**
  * Tool capability metadata — the single declared source from which the
  * three projections (pack/UI, station enablement, enforcement) and the
@@ -290,3 +295,59 @@ export function customToolCapabilityError(
   }
   return null;
 }
+
+// ── Tool authorization (per-caller RBAC gate, #629) ────────────────────────
+
+/**
+ * A write tool's authorization descriptor — the per-caller RBAC gate (#629)
+ * reads this to authorize each write the agent attempts. Declared per tool
+ * alongside {@link ToolCapabilitySchema} (in `builtin-toolpacks.ts`). Absent =
+ * the tool is not a data-plane write the gate pre-flights (read/pure tools, and
+ * the `rbac_management` tools which are authorized by their own service).
+ *
+ * - `create` — no target yet; the new rows are caller-owned, so the gate checks
+ *   `resource.write` on the type **with `createdBy` = the caller** (a member's
+ *   `created_by_caller` write permits their own creates).
+ * - `single` — the gate resolves the target object's `createdBy` (via
+ *   `RbacObjectResolver`) from `targetIdArg` and checks that one object.
+ * - `batch` — a bounded `items[]` (each ≤ 100 by tool schema) with a per-item
+ *   id at `idField`; the gate checks **every** item per object (all must pass).
+ * - `bulk` — an unbounded whole-entity scan; the gate checks **class-level**
+ *   write (no `createdBy`), which only an *unconditional* grant (admin)
+ *   satisfies — a member's conditional `created_by_caller` write does not, so a
+ *   bulk scan is admin-only. One check, zero per-row work (O(1) in permission
+ *   queries): a member cannot bulk-mutate an entity they don't wholly own.
+ */
+export const ToolAuthorizationSchema = z
+  .object({
+    verb: z.enum(["write", "delete"]),
+    resourceType: PermissionResourceTypeSchema,
+    mode: z.enum(["create", "single", "batch", "bulk"]),
+    /** `single`: the validated-input key holding the target id. */
+    targetIdArg: z.string().optional(),
+    /** `batch`: the input key holding the items array. */
+    itemsArg: z.string().optional(),
+    /** `batch`: the id key within each item. */
+    idField: z.string().optional(),
+  })
+  .refine(
+    (a) =>
+      (a.mode === "single") === (a.targetIdArg != null) &&
+      (a.mode === "batch") === (a.itemsArg != null && a.idField != null),
+    { message: "single needs targetIdArg; batch needs itemsArg + idField" }
+  );
+export type ToolAuthorization = z.infer<typeof ToolAuthorizationSchema>;
+
+/**
+ * `writes[]`/`reads[]` carry plural table/entity kinds; the gate needs the
+ * singular `PermissionResourceType`. This maps the data-plane write kinds.
+ */
+export const WRITE_KIND_TO_RESOURCE_TYPE: Record<
+  string,
+  PermissionResourceType
+> = {
+  field_mappings: "field_mapping",
+  entity_records: "entity_record",
+  connector_entities: "entity",
+  connector_instances: "connector_instance",
+};
