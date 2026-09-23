@@ -16,6 +16,13 @@ import {
   GroupModelFactory,
   UserGroupSchema,
   UserGroupModelFactory,
+  PERMISSION_VERBS,
+  PERMISSION_RESOURCE_TYPES,
+  NAV_PAGE_IDS,
+  MEMBER_VIEW_PAGE_IDS,
+  RESOURCE_PERMISSION_TYPES,
+  PagePermissionMapSchema,
+  ResourcePermissionMapSchema,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -319,5 +326,120 @@ describe("Group / UserGroup schemas (#622)", () => {
       expect(r.data.userId).toBe("user-2");
       expect(r.data.groupId).toBe("grp-1");
     }
+  });
+});
+
+// ── Page + object permission surfaces (#630) ─────────────────────────
+
+describe("permission vocabulary (#630)", () => {
+  it("adds the `view` verb without dropping the existing ones", () => {
+    expect(PERMISSION_VERBS).toContain("view");
+    for (const v of [
+      "read",
+      "write",
+      "delete",
+      "share",
+      "manage",
+      "invite",
+      "*",
+    ])
+      expect(PERMISSION_VERBS).toContain(v);
+  });
+
+  it("adds the six plumbing/page resource types", () => {
+    for (const t of [
+      "entity_group",
+      "tag",
+      "column_definition",
+      "job",
+      "toolpack",
+      "page",
+    ])
+      expect(PERMISSION_RESOURCE_TYPES).toContain(t);
+  });
+
+  it("a `view page:<id>` statement parses (verb + type are valid together)", () => {
+    expect(
+      PermissionStatementSchema.safeParse({
+        id: "s",
+        created: 1,
+        createdBy: "u",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+        organizationId: "org-1",
+        policyId: "pol-1",
+        effect: "allow",
+        verb: "view",
+        resourceType: "page",
+        resourceId: "connectors",
+        condition: null,
+      }).success
+    ).toBe(true);
+  });
+
+  it("NAV_PAGE_IDS splits Connectors into instances + catalog and omits Dashboard", () => {
+    expect(NAV_PAGE_IDS).toContain("connectors");
+    expect(NAV_PAGE_IDS).toContain("connector_catalog");
+    expect(NAV_PAGE_IDS).not.toContain("dashboard");
+  });
+
+  it("MEMBER_VIEW_PAGE_IDS is exactly the member pages (Decision A)", () => {
+    expect([...MEMBER_VIEW_PAGE_IDS].sort()).toEqual([
+      "jobs",
+      "pinned",
+      "stations",
+    ]);
+    // Admin pages carry no member grant.
+    expect([...MEMBER_VIEW_PAGE_IDS]).not.toContain("connectors");
+    expect([...MEMBER_VIEW_PAGE_IDS]).not.toContain("connector_catalog");
+  });
+});
+
+describe("PagePermissionMapSchema (#630)", () => {
+  const full = Object.fromEntries(NAV_PAGE_IDS.map((id) => [id, true]));
+
+  it("accepts a map keyed by every nav page id", () => {
+    expect(PagePermissionMapSchema.safeParse(full).success).toBe(true);
+  });
+
+  it("is exhaustive — a partial map is rejected", () => {
+    expect(PagePermissionMapSchema.safeParse({ stations: true }).success).toBe(
+      false
+    );
+  });
+
+  it("rejects an unknown page id", () => {
+    expect(
+      PagePermissionMapSchema.safeParse({ ...full, settings: true }).success
+    ).toBe(false);
+  });
+});
+
+describe("ResourcePermissionMapSchema (#630)", () => {
+  const rwx = { read: true, write: false, delete: false };
+  const full = Object.fromEntries(
+    RESOURCE_PERMISSION_TYPES.map((t) => [t, rwx])
+  );
+
+  it("covers the data + plumbing object types, not page/billing/org", () => {
+    expect(RESOURCE_PERMISSION_TYPES).toContain("connector_instance");
+    expect(RESOURCE_PERMISSION_TYPES).toContain("toolpack");
+    for (const excluded of ["page", "billing", "org", "member", "audit", "*"])
+      expect(RESOURCE_PERMISSION_TYPES).not.toContain(excluded);
+  });
+
+  it("accepts a full read/write/delete map", () => {
+    expect(ResourcePermissionMapSchema.safeParse(full).success).toBe(true);
+  });
+
+  it("rejects a value missing a verb", () => {
+    expect(
+      ResourcePermissionMapSchema.safeParse({
+        ...full,
+        toolpack: { read: true, write: true },
+      }).success
+    ).toBe(false);
   });
 });

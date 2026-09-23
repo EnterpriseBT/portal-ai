@@ -13,6 +13,7 @@ import type { ColumnDataType, GeoRole } from "@portalai/core/models";
 import {
   DATA_RESOURCE_TYPES,
   SHAREABLE_RESOURCE_TYPES,
+  MEMBER_VIEW_PAGE_IDS,
   type PermissionEffect,
   type PermissionVerb,
   type PermissionResourceType,
@@ -662,13 +663,17 @@ export class SeedService {
       for (const s of spec.statements) {
         await repo.permissionStatements.create(
           {
-            id: `sysstmt:${organizationId}:${spec.name}:${s.effect}:${s.verb}:${s.resourceType}:${s.condition ?? "none"}`,
+            // Instance grants append `:<resourceId>` so two that differ only by
+            // id don't collide; class-level grants keep the historical key
+            // (byte-identical to what 0102/0106 backfilled), so existing ids are
+            // undisturbed (#630).
+            id: `sysstmt:${organizationId}:${spec.name}:${s.effect}:${s.verb}:${s.resourceType}:${s.condition ?? "none"}${s.resourceId != null ? `:${s.resourceId}` : ""}`,
             organizationId,
             policyId: policyId(spec.name),
             effect: s.effect,
             verb: s.verb,
             resourceType: s.resourceType,
-            resourceId: null,
+            resourceId: s.resourceId ?? null,
             condition: s.condition,
             ...audit,
           },
@@ -697,6 +702,11 @@ interface SeedStatement {
   verb: PermissionVerb;
   resourceType: PermissionResourceType;
   condition: PermissionCondition | null;
+  /** null/omitted = class-level (`type:*`); set = a specific instance (e.g. a
+   *  `page` id for a `view page:<id>` nav grant, #630). Threaded into the
+   *  deterministic id so two instance grants that differ only by id never
+   *  collide. */
+  resourceId?: string | null;
 }
 
 /**
@@ -778,6 +788,22 @@ export const SEED_SYSTEM_POLICIES: {
           condition: "created_by_caller",
         },
       ]),
+      // #630: jobs are readable by everyone (indirectly triggered, never directly
+      // edited) — unconditional class-level read so a member's Jobs list shows
+      // every job, not just their own.
+      { effect: "allow", verb: "read", resourceType: "job", condition: null },
+      // #630: nav page visibility (Decision A) — members see Stations / Pinned /
+      // Jobs (Dashboard is un-gated). The admin pages carry no member grant.
+      // Existing orgs get these four via the 0110 backfill.
+      ...MEMBER_VIEW_PAGE_IDS.map(
+        (id): SeedStatement => ({
+          effect: "allow",
+          verb: "view",
+          resourceType: "page",
+          resourceId: id,
+          condition: null,
+        })
+      ),
     ],
   },
 ];

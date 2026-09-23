@@ -78,8 +78,9 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
     ]);
     expect(attachments).toHaveLength(3);
     // FullAccess(1) + AdminAccess(3)
-    // + MemberAccess(8 data types × 3 + station/pin × {delete,share} = 28) = 32 (#621)
-    expect(statements).toHaveLength(32);
+    // + MemberAccess(8 data types × 3 + station/pin × {delete,share} = 28,
+    //   + read job (1) + view page × 3 = 32) = 36 (#621, #630)
+    expect(statements).toHaveLength(36);
     expect(policies.every((p) => p.kind === "system")).toBe(true);
 
     // Second call: no duplication (idempotent via the owner-role early return).
@@ -93,7 +94,49 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
       .from(schema.permissionStatements)
       .where(eq(schema.permissionStatements.organizationId, orgId));
     expect(rolesAfter).toHaveLength(3);
-    expect(stmtsAfter).toHaveLength(32);
+    expect(stmtsAfter).toHaveLength(36);
+  });
+
+  // ── #630: the member nav-view + job-read grants ─────────────────────
+  it("MemberAccess seeds read:job + view page:{stations,pinned,jobs} and no admin-page view", async () => {
+    await new SeedService().seedRbacSystemPolicies(orgId, db);
+    const stmts = await db
+      .select({
+        verb: schema.permissionStatements.verb,
+        resourceType: schema.permissionStatements.resourceType,
+        resourceId: schema.permissionStatements.resourceId,
+        condition: schema.permissionStatements.condition,
+      })
+      .from(schema.permissionStatements)
+      .where(
+        and(
+          eq(schema.permissionStatements.organizationId, orgId),
+          eq(
+            schema.permissionStatements.policyId,
+            `syspol:${orgId}:MemberAccess`
+          )
+        )
+      );
+
+    // Unconditional read on jobs (everyone sees the Jobs list).
+    expect(
+      stmts.some(
+        (s) =>
+          s.verb === "read" &&
+          s.resourceType === "job" &&
+          s.resourceId === null &&
+          s.condition === null
+      )
+    ).toBe(true);
+
+    // view page grants exactly on the member pages, none on admin pages.
+    const viewPages = stmts
+      .filter((s) => s.verb === "view" && s.resourceType === "page")
+      .map((s) => s.resourceId)
+      .sort();
+    expect(viewPages).toEqual(["jobs", "pinned", "stations"]);
+    expect(viewPages).not.toContain("connectors");
+    expect(viewPages).not.toContain("connector_catalog");
   });
 
   it("owner resolves to FullAccess via the seeded role attachment", async () => {

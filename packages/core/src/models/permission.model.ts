@@ -19,7 +19,9 @@ export const PERMISSION_EFFECTS = ["allow", "deny"] as const;
 export const PermissionEffectSchema = z.enum(PERMISSION_EFFECTS);
 export type PermissionEffect = z.infer<typeof PermissionEffectSchema>;
 
-/** The action verb. `*` is the wildcard (FullAccess). */
+/** The action verb. `*` is the wildcard (FullAccess). `view` (#630) gates a nav
+ *  page/section — distinct from `read` on an object, so a `deny read <class>`
+ *  never collides with a page `view` grant (they are different resources). */
 export const PERMISSION_VERBS = [
   "read",
   "write",
@@ -27,12 +29,19 @@ export const PERMISSION_VERBS = [
   "share",
   "manage",
   "invite",
+  "view",
   "*",
 ] as const;
 export const PermissionVerbSchema = z.enum(PERMISSION_VERBS);
 export type PermissionVerb = z.infer<typeof PermissionVerbSchema>;
 
-/** The object class a statement targets. `*` is any type. */
+/** The object class a statement targets. `*` is any type.
+ *  #630 adds the remaining plumbing object types (`entity_group`, `tag`,
+ *  `column_definition`, `job`, `toolpack`) and the `page` nav pseudo-resource
+ *  (`view page:<id>` gates a sidebar page/sub-tab). `view` (the #599 curated-view
+ *  object) is unrelated to the `view` verb. Adding a type needs no migration —
+ *  `resource_type` is a `text` column with no CHECK (only `effect`/`condition`
+ *  are constrained). */
 export const PERMISSION_RESOURCE_TYPES = [
   "station",
   "pin",
@@ -42,6 +51,12 @@ export const PERMISSION_RESOURCE_TYPES = [
   "entity_record",
   "field_mapping",
   "connector_instance",
+  "entity_group",
+  "tag",
+  "column_definition",
+  "job",
+  "toolpack",
+  "page",
   "billing",
   "org",
   "member",
@@ -120,6 +135,78 @@ export const CapabilityMapSchema = z.record(
   z.boolean()
 );
 export type CapabilityMap = z.infer<typeof CapabilityMapSchema>;
+
+// ── Page + object permission surfaces (#630) ──────────────────────────
+
+/**
+ * The gateable sidebar pages — the `resourceId`s a `view page:<id>` statement
+ * targets. A page whose sub-tabs are backed by *different* resources gets one id
+ * per tab: Connectors splits into `connectors` (the org's instances tab) and
+ * `connector_catalog` (the system connector-definition registry tab). Dashboard
+ * is deliberately absent — it is the un-gated safe landing the `beforeLoad`
+ * redirect falls back to. The FE reads a per-id `PagePermissionMap` off
+ * `current()` and gates nav/redirect on it (never a role-name check).
+ */
+export const NAV_PAGE_IDS = [
+  "stations",
+  "pinned",
+  "jobs",
+  "connectors",
+  "connector_catalog",
+  "entities",
+  "entity_groups",
+  "tags",
+  "column_definitions",
+  "toolpacks",
+] as const;
+export const NavPageIdSchema = z.enum(NAV_PAGE_IDS);
+export type NavPageId = z.infer<typeof NavPageIdSchema>;
+
+/**
+ * The pages `MemberAccess` grants `view` on (#630, Decision A). Dashboard is
+ * un-gated; the admin pages (connectors/catalog/entities/…) carry **no** member
+ * grant — a role that needs them is an admin-authored policy, which composes
+ * with zero code change. Data-defined here so the seed and the backfill share
+ * one source.
+ */
+export const MEMBER_VIEW_PAGE_IDS = [
+  "stations",
+  "pinned",
+  "jobs",
+] as const satisfies readonly NavPageId[];
+
+export const PagePermissionMapSchema = z.record(NavPageIdSchema, z.boolean());
+export type PagePermissionMap = z.infer<typeof PagePermissionMapSchema>;
+
+/**
+ * The object resource types the FE reads a coarse class-level `{read,write,
+ * delete}` map for (#630) — the data objects plus the plumbing catalogs, minus
+ * the privileged pseudo-resources (governed by {@link CapabilityMap}) and `page`
+ * (governed by {@link PagePermissionMap}). Per-object interactability is still a
+ * per-object `check`; this map only powers coarse affordances.
+ */
+export const RESOURCE_PERMISSION_TYPES = [
+  ...DATA_RESOURCE_TYPES,
+  "entity_group",
+  "tag",
+  "column_definition",
+  "job",
+  "toolpack",
+] as const satisfies readonly PermissionResourceType[];
+export const ResourcePermissionTypeSchema = z.enum(RESOURCE_PERMISSION_TYPES);
+export type ResourcePermissionType = z.infer<
+  typeof ResourcePermissionTypeSchema
+>;
+
+export const ResourcePermissionMapSchema = z.record(
+  ResourcePermissionTypeSchema,
+  z.object({
+    read: z.boolean(),
+    write: z.boolean(),
+    delete: z.boolean(),
+  })
+);
+export type ResourcePermissionMap = z.infer<typeof ResourcePermissionMapSchema>;
 
 /** A policy/role is `system` (immutable, seeded) or `custom` (org-defined). */
 export const RBAC_KINDS = ["system", "custom"] as const;

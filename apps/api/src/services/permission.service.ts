@@ -30,6 +30,9 @@ export interface PermissionContext {
  * - `member.invite` / `member.remove` — owner + admin (seats, #584).
  * - `resource.read` / `resource.write` — object read/write; a `member` is
  *   `createdBy`-scoped (read also allowed on system-created rows).
+ * - `resource.view` — page/section visibility (#630); the object is a
+ *   `{ type: "page", id }` and the verb is `view` (normalized generically in
+ *   `permission-set.ts`, no engine change).
  */
 export type PermissionAction =
   | "billing.manage"
@@ -41,7 +44,8 @@ export type PermissionAction =
   | "resource.read"
   | "resource.write"
   | "resource.delete"
-  | "resource.share";
+  | "resource.share"
+  | "resource.view";
 
 /** The object a `resource.*` action targets. `createdBy` drives the ownership
  *  condition; `id` selects instance-level statements/grants. */

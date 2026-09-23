@@ -771,6 +771,13 @@
       "when": 1790102880338,
       "tag": "0109_add-roles-slug",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1790200000000,
+      "tag": "0110_backfill-nav-permission-grants",
+      "breakpoints": true
     }
   ]
 }

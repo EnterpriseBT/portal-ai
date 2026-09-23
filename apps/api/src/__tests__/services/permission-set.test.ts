@@ -448,3 +448,62 @@ describe("PermissionSet.assertStatementsWithinBoundary (#622)", () => {
     ).rejects.toMatchObject(boundary);
   });
 });
+
+// ── Page view + class-vs-object composition (#630) ───────────────────
+
+describe("PermissionSet — page view + composable surfaces (#630)", () => {
+  const page = (id: string) => ({ type: "page", id });
+
+  it("view page:<id> is allowed only for the granted id (class-level implicit-deny)", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "view", resourceType: "page", resourceId: "stations" }),
+      S({ verb: "view", resourceType: "page", resourceId: "jobs" }),
+    ]);
+    expect(set.can("resource.view", page("stations"))).toBe(true);
+    expect(set.can("resource.view", page("jobs"))).toBe(true);
+    expect(set.can("resource.view", page("connectors"))).toBe(false); // ungranted
+  });
+
+  it("a `deny read <class>` overrides an `allow read <object>`; page view is unaffected", () => {
+    const set = new PermissionSet(ctx("member"), [
+      // object surface: an allow on a specific connector, denied at the class.
+      S({
+        effect: "allow",
+        verb: "read",
+        resourceType: "connector_instance",
+        resourceId: "ci-1",
+      }),
+      S({
+        effect: "deny",
+        verb: "read",
+        resourceType: "connector_instance",
+        resourceId: null,
+      }),
+      // page surface: an independent view grant on the Connectors page.
+      S({ verb: "view", resourceType: "page", resourceId: "connectors" }),
+    ]);
+    // Deny-over-allow on the object class (conventional RBAC).
+    expect(
+      set.can("resource.read", {
+        type: "connector_instance",
+        id: "ci-1",
+        createdBy: "user-1",
+      })
+    ).toBe(false);
+    // The page is a different resource — the object deny doesn't touch it.
+    expect(set.can("resource.view", page("connectors"))).toBe(true);
+  });
+
+  it("the wildcard set (owner) views every nav page", () => {
+    const set = new PermissionSet(ctx("owner"), [
+      S({ verb: "*", resourceType: "*" }),
+    ]);
+    for (const id of [
+      "connectors",
+      "connector_catalog",
+      "toolpacks",
+      "stations",
+    ])
+      expect(set.can("resource.view", page(id))).toBe(true);
+  });
+});
