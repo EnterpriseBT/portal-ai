@@ -97,11 +97,13 @@ function labelToConditionKey(label) {
  */
 function parseGateChecklist(md) {
   const lines = md.split("\n");
-  const start = lines.findIndex((l) => /^##\s+Merge gate\s*$/.test(l));
+  // Leading whitespace tolerated: the template is naturally indented under a
+  // PR-body list item, and may sit inside a fenced block.
+  const start = lines.findIndex((l) => /^\s*##\s+Merge gate\s*$/.test(l));
   if (start === -1) return null;
   const keys = [];
   for (let i = start + 1; i < lines.length; i++) {
-    const m = /^- \[[ xX]\]\s+(.*)$/.exec(lines[i]);
+    const m = /^\s*- \[[ xX]\]\s+(.*)$/.exec(lines[i]);
     if (!m) {
       if (lines[i].trim() === "") continue; // tolerate a blank line inside the block
       break;
@@ -340,6 +342,23 @@ const FIXTURES = [
       smokeWalkSkill: cleanSmokeWalk(),
     },
     expectRule: 1,
+  },
+  {
+    name: "rule 2 — indented PR checklist (nested under a bullet) still parses",
+    input: {
+      claudeMd: cleanClaude({
+        checklist: `  ## Merge gate
+  - [ ] CI green
+  - [ ] code-review confirmed
+  - [ ] security confirmed
+  - [ ] smoke confirmed
+  - [ ] adversarial confirmed`,
+      }),
+      copilotMd: cleanCopilot(),
+      adversarialSkill: cleanAdvSkill,
+      smokeWalkSkill: cleanSmokeWalk(),
+    },
+    expectRule: null,
   },
   {
     name: "rule 2 — PR checklist drops security",
