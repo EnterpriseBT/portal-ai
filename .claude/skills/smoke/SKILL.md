@@ -1,11 +1,11 @@
 ---
 name: smoke
-description: Phase 5 of the Issue → PR workflow — scaffold the smoke-test checklist for a feature branch. Maps the spec's acceptance criteria to a docs/<SLUG>.smoke.md walkthrough, tagging each step agent-walkable or manual-only; automatable steps are then run by /smoke-walk in a real browser for evidence, manual steps the human walks. The human's confirmation (plus green CI) is the merge gate. Invoke as /smoke [issue-number] after implementation.
+description: Phase 7 of the Issue → PR workflow — scaffold the smoke-test checklist for a feature branch. Maps the spec's acceptance criteria to a docs/<SLUG>.smoke.md walkthrough, tagging each step agent-walkable or manual-only; automatable steps are then run by /smoke-walk in a real browser for evidence, manual steps the human walks. The human's confirmation of the walkthrough is one of the review-chain phases the merge gate requires (with green CI). Invoke as /smoke [issue-number] after implementation.
 ---
 
 # /smoke — scaffold the manual smoke-test checklist
 
-You are scaffolding **phase 5** of the workflow in `CLAUDE.md` → "Issue → PR Workflow" — the last artifact before merge. A smoke doc is a checklist verified against a **running dev stack**, and the human's confirmation is the point of the gate. Automatable steps can be walked by the agent in a real browser via **`/smoke-walk`** (Playwright MCP, reusing the `@portalai/e2e` fixture), which produces a per-step **evidence report** the human reviews; manual-only steps (third-party redirects, payments, visual judgment, real vendor accounts) the human walks. It is never a jest suite, and **you never check a box or merge** — the agent produces evidence, the human confirms. The PR merges only after CI is green **and** the human has confirmed the walkthrough.
+You are scaffolding **phase 7** of the workflow in `CLAUDE.md` → "Issue → PR Workflow" — the acceptance gate before merge, alongside the adversarial phase (`/adversarial-review`). A smoke doc is a checklist verified against a **running dev stack**, and the human's confirmation is the point of the gate. Automatable steps can be walked by the agent in a real browser via **`/smoke-walk`** (Playwright MCP, reusing the `@portalai/e2e` fixture), which produces a per-step **evidence report** the human reviews; manual-only steps (third-party redirects, payments, visual judgment, real vendor accounts) the human walks. It is never a jest suite, and **you never check a box or merge** — the agent produces evidence, the human confirms. The PR merges only after CI is green **and** the human has confirmed each required review-chain phase (`CLAUDE.md` → "The merge gate"), smoke among them.
 
 ## Arguments
 
