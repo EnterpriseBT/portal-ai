@@ -90,6 +90,7 @@ import {
   GroupSetMembersTool,
 } from "../tools/rbac/group.tool.js";
 import {
+  MemberListTool,
   MemberSetRolesTool,
   MemberSetGroupsTool,
 } from "../tools/rbac/member.tool.js";
@@ -246,6 +247,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "group_update",
   "group_delete",
   "group_set_members",
+  "member_list",
   "member_set_roles",
   "member_set_groups",
   "grant_share",
@@ -788,6 +790,7 @@ export class ToolService {
       tools.group_set_members = new GroupSetMembersTool().build(
         permissionContext
       );
+      tools.member_list = new MemberListTool().build(permissionContext);
       tools.member_set_roles = new MemberSetRolesTool().build(
         permissionContext
       );

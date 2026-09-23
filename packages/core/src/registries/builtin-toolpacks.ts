@@ -1276,6 +1276,12 @@ const RBAC_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       ),
     },
     {
+      name: "member_list",
+      description:
+        "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing with them, and to read a member's current role/group set before replacing it.",
+      parameterSchema: objectSchema({}),
+    },
+    {
       name: "member_set_roles",
       description:
         "Sets a member's complete role assignment by role slug (the passed slugs replace their current roles). A member must keep at least one system role. Requires the member.role.assign capability.",
@@ -1720,6 +1726,7 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   group_update: rbacWrite(),
   group_delete: rbacWrite(),
   group_set_members: rbacWrite(),
+  member_list: rbacRead(),
   member_set_roles: rbacWrite(),
   member_set_groups: rbacWrite(),
   grant_share: rbacWrite(),

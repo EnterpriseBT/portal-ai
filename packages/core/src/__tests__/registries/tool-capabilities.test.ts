@@ -123,6 +123,7 @@ describe("costHint pin (#184)", () => {
     group_update: "free",
     group_delete: "free",
     group_set_members: "free",
+    member_list: "free",
     member_set_roles: "free",
     member_set_groups: "free",
     grant_share: "free",

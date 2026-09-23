@@ -7,6 +7,7 @@ import { GroupService } from "../../services/group.service.js";
 import type { PermissionContext } from "../../services/permission.service.js";
 import { AGENT_AUDIT, runRbac } from "./rbac-tool.util.js";
 
+const ListInput = z.object({});
 const SetRolesInput = z.object({
   userId: z.string().describe("The member's user id"),
   roleSlugs: z
@@ -24,6 +25,26 @@ const SetGroupsInput = z.object({
       "The complete set of group ids (from group_list); replaces the member's current groups"
     ),
 });
+
+export class MemberListTool extends Tool<typeof ListInput> {
+  slug = "member_list";
+  name = "member_list";
+  description =
+    "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing with them, and to read a member's current role/group set before replacing it.";
+
+  get schema() {
+    return ListInput;
+  }
+
+  build(ctx: PermissionContext) {
+    return tool({
+      description: this.description,
+      inputSchema: this.schema,
+      execute: () =>
+        runRbac(async () => ({ members: await SeatService.listMembers(ctx) })),
+    });
+  }
+}
 
 export class MemberSetRolesTool extends Tool<typeof SetRolesInput> {
   slug = "member_set_roles";

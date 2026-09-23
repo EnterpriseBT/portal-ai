@@ -482,17 +482,20 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
-        "**Discover ids before you change anything.** Ids and role slugs are not " +
-          "guessable — call `policy_list`, `role_list`, `group_list`, or " +
-          "`grant_list` first to find the target's id (or a role's `slug`), then " +
-          "act. Never invent an id."
+        "**Discover ids before you change anything.** Ids, slugs, and userIds are " +
+          "not guessable — call `policy_list`, `role_list`, `group_list`, " +
+          "`grant_list`, or `member_list` first to find the target's id (or a " +
+          "role's `slug`, or a person's `userId`), then act. To act on a person " +
+          "(assign roles/groups, share with a specific user), resolve their " +
+          "email/name to a `userId` with `member_list`. Never invent an id."
       );
       lines.push("");
       lines.push(
         "Assignments are **set-semantics**: `member_set_roles`, " +
           "`member_set_groups`, and `group_set_members` REPLACE the target's " +
-          "full set with what you pass — read the current set first and send the " +
-          "complete intended set, not just the addition. A member must keep at " +
+          "full set with what you pass — read the current set first (a member's " +
+          "`roleSlugs`/`groupIds` come from `member_list`) and send the complete " +
+          "intended set, not just the addition. A member must keep at " +
           "least one system role. Policy, role, and group authoring requires the " +
           "organization's custom-RBAC entitlement; without it those tools return " +
           "a permission error you should relay as an upgrade prompt."

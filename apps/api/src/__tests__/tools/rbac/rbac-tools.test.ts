@@ -24,14 +24,15 @@ jest.unstable_mockModule("../../../services/grant.service.js", () => ({
 }));
 
 const setMemberRoles = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const listMembers = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.unstable_mockModule("../../../services/seat.service.js", () => ({
-  SeatService: { setMemberRoles },
+  SeatService: { setMemberRoles, listMembers },
 }));
 
 const { PolicyCreateTool, PolicyListTool } =
   await import("../../../tools/rbac/policy.tool.js");
 const { GrantShareTool } = await import("../../../tools/rbac/grant.tool.js");
-const { MemberSetRolesTool } =
+const { MemberSetRolesTool, MemberListTool } =
   await import("../../../tools/rbac/member.tool.js");
 
 const ctx: PermissionContext = {
@@ -123,6 +124,29 @@ describe("rbac_management tools (#629)", () => {
       userAgent: "portal-agent",
     });
     expect(r).toEqual({ success: true, grant: { id: "g_1" } });
+  });
+
+  it("member_list routes to SeatService.listMembers and returns the roster", async () => {
+    listMembers.mockResolvedValue([
+      {
+        userId: "u-2",
+        email: "b@x.com",
+        roles: ["member"],
+        roleSlugs: ["member"],
+      },
+    ]);
+    const r = await exec(new MemberListTool().build(ctx), {});
+    expect(listMembers).toHaveBeenCalledWith(ctx);
+    expect(r).toEqual({
+      members: [
+        {
+          userId: "u-2",
+          email: "b@x.com",
+          roles: ["member"],
+          roleSlugs: ["member"],
+        },
+      ],
+    });
   });
 
   it("member_set_roles routes to SeatService.setMemberRoles by slug", async () => {

@@ -102,6 +102,7 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   group_update: "Updating the group",
   group_delete: "Deleting the group",
   group_set_members: "Updating group members",
+  member_list: "Listing members",
   member_set_roles: "Updating member roles",
   member_set_groups: "Updating member groups",
   grant_share: "Sharing access",
