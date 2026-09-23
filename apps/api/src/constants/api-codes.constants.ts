@@ -715,6 +715,12 @@ export enum ApiCode {
    *  written or charged. */
   AGENT_TURN_LIMITED = "AGENT_TURN_LIMITED",
 
+  // Per-caller tool-authorization gate (#629)
+  /** The caller lacks permission for a write the agent attempted; the gate
+   *  returns this as a typed tool result (never a throw) so the agent relays
+   *  it to the user. Fail-closed. */
+  TOOL_PERMISSION_DENIED = "TOOL_PERMISSION_DENIED",
+
   // Tool usage ledger (#179)
   /** Malformed itemized-usage query (unknown sortBy / bad pagination). 400. */
   USAGE_LEDGER_INVALID_QUERY = "USAGE_LEDGER_INVALID_QUERY",

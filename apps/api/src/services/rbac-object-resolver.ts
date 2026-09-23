@@ -8,6 +8,10 @@
  * is not built yet, so they resolve to `null` (the boundary then rejects an
  * instance statement on them — fail-closed). Slice 5 extends this map with the
  * searchable-label lookup that powers the instance picker.
+ *
+ * #629 adds `field_mapping` + `entity_record` (the data-plane write types the
+ * per-caller tool-authorization gate resolves per object). `view` is still not
+ * built (#599), so it resolves to `null` (fail-closed).
  */
 
 import { DbService } from "./db.service.js";
@@ -31,6 +35,13 @@ const OBJECT_FINDERS: Record<string, (id: string) => Promise<ResolvableRow>> = {
     DbService.repository.connectorEntities.findById(
       id
     ) as Promise<ResolvableRow>,
+  // #629: the per-caller tool-authorization gate resolves data-plane writes
+  // per object too (the per-object gate needs their `createdBy`), so these are
+  // now instance-resolvable — they were `null` (data-plane, deferred) in #622.
+  field_mapping: (id) =>
+    DbService.repository.fieldMappings.findById(id) as Promise<ResolvableRow>,
+  entity_record: (id) =>
+    DbService.repository.entityRecords.findById(id) as Promise<ResolvableRow>,
 };
 
 export class RbacObjectResolver {
