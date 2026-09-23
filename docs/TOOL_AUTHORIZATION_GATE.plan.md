@@ -24,7 +24,7 @@ The authorization wrapper + typed refusal + the data-plane resolver extension, f
 
 **Files**
 
-- New: `apps/api/src/services/permission-gate.service.ts` — `wrapWithPermissionGate(tools, permissionSet, ctx, authFor)`: create → `can("resource.write",{type})`; single/delete → resolve `createdBy` via `RbacObjectResolver` → `can("resource.<verb>",{type,id,createdBy})`; bulk → skip pre-flight (the tool self-scopes, slice 2); **all** wrap `execute` in try/catch → `ApiError(403)` becomes the typed refusal; fail-closed on a resolution error.
+- New: `apps/api/src/services/permission-gate.service.ts` — `wrapWithPermissionGate(tools, permissionSet, ctx, authFor)`: create → `can("resource.write",{type,createdBy:caller})`; single/batch → resolve `createdBy` via `RbacObjectResolver` → `can("resource.<verb>",{type,id,createdBy})` per object; bulk → class-level `can("resource.<verb>",{type})` (admin-only, slice 2b); **all** wrap `execute` in try/catch → `ApiError(403)` becomes the typed refusal; fail-closed on a resolution error.
 - Edit: `apps/api/src/constants/api-codes.constants.ts` — add `TOOL_PERMISSION_DENIED`.
 - Edit: `packages/core/src/models/tool-capability.model.ts` — `ToolAuthorization` type + `WRITE_KIND_TO_RESOURCE_TYPE` map.
 - Edit: `apps/api/src/services/rbac-object-resolver.ts` — extend `OBJECT_FINDERS` with `field_mapping` + `entity_record`.
@@ -43,23 +43,23 @@ The authorization wrapper + typed refusal + the data-plane resolver extension, f
 
 ## Slice 2 — Wire the gate into `buildAnalyticsTools` + per-object descriptors + guards
 
-Resolve the caller's `PermissionSet` once, gate every existing write tool per object, and pin the coverage + O(1) invariants.
+Resolve the caller's `PermissionSet` once, gate every existing write tool per object, and pin the coverage + O(1) invariants. Landed as two commits: **2a** (wiring + descriptors + coverage guard) and **2b** (the `RbacObjectResolver` data-plane extension + the batch/bulk modes + the O(1) invariant test).
 
 **Files**
 
-- Edit: `apps/api/src/services/tools.service.ts` — in `buildAnalyticsTools` (`:393`): resolve `roles` via `userRole.findEffectiveRoleNames`, build `PermissionContext`, `loadSet` **once** → `permissionSet`; pass it to bulk-write tools' `.build(...)`; call `wrapWithPermissionGate(...)` **before** `wrapWithCostGate` (`:773`).
-- Edit: `packages/core/src/registries/builtin-toolpacks.ts` — a `TOOL_AUTHORIZATION` map: one descriptor per existing data-plane write tool (create/single/bulk).
-- Edit: the bulk-write tools (`apps/api/src/tools/*`) whose descriptor is `bulk` — `.build()` accepts `permissionSet` and ANDs `visibilityPredicate(resourceType, {createdByCol, idCol})` into the write `WHERE`.
+- Edit: `apps/api/src/services/tools.service.ts` — in `buildAnalyticsTools` (`:393`): resolve `roles` via `userRole.findEffectiveRoleNames`, build `PermissionContext`, `loadSet` **once** → `permissionSet`; call `wrapWithPermissionGate(...)` **before** `wrapWithCostGate` (`:773`). *(2a)*
+- Edit: `packages/core/src/registries/builtin-toolpacks.ts` — a `TOOL_AUTHORIZATION` map: one descriptor per existing data-plane write tool (create/batch/bulk). *(2a)*
+- Edit: `apps/api/src/services/permission-gate.service.ts` — `create` checks with `createdBy` = caller; `bulk` pre-flights a **class-level** `can("resource.<verb>",{type})` (admin-only), not a processor-side predicate. *(2b)*
 
 **Steps**
 
-1. **Tests (spec: `tools.service.test.ts` coverage guard + O(1)).** Extend `apps/api/src/__tests__/services/tools.service.test.ts`: **coverage guard** — every built tool with non-empty `writes[]` has a `TOOL_AUTHORIZATION` entry and its `execute` routes through `wrapWithPermissionGate` (intercept `PermissionSet.can`); **O(1) invariant** — a bulk write tool issues O(1) permission queries regardless of row count (count DB round-trips; assert no per-row `resolveCreatedBy`). Run; fail.
-2. **Implement** the wiring + descriptors + bulk predicate-scoping. Green.
+1. **Tests (spec: coverage guard + O(1)).** `tools.service.test.ts`: **coverage guard** — every built tool with non-empty `writes[]` has a `TOOL_AUTHORIZATION` entry and its `execute` routes through `wrapWithPermissionGate`. `permission-gate.service.test.ts`: **O(1) invariant** — a bulk scan does one class-level `can` and never calls `resolveCreatedBy` regardless of row count; a member's conditional write is denied, an admin's unconditional write allowed. Run; fail.
+2. **Implement** the wiring + descriptors (2a); the create-createdBy + class-level bulk gate (2b). Green.
 3. Lint + type-check.
 
 **Done when:** every existing write tool is per-object-gated; the coverage guard + O(1) test pass; the cost-gate guard still passes (authorization sits outside it).
 
-**Risk:** the bulk predicate must AND into the *write* `WHERE` (not just reads) — the O(1) + a member-scoped bulk-write integration case are the detectors.
+**Risk:** *(revised)* the discovery assumed bulk would AND `visibilityPredicate` into the write `WHERE`; the two bulk tools are async-job scanners whose scan lives in a BullMQ processor, and a whole-entity bulk exceeds a member's `created_by_caller` grant regardless — so bulk is a **class-level admin gate** (one check, no processor surgery), and member-scoped partial bulk is a deferred follow-up.
 
 ---
 
@@ -111,7 +111,7 @@ Bring the agent/tool doc surfaces in line with the new pack + refusal (per `CLAU
 | Slice | Lands | Gating check |
 |---|---|---|
 | 1 | gate primitive + `TOOL_PERMISSION_DENIED` + resolver extension | `permission-gate.service.test` + resolver test |
-| 2 | wired into `buildAnalyticsTools` + descriptors + bulk predicate | coverage guard + O(1) invariant |
+| 2 | wired into `buildAnalyticsTools` + descriptors + class-level bulk gate | coverage guard + O(1) invariant |
 | 3 | `rbac_management` pack + tools + entitlement | registry tests + rbac-tools integration |
 | 4 | doc-sync (mirror + `system.prompt`) | pinning tests |
 
@@ -119,7 +119,7 @@ Bring the agent/tool doc surfaces in line with the new pack + refusal (per `CLAU
 
 - **`PermissionContext` threading** touches `buildAnalyticsTools` in slice 2 and the RBAC tools in slice 3 — both take the full context (roles resolved once), never a bare `userId`.
 - **The coverage guard evolves, green at each boundary:** slice 2 asserts every data-plane write tool has a descriptor; slice 3 extends the exempt rule for the service-gated `rbac_management` tools. Neither references a symbol from a later slice.
-- **Bulk correctness** is the one real risk — the O(1) test (slice 2) forbids per-row checks and the member-scoped bulk-write integration case proves the DB-side predicate.
+- **Bulk correctness** is a class-level admin gate (slice 2b), not a per-row predicate — the O(1) test forbids per-row resolution and asserts admin-allow / member-deny on the class-level check. Member-scoped partial bulk (processor-side `visibilityPredicate`) is a deferred follow-up.
 - **Doc-sync (slice 4)** is mandatory in this PR, not a follow-up — the tool contract (`.tool.ts` descriptions + `builtin-toolpacks` mirror + `system.prompt`) is a documented surface.
 - **No DB migration**; the tier-catalog edit (slice 3) reaches existing envs via `portalops tier apply` — a deploy-time step, not part of the PR.
 

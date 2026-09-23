@@ -305,15 +305,18 @@ export function customToolCapabilityError(
  * the tool is not a data-plane write the gate pre-flights (read/pure tools, and
  * the `rbac_management` tools which are authorized by their own service).
  *
- * - `create` — no target yet; the gate checks `resource.write` on the type
- *   (the new rows are owned by the caller).
+ * - `create` — no target yet; the new rows are caller-owned, so the gate checks
+ *   `resource.write` on the type **with `createdBy` = the caller** (a member's
+ *   `created_by_caller` write permits their own creates).
  * - `single` — the gate resolves the target object's `createdBy` (via
  *   `RbacObjectResolver`) from `targetIdArg` and checks that one object.
  * - `batch` — a bounded `items[]` (each ≤ 100 by tool schema) with a per-item
  *   id at `idField`; the gate checks **every** item per object (all must pass).
- * - `bulk` — an unbounded scan over an entity; the gate does NOT pre-flight —
- *   the tool self-scopes by AND-ing `PermissionSet.visibilityPredicate` into its
- *   write `WHERE` (per-row enforcement is one DB statement, never N checks).
+ * - `bulk` — an unbounded whole-entity scan; the gate checks **class-level**
+ *   write (no `createdBy`), which only an *unconditional* grant (admin)
+ *   satisfies — a member's conditional `created_by_caller` write does not, so a
+ *   bulk scan is admin-only. One check, zero per-row work (O(1) in permission
+ *   queries): a member cannot bulk-mutate an entity they don't wholly own.
  */
 export const ToolAuthorizationSchema = z
   .object({

@@ -20,19 +20,25 @@ import type { GateableTool } from "./cost-gate.service.js";
  * `wrapWithCostGate`, applied *outside* it so a denied call never reaches cost
  * admission). Two paths converge on the same typed refusal:
  *
- *  - **pre-flight** for descriptor-carrying tools — `create` checks
- *    `resource.write` on the type; `single`/`delete` resolves the target's
- *    `createdBy` (via {@link RbacObjectResolver}) and checks per object. `bulk`
- *    tools are NOT pre-flighted — they self-scope by AND-ing
- *    `visibilityPredicate` into their write `WHERE` (one DB statement, never N
- *    checks).
+ *  - **pre-flight** for descriptor-carrying tools, one check per mode:
+ *      - `create` — the new rows are caller-owned, so it checks
+ *        `resource.write` on the type *with `createdBy` = the caller*; a
+ *        member's `created_by_caller` write permits their own creates.
+ *      - `single` / `batch` — resolves each target's `createdBy` (via
+ *        {@link RbacObjectResolver}) and checks per object (batches are bounded
+ *        ≤ 100 by the tool schema, so this is O(items), not O(table)).
+ *      - `bulk` — an unbounded whole-entity scan checks *class-level* write
+ *        (no `createdBy`), which only an **unconditional** grant (admin)
+ *        satisfies; a member's conditional write cannot, so bulk scanners are
+ *        admin-only. One check, zero per-row work.
  *  - **catch** — any `ApiError(403)` thrown inside `execute` (e.g. an
  *    `rbac_management` tool's own service gate) is converted to the same
  *    refusal.
  *
  * Fail-**closed**: a resolution error (unlike the cost gate's fail-open) denies.
- * The check is O(1) per invocation — the caller's `PermissionSet` is resolved
- * once per session and every `can` is a pure in-memory evaluation.
+ * The check is O(1) in permission queries per invocation — the caller's
+ * `PermissionSet` is resolved once per session and every `can` is a pure
+ * in-memory evaluation; no mode issues a per-row permission query.
  */
 
 /** A typed refusal returned *as a tool result* (never a throw), so the agent
@@ -89,15 +95,25 @@ export function wrapWithPermissionGate(
     const auth = authFor(name);
 
     tool.execute = async (input: unknown, options: unknown) => {
-      // Pre-flight: create/single/batch carry a descriptor the gate checks per
-      // object. bulk (and undescribed tools) skip pre-flight — bulk self-scopes
-      // via the visibility predicate; undescribed writes rely on their service
-      // (the catch below surfaces its 403).
-      if (auth && auth.mode !== "bulk") {
+      // Pre-flight: a descriptor-carrying tool is authorized per its mode.
+      // Undescribed tools skip pre-flight (read/pure, and rbac_management tools
+      // whose service self-gates — the catch below surfaces that 403).
+      if (auth) {
         const action = `resource.${auth.verb}` as PermissionAction;
         let allowed = false;
         try {
           if (auth.mode === "create") {
+            // The new rows are owned by the caller, so check with createdBy =
+            // the caller — a member's `created_by_caller` write permits it.
+            allowed = permissionSet.can(action, {
+              type: auth.resourceType,
+              createdBy: ctx.userId,
+            } as PermissionObject);
+          } else if (auth.mode === "bulk") {
+            // An unbounded whole-entity scan requires *unconditional*
+            // (class-level) write on the type — a member's created_by_caller
+            // write does not satisfy it, so bulk scanners are admin-only. One
+            // check, zero per-row work (O(1)).
             allowed = permissionSet.can(action, {
               type: auth.resourceType,
             } as PermissionObject);

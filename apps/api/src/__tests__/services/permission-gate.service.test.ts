@@ -28,7 +28,7 @@ describe("wrapWithPermissionGate (#629)", () => {
     set = { can } as unknown as PermissionSet;
   });
 
-  it("create: allow runs the tool and checks the type-level write", async () => {
+  it("create: allow runs the tool and checks write with createdBy = the caller", async () => {
     can.mockReturnValue(true);
     const inner = jest.fn(async () => "ok");
     const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
@@ -40,8 +40,11 @@ describe("wrapWithPermissionGate (#629)", () => {
     );
     const r = await tools.fm_create.execute!({}, { toolCallId: "t" });
     expect(r).toBe("ok");
+    // The new rows are caller-owned, so a member's created_by_caller write
+    // must permit their own creates — the check carries createdBy = caller.
     expect(can).toHaveBeenCalledWith("resource.write", {
       type: "field_mapping",
+      createdBy: "u-1",
     });
   });
 
@@ -210,7 +213,9 @@ describe("wrapWithPermissionGate (#629)", () => {
     await expect(tools.t.execute!({}, {})).rejects.toBe(boom);
   });
 
-  it("bulk: no pre-flight (the tool self-scopes) but a 403 still surfaces", async () => {
+  it("bulk: a class-level (no-createdBy) write check gates the whole-entity scan", async () => {
+    // An admin's unconditional write satisfies a class-level check → allowed.
+    can.mockReturnValue(true);
     const inner = jest.fn(async () => "bulk-ok");
     const tools: Record<string, GateableTool> = { rec_bulk: tool(inner) };
     wrapWithPermissionGate(
@@ -221,7 +226,50 @@ describe("wrapWithPermissionGate (#629)", () => {
     );
     const r = await tools.rec_bulk.execute!({}, {});
     expect(r).toBe("bulk-ok");
-    expect(can).not.toHaveBeenCalled();
+    // No object id, no createdBy — only an unconditional grant passes. This is
+    // one check with zero per-row work (the O(1) invariant for scanners).
+    expect(can).toHaveBeenCalledTimes(1);
+    expect(can).toHaveBeenCalledWith("resource.write", {
+      type: "entity_record",
+    });
+  });
+
+  it("bulk: a member's conditional write fails the class-level check (admin-only)", async () => {
+    // A member's created_by_caller write does NOT satisfy a class-level check
+    // (no createdBy to match), so the resolver returns false → denied.
+    can.mockReturnValue(false);
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { rec_bulk: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({ verb: "write", resourceType: "entity_record", mode: "bulk" })
+    );
+    const r = await tools.rec_bulk.execute!({}, {});
+    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("O(1) invariant: a bulk scan resolves zero objects regardless of table size", async () => {
+    // The gate must not scale its permission work with the scanned set — a
+    // whole-entity bulk does exactly one in-memory `can` and never resolves a
+    // per-row `createdBy`, so cost is independent of how many rows the job
+    // ultimately touches (the user's performance concern for portal sessions).
+    const resolveSpy = jest.spyOn(RbacObjectResolver, "resolveCreatedBy");
+    can.mockReturnValue(true);
+    const tools: Record<string, GateableTool> = {
+      rec_bulk: tool(async () => "ok"),
+    };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({ verb: "write", resourceType: "entity_record", mode: "bulk" })
+    );
+    await tools.rec_bulk.execute!({}, {});
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(can).toHaveBeenCalledTimes(1);
   });
 
   it("fail-closed: a resolver error denies", async () => {

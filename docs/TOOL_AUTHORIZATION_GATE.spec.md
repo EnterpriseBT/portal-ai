@@ -5,7 +5,7 @@ Pins the contract for [#629](https://github.com/EnterpriseBT/portal-ai/issues/62
 ## Key decisions (flag for review)
 
 1. **One `PermissionSet` per session.** `buildAnalyticsTools` resolves the caller's `PermissionContext` and calls `loadSet` **once**; the resulting set already unions **roles ∪ direct grants ∪ group memberships** (`loadSet`, `permission.service.ts:72`). Threaded to the wrapper + the RBAC tools.
-2. **Per-object, O(1).** Single-object writes → one in-memory `can` check on the target's `createdBy`; **bulk** writes → the tool ANDs `visibilityPredicate` into its write `WHERE` (DB-enforced per-row, one statement). Never a per-row check.
+2. **Per-object, O(1).** `create` → one in-memory `can` check with `createdBy` = the caller (the new rows are caller-owned); `single`/`batch` (bounded ≤ 100) → one `can` per resolved object; **bulk** (an *unbounded* whole-entity scan) → one **class-level** `can` (no `createdBy`), which only an unconditional grant (admin) satisfies, so bulk scanners are admin-only. No mode issues a per-row permission query — the O(1)-in-permission-queries invariant. *(Revised from the discovery's "AND `visibilityPredicate` into the write `WHERE`": the two bulk tools are async-job scanners whose row scan lives in a BullMQ processor, and a whole-entity bulk exceeds a member's `created_by_caller` grant anyway — a class-level admin gate is both correct and simpler than per-row predicate surgery in the processors. Member-scoped partial bulk is a deferred follow-up.)*
 3. **The gate is authoritative; every denial surfaces.** A pre-flight `can` (descriptor-carrying tools) **and** a catch of any `ApiError(403)` thrown in `execute` both return the same `TOOL_PERMISSION_DENIED` typed tool-result. Fail-**closed** on resolution error (unlike the cost gate's fail-open).
 4. **RBAC-management is a normal builtin pack** (`rbac_management`), tier-entitled at baseline like `entity_management` — not `alwaysAvailable`. Its tools are per-caller-gated by their own services (no double pre-flight).
 5. **Scope mirrors the UI** — `AccessAuthoring` (policy/role/group CRUD + attach + member role·group assignment) + `ShareDialog` (grant share·revoke). No view management (#599).
@@ -41,17 +41,19 @@ export interface ToolAuthorization {
   itemsArg?: string;      // batch: the input key holding the items[] (≤ 100)
   idField?: string;       // batch: the id key within each item
 }
-// The real write tools are: create (items[] of new payloads → type-level check),
-// batch (items[] with a per-item id, ≤ 100 by schema → check every item), and
-// bulk (an unbounded scan over an entity → self-scope via visibilityPredicate).
-// "single" is kept for a hypothetical one-id tool; none exist today.
+// The real write tools are: create (items[] of new payloads → type-level check
+// with createdBy = caller), batch (items[] with a per-item id, ≤ 100 by schema →
+// check every item), and bulk (an unbounded scan over an entity → class-level
+// check, admin-only). "single" is kept for a hypothetical one-id tool; none today.
 
 /** Decorate every write tool's execute (in place), mirroring wrapWithCostGate.
- *  - create → can("resource.write", {type})            (new row is caller-owned)
+ *  - create → can("resource.write", {type, createdBy: caller})  (rows caller-owned)
  *  - single/delete → resolve the target's createdBy (RbacObjectResolver) →
  *                    can("resource.<verb>", {type, id, createdBy})
- *  - bulk → NO per-row pre-flight; the tool self-scopes via visibilityPredicate
- *           (built with the PermissionSet), verified by the guard.
+ *  - batch → resolve + check every item (≤ 100); any failure denies the call
+ *  - bulk → class-level can("resource.<verb>", {type}) (no createdBy); only an
+ *           unconditional grant passes, so whole-entity scanners are admin-only.
+ *           One check, zero per-row work.
  *  Every wrapped execute also try/catches ApiError(403) → the typed refusal.
  *  Deny ⇒ return { error: { code: TOOL_PERMISSION_DENIED, message } } (a tool
  *  result the agent relays). Fail-closed: a resolution error denies. */
@@ -68,7 +70,7 @@ export function wrapWithPermissionGate(
 
 ### `apps/api/src/services/tools.service.ts` — thread the context + wire the gate
 
-- `buildAnalyticsTools(organizationId, stationId, userId, portalId?)` (`:393`): resolve the caller's roles via `userRole.findEffectiveRoleNames(userId, organizationId)`, build `ctx: PermissionContext`, call `PermissionService.loadSet(ctx)` **once** → `permissionSet`. Pass `permissionSet` to bulk-write tools' `.build(...)` and to `wrapWithPermissionGate(tools, permissionSet, {organizationId, userId}, toolAuthorizationFor)` — invoked **before** `wrapWithCostGate` (`:773`).
+- `buildAnalyticsTools(organizationId, stationId, userId, portalId?)` (`:393`): resolve the caller's roles via `userRole.findEffectiveRoleNames(userId, organizationId)`, build `ctx: PermissionContext`, call `PermissionService.loadSet(ctx)` **once** → `permissionSet`. Pass `permissionSet` to `wrapWithPermissionGate(tools, permissionSet, {organizationId, userId}, toolAuthorizationFor)` — invoked **before** `wrapWithCostGate` (`:773`). (The bulk tools no longer need `permissionSet` in `.build(...)`: their whole-entity scan is admin-gated at the class level by the wrapper's pre-flight, so the processors keep their existing org-scoped scan unchanged.)
 - Add the `rbac_management` assembly block (mirroring the `entity_management` block at `:639`): `if (effective.has("rbac_management")) { tools.policy_create = new PolicyCreateTool().build(ctx); … }`. These tools receive the full `PermissionContext` (not just `userId`) so they call the RBAC services.
 - The station-level `isWriteGated` drop (`:758`) stays as defense-in-depth.
 
@@ -88,7 +90,7 @@ export const WRITE_KIND_TO_RESOURCE_TYPE: Record<string, PermissionResourceType>
 ### `packages/core/src/registries/builtin-toolpacks.ts` — descriptors + the pack
 
 - `BuiltinToolpackSlugSchema` (`:32`): add `"rbac_management"`.
-- A `TOOL_AUTHORIZATION: Record<string, ToolAuthorization>` map (parallel to `CAPABILITIES`, `:1180`): one entry per data-plane write tool (`field_mapping_create` → `{verb:"write", resourceType:"field_mapping", mode:"create"}`, an update/delete → `mode:"single", targetIdArg:"…"`, a bulk tool → `mode:"bulk"`). The gate's `authFor` reads this map.
+- A `TOOL_AUTHORIZATION: Record<string, ToolAuthorization>` map (parallel to `CAPABILITIES`, `:1180`): one entry per data-plane write tool (`field_mapping_create` → `{verb:"write", resourceType:"field_mapping", mode:"create"}`, an update/delete batch → `mode:"batch", itemsArg:"items", idField:"…"`, a bulk scanner → `mode:"bulk"`). The gate's `authFor` reads this map.
 - `BuiltinToolpackSpec` for `rbac_management` (`:97`) + its tools in `CAPABILITIES` (each `writes[]` set, `costHint:"free"`) — `attachCapabilities` (`:1375`) throws if any lacks an entry — + add to `BUILTIN_TOOLPACKS` (`:1392`). Mirror in the hand-authored `builtin-toolpacks` modal source per CLAUDE.md's tool-doc rule.
 
 ### `packages/core/src/registries/tier-catalog.ts` — entitlement
@@ -125,15 +127,17 @@ One `Tool` subclass per UI-mirrored operation, each `build(ctx: PermissionContex
 ## TDD test plan
 
 ### `apps/api` unit — `apps/api/src/__tests__/services/permission-gate.service.test.ts` (new)
-- `create` → `can("resource.write",{type})`; allow passes through, deny returns `TOOL_PERMISSION_DENIED`.
-- `single` → resolves `createdBy`, checks per object; a member denied on another's object gets the refusal; owner of the object passes.
-- catch: a tool whose `execute` throws `ApiError(403)` returns the typed refusal (not a throw).
+- `create` → `can("resource.write",{type,createdBy:caller})`; allow passes through, deny returns `TOOL_PERMISSION_DENIED`.
+- `single` → resolves `createdBy`, checks per object; a member denied on another's object gets the refusal; owner of the object passes; an unresolvable target denies without a check.
+- `batch` → resolves + checks every item; any failing item denies the whole call.
+- `bulk` → class-level `can("resource.<verb>",{type})` (no `createdBy`); an admin's unconditional grant passes, a member's conditional write is denied.
+- catch: a tool whose `execute` throws `ApiError(403)` returns the typed refusal (not a throw); a non-403 rethrows.
 - fail-closed: a resolver error → deny.
 - ordering: authorization runs before cost admission (a denied call never calls `checkAdmission`).
 
 ### `apps/api` unit — `apps/api/src/__tests__/services/tools.service.test.ts` (extend `:786`)
 - **Coverage guard:** every built tool with a non-empty `writes[]` is either (a) covered by `TOOL_AUTHORIZATION` + pre-flight-wrapped, or (b) an `rbac_management` tool routing to a self-gating service — asserted by intercepting `PermissionSet.can` / the service gate.
-- **O(1) invariant:** a bulk write tool issues O(1) permission queries regardless of row count — spy DB round-trips (per the cost-gate guard's counting technique); assert no per-row `resolveCreatedBy`.
+- **O(1) invariant:** a bulk scan tool issues O(1) permission queries regardless of row count — one class-level `can`, and `RbacObjectResolver.resolveCreatedBy` is never called (asserted by spy). (Lives in `permission-gate.service.test.ts`.)
 - `rbac_management` present only when entitled + enabled; its tools carry `costHint:"free"`.
 
 ### `packages/core` unit — `registries` tests
@@ -150,7 +154,7 @@ One `Tool` subclass per UI-mirrored operation, each `build(ctx: PermissionContex
 
 - A member cannot mutate via the agent what they cannot in the UI: a write tool the caller lacks permission for returns `TOOL_PERMISSION_DENIED` and performs no write; the agent relays it.
 - Denials surface from **both** paths — a pre-flight `can` and a service-thrown 403 — as the same typed refusal.
-- A **bulk-write tool issues O(1) permission queries regardless of row count** (test-enforced); per-row permission checks are absent.
+- A **bulk-scan tool issues O(1) permission queries regardless of row count** (test-enforced, one class-level check); per-row permission checks are absent. A member cannot run a whole-entity bulk scan (admin-only); an admin can.
 - The `rbac_management` pack is entitled at baseline (like `entity_management`); its tools succeed only for a caller the service gate admits, and every mutation is audited.
 - A new write tool that skips the authorization descriptor/wrapper fails the coverage guard.
 - A denied call is never charged (authorization precedes cost admission).
@@ -158,7 +162,7 @@ One `Tool` subclass per UI-mirrored operation, each `build(ctx: PermissionContex
 ## Risks & rollback
 
 - **Fail policy:** the gate is **fail-closed** — a resolution error denies (contrast the cost gate's fail-open). A bug that over-denies degrades the agent to read-only for writes (safe); an under-deny would be a security hole, which the coverage guard + per-object tests target. Rollback: the wrapper is one call in `buildAnalyticsTools`; removing it reverts to today's station-level gating (no schema to unwind).
-- **Bulk correctness** hinges on each bulk tool ANDing `visibilityPredicate`; the O(1) + per-object integration tests are the detector.
+- **Bulk correctness** is a class-level admin gate (no per-row predicate to get wrong): a member is denied a whole-entity scan, an admin is allowed. The O(1) + per-object tests are the detector. *Deferred:* member-scoped **partial** bulk (geocode/transform only the caller's own rows) would need `visibilityPredicate` threaded into the BullMQ processors' row scan — a follow-up, not this ticket.
 
 ## Files touched
 
@@ -167,4 +171,4 @@ One `Tool` subclass per UI-mirrored operation, each `build(ctx: PermissionContex
 
 ## Next step
 
-`docs/TOOL_AUTHORIZATION_GATE.plan.md` slices this into ~4 TDD commits on this branch: (1) thread `PermissionContext` + `loadSet` + `wrapWithPermissionGate` (create/single) + `TOOL_PERMISSION_DENIED` + the coverage guard; (2) the `RbacObjectResolver` extension + the bulk `visibilityPredicate` path + the O(1) invariant test; (3) the `rbac_management` pack + tools + tier entitlement; (4) doc-sync (mirror + `system.prompt`) — each behind a green suite.
+`docs/TOOL_AUTHORIZATION_GATE.plan.md` slices this into ~4 TDD commits on this branch: (1) thread `PermissionContext` + `loadSet` + `wrapWithPermissionGate` (create/single) + `TOOL_PERMISSION_DENIED` + the coverage guard; (2a) the descriptors + wiring + coverage guard; (2b) the `RbacObjectResolver` extension + the batch/bulk modes (bulk = class-level admin gate) + the O(1) invariant test; (3) the `rbac_management` pack + tools + tier entitlement; (4) doc-sync (mirror + `system.prompt`) — each behind a green suite.
