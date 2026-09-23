@@ -28,6 +28,11 @@ const _mockSelectChain = {
 };
 jest.unstable_mockModule("../../db/client.js", () => ({
   db: { select: () => _mockSelectChain },
+  // Pulled in transitively via the rbac_management tools' services
+  // (SyncLockService's advisory locks reserve a dedicated connection). #629.
+  reserveConnection: jest.fn(),
+  connectDatabase: jest.fn(),
+  closeDatabase: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -234,6 +239,7 @@ const ALL_PACK_SLUGS = [
   "financial",
   "web_search",
   "entity_management",
+  "rbac_management",
   "gis",
 ];
 

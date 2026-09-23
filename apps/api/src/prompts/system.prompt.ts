@@ -461,6 +461,46 @@ export const PACK_PROMPT_SECTIONS: Record<
       return lines;
     },
   },
+
+  rbac_management: {
+    capability: "manage access, roles, and sharing",
+    requestShapes: ["an access or sharing change"],
+    blocks: [],
+    interpretiveTools: [],
+    markers: ["manage access, roles, and sharing", "## Access & Roles Notes"],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Access & Roles Notes");
+      lines.push("");
+      lines.push(
+        "You can manage the organization's access model — permission policies, " +
+          "roles, groups, member assignments, and station/pin sharing — with the " +
+          "rbac_management tools. These act on the caller's own authority: a " +
+          "change you cannot make in the app you cannot make here. If a tool " +
+          "returns a permission error, relay it plainly and do not retry — the " +
+          "user (or their plan) lacks that permission."
+      );
+      lines.push("");
+      lines.push(
+        "**Discover ids before you change anything.** Ids and role slugs are not " +
+          "guessable — call `policy_list`, `role_list`, `group_list`, or " +
+          "`grant_list` first to find the target's id (or a role's `slug`), then " +
+          "act. Never invent an id."
+      );
+      lines.push("");
+      lines.push(
+        "Assignments are **set-semantics**: `member_set_roles`, " +
+          "`member_set_groups`, and `group_set_members` REPLACE the target's " +
+          "full set with what you pass — read the current set first and send the " +
+          "complete intended set, not just the addition. A member must keep at " +
+          "least one system role. Policy, role, and group authoring requires the " +
+          "organization's custom-RBAC entitlement; without it those tools return " +
+          "a permission error you should relay as an upgrade prompt."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
 };
 
 /** The effective packs' sections, in registry order (deterministic output). */
