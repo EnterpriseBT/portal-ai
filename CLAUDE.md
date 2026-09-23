@@ -551,23 +551,26 @@ Issues and PRs live on `EnterpriseBT/portal-ai`; use `gh` for all ticket/PR work
 
 ### One feature = one branch = one PR
 
-Every non-trivial change lives on **one branch** with **one PR**. The five artifacts — discovery doc, spec doc, plan doc, implementation, smoke doc — land as separate commits on that branch as the work progresses. The PR is opened early (often as draft) and grows commit-by-commit; reviewers track progress at the commit level, not across multiple PRs.
+Every non-trivial change lives on **one branch** with **one PR**. The artifacts — discovery doc, spec doc, plan doc, implementation, and the review-chain gate (code-review, security, smoke, adversarial) — land as separate commits (and PR-confirmed gates) on that branch as the work progresses. The PR is opened early (often as draft) and grows commit-by-commit; reviewers track progress at the commit level, not across multiple PRs.
 
-| Artifact | What lands | When it's needed |
+| Artifact / phase | What lands | When it's needed |
 |---|---|---|
 | 1. Ticket | GitHub issue with a PRD (feature) or repro + impact (bug). Issue Type set; sizing recorded; project board card in `Todo`. | Always for non-trivial work |
 | 2. Discovery | `docs/<SLUG>.discovery.md` — survey + design space + decisions. | Anything that touches more than one package, introduces a new pattern, or changes a contract |
 | 3. Spec + plan | `docs/<SLUG>.spec.md` (contract) and `docs/<SLUG>.plan.md` (phased TDD slices). | Same threshold as discovery — when discovery is warranted, spec + plan follow |
 | 4. Implementation | Code + tests, one commit per testable slice from the plan. | Always |
-| 5. Smoke | `docs/<SLUG>.smoke.md` — checklist mapped from the spec's acceptance criteria; automatable steps agent-walked for evidence via `/smoke-walk`, the rest manual (see "The smoke gate"). | After implementation, before merge. Condensed tickets embed it in the single doc |
+| 5. Code review | `/code-review` over the branch diff — findings via the skill's **native output** (inline PR comments / applied fixes); confirmed on the PR. | Per the coverage matrix (see "The merge gate") |
+| 6. Security review | `/security-review` over the branch diff — findings via **native output**; confirmed on the PR. | Per the coverage matrix |
+| 7. Smoke | `docs/<SLUG>.smoke.md` — acceptance walkthrough mapped from the spec's criteria; automatable steps agent-walked via `/smoke-walk`, the rest manual (see "The merge gate"). | After implementation, before merge. Condensed tickets embed it in the single doc |
+| 8. Adversarial | `docs/<SLUG>.adversarial.md` — edge-case / misuse probes; automatable probes walked via `/smoke-walk`, the rest manual. | After smoke, before merge (per the coverage matrix) |
 
-Each phase has a skill that executes it deterministically: `/ticket` → `/discovery` → `/spec` → `/plan` → `/smoke`, with `/epic` coordinating multi-ticket parents. **Implementation only starts after discovery/spec/plan are reviewed and confirmed** — the skills draft, the user confirms, then code lands.
+Each phase has a skill that executes it deterministically: `/ticket` → `/discovery` → `/spec` → `/plan` → implementation → `/code-review` → `/security-review` → `/smoke` → `/adversarial-review` (`/code-review` and `/security-review` are Claude Code built-ins; `/smoke-walk` walks both the smoke and adversarial checklists), with `/epic` coordinating multi-ticket parents. **Implementation only starts after discovery/spec/plan are reviewed and confirmed** — the skills draft, the user confirms, then code lands.
 
 Branch naming follows the work, not the artifact, and carries the ticket number for at-a-glance readability: `<type>/<issue-number>-<slug>` — `feat/123-some-feature` for new functionality, `fix/789-some-bugfix` for bug fixes, `chore/<n>-<slug>` / `docs/<n>-<slug>` / `test/<n>-<slug>` for everything else. The number is bare — no `#`, no brackets (brackets are a glob to the shell). The discovery/spec/plan commits live on this same branch — there is **no** `docs/<n>-<slug>-discovery` or `docs/<n>-<slug>-spec` interim branch.
 
 Notes:
 
-- **Skip or condense artifacts when proportionate.** A one-line typo fix or a localized bug with a clear reproduction goes straight to implementation — no docs at all. A small-but-real ticket takes the **condensed path** (one combined doc — see below). Anything that touches more than one package, introduces a new pattern, or changes a contract produces all five artifacts. The call is made at ticket time (`## Sizing`) and revisited at discovery if it was wrong.
+- **Skip or condense artifacts when proportionate.** A one-line typo fix or a localized bug with a clear reproduction goes straight to implementation — no docs at all. A small-but-real ticket takes the **condensed path** (one combined doc — see below). Anything that touches more than one package, introduces a new pattern, or changes a contract produces the full artifact set and runs the full review chain. The call is made at ticket time (`## Sizing`) and revisited at discovery if it was wrong.
 - **Phase = commit, not PR.** The phases exist to (a) break work into single testable units and (b) keep each commit reviewable on its own. They do **not** mean separate PRs.
 - **When to split a feature across multiple PRs.** Only when context-window management forces it — features so large that a single AI-assisted session can't hold the implementation in context end-to-end. Each split PR ships a complete, testable slice (its own branch off `main`, its own ticket reference, `Closes #N` on the final slice). For human-driven work, "too big" is rarely the reason — prefer one PR.
 - **Doc artifacts live in `docs/`** with the existing suffix convention (`.discovery.md`, `.spec.md`, `.plan.md`, `.smoke.md`, `.condensed.md`). For multi-PR features, the plan doc names the slices and the slice mapping appears in each PR's body.
@@ -583,7 +586,7 @@ Every ticket is one of three kinds, each with a codified body shape (`/ticket` s
 - **Bugfix** — a reproduction: `## Repro` (steps, Expected vs Got) → `## Impact` → `## Likely cause / fix direction` → `## Evidence` → `## Sizing` → `## References`.
 - **Epic** — a parent tracking issue (Issue Type `Epic`) grouping feature/bugfix children as native sub-issues, with an overview, a `## Status` table, and a `## Children & dependencies` map. See "Epic branches".
 
-The `## Sizing` section records the doc-path decision at creation time: **`full`** (all five artifacts) or **`condensed`** (one combined doc). Condensed is right only when the change is single-package, introduces no new pattern, and changes no contract.
+The `## Sizing` section records the doc-path decision at creation time: **`full`** (the full artifact set) or **`condensed`** (one combined doc). Condensed is right only when the change is single-package, introduces no new pattern, and changes no contract.
 
 Feature PRDs are elicited against the **PRD dimension checklist** in `.claude/skills/ticket/SKILL.md` (actors & roles, surfaces & placement, standard vs bespoke paths, lifecycle interactions, states & edge behavior — the single source is that file); `/discovery` gates on the PRD's completeness against the same checklist before surveying, and post-filing scope changes on any ticket kind (feature requirements, or a bug's repro/impact) follow `/ticket`'s amendment procedure — issue body and in-flight branch docs reconciled in one action (#212).
 
@@ -656,16 +659,39 @@ Portals AI is an enterprise, multi-tenant, billing-facing product — a discover
 
 - **Merge style**: squash (matches existing history). The repo allows merge / rebase / squash but squash is the convention. Exception: the final epic → `main` PR is rebase-preferred (see "Epic branches").
 - **Title**: short imperative, mirrors the lead commit.
-- **Body**: two sections — `## Summary` (1–3 bullets) and `## Test plan` (checklist of what was / still needs to be verified). Reference the originating issue with `Closes #N` so it auto-closes on merge.
+- **Body**: two sections — `## Summary` (1–3 bullets) and `## Test plan`. The `## Test plan` carries the **merge-gate checklist** (see "The merge gate"), each row human-confirmed:
+  ```
+  ## Merge gate
+  - [ ] CI green
+  - [ ] code-review confirmed (or waived: <reason>)
+  - [ ] security confirmed (or waived: <reason>)
+  - [ ] smoke confirmed
+  - [ ] adversarial confirmed (or waived: <reason>)
+  ```
+  Reference the originating issue with `Closes #N` so it auto-closes on merge.
 - `deleteBranchOnMerge` is **off** on the repo — always pass `--delete-branch` to `gh pr merge` so the remote branch is removed.
 
-### The smoke gate
+### The merge gate
 
-A PR merges only when **both** hold: CI is green, **and** the human has confirmed the ticket's smoke checklist (`docs/<SLUG>.smoke.md`, or the condensed doc's `## Smoke` section). `/smoke` scaffolds the checklist from the spec's acceptance criteria with every box unchecked and tags each step *agent-walkable* or *manual-only*. **Automatable steps are walked by the agent in a real browser via `/smoke-walk`** (Playwright MCP against the running dev stack, reusing the `@portalai/e2e` auth fixture + seeded org), which produces a per-step **evidence report** — screenshots + observed values, each step marked `verified` / `mismatch` / `could-not-automate`. The **human reviews that evidence and checks the boxes**; **manual-only** steps (third-party redirects, payment flows, real vendor accounts, visual judgment) stay a human walk against their own stack. Checking boxes and confirming the merge remain the human's act — the agent produces evidence, it **never checks a box and never merges on the user's behalf** (a false `verified`, like a pre-checked box, forges the gate). Bugs found during the walk go through the smoke doc's bug-filing template, not ad-hoc fixes.
+A PR merges only when **all** hold: CI is green, **and** the human has confirmed each *required* review-chain phase — **code-review**, **security**, **smoke**, and **adversarial**. `/code-review` and `/security-review` (Claude Code built-ins) run over the branch diff and surface findings via their **native output** (no phase doc); `/smoke` and `/adversarial-review` scaffold `.md` checklists (`docs/<SLUG>.smoke.md` — acceptance; `docs/<SLUG>.adversarial.md` — edge-case / misuse probes) with every box unchecked, tagging each step *agent-walkable*, *manual-only* (`— manual`), or *backend* (`— backend`). **Automatable steps are walked by the agent in a real browser via `/smoke-walk`** (Playwright MCP against the running dev stack, reusing the `@portalai/e2e` auth fixture + seeded org), which produces a per-step **evidence report** — screenshots + observed values, each step marked `verified` / `mismatch` / `could-not-automate`; the same engine walks both the smoke and adversarial checklists. The **human reviews that evidence and confirms**; **manual-only** steps (third-party redirects, payment flows, real vendor accounts, visual judgment) stay a human walk against their own stack. Findings in any phase are **fixed in-PR or waived-with-reason** on the PR's `## Merge gate` checklist; an unresolved, unwaived finding blocks merge. Checking boxes and confirming the merge remain the human's act — the agent produces evidence, it **never checks a box and never merges on the user's behalf** (a false `verified`, like a pre-checked box, forges the gate). Which phases are required is set by the **coverage matrix** below. Bugs found during a walk go through the smoke/adversarial doc's bug-filing template, not ad-hoc fixes.
+
+### Coverage by ticket kind
+
+Which review-chain phases are *required* scales by ticket kind and sizing — heavier for cross-cutting features, proportionate for small work:
+
+| Ticket kind | code-review | security | smoke | adversarial |
+|---|---|---|---|---|
+| Feature (full) | required | required | required | required |
+| Bug (full) | required | required¹ | required | required |
+| Condensed (feature/bug) | required | required¹ / else waivable | required (embedded `## Smoke`) | waivable-with-reason |
+| Chore / docs / test | required | waivable-with-reason | waivable-with-reason | waivable-with-reason |
+| Trivial (no docs at all) | — | — | — | — |
+
+¹ **`security` is required whenever the change touches auth, data access, multi-tenancy, secrets, or external egress** — waivable-with-reason otherwise. Epic **children run the full chain independently** on their own branch before merging to `epic/<slug>` (see "Epic branches"), never deferred to close-out. A waiver is a **recorded reason** in the PR's `## Merge gate` checklist, never a silent skip.
 
 ### Agent-guided browser sessions
 
-The gate's agent walk runs on a shared harness (`@portalai/e2e`, #304): Playwright browsers baked into the devcontainer image, a reusable Auth0 session (`npm run --workspace @portalai/e2e e2e:auth` → git-ignored `storageState`, via a twice-guarded dev-only login affordance since the app is Google-only), a deterministic seeded org (`e2e:seed` → `db:seed:org`), and the **Playwright MCP** server (repo-root `.mcp.json`) that gives an in-container Claude session `mcp__playwright__*` tools — navigate, click, screenshot, read console/network. The same session serves day-to-day troubleshooting (reproduce a reported bug, inspect a broken render, confirm a fix in the real app), not only smoke walks. Automated `*.spec.ts` and CI runs are a **deferred** tier (a follow-up prod / app-dev login-verification ticket) — this is the local/agent harness. Setup + usage: `packages/e2e/README.md`.
+The gate's agent walk runs on a shared harness (`@portalai/e2e`, #304): Playwright browsers baked into the devcontainer image, a reusable Auth0 session (`npm run --workspace @portalai/e2e e2e:auth` → git-ignored `storageState`, via a twice-guarded dev-only login affordance since the app is Google-only), a deterministic seeded org (`e2e:seed` → `db:seed:org`), and the **Playwright MCP** server (repo-root `.mcp.json`) that gives an in-container Claude session `mcp__playwright__*` tools — navigate, click, screenshot, read console/network. The same session serves day-to-day troubleshooting (reproduce a reported bug, inspect a broken render, confirm a fix in the real app), not only smoke and adversarial walks. Automated `*.spec.ts` and CI runs are a **deferred** tier (a follow-up prod / app-dev login-verification ticket) — this is the local/agent harness. Setup + usage: `packages/e2e/README.md`.
 
 ### After merge
 
