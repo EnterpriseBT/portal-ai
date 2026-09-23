@@ -59,7 +59,7 @@ Resolve the caller's `PermissionSet` once, gate every existing write tool per ob
 
 **Done when:** every existing write tool is per-object-gated; the coverage guard + O(1) test pass; the cost-gate guard still passes (authorization sits outside it).
 
-**Risk:** *(revised)* the discovery assumed bulk would AND `visibilityPredicate` into the write `WHERE`; the two bulk tools are async-job scanners whose scan lives in a BullMQ processor, and a whole-entity bulk exceeds a member's `created_by_caller` grant regardless — so bulk is a **class-level admin gate** (one check, no processor surgery), and member-scoped partial bulk is a deferred follow-up.
+**Risk:** *(revised)* the discovery assumed bulk would AND `visibilityPredicate` into the write `WHERE`; the two bulk tools are async-job scanners whose scan lives in a BullMQ processor, and a whole-entity bulk exceeds a member's `created_by_caller` grant regardless — so bulk is a **class-level admin gate** (one check, no processor surgery). Member-scoped bulk is not a separate follow-up — it arrives with curated views (#599): a bulk job over a permission-scoped view becomes a single view-object check (the gate's `single` mode), the view bounding the rows. The class-level gate is the correct, forward-compatible interim.
 
 ---
 
@@ -119,7 +119,7 @@ Bring the agent/tool doc surfaces in line with the new pack + refusal (per `CLAU
 
 - **`PermissionContext` threading** touches `buildAnalyticsTools` in slice 2 and the RBAC tools in slice 3 — both take the full context (roles resolved once), never a bare `userId`.
 - **The coverage guard evolves, green at each boundary:** slice 2 asserts every data-plane write tool has a descriptor; slice 3 extends the exempt rule for the service-gated `rbac_management` tools. Neither references a symbol from a later slice.
-- **Bulk correctness** is a class-level admin gate (slice 2b), not a per-row predicate — the O(1) test forbids per-row resolution and asserts admin-allow / member-deny on the class-level check. Member-scoped partial bulk (processor-side `visibilityPredicate`) is a deferred follow-up.
+- **Bulk correctness** is a class-level admin gate (slice 2b), not a per-row predicate — the O(1) test forbids per-row resolution and asserts admin-allow / member-deny on the class-level check. Member-scoped bulk is not deferred processor work — it falls out of curated views (#599): a bulk job over a permission-scoped view is a single view-object check (the gate's existing `single` mode), no per-row scan.
 - **Doc-sync (slice 4)** is mandatory in this PR, not a follow-up — the tool contract (`.tool.ts` descriptions + `builtin-toolpacks` mirror + `system.prompt`) is a documented surface.
 - **No DB migration**; the tier-catalog edit (slice 3) reaches existing envs via `portalops tier apply` — a deploy-time step, not part of the PR.
 
