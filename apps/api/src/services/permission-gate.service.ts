@@ -49,6 +49,34 @@ function extractId(input: unknown, key?: string): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+function extractItems(input: unknown, key?: string): unknown[] {
+  if (!key || typeof input !== "object" || input === null) return [];
+  const v = (input as Record<string, unknown>)[key];
+  return Array.isArray(v) ? v : [];
+}
+
+/** Resolve one object's `createdBy` and check the verb against it. A target we
+ *  cannot resolve (absent / cross-org / unresolvable type) is denied. */
+async function checkObject(
+  set: PermissionSet,
+  action: PermissionAction,
+  ctx: { organizationId: string },
+  resourceType: string,
+  id: string
+): Promise<boolean> {
+  const createdBy = await RbacObjectResolver.resolveCreatedBy(
+    ctx.organizationId,
+    resourceType,
+    id
+  );
+  if (createdBy === null) return false;
+  return set.can(action, {
+    type: resourceType,
+    id,
+    createdBy,
+  } as PermissionObject);
+}
+
 export function wrapWithPermissionGate(
   tools: Record<string, GateableTool>,
   permissionSet: PermissionSet,
@@ -61,11 +89,11 @@ export function wrapWithPermissionGate(
     const auth = authFor(name);
 
     tool.execute = async (input: unknown, options: unknown) => {
-      // Pre-flight: create/single carry a descriptor the gate checks per object.
-      // bulk (and undescribed tools) skip pre-flight — bulk self-scopes via the
-      // visibility predicate; undescribed writes rely on their service (the
-      // catch below surfaces its 403).
-      if (auth && (auth.mode === "create" || auth.mode === "single")) {
+      // Pre-flight: create/single/batch carry a descriptor the gate checks per
+      // object. bulk (and undescribed tools) skip pre-flight — bulk self-scopes
+      // via the visibility predicate; undescribed writes rely on their service
+      // (the catch below surfaces its 403).
+      if (auth && auth.mode !== "bulk") {
         const action = `resource.${auth.verb}` as PermissionAction;
         let allowed = false;
         try {
@@ -73,22 +101,36 @@ export function wrapWithPermissionGate(
             allowed = permissionSet.can(action, {
               type: auth.resourceType,
             } as PermissionObject);
-          } else {
+          } else if (auth.mode === "single") {
             const id = extractId(input, auth.targetIdArg);
-            if (id) {
-              const createdBy = await RbacObjectResolver.resolveCreatedBy(
-                ctx.organizationId,
-                auth.resourceType,
-                id
-              );
-              // A target we can't resolve (absent / cross-org) is denied.
-              allowed =
-                createdBy !== null &&
-                permissionSet.can(action, {
-                  type: auth.resourceType,
-                  id,
-                  createdBy,
-                } as PermissionObject);
+            allowed = id
+              ? await checkObject(
+                  permissionSet,
+                  action,
+                  ctx,
+                  auth.resourceType,
+                  id
+                )
+              : false;
+          } else {
+            // batch: every item (bounded ≤ 100 by tool schema) must pass.
+            const items = extractItems(input, auth.itemsArg);
+            allowed = items.length > 0;
+            for (const item of items) {
+              const id = extractId(item, auth.idField);
+              if (
+                !id ||
+                !(await checkObject(
+                  permissionSet,
+                  action,
+                  ctx,
+                  auth.resourceType,
+                  id
+                ))
+              ) {
+                allowed = false;
+                break;
+              }
             }
           }
         } catch {

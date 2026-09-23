@@ -134,6 +134,56 @@ describe("wrapWithPermissionGate (#629)", () => {
     expect(inner).not.toHaveBeenCalled();
   });
 
+  it("batch: allows only when every item passes (checks each per object)", async () => {
+    jest.spyOn(RbacObjectResolver, "resolveCreatedBy").mockResolvedValue("u-1");
+    can.mockReturnValue(true);
+    const inner = jest.fn(async () => "batch-ok");
+    const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "field_mapping",
+        mode: "batch",
+        itemsArg: "items",
+        idField: "fieldMappingId",
+      })
+    );
+    const r = await tools.fm_update.execute!(
+      { items: [{ fieldMappingId: "a" }, { fieldMappingId: "b" }] },
+      {}
+    );
+    expect(r).toBe("batch-ok");
+    expect(RbacObjectResolver.resolveCreatedBy).toHaveBeenCalledTimes(2);
+  });
+
+  it("batch: denies the whole call if any item fails", async () => {
+    jest.spyOn(RbacObjectResolver, "resolveCreatedBy").mockResolvedValue("u-x");
+    can.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "field_mapping",
+        mode: "batch",
+        itemsArg: "items",
+        idField: "fieldMappingId",
+      })
+    );
+    const r = await tools.fm_update.execute!(
+      { items: [{ fieldMappingId: "a" }, { fieldMappingId: "b" }] },
+      {}
+    );
+    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    expect(inner).not.toHaveBeenCalled();
+  });
+
   it("catches an ApiError(403) thrown in execute (an rbac tool's service gate)", async () => {
     const tools: Record<string, GateableTool> = {
       policy_create: tool(async () => {

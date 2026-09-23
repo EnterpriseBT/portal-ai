@@ -36,10 +36,15 @@ Pins the contract for [#629](https://github.com/EnterpriseBT/portal-ai/issues/62
 export interface ToolAuthorization {
   verb: "write" | "delete";
   resourceType: PermissionResourceType;   // permission.model.ts:36 — the resolved type
-  mode: "create" | "single" | "bulk";
-  /** single/delete only: the validated-input key carrying the target object id. */
-  targetIdArg?: string;
+  mode: "create" | "single" | "batch" | "bulk";
+  targetIdArg?: string;   // single: the input key carrying the target id
+  itemsArg?: string;      // batch: the input key holding the items[] (≤ 100)
+  idField?: string;       // batch: the id key within each item
 }
+// The real write tools are: create (items[] of new payloads → type-level check),
+// batch (items[] with a per-item id, ≤ 100 by schema → check every item), and
+// bulk (an unbounded scan over an entity → self-scope via visibilityPredicate).
+// "single" is kept for a hypothetical one-id tool; none exist today.
 
 /** Decorate every write tool's execute (in place), mirroring wrapWithCostGate.
  *  - create → can("resource.write", {type})            (new row is caller-owned)

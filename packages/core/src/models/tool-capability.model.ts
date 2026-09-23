@@ -306,20 +306,33 @@ export function customToolCapabilityError(
  * the `rbac_management` tools which are authorized by their own service).
  *
  * - `create` — no target yet; the gate checks `resource.write` on the type
- *   (the new row is owned by the caller).
+ *   (the new rows are owned by the caller).
  * - `single` — the gate resolves the target object's `createdBy` (via
- *   `RbacObjectResolver`) from `targetIdArg` and checks per object.
- * - `bulk` — the gate does NOT pre-flight; the tool self-scopes by AND-ing
- *   `PermissionSet.visibilityPredicate` into its write `WHERE` (per-row
- *   enforcement is one DB statement, never N checks).
+ *   `RbacObjectResolver`) from `targetIdArg` and checks that one object.
+ * - `batch` — a bounded `items[]` (each ≤ 100 by tool schema) with a per-item
+ *   id at `idField`; the gate checks **every** item per object (all must pass).
+ * - `bulk` — an unbounded scan over an entity; the gate does NOT pre-flight —
+ *   the tool self-scopes by AND-ing `PermissionSet.visibilityPredicate` into its
+ *   write `WHERE` (per-row enforcement is one DB statement, never N checks).
  */
-export const ToolAuthorizationSchema = z.object({
-  verb: z.enum(["write", "delete"]),
-  resourceType: PermissionResourceTypeSchema,
-  mode: z.enum(["create", "single", "bulk"]),
-  /** `single`/`delete` only: the validated-input key holding the target id. */
-  targetIdArg: z.string().optional(),
-});
+export const ToolAuthorizationSchema = z
+  .object({
+    verb: z.enum(["write", "delete"]),
+    resourceType: PermissionResourceTypeSchema,
+    mode: z.enum(["create", "single", "batch", "bulk"]),
+    /** `single`: the validated-input key holding the target id. */
+    targetIdArg: z.string().optional(),
+    /** `batch`: the input key holding the items array. */
+    itemsArg: z.string().optional(),
+    /** `batch`: the id key within each item. */
+    idField: z.string().optional(),
+  })
+  .refine(
+    (a) =>
+      (a.mode === "single") === (a.targetIdArg != null) &&
+      (a.mode === "batch") === (a.itemsArg != null && a.idField != null),
+    { message: "single needs targetIdArg; batch needs itemsArg + idField" }
+  );
 export type ToolAuthorization = z.infer<typeof ToolAuthorizationSchema>;
 
 /**

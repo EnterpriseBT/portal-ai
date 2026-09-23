@@ -23,6 +23,7 @@ import type {
   ResultKind,
   ComputeShape,
   CostHint,
+  ToolAuthorization,
 } from "../models/tool-capability.model.js";
 
 export type { BulkDispatchMetadata };
@@ -1367,6 +1368,87 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     // The job's terminal result is a progress/summary value, not inline rows.
     production: { kind: "value" },
     alwaysAvailable: false,
+  },
+};
+
+/**
+ * Per-tool authorization descriptors for the per-caller tool-authorization gate
+ * (#629). One entry per data-plane **write** tool; the gate reads it to check
+ * each write per object (create → type-level; batch → every bounded item; bulk
+ * → the scan tool self-scopes via `visibilityPredicate`). Tools absent here are
+ * not data-plane writes the gate pre-flights — read/pure tools, and the
+ * `rbac_management` tools (authorized by their own service, surfaced by the
+ * gate's catch-403). A guard test asserts every `writes[]` tool is covered.
+ */
+export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
+  entity_record_create: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "create",
+  },
+  entity_record_update: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "entityRecordId",
+  },
+  entity_record_delete: {
+    verb: "delete",
+    resourceType: "entity_record",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "entityRecordId",
+  },
+  connector_entity_create: {
+    verb: "write",
+    resourceType: "entity",
+    mode: "create",
+  },
+  connector_entity_update: {
+    verb: "write",
+    resourceType: "entity",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "connectorEntityId",
+  },
+  connector_entity_delete: {
+    verb: "delete",
+    resourceType: "entity",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "connectorEntityId",
+  },
+  field_mapping_create: {
+    verb: "write",
+    resourceType: "field_mapping",
+    mode: "create",
+  },
+  field_mapping_update: {
+    verb: "write",
+    resourceType: "field_mapping",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "fieldMappingId",
+  },
+  field_mapping_delete: {
+    verb: "delete",
+    resourceType: "field_mapping",
+    mode: "batch",
+    itemsArg: "items",
+    idField: "fieldMappingId",
+  },
+  // Unbounded scans over an entity — self-scope via visibilityPredicate (slice
+  // 2b); the gate does not pre-flight them.
+  bulk_geocode_records: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "bulk",
+  },
+  transform_entity_records: {
+    verb: "write",
+    resourceType: "entity_record",
+    mode: "bulk",
   },
 };
 

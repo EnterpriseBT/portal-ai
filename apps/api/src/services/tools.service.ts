@@ -18,8 +18,10 @@ import {
   wrapWithCostGate,
   type GateableTool,
 } from "./cost-gate.service.js";
+import { PermissionService } from "./permission.service.js";
+import { wrapWithPermissionGate } from "./permission-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import type { CostHint } from "@portalai/core/models";
+import type { CostHint, OrgRole } from "@portalai/core/models";
 
 // Tool classes
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
@@ -469,8 +471,12 @@ export class ToolService {
 
     // Capability projections (#121): the enablement + enforcement gates
     // below read declared capability instead of slug/name hardcodes.
-    const { SYSTEM_TOOL_CAPABILITIES, ALL_TOOL_CAPABILITIES, isWriteGated } =
-      await import("@portalai/core/registries");
+    const {
+      SYSTEM_TOOL_CAPABILITIES,
+      ALL_TOOL_CAPABILITIES,
+      isWriteGated,
+      TOOL_AUTHORIZATION,
+    } = await import("@portalai/core/registries");
 
     // -------------------------------------------------------------------
     // Always-available system tools (#121: driven by the `alwaysAvailable`
@@ -766,6 +772,26 @@ export class ToolService {
         for (const name of writeGated) delete tools[name];
       }
     }
+
+    // #629 per-caller tool-authorization gate: authorize every write the agent
+    // attempts against the caller's RBAC (roles ∪ grants ∪ groups), per object,
+    // and surface any denial as a typed refusal. Resolved once per session and
+    // applied OUTSIDE the cost gate, so a denied call never reaches admission.
+    const roles = (await DbService.repository.userRole.findEffectiveRoleNames(
+      userId,
+      organizationId
+    )) as OrgRole[];
+    const permissionSet = await PermissionService.loadSet({
+      userId,
+      organizationId,
+      roles,
+    });
+    wrapWithPermissionGate(
+      tools as unknown as Record<string, GateableTool>,
+      permissionSet,
+      { organizationId, userId },
+      (name) => TOOL_AUTHORIZATION[name]
+    );
 
     // #169 cost gate: wrap every tool's execute so each call charges/denies
     // against the org's tier allocation. `free` + org-hosted (custom) tools
