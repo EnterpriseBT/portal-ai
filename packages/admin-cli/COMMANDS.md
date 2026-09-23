@@ -27,6 +27,8 @@ Machine-oriented reference. Agent-operability contract (exit codes, server-enfor
 
 Session = an active `portalai login` device-flow session for the env. Every mutation appends a JSONL audit line (`~/.portalai/audit.log`) attributed to the session's Auth0 `sub` (local: OS username); args carry ids/slugs only.
 
+Local config (`--env local`): `DATABASE_URL` (DB ops) and `AUTH0_*` (`login`) are read from this package's own `.env` (`packages/admin-cli/.env`, git-ignored, auto-loaded for local only — #632; copy from `.env.example`) or from the shell (an export wins). app-dev/prod ignore the file and resolve from AWS.
+
 ---
 
 ### `portalai login --env <env>` / `portalai logout --env <env>`

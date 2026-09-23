@@ -6,11 +6,23 @@
  */
 
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Command, CommanderError, Option } from "commander";
 
-import { getEnvironment, type EnvironmentDefinition } from "@portalai/cli-env";
+import {
+  getEnvironment,
+  loadLocalEnv,
+  type EnvironmentDefinition,
+} from "@portalai/cli-env";
+
+/** This package's root (holds the local `.env`), resolved from the running
+ *  module — `dist/bin.js` and `src/bin.ts` both sit one dir under the root. */
+const PACKAGE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  ".."
+);
 
 import {
   describeVars,
@@ -71,6 +83,10 @@ async function execute(
   render: (payload: never) => string = (p) => JSON.stringify(p, null, 2)
 ): Promise<void> {
   try {
+    // Local convenience (#632): for `--env local`, load this package's own
+    // `.env` so `DATABASE_URL` need not be exported by hand. No-op for AWS envs
+    // (they resolve from Secrets Manager/SSM), non-overriding.
+    loadLocalEnv(opts.env, PACKAGE_DIR);
     const def = getEnvironment(opts.env);
     printBanner(def);
     const payload = await fn(def);
