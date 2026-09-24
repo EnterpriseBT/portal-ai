@@ -45,23 +45,28 @@ export const MultiAsyncSearchableSelect: React.FC<
   // Keep selected options in sync with the external value prop. Every id in
   // `value` must render a chip — including a *seeded* value (editing an existing
   // policy, or a read-only system policy) whose ids the user never picked. Since
-  // this variant has no `options` prop, resolve each id's label from an
-  // already-selected option first (keeps a user-picked label), then from the
-  // loaded search results, and fall back to the raw id so a seeded value is never
-  // an empty picker (#630). Re-runs when `options` load so a seeded id upgrades
-  // from its raw id to its real label.
+  // this variant has no `options` prop, resolve each id to a *labeled* option
+  // (label !== id), preferring an already-selected option over a freshly-loaded
+  // one so a user-picked chip label stays stable across a later search that
+  // returns the same id relabeled; a raw-id chip (label === id) is only a
+  // placeholder, so it is upgraded as soon as any search resolves a real label.
+  // Fall back to the raw id last so a seeded value is never an empty picker
+  // (#630). Re-runs when `options` load so a seeded id upgrades to its label.
   useEffect(() => {
     setSelectedOptions((prev) => {
       if (value.length === 0) return [];
-      const byValue = new Map<string, SelectOption>();
-      // Loaded results win (authoritative labels); a previously-selected option
-      // fills any id the current results lack (a user pick persisted across a
-      // later search). A raw-id fallback covers whatever neither resolves.
-      for (const o of [...options, ...prev]) {
+      const wanted = new Set(value);
+      const labeled = new Map<string, SelectOption>();
+      const anyOption = new Map<string, SelectOption>();
+      for (const o of [...prev, ...options]) {
         const v = String(o.value);
-        if (value.includes(v) && !byValue.has(v)) byValue.set(v, o);
+        if (!wanted.has(v)) continue;
+        if (o.label !== v && !labeled.has(v)) labeled.set(v, o);
+        if (!anyOption.has(v)) anyOption.set(v, o);
       }
-      return value.map((v) => byValue.get(v) ?? { value: v, label: v });
+      return value.map(
+        (v) => labeled.get(v) ?? anyOption.get(v) ?? { value: v, label: v }
+      );
     });
   }, [value, options]);
 

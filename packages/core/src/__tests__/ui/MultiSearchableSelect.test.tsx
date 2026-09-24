@@ -339,6 +339,62 @@ describe("MultiAsyncSearchableSelect", () => {
     expect(screen.getByText("unresolved-id")).toBeInTheDocument();
   });
 
+  it("keeps a user-picked chip label when a later search returns the same id relabeled", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    // Mount search labels id "x" as "Stations"; a later query returns the same
+    // id with a context-specific display string.
+    const onSearch = jest
+      .fn<(q: string) => Promise<SelectOption[]>>()
+      .mockImplementation(async (q: string) =>
+        q === "st"
+          ? [{ value: "x", label: "Stations (view)" }]
+          : [{ value: "x", label: "Stations" }]
+      );
+
+    // Controlled: mirror the emitted value back into the prop.
+    function Harness() {
+      const [value, setValue] = React.useState<string[]>([]);
+      return (
+        <MultiAsyncSearchableSelect
+          label="Objects"
+          value={value}
+          onChange={setValue}
+          onSearch={onSearch}
+          debounceMs={300}
+        />
+      );
+    }
+
+    await act(async () => {
+      render(<Harness />);
+    });
+    await act(async () => {});
+
+    const input = screen.getByRole("combobox");
+    await user.click(input);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("option", { name: "Stations" })
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("option", { name: "Stations" }));
+
+    const chipLabel = () =>
+      document.querySelector(".MuiChip-label")?.textContent ?? null;
+    expect(chipLabel()).toBe("Stations");
+
+    // Trigger a later search that returns "x" relabeled.
+    await user.type(input, "st");
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+    await waitFor(() => expect(onSearch).toHaveBeenCalledWith("st"));
+    await act(async () => {});
+
+    // The user-picked chip label stays stable — the later search does not flip it.
+    expect(chipLabel()).toBe("Stations");
+  });
+
   it("shows a loading indicator while the search is in-flight", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     let resolveSearch!: (options: SelectOption[]) => void;
