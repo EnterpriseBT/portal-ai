@@ -184,14 +184,27 @@ describe("StatementEditorUI (#622)", () => {
     });
   });
 
-  it("coerces the resource to `page` when the verb is set to `view`", () => {
+  it("offers only a resource's valid verbs — a data row excludes view/manage/invite", () => {
+    render(<StatementEditorUI onChange={jest.fn()} onSearch={noSearch} />); // read station
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Verb/i }));
+    const listbox = within(screen.getByRole("listbox"));
+    expect(listbox.getByText("read")).toBeInTheDocument();
+    expect(listbox.getByText("write")).toBeInTheDocument();
+    expect(listbox.getByText("delete")).toBeInTheDocument();
+    expect(listbox.getByText("share")).toBeInTheDocument(); // station is shareable
+    expect(listbox.queryByText("view")).not.toBeInTheDocument();
+    expect(listbox.queryByText("manage")).not.toBeInTheDocument();
+    expect(listbox.queryByText("invite")).not.toBeInTheDocument();
+  });
+
+  it("coerces the verb to a privileged capability when the resource is a singleton", () => {
     const onChange = jest.fn();
     render(<StatementEditorUI onChange={onChange} onSearch={noSearch} />);
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Verb/i }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByText("view"));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Resource/i }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByText("billing"));
     expect(lastStatement(onChange)).toMatchObject({
-      verb: "view",
-      resourceType: "page",
+      verb: "manage",
+      resourceType: "billing",
     });
   });
 

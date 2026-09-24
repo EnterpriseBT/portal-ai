@@ -226,6 +226,131 @@ export const ResourcePermissionMapSchema = z.record(
 );
 export type ResourcePermissionMap = z.infer<typeof ResourcePermissionMapSchema>;
 
+// ── Statement construction validity (#630) ────────────────────────────
+
+/**
+ * What a legal statement may say about a resource: which **verbs** are meaningful
+ * on it, whether it may target a **specific instance** (vs class-level only), and
+ * whether a class statement may carry an **ownership** condition. This is the one
+ * source of truth for "which (verb × resource × scope) combinations exist", so the
+ * policy editor can only *construct* valid statements (and a future server-side
+ * check can *reject* invalid ones) instead of allowing inert combinations like
+ * `read page` or `manage station`.
+ *
+ * It is **composed from the vocabulary above**, not hand-maintained in parallel:
+ *  - object/data + catalog types ({@link RESOURCE_PERMISSION_TYPES}) take
+ *    `read`/`write`/`delete` (+ `share` for {@link SHAREABLE_RESOURCE_TYPES}) and
+ *    the `*` verb; they support ownership; instance scope for the searchable ones;
+ *  - `page` is the `view`-only nav pseudo-resource — fixed instance ids
+ *    ({@link NAV_PAGE_IDS}), no ownership;
+ *  - the privileged singletons (`billing`/`org`/`member`/`audit`) take exactly the
+ *    verbs {@link CALLER_CAPABILITY_ACTIONS} defines and are class-only.
+ *
+ * The `view`⟺`page` pairing is **not** special-cased: `view` simply appears in no
+ * verb set except `page`'s, so it can only ever pair with `page` — the coupling
+ * falls out of the matrix. A `verbForStatement` guard test pins these invariants.
+ */
+export interface ResourceCapability {
+  readonly verbs: readonly PermissionVerb[];
+  readonly instanceScope: boolean;
+  readonly ownership: boolean;
+}
+
+/** The object types with a searchable instance picker (mirrors the server's
+ *  `RbacObjectSearchService`); `page` is instance-scoped too but via a fixed id
+ *  list, so it is handled explicitly below. */
+const INSTANCE_SEARCHABLE_TYPES = [
+  "station",
+  "pin",
+  "portal",
+  "connector_instance",
+  "entity",
+] as const satisfies readonly PermissionResourceType[];
+
+const objectCapability = (t: PermissionResourceType): ResourceCapability => ({
+  verbs: (
+    SHAREABLE_RESOURCE_TYPES as readonly PermissionResourceType[]
+  ).includes(t)
+    ? ["read", "write", "delete", "share", "*"]
+    : ["read", "write", "delete", "*"],
+  instanceScope: (
+    INSTANCE_SEARCHABLE_TYPES as readonly PermissionResourceType[]
+  ).includes(t),
+  ownership: true,
+});
+
+export const RESOURCE_CAPABILITIES: Record<
+  PermissionResourceType,
+  ResourceCapability
+> = {
+  station: objectCapability("station"),
+  pin: objectCapability("pin"),
+  curated_view: objectCapability("curated_view"),
+  portal: objectCapability("portal"),
+  entity: objectCapability("entity"),
+  entity_record: objectCapability("entity_record"),
+  field_mapping: objectCapability("field_mapping"),
+  connector_instance: objectCapability("connector_instance"),
+  connector_definition: objectCapability("connector_definition"),
+  entity_group: objectCapability("entity_group"),
+  tag: objectCapability("tag"),
+  column_definition: objectCapability("column_definition"),
+  job: objectCapability("job"),
+  toolpack: objectCapability("toolpack"),
+  // `view`-only nav pseudo-resource — fixed page ids, no per-object ownership.
+  page: { verbs: ["view"], instanceScope: true, ownership: false },
+  // Privileged singletons — verbs are exactly what CALLER_CAPABILITY_ACTIONS
+  // gates (billing.manage / org.delete / org.audit.read / member.*); class-only.
+  billing: { verbs: ["manage"], instanceScope: false, ownership: false },
+  org: { verbs: ["delete"], instanceScope: false, ownership: false },
+  audit: { verbs: ["read"], instanceScope: false, ownership: false },
+  member: {
+    verbs: ["invite", "manage", "delete"],
+    instanceScope: false,
+    ownership: false,
+  },
+  // Wildcard resource — any concrete verb (or `*`), never the page-only `view`.
+  "*": {
+    verbs: ["read", "write", "delete", "share", "manage", "invite", "*"],
+    instanceScope: false,
+    ownership: true,
+  },
+};
+
+const DEFAULT_CAPABILITY: ResourceCapability = {
+  verbs: [...PERMISSION_VERBS],
+  instanceScope: false,
+  ownership: true,
+};
+
+const capabilityFor = (t: PermissionResourceType): ResourceCapability =>
+  RESOURCE_CAPABILITIES[t] ?? DEFAULT_CAPABILITY;
+
+/** The verbs a statement on `t` may use (the only ones an editor should offer). */
+export const verbsForResource = (
+  t: PermissionResourceType
+): readonly PermissionVerb[] => capabilityFor(t).verbs;
+
+/** The verb to fall back to when a resource change orphans the current verb. */
+export const defaultVerbForResource = (
+  t: PermissionResourceType
+): PermissionVerb => capabilityFor(t).verbs[0];
+
+/** Whether `t` may be scoped to specific instances (vs class-level only). */
+export const resourceAllowsInstanceScope = (
+  t: PermissionResourceType
+): boolean => capabilityFor(t).instanceScope;
+
+/** Whether a class statement on `t` may carry an ownership condition. */
+export const resourceAllowsOwnership = (t: PermissionResourceType): boolean =>
+  capabilityFor(t).ownership;
+
+/** Whether `(verb, resourceType)` is a meaningful pair the app enforces. */
+export const isVerbValidForResource = (
+  verb: PermissionVerb,
+  t: PermissionResourceType
+): boolean => (verbsForResource(t) as readonly string[]).includes(verb);
+
 /** A policy/role is `system` (immutable, seeded) or `custom` (org-defined). */
 export const RBAC_KINDS = ["system", "custom"] as const;
 export const RbacKindSchema = z.enum(RBAC_KINDS);

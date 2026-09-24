@@ -19,18 +19,17 @@ import {
   PERMISSION_RESOURCE_TYPES,
   PERMISSION_CONDITIONS,
   NAV_PAGE_IDS,
+  verbsForResource,
+  defaultVerbForResource,
+  resourceAllowsInstanceScope,
+  resourceAllowsOwnership,
+  isVerbValidForResource,
+} from "@portalai/core/models";
+import type {
+  PermissionVerb,
+  PermissionResourceType,
 } from "@portalai/core/models";
 import type { PolicyStatementInput } from "@portalai/core/contracts";
-
-/** Object types the instance picker can search (management-plane; the rest are
- *  class-level only — mirrors the server's `RbacObjectSearchService`). */
-const PICKABLE_TYPES = new Set([
-  "station",
-  "pin",
-  "portal",
-  "connector_instance",
-  "entity",
-]);
 
 /**
  * Resource types whose instances are a **fixed, known set** rather than searched
@@ -43,26 +42,25 @@ const FIXED_OPTIONS: Record<string, SelectOption[]> = {
 };
 
 /**
- * `view` ⟺ `page` coupling (#630). A `page` is gated **only** by the `view` verb
- * (it drives nav visibility), and `view` is meaningful **only** on a page — every
- * other resource is gated by `read`/`write`/`delete`. So a `read page` (or `view
- * station`) grant is inert and misleading. Two mechanisms keep the pairing valid
- * without ever making the `view page` combo unreachable:
- *  - the **Verb** menu is locked to `view` while the resource is `page` (so a page
- *    row can't become `read`/`write`/`delete page`); the **Resource** menu always
- *    lists everything, so a page row can still be changed to a data type (which
- *    coerces the verb back off `view`), and any row can reach `page`;
- *  - selecting `view`, or selecting `page`, coerces its partner; leaving `page` or
- *    `view` coerces the partner to a sensible data default.
- * The row's current value is always kept in the Verb list so a legacy `read page`
- * statement still renders while it's being corrected.
+ * Which (verb × resource × scope) combinations a statement may take is defined
+ * **once** by `RESOURCE_CAPABILITIES` in `@portalai/core` (#630). The editor
+ * derives every affordance from it, so only valid statements can be constructed:
+ * the Verb menu lists exactly `verbsForResource(type)`; the Scope offers "Specific
+ * objects" only when `resourceAllowsInstanceScope`; the ownership condition only
+ * when `resourceAllowsOwnership`; and changing the resource coerces an orphaned
+ * verb to `defaultVerbForResource`. The `view`⟺`page` pairing is not special-cased
+ * — `view` is in no verb set but `page`'s, so it falls out of the matrix. The
+ * row's current verb is kept in the menu (`verbOptionsFor`) so a legacy statement
+ * still renders while it's being corrected.
  */
-const PAGE_TYPE = "page";
-const PAGE_VERB = "view";
-
-const verbOptionsFor = (resourceType: string, current: string): string[] => {
-  if (resourceType !== PAGE_TYPE) return [...PERMISSION_VERBS];
-  return [PAGE_VERB, ...(current === PAGE_VERB ? [] : [current])];
+const verbOptionsFor = (
+  resourceType: PermissionResourceType,
+  current: string
+): string[] => {
+  const valid = verbsForResource(resourceType);
+  return (valid as readonly string[]).includes(current)
+    ? [...valid]
+    : [current, ...valid];
 };
 
 /** An editor row — an instance row carries N picked object ids that flatten to
@@ -174,7 +172,8 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
     <Stack spacing={2}>
       {rows.map((row, i) => {
         const fixedOptions = FIXED_OPTIONS[row.resourceType];
-        const pickable = PICKABLE_TYPES.has(row.resourceType) || !!fixedOptions;
+        const pickable = resourceAllowsInstanceScope(row.resourceType);
+        const ownershipAllowed = resourceAllowsOwnership(row.resourceType);
         return (
           <Stack
             key={i}
@@ -205,31 +204,11 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               size="small"
               label="Verb"
               value={row.verb}
-              onChange={(e) => {
-                const verb = e.target.value as StatementRow["verb"];
-                // Keep the view⟺page pairing valid: picking `view` forces `page`;
-                // moving off `view` off a page row picks a sensible data default.
-                if (verb === PAGE_VERB && row.resourceType !== PAGE_TYPE) {
-                  patch(i, {
-                    verb,
-                    resourceType: PAGE_TYPE as StatementRow["resourceType"],
-                    scope: "class",
-                    objectIds: [],
-                  });
-                } else if (
-                  verb !== PAGE_VERB &&
-                  row.resourceType === PAGE_TYPE
-                ) {
-                  patch(i, {
-                    verb,
-                    resourceType: "station",
-                    scope: "class",
-                    objectIds: [],
-                  });
-                } else {
-                  patch(i, { verb });
-                }
-              }}
+              // The menu only offers verbs valid for the current resource, so a
+              // selection is always in-bounds — no coercion needed here.
+              onChange={(e) =>
+                patch(i, { verb: e.target.value as StatementRow["verb"] })
+              }
               disabled={readOnly}
               sx={{ minWidth: 100 }}
             >
@@ -249,16 +228,22 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
                   .value as StatementRow["resourceType"];
                 patch(i, {
                   resourceType,
-                  // Leaving a pickable type resets an instance selection.
+                  // Changing type resets the instance selection + ownership.
                   scope: "class",
                   objectIds: [],
-                  // view⟺page: a `page` resource is only ever `view`; moving off
-                  // `page` off a `view` row picks a sensible data verb.
-                  ...(resourceType === PAGE_TYPE
-                    ? { verb: PAGE_VERB as StatementRow["verb"] }
-                    : row.verb === PAGE_VERB
-                      ? { verb: "read" as StatementRow["verb"] }
-                      : {}),
+                  condition: "",
+                  // Coerce a now-invalid verb to the new resource's default
+                  // (#630 matrix) — this is where `view`⟺`page` falls out.
+                  ...(isVerbValidForResource(
+                    row.verb as PermissionVerb,
+                    resourceType
+                  )
+                    ? {}
+                    : {
+                        verb: defaultVerbForResource(
+                          resourceType
+                        ) as StatementRow["verb"],
+                      }),
                 });
               }}
               disabled={readOnly}
@@ -305,7 +290,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
                 disabled={readOnly}
                 fullWidth
               />
-            ) : (
+            ) : ownershipAllowed ? (
               <TextField
                 select
                 size="small"
@@ -326,7 +311,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
                   </MenuItem>
                 ))}
               </TextField>
-            )}
+            ) : null}
 
             <IconButton
               size="small"

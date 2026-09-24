@@ -23,6 +23,12 @@ import {
   RESOURCE_PERMISSION_TYPES,
   PagePermissionMapSchema,
   ResourcePermissionMapSchema,
+  RESOURCE_CAPABILITIES,
+  verbsForResource,
+  defaultVerbForResource,
+  resourceAllowsInstanceScope,
+  resourceAllowsOwnership,
+  isVerbValidForResource,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -449,5 +455,81 @@ describe("ResourcePermissionMapSchema (#630)", () => {
         toolpack: { read: true, write: true },
       }).success
     ).toBe(false);
+  });
+});
+
+describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
+  it("covers every resource type exactly", () => {
+    expect(Object.keys(RESOURCE_CAPABILITIES).sort()).toEqual(
+      [...PERMISSION_RESOURCE_TYPES].sort()
+    );
+  });
+
+  it("every listed verb is a real verb, and each set is non-empty", () => {
+    for (const t of PERMISSION_RESOURCE_TYPES) {
+      const verbs = verbsForResource(t);
+      expect(verbs.length).toBeGreaterThan(0);
+      for (const v of verbs) expect(PERMISSION_VERBS).toContain(v);
+      // the default is the first offered verb
+      expect(verbs).toContain(defaultVerbForResource(t));
+    }
+  });
+
+  it("`view` pairs with `page` and nothing else — the coupling falls out", () => {
+    for (const t of PERMISSION_RESOURCE_TYPES) {
+      expect(isVerbValidForResource("view", t)).toBe(t === "page");
+    }
+    // and `page` is view-only
+    expect(verbsForResource("page")).toEqual(["view"]);
+    expect(isVerbValidForResource("read", "page")).toBe(false);
+  });
+
+  it("object types take read/write/delete (+ share only when shareable)", () => {
+    for (const t of RESOURCE_PERMISSION_TYPES) {
+      const verbs = verbsForResource(t);
+      expect(verbs).toEqual(
+        expect.arrayContaining(["read", "write", "delete"])
+      );
+      const shareable = (
+        SHAREABLE_RESOURCE_TYPES as readonly string[]
+      ).includes(t);
+      expect(verbs.includes("share")).toBe(shareable);
+    }
+  });
+
+  it("every privileged capability action maps to a valid (verb, resource) pair", () => {
+    // The authoritative dotted-action → (verb, resource) mapping (mirrors the
+    // engine's ACTION_MAP). The matrix must cover each, so an admin surface can't
+    // silently become un-authorable.
+    const CAPABILITY_PAIRS: Record<
+      (typeof CALLER_CAPABILITY_ACTIONS)[number],
+      { verb: string; resourceType: string }
+    > = {
+      "billing.manage": { verb: "manage", resourceType: "billing" },
+      "org.delete": { verb: "delete", resourceType: "org" },
+      "org.audit.read": { verb: "read", resourceType: "audit" },
+      "member.role.assign": { verb: "manage", resourceType: "member" },
+      "member.invite": { verb: "invite", resourceType: "member" },
+      "member.remove": { verb: "delete", resourceType: "member" },
+    };
+    for (const action of CALLER_CAPABILITY_ACTIONS) {
+      const { verb, resourceType } = CAPABILITY_PAIRS[action];
+      expect(
+        isVerbValidForResource(
+          verb as (typeof PERMISSION_VERBS)[number],
+          resourceType as (typeof PERMISSION_RESOURCE_TYPES)[number]
+        )
+      ).toBe(true);
+    }
+  });
+
+  it("privileged singletons + page are class-scoped without ownership; data types own", () => {
+    for (const t of ["billing", "org", "member", "audit", "page"] as const) {
+      expect(resourceAllowsInstanceScope(t)).toBe(t === "page");
+      expect(resourceAllowsOwnership(t)).toBe(false);
+    }
+    for (const t of RESOURCE_PERMISSION_TYPES) {
+      expect(resourceAllowsOwnership(t)).toBe(true);
+    }
   });
 });
