@@ -1,8 +1,12 @@
 import {
   CALLER_CAPABILITY_ACTIONS,
+  NAV_PAGE_IDS,
+  RESOURCE_PERMISSION_TYPES,
   type OrgRole,
   type PolicyPrincipalType,
   type CapabilityMap,
+  type PagePermissionMap,
+  type ResourcePermissionMap,
 } from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
@@ -148,5 +152,49 @@ export class PermissionService {
     return Object.fromEntries(
       CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
     ) as CapabilityMap;
+  }
+
+  /**
+   * The full FE permission surface (#630) — the app-action `capabilities` map,
+   * the per-nav-page `view` map, and the class-level object `{read,write,delete}`
+   * map — all from **one** `loadSet`. Returned by `GET /api/organization/current`.
+   *
+   * `pagePermissions` uses a class-level `view page:<id>` probe (pages have no
+   * ownership). `resourcePermissions` probes each verb **with the caller's own
+   * id** (`createdBy: ctx.userId`), so an ownership-scoped grant reads as `true`
+   * (a member's own-object read/write) — the coarse "can I act on this type"
+   * signal the FE wants, not "unconditional class access". A verb the caller
+   * lacks even on their own objects (e.g. a member's `delete connector_instance`)
+   * reads `false`, matching the per-object enforcement.
+   */
+  static async permissionMaps(
+    ctx: PermissionContext,
+    client: DbClient = db
+  ): Promise<{
+    capabilities: CapabilityMap;
+    pagePermissions: PagePermissionMap;
+    resourcePermissions: ResourcePermissionMap;
+  }> {
+    const set = await PermissionService.loadSet(ctx, client);
+    const capabilities = Object.fromEntries(
+      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
+    ) as CapabilityMap;
+    const pagePermissions = Object.fromEntries(
+      NAV_PAGE_IDS.map((id) => [
+        id,
+        set.can("resource.view", { type: "page", id }),
+      ])
+    ) as PagePermissionMap;
+    const resourcePermissions = Object.fromEntries(
+      RESOURCE_PERMISSION_TYPES.map((type) => [
+        type,
+        {
+          read: set.can("resource.read", { type, createdBy: ctx.userId }),
+          write: set.can("resource.write", { type, createdBy: ctx.userId }),
+          delete: set.can("resource.delete", { type, createdBy: ctx.userId }),
+        },
+      ])
+    ) as ResourcePermissionMap;
+    return { capabilities, pagePermissions, resourcePermissions };
   }
 }
