@@ -42,6 +42,29 @@ const FIXED_OPTIONS: Record<string, SelectOption[]> = {
   page: NAV_PAGE_IDS.map((id) => ({ value: id, label: id })),
 };
 
+/**
+ * `view` ⟺ `page` coupling (#630). A `page` is gated **only** by the `view` verb
+ * (it drives nav visibility), and `view` is meaningful **only** on a page — every
+ * other resource is gated by `read`/`write`/`delete`. So a `read page` (or `view
+ * station`) grant is inert and misleading. Two mechanisms keep the pairing valid
+ * without ever making the `view page` combo unreachable:
+ *  - the **Verb** menu is locked to `view` while the resource is `page` (so a page
+ *    row can't become `read`/`write`/`delete page`); the **Resource** menu always
+ *    lists everything, so a page row can still be changed to a data type (which
+ *    coerces the verb back off `view`), and any row can reach `page`;
+ *  - selecting `view`, or selecting `page`, coerces its partner; leaving `page` or
+ *    `view` coerces the partner to a sensible data default.
+ * The row's current value is always kept in the Verb list so a legacy `read page`
+ * statement still renders while it's being corrected.
+ */
+const PAGE_TYPE = "page";
+const PAGE_VERB = "view";
+
+const verbOptionsFor = (resourceType: string, current: string): string[] => {
+  if (resourceType !== PAGE_TYPE) return [...PERMISSION_VERBS];
+  return [PAGE_VERB, ...(current === PAGE_VERB ? [] : [current])];
+};
+
 /** An editor row — an instance row carries N picked object ids that flatten to
  *  N statements on submit; a class row carries an optional ownership condition. */
 export interface StatementRow {
@@ -182,13 +205,35 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               size="small"
               label="Verb"
               value={row.verb}
-              onChange={(e) =>
-                patch(i, { verb: e.target.value as StatementRow["verb"] })
-              }
+              onChange={(e) => {
+                const verb = e.target.value as StatementRow["verb"];
+                // Keep the view⟺page pairing valid: picking `view` forces `page`;
+                // moving off `view` off a page row picks a sensible data default.
+                if (verb === PAGE_VERB && row.resourceType !== PAGE_TYPE) {
+                  patch(i, {
+                    verb,
+                    resourceType: PAGE_TYPE as StatementRow["resourceType"],
+                    scope: "class",
+                    objectIds: [],
+                  });
+                } else if (
+                  verb !== PAGE_VERB &&
+                  row.resourceType === PAGE_TYPE
+                ) {
+                  patch(i, {
+                    verb,
+                    resourceType: "station",
+                    scope: "class",
+                    objectIds: [],
+                  });
+                } else {
+                  patch(i, { verb });
+                }
+              }}
               disabled={readOnly}
               sx={{ minWidth: 100 }}
             >
-              {PERMISSION_VERBS.map((v) => (
+              {verbOptionsFor(row.resourceType, row.verb).map((v) => (
                 <MenuItem key={v} value={v}>
                   {v}
                 </MenuItem>
@@ -199,14 +244,23 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               size="small"
               label="Resource"
               value={row.resourceType}
-              onChange={(e) =>
+              onChange={(e) => {
+                const resourceType = e.target
+                  .value as StatementRow["resourceType"];
                 patch(i, {
-                  resourceType: e.target.value as StatementRow["resourceType"],
+                  resourceType,
                   // Leaving a pickable type resets an instance selection.
                   scope: "class",
                   objectIds: [],
-                })
-              }
+                  // view⟺page: a `page` resource is only ever `view`; moving off
+                  // `page` off a `view` row picks a sensible data verb.
+                  ...(resourceType === PAGE_TYPE
+                    ? { verb: PAGE_VERB as StatementRow["verb"] }
+                    : row.verb === PAGE_VERB
+                      ? { verb: "read" as StatementRow["verb"] }
+                      : {}),
+                });
+              }}
               disabled={readOnly}
               sx={{ minWidth: 140 }}
             >
