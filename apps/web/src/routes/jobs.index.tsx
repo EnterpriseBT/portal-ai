@@ -4,5 +4,5 @@ import { JobsView } from "../views/Jobs.view";
 import { guardedComponent } from "../utils/use-require-page-view.util";
 
 export const Route = createFileRoute("/jobs/")({
-  component: guardedComponent("jobs", JobsView),
+  component: guardedComponent("jobs", JobsView, { requireRead: "job" }),
 });

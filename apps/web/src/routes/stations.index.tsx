@@ -4,5 +4,7 @@ import { StationsView } from "../views/Stations.view";
 import { guardedComponent } from "../utils/use-require-page-view.util";
 
 export const Route = createFileRoute("/stations/")({
-  component: guardedComponent("stations", StationsView),
+  component: guardedComponent("stations", StationsView, {
+    requireRead: "station",
+  }),
 });
