@@ -867,10 +867,28 @@ columnDefinitionRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
+      const ctx = req.application!.metadata;
 
       const existing =
         await DbService.repository.columnDefinitions.findById(id);
-      if (!existing) {
+      // #630: gate the impact read like the detail — org-scope + object read, so
+      // sibling routes match the detail's boundary (was a cross-tenant gap).
+      if (!existing || existing.organizationId !== ctx.organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
+        );
+      }
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "column_definition",
+          id,
+          createdBy: existing.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,

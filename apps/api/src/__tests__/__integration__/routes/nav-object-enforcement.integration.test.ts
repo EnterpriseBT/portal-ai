@@ -49,6 +49,7 @@ const {
   organizationUsers,
   entityGroups,
   connectorInstances,
+  columnDefinitions,
   jobs,
 } = schema;
 
@@ -80,6 +81,8 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
   let ciOwnB: string; // connector instance created by member B
   let ciSystem: string; // system-created connector instance
   let groupOwnA: string; // entity group created by member A (admin-managed type)
+  let colDefId: string; // column definition (admin-managed type)
+  let ownerJobId: string; // job created by the owner
 
   beforeAll(async () => {
     connection = postgres(process.env.DATABASE_URL as string, { max: 1 });
@@ -165,9 +168,23 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
         eg("EG System", SystemUtilities.id.system),
       ] as never);
 
+    // a column definition (admin-managed type — no member grant)
+    colDefId = generateId();
+    await db.insert(columnDefinitions).values({
+      id: colDefId,
+      organizationId: orgId,
+      key: "nav_test_col",
+      label: "Nav Test Col",
+      type: "string",
+      system: false,
+      createdBy: ownerId,
+      ...audit,
+    } as never);
+
     // a job created by the owner — a member must still see it (unconditional read)
+    ownerJobId = generateId();
     await db.insert(jobs).values({
-      id: generateId(),
+      id: ownerJobId,
       organizationId: orgId,
       type: "connector_sync",
       status: "pending",
@@ -339,6 +356,41 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
       memberAAuth0
     );
     expect(res.status).toBe(404);
+  });
+
+  it("column-definition /:id/impact is 404 for a member, 200 for the owner", async () => {
+    expect(
+      (
+        await bearer(
+          request(app).get(`/api/column-definitions/${colDefId}/impact`),
+          memberAAuth0
+        )
+      ).status
+    ).toBe(404);
+    expect(
+      (
+        await bearer(
+          request(app).get(`/api/column-definitions/${colDefId}/impact`),
+          ownerAuth0
+        )
+      ).status
+    ).toBe(200);
+  });
+
+  it("jobs /:id/cancel is restricted — a member can't cancel a job they didn't start", async () => {
+    // The fixture job was created by the owner; memberA reads it but can't cancel.
+    const res = await bearer(
+      request(app).post(`/api/jobs/${ownerJobId}/cancel`),
+      memberAAuth0
+    );
+    expect(res.status).toBe(403);
+    // …the owner (its creator) passes the authz gate (the cancel outcome itself
+    // depends on queue state, which isn't what this asserts).
+    const ownerRes = await bearer(
+      request(app).post(`/api/jobs/${ownerJobId}/cancel`),
+      ownerAuth0
+    );
+    expect(ownerRes.status).not.toBe(403);
   });
 
   it("jobs /:id/cancel is org-scoped — a foreign-org job is 404", async () => {

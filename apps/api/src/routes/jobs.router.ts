@@ -432,13 +432,27 @@ jobsRouter.post(
       const { id } = req.params;
       logger.info({ id }, "POST /api/jobs/:id/cancel called");
 
-      // #630: org-scope the cancel — a member may cancel jobs in their own org
-      // (jobs are read-all in RBAC terms), never another org's. Closes a
-      // cross-tenant cancel gap (JobsService.cancel resolves by id alone).
+      // #630: org-scope the cancel, then restrict it — cancel is a *mutation*
+      // (the escape hatch), so a member may cancel only a job they triggered
+      // (`createdBy === userId`); owner/admin (unconditional job control) may
+      // cancel any. A member can read all org jobs but not cancel another's
+      // (e.g. an admin's in-flight sync/import).
       const ctx = req.application!.metadata;
       const target = await JobsService.findById(id).catch(() => null);
       if (!target || target.organizationId !== ctx.organizationId) {
         return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
+      }
+      if (target.createdBy !== ctx.userId) {
+        const set = await PermissionService.loadSet(ctx);
+        if (!set.can("resource.delete", { type: "job" })) {
+          return next(
+            new ApiError(
+              403,
+              ApiCode.INSUFFICIENT_ROLE,
+              "You can only cancel jobs you started"
+            )
+          );
+        }
       }
 
       const job = await JobsService.cancel(id).catch((error) => {

@@ -43,9 +43,10 @@ export function guardedComponent<P extends object>(
   opts?: { requireRead?: ResourcePermissionType }
 ): React.FC<P> {
   return function GuardedRoute(props: P) {
-    const { allowed, known } = useRequirePageView(pageId);
-    const { canOnResource, capabilitiesKnown } = useCapabilities();
-    if (known && !allowed) return React.createElement(ForbiddenView);
+    const { canViewPage, canOnResource, capabilitiesKnown } = useCapabilities();
+    if (capabilitiesKnown && !canViewPage(pageId)) {
+      return React.createElement(ForbiddenView);
+    }
     if (
       opts?.requireRead &&
       capabilitiesKnown &&

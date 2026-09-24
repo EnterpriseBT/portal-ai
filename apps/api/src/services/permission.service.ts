@@ -160,12 +160,11 @@ export class PermissionService {
    * map — all from **one** `loadSet`. Returned by `GET /api/organization/current`.
    *
    * `pagePermissions` uses a class-level `view page:<id>` probe (pages have no
-   * ownership). `resourcePermissions` probes each verb **with the caller's own
-   * id** (`createdBy: ctx.userId`), so an ownership-scoped grant reads as `true`
-   * (a member's own-object read/write) — the coarse "can I act on this type"
-   * signal the FE wants, not "unconditional class access". A verb the caller
-   * lacks even on their own objects (e.g. a member's `delete connector_instance`)
-   * reads `false`, matching the per-object enforcement.
+   * ownership). `resourcePermissions` uses `canPerformAny(verb, type)` — true
+   * when the caller holds *any* matching allow (own, system, unconditional, or a
+   * specific instance), false only when nothing grants it. This is the honest
+   * "will a real list show anything for this type" signal, so a
+   * `created_by_system`-only or instance-only grant isn't hidden.
    */
   static async permissionMaps(
     ctx: PermissionContext,
@@ -189,9 +188,9 @@ export class PermissionService {
       RESOURCE_PERMISSION_TYPES.map((type) => [
         type,
         {
-          read: set.can("resource.read", { type, createdBy: ctx.userId }),
-          write: set.can("resource.write", { type, createdBy: ctx.userId }),
-          delete: set.can("resource.delete", { type, createdBy: ctx.userId }),
+          read: set.canPerformAny("read", type),
+          write: set.canPerformAny("write", type),
+          delete: set.canPerformAny("delete", type),
         },
       ])
     ) as ResourcePermissionMap;
