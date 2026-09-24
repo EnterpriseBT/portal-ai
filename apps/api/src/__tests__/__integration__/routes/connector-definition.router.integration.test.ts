@@ -14,7 +14,11 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { ConnectorDefinitionInsert } from "../../../db/schema/zod.js";
-import { generateId } from "../utils/application.util.js";
+import {
+  generateId,
+  seedUserAndOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|cd-test-user";
 
@@ -76,11 +80,20 @@ describe("Connector Definition Router", () => {
     connection = postgres(process.env.DATABASE_URL, { max: 1 });
     db = drizzle(connection, { schema });
 
-    // Clean connector_definitions table
+    // #630: the catalog list is now object-read gated, so the route resolves the
+    // caller's PermissionSet (getApplicationMetadata + PermissionService.loadSet).
+    // Seed the test user as an org owner (holds `* *`, seeds the RBAC policies)
+    // so the request has a real application context and, as owner, sees every
+    // definition — the visibility gate is exercised per-role in the
+    // nav-object-enforcement suite.
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+    // Clean the global connector_definitions registry (not org-scoped).
     await db.delete(connectorDefinitions);
+    await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
   });
 
   afterEach(async () => {
+    await teardownOrg(db as ReturnType<typeof drizzle>);
     await connection.end();
   });
 
