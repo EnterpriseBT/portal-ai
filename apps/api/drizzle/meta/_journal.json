@@ -778,6 +778,13 @@
       "when": 1790200000000,
       "tag": "0110_backfill-nav-permission-grants",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1790300000000,
+      "tag": "0111_backfill-member-data-delete",
+      "breakpoints": true
     }
   ]
 }

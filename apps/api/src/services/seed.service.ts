@@ -751,6 +751,11 @@ export const SEED_SYSTEM_POLICIES: {
     description:
       "Read and write the objects you create; read system-provisioned defaults.",
     statements: [
+      // A member fully controls the data objects they create — read + write +
+      // **delete** their own (#630 extends delete from the shareable subset to
+      // every data type), plus read of system-provisioned defaults. The
+      // `delete` id is deterministic, so moving station/pin's delete here from
+      // the shareable block below produces the same rows the 0106 backfill did.
       ...DATA_RESOURCE_TYPES.flatMap((rt): SeedStatement[] => [
         {
           effect: "allow",
@@ -766,21 +771,22 @@ export const SEED_SYSTEM_POLICIES: {
         },
         {
           effect: "allow",
+          verb: "delete",
+          resourceType: rt,
+          condition: "created_by_caller",
+        },
+        {
+          effect: "allow",
           verb: "read",
           resourceType: rt,
           condition: "created_by_system",
         },
       ]),
-      // #621: a member fully controls the shareable objects they create — they
-      // can also delete and share their own station/pin. Owner/admin already
-      // hold these via `* *`. (Existing orgs get these via the 0106 backfill.)
+      // #621: a member can additionally **share** the shareable objects they
+      // create (station/pin). Owner/admin already hold this via `* *`. (Existing
+      // orgs got the original delete+share via the 0106 backfill; the non-
+      // shareable data-type deletes are backfilled by 0111.)
       ...SHAREABLE_RESOURCE_TYPES.flatMap((rt): SeedStatement[] => [
-        {
-          effect: "allow",
-          verb: "delete",
-          resourceType: rt,
-          condition: "created_by_caller",
-        },
         {
           effect: "allow",
           verb: "share",

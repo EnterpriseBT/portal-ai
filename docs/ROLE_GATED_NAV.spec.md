@@ -83,7 +83,9 @@ interface SeedStatement { effect; verb; resourceType; condition; resourceId?: st
 
 ### Migration / Seed
 
-**No schema migration.** One **data backfill** migration `apps/api/drizzle/<n>_backfill-nav-permission-grants.sql`: for every existing org, insert the new `MemberAccess` statements (the `read job` + three `view page:*` rows) — cross-join `organizations` (`WHERE deleted IS NULL`, mirroring the seed, #627), `ON CONFLICT` restating the statements' partial-unique predicate so it no-ops where present. Marked with a `-- backfill:` comment. Commit the drizzle journal + snapshot (`project_drizzle_journal_must_be_committed`).
+**No schema migration.** Two **data backfill** migrations for existing orgs' `MemberAccess`, cross-joining `organizations` (`WHERE deleted IS NULL`, mirroring the seed, #627), `ON CONFLICT DO NOTHING`, `-- backfill:` marked, journal committed (`project_drizzle_journal_must_be_committed`):
+- `0110_backfill-nav-permission-grants.sql` — the `read job` + three `view page:*` rows.
+- `0111_backfill-member-data-delete.sql` — `delete created_by_caller` on the non-shareable data types (`view, portal, entity, entity_record, field_mapping, connector_instance`); station/pin already carry delete from 0106. **A member fully controls the data objects they create — read + write + delete their own** (user-approved amendment). Delete moves from the shareable subset into the full data-type loop in the seed; the deterministic id keeps station/pin's rows identical.
 
 ### `packages/core/src/contracts/organization.contract.ts` + `apps/api/src/routes/organization.router.ts`
 

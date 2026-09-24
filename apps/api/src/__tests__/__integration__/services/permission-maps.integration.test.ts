@@ -60,17 +60,17 @@ describe("PermissionService.permissionMaps (#630)", () => {
     expect(pagePermissions.toolpacks).toBe(false);
   });
 
-  it("a member: own-object read/write on data types, no delete on non-shareable; none on admin-managed", async () => {
+  it("a member: own-object read/write/delete on data types; none on admin-managed", async () => {
     const { resourcePermissions } = await PermissionService.permissionMaps(
       { userId, organizationId: orgId, roles: ["member"] },
       db
     );
-    // connector_instance ∈ data types → read/write own, but NOT delete
-    // (delete is only on shareable station/pin).
+    // connector_instance ∈ data types → read/write/delete own (#630 grants
+    // members delete of the data objects they create).
     expect(resourcePermissions.connector_instance).toEqual({
       read: true,
       write: true,
-      delete: false,
+      delete: true,
     });
     // station ∈ shareable → read/write/delete own.
     expect(resourcePermissions.station).toEqual({
