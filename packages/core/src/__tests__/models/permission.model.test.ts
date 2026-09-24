@@ -379,9 +379,10 @@ describe("permission vocabulary (#630)", () => {
     ).toBe(true);
   });
 
-  it("NAV_PAGE_IDS splits Connectors into instances + catalog and omits Dashboard", () => {
+  it("NAV_PAGE_IDS is one id per page (no per-tab ids) and omits Dashboard", () => {
     expect(NAV_PAGE_IDS).toContain("connectors");
-    expect(NAV_PAGE_IDS).toContain("connector_catalog");
+    // Tabs are gated by object read, not page ids — connector_catalog is gone.
+    expect(NAV_PAGE_IDS).not.toContain("connector_catalog");
     expect(NAV_PAGE_IDS).not.toContain("dashboard");
   });
 
@@ -393,7 +394,6 @@ describe("permission vocabulary (#630)", () => {
     ]);
     // Admin pages carry no member grant.
     expect([...MEMBER_VIEW_PAGE_IDS]).not.toContain("connectors");
-    expect([...MEMBER_VIEW_PAGE_IDS]).not.toContain("connector_catalog");
   });
 });
 
@@ -425,9 +425,17 @@ describe("ResourcePermissionMapSchema (#630)", () => {
 
   it("covers the data + plumbing object types, not page/billing/org", () => {
     expect(RESOURCE_PERMISSION_TYPES).toContain("connector_instance");
+    expect(RESOURCE_PERMISSION_TYPES).toContain("connector_definition");
     expect(RESOURCE_PERMISSION_TYPES).toContain("toolpack");
     for (const excluded of ["page", "billing", "org", "member", "audit", "*"])
       expect(RESOURCE_PERMISSION_TYPES).not.toContain(excluded);
+  });
+
+  it("renames the `view` object type to `curated_view` (verb/type collision)", () => {
+    expect(PERMISSION_RESOURCE_TYPES).toContain("curated_view");
+    expect(PERMISSION_RESOURCE_TYPES).not.toContain("view");
+    // The `view` VERB still exists (distinct from the type).
+    expect(PERMISSION_VERBS).toContain("view");
   });
 
   it("accepts a full read/write/delete map", () => {

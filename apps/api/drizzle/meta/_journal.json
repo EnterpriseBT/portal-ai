@@ -785,6 +785,13 @@
       "when": 1790300000000,
       "tag": "0111_backfill-member-data-delete",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1790400000000,
+      "tag": "0112_rename-view-resource-to-curated-view",
+      "breakpoints": true
     }
   ]
 }

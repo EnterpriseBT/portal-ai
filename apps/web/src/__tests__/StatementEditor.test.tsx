@@ -59,7 +59,7 @@ describe("rowsToStatements (#622 fan-out)", () => {
       {
         effect: "allow",
         verb: "read",
-        resourceType: "view",
+        resourceType: "curated_view",
         resourceId: "view-1",
         condition: null,
       },
@@ -105,7 +105,7 @@ describe("StatementEditorUI (#622)", () => {
       {
         effect: "allow",
         verb: "read",
-        resourceType: "view",
+        resourceType: "curated_view",
         resourceId: "view-1",
         condition: null,
       },

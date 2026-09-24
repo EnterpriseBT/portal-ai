@@ -20,7 +20,8 @@ describe("visibleNavItems (#630 sidebar gating)", () => {
   it("a member (stations/pinned/jobs) sees Dashboard + their pages only", () => {
     const memberPages = new Set<NavPageId>(["stations", "pinned", "jobs"]);
     const names = labels((id) => memberPages.has(id));
-    expect(names).toEqual(["Dashboard", "Stations", "Jobs", "Pinned Results"]);
+    // NAV_PAGE_IDS order: stations, pinned, jobs.
+    expect(names).toEqual(["Dashboard", "Stations", "Pinned Results", "Jobs"]);
     expect(names).not.toContain("Connectors");
     expect(names).not.toContain("Toolpacks");
   });
@@ -32,8 +33,8 @@ describe("visibleNavItems (#630 sidebar gating)", () => {
     expect(names).toContain("Toolpacks");
   });
 
-  it("a catalog-only role still sees Connectors (either sub-tab grants it)", () => {
-    const names = labels((id) => id === "connector_catalog");
+  it("a role granted only `connectors` sees Dashboard + Connectors", () => {
+    const names = labels((id) => id === "connectors");
     expect(names).toEqual(["Dashboard", "Connectors"]);
   });
 

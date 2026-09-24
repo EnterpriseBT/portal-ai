@@ -24,6 +24,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import {
   ConnectorDefinitionCardUI,
   ConnectorDefinitionDataList,
@@ -68,21 +69,16 @@ export const ConnectorView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { canViewPage, capabilitiesKnown } = useCapabilities();
+  const { canOnResource, capabilitiesKnown } = useCapabilities();
 
-  // #630: the two sub-tabs gate independently — Connected (the org's instances)
-  // on `connectors`, Catalog (the system definition registry) on
-  // `connector_catalog`. Optimistic while the current-org query loads (both
-  // shown), then filtered; indices stay contiguous so the panels line up.
-  const CONNECTOR_TABS = [
-    { pageId: "connectors", label: "Connected" },
-    { pageId: "connector_catalog", label: "Catalog" },
-  ] as const;
-  const visibleTabs = CONNECTOR_TABS.filter(
-    (t) => !capabilitiesKnown || canViewPage(t.pageId)
-  );
-  const tabIndexOf = (pageId: string) =>
-    visibleTabs.findIndex((t) => t.pageId === pageId);
+  // #630: the two tabs stay visible; each is gated by the **object read** of the
+  // data it shows — Connected on `connector_instance`, Catalog on the global
+  // `connector_definition` registry. A gated tab renders an unauthorized panel
+  // rather than hiding. Optimistic while the current-org query loads.
+  const canReadInstances =
+    !capabilitiesKnown || canOnResource("connector_instance", "read");
+  const canReadCatalog =
+    !capabilitiesKnown || canOnResource("connector_definition", "read");
 
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [selectedConnectorDefinitionId, setSelectedConnectorDefinitionId] =
@@ -203,13 +199,14 @@ export const ConnectorView = () => {
         icon={<Icon name={IconName.MemoryChip} />}
       />
       <Tabs {...tabsProps}>
-        {visibleTabs.map((t, i) => (
-          <Tab key={t.pageId} label={t.label} {...getTabProps(i)} />
-        ))}
+        <Tab label="Connected" {...getTabProps(0)} />
+        <Tab label="Catalog" {...getTabProps(1)} />
       </Tabs>
 
-      {tabIndexOf("connectors") >= 0 && (
-        <TabPanel {...getTabPanelProps(tabIndexOf("connectors"))}>
+      <TabPanel {...getTabPanelProps(0)}>
+        {!canReadInstances ? (
+          <UnauthorizedState message="You don't have permission to view connectors." />
+        ) : (
           <Stack spacing={2}>
             <PaginationToolbar {...instancePagination.toolbarProps} />
             <ConnectorInstanceWithDefinitionDataList
@@ -257,11 +254,13 @@ export const ConnectorView = () => {
               )}
             </ConnectorInstanceWithDefinitionDataList>
           </Stack>
-        </TabPanel>
-      )}
+        )}
+      </TabPanel>
 
-      {tabIndexOf("connector_catalog") >= 0 && (
-        <TabPanel {...getTabPanelProps(tabIndexOf("connector_catalog"))}>
+      <TabPanel {...getTabPanelProps(1)}>
+        {!canReadCatalog ? (
+          <UnauthorizedState message="You don't have permission to view the connector catalog." />
+        ) : (
           <Stack spacing={2}>
             <PaginationToolbar {...catalogPagination.toolbarProps} />
             <ConnectorDefinitionDataList
@@ -307,8 +306,8 @@ export const ConnectorView = () => {
               )}
             </ConnectorDefinitionDataList>
           </Stack>
-        </TabPanel>
-      )}
+        )}
+      </TabPanel>
 
       {selectedConnectorDefinitionId &&
         selectedSlug &&

@@ -10,6 +10,7 @@ import {
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import type { NavPageId } from "@portalai/core/models";
+import { NAV_PAGE_IDS } from "@portalai/core/models";
 import { useLayout } from "../utils";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { SidebarNavItem } from "./SidebarNavItem.component";
@@ -18,22 +19,82 @@ import { ApplicationRoute } from "../utils/routes.util";
 import { sdk } from "../api/sdk";
 import { SidebarNavToggle } from "./SidebarNavToggle.component";
 
-/**
- * The main sidebar nav, as data (#630). Each item is gated on `pageIds`: the
- * item renders when the caller may `view` **any** of them (so a role granted
- * only `connector_catalog` still sees Connectors). An item with no `pageIds`
- * (Dashboard) is always shown — it is the un-gated safe landing. `match` mirrors
- * the pre-#630 selection logic (Dashboard + Connectors matched exactly, the rest
- * by prefix). Footer items (Settings/Help/Logout) are never gated.
- */
 export interface SidebarNavItemDef {
   route: ApplicationRoute;
   label: string;
   icon: IconName;
   match: "exact" | "prefix";
-  pageIds?: readonly NavPageId[];
+  /** The page id this item gates on (undefined = always shown, Dashboard). */
+  pageId?: NavPageId;
 }
 
+/**
+ * Nav metadata for **every** gated page, keyed by `NavPageId` (#630). This is the
+ * **single source of truth**: the `Record<NavPageId, …>` type makes adding a page
+ * to `NAV_PAGE_IDS` (core) a **compile error** here until its nav entry exists, so
+ * a new page can't be silently missed. One id **per page** — a page's tabs/lists
+ * are gated by object `read`, not page ids. `match` mirrors the pre-#630 selection
+ * logic (Connectors matched exactly, the rest by prefix).
+ */
+const PAGE_NAV: Record<NavPageId, Omit<SidebarNavItemDef, "pageId">> = {
+  stations: {
+    route: ApplicationRoute.Stations,
+    label: "Stations",
+    icon: IconName.SatelliteAlt,
+    match: "prefix",
+  },
+  pinned: {
+    route: ApplicationRoute.PortalResults,
+    label: "Pinned Results",
+    icon: IconName.PushPin,
+    match: "prefix",
+  },
+  jobs: {
+    route: ApplicationRoute.Jobs,
+    label: "Jobs",
+    icon: IconName.Work,
+    match: "prefix",
+  },
+  connectors: {
+    route: ApplicationRoute.Connectors,
+    label: "Connectors",
+    icon: IconName.MemoryChip,
+    match: "exact",
+  },
+  entities: {
+    route: ApplicationRoute.Entities,
+    label: "Entities",
+    icon: IconName.DataObject,
+    match: "prefix",
+  },
+  entity_groups: {
+    route: ApplicationRoute.EntityGroups,
+    label: "Entity Groups",
+    icon: IconName.Hub,
+    match: "prefix",
+  },
+  tags: {
+    route: ApplicationRoute.Tags,
+    label: "Tags",
+    icon: IconName.Label,
+    match: "prefix",
+  },
+  column_definitions: {
+    route: ApplicationRoute.ColumnDefinitions,
+    label: "Column Definitions",
+    icon: IconName.ViewColumn,
+    match: "prefix",
+  },
+  toolpacks: {
+    route: ApplicationRoute.Toolpacks,
+    label: "Toolpacks",
+    icon: IconName.Extension,
+    match: "prefix",
+  },
+};
+
+/** The full ordered nav: the un-gated Dashboard, then every page in
+ *  `NAV_PAGE_IDS` order — derived, so no page is ever hand-missed. */
 export const NAV_ITEMS: readonly SidebarNavItemDef[] = [
   {
     route: ApplicationRoute.Dashboard,
@@ -41,69 +102,7 @@ export const NAV_ITEMS: readonly SidebarNavItemDef[] = [
     icon: IconName.Home,
     match: "exact",
   },
-  {
-    route: ApplicationRoute.Stations,
-    label: "Stations",
-    icon: IconName.SatelliteAlt,
-    match: "prefix",
-    pageIds: ["stations"],
-  },
-  {
-    route: ApplicationRoute.Toolpacks,
-    label: "Toolpacks",
-    icon: IconName.Extension,
-    match: "prefix",
-    pageIds: ["toolpacks"],
-  },
-  {
-    route: ApplicationRoute.Connectors,
-    label: "Connectors",
-    icon: IconName.MemoryChip,
-    match: "exact",
-    pageIds: ["connectors", "connector_catalog"],
-  },
-  {
-    route: ApplicationRoute.Entities,
-    label: "Entities",
-    icon: IconName.DataObject,
-    match: "prefix",
-    pageIds: ["entities"],
-  },
-  {
-    route: ApplicationRoute.EntityGroups,
-    label: "Entity Groups",
-    icon: IconName.Hub,
-    match: "prefix",
-    pageIds: ["entity_groups"],
-  },
-  {
-    route: ApplicationRoute.Tags,
-    label: "Tags",
-    icon: IconName.Label,
-    match: "prefix",
-    pageIds: ["tags"],
-  },
-  {
-    route: ApplicationRoute.ColumnDefinitions,
-    label: "Column Definitions",
-    icon: IconName.ViewColumn,
-    match: "prefix",
-    pageIds: ["column_definitions"],
-  },
-  {
-    route: ApplicationRoute.Jobs,
-    label: "Jobs",
-    icon: IconName.Work,
-    match: "prefix",
-    pageIds: ["jobs"],
-  },
-  {
-    route: ApplicationRoute.PortalResults,
-    label: "Pinned Results",
-    icon: IconName.PushPin,
-    match: "prefix",
-    pageIds: ["pinned"],
-  },
+  ...NAV_PAGE_IDS.map((pageId) => ({ pageId, ...PAGE_NAV[pageId] })),
 ];
 
 /** The nav items the caller may see, given a `canViewPage` predicate (#630).
@@ -111,9 +110,7 @@ export const NAV_ITEMS: readonly SidebarNavItemDef[] = [
 export function visibleNavItems(
   canViewPage: (pageId: NavPageId) => boolean
 ): SidebarNavItemDef[] {
-  return NAV_ITEMS.filter(
-    (item) => !item.pageIds || item.pageIds.some(canViewPage)
-  );
+  return NAV_ITEMS.filter((item) => !item.pageId || canViewPage(item.pageId));
 }
 
 export interface SidebarNavUIProps {

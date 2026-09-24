@@ -5,6 +5,8 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { connectorDefinitions } from "../db/schema/index.js";
+import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 import {
   ConnectorDefinitionListRequestQuerySchema,
   type ConnectorDefinitionListResponsePayload,
@@ -87,6 +89,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  */
 connectorDefinitionRouter.get(
   "/",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       logger.info(
@@ -123,6 +126,17 @@ connectorDefinitionRouter.get(
       if (search) {
         filters.push(ilike(connectorDefinitions.display, `%${search}%`));
       }
+
+      // #630: the catalog is a global registry gated by object read — a member
+      // with no `read connector_definition` grant sees nothing; an admin (`* *`)
+      // sees all; a custom role can be scoped to specific definitions (subset).
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("connector_definition", {
+        createdByCol: connectorDefinitions.createdBy,
+        idCol: connectorDefinitions.id,
+      });
+      if (visibility) filters.push(visibility);
 
       const where = filters.length > 0 ? and(...filters) : undefined;
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.display;

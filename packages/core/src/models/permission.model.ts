@@ -45,12 +45,13 @@ export type PermissionVerb = z.infer<typeof PermissionVerbSchema>;
 export const PERMISSION_RESOURCE_TYPES = [
   "station",
   "pin",
-  "view",
+  "curated_view",
   "portal",
   "entity",
   "entity_record",
   "field_mapping",
   "connector_instance",
+  "connector_definition",
   "entity_group",
   "tag",
   "column_definition",
@@ -77,7 +78,7 @@ export type PermissionResourceType = z.infer<
 export const DATA_RESOURCE_TYPES = [
   "station",
   "pin",
-  "view",
+  "curated_view",
   "portal",
   "entity",
   "entity_record",
@@ -140,19 +141,22 @@ export type CapabilityMap = z.infer<typeof CapabilityMapSchema>;
 
 /**
  * The gateable sidebar pages — the `resourceId`s a `view page:<id>` statement
- * targets. A page whose sub-tabs are backed by *different* resources gets one id
- * per tab: Connectors splits into `connectors` (the org's instances tab) and
- * `connector_catalog` (the system connector-definition registry tab). Dashboard
- * is deliberately absent — it is the un-gated safe landing the `beforeLoad`
- * redirect falls back to. The FE reads a per-id `PagePermissionMap` off
- * `current()` and gates nav/redirect on it (never a role-name check).
+ * targets, and the **single source of truth** for the page set (the nav table,
+ * the policy-editor page picker, and the route guards all derive from it, so a
+ * new page can't be silently missed). One id **per page**, not per tab: a page's
+ * sub-tabs / lists / tables are gated by the **object** `read` of the data they
+ * show (e.g. the Connectors page is `connectors`; its Connected tab is gated by
+ * `read connector_instance`, its Catalog tab by `read connector_definition`).
+ * `page` is the only UI-only grant — everything else maps to a real object.
+ * Dashboard is deliberately absent — the un-gated safe landing. The FE reads a
+ * per-id `PagePermissionMap` off `current()` and gates nav/route on it (never a
+ * role-name check).
  */
 export const NAV_PAGE_IDS = [
   "stations",
   "pinned",
   "jobs",
   "connectors",
-  "connector_catalog",
   "entities",
   "entity_groups",
   "tags",
@@ -164,10 +168,9 @@ export type NavPageId = z.infer<typeof NavPageIdSchema>;
 
 /**
  * The pages `MemberAccess` grants `view` on (#630, Decision A). Dashboard is
- * un-gated; the admin pages (connectors/catalog/entities/…) carry **no** member
- * grant — a role that needs them is an admin-authored policy, which composes
- * with zero code change. Data-defined here so the seed and the backfill share
- * one source.
+ * un-gated; the admin pages (connectors/entities/…) carry **no** member grant —
+ * a role that needs them is an admin-authored policy, which composes with zero
+ * code change. Data-defined here so the seed and the backfill share one source.
  */
 export const MEMBER_VIEW_PAGE_IDS = [
   "stations",
@@ -187,6 +190,7 @@ export type PagePermissionMap = z.infer<typeof PagePermissionMapSchema>;
  */
 export const RESOURCE_PERMISSION_TYPES = [
   ...DATA_RESOURCE_TYPES,
+  "connector_definition",
   "entity_group",
   "tag",
   "column_definition",

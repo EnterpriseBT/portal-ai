@@ -26,8 +26,10 @@ describe("member data-type delete seed + 0111 backfill (#630)", () => {
   let orgId: string;
 
   // The six data types 0111 adds delete for (station/pin excluded — from 0106).
+  // `curated_view` is the renamed `view` type (#630, 0112); 0111 inserts the raw
+  // `view` value which 0112 then renames, so the backfill test runs both.
   const NEW_DELETE_TYPES = [
-    "view",
+    "curated_view",
     "portal",
     "entity",
     "entity_record",
@@ -99,11 +101,22 @@ describe("member data-type delete seed + 0111 backfill (#630)", () => {
       join(process.cwd(), "drizzle/0111_backfill-member-data-delete.sql"),
       "utf8"
     );
+    // 0111 inserts the raw `view` type; 0112 renames it to `curated_view`. Run
+    // both, as the real forward migration does.
+    const rename = readFileSync(
+      join(
+        process.cwd(),
+        "drizzle/0112_rename-view-resource-to-curated-view.sql"
+      ),
+      "utf8"
+    );
     await connection.unsafe(sql);
+    await connection.unsafe(rename);
     expect(await memberDeletes()).toHaveLength(NEW_DELETE_TYPES.length);
 
     // Idempotent + does not touch station/pin (those come from 0106).
     await connection.unsafe(sql);
+    await connection.unsafe(rename);
     expect(await memberDeletes()).toHaveLength(NEW_DELETE_TYPES.length);
   });
 });

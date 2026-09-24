@@ -1,17 +1,18 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
-import { renderHook } from "@testing-library/react";
+import React from "react";
+import { render, renderHook, screen } from "@testing-library/react";
 
 const mockCurrent = jest.fn();
-const navigate = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: { organizations: { current: mockCurrent } },
 }));
-jest.unstable_mockModule("@tanstack/react-router", () => ({
-  useRouter: () => ({ navigate }),
+jest.unstable_mockModule("../views/Forbidden.view", () => ({
+  ForbiddenView: () =>
+    React.createElement("div", { "data-testid": "forbidden" }),
 }));
 
-const { useRequirePageView } =
+const { useRequirePageView, guardedComponent } =
   await import("../utils/use-require-page-view.util");
 
 const withPages = (pages: Record<string, boolean> | undefined) => ({
@@ -26,51 +27,41 @@ const withPages = (pages: Record<string, boolean> | undefined) => ({
         },
 });
 
-describe("useRequirePageView (#630 route guard)", () => {
+const Wrapped = () => React.createElement("div", { "data-testid": "page" });
+
+describe("useRequirePageView / guardedComponent (#630)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("allows + renders when the caller may view the page; no redirect", () => {
+  it("is allowed/known when the caller may view the page", () => {
     mockCurrent.mockReturnValue(withPages({ connectors: true }));
     const { result } = renderHook(() => useRequirePageView("connectors"));
     expect(result.current.allowed).toBe(true);
-    expect(result.current.render).toBe(true);
-    expect(navigate).not.toHaveBeenCalled();
+    expect(result.current.known).toBe(true);
   });
 
-  it("redirects to Dashboard + stops rendering when the page is denied (known)", () => {
+  it("guardedComponent renders the page when allowed", () => {
+    mockCurrent.mockReturnValue(withPages({ connectors: true }));
+    const Guarded = guardedComponent("connectors", Wrapped);
+    render(React.createElement(Guarded));
+    expect(screen.queryByTestId("page")).not.toBeNull();
+    expect(screen.queryByTestId("forbidden")).toBeNull();
+  });
+
+  it("guardedComponent renders ForbiddenView when denied (known)", () => {
     mockCurrent.mockReturnValue(withPages({ connectors: false }));
-    const { result } = renderHook(() => useRequirePageView("connectors"));
-    expect(result.current.allowed).toBe(false);
-    expect(result.current.render).toBe(false);
-    expect(navigate).toHaveBeenCalledWith({ to: "/", replace: true });
+    const Guarded = guardedComponent("connectors", Wrapped);
+    render(React.createElement(Guarded));
+    expect(screen.queryByTestId("forbidden")).not.toBeNull();
+    expect(screen.queryByTestId("page")).toBeNull();
   });
 
-  it("renders optimistically while the current-org query is loading; no redirect", () => {
+  it("guardedComponent renders optimistically while the query is loading", () => {
     mockCurrent.mockReturnValue(withPages(undefined));
-    const { result } = renderHook(() => useRequirePageView("connectors"));
-    expect(result.current.known).toBe(false);
-    expect(result.current.render).toBe(true);
-    expect(navigate).not.toHaveBeenCalled();
-  });
-
-  it("allows when ANY of several page ids is viewable (Connectors sub-tabs)", () => {
-    mockCurrent.mockReturnValue(
-      withPages({ connectors: false, connector_catalog: true })
-    );
-    const { result } = renderHook(() =>
-      useRequirePageView(["connectors", "connector_catalog"])
-    );
-    expect(result.current.allowed).toBe(true);
-    expect(navigate).not.toHaveBeenCalled();
-  });
-
-  it("redirects when NONE of several page ids is viewable", () => {
-    mockCurrent.mockReturnValue(
-      withPages({ connectors: false, connector_catalog: false })
-    );
-    renderHook(() => useRequirePageView(["connectors", "connector_catalog"]));
-    expect(navigate).toHaveBeenCalledWith({ to: "/", replace: true });
+    const Guarded = guardedComponent("connectors", Wrapped);
+    render(React.createElement(Guarded));
+    expect(screen.queryByTestId("page")).not.toBeNull();
+    expect(screen.queryByTestId("forbidden")).toBeNull();
   });
 });

@@ -55,7 +55,6 @@ describe("PermissionService.permissionMaps (#630)", () => {
     expect(pagePermissions.pinned).toBe(true);
     expect(pagePermissions.jobs).toBe(true);
     expect(pagePermissions.connectors).toBe(false);
-    expect(pagePermissions.connector_catalog).toBe(false);
     expect(pagePermissions.entities).toBe(false);
     expect(pagePermissions.toolpacks).toBe(false);
   });

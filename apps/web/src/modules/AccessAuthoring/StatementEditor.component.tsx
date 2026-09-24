@@ -18,6 +18,7 @@ import {
   PERMISSION_VERBS,
   PERMISSION_RESOURCE_TYPES,
   PERMISSION_CONDITIONS,
+  NAV_PAGE_IDS,
 } from "@portalai/core/models";
 import type { PolicyStatementInput } from "@portalai/core/contracts";
 
@@ -30,6 +31,16 @@ const PICKABLE_TYPES = new Set([
   "connector_instance",
   "entity",
 ]);
+
+/**
+ * Resource types whose instances are a **fixed, known set** rather than searched
+ * DB objects (#630). `page` ids are the nav pages (`NAV_PAGE_IDS`), so the scope
+ * picker offers them directly — without this a `view page:<id>` grant renders an
+ * object-search picker that can't resolve the id and shows an empty scope.
+ */
+const FIXED_OPTIONS: Record<string, SelectOption[]> = {
+  page: NAV_PAGE_IDS.map((id) => ({ value: id, label: id })),
+};
 
 /** An editor row — an instance row carries N picked object ids that flatten to
  *  N statements on submit; a class row carries an optional ownership condition. */
@@ -139,7 +150,8 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
   return (
     <Stack spacing={2}>
       {rows.map((row, i) => {
-        const pickable = PICKABLE_TYPES.has(row.resourceType);
+        const fixedOptions = FIXED_OPTIONS[row.resourceType];
+        const pickable = PICKABLE_TYPES.has(row.resourceType) || !!fixedOptions;
         return (
           <Stack
             key={i}
@@ -224,11 +236,18 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
 
             {row.scope === "instance" ? (
               <MultiAsyncSearchableSelect
-                label="Objects"
-                placeholder="Search by name…"
+                label={fixedOptions ? "Pages" : "Objects"}
+                placeholder={fixedOptions ? "Select…" : "Search by name…"}
                 value={row.objectIds}
                 onChange={(objectIds) => patch(i, { objectIds })}
-                onSearch={(q) => onSearch(row.resourceType, q)}
+                onSearch={
+                  fixedOptions
+                    ? async (q) =>
+                        fixedOptions.filter((o) =>
+                          o.label.toLowerCase().includes(q.toLowerCase())
+                        )
+                    : (q) => onSearch(row.resourceType, q)
+                }
                 disabled={readOnly}
                 fullWidth
               />
