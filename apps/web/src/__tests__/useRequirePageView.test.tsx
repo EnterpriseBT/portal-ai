@@ -27,7 +27,9 @@ const withPages = (pages: Record<string, boolean> | undefined) => ({
 });
 
 describe("useRequirePageView (#630 route guard)", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it("allows + renders when the caller may view the page; no redirect", () => {
     mockCurrent.mockReturnValue(withPages({ connectors: true }));
