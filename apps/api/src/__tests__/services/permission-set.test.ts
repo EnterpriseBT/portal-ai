@@ -447,6 +447,53 @@ describe("PermissionSet.assertStatementsWithinBoundary (#622)", () => {
       )
     ).rejects.toMatchObject(boundary);
   });
+
+  // ── #630: instance-level `page` (ownershipless) is class-probed, not
+  //    resolved against a (nonexistent) object creator. ──
+  it("owner (* *) can author an instance `view page:<id>` grant (no resolver call)", async () => {
+    await expect(
+      ownerSet().assertStatementsWithinBoundary(
+        [
+          S({
+            verb: "view",
+            resourceType: "page",
+            resourceId: "connectors",
+          }),
+        ],
+        noObjects // page must NOT go through resolveCreatedBy (would reject)
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("a `view page:*` holder can author any specific page grant", async () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "view", resourceType: "page", resourceId: null }),
+    ]);
+    await expect(
+      set.assertStatementsWithinBoundary(
+        [S({ verb: "view", resourceType: "page", resourceId: "toolpacks" })],
+        noObjects
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("a holder of only `view page:stations` cannot author `view page:connectors`", async () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "view", resourceType: "page", resourceId: "stations" }),
+    ]);
+    await expect(
+      set.assertStatementsWithinBoundary(
+        [S({ verb: "view", resourceType: "page", resourceId: "stations" })],
+        noObjects
+      )
+    ).resolves.toBeUndefined();
+    await expect(
+      set.assertStatementsWithinBoundary(
+        [S({ verb: "view", resourceType: "page", resourceId: "connectors" })],
+        noObjects
+      )
+    ).rejects.toMatchObject(boundary);
+  });
 });
 
 // ── Page view + class-vs-object composition (#630) ───────────────────

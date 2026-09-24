@@ -193,6 +193,20 @@ export const RESOURCE_PERMISSION_TYPES = [
   "job",
   "toolpack",
 ] as const satisfies readonly PermissionResourceType[];
+
+/**
+ * Pseudo-resources with **no per-object ownership** (#630) — an instance-level
+ * grant on them (`view page:connectors`) is authorized at the **class** level,
+ * not against an object's creator (there is none). The custom-policy authoring
+ * boundary (`assertStatementsWithinBoundary`) probes these by verb+id rather than
+ * resolving a `createdBy`, so an admin who holds `view page` (or `* *`) can author
+ * a role/group/policy granting a specific page — the composability guarantee.
+ * `page` is the only one today; the privileged pseudo-resources
+ * (`billing`/`org`/`member`/`audit`) are class-only in practice.
+ */
+export const OWNERSHIPLESS_RESOURCE_TYPES = [
+  "page",
+] as const satisfies readonly PermissionResourceType[];
 export const ResourcePermissionTypeSchema = z.enum(RESOURCE_PERMISSION_TYPES);
 export type ResourcePermissionType = z.infer<
   typeof ResourcePermissionTypeSchema

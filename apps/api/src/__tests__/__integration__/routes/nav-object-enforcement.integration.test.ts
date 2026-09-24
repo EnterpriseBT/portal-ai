@@ -295,4 +295,79 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
     expect(res.status).toBe(200);
     expect(res.body.payload.jobs.length).toBeGreaterThanOrEqual(1);
   });
+
+  // ── Sibling routes carry the same boundary as the main route (#630 fixes) ──
+  it("connector /:id/impact + /running-jobs are 404 for a member on another's instance", async () => {
+    expect(
+      (
+        await bearer(
+          request(app).get(`/api/connector-instances/${ciOwnB}/impact`),
+          memberAAuth0
+        )
+      ).status
+    ).toBe(404);
+    expect(
+      (
+        await bearer(
+          request(app).get(`/api/connector-instances/${ciOwnB}/running-jobs`),
+          memberAAuth0
+        )
+      ).status
+    ).toBe(404);
+    // …but the owner sees the impact of any instance.
+    expect(
+      (
+        await bearer(
+          request(app).get(`/api/connector-instances/${ciOwnB}/impact`),
+          ownerAuth0
+        )
+      ).status
+    ).toBe(200);
+  });
+
+  it("connector /:id/sync is refused (403) for a member on another member's instance", async () => {
+    const res = await bearer(
+      request(app).post(`/api/connector-instances/${ciOwnB}/sync`),
+      memberAAuth0
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("entity-group /:id/impact is 404 for a member (admin-managed type)", async () => {
+    const res = await bearer(
+      request(app).get(`/api/entity-groups/${groupOwnA}/impact`),
+      memberAAuth0
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("jobs /:id/cancel is org-scoped — a foreign-org job is 404", async () => {
+    // A second org with its own job; memberA (in the first org) must not cancel it.
+    const otherOwner = createUser(`auth0|nav-other-${generateId()}`);
+    await db.insert(users).values(otherOwner as never);
+    const otherOrg = createOrganization(otherOwner.id);
+    await db.insert(organizations).values(otherOrg as never);
+    await seedRbacForOrg(db as never, otherOrg.id);
+    const foreignJobId = generateId();
+    await db.insert(jobs).values({
+      id: foreignJobId,
+      organizationId: otherOrg.id,
+      type: "connector_sync",
+      status: "pending",
+      progress: 0,
+      metadata: {},
+      created: Date.now(),
+      createdBy: otherOwner.id,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+
+    const res = await bearer(
+      request(app).post(`/api/jobs/${foreignJobId}/cancel`),
+      memberAAuth0
+    );
+    expect(res.status).toBe(404);
+  });
 });

@@ -1011,6 +1011,10 @@ describe("Connector Instance Router", () => {
 
   describe("GET /api/connector-instances/:id/impact", () => {
     it("should return 404 for non-existent connector instance", async () => {
+      // #630: /impact now resolves the caller context; seed the org so metadata
+      // resolves and a random id is a genuine 404 (not a 500).
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
       const res = await request(app)
         .get(`/api/connector-instances/${generateId()}/impact`)
         .set("Authorization", "Bearer test-token");

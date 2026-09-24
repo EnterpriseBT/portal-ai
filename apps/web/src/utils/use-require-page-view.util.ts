@@ -26,8 +26,16 @@ export interface RequirePageViewState {
  * Runs **in-React** rather than in a TanStack `beforeLoad`: the auth token is
  * only available through the `useAuth` hook (`api.util.ts`), so `beforeLoad`
  * (outside React) cannot fetch the current-org query. This reuses the same
- * cached query the sidebar reads. **Fail-closed** — an ungranted or absent map
- * redirects; Dashboard is the un-gated safe landing.
+ * cached query the sidebar reads.
+ *
+ * **Fail policy: optimistic-while-loading, fail-closed once known.** The page
+ * renders while the current-org query is unresolved (`!capabilitiesKnown`) — so
+ * an *allowed* page never blanks — and, once the map is known, a denied page
+ * stops rendering and redirects to the un-gated Dashboard. This is a UX layer,
+ * **not** the security boundary: the server enforces on every route/object
+ * regardless (an unresolvable query keeps the client on a page whose data the
+ * server still returns empty/403). A truly fail-closed variant (blank until
+ * known) was rejected because it flashes blank on every allowed navigation.
  */
 export function useRequirePageView(
   pageId: NavPageId | readonly NavPageId[]

@@ -706,8 +706,26 @@ entityGroupRouter.get(
     try {
       const { id } = req.params;
 
+      const ctx = req.application!.metadata;
       const existing = await DbService.repository.entityGroups.findById(id);
-      if (!existing) {
+      // #630: gate the impact read like the detail (admin-managed → 404 for a
+      // member; sibling routes must match the detail's boundary).
+      if (!existing || existing.organizationId !== ctx.organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
+      }
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "entity_group",
+          id,
+          createdBy: existing.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,
@@ -962,8 +980,25 @@ entityGroupRouter.get(
 
       const { linkValue } = queryParsed.data;
 
+      const ctx = req.application!.metadata;
       const entityGroup = await DbService.repository.entityGroups.findById(id);
-      if (!entityGroup) {
+      // #630: gate resolve like the detail — an unreadable group is 404.
+      if (!entityGroup || entityGroup.organizationId !== ctx.organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
+      }
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "entity_group",
+          id,
+          createdBy: entityGroup.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,

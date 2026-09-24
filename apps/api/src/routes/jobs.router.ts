@@ -426,10 +426,20 @@ jobsRouter.get(
  */
 jobsRouter.post(
   "/:id/cancel",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       logger.info({ id }, "POST /api/jobs/:id/cancel called");
+
+      // #630: org-scope the cancel — a member may cancel jobs in their own org
+      // (jobs are read-all in RBAC terms), never another org's. Closes a
+      // cross-tenant cancel gap (JobsService.cancel resolves by id alone).
+      const ctx = req.application!.metadata;
+      const target = await JobsService.findById(id).catch(() => null);
+      if (!target || target.organizationId !== ctx.organizationId) {
+        return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
+      }
 
       const job = await JobsService.cancel(id).catch((error) => {
         if (error instanceof ApiError) throw error;

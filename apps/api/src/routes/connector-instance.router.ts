@@ -471,13 +471,32 @@ connectorInstanceRouter.get(
  */
 connectorInstanceRouter.get(
   "/:id/impact",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
+      const ctx = req.application!.metadata;
 
       const existing =
         await DbService.repository.connectorInstances.findById(id);
-      if (!existing) {
+      // #630: org-scope + per-object read — the impact counts are as sensitive
+      // as the detail, so an out-of-org or unreadable instance is 404.
+      if (!existing || existing.organizationId !== ctx.organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
+        );
+      }
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "connector_instance",
+          id,
+          createdBy: existing.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,
@@ -575,6 +594,25 @@ connectorInstanceRouter.get(
       const existing =
         await DbService.repository.connectorInstances.findById(id);
       if (!existing || existing.organizationId !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
+        );
+      }
+      // #630: a member sees running jobs only for an instance they can read.
+      if (
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          {
+            type: "connector_instance",
+            id,
+            createdBy: existing.createdBy,
+          }
+        )
+      ) {
         return next(
           new ApiError(
             404,
@@ -1713,6 +1751,34 @@ connectorInstanceRouter.post(
       const { id } = req.params;
       const { organizationId } = req.application!.metadata;
 
+      // #630: test-connection exercises the instance's stored config — gate it
+      // on object read (a member can test only an instance they can see).
+      const existing =
+        await DbService.repository.connectorInstances.findById(id);
+      if (!existing || existing.organizationId !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
+        );
+      }
+      if (
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          { type: "connector_instance", id, createdBy: existing.createdBy }
+        )
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
+        );
+      }
+
       const { instance, adapter } = await SyncService.resolveAdapter(
         id,
         organizationId
@@ -1757,6 +1823,29 @@ connectorInstanceRouter.post(
     try {
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
+
+      // #630: a sync mutates the instance's records — gate on object write (a
+      // member may sync only an instance they created).
+      const existing =
+        await DbService.repository.connectorInstances.findById(id);
+      if (!existing || existing.organizationId !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
+        );
+      }
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "connector_instance",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       // Resolve adapter, run ownership + adapter eligibility checks in one
       // pass. Predictable refusals (no plan, rowPosition, sync-not-supported)
