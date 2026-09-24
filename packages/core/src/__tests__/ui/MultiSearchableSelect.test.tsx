@@ -285,6 +285,60 @@ describe("MultiAsyncSearchableSelect", () => {
     expect(handleChange).toHaveBeenCalledWith(["banana"]);
   });
 
+  // ── Seeded value display (#630) ───────────────────────────────────────────
+  //
+  // A pre-seeded `value` (editing an existing policy, or a read-only system
+  // policy like MemberAccess) must render its ids as chips. The async variant
+  // has no `options` prop, so it resolves the label from the mount search and
+  // falls back to the raw id when the search can't — never an empty picker.
+
+  it("renders a seeded value id as a chip, label resolved from the mount search", async () => {
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([
+        { value: "stations", label: "Stations" },
+        { value: "jobs", label: "Jobs" },
+      ]);
+
+    await act(async () => {
+      render(
+        <MultiAsyncSearchableSelect
+          label="Pages"
+          value={["stations"]}
+          onChange={() => {}}
+          onSearch={onSearch}
+          disabled
+        />
+      );
+    });
+    // flush the reconcile effect that runs once mount options load
+    await act(async () => {});
+
+    expect(screen.getByText("Stations")).toBeInTheDocument();
+    expect(screen.queryByText("Jobs")).not.toBeInTheDocument();
+  });
+
+  it("shows a seeded value id even when the search resolves no label for it", async () => {
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([]);
+
+    await act(async () => {
+      render(
+        <MultiAsyncSearchableSelect
+          label="Objects"
+          value={["unresolved-id"]}
+          onChange={() => {}}
+          onSearch={onSearch}
+          disabled
+        />
+      );
+    });
+    await act(async () => {});
+
+    expect(screen.getByText("unresolved-id")).toBeInTheDocument();
+  });
+
   it("shows a loading indicator while the search is in-flight", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     let resolveSearch!: (options: SelectOption[]) => void;

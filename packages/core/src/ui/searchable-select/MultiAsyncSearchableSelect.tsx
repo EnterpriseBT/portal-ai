@@ -42,15 +42,28 @@ export const MultiAsyncSearchableSelect: React.FC<
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep selected options in sync with external value prop
+  // Keep selected options in sync with the external value prop. Every id in
+  // `value` must render a chip — including a *seeded* value (editing an existing
+  // policy, or a read-only system policy) whose ids the user never picked. Since
+  // this variant has no `options` prop, resolve each id's label from an
+  // already-selected option first (keeps a user-picked label), then from the
+  // loaded search results, and fall back to the raw id so a seeded value is never
+  // an empty picker (#630). Re-runs when `options` load so a seeded id upgrades
+  // from its raw id to its real label.
   useEffect(() => {
     setSelectedOptions((prev) => {
       if (value.length === 0) return [];
-      // Keep only options that are still in the value array
-      const kept = prev.filter((o) => value.includes(String(o.value)));
-      return kept;
+      const byValue = new Map<string, SelectOption>();
+      // Loaded results win (authoritative labels); a previously-selected option
+      // fills any id the current results lack (a user pick persisted across a
+      // later search). A raw-id fallback covers whatever neither resolves.
+      for (const o of [...options, ...prev]) {
+        const v = String(o.value);
+        if (value.includes(v) && !byValue.has(v)) byValue.set(v, o);
+      }
+      return value.map((v) => byValue.get(v) ?? { value: v, label: v });
     });
-  }, [value]);
+  }, [value, options]);
 
   // Initial load on mount
   useEffect(() => {
