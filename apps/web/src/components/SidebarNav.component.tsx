@@ -9,12 +9,112 @@ import {
 } from "@portalai/core/ui";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
+import type { NavPageId } from "@portalai/core/models";
 import { useLayout } from "../utils";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { SidebarNavItem } from "./SidebarNavItem.component";
 import { useRouter } from "@tanstack/react-router";
 import { ApplicationRoute } from "../utils/routes.util";
 import { sdk } from "../api/sdk";
 import { SidebarNavToggle } from "./SidebarNavToggle.component";
+
+/**
+ * The main sidebar nav, as data (#630). Each item is gated on `pageIds`: the
+ * item renders when the caller may `view` **any** of them (so a role granted
+ * only `connector_catalog` still sees Connectors). An item with no `pageIds`
+ * (Dashboard) is always shown — it is the un-gated safe landing. `match` mirrors
+ * the pre-#630 selection logic (Dashboard + Connectors matched exactly, the rest
+ * by prefix). Footer items (Settings/Help/Logout) are never gated.
+ */
+export interface SidebarNavItemDef {
+  route: ApplicationRoute;
+  label: string;
+  icon: IconName;
+  match: "exact" | "prefix";
+  pageIds?: readonly NavPageId[];
+}
+
+export const NAV_ITEMS: readonly SidebarNavItemDef[] = [
+  {
+    route: ApplicationRoute.Dashboard,
+    label: "Dashboard",
+    icon: IconName.Home,
+    match: "exact",
+  },
+  {
+    route: ApplicationRoute.Stations,
+    label: "Stations",
+    icon: IconName.SatelliteAlt,
+    match: "prefix",
+    pageIds: ["stations"],
+  },
+  {
+    route: ApplicationRoute.Toolpacks,
+    label: "Toolpacks",
+    icon: IconName.Extension,
+    match: "prefix",
+    pageIds: ["toolpacks"],
+  },
+  {
+    route: ApplicationRoute.Connectors,
+    label: "Connectors",
+    icon: IconName.MemoryChip,
+    match: "exact",
+    pageIds: ["connectors", "connector_catalog"],
+  },
+  {
+    route: ApplicationRoute.Entities,
+    label: "Entities",
+    icon: IconName.DataObject,
+    match: "prefix",
+    pageIds: ["entities"],
+  },
+  {
+    route: ApplicationRoute.EntityGroups,
+    label: "Entity Groups",
+    icon: IconName.Hub,
+    match: "prefix",
+    pageIds: ["entity_groups"],
+  },
+  {
+    route: ApplicationRoute.Tags,
+    label: "Tags",
+    icon: IconName.Label,
+    match: "prefix",
+    pageIds: ["tags"],
+  },
+  {
+    route: ApplicationRoute.ColumnDefinitions,
+    label: "Column Definitions",
+    icon: IconName.ViewColumn,
+    match: "prefix",
+    pageIds: ["column_definitions"],
+  },
+  {
+    route: ApplicationRoute.Jobs,
+    label: "Jobs",
+    icon: IconName.Work,
+    match: "prefix",
+    pageIds: ["jobs"],
+  },
+  {
+    route: ApplicationRoute.PortalResults,
+    label: "Pinned Results",
+    icon: IconName.PushPin,
+    match: "prefix",
+    pageIds: ["pinned"],
+  },
+];
+
+/** The nav items the caller may see, given a `canViewPage` predicate (#630).
+ *  Pure — unit-tested directly, no render. */
+export function visibleNavItems(
+  canViewPage: (pageId: NavPageId) => boolean
+): SidebarNavItemDef[] {
+  return NAV_ITEMS.filter(
+    (item) => !item.pageIds || item.pageIds.some(canViewPage)
+  );
+}
 
 export interface SidebarNavUIProps {
   collapsed: boolean;
@@ -121,6 +221,7 @@ export const SidebarNav = () => {
   const { isMobile, isCollapsed, isMobileExpanded, isMobileCollapsed, toggle } =
     useLayout();
   const router = useRouter();
+  const { canViewPage } = useCapabilities();
   const { logout } = sdk.auth.logout();
   const [versionOpen, setVersionOpen] = useState(false);
   const pathname = router.state.location.pathname;
@@ -203,66 +304,19 @@ export const SidebarNav = () => {
         </>
       }
     >
-      <SidebarNavItem
-        icon={IconName.Home}
-        label="Dashboard"
-        selected={pathname === ApplicationRoute.Dashboard}
-        onClick={() => handleClick(ApplicationRoute.Dashboard)}
-      />
-      <SidebarNavItem
-        icon={IconName.SatelliteAlt}
-        label="Stations"
-        selected={pathname.startsWith(ApplicationRoute.Stations)}
-        onClick={() => handleClick(ApplicationRoute.Stations)}
-      />
-      <SidebarNavItem
-        icon={IconName.Extension}
-        label="Toolpacks"
-        selected={pathname.startsWith(ApplicationRoute.Toolpacks)}
-        onClick={() => handleClick(ApplicationRoute.Toolpacks)}
-      />
-      <SidebarNavItem
-        icon={IconName.MemoryChip}
-        label="Connectors"
-        selected={pathname === ApplicationRoute.Connectors}
-        onClick={() => handleClick(ApplicationRoute.Connectors)}
-      />
-      <SidebarNavItem
-        icon={IconName.DataObject}
-        label="Entities"
-        selected={pathname.startsWith(ApplicationRoute.Entities)}
-        onClick={() => handleClick(ApplicationRoute.Entities)}
-      />
-      <SidebarNavItem
-        icon={IconName.Hub}
-        label="Entity Groups"
-        selected={pathname.startsWith(ApplicationRoute.EntityGroups)}
-        onClick={() => handleClick(ApplicationRoute.EntityGroups)}
-      />
-      <SidebarNavItem
-        icon={IconName.Label}
-        label="Tags"
-        selected={pathname.startsWith(ApplicationRoute.Tags)}
-        onClick={() => handleClick(ApplicationRoute.Tags)}
-      />
-      <SidebarNavItem
-        icon={IconName.ViewColumn}
-        label="Column Definitions"
-        selected={pathname.startsWith(ApplicationRoute.ColumnDefinitions)}
-        onClick={() => handleClick(ApplicationRoute.ColumnDefinitions)}
-      />
-      <SidebarNavItem
-        icon={IconName.Work}
-        label="Jobs"
-        selected={pathname.startsWith(ApplicationRoute.Jobs)}
-        onClick={() => handleClick(ApplicationRoute.Jobs)}
-      />
-      <SidebarNavItem
-        icon={IconName.PushPin}
-        label="Pinned Results"
-        selected={pathname.startsWith(ApplicationRoute.PortalResults)}
-        onClick={() => handleClick(ApplicationRoute.PortalResults)}
-      />
+      {visibleNavItems(canViewPage).map((item) => (
+        <SidebarNavItem
+          key={item.route}
+          icon={item.icon}
+          label={item.label}
+          selected={
+            item.match === "exact"
+              ? pathname === item.route
+              : pathname.startsWith(item.route)
+          }
+          onClick={() => handleClick(item.route)}
+        />
+      ))}
     </SidebarNavUI>
   );
 };
