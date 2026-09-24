@@ -32,6 +32,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { entityGroups } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 import { entityGroupMemberRouter } from "./entity-group-member.router.js";
 
 const logger = createLogger({ module: "entity-group" });
@@ -147,6 +148,15 @@ entityGroupRouter.get(
           groupIds.length > 0 ? inArray(entityGroups.id, groupIds) : sql`false`
         );
       }
+
+      // #630: filter to the entity groups the caller may `read`.
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("entity_group", {
+        createdByCol: entityGroups.createdBy,
+        idCol: entityGroups.id,
+      });
+      if (visibility) filters.push(visibility);
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
@@ -269,7 +279,24 @@ entityGroupRouter.get(
           );
         });
 
-      if (!entityGroup) {
+      const ctx = req.application!.metadata;
+      if (!entityGroup || entityGroup.organizationId !== ctx.organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
+      }
+      // #630: an unreadable group is indistinguishable from absent (404).
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "entity_group",
+          id,
+          createdBy: entityGroup.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,
@@ -550,7 +577,10 @@ entityGroupRouter.patch(
       }
 
       const existing = await DbService.repository.entityGroups.findById(id);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -559,6 +589,16 @@ entityGroupRouter.patch(
           )
         );
       }
+      // #630: a member may edit only their own group; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "entity_group",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       if (parsed.data.name && parsed.data.name !== existing.name) {
         const duplicate = await DbService.repository.entityGroups.findByName(
@@ -762,7 +802,10 @@ entityGroupRouter.delete(
       const { id } = req.params;
 
       const existing = await DbService.repository.entityGroups.findById(id);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -771,6 +814,16 @@ entityGroupRouter.delete(
           )
         );
       }
+      // #630: a member may delete only their own group; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        {
+          type: "entity_group",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       const { userId } = req.application!.metadata;
 

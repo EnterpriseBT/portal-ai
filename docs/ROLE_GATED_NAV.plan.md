@@ -61,7 +61,7 @@ The security core. Every plumbing LIST filters to readable rows; every detail/mu
 **Files**
 
 - New: `apps/api/src/middleware/require-permission.middleware.ts` — `requirePermission(action, resourceType)` → `PermissionService.check(req.application!.metadata, action, {type})` → `next()` | `ApiError(403)`.
-- Edit: the seven routers — `connector-instance`, `entity-group`, `entity-tag`, `column-definition`, `jobs`, `entity-record`, `toolpacks` (`apps/api/src/routes/…`). LIST: apply `set.visibilityPredicate(resourceType, {createdByCol, idCol})` (pattern: `station.router.ts:172-173`); detail/mutation: per-object `PermissionService.check` (pattern: `station.router.ts:462`). Toolpacks: class-level `requirePermission("resource.read","toolpack")` only (builtin packs aren't DB rows).
+- Edit: the six management routers — `connector-instance`, `entity-group`, `entity-tag`, `column-definition`, `jobs`, `toolpacks` (`apps/api/src/routes/…`). LIST: apply `set.visibilityPredicate(resourceType, {createdByCol, idCol})` (pattern: `station.router.ts`); detail/mutation: per-object `PermissionService.check`. Toolpacks: class-level `requirePermission("resource.read","toolpack")` only (builtin packs aren't DB rows). **`entity_record` is excluded** — it is the data plane (#599 curated views); its `createdBy` is the syncing actor, so a naive ownership filter would hide shared records. Create-gating omitted (no-op for all roles); `connector-instance`/`jobs` detail also gain `getApplicationMetadata` + org-scoping (closing a pre-existing cross-tenant gap).
 - Tests: per-router integration tests under `apps/api`'s integration suite — member-filtered list, `403` on another member's detail, admin sees all, jobs unconditional-read for members, toolpacks class-gate.
 
 **Steps**

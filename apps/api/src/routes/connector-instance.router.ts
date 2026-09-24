@@ -34,6 +34,7 @@ import {
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
@@ -197,6 +198,16 @@ connectorInstanceRouter.get(
         }
       }
 
+      // #630: filter to the connector instances the caller may `read` (a member
+      // sees only their own; owner/admin see all — undefined predicate).
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("connector_instance", {
+        createdByCol: connectorInstances.createdBy,
+        idCol: connectorInstances.id,
+      });
+      if (visibility) filters.push(visibility);
+
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
       const include_ = include
@@ -319,6 +330,7 @@ connectorInstanceRouter.get(
  */
 connectorInstanceRouter.get(
   "/:id",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
@@ -337,7 +349,30 @@ connectorInstanceRouter.get(
           );
         });
 
-      if (!connectorInstance) {
+      // #630: org-scope + per-object read. An out-of-org or unreadable instance
+      // is indistinguishable from absent (404) — closing a pre-existing
+      // cross-tenant read gap while wiring the object gate.
+      const ctx = req.application!.metadata;
+      if (
+        !connectorInstance ||
+        connectorInstance.organizationId !== ctx.organizationId
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
+        );
+      }
+      const set = await PermissionService.loadSet(ctx);
+      if (
+        !set.can("resource.read", {
+          type: "connector_instance",
+          id,
+          createdBy: connectorInstance.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,
@@ -1274,7 +1309,7 @@ connectorInstanceRouter.delete(
 
       const existing =
         await DbService.repository.connectorInstances.findById(id);
-      if (!existing) {
+      if (!existing || existing.organizationId !== organizationId) {
         return next(
           new ApiError(
             404,
@@ -1283,6 +1318,16 @@ connectorInstanceRouter.delete(
           )
         );
       }
+      // #630: a member may delete only their own instance; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        {
+          type: "connector_instance",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
 
@@ -1445,7 +1490,7 @@ connectorInstanceRouter.patch(
 
       const existing =
         await DbService.repository.connectorInstances.findById(id);
-      if (!existing) {
+      if (!existing || existing.organizationId !== organizationId) {
         return next(
           new ApiError(
             404,
@@ -1454,6 +1499,16 @@ connectorInstanceRouter.patch(
           )
         );
       }
+      // #630: a member may edit only their own instance; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "connector_instance",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
 

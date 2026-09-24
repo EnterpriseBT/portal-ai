@@ -29,6 +29,7 @@ import {
 import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
@@ -140,6 +141,18 @@ columnDefinitionRouter.get(
       if (system !== undefined) {
         filters.push(eq(columnDefinitions.system, system === "true"));
       }
+
+      // #630: filter to the column definitions the caller may `read` (system
+      // rows surface via a `created_by_system` grant; members hold neither and
+      // see an empty catalog — the catalog is an admin page, Decision A).
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("column_definition", {
+        createdByCol: columnDefinitions.createdBy,
+        idCol: columnDefinitions.id,
+      });
+      if (visibility) filters.push(visibility);
+
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
 
@@ -251,7 +264,27 @@ columnDefinitionRouter.get(
           );
         });
 
-      if (!columnDefinition) {
+      const ctx = req.application!.metadata;
+      if (
+        !columnDefinition ||
+        columnDefinition.organizationId !== ctx.organizationId
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
+        );
+      }
+      // #630: an unreadable definition is indistinguishable from absent (404).
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "column_definition",
+          id,
+          createdBy: columnDefinition.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,
@@ -561,7 +594,10 @@ columnDefinitionRouter.patch(
 
       const existing =
         await DbService.repository.columnDefinitions.findById(id);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -570,6 +606,16 @@ columnDefinitionRouter.patch(
           )
         );
       }
+      // #630: a member may edit only their own definition; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "column_definition",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       if (existing.system) {
         return next(
@@ -938,7 +984,10 @@ columnDefinitionRouter.delete(
 
       const existing =
         await DbService.repository.columnDefinitions.findById(id);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -947,6 +996,16 @@ columnDefinitionRouter.delete(
           )
         );
       }
+      // #630: a member may delete only their own definition; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        {
+          type: "column_definition",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       if (existing.system) {
         return next(

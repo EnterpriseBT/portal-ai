@@ -98,19 +98,25 @@ export function requirePermission(action: PermissionAction, resourceType: string
 ```
 Mounted for the **class-level** gate on each plumbing sub-router's list.
 
-### The seven plumbing routers (`connector-instance`, `entity-group`, `entity-tag`, `column-definition`, `jobs`, `toolpacks`, `entity-record`)
+### The six management routers (`connector-instance`, `entity-group`, `entity-tag`, `column-definition`, `jobs`, `toolpacks`)
 
 | Router | resourceType | LIST | detail / mutation |
 |---|---|---|---|
-| connector-instance | `connector_instance` | `visibilityPredicate` filter | per-object `check("resource.read"/"write"/"delete", {type,id,createdBy})` |
-| entity-group | `entity_group` | filter | per-object check |
-| entity-tag | `tag` | filter | per-object check |
-| column-definition | `column_definition` | filter | per-object check |
-| jobs | `job` | filter (members: all — unconditional read) | per-object read check |
-| entity-record | `entity_record` | filter (already partly gated elsewhere) | per-object check |
+| connector-instance | `connector_instance` | `visibilityPredicate` filter (member: own + system) | per-object `check("resource.read"/"write"/"delete", {type,id,createdBy})` on detail/PATCH/DELETE |
+| entity-group | `entity_group` | filter (member: none — admin-managed) | per-object check on detail/PATCH/DELETE |
+| entity-tag | `tag` | filter (member: none) | per-object check on detail/PATCH/DELETE |
+| column-definition | `column_definition` | filter (member: none; system rows via `created_by_system`) | per-object check on detail/PATCH/DELETE |
+| jobs | `job` | filter (member: all — unconditional read) | per-object read check on detail |
 | toolpacks | `toolpack` | class-level `requirePermission("resource.read","toolpack")` (builtin packs aren't DB rows → no per-row predicate) | — |
 
-Pattern copied from `station.router.ts:172-173` (list) + `:462` (per-object). Each router already holds `req.application!.metadata`.
+Pattern copied from `station.router.ts` (list `visibilityPredicate`, per-object `check`). `connector-instance` detail + `jobs` detail lacked `getApplicationMetadata` and org-scoping — both are **added here** (metadata mw + `organizationId` guard), closing a pre-existing cross-tenant read gap in the same edit.
+
+**`entity_record` is excluded — it is the data plane, governed by #599 (curated views), not #630.** Its `createdBy` is the *syncing actor* (`wide-table-reconciler.service.ts`), so a naive ownership filter would hide records legitimately shared across members; row-level `entity_record` governance is #599's view model. `entity_record` keeps its existing capability + job-lock gates. Its parent `connector-entity` is not a gated management router either.
+
+**Deferred (defense-in-depth follow-ups, not gaps in the access boundary):**
+- **Create gating** is omitted — every role holds `write <type> created_by_caller`, so a create check is a no-op for all authenticated org members (already behind auth + `requireOrgWritable`).
+- **Secondary reads** (`/:id/impact`, `/:id/resolve`, `/count`) are not individually object-checked; they require an out-of-band id that the filtered list never surfaces.
+- **`jobs` `/:id/cancel`** keeps its existing behavior (jobs are read-only in RBAC terms; cancel is the user escape hatch).
 
 ### Frontend (`apps/web`)
 
