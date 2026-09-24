@@ -351,6 +351,69 @@ export const isVerbValidForResource = (
   t: PermissionResourceType
 ): boolean => (verbsForResource(t) as readonly string[]).includes(verb);
 
+/** The shape a validity check reads — a policy statement or an ad-hoc grant. */
+export interface StatementShape {
+  verb: PermissionVerb;
+  resourceType: PermissionResourceType;
+  resourceId?: string | null;
+  condition?: PermissionCondition | null;
+}
+
+export type StatementValidity =
+  | { valid: true }
+  | { valid: false; reason: string };
+
+/**
+ * Validate a statement's **shape** against {@link RESOURCE_CAPABILITIES} — the one
+ * rule the policy editor, the API policy write path, and the `rbac_management`
+ * toolpack all share, so "which statements are meaningful" lives in exactly one
+ * place. Pure (no DB): it checks the `(verb × resource × scope × ownership)`
+ * combination is meaningful, **not** that a specific `resourceId` exists — that
+ * (and the caller's authority to grant it) is the permissions boundary's job
+ * (`assertStatementsWithinBoundary`). `effect` is unconstrained: a `deny` is as
+ * shape-valid as an `allow`.
+ */
+export function validateStatement(s: StatementShape): StatementValidity {
+  if (!isVerbValidForResource(s.verb, s.resourceType)) {
+    return {
+      valid: false,
+      reason: `verb '${s.verb}' is not valid for resource '${s.resourceType}'`,
+    };
+  }
+  if (s.resourceId != null && !resourceAllowsInstanceScope(s.resourceType)) {
+    return {
+      valid: false,
+      reason: `resource '${s.resourceType}' cannot be scoped to a specific object`,
+    };
+  }
+  if (s.condition != null) {
+    if (s.resourceId != null) {
+      return {
+        valid: false,
+        reason: `an ownership condition applies only to a class-level statement`,
+      };
+    }
+    if (!resourceAllowsOwnership(s.resourceType)) {
+      return {
+        valid: false,
+        reason: `resource '${s.resourceType}' does not support an ownership condition`,
+      };
+    }
+  }
+  return { valid: true };
+}
+
+/** Validate a list; returns the first offending statement's index + reason. */
+export function validateStatements(
+  statements: readonly StatementShape[]
+): { valid: true } | { valid: false; index: number; reason: string } {
+  for (let i = 0; i < statements.length; i++) {
+    const r = validateStatement(statements[i]);
+    if (!r.valid) return { valid: false, index: i, reason: r.reason };
+  }
+  return { valid: true };
+}
+
 /** A policy/role is `system` (immutable, seeded) or `custom` (org-defined). */
 export const RBAC_KINDS = ["system", "custom"] as const;
 export const RbacKindSchema = z.enum(RBAC_KINDS);

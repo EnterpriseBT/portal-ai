@@ -29,6 +29,8 @@ import {
   resourceAllowsInstanceScope,
   resourceAllowsOwnership,
   isVerbValidForResource,
+  validateStatement,
+  validateStatements,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -530,6 +532,88 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
     }
     for (const t of RESOURCE_PERMISSION_TYPES) {
       expect(resourceAllowsOwnership(t)).toBe(true);
+    }
+  });
+});
+
+describe("validateStatement — shared statement validity (#630)", () => {
+  it("accepts a meaningful data grant, a page view, and a privileged action", () => {
+    expect(
+      validateStatement({ verb: "read", resourceType: "station" }).valid
+    ).toBe(true);
+    expect(
+      validateStatement({
+        verb: "view",
+        resourceType: "page",
+        resourceId: "connectors",
+      }).valid
+    ).toBe(true);
+    expect(
+      validateStatement({ verb: "manage", resourceType: "billing" }).valid
+    ).toBe(true);
+    expect(validateStatement({ verb: "*", resourceType: "*" }).valid).toBe(
+      true
+    );
+    expect(
+      validateStatement({
+        verb: "read",
+        resourceType: "station",
+        condition: "created_by_caller",
+      }).valid
+    ).toBe(true);
+  });
+
+  it("rejects an inert verb/resource pair (read page, manage station, view station)", () => {
+    for (const s of [
+      { verb: "read", resourceType: "page" },
+      { verb: "manage", resourceType: "station" },
+      { verb: "view", resourceType: "station" },
+    ] as const) {
+      const r = validateStatement(s);
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.reason).toMatch(/not valid for resource/);
+    }
+  });
+
+  it("rejects an instance scope on a class-only resource", () => {
+    const r = validateStatement({
+      verb: "manage",
+      resourceType: "billing",
+      resourceId: "acct-1",
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reason).toMatch(/cannot be scoped to a specific/);
+  });
+
+  it("rejects an ownership condition on an instance scope or an unowned resource", () => {
+    expect(
+      validateStatement({
+        verb: "read",
+        resourceType: "station",
+        resourceId: "st-1",
+        condition: "created_by_caller",
+      }).valid
+    ).toBe(false);
+    expect(
+      validateStatement({
+        verb: "view",
+        resourceType: "page",
+        resourceId: "connectors",
+        condition: "created_by_caller",
+      }).valid
+    ).toBe(false);
+  });
+
+  it("validateStatements reports the first offender's index + reason", () => {
+    const r = validateStatements([
+      { verb: "read", resourceType: "station" },
+      { verb: "read", resourceType: "page" }, // invalid
+      { verb: "write", resourceType: "pin" },
+    ]);
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.index).toBe(1);
+      expect(r.reason).toMatch(/not valid/);
     }
   });
 });
