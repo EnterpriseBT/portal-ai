@@ -40,6 +40,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { useCapabilities } from "../utils/use-capabilities.util";
+import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
@@ -77,11 +79,15 @@ import {
 interface TagAssignSelectProps {
   onSearch: (query: string) => Promise<SelectOption[]>;
   onAssign: (entityTagId: string) => void;
+  /** #630: false when the caller can't `read` tags — shows an unauthorized
+   *  panel in place of the picker. Defaults true (pure-UI/story render). */
+  canRead?: boolean;
 }
 
 const TagAssignSelect: React.FC<TagAssignSelectProps> = ({
   onSearch,
   onAssign,
+  canRead = true,
 }) => {
   const [value, setValue] = React.useState<string | null>(null);
 
@@ -93,6 +99,12 @@ const TagAssignSelect: React.FC<TagAssignSelectProps> = ({
       setValue(null);
     }
   };
+
+  if (!canRead) {
+    return (
+      <UnauthorizedState message="You don't have permission to view tags." />
+    );
+  }
 
   return (
     <AsyncSearchableSelect
@@ -130,6 +142,9 @@ export interface EntityDetailViewUIProps {
   onUnassignTag?: (assignmentId: string) => void;
   /** Search callback for the tag assignment autocomplete. */
   onSearchTags?: (query: string) => Promise<SelectOption[]>;
+  /** #630: whether the caller may `read` tags (drives the tag picker's
+   *  unauthorized panel). Defaults true. */
+  canReadTags?: boolean;
   /** Whether the connector instance has write capability. */
   isWriteEnabled?: boolean;
   /** Called when user confirms entity deletion. */
@@ -197,6 +212,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   onAssignTag,
   onUnassignTag,
   onSearchTags,
+  canReadTags,
   isWriteEnabled,
   onDelete,
   isDeleting,
@@ -396,6 +412,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                 <TagAssignSelect
                   onSearch={onSearchTags}
                   onAssign={onAssignTag}
+                  canRead={canReadTags}
                 />
               </Box>
             )}
@@ -629,6 +646,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const { onSearch: handleSearchTags } = sdk.entityTags.search();
+  const { canOnResource, capabilitiesKnown } = useCapabilities();
+  // #630: optimistic while the current-org query loads.
+  const canReadTags = !capabilitiesKnown || canOnResource("tag", "read");
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -901,6 +921,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             onAssignTag={handleAssignTag}
             onUnassignTag={handleUnassignTag}
             onSearchTags={handleSearchTags}
+            canReadTags={canReadTags}
             isWriteEnabled={isWriteEnabled}
             onDelete={handleDelete}
             isDeleting={deleteMutation.isPending}
