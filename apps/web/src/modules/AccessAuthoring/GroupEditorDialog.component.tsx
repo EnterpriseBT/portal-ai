@@ -138,11 +138,19 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const policiesQuery = sdk.policies.list({ enabled: open });
   const membersQuery = sdk.members.list({ enabled: open });
+  // The group's current members (#637) — fetched only when editing (never for a
+  // new group), so the group list stays lean at hundreds-of-users scale.
+  const groupMembersQuery = sdk.groups.members(group?.id ?? "", {
+    enabled: open && !!group,
+  });
   const create = sdk.groups.create();
   const update = sdk.groups.update(group?.id ?? "");
   const setMembers = sdk.groups.setMembers();
   const toast = useToast();
   const queryClient = useQueryClient();
+  // Seed the Members field from the fetched membership once per open, so a later
+  // user edit isn't clobbered when the query resolves.
+  const membersSeededRef = React.useRef(false);
 
   React.useEffect(() => {
     if (open) {
@@ -150,8 +158,16 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
       setDescription(group?.description ?? "");
       setPolicyIds(group?.policyIds ?? []);
       setMemberIds([]);
+      membersSeededRef.current = false;
     }
   }, [open, group]);
+
+  React.useEffect(() => {
+    if (open && group && !membersSeededRef.current && groupMembersQuery.data) {
+      setMemberIds(groupMembersQuery.data.userIds);
+      membersSeededRef.current = true;
+    }
+  }, [open, group, groupMembersQuery.data]);
 
   const policyOptions: SelectOption[] = (
     policiesQuery.data?.policies ?? []
@@ -173,17 +189,13 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
       { name: name.trim(), description: description || null, policyIds },
       {
         onSuccess: (data) => {
-          // Membership is a second, group-centric call — targets the returned
-          // id (fresh on create, existing on edit). On edit we don't re-drive
-          // membership from this dialog (kept simple), so only set on create.
-          if (group) {
-            invalidate();
-          } else {
-            setMembers
-              .mutateAsync({ id: data.group.id, userIds: memberIds })
-              .then(invalidate)
-              .catch(() => invalidate());
-          }
+          // Membership is a second, group-centric call, on BOTH create and edit
+          // (#637) — targets the returned id (fresh on create, existing on edit).
+          // setGroupMembers diffs, so an unchanged set is a no-op.
+          setMembers
+            .mutateAsync({ id: data.group.id, userIds: memberIds })
+            .then(invalidate)
+            .catch(() => invalidate());
         },
       }
     );
