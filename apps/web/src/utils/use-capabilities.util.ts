@@ -1,6 +1,18 @@
-import type { OrgRole, CallerCapabilityAction } from "@portalai/core/models";
+import type {
+  OrgRole,
+  CallerCapabilityAction,
+  NavPageId,
+  ResourcePermissionType,
+} from "@portalai/core/models";
 
 import { sdk } from "../api/sdk";
+
+/** The class-level `{read,write,delete}` shape per object type (#630). */
+export interface ResourceVerbs {
+  read: boolean;
+  write: boolean;
+  delete: boolean;
+}
 
 export interface CapabilityState {
   /** The caller's roles in the current org (empty until resolved). */
@@ -16,6 +28,20 @@ export interface CapabilityState {
    * affordances (hide/disable what the caller can't do).
    */
   can: (action: CallerCapabilityAction) => boolean;
+  /**
+   * Whether the caller may `view` a nav page/sub-tab (#630) — drives sidebar
+   * visibility + the route-redirect guard. Fail-closed: an ungranted or
+   * not-yet-loaded page is `false`. Page-view is a **separate** resource from
+   * object `read` (a member may read their own connector without seeing the
+   * Connectors page).
+   */
+  canViewPage: (pageId: NavPageId) => boolean;
+  /** Coarse class-level object permission (#630) — for affordances only; the
+   *  per-object boundary stays a server check. Fail-closed. */
+  canOnResource: (
+    type: ResourcePermissionType,
+    verb: keyof ResourceVerbs
+  ) => boolean;
   /** true once the current-org query has resolved (capabilities are known). */
   capabilitiesKnown: boolean;
 }
@@ -30,10 +56,14 @@ export interface CapabilityState {
 export function useCapabilities(): CapabilityState {
   const { data } = sdk.organizations.current();
   const capabilities = data?.capabilities;
+  const pagePermissions = data?.pagePermissions;
+  const resourcePermissions = data?.resourcePermissions;
   return {
     roles: data?.roles ?? [],
     groups: data?.groups ?? [],
     can: (action) => capabilities?.[action] ?? false,
+    canViewPage: (pageId) => pagePermissions?.[pageId] ?? false,
+    canOnResource: (type, verb) => resourcePermissions?.[type]?.[verb] ?? false,
     capabilitiesKnown: data !== undefined,
   };
 }

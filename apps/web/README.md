@@ -329,6 +329,40 @@ export const Route = createFileRoute("/_authorized")({
 });
 ```
 
+### Permission-gated navigation & pages (#630)
+
+Nav visibility and page access are governed by the server's RBAC engine, never a
+role-name check. `GET /api/organization/current` returns two maps the FE reads
+through `useCapabilities()` (`src/utils/use-capabilities.util.ts`):
+
+- **`canViewPage(pageId)`** — a `page`×`view` grant. Drives the sidebar
+  (`NAV_ITEMS` + `visibleNavItems()` in `SidebarNav.component.tsx`) and the route
+  guard. An item shows when the caller may view **any** of its `pageIds` (so a
+  role granted only `connector_catalog` still sees Connectors).
+- **`canOnResource(type, verb)`** — coarse class-level `{read,write,delete}` for
+  affordances only; the per-object boundary stays a server check.
+
+Both **fail closed** (an absent map → `false`). A page whose sub-tabs are backed
+by different resources (Connectors → `connectors` / `connector_catalog`) gates
+each tab on its own id.
+
+**Gate a new nav page:** add its `pageId` to `NAV_PAGE_IDS` (core), grant it in
+the default policies (`seed.service.ts`) + a per-org backfill, add a `NAV_ITEMS`
+row, and wrap its list index route with `guardedComponent(pageId, View)`:
+
+```typescript
+import { guardedComponent } from "../utils/use-require-page-view.util";
+export const Route = createFileRoute("/things/")({
+  component: guardedComponent("things", ThingsView),
+});
+```
+
+The guard is an **in-React hook** (`useRequirePageView`), not a TanStack
+`beforeLoad`: the auth token is only reachable through `useAuth()`, so a
+`beforeLoad` (outside React) can't fetch the current-org query. It redirects a
+denied caller to the un-gated Dashboard; an unreadable **detail** object returns
+`404` (invisible == absent) rather than a forbidden page.
+
 ## Authentication
 
 Auth is a **config-driven seam** (#607): a single `useAuth()` hook

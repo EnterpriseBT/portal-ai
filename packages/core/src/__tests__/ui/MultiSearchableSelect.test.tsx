@@ -285,6 +285,116 @@ describe("MultiAsyncSearchableSelect", () => {
     expect(handleChange).toHaveBeenCalledWith(["banana"]);
   });
 
+  // ── Seeded value display (#630) ───────────────────────────────────────────
+  //
+  // A pre-seeded `value` (editing an existing policy, or a read-only system
+  // policy like MemberAccess) must render its ids as chips. The async variant
+  // has no `options` prop, so it resolves the label from the mount search and
+  // falls back to the raw id when the search can't — never an empty picker.
+
+  it("renders a seeded value id as a chip, label resolved from the mount search", async () => {
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([
+        { value: "stations", label: "Stations" },
+        { value: "jobs", label: "Jobs" },
+      ]);
+
+    await act(async () => {
+      render(
+        <MultiAsyncSearchableSelect
+          label="Pages"
+          value={["stations"]}
+          onChange={() => {}}
+          onSearch={onSearch}
+          disabled
+        />
+      );
+    });
+    // flush the reconcile effect that runs once mount options load
+    await act(async () => {});
+
+    expect(screen.getByText("Stations")).toBeInTheDocument();
+    expect(screen.queryByText("Jobs")).not.toBeInTheDocument();
+  });
+
+  it("shows a seeded value id even when the search resolves no label for it", async () => {
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([]);
+
+    await act(async () => {
+      render(
+        <MultiAsyncSearchableSelect
+          label="Objects"
+          value={["unresolved-id"]}
+          onChange={() => {}}
+          onSearch={onSearch}
+          disabled
+        />
+      );
+    });
+    await act(async () => {});
+
+    expect(screen.getByText("unresolved-id")).toBeInTheDocument();
+  });
+
+  it("keeps a user-picked chip label when a later search returns the same id relabeled", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    // Mount search labels id "x" as "Stations"; a later query returns the same
+    // id with a context-specific display string.
+    const onSearch = jest
+      .fn<(q: string) => Promise<SelectOption[]>>()
+      .mockImplementation(async (q: string) =>
+        q === "st"
+          ? [{ value: "x", label: "Stations (view)" }]
+          : [{ value: "x", label: "Stations" }]
+      );
+
+    // Controlled: mirror the emitted value back into the prop.
+    function Harness() {
+      const [value, setValue] = React.useState<string[]>([]);
+      return (
+        <MultiAsyncSearchableSelect
+          label="Objects"
+          value={value}
+          onChange={setValue}
+          onSearch={onSearch}
+          debounceMs={300}
+        />
+      );
+    }
+
+    await act(async () => {
+      render(<Harness />);
+    });
+    await act(async () => {});
+
+    const input = screen.getByRole("combobox");
+    await user.click(input);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("option", { name: "Stations" })
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("option", { name: "Stations" }));
+
+    const chipLabel = () =>
+      document.querySelector(".MuiChip-label")?.textContent ?? null;
+    expect(chipLabel()).toBe("Stations");
+
+    // Trigger a later search that returns "x" relabeled.
+    await user.type(input, "st");
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+    await waitFor(() => expect(onSearch).toHaveBeenCalledWith("st"));
+    await act(async () => {});
+
+    // The user-picked chip label stays stable — the later search does not flip it.
+    expect(chipLabel()).toBe("Stations");
+  });
+
   it("shows a loading indicator while the search is in-flight", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     let resolveSearch!: (options: SelectOption[]) => void;

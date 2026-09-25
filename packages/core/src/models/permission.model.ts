@@ -19,7 +19,9 @@ export const PERMISSION_EFFECTS = ["allow", "deny"] as const;
 export const PermissionEffectSchema = z.enum(PERMISSION_EFFECTS);
 export type PermissionEffect = z.infer<typeof PermissionEffectSchema>;
 
-/** The action verb. `*` is the wildcard (FullAccess). */
+/** The action verb. `*` is the wildcard (FullAccess). `view` (#630) gates a nav
+ *  page/section — distinct from `read` on an object, so a `deny read <class>`
+ *  never collides with a page `view` grant (they are different resources). */
 export const PERMISSION_VERBS = [
   "read",
   "write",
@@ -27,21 +29,35 @@ export const PERMISSION_VERBS = [
   "share",
   "manage",
   "invite",
+  "view",
   "*",
 ] as const;
 export const PermissionVerbSchema = z.enum(PERMISSION_VERBS);
 export type PermissionVerb = z.infer<typeof PermissionVerbSchema>;
 
-/** The object class a statement targets. `*` is any type. */
+/** The object class a statement targets. `*` is any type.
+ *  #630 adds the remaining plumbing object types (`entity_group`, `tag`,
+ *  `column_definition`, `job`, `toolpack`) and the `page` nav pseudo-resource
+ *  (`view page:<id>` gates a sidebar page/sub-tab). `view` (the #599 curated-view
+ *  object) is unrelated to the `view` verb. Adding a type needs no migration —
+ *  `resource_type` is a `text` column with no CHECK (only `effect`/`condition`
+ *  are constrained). */
 export const PERMISSION_RESOURCE_TYPES = [
   "station",
   "pin",
-  "view",
+  "curated_view",
   "portal",
   "entity",
   "entity_record",
   "field_mapping",
   "connector_instance",
+  "connector_definition",
+  "entity_group",
+  "tag",
+  "column_definition",
+  "job",
+  "toolpack",
+  "page",
   "billing",
   "org",
   "member",
@@ -62,7 +78,7 @@ export type PermissionResourceType = z.infer<
 export const DATA_RESOURCE_TYPES = [
   "station",
   "pin",
-  "view",
+  "curated_view",
   "portal",
   "entity",
   "entity_record",
@@ -120,6 +136,283 @@ export const CapabilityMapSchema = z.record(
   z.boolean()
 );
 export type CapabilityMap = z.infer<typeof CapabilityMapSchema>;
+
+// ── Page + object permission surfaces (#630) ──────────────────────────
+
+/**
+ * The gateable sidebar pages — the `resourceId`s a `view page:<id>` statement
+ * targets, and the **single source of truth** for the page set (the nav table,
+ * the policy-editor page picker, and the route guards all derive from it, so a
+ * new page can't be silently missed). One id **per page**, not per tab: a page's
+ * sub-tabs / lists / tables are gated by the **object** `read` of the data they
+ * show (e.g. the Connectors page is `connectors`; its Connected tab is gated by
+ * `read connector_instance`, its Catalog tab by `read connector_definition`).
+ * `page` is the only UI-only grant — everything else maps to a real object.
+ * Dashboard is deliberately absent — the un-gated safe landing. The FE reads a
+ * per-id `PagePermissionMap` off `current()` and gates nav/route on it (never a
+ * role-name check).
+ */
+export const NAV_PAGE_IDS = [
+  "stations",
+  "pinned",
+  "jobs",
+  "connectors",
+  "entities",
+  "entity_groups",
+  "tags",
+  "column_definitions",
+  "toolpacks",
+] as const;
+export const NavPageIdSchema = z.enum(NAV_PAGE_IDS);
+export type NavPageId = z.infer<typeof NavPageIdSchema>;
+
+/**
+ * The pages `MemberAccess` grants `view` on (#630, Decision A). Dashboard is
+ * un-gated; the admin pages (connectors/entities/…) carry **no** member grant —
+ * a role that needs them is an admin-authored policy, which composes with zero
+ * code change. Data-defined here so the seed and the backfill share one source.
+ */
+export const MEMBER_VIEW_PAGE_IDS = [
+  "stations",
+  "pinned",
+  "jobs",
+] as const satisfies readonly NavPageId[];
+
+export const PagePermissionMapSchema = z.record(NavPageIdSchema, z.boolean());
+export type PagePermissionMap = z.infer<typeof PagePermissionMapSchema>;
+
+/**
+ * The object resource types the FE reads a coarse class-level `{read,write,
+ * delete}` map for (#630) — the data objects plus the plumbing catalogs, minus
+ * the privileged pseudo-resources (governed by {@link CapabilityMap}) and `page`
+ * (governed by {@link PagePermissionMap}). Per-object interactability is still a
+ * per-object `check`; this map only powers coarse affordances.
+ */
+export const RESOURCE_PERMISSION_TYPES = [
+  ...DATA_RESOURCE_TYPES,
+  "connector_definition",
+  "entity_group",
+  "tag",
+  "column_definition",
+  "job",
+  "toolpack",
+] as const satisfies readonly PermissionResourceType[];
+
+/**
+ * Pseudo-resources with **no per-object ownership** (#630) — an instance-level
+ * grant on them (`view page:connectors`) is authorized at the **class** level,
+ * not against an object's creator (there is none). The custom-policy authoring
+ * boundary (`assertStatementsWithinBoundary`) probes these by verb+id rather than
+ * resolving a `createdBy`, so an admin who holds `view page` (or `* *`) can author
+ * a role/group/policy granting a specific page — the composability guarantee.
+ * `page` is the only one today; the privileged pseudo-resources
+ * (`billing`/`org`/`member`/`audit`) are class-only in practice.
+ */
+export const OWNERSHIPLESS_RESOURCE_TYPES = [
+  "page",
+] as const satisfies readonly PermissionResourceType[];
+export const ResourcePermissionTypeSchema = z.enum(RESOURCE_PERMISSION_TYPES);
+export type ResourcePermissionType = z.infer<
+  typeof ResourcePermissionTypeSchema
+>;
+
+export const ResourcePermissionMapSchema = z.record(
+  ResourcePermissionTypeSchema,
+  z.object({
+    read: z.boolean(),
+    write: z.boolean(),
+    delete: z.boolean(),
+  })
+);
+export type ResourcePermissionMap = z.infer<typeof ResourcePermissionMapSchema>;
+
+// ── Statement construction validity (#630) ────────────────────────────
+
+/**
+ * What a legal statement may say about a resource: which **verbs** are meaningful
+ * on it, whether it may target a **specific instance** (vs class-level only), and
+ * whether a class statement may carry an **ownership** condition. This is the one
+ * source of truth for "which (verb × resource × scope) combinations exist", so the
+ * policy editor can only *construct* valid statements (and a future server-side
+ * check can *reject* invalid ones) instead of allowing inert combinations like
+ * `read page` or `manage station`.
+ *
+ * It is **composed from the vocabulary above**, not hand-maintained in parallel:
+ *  - object/data + catalog types ({@link RESOURCE_PERMISSION_TYPES}) take
+ *    `read`/`write`/`delete` (+ `share` for {@link SHAREABLE_RESOURCE_TYPES}) and
+ *    the `*` verb; they support ownership; instance scope for the searchable ones;
+ *  - `page` is the `view`-only nav pseudo-resource — fixed instance ids
+ *    ({@link NAV_PAGE_IDS}), no ownership;
+ *  - the privileged singletons (`billing`/`org`/`member`/`audit`) take exactly the
+ *    verbs {@link CALLER_CAPABILITY_ACTIONS} defines and are class-only.
+ *
+ * The `view`⟺`page` pairing is **not** special-cased: `view` simply appears in no
+ * verb set except `page`'s, so it can only ever pair with `page` — the coupling
+ * falls out of the matrix. A `verbForStatement` guard test pins these invariants.
+ */
+export interface ResourceCapability {
+  readonly verbs: readonly PermissionVerb[];
+  readonly instanceScope: boolean;
+  readonly ownership: boolean;
+}
+
+/** The object types with a searchable instance picker (mirrors the server's
+ *  `RbacObjectSearchService`); `page` is instance-scoped too but via a fixed id
+ *  list, so it is handled explicitly below. */
+const INSTANCE_SEARCHABLE_TYPES = [
+  "station",
+  "pin",
+  "portal",
+  "connector_instance",
+  "entity",
+] as const satisfies readonly PermissionResourceType[];
+
+const objectCapability = (t: PermissionResourceType): ResourceCapability => ({
+  verbs: (
+    SHAREABLE_RESOURCE_TYPES as readonly PermissionResourceType[]
+  ).includes(t)
+    ? ["read", "write", "delete", "share", "*"]
+    : ["read", "write", "delete", "*"],
+  instanceScope: (
+    INSTANCE_SEARCHABLE_TYPES as readonly PermissionResourceType[]
+  ).includes(t),
+  ownership: true,
+});
+
+export const RESOURCE_CAPABILITIES: Record<
+  PermissionResourceType,
+  ResourceCapability
+> = {
+  station: objectCapability("station"),
+  pin: objectCapability("pin"),
+  curated_view: objectCapability("curated_view"),
+  portal: objectCapability("portal"),
+  entity: objectCapability("entity"),
+  entity_record: objectCapability("entity_record"),
+  field_mapping: objectCapability("field_mapping"),
+  connector_instance: objectCapability("connector_instance"),
+  connector_definition: objectCapability("connector_definition"),
+  entity_group: objectCapability("entity_group"),
+  tag: objectCapability("tag"),
+  column_definition: objectCapability("column_definition"),
+  job: objectCapability("job"),
+  toolpack: objectCapability("toolpack"),
+  // `view`-only nav pseudo-resource — fixed page ids, no per-object ownership.
+  page: { verbs: ["view"], instanceScope: true, ownership: false },
+  // Privileged singletons — verbs are exactly what CALLER_CAPABILITY_ACTIONS
+  // gates (billing.manage / org.delete / org.audit.read / member.*); class-only.
+  billing: { verbs: ["manage"], instanceScope: false, ownership: false },
+  org: { verbs: ["delete"], instanceScope: false, ownership: false },
+  audit: { verbs: ["read"], instanceScope: false, ownership: false },
+  member: {
+    verbs: ["invite", "manage", "delete"],
+    instanceScope: false,
+    ownership: false,
+  },
+  // Wildcard resource — any concrete verb (or `*`), never the page-only `view`.
+  "*": {
+    verbs: ["read", "write", "delete", "share", "manage", "invite", "*"],
+    instanceScope: false,
+    ownership: true,
+  },
+};
+
+const DEFAULT_CAPABILITY: ResourceCapability = {
+  verbs: [...PERMISSION_VERBS],
+  instanceScope: false,
+  ownership: true,
+};
+
+const capabilityFor = (t: PermissionResourceType): ResourceCapability =>
+  RESOURCE_CAPABILITIES[t] ?? DEFAULT_CAPABILITY;
+
+/** The verbs a statement on `t` may use (the only ones an editor should offer). */
+export const verbsForResource = (
+  t: PermissionResourceType
+): readonly PermissionVerb[] => capabilityFor(t).verbs;
+
+/** The verb to fall back to when a resource change orphans the current verb. */
+export const defaultVerbForResource = (
+  t: PermissionResourceType
+): PermissionVerb => capabilityFor(t).verbs[0];
+
+/** Whether `t` may be scoped to specific instances (vs class-level only). */
+export const resourceAllowsInstanceScope = (
+  t: PermissionResourceType
+): boolean => capabilityFor(t).instanceScope;
+
+/** Whether a class statement on `t` may carry an ownership condition. */
+export const resourceAllowsOwnership = (t: PermissionResourceType): boolean =>
+  capabilityFor(t).ownership;
+
+/** Whether `(verb, resourceType)` is a meaningful pair the app enforces. */
+export const isVerbValidForResource = (
+  verb: PermissionVerb,
+  t: PermissionResourceType
+): boolean => (verbsForResource(t) as readonly string[]).includes(verb);
+
+/** The shape a validity check reads — a policy statement or an ad-hoc grant. */
+export interface StatementShape {
+  verb: PermissionVerb;
+  resourceType: PermissionResourceType;
+  resourceId?: string | null;
+  condition?: PermissionCondition | null;
+}
+
+export type StatementValidity =
+  | { valid: true }
+  | { valid: false; reason: string };
+
+/**
+ * Validate a statement's **shape** against {@link RESOURCE_CAPABILITIES} — the one
+ * rule the policy editor, the API policy write path, and the `rbac_management`
+ * toolpack all share, so "which statements are meaningful" lives in exactly one
+ * place. Pure (no DB): it checks the `(verb × resource × scope × ownership)`
+ * combination is meaningful, **not** that a specific `resourceId` exists — that
+ * (and the caller's authority to grant it) is the permissions boundary's job
+ * (`assertStatementsWithinBoundary`). `effect` is unconstrained: a `deny` is as
+ * shape-valid as an `allow`.
+ */
+export function validateStatement(s: StatementShape): StatementValidity {
+  if (!isVerbValidForResource(s.verb, s.resourceType)) {
+    return {
+      valid: false,
+      reason: `verb '${s.verb}' is not valid for resource '${s.resourceType}'`,
+    };
+  }
+  if (s.resourceId != null && !resourceAllowsInstanceScope(s.resourceType)) {
+    return {
+      valid: false,
+      reason: `resource '${s.resourceType}' cannot be scoped to a specific object`,
+    };
+  }
+  if (s.condition != null) {
+    if (s.resourceId != null) {
+      return {
+        valid: false,
+        reason: `an ownership condition applies only to a class-level statement`,
+      };
+    }
+    if (!resourceAllowsOwnership(s.resourceType)) {
+      return {
+        valid: false,
+        reason: `resource '${s.resourceType}' does not support an ownership condition`,
+      };
+    }
+  }
+  return { valid: true };
+}
+
+/** Validate a list; returns the first offending statement's index + reason. */
+export function validateStatements(
+  statements: readonly StatementShape[]
+): { valid: true } | { valid: false; index: number; reason: string } {
+  for (let i = 0; i < statements.length; i++) {
+    const r = validateStatement(statements[i]);
+    if (!r.valid) return { valid: false, index: i, reason: r.reason };
+  }
+  return { valid: true };
+}
 
 /** A policy/role is `system` (immutable, seeded) or `custom` (org-defined). */
 export const RBAC_KINDS = ["system", "custom"] as const;

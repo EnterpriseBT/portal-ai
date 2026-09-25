@@ -10,6 +10,7 @@
 import {
   PolicyModelFactory,
   PermissionStatementModelFactory,
+  validateStatements,
 } from "@portalai/core/models";
 import type {
   PolicyUpsertRequest,
@@ -48,6 +49,27 @@ export class PolicyService {
       );
     }
     await PermissionService.check(caller, "member.role.assign");
+  }
+
+  /**
+   * Gate B0 — statement **shape** validity, the same `RESOURCE_CAPABILITIES` rule
+   * the web editor constructs against (#630). Pure + synchronous (no DB): rejects
+   * an inert `(verb × resource × scope)` combination (e.g. `read page`) before the
+   * boundary check resolves the caller's set. Runs for every authored-statement
+   * path — the HTTP router AND the `rbac_management` toolpack both reach here via
+   * `create`/`update`, so the rule is enforced in exactly one place.
+   */
+  private static assertStatementsValid(
+    statements: PolicyStatementInput[]
+  ): void {
+    const result = validateStatements(statements);
+    if (!result.valid) {
+      throw new ApiError(
+        400,
+        ApiCode.RBAC_STATEMENT_INVALID,
+        `Statement ${result.index + 1} is invalid: ${result.reason}`
+      );
+    }
   }
 
   /** Gate B2 — the statement boundary, on the caller's own resolved set. */
@@ -175,6 +197,7 @@ export class PolicyService {
     audit: RbacAuditContext
   ): Promise<PolicyView> {
     await PolicyService.gate(caller);
+    PolicyService.assertStatementsValid(req.statements);
     await PolicyService.assertBoundary(caller, req.statements);
     await PolicyService.assertNameFree(caller, req.name);
 
@@ -224,6 +247,7 @@ export class PolicyService {
     await PolicyService.gate(caller);
     const policy = await PolicyService.load(caller, id);
     PolicyService.assertMutable(policy);
+    PolicyService.assertStatementsValid(req.statements);
     await PolicyService.assertBoundary(caller, req.statements);
     await PolicyService.assertNameFree(caller, req.name, id);
 

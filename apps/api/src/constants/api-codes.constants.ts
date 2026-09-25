@@ -64,6 +64,9 @@ export enum ApiCode {
   GRANT_NOT_FOUND = "GRANT_NOT_FOUND",
   /** A custom policy statement grants access the author doesn't hold (#622). 403. */
   RBAC_POLICY_EXCEEDS_BOUNDARY = "RBAC_POLICY_EXCEEDS_BOUNDARY",
+  /** A policy statement is not a meaningful (verb × resource × scope) combination
+   *  per the shared RESOURCE_CAPABILITIES matrix — e.g. `read page` (#630). 400. */
+  RBAC_STATEMENT_INVALID = "RBAC_STATEMENT_INVALID",
   /** A system (immutable, seeded) role/policy cannot be edited or deleted (#622). 403. */
   RBAC_SYSTEM_IMMUTABLE = "RBAC_SYSTEM_IMMUTABLE",
   /** The org's tier does not include custom RBAC authoring (#622). 403. */
