@@ -73,6 +73,8 @@ What a user sees through view `V`:
 
 **Decided.** Replace the 2-arg `buildSessionViews`; view set = `station_views` ∩ the caller's granted `curated_view`s (independent of station — attachment scopes *surfacing*, the grant scopes *authority*). Each temp view emits its projection (∩ field grants) + `whereClause`, ANDed after the org+`deleted` guard, minus entity_record denies. `_meta_*` rebuild **per-view** (two slices of one entity = two roster rows). `runSqlQuery`/`explainSqlQuery`/`sql_query` thread `userId`; every caller must resolve a real user principal (fail-closed — no "all entities" fallback). Per **OQ2**, the same authorization backs both the agent session and the UI records endpoint.
 
+`resolveViewsForSession(stationId, userId)` is the **single source** for *four* member-facing data-shape surfaces that today all key off `resolveEntityCapabilities(stationId)` (per-org, entity-keyed) and must switch to per-user view-keyed: (a) the SQL `_meta_*` views (`portal-sql.service.ts`); (b) `buildStationContext` (`portal.service.ts:1186`, currently `{station, organizationId}` — no `userId`), whose `entities` feed (c) the system-prompt roster (`system.prompt.ts:614`, fixed for free once (b) is view-scoped); and (d) the **`station_context` tool** (`station-context.tool.ts`, the biggest leak surface — it returns `c_`-column names + `fieldMappingId` per entity). `userId` threads from the two `buildStationContext` call sites (`portal.service.ts:395`, `:689`).
+
 ### D6 — Views UI + a records endpoint
 
 **Decided.** Editing tiers use **no new verb**: attribute-edit (name/description/`whereClause`/tags) = `write curated_view`; projection-edit = `write curated_view` **+** independent `read field_mapping` on each added field.
@@ -80,10 +82,19 @@ What a user sees through view `V`:
 - **View-detail page** mirroring entity-detail — tags, edit/delete, and a searchable/sortable/filterable **records table** over `GET /api/curated-views/:id/records` (projection + filter applied, gated by `read curated_view:id`, keyset-paginated per the CLAUDE.md indexing rules).
 - **Attached-but-inaccessible views render as marked (red-overlay) chips** — existence is not secret, data is gated; underlying field/data denials surface in-session and prompt the user to ask their admin. (This supersedes the earlier "silently hide" lean.)
 
+### D7 — `station_views` **replaces** `station_instances`: everything is a view
+
+**Decided (scope amendment).** Since views are now *the* way sessions and users touch data, a station no longer attaches connectors directly — `station_instances` is **dropped as a user attachment** and `station_views` is the sole data attachment. Leaving connector→station attachment in place would be a **read-exposure bypass** of the entire curated model (a member on such a station resolves raw entities again), so this is required for the security model to hold, not polish — it lands **atomically** with the read switch.
+
+- **Everything is a view; passthrough views are the raw/admin path.** The auto-generated default (passthrough — full projection, no filter) view per entity *is* how admins get "raw" data (resolved via `AdminAccess *`). There is no separate raw-entity session path; entity-management + writes operate on the entity *behind* a (passthrough) view.
+- **Derived, not attached.** A station's operable entities / connector instances / capabilities all **rederive** through `station_views → view → connector_entity → connector_instance`. `resolveStationCapabilities`, `resolveEntityCapabilities`, `buildStationContext`, and `loadConnectorInstanceContexts` switch their source from `station_instances` to the station's attached views. `connector_instances` stays an **org-level** object (created/synced/configured on the Connectors page); only the station-detail *attach-connector* affordance is removed, replaced by *attach-view*.
+- **Writes** target the entity behind a view (connector capability + #629 per-caller); the view's row filter does not bound writes (`WITH CHECK OPTION` out of scope), but the agent can only target records a view surfaces (naturally view-bounded for UPDATE/DELETE).
+- **Migration:** for each `station_instances(S,C)`, ensure a passthrough view per entity of `C` (the default-view generation already does this) + a `station_views(S, V)` row, then retire the `station_instances` attachment. Admins keep access via passthrough views; members stay default-deny.
+
 ## Recommendation
 
 1. `curated_views` + `curated_view_field_mappings` join tables (dual-schema); `whereClause` validated SQL, projection = selected field mappings; `createdBy` = entity creator.
-2. `station_views` attachment + a data migration generating one **passthrough** view per attached entity (**no** grant backfill).
+2. `station_views` attachment **replacing** `station_instances` (dropped as a user attachment); capability/context rederive from views; a data migration generates one **passthrough** view + `station_views` row per currently-attached entity and retires the `station_instances` attachment (**no** grant backfill).
 3. Field-mapping ACL: gate + share `field_mapping`; add the single FK condition `field_mapping where curated_view=<id>`; columns = projection ∩ field grants.
 4. `resolveViewsForSession(stationId, userId)` — deny-wins composition, `_meta_*` per-view, `userId` threaded through all callers.
 5. `curated_view` `ShareDialog` + station-share composition; "whole org" = revocable role/everyone grant.
@@ -91,8 +102,8 @@ What a user sees through view `V`:
 
 ## Open questions
 
-1. **"Whole-org" principal shape.** The member **role** grant (auto-includes future members) vs a dedicated `everyone` principal? **Lean:** member-role grant — future members inherit, and it's a plain revocable grant row. Confirm at spec.
-2. **FK-condition encoding in `visibilityPredicate` + the SQL translator.** The exact place the `IN (SELECT …)` shape plugs into `permission-set.ts:273/350`. **Lean:** a named condition variant carrying `{joinTable, fkColumn, value}`, resolved to the fixed subquery; index `curated_view_field_mappings(curated_view_id)`. Spec detail, not a design fork.
+1. **"Whole-org" principal shape — resolved.** The existing `ShareDialog` `team` grantee already maps to a grant on the **member role** (`sysrole:<org>:member`) via `GrantService.resolvePrincipal` — a plain revocable grant row, auto-including future members. The `curated_view` `ShareDialog` reuses it; no new `everyone` principal.
+2. **FK-condition encoding — resolved to load-time expansion, not a resolver change.** `condition` carries a DB `CHECK` limiting it to the two ownership values, so `in_curated_view` needs a migration (drop/replace the check + a `conditionParam` column + widen `PERMISSION_CONDITIONS`). But the resolver (`matches`/`visibilityPredicate`) stays **untouched**: `PermissionService.loadSet` (`permission.service.ts:126`, `[...statements, ...grants]`) **expands** each `in_curated_view` statement into concrete `field_mapping:<id>` `EffectiveStatement`s by querying `curated_view_field_mappings` before constructing the `PermissionSet`. An unexpanded FK condition fails closed in `matches`. Index `curated_view_field_mappings(curated_view_id)`.
 3. **Default-view generation for cutover ownership.** A pre-existing entity's "creating user" may be ambiguous for the migration. **Lean:** inherit `createdBy` from the `connector_entity` (or its instance) creator; fall back to the org owner. Confirm in spec.
 4. **Records-endpoint scale.** The view-detail table over a large `er__<id>`. **Lean:** keyset pagination (`usePagination` `mode:"keyset"`), the view's `whereClause` + projection pushed into the query; index per the CLAUDE.md growth rules.
 
