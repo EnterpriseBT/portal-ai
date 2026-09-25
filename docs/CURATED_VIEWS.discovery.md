@@ -1,138 +1,119 @@
-# Curated views + always-live pins — Discovery
+# Curated views (per-user data exposure) — Discovery
 
 **Issue:** [EnterpriseBT/portal-ai#599](https://github.com/EnterpriseBT/portal-ai/issues/599)
 
-**Why this exists.** Members today query connector data through the raw entity passthrough: `buildSessionViews` (`apps/api/src/services/portal-sql.service.ts:143`) exposes one temp view per readable **entity**, projecting every non-hidden column of its wide table. That is the read/exposure layer for almost all member data access, and it is all-or-nothing per entity — there is no way to grant a member a *slice* (some rows, some columns) of an entity, and "sharing = grant" is unsafe because the only grantable data object is the whole connector/entity. The #598/#620/#622 RBAC work built the grant + policy engine and even reserved `view` as a resource type (`packages/core/src/models/permission.model.ts:36`), but **nothing populates, grants, or reads a view yet**. This ticket adds the **view object** (a per-entity curated slice: row filter + column projection), the **`station_views`** attachment, the **per-user session-view engine**, **definer's-rights always-live pins**, a **per-caller tool-authorization gate**, and a **Views admin page** with role-gated navigation. This is the read/exposure layer that makes member data access curated and "sharing = grant" safe.
+**Why this exists.** Members today read connector data through a raw, capability-based passthrough. `buildSessionViews(stationId, organizationId)` (`apps/api/src/services/portal-sql.service.ts:143`) exposes one temp view per entity a station can read — gated only by connector capability (`resolveEntityCapabilities`, `:156`), keyed only by org, reading **zero** permission grants and taking **no `userId`**. Every member on a station sees identical raw data; there is no way to grant a member a *slice* (some rows, some columns). The RBAC engine (#598/#620/#621) already reserves `curated_view` as a data resource type (`packages/core/src/models/permission.model.ts:48,81`) and deliberately keeps it **out** of `SHAREABLE_RESOURCE_TYPES` pending this ticket — but nothing populates, grants, or reads a view yet. This is the read/exposure layer that switches member data access from capability to **curated-view grants**, adds field-mapping-level access control (deferred here from #630), and makes "share a pre-curated slice, never a raw connector" real. *This is the object that carries almost all member data access.*
 
-> **Descoped after review (2026-09-22).** Two of the seven decisions below were split into their own focused tickets that land *first* (they operate on already-shipped RBAC objects, no views needed): **Decisions 5 & 6** (per-caller tool-authorization gate + governance toolpack) → **#629**, and **Decision 7's navigation gating** (role-gated `SidebarNav`) → **#630**. This ticket keeps the view schema, `station_views`, the `resolveViewsForSession` rewrite, definer's-rights pins, and the Views *admin page* (which plugs its nav item into #630's pattern). #599 gets a fresh, deeper discovery once #629 + #630 land — the sections below are preserved as the reference that motivated the split, not the final #599 design.
+> **Lineage.** Replaces the 2026‑09‑22 discovery (recoverable via `git show`). Four decisions since split out and **landed** — the per-caller tool gate + governance toolpack (**#629**) and role-gated navigation (**#630**). Two more split out during *this* workshop: **always-live definer's-rights pins → #640** (they consume this ticket's per-user session seam; curated views is the foundation), and **object-ownership `createdBy` semantics → #641** (agent-generated vs system-created). #630 explicitly deferred **field-mapping read scoping** to here.
 
 ## The current shape
+
+### The exposure engine — the seam this rewrites
+
+`PortalSqlServiceImpl.buildSessionViews(stationId, organizationId, client)` (`portal-sql.service.ts:143`) resolves readable entities from **connector capability only** (`:156`) and per entity emits `CREATE OR REPLACE TEMP VIEW "<entityKey>"` projecting every non-hidden `c_*` column `FROM er__<id> WHERE organization_id = '<org>' AND deleted IS NULL` (`:200-226`) — the org literal embedded so the LLM can't escape scope; the entity `key` is the queryable view name. Three introspection views follow — `_meta_entities` (`:265`), `_meta_columns` (`:275`), `_meta_column_catalog` (`:318`). Consumers `runSqlQuery` (`:381`) and `explainSqlQuery` (`:495`) call it **2-arg** `(stationId, organizationId)`. There is **no "agent roster" view** — the PRD's "roster" is the `_meta_*` set.
 
 ### Connector → entity → station data model
 
 | Piece | Location | Note |
 |---|---|---|
-| instance → entity | `connector-entities.table.ts` | `connector_instances` own `connector_entities` |
-| row storage | `wide-table.repository.ts:78` (`tableName`), `:87` (`selectAll`) | rows in `entity_records` + a **dynamic** wide table `er__<connector_entity_id>` (not in Drizzle static schema); columns from `wide_table_columns` |
-| station ↔ connector | `station-instances.table.ts:11` | `station_instances` join = `{stationId, connectorInstanceId}` only — no per-entity/per-view row |
-| capability resolve | `resolve-capabilities.util.ts:90` (`resolveStationCapabilities`), `:175` (`resolveEntityCapabilities`) | fans out to `{read,write,push}` per entity of each attached instance |
+| station ↔ instance | `station-instances.table.ts:11` | `{stationId, connectorInstanceId}`, unique-where-not-deleted — the shape `station_views` mirrors |
+| entity | `connector-entities.table.ts:17` | `{organizationId, connectorInstanceId, key, label}`, unique on `(org, key)` |
+| row storage | `wide-table.repository.ts:79` | dynamic `er__<connector_entity_id>` (not in Drizzle static schema) |
+| columns / **field mappings** | `wide-table-columns.table.ts:19` | `columnName` (`c_amount`) ↔ **`fieldMappingId`**, `pgType`, `retiredAt` — **one column ↔ one field mapping** |
+| capability resolve | `resolve-capabilities.util.ts:90` (station), `:175` (entity) | `resolveEntityCapabilities` → `Record<entityId,{read,write,push}>` |
 
-The station's current exposed attachment is the **connector instance**; there is no station↔entity or station↔view link. `station_views` is the new attachment table, paralleling `station_instances`.
+`column ↔ field_mapping` is 1:1, which is what makes field-mapping the natural column-ACL grain.
 
-### Session-view / query-exposure engine
+### RBAC engine + the (inert) `curated_view` type
 
-`PortalSqlServiceImpl.buildSessionViews(stationId, organizationId)` (`portal-sql.service.ts:143`) is the exact seam. It calls `resolveEntityCapabilities` (`:156`), filters to `read === true`, and for each entity emits `CREATE OR REPLACE TEMP VIEW "<entityKey>"` selecting `_record_id`, a `_connector_entity_id` literal, `source_id`, and every non-hidden `c_*` column from `er__<id>`, `WHERE` org-pinned `AND deleted IS NULL` (`:200-227`). **The entity `key` is the queryable view name** (`viewMap`, `:74-83`). It also emits introspection views `_meta_entities` / `_meta_columns` / `_meta_column_catalog` (`:264-329`). `runSqlQuery` (`:347`) opens a READ ONLY txn, materializes the views, runs validated LLM SQL, and rolls back. **`buildSessionViews` takes no `userId`** — that signature change is the heart of `resolveViewsForSession(stationId, userId)`.
+`curated_view` is in `PERMISSION_RESOURCE_TYPES`/`DATA_RESOURCE_TYPES` (`permission.model.ts:48,81`), **not** `SHAREABLE_RESOURCE_TYPES` (`:95`), with object verbs via `RESOURCE_CAPABILITIES.curated_view` (`:288`). `PERMISSION_CONDITIONS` is **closed** to `created_by_caller`/`created_by_system` — "data-attribute slicing is done with views (#599), never a dynamic condition" (comment above `:107`). The engine already resolves an id-scoped grant with **no** special-casing: `PermissionService.loadSet` (`permission.service.ts:80`) → `PermissionSet.can` (`permission-set.ts:108`) → `resolve` (`:350`, **deny-overrides-allow**, default-deny) → `matches` (`:361`, verb/type/**id**/condition). `visibilityPredicate` (`:273`) is the list-filter surface. Nothing reads or grants `curated_view` today.
 
-### Pins (portal results)
+### What #630 shipped (nav) and #629 shipped (tool gate)
 
-`portal_results` (`portal-results.table.ts:28`) stores `type` (`text|data-table|d3|geo`), a `content` jsonb, `snapshotUpdatedAt`. Pinning (`portal-results.router.ts:109` → `PortalResultPinService.materialize:199`) persists **both** embedded rows **and** a re-executable `pipeline` in `content`. The re-execution path exists: `POST /:id/refresh` (`:315`) → `PortalVizRefreshService.refreshPinnedResult` (`portal-viz-refresh.service.ts:152`) reads `content.pipeline` (`VizPipelineSchema` = `{sql, stationId}`), re-runs read-only **under the org**, persists the fresh snapshot (`:212`); no pipeline → 422 `VIZ_WIDGET_NOT_REFRESHABLE` (`:182`). `text` pins are static; `d3/geo/data-table` are `REFRESHABLE_BLOCK_TYPES` (`:73`). Detail view: `apps/web/src/views/PinnedResultDetail.view.tsx`. **The pipeline binds `stationId` + caller org only — no definer identity is captured, and refresh is caller-initiated, not always-live.**
+Nav is data-driven: `NAV_PAGE_IDS` (`permission.model.ts:155`, single source), `MEMBER_VIEW_PAGE_IDS` (`:175`), `page` a `view`-only pseudo-resource. FE `useCapabilities` (`use-capabilities.util.ts:56`) → `canViewPage`. `SidebarNav` (`SidebarNav.component.tsx:39`) forces a `PAGE_NAV` entry per page id (compile error otherwise), renders `visibleNavItems` (`:110`); route guard `guardedComponent(pageId)` (`use-require-page-view.util.ts:40`) → `ForbiddenView`. #629's `wrapWithPermissionGate` (`permission-gate.service.ts:86`) gates each write tool per-caller (fail-closed, typed `TOOL_PERMISSION_DENIED` result), wired at `tools.service.ts:885`; `sql_query` already threads `userId` (`tools.service.ts:583` → `sql-query.tool.ts:126`).
 
-### PermissionService + the tool-authorization layer
+### UI precedents
 
-`permission.service.ts`: `loadSet` (`:72`, principals = user + roles + groups, union of `policy_attachments` + `permission_grants`), `check` (`:126`, 403 on deny), `capabilities` (`:139`). `permission-set.ts`: `check`/`can` (`:101`), `assertWithinBoundary` (`:118`), `visibilityPredicate(resourceType, cols)` (`:223`, own/system/shared/deny, fail-closed), `ACTION_MAP` (`:49`), `normalize` (`:277`). Tools are built in `ToolService.buildAnalyticsTools(organizationId, stationId, userId, portalId)` (`tools.service.ts:393`) — `userId` already threads to each `.build()` (`sql_query:510`). **Tools call `PermissionService` nowhere today (zero references).** Write authorization is coarse/station-level: `isWriteGated` tools are dropped *wholesale* when the station has no write capability (`:760-768`), never per-caller. `wrapWithCostGate(tools, {organizationId,userId,stationId,portalId})` (`:773`) is the natural injection point. `ToolCapability` (`tool-capability.model.ts:132`) carries `writes[]` — the discriminator a gate keys on. A governance pack registers in `builtin-toolpacks.ts` (`:1375`) + `BuiltinToolpackSlugSchema` (`:32`).
+`apps/web/src/modules/AccessAuthoring/` — container + editor-dialog split, SDK slices (`roles.api.ts:14`, registered `sdk.ts:24`, keyed `keys.ts:46-50`). The Views admin CRUD mirrors this; the **view-detail records table** mirrors the existing entity records list/detail UI (Entities page — exact components pinned in spec).
 
-### RBAC grants + the `view:<id>` pattern
+## The design space (resolved in workshop)
 
-`view` is already in `PERMISSION_RESOURCE_TYPES` (`permission.model.ts:36`) and `DATA_RESOURCE_TYPES` (`:62`) but **not** `SHAREABLE_RESOURCE_TYPES` (`:79`) — the model comment (`:76`) states data types are "governed by views + policies in #599, never user-shared." A `PermissionGrant` (`:210`) is `{principalType, principalId, effect, verb, resourceType, resourceId, condition}`; `view:<id>` = an allow grant `resourceType:"view" verb:"read" resourceId:<viewId>`, resolved through `loadSet` → `resolve`/`matches` (`permission-set.ts:300`). The model knows `view` structurally; **no seeded policy or route grants/checks it — #599 wires the read path.**
+### D1 — Read-authorization: composition, deny-always-wins
 
-### Admin UI + role-gated navigation (apps/web)
+What a user sees through view `V`:
+- **Rows** = V's `whereClause`-filtered rows **minus** any explicit `deny entity_record` (deny always overrides allow).
+- **Columns** = V's projected field mappings **∩** the caller's `read field_mapping` grants (deny wins).
+- **Gated by** `read curated_view:V` (and no `deny curated_view:V`).
 
-`Authorized.layout.tsx` → `SidebarNav.component.tsx:120` renders a **flat, ungated** nav (Dashboard, Stations, Toolpacks, Connectors, Entities, …, Pinned Results, `:206-265`). Per-role gating is `useCapabilities()` (`use-capabilities.util.ts:30`) → `can(action)`; the canonical pattern is `Settings.view.tsx:114` (`canAuthorAccess = can("member.role.assign")` gates the Access tab → `modules/AccessAuthoring/`). A Views admin page mirrors that (`views/Views.view.tsx` + route + a CRUD module). `CALLER_CAPABILITY_ACTIONS` (`permission.model.ts:105`) needs a new action (e.g. `view.manage`) — SidebarNav does no gating today.
+**Decided.** A view is the read *authority* for the normal (no-deny) case — different resource type from `entity`, so a view read doesn't require an entity grant — but it **never** overrides an explicit deny. That keeps composition pure and avoids per-case heuristics. An admin issuing `deny read entity_record *` nukes the platform's purpose; that's their prerogative, documented as an anti-pattern (gate records **with views, not RBAC directly**). Members never hold direct `read entity_record`; admins read raw via `AdminAccess *`.
 
-### Tiers / entitlement
+### D2 — View shape: structured projection + validated-SQL WHERE
 
-`tier-catalog.ts` `TIER_CATALOG` (`:105`) gives each tier `builtinToolpacks` (`:46`); `standard` = `["data_query","web_search","entity_management"]` (`:128`), `pro`/`enterprise` = all (`:194`). Enforced via `EntitlementService.splitBuiltinPacks` in `buildAnalyticsTools` (`tools.service.ts:438`). System tools bypass entitlement via the `alwaysAvailable` capability flag (`:472`); named boolean entitlements exist too (`customToolpacks:48`, `customRbac:51`).
-
-## The design space
-
-### Decision 1 — Row-filter representation
-
-| | A. Structured JSON predicate | B. Raw SQL `WHERE` fragment | C. Reuse a condition model |
-|---|---|---|---|
-| Safety | Parameterizable, validatable | Injection surface; hard to bound | Safe but narrow |
-| Expressiveness | column · op · value, AND-combined (OR later) | Arbitrary | Only the RBAC ownership conditions |
-| Composes with org+`deleted` guard | Yes (ANDed) | Fragile | Yes but too narrow |
-
-**Lean: A.** A bounded predicate (`{column, op ∈ eq|ne|in|gt|lt|contains, value}` AND-combined) injects safely into the existing view `WHERE` and validates against `wide_table_columns`; static only (no `current_user.*` this increment).
-
-### Decision 2 — Where the curated slice reaches the session
-
-| | A. Extend `buildSessionViews` | B. Persistent per-org PG views | C. Separate query rewriter |
-|---|---|---|---|
-| Reuses the existing seam | Yes | No | No |
-| Per-session isolation | Yes (temp views, already rolled back) | No (schema clutter, migration churn) | Duplicates the builder |
-| Multiple views per entity | Natural — `key` → distinct view name | Awkward | Awkward |
-
-**Lean: A.** Rewrite `buildSessionViews` to take `userId`, drive the view set from `station_views` ∩ the caller's `view:<id>` grants (not raw entity capabilities), and emit each view's **column projection** (subset of `c_*`) + **row filter** (ANDed after org + `deleted`). `_meta_*` + the agent roster rebuild from the resolved views.
-
-### Decision 3 — Attachment + cutover
-
-**Lean: a `station_views` table** (`{stationId, viewId}`, parallel to `station_instances`), with an **eager backfill** that generates one **passthrough view** (full projection, no filter) per currently-attached entity and attaches it — so behavior is unchanged on cutover and grants can be authored immediately. Raw connector/entity read grants become **admin-only** (members read only through views).
-
-### Decision 4 — Definer's-rights, always-live pins
-
-| | A. Pipeline-only, execute under definer on render | B. Keep embedded rows + re-check |
+| Part | Representation | Why |
 |---|---|---|
-| "Never contains gated rows" | Yes — no rows persisted | No — rows sit in `content` |
-| Sharing conveys current data | Yes | Stale |
-| Loses access → empties | Yes (definer's views resolve empty) | Needs a scrub |
+| Columns (SELECT) | a **structured field-mapping selection** (`curated_view_field_mappings` join table) | enables field-mapping ACL (D3); keeps SELECT off the injection surface |
+| Rows (WHERE) | **LLM-authored, validated SQL** fragment, REST-connector-style (sample-output preview, hand-editable) | non-technical authorability; the *only* free-SQL surface |
 
-**Lean: A.** Drop embedded rows from refreshable pins; add a first-class **`definer_principal_type` + `definer_principal_id`** on `portal_results` (user first cut per OQ8; queryable so offboard can sweep). Render/refresh executes `content.pipeline` under the **definer's** `resolveViewsForSession` — so a shared pin shows the definer's current data and empties when their access is gone. Rebinding a definer to a role is a later config flip, not a migration.
+**Decided.** Only the `whereClause` is free SQL, validated **identically** whether a human or the LLM wrote it — parsed (real SQL parser), allow-listed to a pure boolean expression over *this entity's* columns, no subqueries/functions/writes; the sample preview runs it read-only/LIMIT-bounded as validation-by-execution. This is the feature's injection boundary → its own plan slice + adversarial pass. Views are owned by the parent entity's creating user (**no system-owned views**; the broader convention is #641).
 
-### Decision 5 — Per-caller tool-authorization gate  → split to #629
+### D3 — Field-mapping ACL via an FK condition + join table
 
-**Lean: a build-time wrapper** (mirroring `wrapWithCostGate`) that, for every tool with non-empty `ToolCapability.writes[]`, calls `PermissionService.check(callerUserId, action, object)` before `execute` and returns a **typed refusal** on deny (never a throw the agent can't relay). Injected in `buildAnalyticsTools` alongside the cost gate; a guard test asserts every write tool is wrapped. This is the standing rule — *safety gates get server enforcement, not prompt instructions*.
+`field_mapping` becomes a gated + shareable resource. A new **FK-shaped condition** `read field_mapping where curated_view=<V>` resolves (via the `curated_view_field_mappings` join table) to `field_mapping.id IN (SELECT field_mapping_id FROM curated_view_field_mappings WHERE curated_view_id = V)`.
 
-### Decision 6 — Governance toolpack entitlement  → split to #629
+**Decided.** This gives compact grants (one condition per view, not N-per-column), **auto-tracking** (adding a field mapping extends grantees with no policy edit), and preserves the **self-exposure guard**: to add field X to V, the editor must independently satisfy `read field_mapping:X` — and since X isn't in V's join table yet, V's own condition can't grant it, so the editor needs X via another readable view / direct grant / `*`. The condition resolves to a single **fixed, indexed, parameterized** subquery shape — a *controlled* extension to the condition engine (today: bare column-equality), not arbitrary conditions. **Scoped to this one relationship**; a general FK-condition framework is deferred (no second caller — the "no speculative infra" rule). Column-level differentiation becomes "grant a *narrower view*," with `deny field_mapping:X` as the rare per-user exception.
 
-**Lean: `alwaysAvailable`** (never tier-gated) — RBAC/view administration is a security feature, not a monetization axis (OQ9). Availability ≠ authorization: the pack is present for everyone, but each of its tools is still per-caller `PermissionService.check`-gated (Decision 5), so only admins can actually use it.
+### D4 — Grant delivery: sharing-first, no auto-grant
 
-### Decision 7 — Views admin UI + role-gated nav  (nav gating → #630; the Views admin page stays in #599)
+**Decided.** `curated_view` joins `SHAREABLE_RESOURCE_TYPES` (gets a `ShareDialog`). A **default (passthrough) view** is auto-generated per attached entity but **not auto-granted** (default-deny) — so cutover *changes* behavior (members go dark until an admin shares; a conscious explicitness-over-continuity trade). Sharing **composes** independent, individually-revocable grants:
+- share view V → `read curated_view:V` + `read field_mapping where curated_view=V`
+- share station S → the above for S + each attached view (reviewable in the dialog)
+- "whole org" → a revocable grant to the member-role/everyone principal — **not** the immutable `MemberAccess` policy (this is what makes it revocable, the objection that killed a member-role *policy* grant).
 
-**Lean:** add a `view.manage` capability action (`CALLER_CAPABILITY_ACTIONS`), held by the system `owner`/`admin` roles so custom RBAC can grant it. Gate `SidebarNav` per capability: **members** see Stations / Portals / granted views; **admins** additionally see the raw plumbing (Connectors, Entities, Column Definitions, …) + a new **Views** admin page (CRUD row-filter + projection, attach, grant — mirroring `modules/AccessAuthoring/`). Every route is server-authoritative.
+### D5 — Session engine: `resolveViewsForSession(stationId, userId)`
 
-## Tradeoff comparison
+**Decided.** Replace the 2-arg `buildSessionViews`; view set = `station_views` ∩ the caller's granted `curated_view`s (independent of station — attachment scopes *surfacing*, the grant scopes *authority*). Each temp view emits its projection (∩ field grants) + `whereClause`, ANDed after the org+`deleted` guard, minus entity_record denies. `_meta_*` rebuild **per-view** (two slices of one entity = two roster rows). `runSqlQuery`/`explainSqlQuery`/`sql_query` thread `userId`; every caller must resolve a real user principal (fail-closed — no "all entities" fallback). Per **OQ2**, the same authorization backs both the agent session and the UI records endpoint.
 
-| | D1 JSON filter | D2 extend builder | D3 station_views + backfill | D4 pipeline-only pins | D5 wrapper gate | D6 alwaysAvailable | D7 view.manage nav |
-|---|---|---|---|---|---|---|---|
-| Spread to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| New table / column | `views` | — | `station_views` | `definer_*` cols | — | — | — |
-| Contract/enum change | — | `buildSessionViews` sig | — | pin content shape | typed refusal code | pack slug | `view.manage` action |
+### D6 — Views UI + a records endpoint
+
+**Decided.** Editing tiers use **no new verb**: attribute-edit (name/description/`whereClause`/tags) = `write curated_view`; projection-edit = `write curated_view` **+** independent `read field_mapping` on each added field.
+- **Views nav page** — member-visible (in `MEMBER_VIEW_PAGE_IDS`, backfilled like #630), listing the caller's *granted* views as a searchable/sortable/filterable **card list** (à la Entities/Connectors); `Create View` + card delete/share gated to admin; plugs into #630 (`NAV_PAGE_IDS += "views"`, `guardedComponent`).
+- **View-detail page** mirroring entity-detail — tags, edit/delete, and a searchable/sortable/filterable **records table** over `GET /api/curated-views/:id/records` (projection + filter applied, gated by `read curated_view:id`, keyset-paginated per the CLAUDE.md indexing rules).
+- **Attached-but-inaccessible views render as marked (red-overlay) chips** — existence is not secret, data is gated; underlying field/data denials surface in-session and prompt the user to ask their admin. (This supersedes the earlier "silently hide" lean.)
 
 ## Recommendation
 
-1. Add a **`views`** table: `{organizationId, connectorEntityId, key (per-org-unique), label, rowFilter (JSON predicate), columnProjection (string[])}`; static only.
-2. Add **`station_views`** (`{stationId, viewId}`); an eager backfill generates + attaches one **passthrough view** per attached entity; raw entity/connector read grants become admin-only.
-3. Rewrite **`buildSessionViews`** into `resolveViewsForSession(stationId, userId)` — the view set = `station_views` ∩ the caller's `view:<id>` grants; each temp view carries the projection + filter; `_meta_*` and the roster rebuild from views.
-4. Make refreshable pins **definer's-rights + always-live**: pipeline-only, `definer_principal_*` on `portal_results`, executed under the definer's session views on render.
-5. Add a **per-caller tool gate** wrapper (`PermissionService.check` on every `writes[]` tool, typed refusal) + a **governance toolpack** (view/grant/role management), `alwaysAvailable`.
-6. Add a **`view.manage`** action, a **Views admin page**, and **role-gated `SidebarNav`** (curated for members, full plumbing for admins), server-authoritative.
+1. `curated_views` + `curated_view_field_mappings` join tables (dual-schema); `whereClause` validated SQL, projection = selected field mappings; `createdBy` = entity creator.
+2. `station_views` attachment + a data migration generating one **passthrough** view per attached entity (**no** grant backfill).
+3. Field-mapping ACL: gate + share `field_mapping`; add the single FK condition `field_mapping where curated_view=<id>`; columns = projection ∩ field grants.
+4. `resolveViewsForSession(stationId, userId)` — deny-wins composition, `_meta_*` per-view, `userId` threaded through all callers.
+5. `curated_view` `ShareDialog` + station-share composition; "whole org" = revocable role/everyone grant.
+6. Views nav page (member-visible, admin-CRUD) + view-detail records page + `GET /api/curated-views/:id/records`; inaccessible views shown marked.
 
 ## Open questions
 
-1. **Row-filter DSL scope.** How expressive for v1? **Lean:** `{column, op, value}` over `eq|ne|in|gt|lt|contains`, AND-combined; OR-trees + `current_user.*` deferred (schema leaves room via the JSON shape).
-2. **Definer storage.** Column vs buried in `content` jsonb? **Lean:** first-class `definer_principal_type`/`definer_principal_id` columns on `portal_results` — offboard/revocation must query them.
-3. **Always-live execution cost.** Execute the pipeline on every render (fresh, N queries per dashboard) vs snapshot-with-TTL? **Lean:** execute-on-render under the definer for correctness (the pipeline is bounded read-only SQL, same as today's refresh); add caching only if metrics show fan-out pressure — recorded, not built.
-4. **Cutover generation.** Lazy (first session) vs eager backfill migration? **Lean:** eager backfill (one passthrough view + `station_views` row per attached entity), mirroring the #622 per-org backfill pattern, so behavior is unchanged the moment the migration lands.
-5. **`view.manage` vs reuse.** New action vs owner/admin heuristic? **Lean:** a new `view.manage` action seeded onto `owner`/`admin` — so an org can delegate view administration through a custom role without code changes.
+1. **"Whole-org" principal shape.** The member **role** grant (auto-includes future members) vs a dedicated `everyone` principal? **Lean:** member-role grant — future members inherit, and it's a plain revocable grant row. Confirm at spec.
+2. **FK-condition encoding in `visibilityPredicate` + the SQL translator.** The exact place the `IN (SELECT …)` shape plugs into `permission-set.ts:273/350`. **Lean:** a named condition variant carrying `{joinTable, fkColumn, value}`, resolved to the fixed subquery; index `curated_view_field_mappings(curated_view_id)`. Spec detail, not a design fork.
+3. **Default-view generation for cutover ownership.** A pre-existing entity's "creating user" may be ambiguous for the migration. **Lean:** inherit `createdBy` from the `connector_entity` (or its instance) creator; fall back to the org owner. Confirm in spec.
+4. **Records-endpoint scale.** The view-detail table over a large `er__<id>`. **Lean:** keyset pagination (`usePagination` `mode:"keyset"`), the view's `whereClause` + projection pushed into the query; index per the CLAUDE.md growth rules.
 
 ## Enterprise-scale considerations
 
-- **Concurrency & correctness** — view/`station_views` CRUD is check-then-act (validate entity ownership + key uniqueness in a txn); the session build stays a read-only txn (already safe); the passthrough backfill is idempotent (`ON CONFLICT` on `(org, key)`). **Lean: fine.**
-- **Accuracy & auditability** — view create/update/delete, attach/detach, `view:<id>` grants, and definer rebinds all write `audit_log` rows (new actions), so exposure changes are reconstructable. **Lean: audit each.**
-- **Failure modes** — **fail-closed everywhere**: a session with no resolvable views sees nothing (never the raw passthrough); a pin whose definer lost access empties (never stale/gated rows); the tool gate denies on an unresolvable check. This is the security posture of the feature. **Lean: fail-closed.**
-- **Scale & unbounded growth** — multiple views per entity is admin-bounded; the one real concern is **always-live pin fan-out** (a dashboard of N pins = N pipeline executions per render). **Lean:** accept for v1 (bounded read-only SQL), note caching as a follow-up (OQ3).
-- **Multi-tenancy** — views, `station_views`, pins, definers all org-scoped; the per-org-unique `key` prevents multiple-views-per-entity name collision within an org. **Lean: fine.**
-- **Contract stability** — the JSON filter leaves room for dynamic/`current_user.*`; `definer_principal_*` already admits a role; the tool gate keys on `ToolCapability.writes[]` so new tools plug in without touching the gate. **Lean: shaped for the deferred increments.**
-- **Data lifecycle** — a view is orphaned when its entity is soft-deleted (cascade the `station_views` attachment + the view); a pin is definer-scoped so offboard naturally empties it. **Lean:** cascade on entity delete; no new retention window.
+- **Concurrency & correctness** — view / `station_views` / projection CRUD is check-then-act in a txn (per-org `key` uniqueness, projection field-read guard); the session build stays a read-only txn; default-view generation is idempotent (`ON CONFLICT (org, key)`). **Lean: fine.**
+- **Accuracy & auditability** — view CRUD, projection edits, attach/detach, and every share/grant/deny write `audit_log` rows, so exposure changes are reconstructable. **Lean: audit each.**
+- **Failure modes** — **fail-closed + deny-wins everywhere**: no resolvable views ⇒ empty session (never the raw passthrough); a no-user caller resolves nothing; an explicit deny always subtracts; a retired projected column drops rather than errors. **Lean: fail-closed.**
+- **Scale & unbounded growth** — session build is O(granted views) temp-view DDL, same order as today's O(readable entities); the FK condition is one indexed subquery; the records endpoint is keyset-paginated. The field-mapping grant count is compact (one condition per view, not per column). **Lean: fine.**
+- **Multi-tenancy** — views, join rows, `station_views`, grants all org-scoped; per-org `key` prevents collision; the embedded org literal keeps the LLM boundary. **Lean: fine.**
+- **Contract stability** — the single FK condition is the first instance of a general FK-condition pattern; the `whereClause` leaves room for `current_user.*`; `resolveViewsForSession(stationId, userId)` is the exact seam #640's definer's-rights pins consume unchanged. **Lean: shaped for the deferred increments.**
+- **Data lifecycle** — a `curated_view` cascades on entity soft-delete (its join rows, `station_views` attachment, and grants go with it). No new retention window. **Lean: cascade on entity delete.**
 
 ## What this doesn't decide
 
-- **Dynamic / parameterized (RLS) views** (`current_user.*`) — deferred; the JSON filter shape leaves room. (PRD out-of-scope.)
-- **Writable / updatable views** (`WITH CHECK OPTION`) — writes stay on the existing instance-capability path. (PRD out-of-scope.)
-- **Definer = role rebind UI** — the schema admits a role definer; the config-flip UI is a later increment.
-- **FAQ / marketing content** for views — owned by the #615 documentation-alignment audit, run after #599/#613 land.
+- **Always-live definer's-rights pins** → **#640** (consumes `resolveViewsForSession` unchanged).
+- **Object ownership: agent-generated vs system-created** → **#641** (this ticket only adopts "default views owned by the entity's creator").
+- **A general FK-condition policy framework** — only `field_mapping ∈ curated_view` is built.
+- **Per-record `entity_record` deny granularity** — deny-wins as principle; v1 honors class/entity-level; per-row subtraction deferred.
+- **Dynamic/RLS views** (`current_user.*`) and **writable views** (`WITH CHECK OPTION`) — writes stay on the instance-capability + #629 path.
 
 ## Next step
 
-`docs/CURATED_VIEWS.spec.md` pins the contract (the `views` + `station_views` tables + the dual-schema models, the `resolveViewsForSession` signature, the `definer_principal_*` columns + pin content change, the `view.manage` action + the governance pack + the typed tool-refusal code, and the SDK/route surface). `docs/CURATED_VIEWS.plan.md` then slices it — roughly: (1) `views` + `station_views` schema + passthrough backfill; (2) `resolveViewsForSession` rewrite (projection + filter, `_meta_*`/roster from views); (3) definer's-rights always-live pins; (4) per-caller tool gate + governance toolpack; (5) Views admin page + role-gated nav — each behind a green suite.
+`docs/CURATED_VIEWS.spec.md` pins the contract: the `curated_views` + `curated_view_field_mappings` + `station_views` tables and dual-schema models; the `whereClause` validator (its own slice); the FK condition + `visibilityPredicate`/SQL-translator wiring; `resolveViewsForSession(stationId, userId)` + the caller thread-through; `curated_view` → `SHAREABLE_RESOURCE_TYPES` + `ShareDialog` + station-share composition; the `views` nav page + `GET /api/curated-views/:id/records`. `docs/CURATED_VIEWS.plan.md` then slices it — roughly: (1) schema + default-view migration; (2) FK condition + field-mapping ACL; (3) `resolveViewsForSession` rewrite (`_meta_*` per-view, deny-wins, `userId`); (4) `whereClause` validator + authoring; (5) sharing + composition; (6) Views nav page + detail/records UI — each behind a green suite.
