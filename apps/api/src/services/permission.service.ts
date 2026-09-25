@@ -1,8 +1,12 @@
 import {
   CALLER_CAPABILITY_ACTIONS,
+  NAV_PAGE_IDS,
+  RESOURCE_PERMISSION_TYPES,
   type OrgRole,
   type PolicyPrincipalType,
   type CapabilityMap,
+  type PagePermissionMap,
+  type ResourcePermissionMap,
 } from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
@@ -30,6 +34,9 @@ export interface PermissionContext {
  * - `member.invite` / `member.remove` — owner + admin (seats, #584).
  * - `resource.read` / `resource.write` — object read/write; a `member` is
  *   `createdBy`-scoped (read also allowed on system-created rows).
+ * - `resource.view` — page/section visibility (#630); the object is a
+ *   `{ type: "page", id }` and the verb is `view` (normalized generically in
+ *   `permission-set.ts`, no engine change).
  */
 export type PermissionAction =
   | "billing.manage"
@@ -41,7 +48,8 @@ export type PermissionAction =
   | "resource.read"
   | "resource.write"
   | "resource.delete"
-  | "resource.share";
+  | "resource.share"
+  | "resource.view";
 
 /** The object a `resource.*` action targets. `createdBy` drives the ownership
  *  condition; `id` selects instance-level statements/grants. */
@@ -144,5 +152,48 @@ export class PermissionService {
     return Object.fromEntries(
       CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
     ) as CapabilityMap;
+  }
+
+  /**
+   * The full FE permission surface (#630) — the app-action `capabilities` map,
+   * the per-nav-page `view` map, and the class-level object `{read,write,delete}`
+   * map — all from **one** `loadSet`. Returned by `GET /api/organization/current`.
+   *
+   * `pagePermissions` uses a class-level `view page:<id>` probe (pages have no
+   * ownership). `resourcePermissions` uses `canPerformAny(verb, type)` — true
+   * when the caller holds *any* matching allow (own, system, unconditional, or a
+   * specific instance), false only when nothing grants it. This is the honest
+   * "will a real list show anything for this type" signal, so a
+   * `created_by_system`-only or instance-only grant isn't hidden.
+   */
+  static async permissionMaps(
+    ctx: PermissionContext,
+    client: DbClient = db
+  ): Promise<{
+    capabilities: CapabilityMap;
+    pagePermissions: PagePermissionMap;
+    resourcePermissions: ResourcePermissionMap;
+  }> {
+    const set = await PermissionService.loadSet(ctx, client);
+    const capabilities = Object.fromEntries(
+      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
+    ) as CapabilityMap;
+    const pagePermissions = Object.fromEntries(
+      NAV_PAGE_IDS.map((id) => [
+        id,
+        set.can("resource.view", { type: "page", id }),
+      ])
+    ) as PagePermissionMap;
+    const resourcePermissions = Object.fromEntries(
+      RESOURCE_PERMISSION_TYPES.map((type) => [
+        type,
+        {
+          read: set.canPerformAny("read", type),
+          write: set.canPerformAny("write", type),
+          delete: set.canPerformAny("delete", type),
+        },
+      ])
+    ) as ResourcePermissionMap;
+    return { capabilities, pagePermissions, resourcePermissions };
   }
 }

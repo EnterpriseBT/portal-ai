@@ -21,6 +21,7 @@ import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useQueryClient } from "@tanstack/react-query";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { useNavigate } from "@tanstack/react-router";
 import AddIcon from "@mui/icons-material/Add";
 import { ConnectorEntityDataList } from "../components/ConnectorEntity.component";
@@ -244,6 +245,9 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 
 export const EntitiesView: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canOnResource, capabilitiesKnown } = useCapabilities();
+  const canReadConnectors =
+    !capabilitiesKnown || canOnResource("connector_instance", "read");
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.connectorEntities.create();
@@ -317,6 +321,7 @@ export const EntitiesView: React.FC = () => {
         isPending={createMutation.isPending}
         serverError={toServerError(createMutation.error)}
         lockedConnectorInstance={null}
+        canReadConnectors={canReadConnectors}
       />
 
       <DeleteConnectorEntityDialog

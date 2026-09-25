@@ -16,6 +16,7 @@ import {
 import { and, Column, eq, ilike, inArray, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 
 const logger = createLogger({ module: "jobs" });
 
@@ -226,6 +227,17 @@ jobsRouter.get(
         );
       }
 
+      // #630: filter to the jobs the caller may `read`. Seeded members hold an
+      // unconditional `read job`, so this is see-all (undefined) for them; a
+      // custom role with a scoped or absent job read is filtered accordingly.
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("job", {
+        createdByCol: jobs.createdBy,
+        idCol: jobs.id,
+      });
+      if (visibility) filters.push(visibility);
+
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[query.sortBy] ?? SORTABLE_COLUMNS.created;
 
@@ -314,6 +326,7 @@ jobsRouter.get(
  */
 jobsRouter.get(
   "/:id",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
@@ -327,6 +340,23 @@ jobsRouter.get(
           error instanceof Error ? error.message : "Failed to fetch job"
         );
       });
+
+      // #630: org-scope + per-object read (jobs are read-only in RBAC terms; a
+      // seeded member reads all, a custom role may be scoped). An out-of-org or
+      // unreadable job reads as absent (404) — closing a cross-tenant read gap.
+      const ctx = req.application!.metadata;
+      if (!job || job.organizationId !== ctx.organizationId) {
+        return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
+      }
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "job",
+          id,
+          createdBy: job.createdBy,
+        })
+      ) {
+        return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
+      }
 
       return HttpService.success<JobGetResponsePayload>(res, { job });
     } catch (error) {
@@ -396,10 +426,34 @@ jobsRouter.get(
  */
 jobsRouter.post(
   "/:id/cancel",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       logger.info({ id }, "POST /api/jobs/:id/cancel called");
+
+      // #630: org-scope the cancel, then restrict it — cancel is a *mutation*
+      // (the escape hatch), so a member may cancel only a job they triggered
+      // (`createdBy === userId`); owner/admin (unconditional job control) may
+      // cancel any. A member can read all org jobs but not cancel another's
+      // (e.g. an admin's in-flight sync/import).
+      const ctx = req.application!.metadata;
+      const target = await JobsService.findById(id).catch(() => null);
+      if (!target || target.organizationId !== ctx.organizationId) {
+        return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
+      }
+      if (target.createdBy !== ctx.userId) {
+        const set = await PermissionService.loadSet(ctx);
+        if (!set.can("resource.delete", { type: "job" })) {
+          return next(
+            new ApiError(
+              403,
+              ApiCode.INSUFFICIENT_ROLE,
+              "You can only cancel jobs you started"
+            )
+          );
+        }
+      }
 
       const job = await JobsService.cancel(id).catch((error) => {
         if (error instanceof ApiError) throw error;

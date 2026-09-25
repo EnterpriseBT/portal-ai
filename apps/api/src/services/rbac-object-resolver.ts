@@ -42,11 +42,23 @@ const OBJECT_FINDERS: Record<string, (id: string) => Promise<ResolvableRow>> = {
     DbService.repository.fieldMappings.findById(id) as Promise<ResolvableRow>,
   entity_record: (id) =>
     DbService.repository.entityRecords.findById(id) as Promise<ResolvableRow>,
+  // #630: the connector-definition catalog is a **global** registry (no org
+  // column). Its finder resolves the row for the authoring boundary; the org
+  // check is skipped via GLOBAL_RESOURCE_TYPES so an author holding
+  // `read connector_definition` can grant a specific definition (catalog subset).
+  connector_definition: (id) =>
+    DbService.repository.connectorDefinitions.findById(
+      id
+    ) as Promise<ResolvableRow>,
 };
 
+/** Resource types resolvable but **not org-scoped** — a global registry whose
+ *  rows carry no `organizationId`, so the resolver's org check is skipped. */
+const GLOBAL_RESOURCE_TYPES = new Set<string>(["connector_definition"]);
+
 export class RbacObjectResolver {
-  /** The object's `createdBy` if it exists in the caller's org, else `null`
-   *  (absent, cross-org, or a non-instance-resolvable type). */
+  /** The object's `createdBy` if it exists (and, for org-scoped types, is in the
+   *  caller's org), else `null` (absent, cross-org, or a non-resolvable type). */
   static async resolveCreatedBy(
     organizationId: string,
     resourceType: string,
@@ -55,7 +67,13 @@ export class RbacObjectResolver {
     const finder = OBJECT_FINDERS[resourceType];
     if (!finder) return null;
     const row = await finder(resourceId);
-    if (!row || row.organizationId !== organizationId) return null;
+    if (!row) return null;
+    if (
+      !GLOBAL_RESOURCE_TYPES.has(resourceType) &&
+      row.organizationId !== organizationId
+    ) {
+      return null;
+    }
     return row.createdBy;
   }
 }

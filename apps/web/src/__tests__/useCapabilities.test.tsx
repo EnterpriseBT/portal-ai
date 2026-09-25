@@ -61,4 +61,51 @@ describe("useCapabilities (#620)", () => {
     });
     expect(useCapabilities().can("org.delete")).toBe(false);
   });
+
+  // #630 — page-view + resource maps
+  it("canViewPage() reads the pagePermissions map, fail-closed", () => {
+    mockCurrent.mockReturnValue({
+      data: {
+        roles: ["member"],
+        capabilities: CAPS,
+        organization: {},
+        pagePermissions: {
+          stations: true,
+          jobs: true,
+          connectors: false,
+        },
+      },
+    });
+    const { canViewPage } = useCapabilities();
+    expect(canViewPage("stations")).toBe(true);
+    expect(canViewPage("connectors")).toBe(false);
+    // absent key → fail-closed
+    expect(canViewPage("toolpacks")).toBe(false);
+  });
+
+  it("canViewPage() fails closed when the map is absent (pre-#630 payload)", () => {
+    mockCurrent.mockReturnValue({
+      data: { roles: ["member"], capabilities: CAPS, organization: {} },
+    });
+    expect(useCapabilities().canViewPage("stations")).toBe(false);
+  });
+
+  it("canOnResource() reads the resourcePermissions map, fail-closed", () => {
+    mockCurrent.mockReturnValue({
+      data: {
+        roles: ["member"],
+        capabilities: CAPS,
+        organization: {},
+        resourcePermissions: {
+          connector_instance: { read: true, write: true, delete: true },
+          toolpack: { read: false, write: false, delete: false },
+        },
+      },
+    });
+    const { canOnResource } = useCapabilities();
+    expect(canOnResource("connector_instance", "delete")).toBe(true);
+    expect(canOnResource("toolpack", "read")).toBe(false);
+    // absent type → fail-closed
+    expect(canOnResource("tag", "read")).toBe(false);
+  });
 });

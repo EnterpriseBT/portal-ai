@@ -39,8 +39,8 @@ describe("RBAC authoring contracts — policy (#622)", () => {
       PolicyStatementInputSchema.safeParse({
         effect: "deny",
         verb: "read",
-        resourceType: "view",
-        resourceId: "view-123",
+        resourceType: "curated_view",
+        resourceId: "curated_view-123",
         condition: "created_by_caller",
       }).success
     ).toBe(true);
