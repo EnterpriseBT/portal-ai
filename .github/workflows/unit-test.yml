@@ -78,6 +78,16 @@ jobs:
       - name: Check CI cache wiring and required-check invariants
         run: npm run lint:ci-cache
 
+      # Guards the review-chain merge gate against silent drift between the
+      # surfaces that describe it (#634): CLAUDE.md's merge-gate section +
+      # coverage matrix + PR checklist, the copilot mirror, and the two skills
+      # (/adversarial-review, generalized /smoke-walk). A checklist that quietly
+      # drops a phase, or a mirror that never learned about `adversarial`, reads
+      # as fine in the diff and gates nothing. Self-tests its rules against
+      # embedded fixtures before checking the real tree.
+      - name: Check review-chain merge-gate consistency
+        run: npm run lint:review-chain
+
       # Fails a NEW migration (indexed > 95) that carries destructive DDL
       # (DROP/TRUNCATE/type change) without a `-- destructive-ok: <reason>`
       # acknowledgment (#581). Upgrades are forward-only against customer data,

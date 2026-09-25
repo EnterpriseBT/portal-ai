@@ -1,4 +1,5 @@
 import type { SvgIconComponent } from "@mui/icons-material";
+import AdminPanelSettingsOutlined from "@mui/icons-material/AdminPanelSettingsOutlined";
 import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
 import ExtensionOutlined from "@mui/icons-material/ExtensionOutlined";
@@ -45,6 +46,7 @@ const ICONS_BY_SLUG: Record<string, SvgIconComponent> = {
   TravelExplore: TravelExploreOutlined,
   Hub: HubOutlined,
   Map: MapOutlined,
+  AdminPanelSettings: AdminPanelSettingsOutlined,
   [CUSTOM_PACK_ICON_SLUG]: ExtensionOutlined,
 };
 

@@ -88,6 +88,26 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   field_mapping_update: "Updating the field mapping",
   field_mapping_delete: "Deleting the field mapping",
   transform_entity_records: "Transforming records",
+  // rbac_management (#629)
+  policy_list: "Listing policies",
+  policy_create: "Creating the policy",
+  policy_update: "Updating the policy",
+  policy_delete: "Deleting the policy",
+  role_list: "Listing roles",
+  role_create: "Creating the role",
+  role_update: "Updating the role",
+  role_delete: "Deleting the role",
+  group_list: "Listing groups",
+  group_create: "Creating the group",
+  group_update: "Updating the group",
+  group_delete: "Deleting the group",
+  group_set_members: "Updating group members",
+  member_list: "Listing members",
+  member_set_roles: "Updating member roles",
+  member_set_groups: "Updating member groups",
+  grant_share: "Sharing access",
+  grant_revoke: "Revoking access",
+  grant_list: "Listing shares",
 };
 
 /** Truncate to the ceiling, marking the cut so it doesn't read as the name. */

@@ -64,6 +64,9 @@ export enum ApiCode {
   GRANT_NOT_FOUND = "GRANT_NOT_FOUND",
   /** A custom policy statement grants access the author doesn't hold (#622). 403. */
   RBAC_POLICY_EXCEEDS_BOUNDARY = "RBAC_POLICY_EXCEEDS_BOUNDARY",
+  /** A policy statement is not a meaningful (verb × resource × scope) combination
+   *  per the shared RESOURCE_CAPABILITIES matrix — e.g. `read page` (#630). 400. */
+  RBAC_STATEMENT_INVALID = "RBAC_STATEMENT_INVALID",
   /** A system (immutable, seeded) role/policy cannot be edited or deleted (#622). 403. */
   RBAC_SYSTEM_IMMUTABLE = "RBAC_SYSTEM_IMMUTABLE",
   /** The org's tier does not include custom RBAC authoring (#622). 403. */
@@ -714,6 +717,12 @@ export enum ApiCode {
    *  minute/day window) is exhausted. 429 with Retry-After; nothing is
    *  written or charged. */
   AGENT_TURN_LIMITED = "AGENT_TURN_LIMITED",
+
+  // Per-caller tool-authorization gate (#629)
+  /** The caller lacks permission for a write the agent attempted; the gate
+   *  returns this as a typed tool result (never a throw) so the agent relays
+   *  it to the user. Fail-closed. */
+  TOOL_PERMISSION_DENIED = "TOOL_PERMISSION_DENIED",
 
   // Tool usage ledger (#179)
   /** Malformed itemized-usage query (unknown sortBy / bad pagination). 400. */

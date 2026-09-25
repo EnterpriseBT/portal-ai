@@ -11,8 +11,8 @@ import {
 
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
-  it("registers exactly seven packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(8);
+  it("registers exactly nine packs", () => {
+    expect(BUILTIN_TOOLPACKS.length).toBe(9);
   });
 
   // Case 2
@@ -24,6 +24,7 @@ describe("BUILTIN_TOOLPACKS", () => {
       "financial",
       "web_search",
       "entity_management",
+      "rbac_management",
       "visualize",
       "gis",
     ];

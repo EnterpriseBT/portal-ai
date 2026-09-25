@@ -459,6 +459,10 @@ describe("Connector Instance Router", () => {
 
   describe("GET /api/connector-instances/:id", () => {
     it("should return 404 when instance does not exist", async () => {
+      // #630: the detail route now resolves the caller context; seed the org so
+      // metadata resolves, then a random id is a genuine 404 (not a 500).
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
       const res = await request(app)
         .get(`/api/connector-instances/${generateId()}`)
         .set("Authorization", "Bearer test-token");
@@ -469,8 +473,13 @@ describe("Connector Instance Router", () => {
     });
 
     it("should return a connector instance by id", async () => {
+      // #630: the instance must live in the caller's org (the owner reads it via
+      // `* *`); a random org would now correctly 404 (cross-tenant boundary).
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
       const def = createConnectorDefinition();
-      const orgId = generateId();
       const instance = createConnectorInstance(def.id, orgId, {
         name: "My Instance",
       });
@@ -493,8 +502,11 @@ describe("Connector Instance Router", () => {
     });
 
     it("should not return soft-deleted instances", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
       const def = createConnectorDefinition();
-      const orgId = generateId();
       const instance = createConnectorInstance(def.id, orgId, {
         deleted: now,
         deletedBy: "SYSTEM_TEST",
@@ -519,7 +531,10 @@ describe("Connector Instance Router", () => {
         display: "Salesforce CRM",
         slug: `sf-${generateId()}`,
       });
-      const orgId = generateId();
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
       const instance = createConnectorInstance(def.id, orgId, {
         name: "SF Production",
       });
@@ -996,6 +1011,10 @@ describe("Connector Instance Router", () => {
 
   describe("GET /api/connector-instances/:id/impact", () => {
     it("should return 404 for non-existent connector instance", async () => {
+      // #630: /impact now resolves the caller context; seed the org so metadata
+      // resolves and a random id is a genuine 404 (not a 500).
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
       const res = await request(app)
         .get(`/api/connector-instances/${generateId()}/impact`)
         .set("Authorization", "Bearer test-token");
@@ -1430,15 +1449,16 @@ describe("Connector Instance Router", () => {
 
     it("created instance should be retrievable via GET", async () => {
       const def = createConnectorDefinition();
-      const user = createUser(AUTH0_ID);
-      const orgId = generateId();
+      // #630: the caller (owner) must belong to the org so the GET-back resolves
+      // metadata and passes the object read (`* *`).
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.users)
-        .values(user as never);
 
       const createRes = await request(app)
         .post("/api/connector-instances")

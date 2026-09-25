@@ -162,6 +162,9 @@ export function cliEnvMockModule(): Record<string, unknown> {
       return def;
     },
     loadEnvironments: () => BUILTIN_ENVIRONMENTS,
+    // #632: the CLI's execute() wrapper calls this before getEnvironment; a
+    // no-op keeps the tests hermetic (no real .env is loaded).
+    loadLocalEnv: () => {},
     secretsPrefix: (def: MockEnvDef) => `portalai/${requireAws(def).envName}`,
     ssmPrefix: (def: MockEnvDef) => `/portalai/${requireAws(def).envName}`,
     clusterName: (def: MockEnvDef) => `portalai-${requireAws(def).envName}`,

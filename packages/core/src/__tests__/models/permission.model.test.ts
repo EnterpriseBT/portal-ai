@@ -16,6 +16,21 @@ import {
   GroupModelFactory,
   UserGroupSchema,
   UserGroupModelFactory,
+  PERMISSION_VERBS,
+  PERMISSION_RESOURCE_TYPES,
+  NAV_PAGE_IDS,
+  MEMBER_VIEW_PAGE_IDS,
+  RESOURCE_PERMISSION_TYPES,
+  PagePermissionMapSchema,
+  ResourcePermissionMapSchema,
+  RESOURCE_CAPABILITIES,
+  verbsForResource,
+  defaultVerbForResource,
+  resourceAllowsInstanceScope,
+  resourceAllowsOwnership,
+  isVerbValidForResource,
+  validateStatement,
+  validateStatements,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -318,6 +333,287 @@ describe("Group / UserGroup schemas (#622)", () => {
     if (r.success) {
       expect(r.data.userId).toBe("user-2");
       expect(r.data.groupId).toBe("grp-1");
+    }
+  });
+});
+
+// ── Page + object permission surfaces (#630) ─────────────────────────
+
+describe("permission vocabulary (#630)", () => {
+  it("adds the `view` verb without dropping the existing ones", () => {
+    expect(PERMISSION_VERBS).toContain("view");
+    for (const v of [
+      "read",
+      "write",
+      "delete",
+      "share",
+      "manage",
+      "invite",
+      "*",
+    ])
+      expect(PERMISSION_VERBS).toContain(v);
+  });
+
+  it("adds the six plumbing/page resource types", () => {
+    for (const t of [
+      "entity_group",
+      "tag",
+      "column_definition",
+      "job",
+      "toolpack",
+      "page",
+    ])
+      expect(PERMISSION_RESOURCE_TYPES).toContain(t);
+  });
+
+  it("a `view page:<id>` statement parses (verb + type are valid together)", () => {
+    expect(
+      PermissionStatementSchema.safeParse({
+        id: "s",
+        created: 1,
+        createdBy: "u",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+        organizationId: "org-1",
+        policyId: "pol-1",
+        effect: "allow",
+        verb: "view",
+        resourceType: "page",
+        resourceId: "connectors",
+        condition: null,
+      }).success
+    ).toBe(true);
+  });
+
+  it("NAV_PAGE_IDS is one id per page (no per-tab ids) and omits Dashboard", () => {
+    expect(NAV_PAGE_IDS).toContain("connectors");
+    // Tabs are gated by object read, not page ids — connector_catalog is gone.
+    expect(NAV_PAGE_IDS).not.toContain("connector_catalog");
+    expect(NAV_PAGE_IDS).not.toContain("dashboard");
+  });
+
+  it("MEMBER_VIEW_PAGE_IDS is exactly the member pages (Decision A)", () => {
+    expect([...MEMBER_VIEW_PAGE_IDS].sort()).toEqual([
+      "jobs",
+      "pinned",
+      "stations",
+    ]);
+    // Admin pages carry no member grant.
+    expect([...MEMBER_VIEW_PAGE_IDS]).not.toContain("connectors");
+  });
+});
+
+describe("PagePermissionMapSchema (#630)", () => {
+  const full = Object.fromEntries(NAV_PAGE_IDS.map((id) => [id, true]));
+
+  it("accepts a map keyed by every nav page id", () => {
+    expect(PagePermissionMapSchema.safeParse(full).success).toBe(true);
+  });
+
+  it("is exhaustive — a partial map is rejected", () => {
+    expect(PagePermissionMapSchema.safeParse({ stations: true }).success).toBe(
+      false
+    );
+  });
+
+  it("rejects an unknown page id", () => {
+    expect(
+      PagePermissionMapSchema.safeParse({ ...full, settings: true }).success
+    ).toBe(false);
+  });
+});
+
+describe("ResourcePermissionMapSchema (#630)", () => {
+  const rwx = { read: true, write: false, delete: false };
+  const full = Object.fromEntries(
+    RESOURCE_PERMISSION_TYPES.map((t) => [t, rwx])
+  );
+
+  it("covers the data + plumbing object types, not page/billing/org", () => {
+    expect(RESOURCE_PERMISSION_TYPES).toContain("connector_instance");
+    expect(RESOURCE_PERMISSION_TYPES).toContain("connector_definition");
+    expect(RESOURCE_PERMISSION_TYPES).toContain("toolpack");
+    for (const excluded of ["page", "billing", "org", "member", "audit", "*"])
+      expect(RESOURCE_PERMISSION_TYPES).not.toContain(excluded);
+  });
+
+  it("renames the `view` object type to `curated_view` (verb/type collision)", () => {
+    expect(PERMISSION_RESOURCE_TYPES).toContain("curated_view");
+    expect(PERMISSION_RESOURCE_TYPES).not.toContain("view");
+    // The `view` VERB still exists (distinct from the type).
+    expect(PERMISSION_VERBS).toContain("view");
+  });
+
+  it("accepts a full read/write/delete map", () => {
+    expect(ResourcePermissionMapSchema.safeParse(full).success).toBe(true);
+  });
+
+  it("rejects a value missing a verb", () => {
+    expect(
+      ResourcePermissionMapSchema.safeParse({
+        ...full,
+        toolpack: { read: true, write: true },
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
+  it("covers every resource type exactly", () => {
+    expect(Object.keys(RESOURCE_CAPABILITIES).sort()).toEqual(
+      [...PERMISSION_RESOURCE_TYPES].sort()
+    );
+  });
+
+  it("every listed verb is a real verb, and each set is non-empty", () => {
+    for (const t of PERMISSION_RESOURCE_TYPES) {
+      const verbs = verbsForResource(t);
+      expect(verbs.length).toBeGreaterThan(0);
+      for (const v of verbs) expect(PERMISSION_VERBS).toContain(v);
+      // the default is the first offered verb
+      expect(verbs).toContain(defaultVerbForResource(t));
+    }
+  });
+
+  it("`view` pairs with `page` and nothing else — the coupling falls out", () => {
+    for (const t of PERMISSION_RESOURCE_TYPES) {
+      expect(isVerbValidForResource("view", t)).toBe(t === "page");
+    }
+    // and `page` is view-only
+    expect(verbsForResource("page")).toEqual(["view"]);
+    expect(isVerbValidForResource("read", "page")).toBe(false);
+  });
+
+  it("object types take read/write/delete (+ share only when shareable)", () => {
+    for (const t of RESOURCE_PERMISSION_TYPES) {
+      const verbs = verbsForResource(t);
+      expect(verbs).toEqual(
+        expect.arrayContaining(["read", "write", "delete"])
+      );
+      const shareable = (
+        SHAREABLE_RESOURCE_TYPES as readonly string[]
+      ).includes(t);
+      expect(verbs.includes("share")).toBe(shareable);
+    }
+  });
+
+  it("every privileged capability action maps to a valid (verb, resource) pair", () => {
+    // The authoritative dotted-action → (verb, resource) mapping (mirrors the
+    // engine's ACTION_MAP). The matrix must cover each, so an admin surface can't
+    // silently become un-authorable.
+    const CAPABILITY_PAIRS: Record<
+      (typeof CALLER_CAPABILITY_ACTIONS)[number],
+      { verb: string; resourceType: string }
+    > = {
+      "billing.manage": { verb: "manage", resourceType: "billing" },
+      "org.delete": { verb: "delete", resourceType: "org" },
+      "org.audit.read": { verb: "read", resourceType: "audit" },
+      "member.role.assign": { verb: "manage", resourceType: "member" },
+      "member.invite": { verb: "invite", resourceType: "member" },
+      "member.remove": { verb: "delete", resourceType: "member" },
+    };
+    for (const action of CALLER_CAPABILITY_ACTIONS) {
+      const { verb, resourceType } = CAPABILITY_PAIRS[action];
+      expect(
+        isVerbValidForResource(
+          verb as (typeof PERMISSION_VERBS)[number],
+          resourceType as (typeof PERMISSION_RESOURCE_TYPES)[number]
+        )
+      ).toBe(true);
+    }
+  });
+
+  it("privileged singletons + page are class-scoped without ownership; data types own", () => {
+    for (const t of ["billing", "org", "member", "audit", "page"] as const) {
+      expect(resourceAllowsInstanceScope(t)).toBe(t === "page");
+      expect(resourceAllowsOwnership(t)).toBe(false);
+    }
+    for (const t of RESOURCE_PERMISSION_TYPES) {
+      expect(resourceAllowsOwnership(t)).toBe(true);
+    }
+  });
+});
+
+describe("validateStatement — shared statement validity (#630)", () => {
+  it("accepts a meaningful data grant, a page view, and a privileged action", () => {
+    expect(
+      validateStatement({ verb: "read", resourceType: "station" }).valid
+    ).toBe(true);
+    expect(
+      validateStatement({
+        verb: "view",
+        resourceType: "page",
+        resourceId: "connectors",
+      }).valid
+    ).toBe(true);
+    expect(
+      validateStatement({ verb: "manage", resourceType: "billing" }).valid
+    ).toBe(true);
+    expect(validateStatement({ verb: "*", resourceType: "*" }).valid).toBe(
+      true
+    );
+    expect(
+      validateStatement({
+        verb: "read",
+        resourceType: "station",
+        condition: "created_by_caller",
+      }).valid
+    ).toBe(true);
+  });
+
+  it("rejects an inert verb/resource pair (read page, manage station, view station)", () => {
+    for (const s of [
+      { verb: "read", resourceType: "page" },
+      { verb: "manage", resourceType: "station" },
+      { verb: "view", resourceType: "station" },
+    ] as const) {
+      const r = validateStatement(s);
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.reason).toMatch(/not valid for resource/);
+    }
+  });
+
+  it("rejects an instance scope on a class-only resource", () => {
+    const r = validateStatement({
+      verb: "manage",
+      resourceType: "billing",
+      resourceId: "acct-1",
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reason).toMatch(/cannot be scoped to a specific/);
+  });
+
+  it("rejects an ownership condition on an instance scope or an unowned resource", () => {
+    expect(
+      validateStatement({
+        verb: "read",
+        resourceType: "station",
+        resourceId: "st-1",
+        condition: "created_by_caller",
+      }).valid
+    ).toBe(false);
+    expect(
+      validateStatement({
+        verb: "view",
+        resourceType: "page",
+        resourceId: "connectors",
+        condition: "created_by_caller",
+      }).valid
+    ).toBe(false);
+  });
+
+  it("validateStatements reports the first offender's index + reason", () => {
+    const r = validateStatements([
+      { verb: "read", resourceType: "station" },
+      { verb: "read", resourceType: "page" }, // invalid
+      { verb: "write", resourceType: "pin" },
+    ]);
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.index).toBe(1);
+      expect(r.reason).toMatch(/not valid/);
     }
   });
 });

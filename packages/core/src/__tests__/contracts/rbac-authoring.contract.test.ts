@@ -10,6 +10,7 @@ import {
   GroupUpsertRequestSchema,
   GroupViewSchema,
   GroupMembersSetRequestSchema,
+  GroupMembersResponseSchema,
   MemberGroupsSetRequestSchema,
   RbacObjectSearchResponseSchema,
 } from "../../contracts/rbac-authoring.contract.js";
@@ -38,8 +39,8 @@ describe("RBAC authoring contracts — policy (#622)", () => {
       PolicyStatementInputSchema.safeParse({
         effect: "deny",
         verb: "read",
-        resourceType: "view",
-        resourceId: "view-123",
+        resourceType: "curated_view",
+        resourceId: "curated_view-123",
         condition: "created_by_caller",
       }).success
     ).toBe(true);
@@ -167,5 +168,15 @@ describe("RBAC authoring contracts — group + object search (#622)", () => {
         objects: [{ id: "st-1", label: "My Station" }],
       }).success
     ).toBe(true);
+  });
+
+  it("GroupMembersResponse carries userIds (empty ok), and requires the field (#637)", () => {
+    expect(
+      GroupMembersResponseSchema.safeParse({ userIds: ["u-1", "u-2"] }).success
+    ).toBe(true);
+    expect(GroupMembersResponseSchema.safeParse({ userIds: [] }).success).toBe(
+      true
+    );
+    expect(GroupMembersResponseSchema.safeParse({}).success).toBe(false);
   });
 });

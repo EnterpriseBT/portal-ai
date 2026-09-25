@@ -34,6 +34,7 @@ import { TierService } from "../services/tier.service.js";
 import { ToolpackRegistrationService } from "../services/toolpack-registration.service.js";
 import { BUILTIN_TOOL_NAMES } from "../services/tools.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { requirePermission } from "../middleware/require-permission.middleware.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { eq, and, isNull } from "drizzle-orm";
@@ -144,6 +145,10 @@ function matchesCustomSearch(
 toolpacksRouter.get(
   "/",
   getApplicationMetadata,
+  // #630: toolpacks is an admin page; the list mixes in-memory builtin registry
+  // entries with org rows, so it can't be row-filtered — a class-level read gate
+  // is the boundary (owner/admin pass via `* *`; members are denied 403).
+  requirePermission("resource.read", "toolpack"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { search, kind } = ToolpackListRequestQuerySchema.parse(req.query);
@@ -225,6 +230,7 @@ toolpacksRouter.get(
 toolpacksRouter.get(
   "/:id",
   getApplicationMetadata,
+  requirePermission("resource.read", "toolpack"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;

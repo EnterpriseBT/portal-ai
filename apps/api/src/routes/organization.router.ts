@@ -58,15 +58,22 @@ async function orgRoleFields(userId: string, organizationId: string) {
     userId,
     organizationId
   )) as OrgRole[];
-  const [capabilities, groups] = await Promise.all([
-    PermissionService.capabilities({ userId, organizationId, roles }),
+  const [maps, groups] = await Promise.all([
+    // #630: capabilities + pagePermissions + resourcePermissions from one loadSet.
+    PermissionService.permissionMaps({ userId, organizationId, roles }),
     // #622: the caller's custom group names, shown on their profile.
     DbService.repository.userGroups.findGroupNamesByUser(
       userId,
       organizationId
     ),
   ]);
-  return { roles, groups, capabilities };
+  return {
+    roles,
+    groups,
+    capabilities: maps.capabilities,
+    pagePermissions: maps.pagePermissions,
+    resourcePermissions: maps.resourcePermissions,
+  };
 }
 
 /**

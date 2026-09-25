@@ -17,6 +17,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { entityTags } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 
 const logger = createLogger({ module: "entity-tag" });
 
@@ -104,6 +105,15 @@ entityTagRouter.get(
           )!
         );
       }
+
+      // #630: filter to the tags the caller may `read`.
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("tag", {
+        createdByCol: entityTags.createdBy,
+        idCol: entityTags.id,
+      });
+      if (visibility) filters.push(visibility);
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
@@ -218,7 +228,24 @@ entityTagRouter.get(
           );
         });
 
-      if (!entityTag) {
+      const ctx = req.application!.metadata;
+      if (!entityTag || entityTag.organizationId !== ctx.organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_TAG_NOT_FOUND,
+            "Entity tag not found"
+          )
+        );
+      }
+      // #630: an unreadable tag is indistinguishable from absent (404).
+      if (
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "tag",
+          id,
+          createdBy: entityTag.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,
@@ -486,7 +513,10 @@ entityTagRouter.patch(
       }
 
       const existing = await DbService.repository.entityTags.findById(id);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -495,6 +525,16 @@ entityTagRouter.patch(
           )
         );
       }
+      // #630: a member may edit only their own tag; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "tag",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       if (parsed.data.name && parsed.data.name !== existing.name) {
         const duplicate = await DbService.repository.entityTags.findByName(
@@ -611,7 +651,10 @@ entityTagRouter.delete(
       const { id } = req.params;
 
       const existing = await DbService.repository.entityTags.findById(id);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -620,6 +663,16 @@ entityTagRouter.delete(
           )
         );
       }
+      // #630: a member may delete only their own tag; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        {
+          type: "tag",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       const { userId } = req.application!.metadata;
 

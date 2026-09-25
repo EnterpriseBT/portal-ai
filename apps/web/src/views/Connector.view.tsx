@@ -23,6 +23,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { useCapabilities } from "../utils/use-capabilities.util";
+import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import {
   ConnectorDefinitionCardUI,
   ConnectorDefinitionDataList,
@@ -67,6 +69,16 @@ export const ConnectorView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { canOnResource, capabilitiesKnown } = useCapabilities();
+
+  // #630: the two tabs stay visible; each is gated by the **object read** of the
+  // data it shows — Connected on `connector_instance`, Catalog on the global
+  // `connector_definition` registry. A gated tab renders an unauthorized panel
+  // rather than hiding. Optimistic while the current-org query loads.
+  const canReadInstances =
+    !capabilitiesKnown || canOnResource("connector_instance", "read");
+  const canReadCatalog =
+    !capabilitiesKnown || canOnResource("connector_definition", "read");
 
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [selectedConnectorDefinitionId, setSelectedConnectorDefinitionId] =
@@ -192,99 +204,109 @@ export const ConnectorView = () => {
       </Tabs>
 
       <TabPanel {...getTabPanelProps(0)}>
-        <Stack spacing={2}>
-          <PaginationToolbar {...instancePagination.toolbarProps} />
-          <ConnectorInstanceWithDefinitionDataList
-            query={
-              instancePagination.queryParams as ConnectorInstanceListRequestQuery
-            }
-          >
-            {(response) => (
-              <SyncTotal
-                total={response.data?.total}
-                setTotal={instancePagination.setTotal}
-              >
-                <DataResult results={{ connectorInstances: response }}>
-                  {({ connectorInstances }) =>
-                    connectorInstances.total === 0 ? (
-                      instancePagination.search ||
-                      Object.values(instancePagination.filters).some(
-                        (v) => v.length > 0
-                      ) ? (
-                        <EmptyResults />
-                      ) : (
-                        <PageEmptyState
-                          icon={<Icon name={IconName.MemoryChip} />}
-                          title="No connectors found"
-                        />
-                      )
-                    ) : (
-                      <Stack spacing={1}>
-                        {connectorInstances.connectorInstances.map((ci) => (
-                          <ConnectorInstanceCardUI
-                            key={ci.id}
-                            connectorInstance={ci}
-                            connectorDefinition={
-                              ci.connectorDefinition ?? undefined
-                            }
-                            onClick={handleInstanceClick}
-                            onDelete={handleDeleteClick}
+        {!canReadInstances ? (
+          <UnauthorizedState message="You don't have permission to view connectors." />
+        ) : (
+          <Stack spacing={2}>
+            <PaginationToolbar {...instancePagination.toolbarProps} />
+            <ConnectorInstanceWithDefinitionDataList
+              query={
+                instancePagination.queryParams as ConnectorInstanceListRequestQuery
+              }
+            >
+              {(response) => (
+                <SyncTotal
+                  total={response.data?.total}
+                  setTotal={instancePagination.setTotal}
+                >
+                  <DataResult results={{ connectorInstances: response }}>
+                    {({ connectorInstances }) =>
+                      connectorInstances.total === 0 ? (
+                        instancePagination.search ||
+                        Object.values(instancePagination.filters).some(
+                          (v) => v.length > 0
+                        ) ? (
+                          <EmptyResults />
+                        ) : (
+                          <PageEmptyState
+                            icon={<Icon name={IconName.MemoryChip} />}
+                            title="No connectors found"
                           />
-                        ))}
-                      </Stack>
-                    )
-                  }
-                </DataResult>
-              </SyncTotal>
-            )}
-          </ConnectorInstanceWithDefinitionDataList>
-        </Stack>
+                        )
+                      ) : (
+                        <Stack spacing={1}>
+                          {connectorInstances.connectorInstances.map((ci) => (
+                            <ConnectorInstanceCardUI
+                              key={ci.id}
+                              connectorInstance={ci}
+                              connectorDefinition={
+                                ci.connectorDefinition ?? undefined
+                              }
+                              onClick={handleInstanceClick}
+                              onDelete={handleDeleteClick}
+                            />
+                          ))}
+                        </Stack>
+                      )
+                    }
+                  </DataResult>
+                </SyncTotal>
+              )}
+            </ConnectorInstanceWithDefinitionDataList>
+          </Stack>
+        )}
       </TabPanel>
 
       <TabPanel {...getTabPanelProps(1)}>
-        <Stack spacing={2}>
-          <PaginationToolbar {...catalogPagination.toolbarProps} />
-          <ConnectorDefinitionDataList
-            query={
-              catalogPagination.queryParams as ConnectorDefinitionListRequestQuery
-            }
-          >
-            {(response) => (
-              <SyncTotal
-                total={response.data?.total}
-                setTotal={catalogPagination.setTotal}
-              >
-                <DataResult results={{ connectorDefinitions: response }}>
-                  {({ connectorDefinitions }) =>
-                    connectorDefinitions.total === 0 ? (
-                      catalogPagination.search ||
-                      Object.values(catalogPagination.filters).some(
-                        (v) => v.length > 0
-                      ) ? (
-                        <EmptyResults />
-                      ) : (
-                        <PageEmptyState
-                          icon={<Icon name={IconName.MemoryChip} />}
-                          title="No connector definitions found"
-                        />
-                      )
-                    ) : (
-                      <Stack spacing={1}>
-                        {connectorDefinitions.connectorDefinitions.map((cd) => (
-                          <ConnectorDefinitionCardUI
-                            key={cd.id}
-                            connectorDefinition={cd}
-                            onConnect={handleConnect}
+        {!canReadCatalog ? (
+          <UnauthorizedState message="You don't have permission to view the connector catalog." />
+        ) : (
+          <Stack spacing={2}>
+            <PaginationToolbar {...catalogPagination.toolbarProps} />
+            <ConnectorDefinitionDataList
+              query={
+                catalogPagination.queryParams as ConnectorDefinitionListRequestQuery
+              }
+            >
+              {(response) => (
+                <SyncTotal
+                  total={response.data?.total}
+                  setTotal={catalogPagination.setTotal}
+                >
+                  <DataResult results={{ connectorDefinitions: response }}>
+                    {({ connectorDefinitions }) =>
+                      connectorDefinitions.total === 0 ? (
+                        catalogPagination.search ||
+                        Object.values(catalogPagination.filters).some(
+                          (v) => v.length > 0
+                        ) ? (
+                          <EmptyResults />
+                        ) : (
+                          <PageEmptyState
+                            icon={<Icon name={IconName.MemoryChip} />}
+                            title="No connector definitions found"
                           />
-                        ))}
-                      </Stack>
-                    )
-                  }
-                </DataResult>
-              </SyncTotal>
-            )}
-          </ConnectorDefinitionDataList>
-        </Stack>
+                        )
+                      ) : (
+                        <Stack spacing={1}>
+                          {connectorDefinitions.connectorDefinitions.map(
+                            (cd) => (
+                              <ConnectorDefinitionCardUI
+                                key={cd.id}
+                                connectorDefinition={cd}
+                                onConnect={handleConnect}
+                              />
+                            )
+                          )}
+                        </Stack>
+                      )
+                    }
+                  </DataResult>
+                </SyncTotal>
+              )}
+            </ConnectorDefinitionDataList>
+          </Stack>
+        )}
       </TabPanel>
 
       {selectedConnectorDefinitionId &&

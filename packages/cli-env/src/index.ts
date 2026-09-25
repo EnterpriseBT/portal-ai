@@ -68,6 +68,8 @@ export {
 
 export { recordAudit, type AuditEntry } from "./audit.js";
 
+export { loadLocalEnv } from "./local-env.js";
+
 export {
   npmSpawner,
   runApiScript,

@@ -1,12 +1,21 @@
 import { z } from "zod";
 import { OrganizationSchema } from "../models/organization.model.js";
 import { OrgRoleSchema } from "../models/organization-user.model.js";
-import { CapabilityMapSchema } from "../models/permission.model.js";
+import {
+  CapabilityMapSchema,
+  PagePermissionMapSchema,
+  ResourcePermissionMapSchema,
+} from "../models/permission.model.js";
 
 /**
  * Response payload for the caller's current organization (#576/#620).
  * - `roles` — the caller's roles in the org (display), from the `user_role` join.
- * - `capabilities` — the server-computed gating map; the FE gates on these.
+ * - `capabilities` — the server-computed app-action gating map.
+ * - `pagePermissions` — per-nav-page `view` map; the FE gates nav + route
+ *   redirects on it (#630).
+ * - `resourcePermissions` — class-level `{read,write,delete}` per object type,
+ *   for coarse affordances (#630); per-object interactability stays a per-object
+ *   check.
  */
 export const OrganizationGetResponseSchema = z.object({
   organization: OrganizationSchema,
@@ -16,6 +25,10 @@ export const OrganizationGetResponseSchema = z.object({
    *  callers/fixtures still parse. */
   groups: z.array(z.string()).default([]),
   capabilities: CapabilityMapSchema,
+  /** #630 — the server always returns these; optional so pre-#630 callers/
+   *  fixtures still parse. The FE fail-closes on an absent map. */
+  pagePermissions: PagePermissionMapSchema.optional(),
+  resourcePermissions: ResourcePermissionMapSchema.optional(),
 });
 
 export type OrganizationGetResponse = z.infer<

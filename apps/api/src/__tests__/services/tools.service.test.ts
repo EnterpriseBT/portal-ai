@@ -28,6 +28,11 @@ const _mockSelectChain = {
 };
 jest.unstable_mockModule("../../db/client.js", () => ({
   db: { select: () => _mockSelectChain },
+  // Pulled in transitively via the rbac_management tools' services
+  // (SyncLockService's advisory locks reserve a dedicated connection). #629.
+  reserveConnection: jest.fn(),
+  connectDatabase: jest.fn(),
+  closeDatabase: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -56,7 +61,26 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       stationToolpacks: { findByStationId: mockFindByStationId_tools },
       organizationToolpacks: { findManyByIds: mockFindManyByIds_orgPacks },
       organizations: { findById: mockFindById_org },
+      // #629: buildAnalyticsTools resolves the caller's roles for the
+      // permission gate (mocked no-op below).
+      userRole: {
+        findEffectiveRoleNames: jest
+          .fn<() => Promise<string[]>>()
+          .mockResolvedValue([]),
+      },
     },
+  },
+}));
+
+// #629: the permission gate + its loadSet are exercised in their own suites
+// (permission-gate.service.test). Here they are no-ops so the cost-gate guard
+// (which runs after) sees every write tool reach the cost wrap.
+jest.unstable_mockModule("../../services/permission-gate.service.js", () => ({
+  wrapWithPermissionGate: jest.fn(),
+}));
+jest.unstable_mockModule("../../services/permission.service.js", () => ({
+  PermissionService: {
+    loadSet: jest.fn<() => Promise<unknown>>().mockResolvedValue({}),
   },
 }));
 
@@ -215,6 +239,7 @@ const ALL_PACK_SLUGS = [
   "financial",
   "web_search",
   "entity_management",
+  "rbac_management",
   "gis",
 ];
 
@@ -844,6 +869,26 @@ describe("buildAnalyticsTools()", () => {
     }
 
     spy.mockRestore();
+  });
+
+  it("#629: every write tool has an authorization descriptor (coverage guard)", async () => {
+    const { ALL_TOOL_CAPABILITIES, TOOL_AUTHORIZATION } =
+      await import("@portalai/core/registries");
+    const writeTools = Object.entries(ALL_TOOL_CAPABILITIES)
+      .filter(([, cap]) => cap.writes.length > 0)
+      .map(([name]) => name);
+    expect(writeTools.length).toBeGreaterThan(0);
+    // Every data-plane write tool is covered by a descriptor so the gate
+    // authorizes it — a new write tool without one fails here.
+    for (const name of writeTools) {
+      expect(TOOL_AUTHORIZATION[name]).toBeDefined();
+    }
+    // Every descriptor names a real write tool (no stale entries).
+    for (const name of Object.keys(TOOL_AUTHORIZATION)) {
+      expect(ALL_TOOL_CAPABILITIES[name]?.writes.length ?? 0).toBeGreaterThan(
+        0
+      );
+    }
   });
 
   it("does not warn about a missing capability for the real built-in tool set (#184)", async () => {

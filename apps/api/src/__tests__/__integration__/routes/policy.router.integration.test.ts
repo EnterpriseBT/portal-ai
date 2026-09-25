@@ -205,6 +205,76 @@ describe("/api/policies (#622 slice 3)", () => {
     expect(res.body.code).toBe(ApiCode.RBAC_POLICY_EXCEEDS_BOUNDARY);
   });
 
+  // Statement shape validity (#630) — the RESOURCE_CAPABILITIES matrix, enforced
+  // in PolicyService so BOTH this HTTP path and the rbac_management toolpack (thin
+  // wrappers over the same PolicyService.create/update) reject inert statements.
+  it("rejects an inert statement shape (read page) with 400 RBAC_STATEMENT_INVALID", async () => {
+    const { orgId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    const res = await auth(request(app).post("/api/policies")).send(
+      body({
+        name: "BadShape",
+        statements: [
+          {
+            effect: "allow",
+            verb: "read",
+            resourceType: "page",
+            resourceId: "connectors",
+            condition: null,
+          },
+        ],
+      })
+    );
+    // Validity runs before the boundary — an owner would clear the boundary via
+    // `* *`, so a 400 (not 403) proves the shape check fired first.
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.RBAC_STATEMENT_INVALID);
+  });
+
+  it("rejects an inert shape on update too (manage station)", async () => {
+    const { orgId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    const created = await auth(request(app).post("/api/policies")).send(body());
+    const res = await auth(
+      request(app).put(`/api/policies/${created.body.payload.policy.id}`)
+    ).send(
+      body({
+        statements: [
+          {
+            effect: "allow",
+            verb: "manage",
+            resourceType: "station",
+            resourceId: null,
+            condition: null,
+          },
+        ],
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.RBAC_STATEMENT_INVALID);
+  });
+
+  it("accepts a valid `view page` grant (the nav-via-policy use case)", async () => {
+    const { orgId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    const res = await auth(request(app).post("/api/policies")).send(
+      body({
+        name: "NavGrant",
+        statements: [
+          {
+            effect: "allow",
+            verb: "view",
+            resourceType: "page",
+            resourceId: "connectors",
+            condition: null,
+          },
+        ],
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.payload.policy.statements).toHaveLength(1);
+  });
+
   it("an org without the customRbac entitlement is refused", async () => {
     const { orgId } = await seedOrg("owner");
     await entitleOrg(orgId, false);

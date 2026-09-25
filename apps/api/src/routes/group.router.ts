@@ -15,6 +15,7 @@ import {
   GroupMembersSetRequestSchema,
   type GroupResponse,
   type GroupListResponse,
+  type GroupMembersResponse,
 } from "@portalai/core/contracts";
 
 export const groupRouter = Router();
@@ -312,6 +313,54 @@ groupRouter.put(
         auditContextFromRequest(req)
       );
       return HttpService.success<GroupResponse>(res, { group });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/groups/{id}/members:
+ *   get:
+ *     summary: List a group's member ids (#637)
+ *     description: >
+ *       The group's active member user ids. Gated by the normal members-read
+ *       permission — org membership only (not the customRbac authoring gate) —
+ *       and org-scoped to the group.
+ *     tags: [RBAC Authoring]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: The group's member user ids
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/GroupMembersResponse'
+ *       404:
+ *         description: Group not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+groupRouter.get(
+  "/:id/members",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userIds = await GroupService.listMembers(
+        req.application!.metadata,
+        req.params.id
+      );
+      return HttpService.success<GroupMembersResponse>(res, { userIds });
     } catch (error) {
       return next(error);
     }

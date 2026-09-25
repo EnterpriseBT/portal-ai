@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { within } from "@testing-library/react";
 import { render, screen, fireEvent } from "./test-utils";
 import {
   StatementEditorUI,
@@ -59,7 +60,7 @@ describe("rowsToStatements (#622 fan-out)", () => {
       {
         effect: "allow",
         verb: "read",
-        resourceType: "view",
+        resourceType: "curated_view",
         resourceId: "view-1",
         condition: null,
       },
@@ -105,7 +106,7 @@ describe("StatementEditorUI (#622)", () => {
       {
         effect: "allow",
         verb: "read",
-        resourceType: "view",
+        resourceType: "curated_view",
         resourceId: "view-1",
         condition: null,
       },
@@ -157,6 +158,102 @@ describe("StatementEditorUI (#622)", () => {
     // The statement selects are disabled (a system policy can't be edited here).
     const effect = screen.getByRole("combobox", { name: /Effect/i });
     expect(effect).toHaveAttribute("aria-disabled", "true");
+  });
+
+  // ── view⟺page coupling (#630) ─────────────────────────────────────────────
+  //
+  // A `page` is gated only by the `view` verb and `view` only makes sense on a
+  // page; the editor must make `view page` reachable and prevent the inert
+  // `read page` / `view station` combinations that silently grant nothing.
+
+  const lastStatement = (onChange: jest.Mock): PolicyStatementInput =>
+    (
+      onChange.mock.calls[
+        onChange.mock.calls.length - 1
+      ][0] as PolicyStatementInput[]
+    )[0];
+
+  it("coerces the verb to `view` when the resource is set to `page`", () => {
+    const onChange = jest.fn();
+    render(<StatementEditorUI onChange={onChange} onSearch={noSearch} />);
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Resource/i }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByText("page"));
+    expect(lastStatement(onChange)).toMatchObject({
+      verb: "view",
+      resourceType: "page",
+    });
+  });
+
+  it("offers only a resource's valid verbs — a data row excludes view/manage/invite", () => {
+    render(<StatementEditorUI onChange={jest.fn()} onSearch={noSearch} />); // read station
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Verb/i }));
+    const listbox = within(screen.getByRole("listbox"));
+    expect(listbox.getByText("read")).toBeInTheDocument();
+    expect(listbox.getByText("write")).toBeInTheDocument();
+    expect(listbox.getByText("delete")).toBeInTheDocument();
+    expect(listbox.getByText("share")).toBeInTheDocument(); // station is shareable
+    expect(listbox.queryByText("view")).not.toBeInTheDocument();
+    expect(listbox.queryByText("manage")).not.toBeInTheDocument();
+    expect(listbox.queryByText("invite")).not.toBeInTheDocument();
+  });
+
+  it("coerces the verb to a privileged capability when the resource is a singleton", () => {
+    const onChange = jest.fn();
+    render(<StatementEditorUI onChange={onChange} onSearch={noSearch} />);
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Resource/i }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByText("billing"));
+    expect(lastStatement(onChange)).toMatchObject({
+      verb: "manage",
+      resourceType: "billing",
+    });
+  });
+
+  it("locks a page row's verb to `view` so `read page` can't be authored", () => {
+    render(
+      <StatementEditorUI
+        onChange={jest.fn()}
+        onSearch={noSearch}
+        initialStatements={[
+          {
+            effect: "allow",
+            verb: "view",
+            resourceType: "page",
+            resourceId: "connectors",
+            condition: null,
+          },
+        ]}
+      />
+    );
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Verb/i }));
+    const listbox = within(screen.getByRole("listbox"));
+    expect(listbox.getByText("view")).toBeInTheDocument();
+    expect(listbox.queryByText("read")).not.toBeInTheDocument();
+    expect(listbox.queryByText("delete")).not.toBeInTheDocument();
+  });
+
+  it("coerces the verb off `view` when a page row's resource becomes a data type", () => {
+    const onChange = jest.fn();
+    render(
+      <StatementEditorUI
+        onChange={onChange}
+        onSearch={noSearch}
+        initialStatements={[
+          {
+            effect: "allow",
+            verb: "view",
+            resourceType: "page",
+            resourceId: "connectors",
+            condition: null,
+          },
+        ]}
+      />
+    );
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Resource/i }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByText("station"));
+    expect(lastStatement(onChange)).toMatchObject({
+      verb: "read",
+      resourceType: "station",
+    });
   });
 
   it("seeds rows from initialStatements", () => {

@@ -127,6 +127,59 @@ describe("user_role repo + backfill + provisioning (#620 slice 1)", () => {
     expect(await repo.findByUserOrg(userId, orgId, db)).toHaveLength(1);
   });
 
+  it("the 0104 backfill skips a live membership of a soft-deleted org, without FK-violating (#627)", async () => {
+    // Healthy org: roles seeded, a live membership that must still be backfilled.
+    const { userId: liveUserId, orgId: liveOrgId } = await seedOrgWithRoles();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(liveOrgId, liveUserId, {
+          role: "admin",
+        }) as never
+      );
+
+    // Orphan org: SOFT-DELETED, so 0102 never seeded its `sysrole:<org>:<role>`
+    // (seedRbacForOrg is deliberately NOT called) — yet a membership outlived
+    // the delete with `deleted IS NULL`. The pre-#627 backfill computed a
+    // `role_id` for this row that no `roles` row satisfies → the whole INSERT
+    // raised 23503 (FK) and aborted every app-dev deploy since #624.
+    const orphanUser = createUser(`auth0|${generateId()}`);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.users)
+      .values(orphanUser as never);
+    const deletedOrg = createOrganization(orphanUser.id, {
+      deleted: Date.now(),
+      deletedBy: orphanUser.id,
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.organizations)
+      .values(deletedOrg as never);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(deletedOrg.id, orphanUser.id, {
+          role: "owner",
+        }) as never
+      );
+
+    const sql = readFileSync(
+      join(process.cwd(), "drizzle/0104_backfill-user-roles.sql"),
+      "utf8"
+    );
+
+    // Must not reject on the orphan's missing role.
+    await expect(connection.unsafe(sql)).resolves.toBeDefined();
+
+    // Healthy membership was backfilled; orphan resolves zero roles (correct —
+    // a member of a deleted org has no roles).
+    expect(await repo.findRoleNames(liveUserId, liveOrgId, db)).toEqual([
+      "admin",
+    ]);
+    expect(
+      await repo.findByUserOrg(orphanUser.id, deletedOrg.id, db)
+    ).toHaveLength(0);
+  });
+
   it("provisioning assigns the owner a user_role (case 10)", async () => {
     const owner = createUser(`auth0|${generateId()}`);
     const { user: created, organization } = await provisionTestOrg(

@@ -6,6 +6,7 @@ import { AsyncSearchableSelect, Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
 import { sdk } from "../api/sdk";
+import { UnauthorizedState } from "./UnauthorizedState.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import {
@@ -54,6 +55,9 @@ export interface CreateConnectorEntityDialogProps {
   isPending: boolean;
   serverError: ServerError | null;
   lockedConnectorInstance: { id: string; name: string } | null;
+  /** #630: whether the caller may `read` connector instances (drives the picker's
+   *  unauthorized panel). Defaults true. */
+  canReadConnectors?: boolean;
 }
 
 export const CreateConnectorEntityDialog: React.FC<
@@ -64,6 +68,7 @@ export const CreateConnectorEntityDialog: React.FC<
   onSubmit,
   isPending,
   serverError,
+  canReadConnectors = true,
   lockedConnectorInstance,
 }) => {
   const [form, setForm] = useState<EntityFormState>(INITIAL_FORM);
@@ -187,6 +192,8 @@ export const CreateConnectorEntityDialog: React.FC<
             disabled
             fullWidth
           />
+        ) : !canReadConnectors ? (
+          <UnauthorizedState message="You don't have permission to view connectors." />
         ) : (
           <AsyncSearchableSelect
             label="Connector Instance"

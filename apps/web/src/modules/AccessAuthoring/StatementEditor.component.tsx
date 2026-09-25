@@ -18,18 +18,50 @@ import {
   PERMISSION_VERBS,
   PERMISSION_RESOURCE_TYPES,
   PERMISSION_CONDITIONS,
+  NAV_PAGE_IDS,
+  verbsForResource,
+  defaultVerbForResource,
+  resourceAllowsInstanceScope,
+  resourceAllowsOwnership,
+  isVerbValidForResource,
+} from "@portalai/core/models";
+import type {
+  PermissionVerb,
+  PermissionResourceType,
 } from "@portalai/core/models";
 import type { PolicyStatementInput } from "@portalai/core/contracts";
 
-/** Object types the instance picker can search (management-plane; the rest are
- *  class-level only — mirrors the server's `RbacObjectSearchService`). */
-const PICKABLE_TYPES = new Set([
-  "station",
-  "pin",
-  "portal",
-  "connector_instance",
-  "entity",
-]);
+/**
+ * Resource types whose instances are a **fixed, known set** rather than searched
+ * DB objects (#630). `page` ids are the nav pages (`NAV_PAGE_IDS`), so the scope
+ * picker offers them directly — without this a `view page:<id>` grant renders an
+ * object-search picker that can't resolve the id and shows an empty scope.
+ */
+const FIXED_OPTIONS: Record<string, SelectOption[]> = {
+  page: NAV_PAGE_IDS.map((id) => ({ value: id, label: id })),
+};
+
+/**
+ * Which (verb × resource × scope) combinations a statement may take is defined
+ * **once** by `RESOURCE_CAPABILITIES` in `@portalai/core` (#630). The editor
+ * derives every affordance from it, so only valid statements can be constructed:
+ * the Verb menu lists exactly `verbsForResource(type)`; the Scope offers "Specific
+ * objects" only when `resourceAllowsInstanceScope`; the ownership condition only
+ * when `resourceAllowsOwnership`; and changing the resource coerces an orphaned
+ * verb to `defaultVerbForResource`. The `view`⟺`page` pairing is not special-cased
+ * — `view` is in no verb set but `page`'s, so it falls out of the matrix. The
+ * row's current verb is kept in the menu (`verbOptionsFor`) so a legacy statement
+ * still renders while it's being corrected.
+ */
+const verbOptionsFor = (
+  resourceType: PermissionResourceType,
+  current: string
+): string[] => {
+  const valid = verbsForResource(resourceType);
+  return (valid as readonly string[]).includes(current)
+    ? [...valid]
+    : [current, ...valid];
+};
 
 /** An editor row — an instance row carries N picked object ids that flatten to
  *  N statements on submit; a class row carries an optional ownership condition. */
@@ -139,7 +171,9 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
   return (
     <Stack spacing={2}>
       {rows.map((row, i) => {
-        const pickable = PICKABLE_TYPES.has(row.resourceType);
+        const fixedOptions = FIXED_OPTIONS[row.resourceType];
+        const pickable = resourceAllowsInstanceScope(row.resourceType);
+        const ownershipAllowed = resourceAllowsOwnership(row.resourceType);
         return (
           <Stack
             key={i}
@@ -170,13 +204,15 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               size="small"
               label="Verb"
               value={row.verb}
+              // The menu only offers verbs valid for the current resource, so a
+              // selection is always in-bounds — no coercion needed here.
               onChange={(e) =>
                 patch(i, { verb: e.target.value as StatementRow["verb"] })
               }
               disabled={readOnly}
               sx={{ minWidth: 100 }}
             >
-              {PERMISSION_VERBS.map((v) => (
+              {verbOptionsFor(row.resourceType, row.verb).map((v) => (
                 <MenuItem key={v} value={v}>
                   {v}
                 </MenuItem>
@@ -187,14 +223,29 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
               size="small"
               label="Resource"
               value={row.resourceType}
-              onChange={(e) =>
+              onChange={(e) => {
+                const resourceType = e.target
+                  .value as StatementRow["resourceType"];
                 patch(i, {
-                  resourceType: e.target.value as StatementRow["resourceType"],
-                  // Leaving a pickable type resets an instance selection.
+                  resourceType,
+                  // Changing type resets the instance selection + ownership.
                   scope: "class",
                   objectIds: [],
-                })
-              }
+                  condition: "",
+                  // Coerce a now-invalid verb to the new resource's default
+                  // (#630 matrix) — this is where `view`⟺`page` falls out.
+                  ...(isVerbValidForResource(
+                    row.verb as PermissionVerb,
+                    resourceType
+                  )
+                    ? {}
+                    : {
+                        verb: defaultVerbForResource(
+                          resourceType
+                        ) as StatementRow["verb"],
+                      }),
+                });
+              }}
               disabled={readOnly}
               sx={{ minWidth: 140 }}
             >
@@ -224,15 +275,22 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
 
             {row.scope === "instance" ? (
               <MultiAsyncSearchableSelect
-                label="Objects"
-                placeholder="Search by name…"
+                label={fixedOptions ? "Pages" : "Objects"}
+                placeholder={fixedOptions ? "Select…" : "Search by name…"}
                 value={row.objectIds}
                 onChange={(objectIds) => patch(i, { objectIds })}
-                onSearch={(q) => onSearch(row.resourceType, q)}
+                onSearch={
+                  fixedOptions
+                    ? async (q) =>
+                        fixedOptions.filter((o) =>
+                          o.label.toLowerCase().includes(q.toLowerCase())
+                        )
+                    : (q) => onSearch(row.resourceType, q)
+                }
                 disabled={readOnly}
                 fullWidth
               />
-            ) : (
+            ) : ownershipAllowed ? (
               <TextField
                 select
                 size="small"
@@ -253,7 +311,7 @@ export const StatementEditorUI: React.FC<StatementEditorUIProps> = ({
                   </MenuItem>
                 ))}
               </TextField>
-            )}
+            ) : null}
 
             <IconButton
               size="small"
