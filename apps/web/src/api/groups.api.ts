@@ -3,6 +3,7 @@ import type {
   GroupResponse,
   GroupListResponse,
   GroupMembersSetRequest,
+  GroupMembersResponse,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { queryKeys } from "./keys";
@@ -17,6 +18,16 @@ export const groups = {
     useAuthQuery<GroupListResponse>(
       queryKeys.groups.root,
       "/api/groups",
+      undefined,
+      options
+    ),
+
+  /** A group's member ids (#637) — fetched only when the editor opens one group
+   *  (never on the list). Gated by the normal members-read permission. */
+  members: (id: string, options?: QueryOptions<GroupMembersResponse>) =>
+    useAuthQuery<GroupMembersResponse>(
+      queryKeys.groups.members(id),
+      `/api/groups/${encodeURIComponent(id)}/members`,
       undefined,
       options
     ),

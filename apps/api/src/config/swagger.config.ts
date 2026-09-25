@@ -51,6 +51,7 @@ import {
   GroupResponseSchema,
   GroupListResponseSchema,
   GroupMembersSetRequestSchema,
+  GroupMembersResponseSchema,
   MemberGroupsSetRequestSchema,
   RbacObjectSearchResponseSchema,
   InviteCreateRequestSchema,
@@ -395,6 +396,10 @@ const orgDeleteSchemas: Record<string, unknown> = {
   GroupListResponse: z.toJSONSchema(GroupListResponseSchema, JSON_SCHEMA_OPTS),
   GroupMembersSetRequest: z.toJSONSchema(
     GroupMembersSetRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  GroupMembersResponse: z.toJSONSchema(
+    GroupMembersResponseSchema,
     JSON_SCHEMA_OPTS
   ),
   MemberGroupsSetRequest: z.toJSONSchema(
