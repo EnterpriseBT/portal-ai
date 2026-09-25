@@ -539,6 +539,14 @@ export class SeatService {
         "user",
         target.userId
       );
+      // #637: drop the member's group memberships, so a since-removed user never
+      // lingers in a group's roster (which would surface a non-member id and
+      // block that group's next edit at assertMembers).
+      await DbService.repository.userGroups.softDeleteByUser(
+        target.userId,
+        orgId,
+        caller.userId
+      );
       void AuditService.record({
         organizationId: orgId,
         userId: caller.userId,

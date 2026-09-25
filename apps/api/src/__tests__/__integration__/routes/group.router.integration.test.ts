@@ -289,4 +289,152 @@ describe("/api/groups (#622 slice 5)", () => {
       .where(eq(groups.id, groupId));
     expect(group.deleted).not.toBeNull();
   });
+
+  // ── Members read endpoint (#637) ────────────────────────────────────────
+
+  async function insertGroup(orgId: string, name = "G") {
+    const id = generateId();
+    await db.insert(groups).values({
+      id,
+      created: Date.now(),
+      createdBy: "RBAC_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: orgId,
+      name,
+      description: null,
+    } as never);
+    return id;
+  }
+  async function insertMembership(
+    orgId: string,
+    userId: string,
+    groupId: string
+  ) {
+    await db.insert(userGroup).values({
+      id: generateId(),
+      created: Date.now(),
+      createdBy: "RBAC_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: orgId,
+      userId,
+      groupId,
+    } as never);
+  }
+
+  it("GET /:id/members returns the group's member ids", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+    const memberId = await addMember(orgId);
+    const created = await auth(request(app).post("/api/groups")).send({
+      name: "G",
+      description: null,
+      policyIds: [],
+    });
+    const groupId = created.body.payload.group.id;
+    await auth(request(app).put(`/api/groups/${groupId}/members`)).send({
+      userIds: [memberId],
+    });
+
+    const res = await auth(request(app).get(`/api/groups/${groupId}/members`));
+    expect(res.status).toBe(200);
+    expect(res.body.payload.userIds).toEqual([memberId]);
+  });
+
+  it("GET /:id/members returns [] for a group with no members", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+    const created = await auth(request(app).post("/api/groups")).send({
+      name: "Empty",
+      description: null,
+      policyIds: [],
+    });
+    const groupId = created.body.payload.group.id;
+
+    const res = await auth(request(app).get(`/api/groups/${groupId}/members`));
+    expect(res.status).toBe(200);
+    expect(res.body.payload.userIds).toEqual([]);
+  });
+
+  it("GET /:id/members 404s a group in another org (no cross-tenant read)", async () => {
+    await seedOrg(); // the caller's own org
+    const otherOwner = createUser(`auth0|other-${generateId()}`);
+    await db.insert(users).values(otherOwner as never);
+    const otherOrg = createOrganization(otherOwner.id);
+    await db.insert(organizations).values(otherOrg as never);
+    const foreignGroupId = await insertGroup(otherOrg.id);
+
+    const res = await auth(
+      request(app).get(`/api/groups/${foreignGroupId}/members`)
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /:id/members is readable by a plain member, without customRbac (members-read gate)", async () => {
+    // Caller is a MEMBER (not owner) of an org that is NOT customRbac-entitled —
+    // the read must still succeed: it's org-membership-gated, not authoring-gated.
+    const owner = createUser(`auth0|owner-${generateId()}`);
+    await db.insert(users).values(owner as never);
+    const org = createOrganization(owner.id);
+    await db.insert(organizations).values(org as never);
+    await seedRbacForOrg(db as never, org.id);
+    const caller = createUser(CALLER_AUTH0);
+    await db.insert(users).values(caller as never);
+    await db.insert(organizationUsers).values(
+      createOrganizationUser(org.id, caller.id, {
+        role: "member",
+        lastLogin: Date.now(),
+      }) as never
+    );
+    await db.insert(organizationUsers).values(
+      createOrganizationUser(org.id, owner.id, {
+        role: "owner",
+        lastLogin: 0,
+      }) as never
+    );
+    const groupId = await insertGroup(org.id);
+    const someMember = await addMember(org.id);
+    await insertMembership(org.id, someMember, groupId);
+
+    const res = await auth(request(app).get(`/api/groups/${groupId}/members`));
+    expect(res.status).toBe(200); // not 403 — no customRbac/authoring gate
+    expect(res.body.payload.userIds).toEqual([someMember]);
+  });
+
+  it("removing a member from the org drops them from group rosters (#637 cascade)", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+    const memberId = await addMember(orgId);
+    const created = await auth(request(app).post("/api/groups")).send({
+      name: "G",
+      description: null,
+      policyIds: [],
+    });
+    const groupId = created.body.payload.group.id;
+    await auth(request(app).put(`/api/groups/${groupId}/members`)).send({
+      userIds: [memberId],
+    });
+    const before = await auth(
+      request(app).get(`/api/groups/${groupId}/members`)
+    );
+    expect(before.body.payload.userIds).toEqual([memberId]);
+
+    // Remove the member from the org (SeatService.removeMember cascade).
+    const del = await auth(
+      request(app).delete(`/api/organization/members/${memberId}`)
+    );
+    expect(del.status).toBe(204);
+
+    // The group's roster no longer surfaces the since-removed member — so its
+    // next edit/save won't hit RBAC_GRANTEE_NOT_MEMBER on a stale id.
+    const after = await auth(
+      request(app).get(`/api/groups/${groupId}/members`)
+    );
+    expect(after.body.payload.userIds).toEqual([]);
+  });
 });

@@ -45,7 +45,10 @@ export const queryKeys = {
   },
   policies: { root: ["policies"] as const },
   roles: { root: ["roles"] as const },
-  groups: { root: ["groups"] as const },
+  groups: {
+    root: ["groups"] as const,
+    members: (id: string) => ["groups", id, "members"] as const,
+  },
   invitations: {
     root: ["invitations"] as const,
     list: () => [...queryKeys.invitations.root, "list"] as const,

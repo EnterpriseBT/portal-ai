@@ -160,6 +160,21 @@ export class GroupService {
     return GroupService.toView(await GroupService.load(caller, id));
   }
 
+  /**
+   * A group's active member ids (#637). Deliberately **not** behind the customRbac
+   * authoring `gate` — reading who is in a group is a roster read, gated by the
+   * normal members-read permission: **org membership** (proven by the route's
+   * `getApplicationMetadata`) + org-scoped `load` (404 cross-org), mirroring
+   * `SeatService.listMembers` (#621). Contrast `get`, which stays authoring-gated.
+   */
+  static async listMembers(
+    caller: PermissionContext,
+    id: string
+  ): Promise<string[]> {
+    const group = await GroupService.load(caller, id);
+    return DbService.repository.userGroups.findUserIdsByGroup(group.id);
+  }
+
   static async create(
     caller: PermissionContext,
     req: GroupUpsertRequest,

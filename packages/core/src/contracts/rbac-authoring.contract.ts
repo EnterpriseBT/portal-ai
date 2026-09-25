@@ -125,6 +125,14 @@ export type GroupMembersSetRequest = z.infer<
   typeof GroupMembersSetRequestSchema
 >;
 
+/** `GET /api/groups/:id/members` — the group's active member user ids (#637).
+ *  Fetched only when the editor opens one group (not shipped on `GroupView`), so
+ *  the group list stays flat at hundreds-of-users scale. */
+export const GroupMembersResponseSchema = z.object({
+  userIds: z.array(z.string()),
+});
+export type GroupMembersResponse = z.infer<typeof GroupMembersResponseSchema>;
+
 /** `PUT /api/organization/members/:userId/groups` — set a member's groups
  *  (member-centric, the Members-tab path). */
 export const MemberGroupsSetRequestSchema = z.object({
