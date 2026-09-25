@@ -167,6 +167,31 @@ export class UserGroupsRepository extends Repository<
       .returning();
     return rows.length;
   }
+
+  /**
+   * Soft-delete every live group membership of a user in one org — the member
+   * removal cascade (#637). A user removed from the org must not linger in any
+   * group's roster (else a group read/edit surfaces a non-member id).
+   */
+  async softDeleteByUser(
+    userId: string,
+    organizationId: string,
+    actor: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await (client as typeof db)
+      .update(userGroup)
+      .set({ deleted: Date.now(), deletedBy: actor })
+      .where(
+        and(
+          eq(userGroup.userId, userId),
+          eq(userGroup.organizationId, organizationId),
+          isNull(userGroup.deleted)
+        )
+      )
+      .returning();
+    return rows.length;
+  }
 }
 
 export const userGroupsRepo = new UserGroupsRepository();

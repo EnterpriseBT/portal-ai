@@ -6,7 +6,12 @@ import { jest } from "@jest/globals";
 // edit. Mock the SDK so we drive those hooks directly.
 
 type MutateOpts = { onSuccess?: (d: unknown) => void };
-const mockGroupMembers = jest.fn<() => { data?: { userIds: string[] } }>();
+type MembersQuery = {
+  data?: { userIds: string[] };
+  isLoading?: boolean;
+  isError?: boolean;
+};
+const mockGroupMembers = jest.fn<() => MembersQuery>();
 const mockCreateMutate = jest.fn<(vars: unknown, opts: MutateOpts) => void>();
 const mockUpdateMutate = jest.fn<(vars: unknown, opts: MutateOpts) => void>();
 const mockSetMembers = jest.fn<(v: unknown) => Promise<unknown>>();
@@ -56,7 +61,11 @@ const editGroup = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGroupMembers.mockReturnValue({ data: { userIds: [] } });
+  mockGroupMembers.mockReturnValue({
+    data: { userIds: [] },
+    isLoading: false,
+    isError: false,
+  });
   mockSetMembers.mockResolvedValue({});
   mockCreateMutate.mockImplementation((_vars, opts) =>
     opts?.onSuccess?.({ group: { id: "new-g" } })
@@ -67,21 +76,52 @@ beforeEach(() => {
 });
 
 describe("GroupEditorDialog (#637)", () => {
+  const loaded = (userIds: string[]) => ({
+    data: { userIds },
+    isLoading: false,
+    isError: false,
+  });
+
   it("seeds the Members field from the group's members on edit-open", () => {
-    mockGroupMembers.mockReturnValue({ data: { userIds: ["u-1"] } });
+    mockGroupMembers.mockReturnValue(loaded(["u-1"]));
     render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
     // The seeded member renders as a chip via its roster label — not an empty field.
     expect(screen.getByText("u1@example.io")).toBeInTheDocument();
   });
 
   it("saves membership on edit (setMembers with the group id + ids)", () => {
-    mockGroupMembers.mockReturnValue({ data: { userIds: ["u-1"] } });
+    mockGroupMembers.mockReturnValue(loaded(["u-1"]));
     render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(mockSetMembers).toHaveBeenCalledWith({
       id: "g-1",
       userIds: ["u-1"],
     });
+  });
+
+  it("disables Save while the group's members are still loading (edit)", () => {
+    mockGroupMembers.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    });
+    render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
+    // Save is blocked until the roster seeds — a submit here would wipe members.
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("does not wipe membership if saved before the roster seeds (fetch error)", () => {
+    mockGroupMembers.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    });
+    render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
+    // Save is enabled (not loading) but membership never seeded — the name/policy
+    // update lands, and setMembers is skipped so the real membership is untouched.
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mockUpdateMutate).toHaveBeenCalled();
+    expect(mockSetMembers).not.toHaveBeenCalled();
   });
 
   it("still saves membership on create (unified path)", () => {

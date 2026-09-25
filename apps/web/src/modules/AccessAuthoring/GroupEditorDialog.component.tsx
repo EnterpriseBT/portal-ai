@@ -3,7 +3,13 @@ import React, { useState } from "react";
 import TextField from "@mui/material/TextField";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Button, Modal, Stack, MultiSearchableSelect } from "@portalai/core/ui";
+import {
+  Button,
+  Modal,
+  Stack,
+  Typography,
+  MultiSearchableSelect,
+} from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type { GroupView } from "@portalai/core/contracts";
 
@@ -31,6 +37,11 @@ export interface GroupEditorDialogUIProps {
   memberOptions: SelectOption[];
   onSubmit: () => void;
   isPending?: boolean;
+  /** Editing: the group's current members are still loading — Save is blocked
+   *  so a submit can't diff [] against the real set and wipe it (#637). */
+  membersLoading?: boolean;
+  /** Editing: the members read failed — a save will leave membership unchanged. */
+  membersError?: boolean;
   serverError: ServerError | null;
 }
 
@@ -50,6 +61,8 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
   memberOptions,
   onSubmit,
   isPending = false,
+  membersLoading = false,
+  membersError = false,
   serverError,
 }) => (
   <Modal
@@ -76,7 +89,7 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
           type="button"
           variant="contained"
           onClick={onSubmit}
-          disabled={isPending || !name.trim()}
+          disabled={isPending || !name.trim() || membersLoading}
         >
           {isPending ? "Saving…" : "Save"}
         </Button>
@@ -108,12 +121,19 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
       />
       <MultiSearchableSelect
         label="Members"
-        placeholder="Add members…"
+        placeholder={membersLoading ? "Loading members…" : "Add members…"}
         options={memberOptions}
         value={memberIds}
         onChange={onMemberIdsChange}
+        disabled={membersLoading}
         fullWidth
       />
+      {membersError && (
+        <Typography variant="caption" color="error">
+          Couldn’t load the current members — saving will leave membership
+          unchanged.
+        </Typography>
+      )}
       <FormAlert serverError={serverError} />
     </Stack>
   </Modal>
@@ -189,13 +209,20 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
       { name: name.trim(), description: description || null, policyIds },
       {
         onSuccess: (data) => {
-          // Membership is a second, group-centric call, on BOTH create and edit
-          // (#637) — targets the returned id (fresh on create, existing on edit).
-          // setGroupMembers diffs, so an unchanged set is a no-op.
-          setMembers
-            .mutateAsync({ id: data.group.id, userIds: memberIds })
-            .then(invalidate)
-            .catch(() => invalidate());
+          // Only (re)write membership when `memberIds` is authoritative: on create
+          // always; on edit only after the roster has actually seeded (#637). If a
+          // save somehow reaches here before the seed (Save is disabled during
+          // load, but this is the safety net), skip it — else setGroupMembers would
+          // diff the initial [] against the real members and wipe them. Skipping
+          // leaves membership untouched; the name/policy update still lands.
+          if (!group || membersSeededRef.current) {
+            setMembers
+              .mutateAsync({ id: data.group.id, userIds: memberIds })
+              .then(invalidate)
+              .catch(() => invalidate());
+          } else {
+            invalidate();
+          }
         },
       }
     );
@@ -218,6 +245,8 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
       memberOptions={memberOptions}
       onSubmit={handleSubmit}
       isPending={upsert.isPending}
+      membersLoading={!!group && groupMembersQuery.isLoading}
+      membersError={!!group && groupMembersQuery.isError}
       serverError={toServerError(upsert.error)}
     />
   );

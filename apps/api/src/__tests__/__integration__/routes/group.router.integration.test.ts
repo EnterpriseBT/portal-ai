@@ -405,4 +405,36 @@ describe("/api/groups (#622 slice 5)", () => {
     expect(res.status).toBe(200); // not 403 — no customRbac/authoring gate
     expect(res.body.payload.userIds).toEqual([someMember]);
   });
+
+  it("removing a member from the org drops them from group rosters (#637 cascade)", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+    const memberId = await addMember(orgId);
+    const created = await auth(request(app).post("/api/groups")).send({
+      name: "G",
+      description: null,
+      policyIds: [],
+    });
+    const groupId = created.body.payload.group.id;
+    await auth(request(app).put(`/api/groups/${groupId}/members`)).send({
+      userIds: [memberId],
+    });
+    const before = await auth(
+      request(app).get(`/api/groups/${groupId}/members`)
+    );
+    expect(before.body.payload.userIds).toEqual([memberId]);
+
+    // Remove the member from the org (SeatService.removeMember cascade).
+    const del = await auth(
+      request(app).delete(`/api/organization/members/${memberId}`)
+    );
+    expect(del.status).toBe(204);
+
+    // The group's roster no longer surfaces the since-removed member — so its
+    // next edit/save won't hit RBAC_GRANTEE_NOT_MEMBER on a stale id.
+    const after = await auth(
+      request(app).get(`/api/groups/${groupId}/members`)
+    );
+    expect(after.body.payload.userIds).toEqual([]);
+  });
 });
