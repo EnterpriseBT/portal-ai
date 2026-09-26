@@ -71,14 +71,14 @@ The FK-condition vocabulary and its **load-time expansion**, plus the deny-only 
 
 ## Slice 3 — Session engine + capability/context rederivation (the read cutover)
 
-`resolveViewsForSession(stationId, userId)` replaces `buildSessionViews`, and the four data-shape surfaces + capability resolution switch from `station_instances` to `station_views`. **This is the behavior-changing slice** — after it, member reads are view-scoped and default-deny.
+`resolveViewsForSession(stationId, userId)` is **added** for user sessions, and the data-shape surfaces + capability resolution switch from `station_instances` to `station_views`. An **org-wide `buildSessionViews` is kept** (station_views-sourced) for the no-user map-tile + dissolve pipeline — its per-user scoping is **split to #643** (map tiles are already org-wide today → no regression). **This is the behavior-changing slice** — after it, member *agent/records/station_context* reads are view-scoped and default-deny.
 
 **Files**
 
-- Edit: `apps/api/src/services/portal-sql.service.ts` — `buildSessionViews` → `resolveViewsForSession(stationId, userId, client)`: view set = `station_views(stationId)` ∩ readable `curated_view`s; per view emit effective projection (∩ field grants) + `whereClause`; suppress on `isDenied("read","entity_record")`; `_meta_*` per-view; `_meta_column_catalog` only when entity-management available — spec §5.
+- Edit: `apps/api/src/services/portal-sql.service.ts` — add `resolveViewsForSession(stationId, userId, client)`: view set = `station_views(stationId)` ∩ readable `curated_view`s; per view emit effective projection (∩ field grants) + `whereClause`; suppress on `isDenied("read","entity_record")`; `_meta_*` per-view; `_meta_column_catalog` only when entity-management available — spec §5. Keep an org-wide `buildSessionViews` (station_views-sourced) for `portal-map-tile.service.ts:799` + `dissolve-precompute.processor.ts:173` (→ #643).
 - Edit: `apps/api/src/utils/resolve-capabilities.util.ts` — `resolveStationCapabilities`/`resolveEntityCapabilities` source `station_views → view → entity → instance`.
 - Edit: `apps/api/src/services/portal.service.ts` — `buildStationContext` gains `userId` (entities = resolved views); `loadConnectorInstanceContexts` derives instances from views; call sites `:395`/`:689` thread `userId`.
-- Edit: `apps/api/src/tools/station-context.tool.ts` — per-view columns for members; `apps/api/src/tools/sql-query.tool.ts` / `services/tools.service.ts:583` pass `userId`.
+- Edit: `apps/api/src/tools/station-context.tool.ts` — per-view columns for members; `apps/api/src/tools/sql-query.tool.ts` / `services/tools.service.ts:583`, `services/portal-sql-handle.service.ts` (async SQL), `services/analytics.service.ts:472` pass `userId`.
 - Edit: `apps/api/src/prompts/system.prompt.ts` — roster reads the resolved views (agent-guidance doc surface: keep `system.prompt.test.ts` green).
 
 **Steps**
@@ -87,9 +87,9 @@ The FK-condition vocabulary and its **load-time expansion**, plus the deny-only 
 2. **Implement** the rewrite + rederivation + `userId` threading. Green.
 3. Lint + type-check.
 
-**Done when:** every member-facing data-shape surface is view-scoped and keyed off `station_views`; `buildSessionViews` is gone; admins retain full access via `*`.
+**Done when:** the agent SQL session, `station_context`, roster, records, and async-SQL surfaces are view-scoped and keyed off `station_views`; capability resolves from `station_views`; the map-tile/dissolve pipeline keeps the org-wide `buildSessionViews` (→ #643); admins retain full access via `*`.
 
-**Risk:** **highest — the cutover.** Existing integration fixtures that assert a *member* sees data via `station_instances` will break; update them to seed a `curated_view` grant (or assert the new default-deny) in this slice. Admin/owner-principal tests are unaffected (they match `*`). No `whereClause` validation is needed yet (only null-filter default views exist until slice 5).
+**Risk:** **highest — the cutover.** Existing integration fixtures that assert a *member* sees data via `station_instances` will break; update them to seed a `curated_view` grant (or assert the new default-deny) in this slice. Admin/owner-principal tests are unaffected (they match `*`). No `whereClause` validation is needed yet (only null-filter default views exist until slice 5). **Map-tile + dissolve view-scoping is out of this slice → #643** — keep their org-wide `buildSessionViews` call working (source-swapped to `station_views`).
 
 ---
 

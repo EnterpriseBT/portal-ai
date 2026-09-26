@@ -22,7 +22,7 @@ Pins the contract for [#599](https://github.com/EnterpriseBT/portal-ai/issues/59
 - `whereClause` validator; curated-view CRUD routes + `GET /api/curated-views/:id/records`; Views nav page (`NAV_PAGE_IDS += "views"`, member-visible) + detail/records UI + widened `ShareDialog` + marked chips.
 
 ### Out of scope
-- Always-live pins (#640); ownership model (#641); a general FK-condition framework; per-record `entity_record` deny; dynamic/`current_user.*` + writable (`WITH CHECK OPTION`) views.
+- Always-live pins (#640); ownership model (#641); **map-tile + dissolve view-scoping (#643)** — #599 keeps an org-wide `buildSessionViews` for that no-user/cached pipeline (no regression; map tiles are already org-wide); a general FK-condition framework; per-record `entity_record` deny; dynamic/`current_user.*` + writable (`WITH CHECK OPTION`) views.
 
 ## Surface
 
@@ -104,12 +104,12 @@ isDenied(verb: string, resourceType: string, object?: PermissionObject): boolean
 
 ### 5. Session engine + the four data-shape surfaces
 
-**`portal-sql.service.ts` — `resolveViewsForSession(stationId, userId, client)`** replaces `buildSessionViews(stationId, organizationId, client)`:
+**`portal-sql.service.ts` — add `resolveViewsForSession(stationId, userId, client)`** for user sessions (the agent SQL path, `station_context`, records, async SQL handle). An **org-wide `buildSessionViews(stationId, organizationId, client)`** is **kept** (now sourced from `station_views`, not `station_instances`) for the no-user **map-tile + dissolve pipeline** (`portal-map-tile.service.ts:799`, `dissolve-precompute.processor.ts:173`) — that pipeline's per-user view-scoping is **split to #643** (map tiles are already org-wide today, so this is no regression). `resolveViewsForSession`:
 - view set = `station_views(stationId)` ∩ `{ V : set.can("resource.read", {type:"curated_view", id:V, createdBy}) }` (one `loadSet`).
 - per granted `V`: columns = its **effective projection** (join rows, or all live entity field mappings when none) filtered to `set.can("resource.read", {type:"field_mapping", id:fmId})`; emit `CREATE OR REPLACE TEMP VIEW "<V.key>"` selecting those columns' `column_name` from `er__<connectorEntityId>`, `WHERE organization_id = '<org>' AND deleted IS NULL` **AND `(<whereClause>)`** when set.
 - **suppress `V` entirely** if `set.isDenied("read","entity_record", …)` (class-level — the deny-wins subtraction; per-row deferred).
 - `_meta_entities`/`_meta_columns` rebuild **per granted view** (id/key/label per view; columns = the view's granted columns). `_meta_column_catalog` is emitted **only when entity-management is available** (admin) — it's an org-wide catalog and leaks otherwise.
-- `runSqlQuery` (`:381`) / `explainSqlQuery` (`:495`) pass `userId`; `sql_query` already holds it (`tools.service.ts:583`).
+- `runSqlQuery` (`:381`) / `explainSqlQuery` (`:495`) / `portal-sql-handle.service` (async SQL) / `analytics.service:472` pass `userId`; `sql_query` already holds it (`tools.service.ts:583`). `portal-map-tile.service` + `dissolve-precompute.processor` keep the org-wide `buildSessionViews` (→ #643).
 
 **Capability + context rederivation (source swap `station_instances` → `station_views`):** `resolveStationCapabilities`/`resolveEntityCapabilities` (`resolve-capabilities.util.ts`), `buildStationContext` (`portal.service.ts:1186`, **+`userId`**; `entities` = resolved views; call sites `:395`/`:689` thread `userId`), `loadConnectorInstanceContexts` (`:1234`, instances derived from the views' entities), and the **`station_context` tool** (`station-context.tool.ts`, returns per-view columns for members) all resolve their entity/instance set from the station's attached views. The system-prompt roster (`system.prompt.ts:614`) is fixed for free (it iterates `stationContext.entities`).
 
