@@ -27,6 +27,7 @@ const S = (p: Partial<PermissionStatementSelect>): PermissionStatementSelect =>
     resourceType: "station",
     resourceId: null,
     condition: null,
+    conditionParam: null,
     created: 1,
     createdBy: SYSTEM,
     updated: null,
@@ -552,5 +553,66 @@ describe("PermissionSet — page view + composable surfaces (#630)", () => {
       "stations",
     ])
       expect(set.can("resource.view", page(id))).toBe(true);
+  });
+});
+
+describe("PermissionSet — isDenied + FK-condition fail-closed (#599 slice 2)", () => {
+  const rec = (id?: string) => ({ type: "entity_record", id });
+
+  it("isDenied is true on an explicit unconditional class-level deny", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ effect: "deny", verb: "read", resourceType: "entity_record" }),
+    ]);
+    expect(set.isDenied("read", "entity_record")).toBe(true);
+  });
+
+  it("isDenied is false with no statements (absence-of-allow is NOT a deny)", () => {
+    const set = new PermissionSet(ctx("member"), []);
+    expect(set.isDenied("read", "entity_record")).toBe(false);
+  });
+
+  it("isDenied is false when only an allow matches (deny must be explicit)", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ effect: "allow", verb: "read", resourceType: "entity_record" }),
+    ]);
+    expect(set.isDenied("read", "entity_record")).toBe(false);
+  });
+
+  it("isDenied honors the wildcard deny type", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ effect: "deny", verb: "*", resourceType: "*" }),
+    ]);
+    expect(set.isDenied("read", "entity_record")).toBe(true);
+  });
+
+  it("a no-object isDenied ignores an instance-scoped deny (v1 = class-level)", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({
+        effect: "deny",
+        verb: "read",
+        resourceType: "entity_record",
+        resourceId: "r-1",
+      }),
+    ]);
+    expect(set.isDenied("read", "entity_record")).toBe(false);
+    expect(set.isDenied("read", "entity_record", rec("r-1"))).toBe(true);
+  });
+
+  it("an unexpanded in_curated_view statement never grants (fails closed)", () => {
+    // The resolver must not honor the FK condition directly — loadSet expands it
+    // into concrete field_mapping grants; an unexpanded one denies.
+    const set = new PermissionSet(ctx("member"), [
+      S({
+        effect: "allow",
+        verb: "read",
+        resourceType: "field_mapping",
+        resourceId: null,
+        condition: "in_curated_view",
+        conditionParam: "view-1",
+      }),
+    ]);
+    expect(
+      set.can("resource.read", { type: "field_mapping", id: "fm-1" })
+    ).toBe(false);
   });
 });

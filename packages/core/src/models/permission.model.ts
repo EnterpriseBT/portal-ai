@@ -101,12 +101,19 @@ export const SHAREABLE_RESOURCE_TYPES = [
  * The bounded, SQL-translatable condition vocabulary (#598 D6). Ownership is a
  * statement condition, not resolver code: `created_by_caller` ⇒ the object's
  * `createdBy === ctx.userId`; `created_by_system` ⇒ `=== SystemUtilities.id.system`.
- * Everything else (data-attribute slicing) is done with views (#599), never a
- * dynamic condition — so this set stays closed.
+ * Data-attribute slicing is done with views (#599), never a dynamic condition.
+ *
+ * `in_curated_view` (#599) is the one **FK-shaped** condition: a `read
+ * field_mapping in_curated_view` grant/statement carries its target curated
+ * view id in `conditionParam`, and is **expanded at load time**
+ * (`PermissionService.loadSet` → `expandFkConditions`) into concrete
+ * `field_mapping:<id>` statements — so the resolver (`matches`/
+ * `visibilityPredicate`) never sees it and an *unexpanded* one fails closed.
  */
 export const PERMISSION_CONDITIONS = [
   "created_by_caller",
   "created_by_system",
+  "in_curated_view",
 ] as const;
 export const PermissionConditionSchema = z.enum(PERMISSION_CONDITIONS);
 export type PermissionCondition = z.infer<typeof PermissionConditionSchema>;
@@ -463,6 +470,9 @@ export const PermissionStatementSchema = CoreSchema.extend({
   /** null = class-level (`type:*`); set = a specific instance. */
   resourceId: z.string().nullable(),
   condition: PermissionConditionSchema.nullable(),
+  /** The FK target for `condition = "in_curated_view"` (a curated view id);
+   *  null (defaulted) for every other condition (#599). */
+  conditionParam: z.string().nullable().default(null),
 });
 export type PermissionStatement = z.infer<typeof PermissionStatementSchema>;
 
@@ -509,6 +519,9 @@ export const PermissionGrantSchema = CoreSchema.extend({
   resourceType: PermissionResourceTypeSchema,
   resourceId: z.string().nullable(),
   condition: PermissionConditionSchema.nullable(),
+  /** The FK target for `condition = "in_curated_view"` (a curated view id);
+   *  null (defaulted) for every other condition (#599). */
+  conditionParam: z.string().nullable().default(null),
 });
 export type PermissionGrant = z.infer<typeof PermissionGrantSchema>;
 

@@ -37,6 +37,9 @@ export const permissionGrants = pgTable(
     }).notNull(),
     resourceId: text("resource_id"),
     condition: text("condition", { enum: PERMISSION_CONDITIONS }),
+    /** The FK target for `condition = 'in_curated_view'` (a curated view id);
+     *  expanded to concrete `field_mapping:<id>` at load time (#599). */
+    conditionParam: text("condition_param"),
   },
   (t) => [
     index("permission_grants_principal_idx").on(
@@ -59,7 +62,13 @@ export const permissionGrants = pgTable(
     ),
     check(
       "permission_grants_condition_check",
-      sql`${t.condition} IS NULL OR ${t.condition} IN ('created_by_caller', 'created_by_system')`
+      sql`${t.condition} IS NULL OR ${t.condition} IN ('created_by_caller', 'created_by_system', 'in_curated_view')`
+    ),
+    // #599: the FK-shaped condition carries its target in `condition_param`;
+    // every other condition (and a null one) must leave it null.
+    check(
+      "permission_grants_condition_param_check",
+      sql`(${t.condition} = 'in_curated_view') = (${t.conditionParam} IS NOT NULL)`
     ),
   ]
 );
