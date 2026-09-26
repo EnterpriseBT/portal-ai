@@ -82,6 +82,7 @@ describe("PortalSqlHandleService.produceFromTransform (#159)", () => {
       },
       stationId: "s1",
       organizationId: "o1",
+      userId: "user-1",
     });
 
     const oracle = AnalyticsService.technicalIndicator({
@@ -128,6 +129,7 @@ describe("PortalSqlHandleService.produceFromTransform (#159)", () => {
       },
       stationId: "s1",
       organizationId: "o1",
+      userId: "user-1",
     });
     const names = envelope.schema.map((c) => c.name);
     expect(names).toEqual(expect.arrayContaining(["date", "macd"]));
@@ -147,6 +149,7 @@ describe("PortalSqlHandleService.produceFromTransform (#159)", () => {
       },
       stationId: "s1",
       organizationId: "o1",
+      userId: "user-1",
     });
     expect(envelope.schema.some((c) => c.name === "_record_id")).toBe(true);
     const streamed = await drain(envelope.queryHandle);

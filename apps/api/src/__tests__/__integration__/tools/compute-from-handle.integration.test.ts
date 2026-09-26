@@ -48,6 +48,7 @@ async function produceHandle(result: unknown): Promise<string> {
   const { envelope } = await PortalSqlHandleService.produce({
     stationId: "station-1",
     organizationId: "org-1",
+    userId: "user-1",
     sql: "SELECT amount FROM t",
   });
   return envelope.queryHandle;

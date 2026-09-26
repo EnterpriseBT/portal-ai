@@ -461,6 +461,8 @@ export class AnalyticsService {
     sql: string;
     stationId: string;
     organizationId: string;
+    /** #599: the calling user — the SQL session is per-user view-scoped. */
+    userId: string;
     rowCap?: number;
     cellCap?: number;
     payloadCap?: number;

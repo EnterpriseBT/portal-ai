@@ -67,6 +67,7 @@ describe("Smoke B — query-handle pipeline (#85 Phase 3)", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT acreage, assessed_value FROM parcels",
     });
 
@@ -181,6 +182,7 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: 'SELECT "_record_id", "ts", "val" FROM series',
     });
     expect(envelope.rowCount).toBe(N);
@@ -265,6 +267,7 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: 'SELECT "_record_id", "ts", "ret" FROM series',
     });
     expect(envelope.rowCount).toBe(N);
@@ -337,6 +340,7 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
     const { envelope: source } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: 'SELECT "_record_id", "ts", "val" FROM series',
     });
     expect(source.rowCount).toBe(N);
@@ -352,6 +356,7 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
       },
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
     });
 
     // SMA(14) over N points → N-13 outputs; snapshot partial (> cap),

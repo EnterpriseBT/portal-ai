@@ -57,7 +57,7 @@ export class DisplayEntityRecordsTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, organizationId: string) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -74,6 +74,7 @@ export class DisplayEntityRecordsTool extends Tool<typeof InputSchema> {
         const { envelope } = await PortalSqlHandleService.produce({
           stationId,
           organizationId,
+          userId,
           sql,
         });
 

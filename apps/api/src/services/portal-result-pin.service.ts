@@ -42,6 +42,9 @@ export interface MaterializeDeps {
 export interface MaterializeScope {
   stationId: string;
   organizationId: string;
+  /** #599: the user the pin's re-execution is view-scoped to (the pinner).
+   *  #640 will rebind this to the pin's definer; for now it is the caller. */
+  userId: string;
 }
 
 export interface MaterializedPin {
@@ -222,7 +225,11 @@ export class PortalResultPinService {
       // Materialize by re-execution — the same funnel the refresh path uses.
       const delivery = await resolveSqlDelivery(
         { sql: pipeline.sql },
-        { stationId: scope.stationId, organizationId: scope.organizationId }
+        {
+          stationId: scope.stationId,
+          organizationId: scope.organizationId,
+          userId: scope.userId,
+        }
       );
       if (delivery.kind === "inline") {
         const result = delivery.result as {

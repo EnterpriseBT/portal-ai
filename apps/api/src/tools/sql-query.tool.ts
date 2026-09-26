@@ -67,10 +67,12 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
   build(
     stationId: string,
     organizationId: string,
-    userId?: string,
+    userId: string,
     portalId?: string
   ) {
-    const escalationEnabled = userId != null && portalId != null;
+    // #599: the session is per-user view-scoped, so `userId` is required.
+    // Job-tier escalation additionally needs a portal context.
+    const escalationEnabled = portalId != null;
 
     return tool({
       description: this.description,
@@ -140,6 +142,7 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
             sql,
             stationId,
             organizationId,
+            userId,
           }).catch((err) => {
             logger.info(
               { stationId, err: err instanceof Error ? err.message : err },
@@ -178,7 +181,7 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
           return await resolveResultSink(
             { kind: "rows", onLarge: "handle" },
             { sql },
-            { stationId, organizationId }
+            { stationId, organizationId, userId }
           );
         } catch (err) {
           // Backstop (spec D8a): the predictive EXPLAIN under-estimated and
@@ -256,6 +259,7 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
         sql: opts.sql,
         stationId: opts.stationId,
         organizationId: opts.organizationId,
+        userId: opts.userId,
       },
     });
 

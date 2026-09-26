@@ -266,3 +266,83 @@ export async function provisionTestOrg(
   );
   return { user, ...provisioned };
 }
+
+/**
+ * #599: attach a default (unrestricted) curated view to a station — the cutover
+ * replacement for a `station_instances` link on the read path. Creates a
+ * `curated_views` row (no projection rows = all columns, null whereClause) and a
+ * `station_views` attachment; when `grantToUserId` is set, also seeds the member
+ * read grants a session needs (`read curated_view:<id>` + the composed
+ * `read field_mapping in_curated_view:<id>` FK grant). Returns the view id.
+ */
+export async function attachCuratedView(
+  db: Db,
+  args: {
+    stationId: string;
+    organizationId: string;
+    connectorEntityId: string;
+    key: string;
+    label: string;
+    createdBy: string;
+    grantToUserId?: string;
+  }
+): Promise<string> {
+  const now = Date.now();
+  const base = {
+    created: now,
+    createdBy: args.createdBy,
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+  const viewId = generateId();
+  await db.insert(curatedViews).values({
+    ...base,
+    id: viewId,
+    organizationId: args.organizationId,
+    connectorEntityId: args.connectorEntityId,
+    key: args.key,
+    label: args.label,
+    description: null,
+    whereClause: null,
+  } as never);
+  await db.insert(stationViews).values({
+    ...base,
+    id: generateId(),
+    organizationId: args.organizationId,
+    stationId: args.stationId,
+    curatedViewId: viewId,
+  } as never);
+  if (args.grantToUserId) {
+    await db.insert(permissionGrants).values([
+      {
+        ...base,
+        id: generateId(),
+        organizationId: args.organizationId,
+        principalType: "user",
+        principalId: args.grantToUserId,
+        effect: "allow",
+        verb: "read",
+        resourceType: "curated_view",
+        resourceId: viewId,
+        condition: null,
+        conditionParam: null,
+      },
+      {
+        ...base,
+        id: generateId(),
+        organizationId: args.organizationId,
+        principalType: "user",
+        principalId: args.grantToUserId,
+        effect: "allow",
+        verb: "read",
+        resourceType: "field_mapping",
+        resourceId: null,
+        condition: "in_curated_view",
+        conditionParam: viewId,
+      },
+    ] as never);
+  }
+  return viewId;
+}

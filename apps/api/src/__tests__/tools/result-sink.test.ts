@@ -32,7 +32,7 @@ const { resolveResultSink } = await import("../../tools/result-sink.js");
 const { PortalSqlHandleService } =
   await import("../../services/portal-sql-handle.service.js");
 
-const CTX = { stationId: "s1", organizationId: "o1" };
+const CTX = { stationId: "s1", organizationId: "o1", userId: "user-1" };
 const rowsProd = (onLarge: "handle" | "sample" | "error"): Production => ({
   kind: "rows",
   onLarge,

@@ -147,6 +147,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
   build(
     stationId: string,
     organizationId: string,
+    userId: string,
     deps: VisualizeMapDeps = {}
   ) {
     const resolveSqlDelivery =
@@ -197,7 +198,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         // re-projects it to GeoJSON below.
         const delivery = await resolveSqlDelivery(
           { sql },
-          { stationId, organizationId }
+          { stationId, organizationId, userId }
         );
 
         // Reject a spec that references a column the query didn't return — a
@@ -239,6 +240,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
               sql: rampSql,
               stationId,
               organizationId,
+              userId,
             })) as { rows?: Array<{ lo?: unknown; hi?: unknown }> };
             const lo = Number(rres.rows?.[0]?.lo);
             const hi = Number(rres.rows?.[0]?.hi);
@@ -264,6 +266,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
             sql: distinctSql,
             stationId,
             organizationId,
+            userId,
           })) as { rows?: Array<{ v?: unknown }> };
           const values = (dres.rows ?? [])
             .map((r) => r.v)
@@ -312,6 +315,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
                 sql: extSql,
                 stationId,
                 organizationId,
+                userId,
               })) as {
                 rows?: Array<{
                   xmin?: number;
@@ -357,7 +361,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           sql,
           geomCols,
           inlineRows(delivery),
-          { stationId, organizationId },
+          { stationId, organizationId, userId },
           { sqlQuery }
         );
         return { type: "geo", spec, ...titleField, pipeline, rows };

@@ -77,7 +77,7 @@ const INLINE_PIPELINE = {
 
 /** Build with NO portal context → synchronous-only path (no escalation). */
 async function execSync(sql = "SELECT * FROM things") {
-  const t = new SqlQueryTool().build("station-1", "org-1");
+  const t = new SqlQueryTool().build("station-1", "org-1", "user-1");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return await (t as any).execute(
     { sql },

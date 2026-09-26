@@ -46,7 +46,12 @@ type ExecArgs = {
 function buildTool(
   deps: VisualizeMapDeps
 ): (args: ExecArgs) => Promise<Record<string, unknown>> {
-  const built = new VisualizeMapTool().build("station-1", "org-1", deps);
+  const built = new VisualizeMapTool().build(
+    "station-1",
+    "org-1",
+    "user-1",
+    deps
+  );
   return (args) =>
     (
       built as unknown as {

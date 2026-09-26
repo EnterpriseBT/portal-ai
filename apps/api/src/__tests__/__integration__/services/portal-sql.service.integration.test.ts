@@ -32,6 +32,7 @@ import {
   teardownOrg,
   createUser,
   createOrganization,
+  attachCuratedView,
 } from "../utils/application.util.js";
 
 describe("PortalSqlService integration tests", () => {
@@ -46,6 +47,7 @@ describe("PortalSqlService integration tests", () => {
   let contactsEntityId: string;
   let dealsEntityId: string;
   let privateEntityId: string;
+  let userId: string;
 
   beforeEach(async () => {
     if (!process.env.DATABASE_URL) {
@@ -76,6 +78,7 @@ describe("PortalSqlService integration tests", () => {
     const now = Date.now();
 
     const user = createUser(`auth0|${generateId()}`);
+    userId = user.id;
     await dbTyped.insert(schema.users).values(user as never);
     const org = createOrganization(user.id);
     await dbTyped.insert(schema.organizations).values(org as never);
@@ -282,6 +285,36 @@ describe("PortalSqlService integration tests", () => {
     await reconciler.reconcileEntity(contactsEntityId, db);
     await reconciler.reconcileEntity(dealsEntityId, db);
     await reconciler.reconcileEntity(privateEntityId, db);
+    // #599: attach default curated views (the cutover data attachment). Grant
+    // the test user read on the two readable ones; private_audit is attached
+    // but ungranted, so it stays out of the per-user session (and its instance
+    // read=false keeps it out of the org-wide buildSessionViews too).
+    await attachCuratedView(dbTyped, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: contactsEntityId,
+      key: "contacts",
+      label: "Contacts",
+      createdBy: user.id,
+      grantToUserId: user.id,
+    });
+    await attachCuratedView(dbTyped, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: dealsEntityId,
+      key: "deals",
+      label: "Deals",
+      createdBy: user.id,
+      grantToUserId: user.id,
+    });
+    await attachCuratedView(dbTyped, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: privateEntityId,
+      key: "private_audit",
+      label: "Private Audit",
+      createdBy: user.id,
+    });
   });
 
   afterEach(async () => {
@@ -351,10 +384,12 @@ describe("PortalSqlService integration tests", () => {
           tx as unknown as DbClient
         );
         const ddlByEntity = new Map<string, string>();
-        let i = 0;
-        for (const [key] of build.viewMap) {
-          ddlByEntity.set(key, build.views[i] ?? "");
-          i++;
+        // #599: each view now emits DROP + CREATE (pushTempView), so a
+        // positional zip against viewMap no longer aligns — key by the CREATE
+        // statement's view name instead.
+        for (const ddl of build.views) {
+          const m = ddl.match(/^CREATE TEMP VIEW\s+"([^"]+)"/);
+          if (m) ddlByEntity.set(m[1], ddl);
         }
         for (const ddl of build.views) {
           await tx.execute(sql.raw(ddl));
@@ -397,10 +432,10 @@ describe("PortalSqlService integration tests", () => {
         "deals",
       ]);
       expect(ddlByEntity.get("contacts")).toMatch(
-        /CREATE\s+OR\s+REPLACE\s+TEMP\s+VIEW\s+"contacts"/i
+        /CREATE\s+TEMP\s+VIEW\s+"contacts"/i
       );
       expect(ddlByEntity.get("deals")).toMatch(
-        /CREATE\s+OR\s+REPLACE\s+TEMP\s+VIEW\s+"deals"/i
+        /CREATE\s+TEMP\s+VIEW\s+"deals"/i
       );
     });
 
@@ -775,6 +810,7 @@ describe("PortalSqlService integration tests", () => {
     it("SELECT COUNT(*) FROM contacts returns 1 row", async () => {
       await seedContacts(3);
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT COUNT(*) AS n FROM contacts`,
         stationId,
         organizationId: orgId,
@@ -796,6 +832,7 @@ describe("PortalSqlService integration tests", () => {
     it("SELECT * FROM contacts WHERE c_age > 30 LIMIT 5 returns matching rows", async () => {
       await seedContacts(10, 25); // ages 25..34
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email", "c_age" FROM contacts WHERE "c_age" > 30 ORDER BY "c_age" LIMIT 5`,
         stationId,
         organizationId: orgId,
@@ -810,6 +847,7 @@ describe("PortalSqlService integration tests", () => {
     it("#340: computeExactTotal returns the exact total beyond the row cap", async () => {
       await seedContacts(7);
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email" FROM contacts`,
         stationId,
         organizationId: orgId,
@@ -824,6 +862,7 @@ describe("PortalSqlService integration tests", () => {
     it("#340: omitting computeExactTotal yields no exactTotal", async () => {
       await seedContacts(5);
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email" FROM contacts`,
         stationId,
         organizationId: orgId,
@@ -845,6 +884,7 @@ describe("PortalSqlService integration tests", () => {
       const inner = `SELECT "_record_id", "c_age" FROM contacts`;
       const page = async (where: string) => {
         const res = await portalSql.runSqlQuery({
+          userId,
           sql:
             `SELECT * FROM (${inner}) "_cur" ${where} ` +
             `ORDER BY "c_age" ASC, "_record_id" ASC LIMIT 2`,
@@ -874,6 +914,7 @@ describe("PortalSqlService integration tests", () => {
     it("projects _record_id as a non-null text per row", async () => {
       await seedContacts(2);
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "_record_id", "c_email" FROM contacts ORDER BY "c_email" LIMIT 10`,
         stationId,
         organizationId: orgId,
@@ -906,6 +947,7 @@ describe("PortalSqlService integration tests", () => {
       );
 
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT d."c_amount" AS amt, c."c_email" AS email
               FROM deals d
               JOIN contacts c ON c."source_id" = d."c_account_ref"`,
@@ -922,6 +964,7 @@ describe("PortalSqlService integration tests", () => {
     it("wraps a bare SELECT with the implicit LIMIT and reports appliedLimit", async () => {
       await seedContacts(3);
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email" FROM contacts`,
         stationId,
         organizationId: orgId,
@@ -936,6 +979,7 @@ describe("PortalSqlService integration tests", () => {
     it("trips the row cap and emits the truncated envelope", async () => {
       await seedContacts(20);
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email", "c_age" FROM contacts ORDER BY "c_age" LIMIT 1000`,
         stationId,
         organizationId: orgId,
@@ -961,6 +1005,7 @@ describe("PortalSqlService integration tests", () => {
     ])("rejects %p", async (badSql, expected) => {
       await expect(
         portalSql.runSqlQuery({
+          userId,
           sql: badSql,
           stationId,
           organizationId: orgId,
@@ -1016,6 +1061,7 @@ describe("PortalSqlService integration tests", () => {
       );
 
       const res = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email" FROM contacts ORDER BY "c_email"`,
         stationId,
         organizationId: orgId,
@@ -1029,6 +1075,7 @@ describe("PortalSqlService integration tests", () => {
     it("read-disabled entity is unreachable; the LLM sees PORTAL_SQL_FORBIDDEN", async () => {
       await expect(
         portalSql.runSqlQuery({
+          userId,
           sql: `SELECT 1 FROM private_audit`,
           stationId,
           organizationId: orgId,
@@ -1050,6 +1097,7 @@ describe("PortalSqlService integration tests", () => {
       );
 
       const before = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email" FROM contacts WHERE "_record_id" = '${r}'`,
         stationId,
         organizationId: orgId,
@@ -1065,6 +1113,7 @@ describe("PortalSqlService integration tests", () => {
       );
 
       const after = await portalSql.runSqlQuery({
+        userId,
         sql: `SELECT "c_email" FROM contacts WHERE "_record_id" = '${r}'`,
         stationId,
         organizationId: orgId,

@@ -90,7 +90,7 @@ export async function geoInlineRows(
   sql: string,
   geometryColumns: string[],
   rawRows: Array<Record<string, unknown>>,
-  ctx: { stationId: string; organizationId: string },
+  ctx: { stationId: string; organizationId: string; userId: string },
   deps: { sqlQuery?: typeof AnalyticsService.sqlQuery } = {}
 ): Promise<Array<Record<string, unknown>>> {
   if (geometryColumns.length === 0 || rawRows.length === 0) return rawRows;
@@ -104,6 +104,7 @@ export async function geoInlineRows(
     sql: displaySql,
     stationId: ctx.stationId,
     organizationId: ctx.organizationId,
+    userId: ctx.userId,
     // Internal reproject — never LLM-facing; keep the caps out of it (#343).
     rowCap: RAW_CAP,
     cellCap: RAW_CAP,

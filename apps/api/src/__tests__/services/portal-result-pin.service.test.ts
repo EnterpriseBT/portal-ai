@@ -10,7 +10,11 @@ import type { MaterializeDeps } from "../../services/portal-result-pin.service.j
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
-const SCOPE = { stationId: "station-1", organizationId: "org-1" };
+const SCOPE = {
+  stationId: "station-1",
+  organizationId: "org-1",
+  userId: "user-1",
+};
 
 const expiredError = () =>
   new ApiError(404, ApiCode.READ_HANDLE_EXPIRED, "expired");
@@ -421,7 +425,7 @@ describe("PortalResultPinService.materialize", () => {
     );
     expect(resolveSqlDelivery).toHaveBeenCalledWith(
       { sql: "SELECT a FROM t" },
-      { stationId: "station-1", organizationId: "org-1" }
+      { stationId: "station-1", organizationId: "org-1", userId: "user-1" }
     );
     const content = result.content as Record<string, unknown>;
     expect(content.rows).toEqual([{ a: 1 }, { a: 2 }]);

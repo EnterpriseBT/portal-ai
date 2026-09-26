@@ -36,6 +36,7 @@ import {
   teardownOrg,
   createUser,
   createOrganization,
+  attachCuratedView,
 } from "../utils/application.util.js";
 
 // A unit square at horizontal offset `x` (each parcel is its own polygon).
@@ -334,6 +335,19 @@ describe("dissolve-precompute processor (#472)", () => {
         deletedBy: null,
       } as never);
     }
+
+    // #599: the dissolve precompute reads the station's data through curated
+    // views (org-wide `buildSessionViews`, → #643), so the entity must be
+    // exposed via a `station_views` attachment. Attach-only — the org-wide
+    // path ignores grants.
+    await attachCuratedView(dbTyped, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: entityId,
+      key: "parcels",
+      label: "Parcels",
+      createdBy: user.id,
+    });
 
     await reconciler.reconcileEntity(entityId, db);
   });

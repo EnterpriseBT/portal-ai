@@ -208,6 +208,7 @@ portalSqlHandleRouter.post(
         messageId,
         blockIndex,
         organizationId,
+        userId: req.application!.metadata.userId,
       });
       return HttpService.success(res, payload);
     } catch (err) {
