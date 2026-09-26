@@ -26,6 +26,9 @@ export { entityGroups } from "./entity-groups.table.js";
 export { entityGroupMembers } from "./entity-group-members.table.js";
 export { stations } from "./stations.table.js";
 export { stationInstances } from "./station-instances.table.js";
+export { curatedViews } from "./curated-views.table.js";
+export { curatedViewFieldMappings } from "./curated-view-field-mappings.table.js";
+export { stationViews } from "./station-views.table.js";
 export { portals } from "./portals.table.js";
 export {
   portalMessages,

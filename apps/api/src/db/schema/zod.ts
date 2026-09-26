@@ -31,6 +31,9 @@ import { entityGroups } from "./entity-groups.table.js";
 import { entityGroupMembers } from "./entity-group-members.table.js";
 import { stations } from "./stations.table.js";
 import { stationInstances } from "./station-instances.table.js";
+import { curatedViews } from "./curated-views.table.js";
+import { curatedViewFieldMappings } from "./curated-view-field-mappings.table.js";
+import { stationViews } from "./station-views.table.js";
 import { portals } from "./portals.table.js";
 import { portalMessages } from "./portal-messages.table.js";
 import { portalResults } from "./portal-results.table.js";
@@ -349,6 +352,50 @@ export const StationInstanceInsertSchema = createInsertSchema(stationInstances);
 /** Inferred types */
 export type StationInstanceSelect = z.infer<typeof StationInstanceSelectSchema>;
 export type StationInstanceInsert = z.infer<typeof StationInstanceInsertSchema>;
+
+// ── Curated Views ────────────────────────────────────────────────────────
+
+/** Zod schema for a `curated_views` row returned by SELECT. */
+export const CuratedViewSelectSchema = createSelectSchema(curatedViews);
+
+/** Zod schema for inserting into `curated_views`. */
+export const CuratedViewInsertSchema = createInsertSchema(curatedViews);
+
+/** Inferred types */
+export type CuratedViewSelect = z.infer<typeof CuratedViewSelectSchema>;
+export type CuratedViewInsert = z.infer<typeof CuratedViewInsertSchema>;
+
+// ── Curated View Field Mappings ──────────────────────────────────────────
+
+/** Zod schema for a `curated_view_field_mappings` row returned by SELECT. */
+export const CuratedViewFieldMappingSelectSchema = createSelectSchema(
+  curatedViewFieldMappings
+);
+
+/** Zod schema for inserting into `curated_view_field_mappings`. */
+export const CuratedViewFieldMappingInsertSchema = createInsertSchema(
+  curatedViewFieldMappings
+);
+
+/** Inferred types */
+export type CuratedViewFieldMappingSelect = z.infer<
+  typeof CuratedViewFieldMappingSelectSchema
+>;
+export type CuratedViewFieldMappingInsert = z.infer<
+  typeof CuratedViewFieldMappingInsertSchema
+>;
+
+// ── Station Views ────────────────────────────────────────────────────────
+
+/** Zod schema for a `station_views` row returned by SELECT. */
+export const StationViewSelectSchema = createSelectSchema(stationViews);
+
+/** Zod schema for inserting into `station_views`. */
+export const StationViewInsertSchema = createInsertSchema(stationViews);
+
+/** Inferred types */
+export type StationViewSelect = z.infer<typeof StationViewSelectSchema>;
+export type StationViewInsert = z.infer<typeof StationViewInsertSchema>;
 
 // ── Portals ────────────────────────────────────────────────────────────
 

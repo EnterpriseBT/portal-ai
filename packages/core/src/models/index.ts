@@ -58,6 +58,15 @@ export * from "./station.model.js";
 /** Station instance join model schema & type */
 export * from "./station-instance.model.js";
 
+/** Curated view model schema & type (#599) */
+export * from "./curated-view.model.js";
+
+/** Curated-view field-mapping projection join (#599) */
+export * from "./curated-view-field-mapping.model.js";
+
+/** Station view attachment join model (#599) */
+export * from "./station-view.model.js";
+
 /** Portal model schema & type */
 export * from "./portal.model.js";
 

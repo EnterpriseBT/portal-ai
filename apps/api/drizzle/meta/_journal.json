@@ -792,6 +792,13 @@
       "when": 1790400000000,
       "tag": "0112_rename-view-resource-to-curated-view",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1790440478536,
+      "tag": "0113_curated-views-and-station-views",
+      "breakpoints": true
     }
   ]
 }
