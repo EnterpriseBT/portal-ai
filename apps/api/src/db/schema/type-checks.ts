@@ -38,6 +38,9 @@ import type {
   Core,
   Station,
   StationInstance,
+  CuratedView,
+  CuratedViewFieldMapping,
+  StationView,
   Portal,
   PortalMessage,
   PortalResult,
@@ -74,6 +77,9 @@ import type {
   EntityGroupMemberSelect,
   StationSelect,
   StationInstanceSelect,
+  CuratedViewSelect,
+  CuratedViewFieldMappingSelect,
+  StationViewSelect,
   PortalSelect,
   PortalMessageSelect,
   PortalResultSelect,
@@ -111,6 +117,9 @@ import type { entityGroups } from "./entity-groups.table.js";
 import type { entityGroupMembers } from "./entity-group-members.table.js";
 import type { stations } from "./stations.table.js";
 import type { stationInstances } from "./station-instances.table.js";
+import type { curatedViews } from "./curated-views.table.js";
+import type { curatedViewFieldMappings } from "./curated-view-field-mappings.table.js";
+import type { stationViews } from "./station-views.table.js";
 import type { portals } from "./portals.table.js";
 import type { portalMessages } from "./portal-messages.table.js";
 import type { portalResults } from "./portal-results.table.js";
@@ -590,6 +599,51 @@ type _StaInstInferredToModel = IsAssignable<
   StationInstance
 >;
 const _staInstInferredToModel: _StaInstInferredToModel = true;
+
+// ── CuratedView ───────────────────────────────────────────────────────
+
+type _CurViewDrizzleToModel = IsAssignable<CuratedViewSelect, CuratedView>;
+const _curViewDrizzleToModel: _CurViewDrizzleToModel = true;
+
+type _CurViewModelToDrizzle = IsAssignable<CuratedView, CuratedViewSelect>;
+const _curViewModelToDrizzle: _CurViewModelToDrizzle = true;
+
+type _CurViewInferredRow = InferSelectModel<typeof curatedViews>;
+type _CurViewInferredToModel = IsAssignable<_CurViewInferredRow, CuratedView>;
+const _curViewInferredToModel: _CurViewInferredToModel = true;
+
+// ── CuratedViewFieldMapping ───────────────────────────────────────────
+
+type _CurViewFmDrizzleToModel = IsAssignable<
+  CuratedViewFieldMappingSelect,
+  CuratedViewFieldMapping
+>;
+const _curViewFmDrizzleToModel: _CurViewFmDrizzleToModel = true;
+
+type _CurViewFmModelToDrizzle = IsAssignable<
+  CuratedViewFieldMapping,
+  CuratedViewFieldMappingSelect
+>;
+const _curViewFmModelToDrizzle: _CurViewFmModelToDrizzle = true;
+
+type _CurViewFmInferredRow = InferSelectModel<typeof curatedViewFieldMappings>;
+type _CurViewFmInferredToModel = IsAssignable<
+  _CurViewFmInferredRow,
+  CuratedViewFieldMapping
+>;
+const _curViewFmInferredToModel: _CurViewFmInferredToModel = true;
+
+// ── StationView ───────────────────────────────────────────────────────
+
+type _StaViewDrizzleToModel = IsAssignable<StationViewSelect, StationView>;
+const _staViewDrizzleToModel: _StaViewDrizzleToModel = true;
+
+type _StaViewModelToDrizzle = IsAssignable<StationView, StationViewSelect>;
+const _staViewModelToDrizzle: _StaViewModelToDrizzle = true;
+
+type _StaViewInferredRow = InferSelectModel<typeof stationViews>;
+type _StaViewInferredToModel = IsAssignable<_StaViewInferredRow, StationView>;
+const _staViewInferredToModel: _StaViewInferredToModel = true;
 
 // ── StationToolpack ───────────────────────────────────────────────────
 

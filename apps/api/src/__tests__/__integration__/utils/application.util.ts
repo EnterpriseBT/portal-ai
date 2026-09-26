@@ -52,6 +52,9 @@ const {
   userRole,
   groups,
   userGroup,
+  curatedViews,
+  curatedViewFieldMappings,
+  stationViews,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -189,6 +192,12 @@ export async function seedUserAndOrg(
  * Includes all tables that reference users or organizations.
  */
 export async function teardownOrg(db: Db): Promise<void> {
+  // #599: curated-view tables are leaf-most (FK → curated_views, stations,
+  // connector_entities, field_mappings, organizations) — drain before the
+  // rows they reference.
+  await db.delete(stationViews);
+  await db.delete(curatedViewFieldMappings);
+  await db.delete(curatedViews);
   await db.delete(stationToolpacks);
   await db.delete(organizationToolpacks);
   await db.delete(stationInstances);
