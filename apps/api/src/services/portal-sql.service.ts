@@ -39,10 +39,13 @@ import { curatedViewsRepo } from "../db/repositories/curated-views.repository.js
 import { curatedViewFieldMappingsRepo } from "../db/repositories/curated-view-field-mappings.repository.js";
 import { userRolesRepo } from "../db/repositories/user-roles.repository.js";
 import { PermissionService } from "./permission.service.js";
+import type { PermissionSet } from "./permission-set.js";
+import type { CuratedViewSelect } from "../db/schema/zod.js";
 import type { OrgRole } from "@portalai/core/models";
 import {
   wideTableStatementCache,
   type WideTableStatementCache,
+  type WideTableCachedColumn,
 } from "./wide-table-statement.cache.js";
 import { STATEMENT_TIMEOUT_MS } from "@portalai/core/constants";
 
@@ -402,12 +405,24 @@ export class PortalSqlServiceImpl {
    * {@link buildSessionViews} remains for the no-user map-tile/dissolve
    * pipeline (#643).
    */
-  async resolveViewsForSession(
+  /**
+   * The caller's granted, readable curated views for a station — the single
+   * source of "what data this user can see," shared by the SQL session
+   * ({@link resolveViewsForSession}) and the introspection surfaces
+   * (`buildStationContext` roster + the `station_context` tool) so the three
+   * never drift. Returns the loaded {@link PermissionSet} (callers reuse it)
+   * and, per granted view, the wide columns the caller may actually read —
+   * effective projection ∩ non-hidden ∩ `read field_mapping` (deny-wins).
+   */
+  async resolveGrantedViewColumns(
     stationId: string,
     organizationId: string,
     userId: string,
     client: DbClient = db
-  ): Promise<SessionViewBuild> {
+  ): Promise<{
+    set: PermissionSet;
+    views: Array<{ view: CuratedViewSelect; columns: WideTableCachedColumn[] }>;
+  }> {
     if (!UUID_RE.test(organizationId)) {
       throw new ApiError(
         500,
@@ -458,13 +473,11 @@ export class PortalSqlServiceImpl {
           })
         );
 
-    const views: string[] = [];
-    const viewMap = new Map<string, string>();
     const usedKeys = new Set<string>();
-    const grantedViewIds: string[] = [];
-    // (viewKey, fieldMappingId) pairs feeding `_meta_columns`.
-    const metaPairs: { viewKey: string; fieldMappingId: string }[] = [];
-
+    const result: Array<{
+      view: CuratedViewSelect;
+      columns: WideTableCachedColumn[];
+    }> = [];
     for (const view of grantedViews) {
       if (!UUID_RE.test(view.connectorEntityId)) {
         throw new ApiError(
@@ -496,7 +509,7 @@ export class PortalSqlServiceImpl {
 
       // Columns the caller may actually read: in the effective projection,
       // not hidden, and granted at the field-mapping level (deny-wins).
-      const projectedColumns = stmt.columns.filter(
+      const columns = stmt.columns.filter(
         (c) =>
           !VIEW_HIDDEN_COLUMNS.has(c.columnName) &&
           effectiveFmIds.has(c.fieldMappingId) &&
@@ -506,12 +519,40 @@ export class PortalSqlServiceImpl {
           })
       );
 
+      usedKeys.add(view.key);
+      result.push({ view, columns });
+    }
+
+    return { set, views: result };
+  }
+
+  async resolveViewsForSession(
+    stationId: string,
+    organizationId: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<SessionViewBuild> {
+    const { set, views: grantedViewColumns } =
+      await this.resolveGrantedViewColumns(
+        stationId,
+        organizationId,
+        userId,
+        client
+      );
+
+    const views: string[] = [];
+    const viewMap = new Map<string, string>();
+    const grantedViewIds: string[] = [];
+    // (viewKey, fieldMappingId) pairs feeding `_meta_columns`.
+    const metaPairs: { viewKey: string; fieldMappingId: string }[] = [];
+
+    for (const { view, columns } of grantedViewColumns) {
       const projections: string[] = [
         `w."entity_record_id" AS "_record_id"`,
         `'${view.connectorEntityId}'::text AS "_connector_entity_id"`,
         `w."source_id" AS "source_id"`,
       ];
-      for (const c of projectedColumns) {
+      for (const c of columns) {
         projections.push(
           `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.columnName)}`
         );
@@ -538,7 +579,6 @@ export class PortalSqlServiceImpl {
           `  WHERE ${whereParts.join("\n    AND ")}`
       );
       viewMap.set(view.key, view.key);
-      usedKeys.add(view.key);
       grantedViewIds.push(view.id);
     }
 

@@ -5,6 +5,7 @@ import { AnalyticsService } from "../services/analytics.service.js";
 import { DbService } from "../services/db.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { loadConnectorInstanceContexts } from "../services/portal.service.js";
+import { PortalSqlService } from "../services/portal-sql.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { isValidIanaTimezone } from "../utils/timezone.util.js";
@@ -167,7 +168,7 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, organizationId: string) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -229,22 +230,46 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           ? await resolveEntityCapabilities(stationId)
           : undefined;
 
-        if (sections.has("entities")) {
-          const filtered = entityKeys
-            ? stationData.entities.filter((e) => entityKeys.includes(e.key))
-            : stationData.entities;
+        // #599: scope entities + the columnDefinitions catalog to the caller's
+        // granted curated views — the SAME resolution the SQL session uses, so
+        // the tool never advertises a view/column the agent can't query. An
+        // admin (via `*`) resolves all attached views; a member only their
+        // grants. Computed once when either section needs it.
+        const needsViewScope =
+          sections.has("entities") || sections.has("columnDefinitions");
+        const viewResolution = needsViewScope
+          ? await PortalSqlService.resolveGrantedViewColumns(
+              stationId,
+              organizationId,
+              userId
+            )
+          : null;
 
-          // Per-entity wide-column lookup. Returns the `c_<…>` name
-          // alongside each column's `normalizedKey` so callers can map
-          // user-facing keys → physical columns without grepping
-          // `_meta_columns`. Failures don't abort the whole tool —
-          // an entity with no live wide table still shows up with
-          // wideColumnName: null per column.
+        if (sections.has("entities") && viewResolution) {
+          const stationEntitiesById = new Map(
+            stationData.entities.map((e) => [e.id, e])
+          );
+          const granted = entityKeys
+            ? viewResolution.views.filter((g) =>
+                entityKeys.includes(g.view.key)
+              )
+            : viewResolution.views;
+
+          // Per-view wide-column lookup. The view key is the queryable name;
+          // columns are the entity's columns filtered to what the caller may
+          // read. Failures don't abort the whole tool — an entity with no live
+          // wide table still shows up with wideColumnName: null per column.
           const entitiesOut = await Promise.all(
-            filtered.map(async (e) => {
+            granted.map(async ({ view, columns }) => {
+              const readableFmIds = new Set(
+                columns.map((c) => c.fieldMappingId)
+              );
+              const e = stationEntitiesById.get(view.connectorEntityId);
               const wideByKey = new Map<string, string>();
               try {
-                const stmt = await wideTableStatementCache.get(e.id);
+                const stmt = await wideTableStatementCache.get(
+                  view.connectorEntityId
+                );
                 for (const c of stmt.columns) {
                   wideByKey.set(c.normalizedKey, c.columnName);
                 }
@@ -253,25 +278,29 @@ export class StationContextTool extends Tool<typeof InputSchema> {
               }
 
               return {
-                id: e.id,
-                key: e.key,
-                label: e.label,
-                connectorInstanceId: e.connectorInstanceId,
+                id: view.connectorEntityId,
+                key: view.key,
+                label: view.label,
+                connectorInstanceId: e?.connectorInstanceId ?? "",
                 connectorInstanceName: null as string | null,
-                ...(caps && caps[e.id] ? { capabilities: caps[e.id] } : {}),
-                columns: e.columns.map((col) => ({
-                  key: col.key,
-                  wideColumnName: wideByKey.get(col.key) ?? null,
-                  label: col.label,
-                  type: col.type,
-                  // #316: geometry columns are SRID-4326 — surface it so the
-                  // agent knows what to ST_Transform from / compose against.
-                  // Non-geometry columns carry no SRID.
-                  srid: col.type === "geometry" ? 4326 : null,
-                  columnDefinitionId: col.columnDefinitionId,
-                  fieldMappingId: col.fieldMappingId,
-                  sourceField: col.sourceField,
-                })),
+                ...(caps && caps[view.connectorEntityId]
+                  ? { capabilities: caps[view.connectorEntityId] }
+                  : {}),
+                columns: (e?.columns ?? [])
+                  .filter((col) => readableFmIds.has(col.fieldMappingId))
+                  .map((col) => ({
+                    key: col.key,
+                    wideColumnName: wideByKey.get(col.key) ?? null,
+                    label: col.label,
+                    type: col.type,
+                    // #316: geometry columns are SRID-4326 — surface it so the
+                    // agent knows what to ST_Transform from / compose against.
+                    // Non-geometry columns carry no SRID.
+                    srid: col.type === "geometry" ? 4326 : null,
+                    columnDefinitionId: col.columnDefinitionId,
+                    fieldMappingId: col.fieldMappingId,
+                    sourceField: col.sourceField,
+                  })),
               };
             })
           );
@@ -297,9 +326,14 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           response.connectorInstances = instances;
         }
 
-        if (sections.has("columnDefinitions")) {
+        if (
+          sections.has("columnDefinitions") &&
+          viewResolution?.set.canPerformAny("read", "column_definition")
+        ) {
           // The org's curated column-definition catalog — the source of
-          // `columnDefinitionId`s for `field_mapping_create`. The agent maps
+          // `columnDefinitionId`s for `field_mapping_create`. Admin-facing
+          // (via `*`); a member session omits it so the catalog never leaks.
+          // The agent maps
           // to these (it can't create definitions), so surfacing them here
           // lets it set up an entity's columns instead of writing unmapped
           // records that no read path can see.

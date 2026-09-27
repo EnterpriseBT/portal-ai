@@ -560,7 +560,8 @@ export class ToolService {
     if (SYSTEM_TOOL_CAPABILITIES.station_context?.alwaysAvailable) {
       tools.station_context = new StationContextTool().build(
         stationId,
-        organizationId
+        organizationId,
+        userId
       );
     }
     //   - `platform_help` — in-session answers about the product itself, and

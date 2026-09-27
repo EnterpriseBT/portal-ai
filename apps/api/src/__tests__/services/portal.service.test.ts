@@ -126,6 +126,15 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveEntityCapabilities: mockResolveEntityCapabilities,
 }));
 
+// #599: buildStationContext scopes its entities to the caller's granted
+// curated views via PortalSqlService.resolveGrantedViewColumns.
+const mockResolveGrantedViewColumns = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
+  PortalSqlService: {
+    resolveGrantedViewColumns: mockResolveGrantedViewColumns,
+  },
+}));
+
 // buildAnalyticsTools
 const mockBuildAnalyticsTools =
   jest.fn<() => Promise<Record<string, unknown>>>();
@@ -315,6 +324,23 @@ function makeSse() {
 describe("PortalService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default: every entity is a granted passthrough view with all columns
+    // readable — so the view-scoped roster mirrors the raw entities.
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: { canPerformAny: () => false },
+      views: ENTITIES.map((e) => ({
+        view: {
+          id: `view-${e.id}`,
+          key: e.key,
+          label: e.label,
+          connectorEntityId: e.id,
+        },
+        columns: e.columns.map((c) => ({
+          fieldMappingId: c.fieldMappingId,
+          columnName: `c_${c.key}`,
+        })),
+      })),
+    });
     mockSplitBuiltinPacks.mockImplementation(async (_org, slugs) => ({
       effective: [...slugs],
       unentitled: [],
@@ -356,7 +382,7 @@ describe("PortalService", () => {
       expect(result.portalId).toBe(PORTAL_ID);
       expect(result.stationContext.stationId).toBe(STATION_ID);
       expect(result.stationContext.stationName).toBe("Sales Station");
-      expect(result.stationContext.entities).toBe(ENTITIES);
+      expect(result.stationContext.entities).toEqual(ENTITIES);
       expect(result.stationContext.entityGroups).toBe(ENTITY_GROUPS);
     });
 
@@ -538,6 +564,44 @@ describe("PortalService", () => {
     // derives the packs from `station_toolpacks` itself and cannot be handed
     // the wrong array.
 
+    // ── #599: view-scoping (the OQ2 roster leak fix) ──────────────────
+
+    it("scopes the roster to the caller's granted views + readable columns", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query"])
+      );
+      // Only `customers` is granted, and only its `id` column is readable —
+      // `orders` and the `revenue` column must not appear in the roster.
+      mockResolveGrantedViewColumns.mockResolvedValueOnce({
+        set: { canPerformAny: () => false },
+        views: [
+          {
+            view: {
+              id: "v-customers",
+              key: "customers",
+              label: "Customers",
+              connectorEntityId: "ent-1",
+            },
+            columns: [{ fieldMappingId: "fm-1", columnName: "c_id" }],
+          },
+        ],
+      });
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(ctx.entities).toHaveLength(1);
+      expect(ctx.entities[0].key).toBe("customers");
+      expect(ctx.entities[0].columns.map((c) => c.key)).toEqual(["id"]);
+    });
+
     it("derives the station's packs from the station id, unprompted", async () => {
       const { buildStationContext } =
         await import("../../services/portal.service.js");
@@ -550,6 +614,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       // #306 moved the join-table read into `resolveStationPacks`, whose own
@@ -583,6 +648,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       // No null entries leak into the built-in pack list.
@@ -599,6 +665,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       expect(ctx.effectiveToolPacks).toEqual([]);
@@ -635,6 +702,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       expect(ctx.connectorInstances).toEqual([
@@ -663,6 +731,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       expect(ctx.connectorInstances).toBeUndefined();
@@ -697,6 +766,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       expect(ctx.effectiveToolPacks).toEqual(["data_query"]);
@@ -728,6 +798,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       expect(ctx.connectorInstances).toBeUndefined();
@@ -751,6 +822,7 @@ describe("PortalService", () => {
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
 
       expect(ctx.effectiveToolPacks).toEqual(["entity_management"]);
@@ -774,6 +846,7 @@ describe("PortalService", () => {
       const first = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
       expect(first.connectorInstances).toEqual([]);
 
@@ -797,6 +870,7 @@ describe("PortalService", () => {
       const second = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
+        userId: USER_ID,
       });
       expect(second.connectorInstances).toEqual([
         {
