@@ -1123,6 +1123,49 @@ describe("PortalSqlService integration tests", () => {
       ]);
     });
   });
+
+  // #599 slice 3b: end-to-end view-scoping over the real resolver.
+  // `resolveGrantedViewColumns` is the single source both the SQL session
+  // (resolveViewsForSession) and the introspection surfaces (buildStationContext
+  // roster + the station_context tool) consume, so asserting it against real
+  // seeded data proves a member sees only granted views + readable columns
+  // across query, roster, and introspection. Consumer wiring is unit-tested in
+  // portal.service.test / station-context.tool.test.
+  describe("curated-views end-to-end view-scoping (#599)", () => {
+    it("resolves only the caller's granted views + readable columns", async () => {
+      const { views } = await portalSql.resolveGrantedViewColumns(
+        stationId,
+        orgId,
+        userId,
+        db
+      );
+      expect(views.map((v) => v.view.key).sort()).toEqual([
+        "contacts",
+        "deals",
+      ]);
+      // private_audit is attached but ungranted — never resolved.
+      expect(views.some((v) => v.view.key === "private_audit")).toBe(false);
+      const contacts = views.find((v) => v.view.key === "contacts");
+      expect(contacts?.columns.map((c) => c.columnName).sort()).toEqual([
+        "c_age",
+        "c_email",
+      ]);
+    });
+
+    it("resolves nothing for a caller with no view grants (fail-closed)", async () => {
+      const stranger = createUser(`auth0|${generateId()}`);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(stranger as never);
+      const { views } = await portalSql.resolveGrantedViewColumns(
+        stationId,
+        orgId,
+        stranger.id,
+        db
+      );
+      expect(views).toEqual([]);
+    });
+  });
 });
 
 // ── Local seeders ───────────────────────────────────────────────────
