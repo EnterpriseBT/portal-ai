@@ -37,6 +37,7 @@ import {
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
@@ -258,6 +259,17 @@ entityRecordRouter.get(
         conditions.push(built.where);
       }
 
+      // #599: RBAC-gate raw record reads — members read only records they
+      // created (`entity_record.createdBy` is the syncing actor, so ≈none for
+      // synced data); admins (`*`) see all. Closes the curated-views bypass.
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("entity_record", {
+        createdByCol: entityRecords.createdBy,
+        idCol: entityRecords.id,
+      });
+      if (visibility) conditions.push(visibility);
+
       const where = and(...conditions)!;
 
       // Sort: transactional fields → entity_records column; normalized
@@ -466,7 +478,15 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const where = eq(entityRecords.connectorEntityId, connectorEntityId);
+      // #599: the count mirrors the list's RBAC read scope.
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("entity_record", {
+        createdByCol: entityRecords.createdBy,
+        idCol: entityRecords.id,
+      });
+      const base = eq(entityRecords.connectorEntityId, connectorEntityId);
+      const where = visibility ? and(base, visibility)! : base;
       const total = await DbService.repository.entityRecords
         .count(where)
         .catch((error) => {
@@ -546,6 +566,21 @@ entityRecordRouter.get(
         connectorEntityId
       );
       if (!record) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_RECORD_NOT_FOUND,
+            "Entity record not found"
+          )
+        );
+      }
+      // #599: an unreadable record is indistinguishable from absent (404).
+      if (
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          { type: "entity_record", id: recordId, createdBy: record.createdBy }
+        )
+      ) {
         return next(
           new ApiError(
             404,
@@ -821,6 +856,17 @@ entityRecordRouter.post(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
+      // #599: bulk import is a class-level write — owner/admin only (a member's
+      // `write entity_record` is `created_by_caller`-scoped, so it never
+      // satisfies an unconditional class check).
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "entity_record",
+        }
+      );
+
       await JobLockService.assertConnectorInstanceUnlocked(
         entity.connectorInstanceId,
         req.application!.metadata.organizationId
@@ -985,6 +1031,16 @@ entityRecordRouter.post(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
+
+      // #599: revalidation rewrites record validity — class-level write,
+      // owner/admin only.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "entity_record",
+        }
+      );
 
       const { userId, organizationId } = req.application!.metadata;
 
@@ -1151,6 +1207,13 @@ entityRecordRouter.patch(
           )
         );
       }
+      // #599: RBAC write gate (in addition to connector capability above) —
+      // a member may edit only records they created; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        { type: "entity_record", id: recordId, createdBy: record.createdBy }
+      );
 
       const { userId } = req.application!.metadata;
 
@@ -1309,6 +1372,13 @@ entityRecordRouter.delete(
           )
         );
       }
+      // #599: RBAC delete gate — a member may delete only records they
+      // created; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        { type: "entity_record", id: recordId, createdBy: record.createdBy }
+      );
 
       const { userId } = req.application!.metadata;
 
@@ -1427,6 +1497,12 @@ entityRecordRouter.delete(
       await JobLockService.assertConnectorInstanceUnlocked(
         entity.connectorInstanceId,
         req.application!.metadata.organizationId
+      );
+      // #599: clearing every record is a class-level delete — owner/admin only.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        { type: "entity_record" }
       );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 

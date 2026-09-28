@@ -18,14 +18,19 @@ import {
   generateId,
   seedUserAndOrg,
   teardownOrg,
+  createUser,
+  createOrganizationUser,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
+const MEMBER_SUB = "auth0|ci-ce-member";
+// Mutable so a single request can act as the owner or a plain member (#599).
+let currentSub = AUTH0_ID;
 
 // Mock the auth middleware to populate req.auth with our test sub
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
-    req.auth = { payload: { sub: AUTH0_ID } } as never;
+    req.auth = { payload: { sub: currentSub } } as never;
     next();
   },
 }));
@@ -215,6 +220,7 @@ describe("Connector Entity Router", () => {
   });
 
   afterEach(async () => {
+    currentSub = AUTH0_ID;
     await connection.end();
   });
 
@@ -272,6 +278,52 @@ describe("Connector Entity Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.payload.connectorEntities).toHaveLength(2);
       expect(res.body.payload.total).toBe(3);
+    });
+
+    it("#599: RBAC-gates raw entity reads — owner sees all, a member sees none", async () => {
+      const dbT = db as ReturnType<typeof drizzle>;
+      const { userId: ownerId, organizationId } = await seedUserAndOrg(
+        dbT,
+        AUTH0_ID
+      );
+      const { connectorInstanceId } = await seedConnectorInstance(
+        dbT,
+        organizationId
+      );
+      // Owned by a real admin user (not the system sentinel) — members read
+      // their own + system-provisioned rows, so this stays invisible to them.
+      await dbT.insert(connectorEntities).values(
+        createConnEntity(organizationId, connectorInstanceId, {
+          label: "Admin-provisioned",
+          createdBy: ownerId,
+        }) as never
+      );
+      // A plain member of the same org — MemberAccess only, no `*`.
+      const member = createUser(MEMBER_SUB);
+      await dbT.insert(schema.users).values(member as never);
+      await dbT.insert(schema.organizationUsers).values(
+        createOrganizationUser(organizationId, member.id, {
+          role: "member",
+        }) as never
+      );
+
+      const url = `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}`;
+
+      currentSub = AUTH0_ID;
+      const ownerRes = await request(app)
+        .get(url)
+        .set("Authorization", "Bearer test-token");
+      expect(ownerRes.status).toBe(200);
+      expect(ownerRes.body.payload.connectorEntities.length).toBeGreaterThan(0);
+
+      // The member did not create the entity, so the RBAC visibility filter
+      // (entity.createdBy) excludes it — the raw-API bypass is closed (#599).
+      currentSub = MEMBER_SUB;
+      const memberRes = await request(app)
+        .get(url)
+        .set("Authorization", "Bearer test-token");
+      expect(memberRes.status).toBe(200);
+      expect(memberRes.body.payload.connectorEntities).toHaveLength(0);
     });
 
     it("should scope results to the requested connector instance", async () => {
@@ -918,6 +970,7 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
   });
 
   afterEach(async () => {
+    currentSub = AUTH0_ID;
     await connection.end();
   });
 
@@ -1308,6 +1361,7 @@ describe("GET /api/connector-entities/:id/running-jobs (#453)", () => {
   });
 
   afterEach(async () => {
+    currentSub = AUTH0_ID;
     await connection.end();
   });
 
