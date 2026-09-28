@@ -634,6 +634,14 @@ curatedViewRouter.delete(
             existing.id,
             tx
           );
+        // #599: also drop the composed `in_curated_view` field grants for every
+        // principal — `hardDeleteByResource` (keyed on the view id) can't match
+        // them (resourceType field_mapping, resourceId null).
+        await DbService.repository.permissionGrants.hardDeleteFieldGrantsByCuratedView(
+          organizationId,
+          existing.id,
+          tx
+        );
         await DbService.repository.curatedViews.softDelete(
           existing.id,
           userId,
@@ -713,6 +721,17 @@ curatedViewRouter.post(
           createdBy: existing.createdBy,
         }
       );
+
+      // #599: the target station must exist in the caller's org — otherwise
+      // the attach would stamp a dangling / cross-org station_views row.
+      const station = await DbService.repository.stations.findById(
+        parsed.data.stationId
+      );
+      if (!station || station.organizationId !== organizationId) {
+        return next(
+          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+        );
+      }
 
       // Idempotent: skip if already attached.
       const already = await DbService.repository.stationViews.findMany(

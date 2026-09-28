@@ -239,6 +239,29 @@ describe("curated-view.router integration", () => {
     expect(got.body.payload.curatedView.fieldMappingIds).toEqual([]);
   });
 
+  it("rejects a reserved key that would collide with a _meta_* view (400)", async () => {
+    const res = await createView({
+      connectorEntityId: entityId,
+      key: "_meta_columns",
+      label: "Bad",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("attach rejects a station outside the caller's org (404)", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "unattached_target",
+        label: "V",
+      })
+    ).body.payload.curatedView.id as string;
+    const att = await request(app)
+      .post(`/api/curated-views/${id}/attach`)
+      .send({ stationId: "00000000-0000-0000-0000-000000000000" });
+    expect(att.status).toBe(404);
+  });
+
   it("filters the list to a station's attached views (stationId)", async () => {
     const attached = (
       await createView({

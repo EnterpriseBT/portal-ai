@@ -56,9 +56,33 @@ export type CuratedViewGetResponsePayload = z.infer<
 
 // ── Create ────────────────────────────────────────────────────────────
 
+/** Reserved session-view identifiers a curated-view `key` must not collide
+ *  with — the `_meta_*` introspection views + the fixed projection columns
+ *  (#599). A view keyed one of these would clobber the agent's introspection
+ *  when materialized as a temp view. */
+const RESERVED_VIEW_KEYS = new Set([
+  "_meta_entities",
+  "_meta_columns",
+  "_meta_column_catalog",
+  "_record_id",
+  "_connector_entity_id",
+  "source_id",
+]);
+
+/** A curated-view `key` becomes a Postgres temp-view identifier (≤63 bytes),
+ *  so it is length-capped and may not reuse a reserved/system name. */
+export const CuratedViewKeySchema = z
+  .string()
+  .min(1)
+  .max(63)
+  .refine((k) => !k.startsWith("_meta_") && !RESERVED_VIEW_KEYS.has(k), {
+    message:
+      "Reserved key — must not be a _meta_* name, _record_id, _connector_entity_id, or source_id",
+  });
+
 export const CuratedViewCreateRequestBodySchema = z.object({
   connectorEntityId: z.string().min(1),
-  key: z.string().min(1),
+  key: CuratedViewKeySchema,
   label: z.string().min(1),
   description: z.string().nullable().optional(),
   /** A structured `FilterGroup` (filter.contract.ts); omit for no row filter. */
