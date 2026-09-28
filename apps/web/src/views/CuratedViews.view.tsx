@@ -181,9 +181,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
           title="Views"
           icon={<Icon name={IconName.Layers} />}
           primaryAction={createButton}
-        >
-          Curated slices of connector data you can query and share.
-        </PageHeader>
+        />
         {paginationToolbar}
         {body}
       </Stack>
