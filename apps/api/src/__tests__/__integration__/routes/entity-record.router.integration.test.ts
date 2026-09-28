@@ -1855,7 +1855,7 @@ describe("Entity Record Router — GET /:recordId", () => {
     expect(res.body.code).toBe("ENTITY_RECORD_NOT_FOUND");
   });
 
-  it("should return 404 when record belongs to a different entity", async () => {
+  it("should return 404 (CONNECTOR_ENTITY_NOT_FOUND) for a cross-tenant entity id", async () => {
     const { userId, organizationId, connectorEntityId } =
       await seedFullStack(db);
 
@@ -1884,13 +1884,15 @@ describe("Entity Record Router — GET /:recordId", () => {
       [row]
     );
 
-    // Request the record under the *other* entity
+    // Request the record under the *other tenant's* entity. #599: this is
+    // rejected at entity resolution (the entity isn't in the caller's org) —
+    // it never reaches the record lookup, closing the cross-tenant IDOR.
     const res = await request(app)
       .get(recordUrl(stack2.connectorEntityId, row.id))
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(404);
-    expect(res.body.code).toBe("ENTITY_RECORD_NOT_FOUND");
+    expect(res.body.code).toBe("CONNECTOR_ENTITY_NOT_FOUND");
   });
 });
 

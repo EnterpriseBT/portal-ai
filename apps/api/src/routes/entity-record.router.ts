@@ -102,11 +102,15 @@ function readSortValue(
 
 async function resolveEntityOrThrow(
   connectorEntityId: string,
+  organizationId: string,
   next: NextFunction
 ) {
   const entity =
     await DbService.repository.connectorEntities.findById(connectorEntityId);
-  if (!entity) {
+  // #599: org-scope the entity — an id from another org must 404, not read
+  // across tenants (the record filter alone doesn't scope an admin, whose
+  // visibilityPredicate is unfiltered). Closes a latent cross-tenant IDOR.
+  if (!entity || entity.organizationId !== organizationId) {
     next(
       new ApiError(
         404,
@@ -192,7 +196,11 @@ entityRecordRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const connectorEntityId = req.params.connectorEntityId;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       const {
@@ -475,7 +483,11 @@ entityRecordRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const connectorEntityId = req.params.connectorEntityId;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       // #599: the count mirrors the list's RBAC read scope.
@@ -558,7 +570,11 @@ entityRecordRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorEntityId, recordId } = req.params;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       const record = await DbService.repository.entityRecords.findHydratedById(
@@ -700,7 +716,11 @@ entityRecordRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const connectorEntityId = req.params.connectorEntityId;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
@@ -853,7 +873,11 @@ entityRecordRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const connectorEntityId = req.params.connectorEntityId;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       // #599: bulk import is a class-level write — owner/admin only (a member's
@@ -1029,7 +1053,11 @@ entityRecordRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const connectorEntityId = req.params.connectorEntityId;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       // #599: revalidation rewrites record validity — class-level write,
@@ -1165,7 +1193,11 @@ entityRecordRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorEntityId, recordId } = req.params;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
@@ -1351,7 +1383,11 @@ entityRecordRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorEntityId, recordId } = req.params;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
@@ -1490,7 +1526,11 @@ entityRecordRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const connectorEntityId = req.params.connectorEntityId;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      const entity = await resolveEntityOrThrow(
+        connectorEntityId,
+        req.application!.metadata.organizationId,
+        next
+      );
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
