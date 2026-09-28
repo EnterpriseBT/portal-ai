@@ -94,7 +94,7 @@ const PAGE_NAV: Record<NavPageId, Omit<SidebarNavItemDef, "pageId">> = {
   views: {
     route: ApplicationRoute.CuratedViews,
     label: "Views",
-    icon: IconName.Visibility,
+    icon: IconName.Layers,
     match: "prefix",
   },
 };

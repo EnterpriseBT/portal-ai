@@ -89,7 +89,7 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   } else if (!recordsLoading && records.length === 0) {
     body = (
       <PageEmptyState
-        icon={<Icon name={IconName.ViewColumn} />}
+        icon={<Icon name={IconName.Layers} />}
         title="No rows"
         description="This view currently returns no rows for you."
       />
@@ -134,7 +134,7 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
           ]}
           onNavigate={onNavigate}
           title={view.label}
-          icon={<Icon name={IconName.ViewColumn} />}
+          icon={<Icon name={IconName.Layers} />}
           primaryAction={
             canManage ? (
               <Stack direction="row" spacing={1}>
@@ -228,7 +228,7 @@ export const CuratedViewDetail: React.FC = () => {
     if (viewResult.isError) {
       return (
         <PageEmptyState
-          icon={<Icon name={IconName.ViewColumn} />}
+          icon={<Icon name={IconName.Layers} />}
           title="View not found"
           description="This view does not exist or is not available to you."
         />

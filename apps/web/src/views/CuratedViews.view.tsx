@@ -129,7 +129,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
       <EmptyResults />
     ) : (
       <PageEmptyState
-        icon={<Icon name={IconName.ViewColumn} />}
+        icon={<Icon name={IconName.Layers} />}
         title="No views available"
         description={
           canManage
@@ -163,7 +163,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
           breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Views" }]}
           onNavigate={(href) => navigate({ to: href })}
           title="Views"
-          icon={<Icon name={IconName.ViewColumn} />}
+          icon={<Icon name={IconName.Layers} />}
           primaryAction={createButton}
         >
           Curated slices of connector data you can query and share.
