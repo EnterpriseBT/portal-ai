@@ -1,6 +1,6 @@
 # Curated views (per-user data exposure) — Plan
 
-**Implements the curated-views read/exposure layer as eight TDD-sequenced slices: the data layer, the condition engine, the per-user session cutover, the SQL-filter validator, the CRUD API, sharing/composition, the Views UI, and the `station_instances` teardown.**
+**Implements the curated-views read/exposure layer as eight TDD-sequenced slices: the data layer, the condition engine, the per-user session cutover, the FilterGroup row-filter render, the CRUD API, sharing/composition, the Views UI, and the `station_instances` teardown.**
 
 Spec: `docs/CURATED_VIEWS.spec.md`. Discovery: `docs/CURATED_VIEWS.discovery.md`. Issue: #599 (epic #578). Builds on shipped #598/#620/#621/#622 (RBAC engine + grants + sharing), #629 (per-caller tool gate), #630 (role-gated nav). Splits: #640 (pins), #641 (ownership).
 
@@ -17,7 +17,7 @@ cd apps/web && npm run test:unit
 
 Each slice: (1) write failing tests; (2) smallest change to green them; (3) focused run; (4) `npm run lint && npm run type-check` at the boundary; (5) next slice.
 
-**Sequencing rationale.** (1) is the additive leaf data layer — creates the tables and generates the cutover data while the old read path keeps working, so it changes no behavior. (2) is pure engine logic (resolver-preserving) that needs (1)'s join table to expand against. (3) is the read cutover — the behavior-changing slice — and needs (1)'s `station_views` + (2)'s field-grant expansion. (4) is a pure leaf validator placed just before its only consumer, (5) the CRUD API (which also needs (1)+(2)). (6) sharing needs views to exist (5) and the FK condition (2) to compose. (7) UI needs the CRUD API (5) + widened share (6). (8) tears down `station_instances` only after (3) stopped reading it and (7) replaced its UI. No forward dependencies.
+**Sequencing rationale.** (1) is the additive leaf data layer — creates the tables and generates the cutover data while the old read path keeps working, so it changes no behavior. (2) is pure engine logic (resolver-preserving) that needs (1)'s join table to expand against. (3) is the read cutover — the behavior-changing slice — and needs (1)'s `station_views` + (2)'s field-grant expansion. (4) reuses the FilterGroup DSL (renderer + validation) and rewires slice 3a's filter embed; (5) the CRUD API needs (1)+(2)+(4). (6) sharing needs views to exist (5) and the FK condition (2) to compose. (7) UI needs the CRUD API (5) + widened share (6). (8) tears down `station_instances` only after (3) stopped reading it and (7) replaced its UI. No forward dependencies.
 
 ---
 
@@ -93,25 +93,27 @@ The FK-condition vocabulary and its **load-time expansion**, plus the deny-only 
 
 ---
 
-## Slice 4 — `whereClause` validator (the injection boundary)
+## Slice 4 — `FilterGroup` row filter: render + validation reuse
 
-A pure, leaf validator for the one free-SQL surface, with its adversarial cases.
+The row filter reuses the existing structured **`FilterGroup`** DSL — no raw SQL, no new parser. This slice changes the `filter` column type, adds a safe inline-SQL renderer for the view DDL, and wires it into `resolveViewsForSession` (replacing slice 3a's raw-`whereClause` embed). Arbitrary secure SQL is deferred to **#644**.
 
 **Files**
 
-- New: `apps/api/src/services/curated-view-filter.validator.ts` — `validateWhereClause(clause, entity)` → throws `ApiError(400, CURATED_VIEW_INVALID_WHERE_CLAUSE)` — spec §8.
-- Edit: `apps/api/src/constants/api-codes.constants.ts` — `CURATED_VIEW_INVALID_WHERE_CLAUSE`.
-- (Plan-time decision, per the spec flag: confirm the existing LLM-SQL guard behind `runSqlQuery` validates a *fragment*; if not, add `pgsql-parser`/`libpg_query` as an `apps/api` dep — a dep bump reviewed on its own.)
+- New: `renderFilterGroupToSql(filter, stmt): string` in `apps/api/src/utils/filter-sql.util.ts` — a sibling of `buildFilterSqlForEntity` that emits an **inline WHERE string with escaped/typed literals** (`quoteLiteral` values, `columnRefByNormalizedKey` for fields) for the `CREATE TEMP VIEW` DDL (a view definition can't bind params) — spec §8.
+- Migration `apps/api/drizzle/<n>_curated-view-filter-jsonb.sql` (+ journal + snapshot): `curated_views` `where_clause text` → `filter jsonb` (the column is unused as of slice 3 — nothing has written it; the `DROP COLUMN where_clause` carries `-- destructive-ok:`).
+- Edit: `packages/core/src/models/curated-view.model.ts` — `whereClause: z.string().nullable()` → `filter: FilterExpressionSchema.nullable()`; `zod.ts`/`type-checks.ts` follow.
+- Edit: `apps/api/src/services/portal-sql.service.ts` — `resolveViewsForSession` (in `resolveGrantedViewColumns`/the DDL loop) ANDs `renderFilterGroupToSql(view.filter, stmt)` instead of the raw `view.whereClause`.
+- Edit: `apps/api/src/constants/api-codes.constants.ts` — `CURATED_VIEW_INVALID_FILTER` (used by slice-5 write validation).
 
 **Steps**
 
-1. **Tests.** `curated-view-filter.validator.test.ts`: accepts a bounded boolean predicate over `c_*` columns; rejects a subquery, a write/DDL, a foreign-table/column ref, a non-boolean expression, and a function outside the allow-list. These double as the **adversarial** probes for the injection boundary. Run; fail.
-2. **Implement** the parser + allow-list. Green.
+1. **Tests (spec §8).** `filter-sql.util.test.ts` (`renderFilterGroupToSql`): renders scalar predicates over the entity's columns; **escapes a value containing a single quote / SQL fragment** (the injection-free proof — the value is escaped, never executed); resolves only known columns. `portal-sql.service.integration`: a curated view with a `filter` restricts rows in the session view. Run; fail.
+2. **Implement** the renderer + the `filter jsonb` migration + model change + the `resolveViewsForSession` wire. Green.
 3. Lint + type-check.
 
-**Done when:** any clause that is not a pure, entity-scoped boolean expression is rejected; validation is identical for human- and LLM-authored input.
+**Done when:** a `FilterGroup` filter renders to a safe, escaped inline WHERE in the view DDL; a malicious literal is escaped, not executed; the `filter` column is `jsonb`.
 
-**Risk:** the parser choice — if a new dep, keep it to the parser only; the allow-list lives in our code, not the parser.
+**Risk:** the renderer inlines values (the DDL can't parameterize) — every literal must go through `quoteLiteral` and every field must resolve via the statement cache; adversarially tested. Not the old injection boundary (structured input), but the escaping is still load-bearing.
 
 ---
 
@@ -212,7 +214,7 @@ With reads and capability off `station_instances` (slice 3) and the UI on attach
 | 1 | 3 tables + models + repos + additive cutover migration | core + api-unit + migrate-default-views integration |
 | 2 | `in_curated_view` + `conditionParam` + `loadSet` expansion + `isDenied` | permission-set/service unit + rbac-fk-expansion integration |
 | 3 | `resolveViewsForSession` + capability/context rederivation (cutover) | portal-sql unit + curated-views-session integration |
-| 4 | `whereClause` validator (+ adversarial) | validator unit |
+| 4 | `FilterGroup` render + `filter jsonb` migration | filter-sql.util unit + integration |
 | 5 | CRUD routes + records endpoint + self-exposure guard | router unit + integration |
 | 6 | sharing + composition | grant.service unit + integration |
 | 7 | Views UI + nav + share + attach-view + page backfill | apps/web unit |
