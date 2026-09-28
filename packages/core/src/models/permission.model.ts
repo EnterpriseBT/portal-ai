@@ -95,6 +95,8 @@ export const DATA_RESOURCE_TYPES = [
 export const SHAREABLE_RESOURCE_TYPES = [
   "station",
   "pin",
+  // #599: a curated view is shared to grant a member a pre-curated data slice.
+  "curated_view",
 ] as const satisfies readonly PermissionResourceType[];
 
 /**
@@ -272,6 +274,8 @@ const INSTANCE_SEARCHABLE_TYPES = [
   "portal",
   "connector_instance",
   "entity",
+  // #599: curated views are grantable/shareable per instance.
+  "curated_view",
 ] as const satisfies readonly PermissionResourceType[];
 
 const objectCapability = (t: PermissionResourceType): ResourceCapability => ({

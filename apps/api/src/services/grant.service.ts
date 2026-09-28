@@ -52,18 +52,20 @@ export class GrantService {
     resourceType: ShareResourceType,
     resourceId: string
   ): Promise<{ createdBy: string }> {
+    const notFoundCode =
+      resourceType === "station"
+        ? ApiCode.STATION_NOT_FOUND
+        : resourceType === "curated_view"
+          ? ApiCode.CURATED_VIEW_NOT_FOUND
+          : ApiCode.PORTAL_RESULT_NOT_FOUND;
     const row =
       resourceType === "station"
         ? await DbService.repository.stations.findById(resourceId)
-        : await DbService.repository.portalResults.findById(resourceId);
+        : resourceType === "curated_view"
+          ? await DbService.repository.curatedViews.findById(resourceId)
+          : await DbService.repository.portalResults.findById(resourceId);
     if (!row || row.organizationId !== organizationId) {
-      throw new ApiError(
-        404,
-        resourceType === "station"
-          ? ApiCode.STATION_NOT_FOUND
-          : ApiCode.PORTAL_RESULT_NOT_FOUND,
-        `${resourceType} not found`
-      );
+      throw new ApiError(404, notFoundCode, `${resourceType} not found`);
     }
     return { createdBy: row.createdBy };
   }
@@ -146,6 +148,30 @@ export class GrantService {
         .parse()
     );
 
+    // #599: sharing a curated view also conveys its columns — one composed
+    // `read field_mapping in_curated_view:<viewId>` grant, which the loadSet
+    // FK-expansion turns into the view's readable field mappings (auto-tracking
+    // the projection). In-boundary: the granter holds `read curated_view:V`
+    // (asserted above), which already implies read on V's fields.
+    if (resourceType === "curated_view") {
+      rows.push(
+        new PermissionGrantModelFactory()
+          .create(caller.userId)
+          .update({
+            organizationId: caller.organizationId,
+            principalType: principal.principalType,
+            principalId: principal.principalId,
+            effect: "allow",
+            verb: "read",
+            resourceType: "field_mapping",
+            resourceId: null,
+            condition: "in_curated_view",
+            conditionParam: resourceId,
+          })
+          .parse()
+      );
+    }
+
     const created = await DbService.transaction(async (tx) => {
       await DbService.repository.permissionGrants.hardDeleteShare(
         caller.organizationId,
@@ -155,6 +181,17 @@ export class GrantService {
         resourceId,
         tx
       );
+      // The composed field grant has a null `resourceId`, so `hardDeleteShare`
+      // can't reach it — clear it explicitly so re-share replaces cleanly.
+      if (resourceType === "curated_view") {
+        await DbService.repository.permissionGrants.hardDeleteInCuratedViewFieldGrant(
+          caller.organizationId,
+          principal.principalType,
+          principal.principalId,
+          resourceId,
+          tx
+        );
+      }
       return DbService.repository.permissionGrants.createMany(
         rows as never,
         tx
@@ -252,16 +289,26 @@ export class GrantService {
       id: row.resourceId as string,
       createdBy: object.createdBy,
     });
-    await DbService.transaction((tx) =>
-      DbService.repository.permissionGrants.hardDeleteShare(
+    await DbService.transaction(async (tx) => {
+      await DbService.repository.permissionGrants.hardDeleteShare(
         caller.organizationId,
         row.principalType,
         row.principalId,
         resourceType,
         row.resourceId as string,
         tx
-      )
-    );
+      );
+      // #599: also drop the composed `in_curated_view` field grant.
+      if (resourceType === "curated_view") {
+        await DbService.repository.permissionGrants.hardDeleteInCuratedViewFieldGrant(
+          caller.organizationId,
+          row.principalType,
+          row.principalId,
+          row.resourceId as string,
+          tx
+        );
+      }
+    });
     void AuditService.record({
       organizationId: caller.organizationId,
       userId: caller.userId,

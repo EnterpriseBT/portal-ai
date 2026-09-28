@@ -14,7 +14,11 @@ export const GrantAccessSchema = z.enum(["read", "read-write"]);
 export type GrantAccess = z.infer<typeof GrantAccessSchema>;
 
 /** The shareable object types (#621) — mirrors `SHAREABLE_RESOURCE_TYPES`. */
-export const ShareResourceTypeSchema = z.enum(["station", "pin"]);
+export const ShareResourceTypeSchema = z.enum([
+  "station",
+  "pin",
+  "curated_view",
+]);
 export type ShareResourceType = z.infer<typeof ShareResourceTypeSchema>;
 
 /** Who a share targets: a specific org member, or "the team" (→ role:member). */

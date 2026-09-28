@@ -35,6 +35,10 @@ const OBJECT_FINDERS: Record<string, (id: string) => Promise<ResolvableRow>> = {
     DbService.repository.connectorEntities.findById(
       id
     ) as Promise<ResolvableRow>,
+  // #599: curated views are shareable + instance-searchable, so an authored
+  // instance statement / grant on a specific view resolves against its creator.
+  curated_view: (id) =>
+    DbService.repository.curatedViews.findById(id) as Promise<ResolvableRow>,
   // #629: the per-caller tool-authorization gate resolves data-plane writes
   // per object too (the per-object gate needs their `createdBy`), so these are
   // now instance-resolvable — they were `null` (data-plane, deferred) in #622.

@@ -291,8 +291,12 @@ describe("PermissionGrantSchema (#621)", () => {
     ).toBe(false);
   });
 
-  it("SHAREABLE_RESOURCE_TYPES is station + pin only", () => {
-    expect([...SHAREABLE_RESOURCE_TYPES]).toEqual(["station", "pin"]);
+  it("SHAREABLE_RESOURCE_TYPES is station + pin + curated_view (#599)", () => {
+    expect([...SHAREABLE_RESOURCE_TYPES]).toEqual([
+      "station",
+      "pin",
+      "curated_view",
+    ]);
   });
 });
 
