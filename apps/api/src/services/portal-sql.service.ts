@@ -604,9 +604,23 @@ export class PortalSqlServiceImpl {
     viewId: string,
     organizationId: string,
     userId: string,
-    opts: { limit: number; offset: number },
+    opts: {
+      limit: number;
+      offset: number;
+      /** A projected column key to order by. Anything outside the view's
+       *  projection (e.g. the default `created`) falls back to the stable
+       *  record-id order — sort can never reach an un-projected column. */
+      sortBy?: string;
+      sortOrder?: "asc" | "desc";
+      /** Case-insensitive substring match across the projected columns. */
+      search?: string;
+    },
     client: DbClient = db
-  ): Promise<{ records: Record<string, unknown>[]; total: number } | null> {
+  ): Promise<{
+    records: Record<string, unknown>[];
+    total: number;
+    columns: { key: string; label: string }[];
+  } | null> {
     const resolved = await this.resolveViewColumnsById(
       viewId,
       organizationId,
@@ -615,6 +629,10 @@ export class PortalSqlServiceImpl {
     );
     if (!resolved) return null;
     const { view, columns } = resolved;
+    const columnsOut = columns.map((c) => ({
+      key: c.columnName,
+      label: c.columnName,
+    }));
 
     const tableName = `er__${view.connectorEntityId}`;
     const selectList = [
@@ -650,15 +668,34 @@ export class PortalSqlServiceImpl {
       }
       whereParts.push(`(${rendered})`);
     }
+    // Search: case-insensitive substring across the projected columns only
+    // (never an un-projected column). Escaped by quoteLiteral — injection-safe.
+    const search = opts.search?.trim();
+    if (search && columns.length > 0) {
+      const term = quoteLiteral(`%${search}%`);
+      const clauses = columns.map(
+        (c) => `w.${quoteIdent(c.columnName)}::text ILIKE ${term}`
+      );
+      whereParts.push(`(${clauses.join(" OR ")})`);
+    }
     const whereSql = whereParts.join(" AND ");
     const limit = Math.max(1, Math.min(opts.limit, 500));
     const offset = Math.max(0, opts.offset);
+
+    // ORDER BY the requested projected column, always ending in the unique
+    // `entity_record_id` tiebreaker (#433 — a paginated order must be total).
+    // A `sortBy` that names no projected column falls back to record-id order.
+    const dir = opts.sortOrder === "desc" ? "DESC" : "ASC";
+    const sortCol = columns.find((c) => c.columnName === opts.sortBy);
+    const orderBySql = sortCol
+      ? `w.${quoteIdent(sortCol.columnName)} ${dir}, w."entity_record_id" ASC`
+      : `w."entity_record_id" ${dir}`;
 
     const rowsSql =
       `SELECT ${selectList}\n` +
       `  FROM ${quoteIdent(tableName)} w\n` +
       `  WHERE ${whereSql}\n` +
-      `  ORDER BY w."entity_record_id"\n` +
+      `  ORDER BY ${orderBySql}\n` +
       `  LIMIT ${limit} OFFSET ${offset}`;
     const countSql =
       `SELECT COUNT(*)::int AS n FROM ${quoteIdent(tableName)} w ` +
@@ -670,7 +707,11 @@ export class PortalSqlServiceImpl {
     ]);
     const records = rowsRes as unknown as Record<string, unknown>[];
     const countRows = countRes as unknown as Array<{ n: number }>;
-    return { records, total: Number(countRows[0]?.n ?? 0) };
+    return {
+      records,
+      total: Number(countRows[0]?.n ?? 0),
+      columns: columnsOut,
+    };
   }
 
   async resolveViewsForSession(

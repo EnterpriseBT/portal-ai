@@ -23,6 +23,11 @@ const view = {
   deletedBy: null,
 };
 
+const columns = [
+  { key: "c_name", label: "c_name" },
+  { key: "c_region", label: "c_region" },
+];
+
 const records = [
   { _record_id: "r1", source_id: "s1", c_name: "Acme", c_region: "NE" },
   { _record_id: "r2", source_id: "s2", c_name: "Globex", c_region: "NE" },
@@ -35,10 +40,15 @@ const meta = {
   tags: ["autodocs"],
   args: {
     view,
+    columns,
     records,
     recordsLoading: false,
     recordsError: false,
     canManage: true,
+    paginationToolbar: null,
+    sortColumn: "c_name",
+    sortDirection: "asc",
+    onSort: fn(),
     onEdit: fn(),
     onDelete: fn(),
     onNavigate: fn(),

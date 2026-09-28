@@ -167,8 +167,24 @@ export type CuratedViewRecordsRequestQuery = z.infer<
   typeof CuratedViewRecordsRequestQuerySchema
 >;
 
+/** A projected column of a curated view's record set — the header the detail
+ *  table renders and the key a `sortBy` may reference. `key` is the wide-table
+ *  column name; `label` is its display header. */
+export const CuratedViewRecordColumnSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+});
+
+export type CuratedViewRecordColumn = z.infer<
+  typeof CuratedViewRecordColumnSchema
+>;
+
 export const CuratedViewRecordsResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
+    /** The view's projected columns, in projection order — the sortable headers
+     *  the detail table renders (a `sortBy` outside this set falls back to the
+     *  stable record-id order server-side). */
+    columns: z.array(CuratedViewRecordColumnSchema),
     records: z.array(z.record(z.string(), z.unknown())),
   });
 

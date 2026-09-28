@@ -52,9 +52,6 @@ function baseProps(canManage: boolean) {
     canManage,
     hasActiveFilters: false,
     paginationToolbar: <div data-testid="pagination-toolbar" />,
-    sortColumn: "created",
-    sortDirection: "asc" as const,
-    onSort: jest.fn(),
     onOpen: jest.fn(),
     onCreate: jest.fn(),
     onShare: jest.fn(),
@@ -63,7 +60,7 @@ function baseProps(canManage: boolean) {
 }
 
 describe("CuratedViewsUI", () => {
-  it("renders a table row per granted view", () => {
+  it("renders a card per granted view", () => {
     render(<CuratedViewsUI {...baseProps(false)} />);
     expect(screen.getByText("NE Accounts")).toBeInTheDocument();
     expect(screen.getByText("SW Accounts")).toBeInTheDocument();

@@ -38,6 +38,11 @@ const view = {
   deletedBy: null,
 };
 
+const columns = [
+  { key: "c_name", label: "c_name" },
+  { key: "c_region", label: "c_region" },
+];
+
 const records = [
   { _record_id: "r1", source_id: "s1", c_name: "Acme", c_region: "NE" },
   { _record_id: "r2", source_id: "s2", c_name: "Globex", c_region: "NE" },
@@ -45,10 +50,15 @@ const records = [
 
 const baseProps = {
   view,
+  columns,
   records,
   recordsLoading: false,
   recordsError: false,
   canManage: true,
+  paginationToolbar: <div data-testid="pagination-toolbar" />,
+  sortColumn: "c_name",
+  sortDirection: "asc" as const,
+  onSort: jest.fn(),
   onEdit: jest.fn(),
   onDelete: jest.fn(),
   onNavigate: jest.fn(),

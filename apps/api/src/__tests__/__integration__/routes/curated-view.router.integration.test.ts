@@ -331,6 +331,91 @@ describe("curated-view.router integration", () => {
     expect(Number(rows[0].c_age)).toBe(42);
   });
 
+  it("records endpoint returns projected columns and sorts by a projected column", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "sortable",
+      label: "Sortable",
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.payload.curatedView.id as string;
+
+    // The response advertises the projected columns (the sortable headers).
+    const base = await request(app).get(`/api/curated-views/${id}/records`);
+    expect(base.status).toBe(200);
+    const colKeys = (base.body.payload.columns as Array<{ key: string }>).map(
+      (c) => c.key
+    );
+    expect(colKeys).toEqual(expect.arrayContaining(["c_email", "c_age"]));
+
+    const asc = await request(app).get(
+      `/api/curated-views/${id}/records?sortBy=c_age&sortOrder=asc`
+    );
+    expect(
+      (asc.body.payload.records as Array<{ c_age: number }>).map((r) =>
+        Number(r.c_age)
+      )
+    ).toEqual([25, 42]);
+
+    const desc = await request(app).get(
+      `/api/curated-views/${id}/records?sortBy=c_age&sortOrder=desc`
+    );
+    expect(
+      (desc.body.payload.records as Array<{ c_age: number }>).map((r) =>
+        Number(r.c_age)
+      )
+    ).toEqual([42, 25]);
+  });
+
+  it("records endpoint searches projected columns; a non-projected sortBy falls back safely", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "searchable",
+      label: "Searchable",
+    });
+    const id = created.body.payload.curatedView.id as string;
+
+    const emailHit = await request(app).get(
+      `/api/curated-views/${id}/records?search=a@b`
+    );
+    expect(emailHit.status).toBe(200);
+    const emailRows = emailHit.body.payload.records as Array<{
+      c_email: string;
+    }>;
+    expect(emailRows.length).toBe(1);
+    expect(emailRows[0].c_email).toBe("a@b.co");
+
+    // The numeric column is searchable via a text cast.
+    const ageHit = await request(app).get(
+      `/api/curated-views/${id}/records?search=42`
+    );
+    expect((ageHit.body.payload.records as unknown[]).length).toBe(1);
+
+    // The default sortBy (`created`, not a projected column) must not error —
+    // it falls back to the stable record-id order.
+    const fallback = await request(app).get(
+      `/api/curated-views/${id}/records?sortBy=created`
+    );
+    expect(fallback.status).toBe(200);
+    expect((fallback.body.payload.records as unknown[]).length).toBe(2);
+  });
+
+  it("records search term is escaped (no injection)", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "inj",
+      label: "Inj",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({ search: "a@b' OR '1'='1" });
+    // Treated as a literal substring (matches nothing) — not an injected
+    // predicate that would return every row.
+    expect(res.status).toBe(200);
+    expect((res.body.payload.records as unknown[]).length).toBe(0);
+  });
+
   it("rejects a duplicate key (409) and an invalid filter (400)", async () => {
     const first = await createView({
       connectorEntityId: entityId,

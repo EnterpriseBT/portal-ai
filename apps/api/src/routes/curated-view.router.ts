@@ -829,14 +829,34 @@ curatedViewRouter.delete(
  *   get:
  *     tags: [Curated Views]
  *     summary: List the rows of a curated view (projection + filter applied)
- *     description: Returns the view's rows scoped to the caller's readable columns and the view's filter. Unreadable == 404.
+ *     description: >
+ *       Returns the view's rows scoped to the caller's readable columns and the view's filter, plus the
+ *       projected `columns` (the sortable headers). `sortBy` may name a projected column (anything else,
+ *       e.g. the default `created`, falls back to the stable record-id order); `search` is a
+ *       case-insensitive substring match across the projected columns. Unreadable == 404.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
  *       - $ref: '#/components/parameters/limitParam'
  *       - $ref: '#/components/parameters/offsetParam'
+ *       - $ref: '#/components/parameters/sortByParam'
+ *       - $ref: '#/components/parameters/sortOrderParam'
+ *       - { in: query, name: search, required: false, schema: { type: string }, description: Case-insensitive substring match across projected columns }
  *     responses:
- *       200: { description: Paginated records }
+ *       200:
+ *         description: Paginated records with the projected columns
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 columns:
+ *                   type: array
+ *                   items: { type: object, properties: { key: { type: string }, label: { type: string } } }
+ *                 records: { type: array, items: { type: object } }
+ *                 total: { type: number }
+ *                 limit: { type: number }
+ *                 offset: { type: number }
  *       404: { description: Not found or not readable }
  */
 curatedViewRouter.get(
@@ -844,16 +864,15 @@ curatedViewRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset } = CuratedViewRecordsRequestQuerySchema.parse(
-        req.query
-      );
+      const { limit, offset, sortBy, sortOrder, search } =
+        CuratedViewRecordsRequestQuerySchema.parse(req.query);
       const { organizationId, userId } = req.application!.metadata;
 
       const result = await PortalSqlService.queryCuratedViewRecords(
         req.params.id,
         organizationId,
         userId,
-        { limit, offset }
+        { limit, offset, sortBy, sortOrder, search }
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -873,6 +892,7 @@ curatedViewRouter.get(
       }
 
       return HttpService.success<CuratedViewRecordsResponsePayload>(res, {
+        columns: result.columns,
         records: result.records,
         total: result.total,
         limit,

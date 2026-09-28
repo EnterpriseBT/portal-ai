@@ -2,25 +2,22 @@ import React, { useMemo, useState } from "react";
 
 import type {
   CuratedViewGetResponsePayload,
+  CuratedViewRecordColumn,
   CuratedViewRecordsResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
   Button,
+  DataTable,
   Icon,
   IconName,
   MetadataList,
   PageEmptyState,
   PageHeader,
+  PageSection,
   Stack,
+  type DataTableColumn,
 } from "@portalai/core/ui";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-import Paper from "@mui/material/Paper";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "@tanstack/react-router";
@@ -42,18 +39,22 @@ import { toServerError } from "../utils/api.util";
 type CuratedView = CuratedViewGetResponsePayload["curatedView"];
 type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
 
-/** Row keys that are internal identifiers rather than projected data columns. */
-const META_RECORD_KEYS = new Set(["_record_id", "source_id"]);
-
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 export interface CuratedViewDetailUIProps {
   view: CuratedView;
+  /** The view's projected columns (server-resolved) — the sortable headers. */
+  columns: CuratedViewRecordColumn[];
   records: RecordRow[];
   recordsLoading: boolean;
   recordsError: boolean;
   /** Whether the caller may edit/delete the view (admin). */
   canManage: boolean;
+  /** The rendered pagination toolbar (search / sort / page controls). */
+  paginationToolbar: React.ReactNode;
+  sortColumn?: string;
+  sortDirection?: "asc" | "desc";
+  onSort: (column: string) => void;
   onEdit: () => void;
   onDelete: () => void;
   onNavigate: (href: string) => void;
@@ -61,33 +62,36 @@ export interface CuratedViewDetailUIProps {
 
 export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   view,
+  columns,
   records,
   recordsLoading,
   recordsError,
   canManage,
+  paginationToolbar,
+  sortColumn,
+  sortDirection,
+  onSort,
   onEdit,
   onDelete,
   onNavigate,
 }) => {
-  // Derive the column set from the returned rows (the records endpoint returns
-  // rows keyed by wide-column name; a richer columns-in-response payload is a
-  // follow-up). Stable order: first-seen across the page, data columns first.
-  const columns = useMemo(() => {
-    const seen: string[] = [];
-    for (const row of records) {
-      for (const key of Object.keys(row)) {
-        if (META_RECORD_KEYS.has(key)) continue;
-        if (!seen.includes(key)) seen.push(key);
-      }
-    }
-    return seen;
-  }, [records]);
+  const tableColumns: DataTableColumn[] = useMemo(
+    () =>
+      columns.map((c) => ({
+        key: c.key,
+        label: c.label,
+        sortable: true,
+        render: (value) =>
+          value === null || value === undefined ? "" : String(value),
+      })),
+    [columns]
+  );
 
-  let body: React.ReactNode;
+  let recordsBody: React.ReactNode;
   if (recordsError) {
-    body = <EmptyResults />;
+    recordsBody = <EmptyResults />;
   } else if (!recordsLoading && records.length === 0) {
-    body = (
+    recordsBody = (
       <PageEmptyState
         icon={<Icon name={IconName.Layers} />}
         title="No rows"
@@ -95,31 +99,15 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
       />
     );
   } else {
-    body = (
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small" aria-label="View records">
-          <TableHead>
-            <TableRow>
-              {columns.map((c) => (
-                <TableCell key={c}>{c}</TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {records.map((row, i) => (
-              <TableRow key={(row._record_id as string) ?? i}>
-                {columns.map((c) => (
-                  <TableCell key={c}>
-                    {row[c] === null || row[c] === undefined
-                      ? ""
-                      : String(row[c])}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+    recordsBody = (
+      <DataTable
+        columns={tableColumns}
+        rows={records as unknown as Record<string, unknown>[]}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={onSort}
+        emptyMessage="No rows"
+      />
     );
   }
 
@@ -156,13 +144,13 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
               </Stack>
             ) : undefined
           }
-        >
-          Curated slice of connector data.
-        </PageHeader>
+        />
 
         <MetadataList
+          direction="vertical"
+          layout="responsive"
           items={[
-            { label: "Key", value: view.key },
+            { label: "Key", value: view.key, variant: "mono" },
             {
               label: "Description",
               value: view.description ?? "",
@@ -181,7 +169,10 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
           ]}
         />
 
-        {body}
+        <PageSection title="Records" icon={<Icon name={IconName.Layers} />}>
+          {paginationToolbar}
+          <Box sx={{ mt: 2 }}>{recordsBody}</Box>
+        </PageSection>
       </Stack>
     </Box>
   );
@@ -249,15 +240,28 @@ export const CuratedViewDetail: React.FC = () => {
     });
   };
 
+  const handleSort = (column: string) => {
+    if (pagination.sortBy === column) {
+      pagination.toggleSortOrder();
+    } else {
+      pagination.setSortBy(column);
+      pagination.setSortOrder("asc");
+    }
+  };
+
   return (
     <Stack spacing={4}>
-      <PaginationToolbar {...pagination.toolbarProps} />
       <CuratedViewDetailUI
         view={view}
+        columns={recordsResult.data?.columns ?? []}
         records={recordsResult.data?.records ?? []}
         recordsLoading={recordsResult.isLoading}
         recordsError={recordsResult.isError}
         canManage={canManage}
+        paginationToolbar={<PaginationToolbar {...pagination.toolbarProps} />}
+        sortColumn={pagination.sortBy}
+        sortDirection={pagination.sortOrder}
+        onSort={handleSort}
         onEdit={() => setEditOpen(true)}
         onDelete={() => setDeleteOpen(true)}
         onNavigate={(href) => navigate({ to: href })}
