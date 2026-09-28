@@ -27,6 +27,8 @@ export const CuratedViewListRequestQuerySchema =
     sortBy: z.enum(["label", "key", "created"]).optional().default("created"),
     include: z.string().optional(),
     connectorEntityId: z.string().optional(),
+    /** Restrict to the curated views attached to this station (#599). */
+    stationId: z.string().optional(),
   });
 
 export type CuratedViewListRequestQuery = z.infer<

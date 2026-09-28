@@ -15,7 +15,7 @@ import type { QueryOptions } from "./types";
  */
 export const grants = {
   list: (
-    resourceType: "station" | "pin",
+    resourceType: "station" | "pin" | "curated_view",
     resourceId: string,
     options?: QueryOptions<GrantListResponse>
   ) =>

@@ -32,6 +32,7 @@ import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
 import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
+import { ShareDialog } from "../components/ShareDialog.component";
 
 type CuratedViewRow = CuratedViewListResponsePayload["curatedViews"][number];
 
@@ -209,6 +210,7 @@ export const CuratedViews: React.FC = () => {
   const toast = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CuratedViewRow | null>(null);
+  const [shareTarget, setShareTarget] = useState<CuratedViewRow | null>(null);
 
   const {
     mutate: deleteView,
@@ -241,7 +243,7 @@ export const CuratedViews: React.FC = () => {
         hasActiveFilters={hasActiveFilters}
         onOpen={(view) => navigate({ to: `/views/${view.id}` })}
         onCreate={() => setCreateOpen(true)}
-        onShare={() => undefined /* #599 slice 7c: share dialog */}
+        onShare={(view) => setShareTarget(view)}
         onDelete={(view) => setDeleteTarget(view)}
       />
       <CuratedViewEditorDialog
@@ -262,6 +264,13 @@ export const CuratedViews: React.FC = () => {
         onConfirm={handleConfirmDelete}
         isPending={isDeleting}
         serverError={toServerError(deleteError as never)}
+      />
+      <ShareDialog
+        open={shareTarget !== null}
+        onClose={() => setShareTarget(null)}
+        resourceType="curated_view"
+        resourceId={shareTarget?.id ?? ""}
+        resourceLabel={shareTarget?.label ?? ""}
       />
     </Stack>
   );

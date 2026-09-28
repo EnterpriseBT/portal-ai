@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, ilike, inArray, type SQL, type Column } from "drizzle-orm";
 
 import {
   CuratedViewModelFactory,
@@ -120,6 +120,7 @@ async function assertFieldsReadable(
  *       - { in: query, name: sortBy, schema: { type: string, enum: [label, key, created], default: created } }
  *       - { in: query, name: search, schema: { type: string } }
  *       - { in: query, name: connectorEntityId, schema: { type: string } }
+ *       - { in: query, name: stationId, schema: { type: string } }
  *     responses:
  *       200:
  *         description: Paginated curated views
@@ -142,13 +143,37 @@ curatedViewRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, connectorEntityId } =
-        CuratedViewListRequestQuerySchema.parse(req.query);
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        search,
+        connectorEntityId,
+        stationId,
+      } = CuratedViewListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
       const filters: SQL[] = [eq(curatedViews.organizationId, organizationId)];
       if (connectorEntityId) {
         filters.push(eq(curatedViews.connectorEntityId, connectorEntityId));
+      }
+      // #599: restrict to a station's attached views (station_views). Resolve
+      // the attachment ids first; none → empty result (the caller sees no views
+      // attached to this station).
+      if (stationId) {
+        const attachments =
+          await DbService.repository.stationViews.findByStationId(stationId);
+        const attachedIds = attachments.map((a) => a.curatedViewId);
+        if (attachedIds.length === 0) {
+          return HttpService.success<CuratedViewListResponsePayload>(res, {
+            curatedViews: [],
+            total: 0,
+            limit,
+            offset,
+          });
+        }
+        filters.push(inArray(curatedViews.id, attachedIds));
       }
       if (search) {
         filters.push(ilike(curatedViews.label, `%${search}%`));

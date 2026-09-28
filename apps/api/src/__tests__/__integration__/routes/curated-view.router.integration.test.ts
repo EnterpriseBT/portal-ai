@@ -239,6 +239,35 @@ describe("curated-view.router integration", () => {
     expect(got.body.payload.curatedView.fieldMappingIds).toEqual([]);
   });
 
+  it("filters the list to a station's attached views (stationId)", async () => {
+    const attached = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "attached_v",
+        label: "Attached",
+      })
+    ).body.payload.curatedView.id as string;
+    await createView({
+      connectorEntityId: entityId,
+      key: "unattached_v",
+      label: "Unattached",
+    });
+    const att = await request(app)
+      .post(`/api/curated-views/${attached}/attach`)
+      .send({ stationId });
+    expect(att.status).toBeLessThan(300);
+
+    const list = await request(app).get(
+      `/api/curated-views?stationId=${stationId}`
+    );
+    expect(list.status).toBe(200);
+    const keys = (list.body.payload.curatedViews as Array<{ key: string }>).map(
+      (v) => v.key
+    );
+    expect(keys).toContain("attached_v");
+    expect(keys).not.toContain("unattached_v");
+  });
+
   it("records endpoint excludes columns outside the projection", async () => {
     const created = await createView({
       connectorEntityId: entityId,

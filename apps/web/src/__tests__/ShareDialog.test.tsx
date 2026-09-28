@@ -36,7 +36,7 @@ describe("ShareDialogUI (#621)", () => {
     const onShare = jest.fn();
     render(<ShareDialogUI {...baseProps} onShare={onShare} />);
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
-    expect(onShare).toHaveBeenCalledWith({ type: "team" }, "read");
+    expect(onShare).toHaveBeenCalledWith({ type: "team" }, "read", []);
   });
 
   it("shares with a chosen member at read-write", async () => {
@@ -53,7 +53,8 @@ describe("ShareDialogUI (#621)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(onShare).toHaveBeenCalledWith(
       { type: "user", userId: "u-1" },
-      "read-write"
+      "read-write",
+      []
     );
   });
 
@@ -96,5 +97,53 @@ describe("ShareDialogUI (#621)", () => {
       />
     );
     expect(screen.getByText("You cannot grant that")).toBeInTheDocument();
+  });
+
+  describe("#599 station attached-views multi-select", () => {
+    const attachedViews = [
+      { id: "v-1", label: "NE Accounts" },
+      { id: "v-2", label: "SW Accounts" },
+    ];
+
+    it("does not render the views section when attachedViews is absent", () => {
+      render(<ShareDialogUI {...baseProps} />);
+      expect(
+        screen.queryByText(/Also share attached views/)
+      ).not.toBeInTheDocument();
+    });
+
+    it("preselects all attached views and shares them by id on submit", async () => {
+      const onShare = jest.fn();
+      render(
+        <ShareDialogUI
+          {...baseProps}
+          attachedViews={attachedViews}
+          onShare={onShare}
+        />
+      );
+      expect(screen.getByText("Also share attached views (2/2)")).toBeVisible();
+      await userEvent.click(screen.getByRole("button", { name: "Share" }));
+      expect(onShare).toHaveBeenCalledWith({ type: "team" }, "read", [
+        "v-1",
+        "v-2",
+      ]);
+    });
+
+    it("Select all deselects all, then a view can be re-checked", async () => {
+      const onShare = jest.fn();
+      render(
+        <ShareDialogUI
+          {...baseProps}
+          attachedViews={attachedViews}
+          onShare={onShare}
+        />
+      );
+      // toggle the select-all off (all were preselected)
+      await userEvent.click(screen.getByLabelText("Select all views"));
+      // re-check one view
+      await userEvent.click(screen.getByLabelText("Share view SW Accounts"));
+      await userEvent.click(screen.getByRole("button", { name: "Share" }));
+      expect(onShare).toHaveBeenCalledWith({ type: "team" }, "read", ["v-2"]);
+    });
   });
 });

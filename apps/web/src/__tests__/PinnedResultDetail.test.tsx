@@ -38,9 +38,16 @@ jest.unstable_mockModule("../api/sdk", () => ({
     members: { list: () => ({ data: undefined, isLoading: false }) },
     grants: {
       list: () => ({ data: undefined, isLoading: false }),
-      share: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+      share: () => ({
+        mutate: jest.fn(),
+        mutateAsync: jest.fn(),
+        isPending: false,
+        error: null,
+      }),
       revoke: () => ({ mutate: jest.fn(), isPending: false, error: null }),
     },
+    // #599: ShareDialog also instantiates this (enabled only for stations).
+    curatedViews: { list: () => ({ data: undefined, isLoading: false }) },
   },
   queryKeys: {
     portalResults: { root: ["portalResults"], get: (id: string) => ["pr", id] },
@@ -48,6 +55,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
       root: ["grants"],
       list: (rt: string, rid: string) => ["grants", rt, rid],
     },
+    curatedViews: { root: ["curatedViews"] },
   },
 }));
 
