@@ -496,36 +496,181 @@ export class PortalSqlServiceImpl {
         continue;
       }
 
-      const stmt = await this.deps.statementCache.get(
-        view.connectorEntityId,
-        client
-      );
-
-      // Effective projection: the view's explicit field-mapping selection,
-      // or — when it has none — all of the entity's live columns.
-      const projectionRows =
-        await curatedViewFieldMappingsRepo.findByCuratedViewId(view.id, client);
-      const effectiveFmIds = projectionRows.length
-        ? new Set(projectionRows.map((p) => p.fieldMappingId))
-        : new Set(stmt.columns.map((c) => c.fieldMappingId));
-
-      // Columns the caller may actually read: in the effective projection,
-      // not hidden, and granted at the field-mapping level (deny-wins).
-      const columns = stmt.columns.filter(
-        (c) =>
-          !VIEW_HIDDEN_COLUMNS.has(c.columnName) &&
-          effectiveFmIds.has(c.fieldMappingId) &&
-          set.can("resource.read", {
-            type: "field_mapping",
-            id: c.fieldMappingId,
-          })
-      );
-
+      const columns = await this.resolveOneViewColumns(view, set, client);
       usedKeys.add(view.key);
       result.push({ view, columns });
     }
 
     return { set, views: result };
+  }
+
+  /**
+   * The columns a caller may read through ONE curated view: its effective
+   * projection (explicit field-mapping selection, or — when it has none — all
+   * of the entity's live columns), minus hidden metadata, intersected with the
+   * caller's `read field_mapping` grants (deny-wins). The single source for the
+   * session build ({@link resolveGrantedViewColumns}) and the standalone
+   * detail/records endpoints ({@link resolveViewColumnsById}), so the two can
+   * never drift.
+   */
+  private async resolveOneViewColumns(
+    view: CuratedViewSelect,
+    set: PermissionSet,
+    client: DbClient
+  ): Promise<WideTableCachedColumn[]> {
+    const stmt = await this.deps.statementCache.get(
+      view.connectorEntityId,
+      client
+    );
+    const projectionRows =
+      await curatedViewFieldMappingsRepo.findByCuratedViewId(view.id, client);
+    const effectiveFmIds = projectionRows.length
+      ? new Set(projectionRows.map((p) => p.fieldMappingId))
+      : new Set(stmt.columns.map((c) => c.fieldMappingId));
+    return stmt.columns.filter(
+      (c) =>
+        !VIEW_HIDDEN_COLUMNS.has(c.columnName) &&
+        effectiveFmIds.has(c.fieldMappingId) &&
+        set.can("resource.read", {
+          type: "field_mapping",
+          id: c.fieldMappingId,
+        })
+    );
+  }
+
+  /**
+   * Single-view resolution for the detail/records endpoints — no station
+   * scope. The view must be org-scoped, readable by the caller (`read
+   * curated_view`, not suppressed by an `entity_record` deny). Returns `null`
+   * when the caller cannot read it (→ 404: unreadable == absent).
+   */
+  async resolveViewColumnsById(
+    viewId: string,
+    organizationId: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<{
+    set: PermissionSet;
+    view: CuratedViewSelect;
+    columns: WideTableCachedColumn[];
+  } | null> {
+    if (!UUID_RE.test(organizationId)) {
+      throw new ApiError(
+        500,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `invalid organizationId for curated view records: ${organizationId}`
+      );
+    }
+    const view = await curatedViewsRepo.findById(viewId, client);
+    if (!view || view.organizationId !== organizationId) return null;
+
+    const roles = (await userRolesRepo.findEffectiveRoleNames(
+      userId,
+      organizationId,
+      client
+    )) as OrgRole[];
+    const set = await PermissionService.loadSet(
+      { userId, organizationId, roles },
+      client
+    );
+    const readable =
+      !set.isDenied("read", "entity_record", { type: "entity_record" }) &&
+      set.can("resource.read", {
+        type: "curated_view",
+        id: view.id,
+        createdBy: view.createdBy,
+      });
+    if (!readable) return null;
+    if (!UUID_RE.test(view.connectorEntityId)) {
+      throw new ApiError(
+        500,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `invalid connectorEntityId for curated view: ${view.connectorEntityId}`
+      );
+    }
+    const columns = await this.resolveOneViewColumns(view, set, client);
+    return { set, view, columns };
+  }
+
+  /**
+   * The rows of ONE curated view for the detail records table (#599): the
+   * view's projection (∩ field grants) + its `filter`, under the org +
+   * soft-delete guard, offset-paginated. Returns `null` when the caller
+   * cannot read the view (→ 404). Column names come from the statement cache
+   * (safe idents) and every filter literal is escaped by `renderFilterGroup-
+   * ToSql`, so the raw SQL carries no un-escaped input.
+   */
+  async queryCuratedViewRecords(
+    viewId: string,
+    organizationId: string,
+    userId: string,
+    opts: { limit: number; offset: number },
+    client: DbClient = db
+  ): Promise<{ records: Record<string, unknown>[]; total: number } | null> {
+    const resolved = await this.resolveViewColumnsById(
+      viewId,
+      organizationId,
+      userId,
+      client
+    );
+    if (!resolved) return null;
+    const { view, columns } = resolved;
+
+    const tableName = `er__${view.connectorEntityId}`;
+    const selectList = [
+      `w."entity_record_id" AS "_record_id"`,
+      `w."source_id" AS "source_id"`,
+      ...columns.map(
+        (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.columnName)}`
+      ),
+    ].join(", ");
+
+    const whereParts = [
+      `w."organization_id" = ${quoteLiteral(organizationId)}`,
+      `w."deleted" IS NULL`,
+    ];
+    if (view.filter) {
+      const stmt = await this.deps.statementCache.get(
+        view.connectorEntityId,
+        client
+      );
+      const columnTypes = Object.fromEntries(
+        (await resolveColumns(view.connectorEntityId)).map((c) => [
+          c.normalizedKey,
+          c.type,
+        ])
+      );
+      const rendered = renderFilterGroupToSql(view.filter, stmt, columnTypes);
+      if (typeof rendered !== "string") {
+        throw new ApiError(
+          500,
+          ApiCode.CURATED_VIEW_INVALID_FILTER,
+          rendered.message
+        );
+      }
+      whereParts.push(`(${rendered})`);
+    }
+    const whereSql = whereParts.join(" AND ");
+    const limit = Math.max(1, Math.min(opts.limit, 500));
+    const offset = Math.max(0, opts.offset);
+
+    const rowsSql =
+      `SELECT ${selectList}\n` +
+      `  FROM ${quoteIdent(tableName)} w\n` +
+      `  WHERE ${whereSql}\n` +
+      `  ORDER BY w."entity_record_id"\n` +
+      `  LIMIT ${limit} OFFSET ${offset}`;
+    const countSql =
+      `SELECT COUNT(*)::int AS n FROM ${quoteIdent(tableName)} w ` +
+      `WHERE ${whereSql}`;
+
+    const [rowsRes, countRes] = await Promise.all([
+      client.execute(sql.raw(rowsSql)),
+      client.execute(sql.raw(countSql)),
+    ]);
+    const records = rowsRes as unknown as Record<string, unknown>[];
+    const countRows = countRes as unknown as Array<{ n: number }>;
+    return { records, total: Number(countRows[0]?.n ?? 0) };
   }
 
   async resolveViewsForSession(
