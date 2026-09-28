@@ -6,7 +6,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, sql, inArray, type SQL } from "drizzle-orm";
+import { eq, and, sql, type SQL } from "drizzle-orm";
+
+import { resolveColumns } from "../utils/resolve-columns.util.js";
 
 import { EntityRecordModelFactory } from "@portalai/core/models";
 import { UUIDv4Factory } from "@portalai/core/utils";
@@ -35,14 +37,12 @@ import {
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { entityRecords, columnDefinitions } from "../db/schema/index.js";
+import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { JobsService } from "../services/jobs.service.js";
-import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
-import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
 import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
 import type { EntityRecordHydratedListItem } from "../db/repositories/entity-records.repository.js";
 import {
@@ -53,8 +53,6 @@ import {
   projectToWideRow,
   buildMappingsForProjection,
 } from "../services/wide-table-projection.util.js";
-import type { ResolvedColumn } from "../adapters/adapter.interface.js";
-import type { ColumnDataType } from "@portalai/core/models";
 import type { Column } from "drizzle-orm";
 
 const logger = createLogger({ module: "entity-record" });
@@ -70,42 +68,6 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-async function resolveColumns(
-  connectorEntityId: string
-): Promise<ResolvedColumn[]> {
-  const mappings =
-    await fieldMappingsRepo.findByConnectorEntityId(connectorEntityId);
-  if (mappings.length === 0) return [];
-
-  const colDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
-  // #433: one statement, not one per column. This ran on every list request —
-  // 14 round-trips for a 13-column entity, against a pool of 10, so a handful
-  // of concurrent list requests could starve unrelated queries of connections.
-  const colDefs = await columnDefinitionsRepo.findMany(
-    inArray(columnDefinitions.id, colDefIds)
-  );
-
-  const colDefMap = new Map(colDefs.map((cd) => [cd.id, cd]));
-
-  return mappings.reduce<ResolvedColumn[]>((acc, m) => {
-    const cd = colDefMap.get(m.columnDefinitionId);
-    if (!cd) return acc;
-    acc.push({
-      key: cd.key,
-      label: cd.label,
-      type: cd.type as ColumnDataType,
-      normalizedKey: m.normalizedKey,
-      required: m.required,
-      enumValues: m.enumValues ?? null,
-      defaultValue: m.defaultValue ?? null,
-      format: m.format ?? null,
-      validationPattern: cd.validationPattern ?? null,
-      canonicalFormat: cd.canonicalFormat ?? null,
-    });
-    return acc;
-  }, []);
-}
 
 /**
  * Read the sort key's value off a returned row, for minting a cursor (#433).

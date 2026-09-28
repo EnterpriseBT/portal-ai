@@ -1,17 +1,18 @@
 import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
+import { FilterExpressionSchema } from "../contracts/filter.contract.js";
 
 /**
  * Curated View model (#599).
  *
  * A per-entity curated slice of connector data — the read/exposure object
  * members are granted (`read curated_view:<id>`) instead of a raw entity.
- * Its **row filter** is a validated SQL boolean expression (`whereClause`,
+ * Its **row filter** is a structured `FilterGroup` (`filter`,
  * null = all rows); its **column projection** is the set of field mappings
  * in the `curated_view_field_mappings` join table (no rows = all of the
  * entity's current columns — an unrestricted view). There is no
  * `isPassthrough` flag: an unrestricted view is simply one with no
- * projection rows and a null `whereClause`.
+ * projection rows and a null `filter`.
  *
  * Sync with the Drizzle `curated_views` table is enforced at compile time
  * via `apps/api/src/db/schema/type-checks.ts` and at runtime via drizzle-zod
@@ -24,8 +25,9 @@ export const CuratedViewSchema = CoreSchema.extend({
   key: z.string().min(1),
   label: z.string().min(1),
   description: z.string().nullable(),
-  /** Validated SQL boolean expression; null = no row filter (all rows). */
-  whereClause: z.string().nullable(),
+  /** Structured row filter (a `FilterGroup`, #599); null = no filter (all rows).
+   *  Injection-free (validated + escaped); arbitrary secure SQL is #644. */
+  filter: FilterExpressionSchema.nullable(),
 });
 
 export type CuratedView = z.infer<typeof CuratedViewSchema>;

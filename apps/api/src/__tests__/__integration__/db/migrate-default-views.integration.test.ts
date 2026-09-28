@@ -49,6 +49,10 @@ function backfillStatements(): string[] {
         .filter((line) => !line.trim().startsWith("--"))
         .join("\n")
         .trim()
+        // #599 slice 4: migration 0115 renamed `where_clause` (text) → `filter`
+        // (jsonb). Both take NULL for a default (unrestricted) view, so replay
+        // 0113's backfill against the current column name.
+        .replace(/"where_clause"/g, '"filter"')
     )
     .filter(
       (s) =>
@@ -181,7 +185,7 @@ describe("#599 slice 1 — default-view cutover backfill (0113)", () => {
     expect(views).toHaveLength(2);
     expect(views.map((v) => v.key).sort()).toEqual(["accounts", "contacts"]);
     for (const v of views) {
-      expect(v.whereClause).toBeNull(); // unrestricted (all rows)
+      expect(v.filter).toBeNull(); // unrestricted (all rows)
       expect(entityIds).toContain(v.connectorEntityId);
       expect(v.createdBy).toBe(userId); // owned by the entity's creator, not system
     }

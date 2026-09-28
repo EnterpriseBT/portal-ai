@@ -7,6 +7,7 @@
  */
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
 import { users } from "./users.table.js";
 import { organizations } from "./organizations.table.js";
 import { organizationUsers } from "./organization-users.table.js";
@@ -355,7 +356,9 @@ export type StationInstanceInsert = z.infer<typeof StationInstanceInsertSchema>;
 
 // ── Curated Views ────────────────────────────────────────────────────────
 
-/** Zod schema for a `curated_views` row returned by SELECT. */
+/** Zod schema for a `curated_views` row returned by SELECT. `filter` is a
+ *  structured `FilterGroup` (#599) — refined so the drizzle-zod `jsonb` column
+ *  keeps its `.$type<FilterGroup>()` shape and dual-schema parity holds. */
 export const CuratedViewSelectSchema = createSelectSchema(curatedViews);
 
 /** Zod schema for inserting into `curated_views`. */

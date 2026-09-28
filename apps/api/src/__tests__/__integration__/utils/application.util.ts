@@ -285,6 +285,7 @@ export async function attachCuratedView(
     label: string;
     createdBy: string;
     grantToUserId?: string;
+    filter?: import("@portalai/core/contracts").FilterGroup | null;
   }
 ): Promise<string> {
   const now = Date.now();
@@ -305,7 +306,7 @@ export async function attachCuratedView(
     key: args.key,
     label: args.label,
     description: null,
-    whereClause: null,
+    filter: args.filter ?? null,
   } as never);
   await db.insert(stationViews).values({
     ...base,

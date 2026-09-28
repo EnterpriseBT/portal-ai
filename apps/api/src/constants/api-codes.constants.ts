@@ -491,6 +491,10 @@ export enum ApiCode {
   /** A dissolve re-enqueue trigger (#541) failed before enqueuing. */
   DISSOLVE_REENQUEUE_FAILED = "DISSOLVE_REENQUEUE_FAILED",
 
+  // Curated views (#599)
+  /** A curated view's `filter` failed `FilterGroup` validation. */
+  CURATED_VIEW_INVALID_FILTER = "CURATED_VIEW_INVALID_FILTER",
+
   // Portal SQL surface (Phase 3)
   /** The LLM-supplied SQL hit the deny-list or other safety guard. */
   PORTAL_SQL_FORBIDDEN = "PORTAL_SQL_FORBIDDEN",

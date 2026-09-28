@@ -19,6 +19,7 @@
  */
 
 import { sql, type SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import {
   validateFilterLimits,
@@ -115,6 +116,48 @@ export function buildFilterSqlForEntity(
     if (err instanceof FilterError) return { message: err.message };
     throw err;
   }
+}
+
+/**
+ * Render a validated `FilterGroup` to an **inline** SQL WHERE fragment for a
+ * `CREATE TEMP VIEW` definition (#599 curated-view row filter) — a view
+ * definition cannot bind parameters, so the parameterised SQL from
+ * `buildFilterSqlForEntity` is serialised with every value literal escaped.
+ *
+ * Injection-safe by construction: the input is a structured, schema-validated
+ * `FilterGroup` (not raw SQL); column refs resolve only to the entity's cached
+ * `c_*` columns (never user text); and every bound value passes through
+ * `formatLiteral` (single-quote-escaped). Returns a `FilterValidationError`
+ * (e.g. unknown column) unchanged.
+ */
+export function renderFilterGroupToSql(
+  expression: FilterGroup,
+  stmt: CachedStatements,
+  columnTypes: Record<string, ColumnDataType>
+): string | FilterValidationError {
+  const built = buildFilterSqlForEntity(expression, stmt, columnTypes);
+  if (isFilterError(built)) return built;
+  const { sql: text, params } = new PgDialect().sqlToQuery(built.where);
+  // Column refs are inlined by drizzle as `"w"."c_*"` (from the statement
+  // cache, not params); only value params are `$N`, and each is replaced by a
+  // safely-formatted literal. `\$(\d+)` keeps `$10` distinct from `$1`.
+  return text.replace(/\$(\d+)/g, (_full, n: string) =>
+    formatLiteral(params[Number(n) - 1])
+  );
+}
+
+/**
+ * Format a bound parameter as a safe inline SQL literal — the injection-safety
+ * point for the inlined view filter. Strings are single-quote-escaped
+ * (`'` → `''`); finite numbers and booleans render bare; everything else → NULL.
+ */
+function formatLiteral(value: unknown): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "NULL";
+  }
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
 /**

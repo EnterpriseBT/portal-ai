@@ -32,6 +32,8 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
+import { renderFilterGroupToSql } from "../utils/filter-sql.util.js";
+import { resolveColumns } from "../utils/resolve-columns.util.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
 import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
@@ -564,11 +566,30 @@ export class PortalSqlServiceImpl {
         `w."organization_id" = ${quoteLiteral(organizationId)}`,
         `w."deleted" IS NULL`,
       ];
-      // A stored `whereClause` is validated at write time (#599 slice 5);
-      // slice-3 data carries only null clauses. AND it inside parens so it
-      // cannot break out of the org/soft-delete guard.
-      if (view.whereClause && view.whereClause.trim()) {
-        whereParts.push(`(${view.whereClause})`);
+      // #599: a stored `FilterGroup` is rendered to a safe, escaped inline
+      // WHERE (`renderFilterGroupToSql`) and ANDed inside parens so it cannot
+      // break out of the org/soft-delete guard. A render failure fails closed —
+      // a stored filter must always render.
+      if (view.filter) {
+        const stmt = await this.deps.statementCache.get(
+          view.connectorEntityId,
+          client
+        );
+        const columnTypes = Object.fromEntries(
+          (await resolveColumns(view.connectorEntityId)).map((c) => [
+            c.normalizedKey,
+            c.type,
+          ])
+        );
+        const rendered = renderFilterGroupToSql(view.filter, stmt, columnTypes);
+        if (typeof rendered !== "string") {
+          throw new ApiError(
+            500,
+            ApiCode.PORTAL_SQL_FORBIDDEN,
+            `curated view ${view.id} filter failed to render: ${rendered.message}`
+          );
+        }
+        whereParts.push(`(${rendered})`);
       }
 
       pushTempView(

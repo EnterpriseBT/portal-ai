@@ -1165,6 +1165,42 @@ describe("PortalSqlService integration tests", () => {
       );
       expect(views).toEqual([]);
     });
+
+    it("a curated view's FilterGroup restricts the rows in its session view", async () => {
+      // Two contacts rows: one below and one above the filter threshold.
+      const young = generateId();
+      const adult = generateId();
+      await insertEntityRecord(contactsEntityId, young, "y-1");
+      await insertEntityRecord(contactsEntityId, adult, "a-1");
+      await (db as ReturnType<typeof drizzle>).execute(
+        sql`INSERT INTO ${sql.raw(`"er__${contactsEntityId}"`)} ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", "c_email", "c_age") VALUES (${young}, ${orgId}, ${Date.now()}, true, ${"y-1"}, ${"young@x.co"}, ${25}), (${adult}, ${orgId}, ${Date.now()}, true, ${"a-1"}, ${"adult@x.co"}, ${42})`
+      );
+      // A second curated view over the SAME contacts wide table, filtered to
+      // age > 30, granted to the user — proves two independently-granted views
+      // over one wide table + the FilterGroup render restricting rows.
+      await attachCuratedView(db as ReturnType<typeof drizzle>, {
+        stationId,
+        organizationId: orgId,
+        connectorEntityId: contactsEntityId,
+        key: "adult_contacts",
+        label: "Adult Contacts",
+        createdBy: userId,
+        grantToUserId: userId,
+        filter: {
+          combinator: "and",
+          conditions: [{ field: "age", operator: "gt", value: 30 }],
+        },
+      });
+
+      const res = await portalSql.runSqlQuery({
+        userId,
+        sql: `SELECT "c_email" FROM adult_contacts ORDER BY "c_email"`,
+        stationId,
+        organizationId: orgId,
+      });
+      const rows = "rows" in res ? (res.rows as { c_email: string }[]) : [];
+      expect(rows.map((r) => r.c_email)).toEqual(["adult@x.co"]);
+    });
   });
 });
 

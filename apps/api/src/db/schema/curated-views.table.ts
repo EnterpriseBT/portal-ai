@@ -1,5 +1,7 @@
-import { pgTable, text, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+
+import type { FilterGroup } from "@portalai/core/contracts";
 
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
@@ -9,9 +11,9 @@ import { connectorEntities } from "./connector-entities.table.js";
  * Curated views (#599) — per-entity curated slices (row filter + column
  * projection) that are the member data-read path. The column projection is
  * the `curated_view_field_mappings` join table (no rows = all of the
- * entity's current columns); `whereClause` is a validated SQL boolean
- * expression (null = all rows). No `isPassthrough` flag — an unrestricted
- * view is one with no projection rows and a null `whereClause`.
+ * entity's current columns); `filter` is a structured `FilterGroup`
+ * (null = all rows). No `isPassthrough` flag — an unrestricted view is
+ * one with no projection rows and a null `filter`.
  */
 export const curatedViews = pgTable(
   "curated_views",
@@ -27,8 +29,8 @@ export const curatedViews = pgTable(
     key: text("key").notNull(),
     label: text("label").notNull(),
     description: text("description"),
-    /** Validated SQL boolean expression; null = no row filter. */
-    whereClause: text("where_clause"),
+    /** Structured row filter (a `FilterGroup`, #599); null = no filter. */
+    filter: jsonb("filter").$type<FilterGroup>(),
   },
   (table) => [
     uniqueIndex("curated_views_org_key_unique")

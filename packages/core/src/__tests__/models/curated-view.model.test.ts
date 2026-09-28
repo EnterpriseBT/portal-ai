@@ -25,11 +25,11 @@ const validFields = {
   key: "ne_accounts",
   label: "NE Accounts",
   description: null,
-  whereClause: null,
+  filter: null,
 };
 
 describe("CuratedViewSchema", () => {
-  it("accepts a valid unrestricted view (null whereClause)", () => {
+  it("accepts a valid unrestricted view (null filter)", () => {
     const result = CuratedViewSchema.safeParse({
       ...validBase,
       ...validFields,
@@ -37,12 +37,15 @@ describe("CuratedViewSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts a view with a whereClause and description", () => {
+  it("accepts a view with a filter and description", () => {
     const result = CuratedViewSchema.safeParse({
       ...validBase,
       ...validFields,
       description: "North-east accounts",
-      whereClause: "c_region = 'NE'",
+      filter: {
+        combinator: "and",
+        conditions: [{ field: "region", operator: "eq", value: "NE" }],
+      },
     });
     expect(result.success).toBe(true);
   });
@@ -65,8 +68,8 @@ describe("CuratedViewSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects a missing whereClause key (required-nullable)", () => {
-    const { whereClause: _omit, ...rest } = { ...validBase, ...validFields };
+  it("rejects a missing filter key (required-nullable)", () => {
+    const { filter: _omit, ...rest } = { ...validBase, ...validFields };
     void _omit;
     const result = CuratedViewSchema.safeParse(rest);
     expect(result.success).toBe(false);
@@ -109,6 +112,6 @@ describe("CuratedViewModelFactory", () => {
     const model = factory.create("admin-9").update(validFields);
     const parsed = model.parse();
     expect(parsed.key).toBe("ne_accounts");
-    expect(parsed.whereClause).toBeNull();
+    expect(parsed.filter).toBeNull();
   });
 });
