@@ -57,6 +57,16 @@ describe("nav-view + read-job seed + 0110 backfill (#630)", () => {
     "view:page:jobs",
     "view:page:pinned",
     "view:page:stations",
+    // #599: the Views nav page — seeded via MEMBER_VIEW_PAGE_IDS, backfilled
+    // for existing orgs by 0116 (0110 predates it).
+    "view:page:views",
+  ];
+
+  // The nav grants split across two backfills: 0110 (#630, the original four)
+  // and 0116 (#599, `view page:views`). Running both reconstructs the seed set.
+  const NAV_BACKFILLS = [
+    "drizzle/0110_backfill-nav-permission-grants.sql",
+    "drizzle/0116_backfill-views-page-grant.sql",
   ];
 
   beforeEach(async () => {
@@ -101,15 +111,15 @@ describe("nav-view + read-job seed + 0110 backfill (#630)", () => {
       );
     expect(await navGrants()).toHaveLength(0);
 
-    const sql = readFileSync(
-      join(process.cwd(), "drizzle/0110_backfill-nav-permission-grants.sql"),
-      "utf8"
-    );
-    await connection.unsafe(sql);
+    for (const f of NAV_BACKFILLS) {
+      await connection.unsafe(readFileSync(join(process.cwd(), f), "utf8"));
+    }
     expect((await navGrants()).map(key).sort()).toEqual(EXPECTED);
 
     // Idempotent: a second run changes nothing (ids match the seed exactly).
-    await connection.unsafe(sql);
+    for (const f of NAV_BACKFILLS) {
+      await connection.unsafe(readFileSync(join(process.cwd(), f), "utf8"));
+    }
     expect((await navGrants()).map(key).sort()).toEqual(EXPECTED);
   });
 
@@ -135,11 +145,9 @@ describe("nav-view + read-job seed + 0110 backfill (#630)", () => {
           inArray(schema.permissionStatements.resourceType, ["page", "job"])
         )
       );
-    const sql = readFileSync(
-      join(process.cwd(), "drizzle/0110_backfill-nav-permission-grants.sql"),
-      "utf8"
-    );
-    await connection.unsafe(sql);
+    for (const f of NAV_BACKFILLS) {
+      await connection.unsafe(readFileSync(join(process.cwd(), f), "utf8"));
+    }
 
     const backfilled = await (db as ReturnType<typeof drizzle>)
       .select({ id: schema.permissionStatements.id })

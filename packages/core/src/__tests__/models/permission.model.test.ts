@@ -403,6 +403,7 @@ describe("permission vocabulary (#630)", () => {
       "jobs",
       "pinned",
       "stations",
+      "views",
     ]);
     // Admin pages carry no member grant.
     expect([...MEMBER_VIEW_PAGE_IDS]).not.toContain("connectors");

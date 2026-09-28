@@ -9,6 +9,8 @@ import type { EntityGroupListRequestQuery } from "@portalai/core/contracts";
 import type { EntityGroupMemberOverlapRequestQuery } from "@portalai/core/contracts";
 import type { EntityGroupResolveRequestQuery } from "@portalai/core/contracts";
 import type { EntityTagListRequestQuery } from "@portalai/core/contracts";
+import type { CuratedViewListRequestQuery } from "@portalai/core/contracts";
+import type { CuratedViewRecordsRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 import type { UsageLedgerListRequestQuery } from "@portalai/core/contracts";
 import type { StationListRequestQuery } from "@portalai/core/contracts";
@@ -171,6 +173,14 @@ export const queryKeys = {
     list: (params?: EntityTagListRequestQuery) =>
       [...queryKeys.entityTags.root, "list", params] as const,
     get: (id: string) => [...queryKeys.entityTags.root, "get", id] as const,
+  },
+  curatedViews: {
+    root: ["curatedViews"] as const,
+    list: (params?: CuratedViewListRequestQuery) =>
+      [...queryKeys.curatedViews.root, "list", params] as const,
+    get: (id: string) => [...queryKeys.curatedViews.root, "get", id] as const,
+    records: (id: string, params?: CuratedViewRecordsRequestQuery) =>
+      [...queryKeys.curatedViews.root, "records", id, params] as const,
   },
   entityTagAssignments: {
     root: ["entityTagAssignments"] as const,

@@ -10,6 +10,7 @@ import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.
 import { entityRecords } from "./entity-records.api";
 import { entityGroups } from "./entity-groups.api";
 import { entityTags } from "./entity-tags.api";
+import { curatedViews } from "./curated-views.api";
 import { entityTagAssignments } from "./entity-tag-assignments.api";
 import { fieldMappings } from "./field-mappings.api";
 import { fileUploads } from "./file-uploads.api";
@@ -48,6 +49,7 @@ export const sdk = {
   entityGroups,
   entityRecords,
   entityTags,
+  curatedViews,
   entityTagAssignments,
   fieldMappings,
   fileUploads,

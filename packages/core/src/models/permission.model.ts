@@ -171,6 +171,7 @@ export const NAV_PAGE_IDS = [
   "tags",
   "column_definitions",
   "toolpacks",
+  "views",
 ] as const;
 export const NavPageIdSchema = z.enum(NAV_PAGE_IDS);
 export type NavPageId = z.infer<typeof NavPageIdSchema>;
@@ -185,6 +186,7 @@ export const MEMBER_VIEW_PAGE_IDS = [
   "stations",
   "pinned",
   "jobs",
+  "views",
 ] as const satisfies readonly NavPageId[];
 
 export const PagePermissionMapSchema = z.record(NavPageIdSchema, z.boolean());

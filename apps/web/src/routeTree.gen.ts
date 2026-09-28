@@ -22,6 +22,7 @@ import { Route as EntitiesRouteImport } from './routes/entities'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ViewsIndexRouteImport } from './routes/views.index'
 import { Route as ToolpacksIndexRouteImport } from './routes/toolpacks.index'
 import { Route as TagsIndexRouteImport } from './routes/tags.index'
 import { Route as StationsIndexRouteImport } from './routes/stations.index'
@@ -109,6 +110,11 @@ const ColumnDefinitionsRoute = ColumnDefinitionsRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ViewsIndexRoute = ViewsIndexRouteImport.update({
+  id: '/views/',
+  path: '/views/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ToolpacksIndexRoute = ToolpacksIndexRouteImport.update({
@@ -267,6 +273,7 @@ export interface FileRoutesByFullPath {
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/toolpacks/': typeof ToolpacksIndexRoute
+  '/views/': typeof ViewsIndexRoute
   '/connectors/$connectorInstanceId/': typeof ConnectorsConnectorInstanceIdIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
@@ -293,6 +300,7 @@ export interface FileRoutesByTo {
   '/stations': typeof StationsIndexRoute
   '/tags': typeof TagsIndexRoute
   '/toolpacks': typeof ToolpacksIndexRoute
+  '/views': typeof ViewsIndexRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdIndexRoute
   '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
   '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
@@ -332,6 +340,7 @@ export interface FileRoutesById {
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/toolpacks/': typeof ToolpacksIndexRoute
+  '/views/': typeof ViewsIndexRoute
   '/connectors/$connectorInstanceId/': typeof ConnectorsConnectorInstanceIdIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
@@ -372,6 +381,7 @@ export interface FileRouteTypes {
     | '/stations/'
     | '/tags/'
     | '/toolpacks/'
+    | '/views/'
     | '/connectors/$connectorInstanceId/'
     | '/entities/$entityId/'
     | '/connectors/$connectorInstanceId/layout-plan/edit'
@@ -398,6 +408,7 @@ export interface FileRouteTypes {
     | '/stations'
     | '/tags'
     | '/toolpacks'
+    | '/views'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
     | '/connectors/$connectorInstanceId/layout-plan/edit'
@@ -436,6 +447,7 @@ export interface FileRouteTypes {
     | '/stations/'
     | '/tags/'
     | '/toolpacks/'
+    | '/views/'
     | '/connectors/$connectorInstanceId/'
     | '/entities/$entityId/'
     | '/connectors/$connectorInstanceId/layout-plan/edit'
@@ -458,6 +470,7 @@ export interface RootRouteChildren {
   ToolpacksRoute: typeof ToolpacksRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   PortalsPortalIdRoute: typeof PortalsPortalIdRoute
+  ViewsIndexRoute: typeof ViewsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -551,6 +564,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/views/': {
+      id: '/views/'
+      path: '/views'
+      fullPath: '/views/'
+      preLoaderRoute: typeof ViewsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/toolpacks/': {
@@ -893,6 +913,7 @@ const rootRouteChildren: RootRouteChildren = {
   ToolpacksRoute: ToolpacksRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
   PortalsPortalIdRoute: PortalsPortalIdRoute,
+  ViewsIndexRoute: ViewsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

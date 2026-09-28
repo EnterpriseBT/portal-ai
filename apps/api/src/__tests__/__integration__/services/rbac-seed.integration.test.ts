@@ -79,10 +79,10 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
     expect(attachments).toHaveLength(3);
     // FullAccess(1) + AdminAccess(3)
     // + MemberAccess(8 data types × {read,write,delete,read-system} = 32
-    //   + station/pin/curated_view × share = 3 + read job (1) + view page × 3
-    //   = 39) = 43
+    //   + station/pin/curated_view × share = 3 + read job (1) + view page × 4
+    //   = 40) = 44
     //   (#621, #630, #599)
-    expect(statements).toHaveLength(43);
+    expect(statements).toHaveLength(44);
     expect(policies.every((p) => p.kind === "system")).toBe(true);
 
     // Second call: no duplication (idempotent via the owner-role early return).
@@ -96,7 +96,7 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
       .from(schema.permissionStatements)
       .where(eq(schema.permissionStatements.organizationId, orgId));
     expect(rolesAfter).toHaveLength(3);
-    expect(stmtsAfter).toHaveLength(43);
+    expect(stmtsAfter).toHaveLength(44);
   });
 
   // ── #630: the member nav-view + job-read grants ─────────────────────
@@ -136,7 +136,7 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
       .filter((s) => s.verb === "view" && s.resourceType === "page")
       .map((s) => s.resourceId)
       .sort();
-    expect(viewPages).toEqual(["jobs", "pinned", "stations"]);
+    expect(viewPages).toEqual(["jobs", "pinned", "stations", "views"]);
     expect(viewPages).not.toContain("connectors");
     expect(viewPages).not.toContain("connector_catalog");
   });
