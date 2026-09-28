@@ -33,6 +33,7 @@ import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.in
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
 import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
+import { Route as ViewsViewIdRouteImport } from './routes/views.$viewId'
 import { Route as StationsStationIdRouteImport } from './routes/stations.$stationId'
 import { Route as PortalsPortalIdRouteImport } from './routes/portals.$portalId'
 import { Route as PortalResultsPortalResultIdRouteImport } from './routes/portal-results.$portalResultId'
@@ -167,6 +168,11 @@ const ColumnDefinitionsIndexRoute = ColumnDefinitionsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ColumnDefinitionsRoute,
 } as any)
+const ViewsViewIdRoute = ViewsViewIdRouteImport.update({
+  id: '/views/$viewId',
+  path: '/views/$viewId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StationsStationIdRoute = StationsStationIdRouteImport.update({
   id: '/$stationId',
   path: '/$stationId',
@@ -263,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
+  '/views/$viewId': typeof ViewsViewIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
@@ -290,6 +297,7 @@ export interface FileRoutesByTo {
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
+  '/views/$viewId': typeof ViewsViewIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
@@ -330,6 +338,7 @@ export interface FileRoutesById {
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
+  '/views/$viewId': typeof ViewsViewIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
@@ -371,6 +380,7 @@ export interface FileRouteTypes {
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
+    | '/views/$viewId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
@@ -398,6 +408,7 @@ export interface FileRouteTypes {
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
+    | '/views/$viewId'
     | '/column-definitions'
     | '/connectors'
     | '/entities'
@@ -437,6 +448,7 @@ export interface FileRouteTypes {
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
+    | '/views/$viewId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
@@ -470,6 +482,7 @@ export interface RootRouteChildren {
   ToolpacksRoute: typeof ToolpacksRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   PortalsPortalIdRoute: typeof PortalsPortalIdRoute
+  ViewsViewIdRoute: typeof ViewsViewIdRoute
   ViewsIndexRoute: typeof ViewsIndexRoute
 }
 
@@ -642,6 +655,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/column-definitions/'
       preLoaderRoute: typeof ColumnDefinitionsIndexRouteImport
       parentRoute: typeof ColumnDefinitionsRoute
+    }
+    '/views/$viewId': {
+      id: '/views/$viewId'
+      path: '/views/$viewId'
+      fullPath: '/views/$viewId'
+      preLoaderRoute: typeof ViewsViewIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/stations/$stationId': {
       id: '/stations/$stationId'
@@ -913,6 +933,7 @@ const rootRouteChildren: RootRouteChildren = {
   ToolpacksRoute: ToolpacksRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
   PortalsPortalIdRoute: PortalsPortalIdRoute,
+  ViewsViewIdRoute: ViewsViewIdRoute,
   ViewsIndexRoute: ViewsIndexRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,4 +1,5 @@
-import React, { useCallback } from "react";
+import React, { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import type { CuratedViewListResponsePayload } from "@portalai/core/contracts";
 import {
@@ -25,7 +26,12 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk } from "../api/sdk";
+import { queryKeys } from "../api/keys";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { useToast } from "../utils/toast.context";
+import { toServerError } from "../utils/api.util";
+import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
+import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
 
 type CuratedViewRow = CuratedViewListResponsePayload["curatedViews"][number];
 
@@ -198,9 +204,31 @@ export const CuratedViews: React.FC = () => {
     Object.values(pagination.filters).some((v) => v.length > 0)
   );
 
-  // TODO(#599 slice 7b/7c): wire onOpen (view-detail nav) + onCreate/onShare/
-  // onDelete to their dialogs. Stubbed here so 7a ships the list read-only.
-  const noop = useCallback(() => undefined, []);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CuratedViewRow | null>(null);
+
+  const {
+    mutate: deleteView,
+    isPending: isDeleting,
+    error: deleteError,
+  } = sdk.curatedViews.delete(deleteTarget?.id ?? "");
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    const label = deleteTarget.label;
+    deleteView(undefined, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.curatedViews.root,
+        });
+        toast.success(`Deleted "${label}"`);
+        setDeleteTarget(null);
+      },
+    });
+  };
 
   return (
     <Stack spacing={4}>
@@ -211,10 +239,29 @@ export const CuratedViews: React.FC = () => {
         isError={listResult.isError}
         canManage={canManage}
         hasActiveFilters={hasActiveFilters}
-        onOpen={noop}
-        onCreate={noop}
-        onShare={noop}
-        onDelete={noop}
+        onOpen={(view) => navigate({ to: `/views/${view.id}` })}
+        onCreate={() => setCreateOpen(true)}
+        onShare={() => undefined /* #599 slice 7c: share dialog */}
+        onDelete={(view) => setDeleteTarget(view)}
+      />
+      <CuratedViewEditorDialog
+        open={createOpen}
+        mode="create"
+        onClose={() => setCreateOpen(false)}
+        onSaved={() => {
+          setCreateOpen(false);
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.curatedViews.root,
+          });
+        }}
+      />
+      <DeleteCuratedViewDialog
+        open={deleteTarget !== null}
+        viewLabel={deleteTarget?.label ?? ""}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        isPending={isDeleting}
+        serverError={toServerError(deleteError as never)}
       />
     </Stack>
   );
