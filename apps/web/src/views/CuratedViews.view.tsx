@@ -1,20 +1,20 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { CuratedViewListResponsePayload } from "@portalai/core/contracts";
 import {
   Box,
   Button,
-  DetailCard,
+  DataTable,
   Icon,
   IconName,
-  MetadataList,
   PageEmptyState,
   PageHeader,
   Stack,
-  type ActionSuiteItem,
+  type DataTableColumn,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
+import IconButton from "@mui/material/IconButton";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ShareIcon from "@mui/icons-material/Share";
@@ -38,53 +38,6 @@ type CuratedViewRow = CuratedViewListResponsePayload["curatedViews"][number];
 
 const dates = new DateFactory("UTC");
 
-// ── Card (pure) ──────────────────────────────────────────────────────
-
-interface CuratedViewCardProps {
-  view: CuratedViewRow;
-  canManage: boolean;
-  onOpen: () => void;
-  onShare: () => void;
-  onDelete: () => void;
-}
-
-const CuratedViewCard: React.FC<CuratedViewCardProps> = ({
-  view,
-  canManage,
-  onOpen,
-  onShare,
-  onDelete,
-}) => {
-  const actions: ActionSuiteItem[] = canManage
-    ? [
-        { label: "Share", icon: <ShareIcon />, onClick: onShare },
-        {
-          label: "Delete",
-          icon: <DeleteIcon />,
-          onClick: onDelete,
-          color: "error" as const,
-        },
-      ]
-    : [];
-
-  return (
-    <DetailCard title={view.label} onClick={onOpen} actions={actions}>
-      <MetadataList
-        items={[
-          { label: "Key", value: view.key },
-          {
-            label: "Description",
-            value: view.description ?? "",
-            hidden: !view.description,
-          },
-          { label: "Row filter", value: view.filter ? "Filtered" : "All rows" },
-          { label: "Created", value: dates.format(view.created, "MM/dd/yyyy") },
-        ]}
-      />
-    </DetailCard>
-  );
-};
-
 // ── List view (pure UI — renders from props, no fetching) ────────────
 
 export interface CuratedViewsUIProps {
@@ -96,6 +49,11 @@ export interface CuratedViewsUIProps {
   canManage: boolean;
   /** True when a search/filter is active — drives the empty-state copy. */
   hasActiveFilters: boolean;
+  /** The rendered pagination toolbar (search / sort / page controls). */
+  paginationToolbar: React.ReactNode;
+  sortColumn?: string;
+  sortDirection?: "asc" | "desc";
+  onSort: (column: string) => void;
   onOpen: (view: CuratedViewRow) => void;
   onCreate: () => void;
   onShare: (view: CuratedViewRow) => void;
@@ -108,6 +66,10 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
   isError,
   canManage,
   hasActiveFilters,
+  paginationToolbar,
+  sortColumn,
+  sortDirection,
+  onSort,
   onOpen,
   onCreate,
   onShare,
@@ -120,6 +82,63 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
       Create View
     </Button>
   ) : undefined;
+
+  const columns: DataTableColumn[] = useMemo(() => {
+    const base: DataTableColumn[] = [
+      { key: "label", label: "Name", sortable: true },
+      { key: "key", label: "Key", sortable: true },
+      {
+        key: "filter",
+        label: "Row filter",
+        render: (value) => (value ? "Filtered" : "All rows"),
+      },
+      {
+        key: "description",
+        label: "Description",
+        render: (value) => {
+          const text = String(value ?? "");
+          return text.length > 90 ? `${text.slice(0, 90)}…` : text;
+        },
+      },
+      {
+        key: "created",
+        label: "Created",
+        sortable: true,
+        format: (value) => dates.format(Number(value), "MM/dd/yyyy"),
+      },
+    ];
+    if (!canManage) return base;
+    base.push({
+      key: "actions",
+      label: "Actions",
+      render: (_value, row) => (
+        <Stack direction="row" spacing={0.5}>
+          <IconButton
+            size="small"
+            aria-label="Share view"
+            onClick={(e) => {
+              e.stopPropagation();
+              onShare(row as unknown as CuratedViewRow);
+            }}
+          >
+            <ShareIcon fontSize="small" />
+          </IconButton>
+          <IconButton
+            size="small"
+            color="error"
+            aria-label="Delete view"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(row as unknown as CuratedViewRow);
+            }}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      ),
+    });
+    return base;
+  }, [canManage, onShare, onDelete]);
 
   let body: React.ReactNode;
   if (isError) {
@@ -141,18 +160,15 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
     );
   } else {
     body = (
-      <Stack spacing={1}>
-        {views.map((view) => (
-          <CuratedViewCard
-            key={view.id}
-            view={view}
-            canManage={canManage}
-            onOpen={() => onOpen(view)}
-            onShare={() => onShare(view)}
-            onDelete={() => onDelete(view)}
-          />
-        ))}
-      </Stack>
+      <DataTable
+        columns={columns}
+        rows={views as unknown as Record<string, unknown>[]}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={onSort}
+        onRowClick={(row) => onOpen(row as unknown as CuratedViewRow)}
+        emptyMessage="No views available"
+      />
     );
   }
 
@@ -168,6 +184,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
         >
           Curated slices of connector data you can query and share.
         </PageHeader>
+        {paginationToolbar}
         {body}
       </Stack>
     </Box>
@@ -233,14 +250,17 @@ export const CuratedViews: React.FC = () => {
   };
 
   return (
-    <Stack spacing={4}>
-      <PaginationToolbar {...pagination.toolbarProps} />
+    <>
       <CuratedViewsUI
         views={listResult.data?.curatedViews ?? []}
         isLoading={listResult.isLoading}
         isError={listResult.isError}
         canManage={canManage}
         hasActiveFilters={hasActiveFilters}
+        paginationToolbar={<PaginationToolbar {...pagination.toolbarProps} />}
+        sortColumn={pagination.sortBy}
+        sortDirection={pagination.sortOrder}
+        onSort={pagination.setSortBy}
         onOpen={(view) => navigate({ to: `/views/${view.id}` })}
         onCreate={() => setCreateOpen(true)}
         onShare={(view) => setShareTarget(view)}
@@ -272,6 +292,6 @@ export const CuratedViews: React.FC = () => {
         resourceId={shareTarget?.id ?? ""}
         resourceLabel={shareTarget?.label ?? ""}
       />
-    </Stack>
+    </>
   );
 };
