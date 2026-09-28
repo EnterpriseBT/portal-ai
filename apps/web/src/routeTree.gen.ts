@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ViewsRouteImport } from './routes/views'
 import { Route as ToolpacksRouteImport } from './routes/toolpacks'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as StationsRouteImport } from './routes/stations'
@@ -48,6 +49,11 @@ import { Route as ConnectorsConnectorInstanceIdIndexRouteImport } from './routes
 import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
 import { Route as ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport } from './routes/connectors.$connectorInstanceId.layout-plan.edit'
 
+const ViewsRoute = ViewsRouteImport.update({
+  id: '/views',
+  path: '/views',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ToolpacksRoute = ToolpacksRouteImport.update({
   id: '/toolpacks',
   path: '/toolpacks',
@@ -114,9 +120,9 @@ const IndexRoute = IndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const ViewsIndexRoute = ViewsIndexRouteImport.update({
-  id: '/views/',
-  path: '/views/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => ViewsRoute,
 } as any)
 const ToolpacksIndexRoute = ToolpacksIndexRouteImport.update({
   id: '/',
@@ -169,9 +175,9 @@ const ColumnDefinitionsIndexRoute = ColumnDefinitionsIndexRouteImport.update({
   getParentRoute: () => ColumnDefinitionsRoute,
 } as any)
 const ViewsViewIdRoute = ViewsViewIdRouteImport.update({
-  id: '/views/$viewId',
-  path: '/views/$viewId',
-  getParentRoute: () => rootRouteImport,
+  id: '/$viewId',
+  path: '/$viewId',
+  getParentRoute: () => ViewsRoute,
 } as any)
 const StationsStationIdRoute = StationsStationIdRouteImport.update({
   id: '/$stationId',
@@ -260,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
   '/toolpacks': typeof ToolpacksRouteWithChildren
+  '/views': typeof ViewsRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -329,6 +336,7 @@ export interface FileRoutesById {
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
   '/toolpacks': typeof ToolpacksRouteWithChildren
+  '/views': typeof ViewsRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -371,6 +379,7 @@ export interface FileRouteTypes {
     | '/stations'
     | '/tags'
     | '/toolpacks'
+    | '/views'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -439,6 +448,7 @@ export interface FileRouteTypes {
     | '/stations'
     | '/tags'
     | '/toolpacks'
+    | '/views'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -480,14 +490,20 @@ export interface RootRouteChildren {
   StationsRoute: typeof StationsRouteWithChildren
   TagsRoute: typeof TagsRouteWithChildren
   ToolpacksRoute: typeof ToolpacksRouteWithChildren
+  ViewsRoute: typeof ViewsRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   PortalsPortalIdRoute: typeof PortalsPortalIdRoute
-  ViewsViewIdRoute: typeof ViewsViewIdRoute
-  ViewsIndexRoute: typeof ViewsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/views': {
+      id: '/views'
+      path: '/views'
+      fullPath: '/views'
+      preLoaderRoute: typeof ViewsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/toolpacks': {
       id: '/toolpacks'
       path: '/toolpacks'
@@ -581,10 +597,10 @@ declare module '@tanstack/react-router' {
     }
     '/views/': {
       id: '/views/'
-      path: '/views'
+      path: '/'
       fullPath: '/views/'
       preLoaderRoute: typeof ViewsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ViewsRoute
     }
     '/toolpacks/': {
       id: '/toolpacks/'
@@ -658,10 +674,10 @@ declare module '@tanstack/react-router' {
     }
     '/views/$viewId': {
       id: '/views/$viewId'
-      path: '/views/$viewId'
+      path: '/$viewId'
       fullPath: '/views/$viewId'
       preLoaderRoute: typeof ViewsViewIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ViewsRoute
     }
     '/stations/$stationId': {
       id: '/stations/$stationId'
@@ -917,6 +933,18 @@ const ToolpacksRouteWithChildren = ToolpacksRoute._addFileChildren(
   ToolpacksRouteChildren,
 )
 
+interface ViewsRouteChildren {
+  ViewsViewIdRoute: typeof ViewsViewIdRoute
+  ViewsIndexRoute: typeof ViewsIndexRoute
+}
+
+const ViewsRouteChildren: ViewsRouteChildren = {
+  ViewsViewIdRoute: ViewsViewIdRoute,
+  ViewsIndexRoute: ViewsIndexRoute,
+}
+
+const ViewsRouteWithChildren = ViewsRoute._addFileChildren(ViewsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ColumnDefinitionsRoute: ColumnDefinitionsRouteWithChildren,
@@ -931,10 +959,9 @@ const rootRouteChildren: RootRouteChildren = {
   StationsRoute: StationsRouteWithChildren,
   TagsRoute: TagsRouteWithChildren,
   ToolpacksRoute: ToolpacksRouteWithChildren,
+  ViewsRoute: ViewsRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
   PortalsPortalIdRoute: PortalsPortalIdRoute,
-  ViewsViewIdRoute: ViewsViewIdRoute,
-  ViewsIndexRoute: ViewsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

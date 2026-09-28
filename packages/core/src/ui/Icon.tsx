@@ -39,6 +39,7 @@ import MemoryChip from "@mui/icons-material/Memory";
 import WorkIcon from "@mui/icons-material/Work";
 import LinkIcon from "@mui/icons-material/Link";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import DataObjectIcon from "@mui/icons-material/DataObject";
 import LabelIcon from "@mui/icons-material/Label";
 import ColorizeIcon from "@mui/icons-material/Colorize";
@@ -90,6 +91,7 @@ export enum IconName {
   Work = "work",
   Link = "link",
   ViewColumn = "view_column",
+  Visibility = "visibility",
   DataObject = "data_object",
   Label = "label",
   Colorize = "colorize",
@@ -192,6 +194,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <LinkIcon ref={ref} {...props} />;
       case IconName.ViewColumn:
         return <ViewColumnIcon ref={ref} {...props} />;
+      case IconName.Visibility:
+        return <VisibilityIcon ref={ref} {...props} />;
       case IconName.DataObject:
         return <DataObjectIcon ref={ref} {...props} />;
       case IconName.Label:
