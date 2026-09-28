@@ -1,6 +1,6 @@
 # Curated views (per-user data exposure) — Plan
 
-**Implements the curated-views read/exposure layer as eight TDD-sequenced slices: the data layer, the condition engine, the per-user session cutover, the FilterGroup row-filter render, the CRUD API, sharing/composition, the Views UI, and the `station_instances` teardown.**
+**Implements the curated-views read/exposure layer as eight TDD-sequenced slices: the data layer, the condition engine, the per-user session cutover, the FilterGroup row-filter render, the CRUD API, sharing/composition, the Views UI, and the raw-REST RBAC gate (`station_instances` retained).**
 
 Spec: `docs/CURATED_VIEWS.spec.md`. Discovery: `docs/CURATED_VIEWS.discovery.md`. Issue: #599 (epic #578). Builds on shipped #598/#620/#621/#622 (RBAC engine + grants + sharing), #629 (per-caller tool gate), #630 (role-gated nav). Splits: #640 (pins), #641 (ownership).
 
@@ -186,24 +186,17 @@ The frontend: a member-visible Views page, the detail/records view with the LLM-
 
 ---
 
-## Slice 8 — Remove `station_instances` (teardown)
+## Slice 8 — RBAC-gate the raw `entity` + `entity_record` REST surfaces
 
-With reads and capability off `station_instances` (slice 3) and the UI on attach-view (slice 7), delete the dead attachment.
+Reframed from the original "drop `station_instances`": that table is **not** dead — it is the connector-**management** capability (`connector-entity-create.tool` gates entity creation on it), orthogonal to exposure (which is now `station_views`). Per the *capability vs access* model, `station_instances` **stays**. The real closeout is that the raw `entity`/`entity_record` REST routers were org-scoped only (no RBAC), a member **bypass** of curated views. #630 deferred `entity_record` governance here.
 
 **Files**
 
-- New: `apps/api/drizzle/<n>_drop-station-instances.sql` (+ journal + snapshot) — drop the table (now unreferenced). Destructive → carries `-- destructive-ok: station_instances superseded by station_views (#599)` per `lint:migrations`.
-- Delete: `apps/api/src/db/schema/station-instances.table.ts`, its repo, zod/type-checks blocks, `StationInstance` model usages; any residual references.
+- Edit: `apps/api/src/routes/entity-record.router.ts` (resourceType `entity_record`) + `apps/api/src/routes/connector-entity.router.ts` (resourceType `entity`) — apply #630's `entity-group.router` pattern: list/count `visibilityPredicate`; detail/read `can("resource.read")` → 404; `PATCH`/`DELETE`/bulk `check("resource.write"|"resource.delete")`. Keep the existing `assertWriteCapability` (capability) — the RBAC check is additive (access). No create-gating (`created_by_caller` is a no-op), per #630.
 
-**Steps**
+**Done when:** a member reads only records/entities they created (≈none of synced data — `entity_record.createdBy` is the syncing actor) and is 403'd on foreign mutations; an admin (`*`) is unaffected; the bypass is closed on both the agent (#629) and REST surfaces. `station_instances` untouched.
 
-1. **Tests.** Grep-guard / a compile pass proving no code references `stationInstances`; the existing capability/session integration suites (slice 3) stay green against `station_views` only. Run; fail (on lingering refs) → green.
-2. **Implement** the drop + deletions. Green.
-3. Lint + type-check.
-
-**Done when:** `station_instances` is gone from schema + code; the full suite is green on the view-only attachment.
-
-**Risk:** `lint:migrations` destructive-ok marker required; confirm no migration/seed elsewhere seeds `station_instances`.
+**Risk:** admin consumers (Entities page, EntityDetail, the view editor's column fetch) hold `*` so stay green; the gates reuse the #630-proven `PermissionService` methods.
 
 ---
 
@@ -218,7 +211,7 @@ With reads and capability off `station_instances` (slice 3) and the UI on attach
 | 5 | CRUD routes + records endpoint + self-exposure guard | router unit + integration |
 | 6 | sharing + composition | grant.service unit + integration |
 | 7 | Views UI + nav + share + attach-view + page backfill | apps/web unit |
-| 8 | drop `station_instances` | grep-guard + green suites |
+| 8 | RBAC-gate raw `entity`/`entity_record` REST | connector-entity member gate + green suites |
 
 ## Cross-slice notes
 

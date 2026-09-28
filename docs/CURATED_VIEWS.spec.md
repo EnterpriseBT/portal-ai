@@ -22,7 +22,7 @@ Pins the contract for [#599](https://github.com/EnterpriseBT/portal-ai/issues/59
 - the `FilterGroup` row-filter render + validation reuse; curated-view CRUD routes + `GET /api/curated-views/:id/records`; Views nav page (`NAV_PAGE_IDS += "views"`, member-visible) + detail/records UI + widened `ShareDialog` + marked chips.
 
 ### Out of scope
-- Always-live pins (#640); ownership model (#641); **arbitrary secure-SQL advanced view filter (#644)** — #599's row filter is the structured `FilterGroup` only (no spatial/JSON/computed predicates — the #316 boundary); **map-tile + dissolve view-scoping (#643)** — #599 keeps an org-wide `buildSessionViews` for that no-user/cached pipeline (no regression; map tiles are already org-wide); a general FK-condition framework; per-record `entity_record` deny; dynamic/`current_user.*` + writable (`WITH CHECK OPTION`) views.
+- `station_instances` teardown — **retained** (connector-management capability, orthogonal to exposure); slice 8 instead RBAC-gates the raw `entity`/`entity_record` REST surfaces (#630 deferred this here). Follow-ups: view-management toolpack (#645), Views-list entity column (#646). Always-live pins (#640); ownership model (#641); **arbitrary secure-SQL advanced view filter (#644)** — #599's row filter is the structured `FilterGroup` only (no spatial/JSON/computed predicates — the #316 boundary); **map-tile + dissolve view-scoping (#643)** — #599 keeps an org-wide `buildSessionViews` for that no-user/cached pipeline (no regression; map tiles are already org-wide); a general FK-condition framework; per-record `entity_record` deny; dynamic/`current_user.*` + writable (`WITH CHECK OPTION`) views.
 
 ## Surface
 
