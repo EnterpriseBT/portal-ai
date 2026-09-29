@@ -1,6 +1,6 @@
 # Entity-group link-column scoping — Condensed design (#651)
 
-**Issue:** [EnterpriseBT/portal-ai#651](https://github.com/EnterpriseBT/portal-ai/issues/651) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
+**Issue:** [EnterpriseBT/portal-ai#651](https://github.com/EnterpriseBT/portal-ai/issues/651) · Bug · **small / condensed**, folded into #658's branch and PR (its slice 1).
 
 **Why.** #648 scopes the entity-group section of `station_context` and the roster at the **entity** level: a group is emitted only when every member's entity is granted. A shown group still carries each member's link-column identifiers (`linkColumnKey` / `linkColumnLabel` / `linkNormalizedKey`), even when the caller's granted view over that entity **projects the link column out**. That is the same column-metadata disclosure #599 closed for the `entities` section (filtered to readable field mappings), one level down. Package: `apps/api`.
 
@@ -36,7 +36,7 @@ While tracing who consumes group link metadata, I found that `resolve_identity` 
 
 It applies no curated-view row filter, no projection and no `read field_mapping` check. `resolve_identity` also has no `TOOL_AUTHORIZATION` descriptor (`packages/core/src/registries/builtin-toolpacks.ts:1746`), so the #629 gate skips it as a read tool. A member with the `data_query` pack on a station that has an entity group can therefore read full rows of member entities outside their granted views.
 
-That is a **data-plane** read bypass, not metadata, and fixing it properly means routing the read through the view-scoped path. It was reproduced with an integration test and filed as the full-sized Bug **#658**. **This ticket does not fix it**; #651 only scopes the metadata the tool and roster *display*.
+That is a **data-plane** read bypass, not metadata, and fixing it properly means routing the read through the view-scoped path. It was reproduced with an integration test and filed as the full-sized Bug **#658**. **#651 is now folded into #658's branch** (`fix/658-resolve-identity-view-scoping`). This doc's util change is slice 1 there, and `resolve_identity` reuses the same scoping. See `docs/RESOLVE_IDENTITY_VIEW_SCOPING.discovery.md`.
 
 ## Plan — one slice
 
@@ -63,5 +63,5 @@ That is a **data-plane** read bypass, not metadata, and fixing it properly means
 
 ## Out of scope
 
-- The `resolve_identity` data-plane bypass above. It's tracked as #658.
+- The `resolve_identity` data-plane bypass above is #658, delivered in the same PR.
 - The roster naming members by `entityKey` rather than the queryable view key. That's a separate consistency question.
