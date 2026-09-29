@@ -107,6 +107,7 @@ async function handle(
       x,
       y,
       organizationId: req.application!.metadata.organizationId,
+      userId: req.application!.metadata.userId,
       ifNoneMatch: req.headers["if-none-match"] as string | undefined,
     });
     sendTile(res, result);

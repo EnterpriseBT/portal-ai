@@ -46,6 +46,8 @@ function deps(
     findMessageById: async () => messageWithPipeline,
     findPortalResultById: async () => null,
     runTileQuery: async () => query,
+    // #643: stub scope resolution so the unit tests need no DB.
+    resolveTileScopeHash: async () => "scope-test",
     ...over,
   };
 }
@@ -471,7 +473,28 @@ describe("buildRawTileSql — importance ranking (#337)", () => {
 });
 
 describe("PortalMapTileService.renderTile (#316)", () => {
-  const base = { z: 8, x: 40, y: 98, organizationId: ORG };
+  const base = { z: 8, x: 40, y: 98, organizationId: ORG, userId: "u-test" };
+  const msgRef = {
+    ref: { kind: "message" as const, messageId: "msg-1", blockIndex: 0 },
+    ...base,
+  };
+
+  it("#643: the ETag varies by the caller's scope hash", async () => {
+    const a = await PortalMapTileService.renderTile(
+      msgRef,
+      deps({ resolveTileScopeHash: async () => "scope-A" })
+    );
+    const b = await PortalMapTileService.renderTile(
+      msgRef,
+      deps({ resolveTileScopeHash: async () => "scope-B" })
+    );
+    const a2 = await PortalMapTileService.renderTile(
+      msgRef,
+      deps({ resolveTileScopeHash: async () => "scope-A" })
+    );
+    expect(a.etag).not.toBe(b.etag); // different scope → different tile cache
+    expect(a.etag).toBe(a2.etag); // same scope → shared ETag
+  });
 
   it("404s for an unknown message", async () => {
     await expectNotFound(
@@ -662,6 +685,7 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     const countingDeps = (aggregated: boolean): RenderTileDeps => ({
       findMessageById: async () => messageWithPipeline,
       findPortalResultById: async () => null,
+      resolveTileScopeHash: async () => "scope-test",
       runTileQuery: async () => {
         queries++;
         return {

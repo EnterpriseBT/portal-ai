@@ -290,6 +290,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect(res.body).toBeInstanceOf(Buffer);
@@ -308,6 +309,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 7,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
@@ -321,6 +323,7 @@ describe("Portal map tile route (#316)", () => {
         x: 0,
         y: 0,
         organizationId: generateId(),
+        userId,
       })
     ).rejects.toMatchObject({ status: 404, code: "MAP_TILE_NOT_FOUND" });
   });
@@ -458,6 +461,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -476,6 +480,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -496,6 +501,7 @@ describe("Portal map tile route (#316)", () => {
       x: 8419,
       y: 7964,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect(res.aggregated).toBe(false);
@@ -515,6 +521,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -568,6 +575,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -608,6 +616,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -650,6 +659,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -749,6 +759,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -767,6 +778,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -879,6 +891,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -900,6 +913,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -919,6 +933,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -939,6 +954,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);

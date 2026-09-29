@@ -37,7 +37,7 @@ import { db } from "../db/client.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
-import { PortalSqlService } from "./portal-sql.service.js";
+import { PortalSqlService, resolveScopeHash } from "./portal-sql.service.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -129,6 +129,9 @@ export interface RenderTileParams {
   x: number;
   y: number;
   organizationId: string;
+  /** #643: the viewing user — the tile serve resolves this caller's curated-view
+   *  scope so geometry is per-user, matching the rest of the portal session. */
+  userId: string;
   /** `If-None-Match` request header, if any. */
   ifNoneMatch?: string;
 }
@@ -164,10 +167,21 @@ export interface TileQueryResult {
 export interface RenderTileDeps {
   findMessageById?: (id: string) => Promise<unknown>;
   findPortalResultById?: (id: string) => Promise<unknown>;
+  /** #643: resolve the caller's session-view scope hash (injectable for tests).
+   *  Defaults to `resolveScopeHash(resolveViewsForSession(...))`. */
+  resolveTileScopeHash?: (
+    stationId: string,
+    organizationId: string,
+    userId: string
+  ) => Promise<string>;
   runTileQuery?: (args: {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
+    /** #643: the viewing user + their resolved scope hash — thread to the
+     *  per-user session views and the per-scope dissolve serve. */
+    userId: string;
+    scopeHash: string;
     dissolveOwner: DissolveOwner | null;
     z: number;
     x: number;
@@ -638,6 +652,8 @@ export class PortalMapTileService {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
+    userId: string;
+    scopeHash: string;
     dissolveOwner: DissolveOwner | null;
     z: number;
     x: number;
@@ -652,6 +668,7 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
+      userId,
       dissolveOwner,
       z,
       x,
@@ -662,6 +679,7 @@ export class PortalMapTileService {
       layerTotal,
       layerTotalExact,
     } = args;
+    // `args.scopeHash` is consumed by the per-scope dissolve serve in slice 3.
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
 
     // #472/#532/#542: a low-zoom polygon map is served from precomputed dissolved
@@ -720,6 +738,7 @@ export class PortalMapTileService {
         probeSql,
         pipeline.stationId,
         organizationId,
+        userId,
         false,
         cap + 1
       );
@@ -751,6 +770,7 @@ export class PortalMapTileService {
         ),
         pipeline.stationId,
         organizationId,
+        userId,
         false,
         cap
       );
@@ -773,6 +793,7 @@ export class PortalMapTileService {
       aggTileSql,
       pipeline.stationId,
       organizationId,
+      userId,
       true,
       cap
     );
@@ -793,12 +814,16 @@ export class PortalMapTileService {
     tileSql: string,
     stationId: string,
     organizationId: string,
+    userId: string,
     aggregate: boolean,
     cap: number
   ): Promise<TileQueryResult> {
-    const build = await PortalSqlService.buildSessionViews(
+    // #643: per-user session views — the tile only ever sees the rows/columns
+    // this caller's granted curated views expose (was org-wide buildSessionViews).
+    const build = await PortalSqlService.resolveViewsForSession(
       stationId,
-      organizationId
+      organizationId,
+      userId
     );
     try {
       return await db.transaction(async (tx) => {
@@ -1009,7 +1034,7 @@ export class PortalMapTileService {
     params: RenderTileParams,
     deps: RenderTileDeps = {}
   ): Promise<TileRenderResult> {
-    const { ref, z, x, y, organizationId, ifNoneMatch } = params;
+    const { ref, z, x, y, organizationId, userId, ifNoneMatch } = params;
     const {
       pipeline,
       snapshotUpdatedAt,
@@ -1019,13 +1044,30 @@ export class PortalMapTileService {
       layerTotalExact,
     } = await this.resolvePipeline(ref, organizationId, deps);
 
-    // ETag hash over (pipeline SQL, z, x, y, snapshot clock, tile-gen version).
-    // A fresh pin snapshot, an edited pipeline, or a bumped AGG_TILE_VERSION
-    // (tile-generation behavior change, #532) invalidates cached tiles.
+    // #643: the caller's resolved curated-view scope. The tile serve runs
+    // against these per-user views, and the scope hash keys both the ETag and
+    // the per-scope dissolve serve. Request-memoized (#647), so resolving it
+    // here and again in `runSessionViewTile` is one resolution.
+    const resolveScope =
+      deps.resolveTileScopeHash ??
+      (async (s: string, o: string, u: string) =>
+        resolveScopeHash(
+          await PortalSqlService.resolveViewsForSession(s, o, u)
+        ));
+    const scopeHash = await resolveScope(
+      pipeline.stationId,
+      organizationId,
+      userId
+    );
+
+    // ETag hash over (pipeline SQL, z, x, y, snapshot clock, tile-gen version,
+    // caller scope). A fresh pin snapshot, an edited pipeline, a bumped
+    // AGG_TILE_VERSION (#532), or a changed view scope (#643) invalidates
+    // cached tiles — so two callers with different grants never share a tile.
     const hash = crypto
       .createHash("sha256")
       .update(
-        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}`
+        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}|${scopeHash}`
       )
       .digest("hex")
       .slice(0, 32);
@@ -1052,6 +1094,8 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
+      userId,
+      scopeHash,
       // #542: both a pin and a message block address a dissolve precompute,
       // keyed by their owner.
       dissolveOwner:

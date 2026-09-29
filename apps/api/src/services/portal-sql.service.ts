@@ -24,6 +24,8 @@
  * without an explicit `DROP`.)
  */
 
+import { createHash } from "node:crypto";
+
 import { sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
@@ -117,6 +119,20 @@ export interface SessionViewBuild {
    * a prefix without rewriting callers.
    */
   viewMap: ReadonlyMap<string, string>;
+}
+
+/**
+ * #643: a stable content hash of a caller's resolved session-view scope. The
+ * temp-view DDL (`build.views`) encodes both the row filter (WHERE) and the
+ * column projection, so two callers with identical entitlements hash equal and
+ * any filter/grant change re-hashes — the key the per-scope map dissolve is
+ * addressed by. An empty build (no grants) yields a stable fail-closed hash.
+ */
+export function resolveScopeHash(build: SessionViewBuild): string {
+  return createHash("sha256")
+    .update([...build.views].join("\n"))
+    .digest("hex")
+    .slice(0, 32);
 }
 
 export interface PortalSqlParams {
