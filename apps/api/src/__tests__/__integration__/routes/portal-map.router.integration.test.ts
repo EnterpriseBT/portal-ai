@@ -312,6 +312,29 @@ describe("Portal map tile route (#316)", () => {
     expect(res.etag).toMatch(/^"[ar]~[0-9a-f]{32}"$/);
   });
 
+  it("#643: a user with no granted view over the map serves an empty tile (204), not 500 or another scope's data", async () => {
+    // The pin's pipeline references the `parcels` curated view; a user who isn't
+    // granted it has no such temp view in their per-user session, so the tile
+    // query hits `relation "parcels" does not exist` (42P01). The serve must
+    // degrade to an empty tile (AC2: a no-grant member "sees no tile") — never a
+    // 500 and never the data. (Before #643 the org-wide builder made the view
+    // for everyone, so this path never fired.)
+    const stranger = createUser(`auth0|${generateId()}`);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.users)
+      .values(stranger as never);
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pinId },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+      userId: stranger.id,
+    });
+    expect(res.status).toBe(204);
+    expect(res.body).toBeUndefined();
+  });
+
   it("returns 204 for a tile envelope that doesn't contain the geometry", async () => {
     // z3 far south-west (lng≈[-180,-135], lat far south) — well clear of the
     // polygon at lng[0,10] lat[0,10], with no boundary touching.

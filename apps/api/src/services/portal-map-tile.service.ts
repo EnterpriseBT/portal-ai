@@ -911,6 +911,22 @@ export class PortalMapTileService {
         };
       });
     } catch (err) {
+      // #643: in a per-user session the temp views are the ONLY tables the tile
+      // query can reference (read-only txn, no base tables). A missing relation
+      // (42P01) therefore means the pin's pipeline references a curated view this
+      // caller isn't granted — they simply can't see this map. Serve a clean
+      // EMPTY tile (→ 204), never a 500 (AC2: a no-grant member "sees no tile")
+      // and never the data. An org-wide-deleted view degrades to empty for
+      // everyone, which is acceptable. This is the per-user counterpart to the
+      // old org-wide builder, where the view always existed so this never fired.
+      if (unwrapPgError(err).code === "42P01") {
+        return {
+          mvt: null,
+          featureCount: 0,
+          truncated: false,
+          aggregated: aggregate,
+        };
+      }
       // `statement_timeout` (57014) arrives wrapped in Drizzle's
       // DrizzleQueryError, so its code is on `.cause` — reading `err.code`
       // directly missed it and the timeout escaped as 500 UNKNOWN (#449).
