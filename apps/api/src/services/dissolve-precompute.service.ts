@@ -58,6 +58,8 @@ export class DissolvePrecomputeService {
     const metadata: DissolvePrecomputeMetadata = {
       portalResultId: params.portalResultId,
       organizationId: params.organizationId,
+      // #643: the eager pass computes the triggering user's (creator's) scope.
+      userId: params.userId,
     };
     try {
       const job = await JobsService.create(params.userId, {
@@ -110,6 +112,8 @@ export class DissolvePrecomputeService {
       organizationId: params.organizationId,
       messageId: params.messageId,
       blockIndex: params.blockIndex,
+      // #643: the eager pass computes the triggering user's (creator's) scope.
+      userId: params.userId,
     };
     try {
       const job = await JobsService.create(params.userId, {
@@ -134,23 +138,60 @@ export class DissolvePrecomputeService {
   }
 
   /**
+   * #643: lazily fill a per-scope dissolve on a tile-serve miss. The tile served
+   * the caller's raw/aggregate fallback; this enqueues the background per-scope
+   * precompute so repeat views of this scope are dissolved. Best-effort — never
+   * throws into the tile path. The processor's per-owner advisory lock serialises
+   * a burst of first-views, and the delete-then-insert is idempotent, so a
+   * duplicate enqueue only costs a (bounded) redundant recompute, never a wrong
+   * result.
+   */
+  static async enqueueLazyFill(params: {
+    owner:
+      | { kind: "pin"; portalResultId: string }
+      | { kind: "message"; messageId: string; blockIndex: number };
+    organizationId: string;
+    userId: string;
+  }): Promise<void> {
+    const { owner } = params;
+    const metadata: DissolvePrecomputeMetadata = {
+      organizationId: params.organizationId,
+      userId: params.userId,
+      ...(owner.kind === "pin"
+        ? { portalResultId: owner.portalResultId }
+        : { messageId: owner.messageId, blockIndex: owner.blockIndex }),
+    };
+    try {
+      await JobsService.create(params.userId, {
+        type: "dissolve_precompute",
+        organizationId: params.organizationId,
+        metadata: metadata as unknown as Record<string, unknown>,
+      });
+    } catch (err) {
+      logger.warn(
+        { owner, err },
+        "Failed to enqueue lazy dissolve fill (#643)"
+      );
+    }
+  }
+
+  /**
    * Re-enqueue a dissolve for **every** dissolvable pin (#541) — operator-
    * triggered so bounded merged coverage replaces stale/degraded rows built by an
    * earlier precompute. Idempotent: each pin's job is advisory-locked, so a pin
    * with an in-flight dissolve just reports `superseded`. Not run on boot (that
    * would re-precompute the whole fleet on every restart). Returns the count
-   * enqueued.
+   * enqueued. #643: each pin re-precomputes under its **creator's** scope.
    */
-  static async reenqueueAllDissolvable(
-    userId = "SYSTEM_REENQUEUE"
-  ): Promise<{ enqueued: number }> {
+  static async reenqueueAllDissolvable(): Promise<{ enqueued: number }> {
     const rows = (await db.execute(
-      sql`SELECT id, organization_id AS "organizationId", type, content
+      sql`SELECT id, organization_id AS "organizationId", created_by AS "createdBy", type, content
           FROM portal_results
           WHERE type = 'geo' AND deleted IS NULL`
     )) as unknown as Array<{
       id: string;
       organizationId: string;
+      createdBy: string;
       type: string;
       content: unknown;
     }>;
@@ -160,7 +201,7 @@ export class DissolvePrecomputeService {
       await DissolvePrecomputeService.enqueueForPin({
         portalResultId: r.id,
         organizationId: r.organizationId,
-        userId,
+        userId: r.createdBy,
         type: r.type,
         content: r.content,
       });

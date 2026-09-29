@@ -146,8 +146,9 @@ adminRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.application!.metadata.userId;
-      const result =
-        await DissolvePrecomputeService.reenqueueAllDissolvable(userId);
+      // #643: each pin re-precomputes under its own creator's scope (no single
+      // operator scope); `userId` here is just the audit actor for the trigger.
+      const result = await DissolvePrecomputeService.reenqueueAllDissolvable();
       logger.info(
         { enqueued: result.enqueued, actorUserId: userId },
         "dissolve reenqueue trigger invoked (#541)"

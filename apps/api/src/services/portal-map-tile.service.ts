@@ -119,6 +119,12 @@ function dissolveOwnerCond(owner: DissolveOwner) {
     : sql`mdg.message_id = ${owner.messageId} AND mdg.block_index = ${owner.blockIndex}`;
 }
 
+/** #643: owner predicate + the caller's per-scope key — the serve only ever
+ *  reads coverage computed for exactly this viewer's curated-view scope. */
+function dissolveScopeCond(owner: DissolveOwner, scopeHash: string) {
+  return sql`${dissolveOwnerCond(owner)} AND mdg.scope_hash = ${scopeHash}`;
+}
+
 export type TileRef =
   | { kind: "message"; messageId: string; blockIndex: number }
   | { kind: "pin"; portalResultId: string };
@@ -669,6 +675,7 @@ export class PortalMapTileService {
       propertyColumns,
       organizationId,
       userId,
+      scopeHash,
       dissolveOwner,
       z,
       x,
@@ -679,7 +686,6 @@ export class PortalMapTileService {
       layerTotal,
       layerTotalExact,
     } = args;
-    // `args.scopeHash` is consumed by the per-scope dissolve serve in slice 3.
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
 
     // #472/#532/#542: a low-zoom polygon map is served from precomputed dissolved
@@ -696,7 +702,13 @@ export class PortalMapTileService {
       aggregation.treatment === "dissolve" &&
       band !== null &&
       dissolveOwner != null &&
-      (await this.hasDissolvePrecompute(dissolveOwner, dissolveColumn, band));
+      // #643: only a precompute for THIS caller's scope is served.
+      (await this.hasDissolvePrecompute(
+        dissolveOwner,
+        dissolveColumn,
+        band,
+        scopeHash
+      ));
 
     // Polygon dissolve is handled from the precompute, count-driven inside
     // `runDissolveTile` (individuals ≤ cap, merged coverage over).
@@ -705,9 +717,32 @@ export class PortalMapTileService {
         dissolveOwner!,
         dissolveColumn,
         band!,
+        scopeHash,
         envelope,
         cap
       );
+    }
+
+    // #643: a dissolve-treatment layer with no precompute for THIS caller's
+    // scope serves the per-user raw fallback below, and lazily enqueues a
+    // background per-scope precompute so repeat views are dissolved. Fire-and-
+    // forget; dynamic import avoids a cycle with the enqueue service.
+    if (
+      aggregation.treatment === "dissolve" &&
+      band !== null &&
+      dissolveOwner != null
+    ) {
+      void import("./dissolve-precompute.service.js")
+        .then(({ DissolvePrecomputeService }) =>
+          DissolvePrecomputeService.enqueueLazyFill({
+            owner: dissolveOwner,
+            organizationId,
+            userId,
+          })
+        )
+        .catch(() => {
+          /* best-effort: a failed lazy fill just means raw tiles persist */
+        });
     }
 
     // #532 slices 3–4: points/lines are count-driven per tile so nothing is ever
@@ -876,7 +911,8 @@ export class PortalMapTileService {
   private static async hasDissolvePrecompute(
     owner: DissolveOwner,
     colorByColumn: string,
-    band: number
+    band: number,
+    scopeHash: string
   ): Promise<boolean> {
     const r = (await db.execute(sql`
       SELECT EXISTS(
@@ -884,6 +920,7 @@ export class PortalMapTileService {
         WHERE ${dissolveOwnerCond(owner)}
           AND mdg.column_name = ${colorByColumn}
           AND mdg.zoom_band = ${band}
+          AND mdg.scope_hash = ${scopeHash}
           AND mdg.deleted IS NULL
       ) AS e
     `)) as unknown as Array<{ e: boolean }>;
@@ -913,6 +950,7 @@ export class PortalMapTileService {
     owner: DissolveOwner,
     colorByColumn: string,
     band: number,
+    scopeHash: string,
     envelope: string,
     cap: number
   ): Promise<TileQueryResult> {
@@ -933,7 +971,7 @@ export class PortalMapTileService {
           WITH cnt AS (
             SELECT count(*)::int AS n
             FROM map_dissolve_geometries mdg
-            WHERE ${dissolveOwnerCond(owner)}
+            WHERE ${dissolveScopeCond(owner, scopeHash)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = false
@@ -948,7 +986,7 @@ export class PortalMapTileService {
             -- covered, so it serves empty coverage (not the fallback).
             SELECT EXISTS(
               SELECT 1 FROM map_dissolve_geometries mdg
-              WHERE ${dissolveOwnerCond(owner)}
+              WHERE ${dissolveScopeCond(owner, scopeHash)}
                 AND mdg.column_name = ${colorByColumn}
                 AND mdg.zoom_band = ${band}
                 AND mdg.merged = true
@@ -961,7 +999,7 @@ export class PortalMapTileService {
             SELECT mdg.geom AS g, mdg.value AS v
             FROM map_dissolve_geometries mdg, cnt
             WHERE (cnt.n <= ${cap} OR NOT (SELECT h FROM has_merged))
-              AND ${dissolveOwnerCond(owner)}
+              AND ${dissolveScopeCond(owner, scopeHash)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = false
@@ -976,7 +1014,7 @@ export class PortalMapTileService {
             FROM map_dissolve_geometries mdg, cnt
             WHERE cnt.n > ${cap}
               AND (SELECT h FROM has_merged)
-              AND ${dissolveOwnerCond(owner)}
+              AND ${dissolveScopeCond(owner, scopeHash)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = true

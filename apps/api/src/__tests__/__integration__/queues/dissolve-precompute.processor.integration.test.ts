@@ -53,10 +53,15 @@ const squareAt = (x: number) => ({
   ],
 });
 
-// Run the processor with a minimal fake BullMQ job.
-const runProcessor = (portalResultId: string, organizationId: string) =>
+// Run the processor with a minimal fake BullMQ job. #643: the job carries the
+// scope-resolving userId.
+const runProcessor = (
+  portalResultId: string,
+  organizationId: string,
+  userId: string
+) =>
   dissolvePrecomputeProcessor({
-    data: { portalResultId, organizationId },
+    data: { portalResultId, organizationId, userId },
     updateProgress: async () => {},
   } as never);
 
@@ -65,6 +70,7 @@ describe("dissolve-precompute processor (#472)", () => {
   let db!: DbClient;
   let reconciler: WideTableReconcilerService;
   let orgId: string;
+  let userId: string;
   let entityId: string;
   let stationId: string;
 
@@ -207,6 +213,7 @@ describe("dissolve-precompute processor (#472)", () => {
     const org = createOrganization(user.id);
     await dbTyped.insert(schema.organizations).values(org as never);
     orgId = org.id;
+    userId = user.id;
 
     const connDefId = generateId();
     await dbTyped.insert(schema.connectorDefinitions).values({
@@ -347,6 +354,9 @@ describe("dissolve-precompute processor (#472)", () => {
       key: "parcels",
       label: "Parcels",
       createdBy: user.id,
+      // #643: grant the view so the processor's resolveViewsForSession(userId)
+      // yields the entity — else it dissolves an empty scope.
+      grantToUserId: user.id,
     });
 
     await reconciler.reconcileEntity(entityId, db);
@@ -375,7 +385,7 @@ describe("dissolve-precompute processor (#472)", () => {
       'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
       "c_own_type"
     );
-    const result = await runProcessor(pinId, orgId);
+    const result = await runProcessor(pinId, orgId, userId);
 
     expect(result.columnName).toBe("c_own_type");
     expect(result.valuesDissolved).toBe(3);
@@ -442,7 +452,7 @@ describe("dissolve-precompute processor (#472)", () => {
       'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
       "c_own_type"
     );
-    await runProcessor(pinId, orgId);
+    await runProcessor(pinId, orgId, userId);
 
     const rows = (await connection.unsafe(
       `SELECT DISTINCT value, zoom_band FROM map_dissolve_geometries WHERE portal_result_id = $1`,
@@ -473,7 +483,7 @@ describe("dissolve-precompute processor (#472)", () => {
     const pinId = await createPinNoColorBy(
       'SELECT "c_geom" AS geom FROM parcels'
     );
-    const result = await runProcessor(pinId, orgId);
+    const result = await runProcessor(pinId, orgId, userId);
     expect(result.skipped).toBeUndefined();
 
     const rows = (await connection.unsafe(
@@ -529,8 +539,8 @@ describe("dissolve-precompute processor (#472)", () => {
       `SELECT "c_geom" AS geom, "c_own_type" FROM parcels WHERE "c_own_type" = 'Private'`,
       "c_own_type"
     );
-    await runProcessor(pinA, orgId);
-    await runProcessor(pinB, orgId);
+    await runProcessor(pinA, orgId, userId);
+    await runProcessor(pinB, orgId, userId);
 
     const valuesA = (await connection.unsafe(
       `SELECT DISTINCT value FROM map_dissolve_geometries WHERE portal_result_id = $1 ORDER BY 1`,
@@ -551,10 +561,10 @@ describe("dissolve-precompute processor (#472)", () => {
       'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
       "c_own_type"
     );
-    await runProcessor(pinId, orgId);
+    await runProcessor(pinId, orgId, userId);
     const first = await countRows(pinId);
     expect(first).toBeGreaterThan(0);
-    await runProcessor(pinId, orgId);
+    await runProcessor(pinId, orgId, userId);
     const second = await countRows(pinId);
     expect(second).toBe(first);
   });
@@ -567,7 +577,7 @@ describe("dissolve-precompute processor (#472)", () => {
       'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
       "c_own_type"
     );
-    const result = await runProcessor(pinId, orgId);
+    const result = await runProcessor(pinId, orgId, userId);
     expect(result.skipped).toBeUndefined();
     expect(result.valuesDissolved).toBe(70);
     // Per band: 70 individuals (one polygon each) + 70 merged pieces (one union
@@ -590,7 +600,7 @@ describe("dissolve-precompute processor (#472)", () => {
       )) as unknown as Array<{ locked: boolean }>;
       expect(locked[0].locked).toBe(true);
 
-      const result = await runProcessor(pinId, orgId);
+      const result = await runProcessor(pinId, orgId, userId);
       expect(result.skipped).toBe("superseded");
       expect(await countRows(pinId)).toBe(0);
     } finally {
@@ -638,7 +648,7 @@ describe("dissolve-precompute processor (#472)", () => {
         deleted: null,
         deletedBy: null,
       } as never);
-    const result = await runProcessor(pinId, orgId);
+    const result = await runProcessor(pinId, orgId, userId);
     expect(result.skipped).toBe("non-polygon");
     expect(await countRows(pinId)).toBe(0);
   });
@@ -726,7 +736,7 @@ describe("dissolve-precompute processor (#472)", () => {
     organizationId: string
   ) =>
     dissolvePrecomputeProcessor({
-      data: { messageId, blockIndex, organizationId },
+      data: { messageId, blockIndex, organizationId, userId },
       updateProgress: async () => {},
     } as never);
 

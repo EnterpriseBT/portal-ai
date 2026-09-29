@@ -110,6 +110,7 @@ describe("DissolvePrecomputeService.enqueueForPin", () => {
     expect(params.metadata).toEqual({
       portalResultId: "pr-1",
       organizationId: "org-1",
+      userId: "user-1",
     });
   });
 
@@ -204,6 +205,7 @@ describe("DissolvePrecomputeService.enqueueForMessageBlock (#542)", () => {
       organizationId: "org-1",
       messageId: "m-1",
       blockIndex: 2,
+      userId: "u-1",
     });
   });
 
