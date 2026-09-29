@@ -7,7 +7,9 @@
  * logic lands in later slices.
  */
 
-import { and, asc, desc, eq, isNull, sql, Column, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, type SQL } from "drizzle-orm";
+
+import type { CuratedViewListItem } from "@portalai/core/contracts";
 
 import { curatedViews, connectorEntities } from "../schema/index.js";
 import { db } from "../client.js";
@@ -18,10 +20,11 @@ import {
 } from "./base.repository.js";
 import type { CuratedViewSelect, CuratedViewInsert } from "../schema/zod.js";
 
-/** A curated view row plus its connector entity's display identifiers (#646);
- *  `entity` is null when the entity is soft-deleted / unresolvable. */
+/** A curated view row plus its connector entity's display identifiers (#646).
+ *  The `entity` sub-shape is single-sourced from the wire contract; `entity` is
+ *  null when the entity is soft-deleted / unresolvable. */
 export type CuratedViewWithEntity = CuratedViewSelect & {
-  entity: { key: string; label: string } | null;
+  entity: CuratedViewListItem["entity"];
 };
 
 export class CuratedViewsRepository extends Repository<
@@ -61,60 +64,40 @@ export class CuratedViewsRepository extends Repository<
 
   /**
    * List curated views enriched with their connector entity's `key` + `label`
-   * (#646) — a LEFT JOIN so a view whose entity was soft-deleted still lists,
-   * with `entity: null`. Mirrors the base `findMany` order/limit semantics
-   * (soft-delete guard, `orderBy` + the #433 id tiebreaker, limit/offset); the
-   * caller's `count(where)` is unaffected (no join needed).
+   * (#646). Delegates the page to the base `findMany` — so it inherits every
+   * list semantic (soft-delete guard, `orderBy` + the #433 id tiebreaker,
+   * keyset/limit/offset, org scope) with no duplicated clause-building — then
+   * batch-loads the entities in one lean query. A view whose entity was
+   * soft-deleted still lists, with `entity: null`; `count(where)` is unaffected.
    */
   async findManyWithEntity(
     where: SQL | undefined,
     opts: ListOptions = {},
     client: DbClient = db
   ): Promise<CuratedViewWithEntity[]> {
-    let query = (client as typeof db)
-      .select({
-        view: curatedViews,
-        entityKey: connectorEntities.key,
-        entityLabel: connectorEntities.label,
-      })
-      .from(curatedViews)
-      .leftJoin(
-        connectorEntities,
-        and(
-          eq(connectorEntities.id, curatedViews.connectorEntityId),
-          isNull(connectorEntities.deleted)
-        )
-      )
-      .where(and(isNull(curatedViews.deleted), where))
-      .$dynamic();
-
-    if (opts.orderBy) {
-      const { column: orderCol, direction = "asc" } = opts.orderBy;
-      const orderFn = direction === "desc" ? desc : asc;
-      const clauses: (SQL | ReturnType<typeof asc>)[] = [];
-      if (orderCol instanceof Column) {
-        clauses.push(orderFn(orderCol));
-      } else {
-        clauses.push(
-          direction === "desc"
-            ? sql`${orderCol} DESC NULLS LAST`
-            : sql`${orderCol} ASC NULLS LAST`
-        );
-      }
-      // #433: unique trailing tiebreaker.
-      if (orderCol !== curatedViews.id) clauses.push(orderFn(curatedViews.id));
-      query = query.orderBy(...clauses);
-    }
-    if (opts.limit !== undefined) query = query.limit(opts.limit);
-    if (opts.offset !== undefined) query = query.offset(opts.offset);
-
-    const rows = await query;
+    const rows = await this.findMany(where, opts, client);
+    const entityIds = [...new Set(rows.map((r) => r.connectorEntityId))];
+    const entities = entityIds.length
+      ? await (client as typeof db)
+          .select({
+            id: connectorEntities.id,
+            key: connectorEntities.key,
+            label: connectorEntities.label,
+          })
+          .from(connectorEntities)
+          .where(
+            and(
+              inArray(connectorEntities.id, entityIds),
+              isNull(connectorEntities.deleted)
+            )
+          )
+      : [];
+    const byId = new Map(
+      entities.map((e) => [e.id, { key: e.key, label: e.label }])
+    );
     return rows.map((r) => ({
-      ...(r.view as CuratedViewSelect),
-      entity:
-        r.entityKey != null && r.entityLabel != null
-          ? { key: r.entityKey, label: r.entityLabel }
-          : null,
+      ...r,
+      entity: byId.get(r.connectorEntityId) ?? null,
     }));
   }
 

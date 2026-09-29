@@ -16,9 +16,9 @@
 
 ## Decision — always-include the entity label via a LEFT JOIN repo finder
 
-Always include (no `include` param): the entity is the list's single most useful context and there's one consumer. Add a dedicated `curatedViewsRepo.findManyWithEntity(where, opts)` that LEFT JOINs `connector_entities` and returns each view plus `entity: { key, label } | null` (the 1-to-1 LEFT JOIN pattern the Include convention names — isolated to this endpoint so the base `findMany` and other finders are untouched). The `count(where)` query is unchanged (no join needed). Contract gains a `CuratedViewListItemSchema = CuratedViewSchema.extend({ entity: {key,label}.nullable() })`; the card renders `entity.label` (fallback `entity.key`), hidden when absent.
+Always include (no `include` param): the entity is the list's single most useful context and there's one consumer. Add `curatedViewsRepo.findManyWithEntity(where, opts)` that **delegates the page to the base `findMany`** (inheriting every list semantic — soft-delete guard, `orderBy` + #433 id tiebreaker, keyset/limit/offset, org scope — with no duplicated clause-building) then **batch-loads** the entities in one lean `SELECT id,key,label … WHERE id = ANY(…)`, mapping `entity: { key, label } | null` onto each row (null when the entity is soft-deleted). The `count(where)` query is unchanged. Contract gains `CuratedViewListItemSchema = CuratedViewSchema.extend({ entity: {key,label}.nullable() })` (registered as a swagger component, `$ref`'d by the route); the repo's `entity` sub-shape is single-sourced from it. The card renders `entity.label || entity.key`, hidden when neither resolves.
 
-*Rejected:* an `include=entity` param — one consumer, always wanted; a param is ceremony. *Rejected:* post-query batch-load via `connectorEntities.findMany` — its override also joins `connectorInstance` (extra work); a lean LEFT JOIN is cheaper and 1-to-1.
+*Rejected:* an `include=entity` param — one consumer, always wanted; a param is ceremony. *Rejected:* a hand-rolled LEFT JOIN re-implementing `findMany`'s ordering — it silently drops `keyset`/`includeDeleted`/`org` support and duplicates the #433 clause-building (code-review); delegating + a lean batch-load is simpler and inherits all base semantics.
 
 ## Plan — 1 slice
 

@@ -133,16 +133,7 @@ async function assertFieldsReadable(
  *                 payload:
  *                   type: object
  *                   properties:
- *                     curatedViews:
- *                       type: array
- *                       items:
- *                         allOf:
- *                           - $ref: '#/components/schemas/CuratedView'
- *                           - type: object
- *                             properties:
- *                               entity:
- *                                 type: [object, "null"]
- *                                 properties: { key: { type: string }, label: { type: string } }
+ *                     curatedViews: { type: array, items: { $ref: '#/components/schemas/CuratedViewListItem' } }
  *                     total: { type: integer }
  *                     limit: { type: integer }
  *                     offset: { type: integer }

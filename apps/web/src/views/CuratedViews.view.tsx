@@ -121,9 +121,11 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
               <MetadataList
                 items={[
                   {
+                    // Fall back to the key on an empty label (`||`, not `??`),
+                    // and hide the row when neither resolves.
                     label: "Entity",
-                    value: view.entity?.label ?? view.entity?.key ?? "",
-                    hidden: !view.entity,
+                    value: view.entity?.label || view.entity?.key || "",
+                    hidden: !(view.entity?.label || view.entity?.key),
                   },
                   { label: "Key", value: view.key, variant: "mono" },
                   {
