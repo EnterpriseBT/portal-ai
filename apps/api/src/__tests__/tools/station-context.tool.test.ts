@@ -30,6 +30,22 @@ const mockLoadConnectorInstanceContexts = jest
   .mockResolvedValue([]);
 jest.unstable_mockModule("../../services/portal.service.js", () => ({
   loadConnectorInstanceContexts: mockLoadConnectorInstanceContexts,
+  // Real (pure) implementation so the tool test exercises actual #648 scoping;
+  // the function itself is unit-tested directly in portal.service.test.ts.
+  scopeEntityGroupsToEntities: <
+    T extends { members: { connectorEntityId: string }[] },
+  >(
+    groups: T[],
+    grantedEntityIds: ReadonlySet<string>
+  ): T[] =>
+    groups
+      .map((g) => ({
+        ...g,
+        members: g.members.filter((m) =>
+          grantedEntityIds.has(m.connectorEntityId)
+        ),
+      }))
+      .filter((g) => g.members.length > 0),
 }));
 
 const mockWideTableStatementCacheGet = jest.fn<
@@ -279,6 +295,32 @@ describe("StationContextTool", () => {
     expect(result.connectorInstances).toHaveLength(1);
     expect(result.entityGroups).toHaveLength(1);
     expect(result.columnDefinitions).toHaveLength(2);
+  });
+
+  it("scopes entity groups to the caller's granted entities (#648)", async () => {
+    // A member granted only `contacts` (ent-contacts) — the "Customer Orders"
+    // group's sole member is `parcels` (ent-parcels), which they cannot query,
+    // so the group's structure metadata must not appear.
+    mockResolveGrantedViewColumns.mockResolvedValueOnce({
+      set: { canPerformAny: () => false },
+      views: [
+        {
+          view: {
+            id: "view-contacts",
+            key: "contacts",
+            label: "Contacts",
+            connectorEntityId: "ent-contacts",
+          },
+          columns: [],
+        },
+      ],
+    });
+
+    const result = (await exec({ include: ["entityGroups"] })) as {
+      entityGroups: unknown[];
+    };
+
+    expect(result.entityGroups).toEqual([]);
   });
 
   it("returns the org column-definition catalog (#154)", async () => {

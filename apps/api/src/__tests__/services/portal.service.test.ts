@@ -272,7 +272,7 @@ const ENTITY_GROUPS = [
     members: [
       {
         entityKey: "customers",
-        connectorEntityId: "ent-customers",
+        connectorEntityId: "ent-1",
         linkNormalizedKey: "id",
         linkColumnKey: "id",
         linkColumnLabel: "ID",
@@ -280,7 +280,7 @@ const ENTITY_GROUPS = [
       },
       {
         entityKey: "orders",
-        connectorEntityId: "ent-orders",
+        connectorEntityId: "ent-2",
         linkNormalizedKey: "customer_id",
         linkColumnKey: "customer_id",
         linkColumnLabel: "Customer ID",
@@ -383,7 +383,9 @@ describe("PortalService", () => {
       expect(result.stationContext.stationId).toBe(STATION_ID);
       expect(result.stationContext.stationName).toBe("Sales Station");
       expect(result.stationContext.entities).toEqual(ENTITIES);
-      expect(result.stationContext.entityGroups).toBe(ENTITY_GROUPS);
+      // #648: entity groups are view-scoped now (a filtered copy). The default
+      // grant covers both member entities, so the content is unchanged.
+      expect(result.stationContext.entityGroups).toEqual(ENTITY_GROUPS);
     });
 
     it("populates organizationTimezone from the org row", async () => {
@@ -600,6 +602,80 @@ describe("PortalService", () => {
       expect(ctx.entities).toHaveLength(1);
       expect(ctx.entities[0].key).toBe("customers");
       expect(ctx.entities[0].columns.map((c) => c.key)).toEqual(["id"]);
+    });
+
+    // ── #648: entity-group view-scoping ───────────────────────────────
+    it("scopes entity groups to the caller's granted entities", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query"])
+      );
+      // Only `customers` (ent-1) is granted — the "Customer Orders" group's
+      // `orders` (ent-2) member must be dropped from the group metadata.
+      mockResolveGrantedViewColumns.mockResolvedValueOnce({
+        set: { canPerformAny: () => false },
+        views: [
+          {
+            view: {
+              id: "v-customers",
+              key: "customers",
+              label: "Customers",
+              connectorEntityId: "ent-1",
+            },
+            columns: [{ fieldMappingId: "fm-1", columnName: "c_id" }],
+          },
+        ],
+      });
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(ctx.entityGroups).toHaveLength(1);
+      const memberIds = ctx.entityGroups[0].members.map(
+        (m) => m.connectorEntityId
+      );
+      expect(memberIds).toEqual(["ent-1"]);
+      expect(memberIds).not.toContain("ent-2");
+    });
+
+    it("drops entity groups with no granted members", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query"])
+      );
+      // A granted view over an entity in no group → the ent-1/ent-2 group has
+      // no granted member and vanishes entirely (fail-closed).
+      mockResolveGrantedViewColumns.mockResolvedValueOnce({
+        set: { canPerformAny: () => false },
+        views: [
+          {
+            view: {
+              id: "v-other",
+              key: "other",
+              label: "Other",
+              connectorEntityId: "ent-999",
+            },
+            columns: [],
+          },
+        ],
+      });
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(ctx.entityGroups).toEqual([]);
     });
 
     it("derives the station's packs from the station id, unprompted", async () => {
