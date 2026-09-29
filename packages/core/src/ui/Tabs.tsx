@@ -61,9 +61,13 @@ export function useTabs(initialValue = 0, options?: UseTabsOptions) {
     onChange: handleChange,
   };
 
+  // `value` pins each tab to its logical index. Without it MUI falls back to a
+  // tab's position among the rendered children, so a conditionally hidden tab
+  // shifts every later one onto the wrong index (#656).
   const getTabProps = (index: number) => ({
     id: `tab-${index}`,
     "aria-controls": `tabpanel-${index}`,
+    value: index,
   });
 
   const getTabPanelProps = (index: number) => ({

@@ -184,6 +184,36 @@ describe("Tabs Components", () => {
       expect(screen.getByText("Beta Content")).toBeInTheDocument();
     });
 
+    it("keeps each tab's logical index when an earlier sibling is not rendered (#656)", () => {
+      // Without an explicit `value`, MUI falls back to a tab's *position*, so a
+      // hidden middle tab shifts every later tab onto the wrong index.
+      const WithHiddenTab = () => {
+        const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
+        return (
+          <>
+            <Tabs {...tabsProps}>
+              <Tab label="Alpha" {...getTabProps(0)} />
+              {/* index 1 is hidden — e.g. a capability the caller lacks */}
+              <Tab label="Gamma" {...getTabProps(2)} />
+            </Tabs>
+            <TabPanel {...getTabPanelProps(0)}>Alpha Content</TabPanel>
+            <TabPanel {...getTabPanelProps(1)}>Beta Content</TabPanel>
+            <TabPanel {...getTabPanelProps(2)}>Gamma Content</TabPanel>
+          </>
+        );
+      };
+      render(<WithHiddenTab />);
+
+      fireEvent.click(screen.getByText("Gamma"));
+
+      expect(screen.getByText("Gamma Content")).toBeVisible();
+      expect(screen.queryByText("Beta Content")).not.toBeVisible();
+      expect(screen.getByRole("tab", { name: "Gamma" })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
+    });
+
     it("should apply correct aria attributes via getTabProps", () => {
       render(<UseTabsExample />);
 
