@@ -34,6 +34,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { renderFilterGroupToSql } from "../utils/filter-sql.util.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
+import { memoizeForRequest } from "../utils/request-context.util.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
 import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
@@ -724,6 +725,32 @@ export class PortalSqlServiceImpl {
   }
 
   async resolveViewsForSession(
+    stationId: string,
+    organizationId: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<SessionViewBuild> {
+    // #647: dedupe the explain→run double-resolution within one request. The
+    // build is pure data and a caller's grants don't change mid-request, so a
+    // request-scoped memo is correctness-neutral (no store — a job worker or
+    // test — resolves normally). Only the default-connection path is memoized:
+    // a caller passing a specific client (e.g. a transaction) needs that
+    // client's visibility, and the key can't capture it, so it resolves fresh.
+    if (client !== db) {
+      return this.buildViewsForSession(
+        stationId,
+        organizationId,
+        userId,
+        client
+      );
+    }
+    return memoizeForRequest(
+      `views:${stationId}:${userId}:${organizationId}`,
+      () => this.buildViewsForSession(stationId, organizationId, userId, client)
+    );
+  }
+
+  private async buildViewsForSession(
     stationId: string,
     organizationId: string,
     userId: string,
