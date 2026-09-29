@@ -595,12 +595,22 @@ describe("DissolvePrecompute schemas (#472)", () => {
     expect(JobTypeEnum.safeParse("dissolve_precompute").success).toBe(true);
   });
 
-  it("metadata parses portalResultId + organizationId", () => {
+  it("metadata parses portalResultId + organizationId + userId", () => {
     const r = DissolvePrecomputeMetadataSchema.safeParse({
       portalResultId: "pr-1",
       organizationId: "org-1",
+      userId: "u-1",
     });
     expect(r.success).toBe(true);
+  });
+
+  it("#643: metadata requires userId (keys the per-scope dissolve)", () => {
+    expect(
+      DissolvePrecomputeMetadataSchema.safeParse({
+        portalResultId: "pr-1",
+        organizationId: "org-1",
+      }).success
+    ).toBe(false);
   });
 
   it("#542: metadata accepts a message-block owner, rejects both/neither", () => {
@@ -610,6 +620,7 @@ describe("DissolvePrecompute schemas (#472)", () => {
         organizationId: "org-1",
         messageId: "m-1",
         blockIndex: 0,
+        userId: "u-1",
       }).success
     ).toBe(true);
     // both owners set → rejected
