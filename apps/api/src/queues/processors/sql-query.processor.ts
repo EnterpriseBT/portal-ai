@@ -20,7 +20,7 @@ const logger = createLogger({ module: "sql-query-processor" });
 export const sqlQueryProcessor: TypedJobProcessor<"sql_query"> = async (
   bullJob
 ) => {
-  const { jobId, sql, stationId, organizationId } = bullJob.data;
+  const { jobId, sql, stationId, organizationId, userId } = bullJob.data;
 
   logger.info({ jobId, stationId }, "sql_query job started");
   const start = Date.now();
@@ -28,6 +28,7 @@ export const sqlQueryProcessor: TypedJobProcessor<"sql_query"> = async (
   const { envelope } = await PortalSqlHandleService.produce({
     stationId,
     organizationId,
+    userId,
     sql,
     statementTimeoutMs: SQL_QUERY_JOB_TIMEOUT_MS,
   });

@@ -792,6 +792,34 @@
       "when": 1790400000000,
       "tag": "0112_rename-view-resource-to-curated-view",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1790440478536,
+      "tag": "0113_curated-views-and-station-views",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1790458899153,
+      "tag": "0114_fk-condition",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1790458899154,
+      "tag": "0115_curated-view-filter-jsonb",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1790458899155,
+      "tag": "0116_backfill-views-page-grant",
+      "breakpoints": true
     }
   ]
 }

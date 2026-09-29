@@ -23,6 +23,8 @@ import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
 import { AnalyticsService } from "./analytics.service.js";
+import type { EntitySchema } from "./analytics.service.js";
+import { PortalSqlService } from "./portal-sql.service.js";
 import { DissolvePrecomputeService } from "./dissolve-precompute.service.js";
 import { EntitlementService } from "./entitlement.service.js";
 import { ToolService } from "./tools.service.js";
@@ -395,6 +397,7 @@ export class PortalService {
     const stationContext = await buildStationContext({
       station,
       organizationId,
+      userId,
     });
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");
@@ -1186,8 +1189,12 @@ export async function loadOrganizationTimezone(
 export async function buildStationContext(args: {
   station: { id: string; name: string };
   organizationId: string;
+  /** #599: the caller — the roster is scoped to their granted curated views
+   *  (the same resolution the SQL session uses), so a member is never told
+   *  about entities/columns they cannot query. */
+  userId: string;
 }): Promise<StationContext> {
-  const { station, organizationId } = args;
+  const { station, organizationId, userId } = args;
 
   // The station's packs — built-in and custom — from the one derivation that
   // reads both columns of the join table (#306).
@@ -1217,11 +1224,40 @@ export async function buildStationContext(args: {
       : undefined;
   const organizationTimezone = await loadOrganizationTimezone(organizationId);
 
+  // #599: the roster shows the caller's granted curated views (view key is the
+  // queryable name), with each view's columns filtered to what the caller may
+  // read — the same resolution the SQL session uses, so the two never disagree.
+  // An admin resolves all attached views (via `*`); a member only their grants.
+  const { views: grantedViewColumns } =
+    await PortalSqlService.resolveGrantedViewColumns(
+      station.id,
+      organizationId,
+      userId
+    );
+  const stationEntitiesById = new Map(
+    stationData.entities.map((e) => [e.id, e])
+  );
+  const entities: EntitySchema[] = grantedViewColumns.map(
+    ({ view, columns }) => {
+      const readableFmIds = new Set(columns.map((c) => c.fieldMappingId));
+      const src = stationEntitiesById.get(view.connectorEntityId);
+      return {
+        id: view.connectorEntityId,
+        key: view.key,
+        label: view.label,
+        connectorInstanceId: src?.connectorInstanceId ?? "",
+        columns: (src?.columns ?? []).filter((col) =>
+          readableFmIds.has(col.fieldMappingId)
+        ),
+      };
+    }
+  );
+
   return {
     stationId: station.id,
     stationName: station.name,
     organizationTimezone,
-    entities: stationData.entities,
+    entities,
     entityGroups: stationData.entityGroups,
     effectiveToolPacks,
     unentitledToolPacks,

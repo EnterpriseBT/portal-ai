@@ -491,6 +491,21 @@ export enum ApiCode {
   /** A dissolve re-enqueue trigger (#541) failed before enqueuing. */
   DISSOLVE_REENQUEUE_FAILED = "DISSOLVE_REENQUEUE_FAILED",
 
+  // Curated views (#599)
+  /** A curated view's `filter` failed `FilterGroup` validation. */
+  CURATED_VIEW_INVALID_FILTER = "CURATED_VIEW_INVALID_FILTER",
+  CURATED_VIEW_NOT_FOUND = "CURATED_VIEW_NOT_FOUND",
+  CURATED_VIEW_DUPLICATE_KEY = "CURATED_VIEW_DUPLICATE_KEY",
+  CURATED_VIEW_INVALID_PAYLOAD = "CURATED_VIEW_INVALID_PAYLOAD",
+  /** The caller cannot independently `read` a field mapping it tried to
+   *  project — the self-exposure guard (a view-editor can only expose fields
+   *  they already hold). */
+  CURATED_VIEW_FIELD_NOT_READABLE = "CURATED_VIEW_FIELD_NOT_READABLE",
+  CURATED_VIEW_FETCH_FAILED = "CURATED_VIEW_FETCH_FAILED",
+  CURATED_VIEW_CREATE_FAILED = "CURATED_VIEW_CREATE_FAILED",
+  CURATED_VIEW_UPDATE_FAILED = "CURATED_VIEW_UPDATE_FAILED",
+  CURATED_VIEW_DELETE_FAILED = "CURATED_VIEW_DELETE_FAILED",
+
   // Portal SQL surface (Phase 3)
   /** The LLM-supplied SQL hit the deny-list or other safety guard. */
   PORTAL_SQL_FORBIDDEN = "PORTAL_SQL_FORBIDDEN",

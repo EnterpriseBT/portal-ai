@@ -39,6 +39,8 @@ export type ResultSink =
 export interface ResultSinkContext {
   stationId: string;
   organizationId: string;
+  /** #599: the calling user — every SQL-backed sink is per-user view-scoped. */
+  userId: string;
 }
 
 /** Rows in a `sqlQuery` response, across its three shapes. */
@@ -74,6 +76,7 @@ export async function resolveSqlDelivery(
     sql: opts.sql,
     stationId: ctx.stationId,
     organizationId: ctx.organizationId,
+    userId: ctx.userId,
   });
   const threshold = opts.inlineThreshold ?? INLINE_ROWS_THRESHOLD;
   if (sqlRowCount(result) <= threshold) return { kind: "inline", result };
@@ -81,6 +84,7 @@ export async function resolveSqlDelivery(
     sql: opts.sql,
     stationId: ctx.stationId,
     organizationId: ctx.organizationId,
+    userId: ctx.userId,
   });
   return { kind: "handle", envelope };
 }
@@ -196,6 +200,7 @@ export async function resolveResultSink(
         transform: t,
         stationId: ctx.stationId,
         organizationId: ctx.organizationId,
+        userId: ctx.userId,
       });
       return { type: "data-table", ...envelope } satisfies HandleResult;
     }
@@ -239,6 +244,7 @@ export async function resolveResultSink(
         rows: concatStream(buffered, it),
         stationId: ctx.stationId,
         organizationId: ctx.organizationId,
+        userId: ctx.userId,
       });
       return { type: "data-table", ...envelope } satisfies HandleResult;
     }

@@ -51,6 +51,14 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveEntityCapabilities: mockResolveEntityCapabilities,
 }));
 
+// #599: the tool scopes entities to the caller's granted curated views.
+const mockResolveGrantedViewColumns = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
+  PortalSqlService: {
+    resolveGrantedViewColumns: mockResolveGrantedViewColumns,
+  },
+}));
+
 // #284: the tool reports the station's packs split by what the plan includes,
 // so the agent reads the distinction off a field instead of inferring it.
 const mockSplitBuiltinPacks =
@@ -96,6 +104,7 @@ const { StationContextTool } =
 
 const STATION_ID = "station-1";
 const ORG_ID = "org-1";
+const USER_ID = "user-1";
 
 const STATION_DATA = {
   entities: [
@@ -158,7 +167,7 @@ const STATION_DATA = {
 };
 
 function buildTool() {
-  return new StationContextTool().build(STATION_ID, ORG_ID);
+  return new StationContextTool().build(STATION_ID, ORG_ID, USER_ID);
 }
 
 async function exec(input: Record<string, unknown> = {}) {
@@ -184,6 +193,23 @@ describe("StationContextTool", () => {
     });
     mockFindOrgById.mockResolvedValue({ id: ORG_ID, timezone: "UTC" });
     mockLoadStation.mockResolvedValue(STATION_DATA);
+    // #599: each entity is a granted passthrough view with all columns
+    // readable — an admin (canPerformAny → true) sees the full catalog.
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: { canPerformAny: () => true },
+      views: STATION_DATA.entities.map((e) => ({
+        view: {
+          id: `view-${e.id}`,
+          key: e.key,
+          label: e.label,
+          connectorEntityId: e.id,
+        },
+        columns: e.columns.map((c) => ({
+          fieldMappingId: c.fieldMappingId,
+          columnName: `c_${c.key}`,
+        })),
+      })),
+    });
     mockLoadConnectorInstanceContexts.mockResolvedValue([
       {
         id: "ci-1",
@@ -378,6 +404,54 @@ describe("StationContextTool", () => {
     expect(result.entities).toBeDefined();
     expect(result.connectorInstances).toBeUndefined();
     expect(result.entityGroups).toBeUndefined();
+  });
+
+  // ── #599: view-scoping (the OQ2 leak fix) ──────────────────────────
+
+  it("scopes entities + columns to the caller's granted views", async () => {
+    // Only `parcels` is granted, and only two of its three columns are
+    // readable — `contacts` and the `boundary` column must not leak.
+    mockResolveGrantedViewColumns.mockResolvedValueOnce({
+      set: { canPerformAny: () => true },
+      views: [
+        {
+          view: {
+            id: "v-parcels",
+            key: "parcels",
+            label: "Parcels",
+            connectorEntityId: "ent-parcels",
+          },
+          columns: [
+            { fieldMappingId: "fm-id", columnName: "c_id" },
+            { fieldMappingId: "fm-addr", columnName: "c_address" },
+          ],
+        },
+      ],
+    });
+
+    const result = (await exec({ include: ["entities"] })) as {
+      entities: Array<{ key: string; columns: Array<{ key: string }> }>;
+    };
+
+    expect(result.entities).toHaveLength(1);
+    expect(result.entities[0].key).toBe("parcels");
+    expect(result.entities[0].columns.map((c) => c.key)).toEqual([
+      "id",
+      "address",
+    ]);
+  });
+
+  it("omits the columnDefinitions catalog for a non-admin caller", async () => {
+    mockResolveGrantedViewColumns.mockResolvedValueOnce({
+      set: { canPerformAny: () => false },
+      views: [],
+    });
+
+    const result = (await exec({ include: ["columnDefinitions"] })) as {
+      columnDefinitions?: unknown;
+    };
+
+    expect(result.columnDefinitions).toBeUndefined();
   });
 
   // ── Tool-pack entitlement split (#284) ─────────────────────────────

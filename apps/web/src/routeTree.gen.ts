@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ViewsRouteImport } from './routes/views'
 import { Route as ToolpacksRouteImport } from './routes/toolpacks'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as StationsRouteImport } from './routes/stations'
@@ -22,6 +23,7 @@ import { Route as EntitiesRouteImport } from './routes/entities'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ViewsIndexRouteImport } from './routes/views.index'
 import { Route as ToolpacksIndexRouteImport } from './routes/toolpacks.index'
 import { Route as TagsIndexRouteImport } from './routes/tags.index'
 import { Route as StationsIndexRouteImport } from './routes/stations.index'
@@ -32,6 +34,7 @@ import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.in
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
 import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
+import { Route as ViewsViewIdRouteImport } from './routes/views.$viewId'
 import { Route as StationsStationIdRouteImport } from './routes/stations.$stationId'
 import { Route as PortalsPortalIdRouteImport } from './routes/portals.$portalId'
 import { Route as PortalResultsPortalResultIdRouteImport } from './routes/portal-results.$portalResultId'
@@ -46,6 +49,11 @@ import { Route as ConnectorsConnectorInstanceIdIndexRouteImport } from './routes
 import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
 import { Route as ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport } from './routes/connectors.$connectorInstanceId.layout-plan.edit'
 
+const ViewsRoute = ViewsRouteImport.update({
+  id: '/views',
+  path: '/views',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ToolpacksRoute = ToolpacksRouteImport.update({
   id: '/toolpacks',
   path: '/toolpacks',
@@ -111,6 +119,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ViewsIndexRoute = ViewsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ViewsRoute,
+} as any)
 const ToolpacksIndexRoute = ToolpacksIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -160,6 +173,11 @@ const ColumnDefinitionsIndexRoute = ColumnDefinitionsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => ColumnDefinitionsRoute,
+} as any)
+const ViewsViewIdRoute = ViewsViewIdRouteImport.update({
+  id: '/$viewId',
+  path: '/$viewId',
+  getParentRoute: () => ViewsRoute,
 } as any)
 const StationsStationIdRoute = StationsStationIdRouteImport.update({
   id: '/$stationId',
@@ -248,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
   '/toolpacks': typeof ToolpacksRouteWithChildren
+  '/views': typeof ViewsRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -257,6 +276,7 @@ export interface FileRoutesByFullPath {
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
+  '/views/$viewId': typeof ViewsViewIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
@@ -267,6 +287,7 @@ export interface FileRoutesByFullPath {
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/toolpacks/': typeof ToolpacksIndexRoute
+  '/views/': typeof ViewsIndexRoute
   '/connectors/$connectorInstanceId/': typeof ConnectorsConnectorInstanceIdIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
@@ -283,6 +304,7 @@ export interface FileRoutesByTo {
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
+  '/views/$viewId': typeof ViewsViewIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
@@ -293,6 +315,7 @@ export interface FileRoutesByTo {
   '/stations': typeof StationsIndexRoute
   '/tags': typeof TagsIndexRoute
   '/toolpacks': typeof ToolpacksIndexRoute
+  '/views': typeof ViewsIndexRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdIndexRoute
   '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
   '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
@@ -313,6 +336,7 @@ export interface FileRoutesById {
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
   '/toolpacks': typeof ToolpacksRouteWithChildren
+  '/views': typeof ViewsRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -322,6 +346,7 @@ export interface FileRoutesById {
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
+  '/views/$viewId': typeof ViewsViewIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
@@ -332,6 +357,7 @@ export interface FileRoutesById {
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/toolpacks/': typeof ToolpacksIndexRoute
+  '/views/': typeof ViewsIndexRoute
   '/connectors/$connectorInstanceId/': typeof ConnectorsConnectorInstanceIdIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
@@ -353,6 +379,7 @@ export interface FileRouteTypes {
     | '/stations'
     | '/tags'
     | '/toolpacks'
+    | '/views'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -362,6 +389,7 @@ export interface FileRouteTypes {
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
+    | '/views/$viewId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
@@ -372,6 +400,7 @@ export interface FileRouteTypes {
     | '/stations/'
     | '/tags/'
     | '/toolpacks/'
+    | '/views/'
     | '/connectors/$connectorInstanceId/'
     | '/entities/$entityId/'
     | '/connectors/$connectorInstanceId/layout-plan/edit'
@@ -388,6 +417,7 @@ export interface FileRouteTypes {
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
+    | '/views/$viewId'
     | '/column-definitions'
     | '/connectors'
     | '/entities'
@@ -398,6 +428,7 @@ export interface FileRouteTypes {
     | '/stations'
     | '/tags'
     | '/toolpacks'
+    | '/views'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
     | '/connectors/$connectorInstanceId/layout-plan/edit'
@@ -417,6 +448,7 @@ export interface FileRouteTypes {
     | '/stations'
     | '/tags'
     | '/toolpacks'
+    | '/views'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -426,6 +458,7 @@ export interface FileRouteTypes {
     | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
+    | '/views/$viewId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
@@ -436,6 +469,7 @@ export interface FileRouteTypes {
     | '/stations/'
     | '/tags/'
     | '/toolpacks/'
+    | '/views/'
     | '/connectors/$connectorInstanceId/'
     | '/entities/$entityId/'
     | '/connectors/$connectorInstanceId/layout-plan/edit'
@@ -456,12 +490,20 @@ export interface RootRouteChildren {
   StationsRoute: typeof StationsRouteWithChildren
   TagsRoute: typeof TagsRouteWithChildren
   ToolpacksRoute: typeof ToolpacksRouteWithChildren
+  ViewsRoute: typeof ViewsRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   PortalsPortalIdRoute: typeof PortalsPortalIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/views': {
+      id: '/views'
+      path: '/views'
+      fullPath: '/views'
+      preLoaderRoute: typeof ViewsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/toolpacks': {
       id: '/toolpacks'
       path: '/toolpacks'
@@ -553,6 +595,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/views/': {
+      id: '/views/'
+      path: '/'
+      fullPath: '/views/'
+      preLoaderRoute: typeof ViewsIndexRouteImport
+      parentRoute: typeof ViewsRoute
+    }
     '/toolpacks/': {
       id: '/toolpacks/'
       path: '/'
@@ -622,6 +671,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/column-definitions/'
       preLoaderRoute: typeof ColumnDefinitionsIndexRouteImport
       parentRoute: typeof ColumnDefinitionsRoute
+    }
+    '/views/$viewId': {
+      id: '/views/$viewId'
+      path: '/$viewId'
+      fullPath: '/views/$viewId'
+      preLoaderRoute: typeof ViewsViewIdRouteImport
+      parentRoute: typeof ViewsRoute
     }
     '/stations/$stationId': {
       id: '/stations/$stationId'
@@ -877,6 +933,18 @@ const ToolpacksRouteWithChildren = ToolpacksRoute._addFileChildren(
   ToolpacksRouteChildren,
 )
 
+interface ViewsRouteChildren {
+  ViewsViewIdRoute: typeof ViewsViewIdRoute
+  ViewsIndexRoute: typeof ViewsIndexRoute
+}
+
+const ViewsRouteChildren: ViewsRouteChildren = {
+  ViewsViewIdRoute: ViewsViewIdRoute,
+  ViewsIndexRoute: ViewsIndexRoute,
+}
+
+const ViewsRouteWithChildren = ViewsRoute._addFileChildren(ViewsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ColumnDefinitionsRoute: ColumnDefinitionsRouteWithChildren,
@@ -891,6 +959,7 @@ const rootRouteChildren: RootRouteChildren = {
   StationsRoute: StationsRouteWithChildren,
   TagsRoute: TagsRouteWithChildren,
   ToolpacksRoute: ToolpacksRouteWithChildren,
+  ViewsRoute: ViewsRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
   PortalsPortalIdRoute: PortalsPortalIdRoute,
 }

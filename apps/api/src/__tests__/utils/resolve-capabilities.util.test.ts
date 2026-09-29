@@ -45,6 +45,52 @@ jest.unstable_mockModule(
   })
 );
 
+// #599: a station's data attachment is its curated views (station_views →
+// curated_view → connector_entity → connector_instance), not station_instances.
+const mockStationViewsFindByStationId =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockCuratedViewFindById =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+
+jest.unstable_mockModule(
+  "../../db/repositories/station-views.repository.js",
+  () => ({
+    stationViewsRepo: { findByStationId: mockStationViewsFindByStationId },
+  })
+);
+
+jest.unstable_mockModule(
+  "../../db/repositories/curated-views.repository.js",
+  () => ({
+    curatedViewsRepo: { findById: mockCuratedViewFindById },
+  })
+);
+
+/**
+ * Seed the station_views → curated_view → connector_entity → connector_instance
+ * chain resolveStationCapabilities/resolveEntityCapabilities now derive from.
+ * `links` maps a synthetic view id to its entity + instance.
+ */
+function seedViewChain(
+  links: { entityId: string; connectorInstanceId: string }[]
+): void {
+  mockStationViewsFindByStationId.mockResolvedValue(
+    links.map((l, i) => ({ curatedViewId: `v-${i}` }))
+  );
+  const byView = new Map(links.map((l, i) => [`v-${i}`, l.entityId]));
+  const byEntity = new Map(
+    links.map((l) => [l.entityId, l.connectorInstanceId])
+  );
+  mockCuratedViewFindById.mockImplementation(async (id: unknown) => {
+    const entityId = byView.get(String(id));
+    return entityId ? { id, connectorEntityId: entityId } : null;
+  });
+  mockConnEntityFindById.mockImplementation(async (id: unknown) => {
+    const ci = byEntity.get(String(id));
+    return ci ? { id, connectorInstanceId: ci } : null;
+  });
+}
+
 const {
   resolveCapabilities,
   resolveStationCapabilities,
@@ -171,16 +217,16 @@ describe("resolveCapabilities", () => {
 
 describe("resolveStationCapabilities", () => {
   it("returns empty array for station with no instances", async () => {
-    mockFindByStationId.mockResolvedValue([]);
+    seedViewChain([]);
 
     const result = await resolveStationCapabilities("station-1");
     expect(result).toEqual([]);
   });
 
   it("returns capabilities for each attached instance", async () => {
-    mockFindByStationId.mockResolvedValue([
-      { connectorInstanceId: "ci-1", stationId: "station-1" },
-      { connectorInstanceId: "ci-2", stationId: "station-1" },
+    seedViewChain([
+      { entityId: "e-1", connectorInstanceId: "ci-1" },
+      { entityId: "e-2", connectorInstanceId: "ci-2" },
     ]);
     mockConnInstanceFindById.mockImplementation(async (id: unknown) => {
       if (id === "ci-1")
@@ -219,9 +265,7 @@ describe("resolveStationCapabilities", () => {
   });
 
   it("respects instance-level override narrowing write to false", async () => {
-    mockFindByStationId.mockResolvedValue([
-      { connectorInstanceId: "ci-1", stationId: "station-1" },
-    ]);
+    seedViewChain([{ entityId: "e-1", connectorInstanceId: "ci-1" }]);
     mockConnInstanceFindById.mockResolvedValue({
       id: "ci-1",
       connectorDefinitionId: "cd-1",
@@ -242,9 +286,7 @@ describe("resolveStationCapabilities", () => {
   });
 
   it("inherits definition capabilities when override is null", async () => {
-    mockFindByStationId.mockResolvedValue([
-      { connectorInstanceId: "ci-1", stationId: "station-1" },
-    ]);
+    seedViewChain([{ entityId: "e-1", connectorInstanceId: "ci-1" }]);
     mockConnInstanceFindById.mockResolvedValue({
       id: "ci-1",
       connectorDefinitionId: "cd-1",
@@ -265,9 +307,9 @@ describe("resolveStationCapabilities", () => {
   });
 
   it("skips instances with missing definitions", async () => {
-    mockFindByStationId.mockResolvedValue([
-      { connectorInstanceId: "ci-1", stationId: "station-1" },
-      { connectorInstanceId: "ci-2", stationId: "station-1" },
+    seedViewChain([
+      { entityId: "e-1", connectorInstanceId: "ci-1" },
+      { entityId: "e-2", connectorInstanceId: "ci-2" },
     ]);
     mockConnInstanceFindById.mockImplementation(async (id: unknown) => {
       if (id === "ci-1")
@@ -348,8 +390,9 @@ describe("assertStationScope", () => {
 
 describe("resolveEntityCapabilities", () => {
   it("returns capability map keyed by entity ID", async () => {
-    mockFindByStationId.mockResolvedValue([
-      { connectorInstanceId: "ci-1", stationId: "station-1" },
+    seedViewChain([
+      { entityId: "entity-1", connectorInstanceId: "ci-1" },
+      { entityId: "entity-2", connectorInstanceId: "ci-1" },
     ]);
     mockConnInstanceFindById.mockResolvedValue({
       id: "ci-1",
@@ -360,10 +403,6 @@ describe("resolveEntityCapabilities", () => {
       id: "cd-1",
       capabilityFlags: { read: true, write: true },
     });
-    mockConnEntityFindByInstanceId.mockResolvedValue([
-      { id: "entity-1", connectorInstanceId: "ci-1" },
-      { id: "entity-2", connectorInstanceId: "ci-1" },
-    ]);
 
     const result = await resolveEntityCapabilities("station-1");
     expect(result).toEqual({
@@ -373,7 +412,7 @@ describe("resolveEntityCapabilities", () => {
   });
 
   it("returns empty map for station with no instances", async () => {
-    mockFindByStationId.mockResolvedValue([]);
+    seedViewChain([]);
 
     const result = await resolveEntityCapabilities("station-1");
     expect(result).toEqual({});

@@ -63,6 +63,8 @@ export interface VizRefreshParams {
   blockIndex: number;
   /** The caller's current org (from `req.application.metadata`). */
   organizationId: string;
+  /** #599: the requesting user — the refresh re-executes per-user view-scoped. */
+  userId: string;
 }
 
 /**
@@ -134,6 +136,7 @@ export class PortalVizRefreshService {
     return this.executePipeline(
       pipeline,
       params.organizationId,
+      params.userId,
       resolveSqlDelivery,
       geometryColumns,
       sqlQuery
@@ -150,7 +153,7 @@ export class PortalVizRefreshService {
    * the next refresh.
    */
   static async refreshPinnedResult(
-    params: { portalResultId: string; organizationId: string },
+    params: { portalResultId: string; organizationId: string; userId: string },
     deps: PinRefreshDeps = {}
   ): Promise<WidgetRefreshResponse> {
     const findPortalResultById =
@@ -190,6 +193,7 @@ export class PortalVizRefreshService {
     const delivery = await this.executePipeline(
       parsed.data,
       params.organizationId,
+      params.userId,
       resolveSqlDelivery,
       geometryColumnsFromSpec(content.spec),
       sqlQuery
@@ -239,6 +243,7 @@ export class PortalVizRefreshService {
   private static async executePipeline(
     pipeline: VizPipeline,
     organizationId: string,
+    userId: string,
     resolveSqlDelivery: typeof defaultResolveSqlDelivery,
     geometryColumns: string[] = [],
     sqlQuery: typeof AnalyticsService.sqlQuery = AnalyticsService.sqlQuery.bind(
@@ -247,7 +252,7 @@ export class PortalVizRefreshService {
   ): Promise<WidgetRefreshResponse> {
     const delivery = await resolveSqlDelivery(
       { sql: pipeline.sql },
-      { stationId: pipeline.stationId, organizationId }
+      { stationId: pipeline.stationId, organizationId, userId }
     );
 
     // A large delivery rides its handle — the map widget re-tiles it through
@@ -266,7 +271,7 @@ export class PortalVizRefreshService {
       pipeline.sql,
       geometryColumns,
       result.rows ?? result.sample ?? [],
-      { stationId: pipeline.stationId, organizationId },
+      { stationId: pipeline.stationId, organizationId, userId },
       { sqlQuery }
     );
     return { kind: "inline", rows };

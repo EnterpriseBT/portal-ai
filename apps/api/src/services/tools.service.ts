@@ -560,7 +560,8 @@ export class ToolService {
     if (SYSTEM_TOOL_CAPABILITIES.station_context?.alwaysAvailable) {
       tools.station_context = new StationContextTool().build(
         stationId,
-        organizationId
+        organizationId,
+        userId
       );
     }
     //   - `platform_help` — in-session answers about the product itself, and
@@ -588,7 +589,8 @@ export class ToolService {
       );
       tools.display_entity_records = new DisplayEntityRecordsTool().build(
         stationId,
-        organizationId
+        organizationId,
+        userId
       );
       if (stationData.entityGroups.length > 0) {
         tools.resolve_identity = new ResolveIdentityTool().build(
@@ -609,7 +611,8 @@ export class ToolService {
       registerCostResolver("visualize_d3", () => VISUALIZE_D3_UNITS_PER_CALL);
       tools.visualize_d3 = new VisualizeD3Tool().build(
         stationId,
-        organizationId
+        organizationId,
+        userId
       );
     }
 
@@ -621,7 +624,8 @@ export class ToolService {
     if (enabledPacks.has("gis")) {
       tools.visualize_map = new VisualizeMapTool().build(
         stationId,
-        organizationId
+        organizationId,
+        userId
       );
       // Geocoding (#315) is metered and needs a provider key. Build the two
       // geocode tools only when GEOCODING_API_KEY is configured — build() itself
@@ -685,7 +689,8 @@ export class ToolService {
       // functions) — removed from the reduce tier in #130 E2.
       tools.technical_indicator = new TechnicalIndicatorTool().build(
         stationId,
-        organizationId
+        organizationId,
+        userId
       );
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();

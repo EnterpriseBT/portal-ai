@@ -56,6 +56,7 @@ import {
   teardownOrg,
   createUser,
   createOrganization,
+  attachCuratedView,
 } from "../utils/application.util.js";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -293,6 +294,7 @@ describe("Analytics Postgres-eval regression suite", () => {
   let portalSql: PortalSqlServiceImpl;
 
   let orgId: string;
+  let userId: string;
   let stationId: string;
   let contactsEntityId: string;
   let dealsEntityId: string;
@@ -325,6 +327,7 @@ describe("Analytics Postgres-eval regression suite", () => {
     const org = createOrganization(user.id);
     await dbTyped.insert(schema.organizations).values(org as never);
     orgId = org.id;
+    userId = user.id;
 
     const connDefId = generateId();
     await dbTyped.insert(schema.connectorDefinitions).values({
@@ -471,6 +474,28 @@ describe("Analytics Postgres-eval regression suite", () => {
     await reconciler.reconcileEntity(contactsEntityId, db);
     await reconciler.reconcileEntity(dealsEntityId, db);
 
+    // #599: a station's data is exposed through curated views, not connectors.
+    // Attach a default (unrestricted) view per entity and grant it to the
+    // owner so `runSqlQuery` (now per-user, view-scoped) resolves them.
+    await attachCuratedView(dbTyped, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: contactsEntityId,
+      key: "contacts",
+      label: "Contacts",
+      createdBy: userId,
+      grantToUserId: userId,
+    });
+    await attachCuratedView(dbTyped, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: dealsEntityId,
+      key: "deals",
+      label: "Deals",
+      createdBy: userId,
+      grantToUserId: userId,
+    });
+
     // Seed a deterministic 12-row contacts table: ages 20..31, alternating
     // segments. The fixture queries above and the numeric baselines below
     // assume this exact seed.
@@ -567,6 +592,7 @@ describe("Analytics Postgres-eval regression suite", () => {
               sql: fx.sql,
               stationId,
               organizationId: orgId,
+              userId,
             })
           ).rejects.toThrow(fx.rejectionMatch ?? /./);
           return;
@@ -576,6 +602,7 @@ describe("Analytics Postgres-eval regression suite", () => {
           sql: fx.sql,
           stationId,
           organizationId: orgId,
+          userId,
           rowCap: fx.rowCap,
         });
 

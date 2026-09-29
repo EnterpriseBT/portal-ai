@@ -32,11 +32,22 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
+import { renderFilterGroupToSql } from "../utils/filter-sql.util.js";
+import { resolveColumns } from "../utils/resolve-columns.util.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
+import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
+import { curatedViewsRepo } from "../db/repositories/curated-views.repository.js";
+import { curatedViewFieldMappingsRepo } from "../db/repositories/curated-view-field-mappings.repository.js";
+import { userRolesRepo } from "../db/repositories/user-roles.repository.js";
+import { PermissionService } from "./permission.service.js";
+import type { PermissionSet } from "./permission-set.js";
+import type { CuratedViewSelect } from "../db/schema/zod.js";
+import type { OrgRole } from "@portalai/core/models";
 import {
   wideTableStatementCache,
   type WideTableStatementCache,
+  type WideTableCachedColumn,
 } from "./wide-table-statement.cache.js";
 import { STATEMENT_TIMEOUT_MS } from "@portalai/core/constants";
 
@@ -71,6 +82,31 @@ const VIEW_HIDDEN_COLUMNS = new Set<string>([
   "is_valid",
 ]);
 
+/** Quote a SQL identifier (double-quote, escape embedded `"`). */
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** Quote a SQL string literal (single-quote, escape embedded `'`). */
+function quoteLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** Emit a temp view as DROP + CREATE, not CREATE OR REPLACE. On a pooled
+ *  connection a prior committed build (org-wide tile vs per-user agent, or a
+ *  different user's narrower column set) can leave a same-named temp view with
+ *  a different column set; CREATE OR REPLACE then fails ("cannot change name of
+ *  view column" / "cannot drop columns from view"). DROP-first is schema-
+ *  agnostic. Both statements are DDL — they run before the txn read-only flag. */
+function pushTempView(
+  views: string[],
+  quotedName: string,
+  selectBody: string
+): void {
+  views.push(`DROP VIEW IF EXISTS ${quotedName}`);
+  views.push(`CREATE TEMP VIEW ${quotedName} AS\n${selectBody}`);
+}
+
 export interface SessionViewBuild {
   /** CREATE TEMP VIEW DDL strings, one per read-capable entity. */
   views: ReadonlyArray<string>;
@@ -86,6 +122,15 @@ export interface PortalSqlParams {
   sql: string;
   stationId: string;
   organizationId: string;
+  /**
+   * The calling user — the session is built per-user via
+   * `resolveViewsForSession` (#599), so the LLM SQL only ever sees the
+   * curated views this user is granted. Required on every user-facing call
+   * (agent `sql_query`, async SQL handle, analytics). The org-wide
+   * `buildSessionViews` path (map tiles / dissolve precompute, #643) does
+   * not go through `runSqlQuery`.
+   */
+  userId: string;
   /** Override the default 500-row cap (for internal callers). */
   rowCap?: number;
   /** Override the default 500-byte cell cap. */
@@ -214,14 +259,14 @@ export class PortalSqlServiceImpl {
       // z11 measured 23,124ms → 1,584ms without it). Every delete path now
       // marks `er__<id>."deleted"` atomically with the `entity_records`
       // soft-delete, so the local filter is equivalent.
-      const ddl =
-        `CREATE OR REPLACE TEMP VIEW "${viewName}" AS\n` +
+      pushTempView(
+        views,
+        `"${viewName}"`,
         `  SELECT ${projections.join(", ")}\n` +
-        `  FROM "${tableName}" w\n` +
-        `  WHERE w."organization_id" = '${organizationId}'\n` +
-        `    AND w."deleted" IS NULL`;
-
-      views.push(ddl);
+          `  FROM "${tableName}" w\n` +
+          `  WHERE w."organization_id" = '${organizationId}'\n` +
+          `    AND w."deleted" IS NULL`
+      );
       viewMap.set(entityKey, viewName);
       usedKeys.add(entityKey);
     }
@@ -261,42 +306,44 @@ export class PortalSqlServiceImpl {
             })
             .join(", ");
 
-    const metaEntitiesDdl =
-      `CREATE OR REPLACE TEMP VIEW "_meta_entities" AS\n` +
+    pushTempView(
+      views,
+      `"_meta_entities"`,
       `  SELECT "id", "key", "label"\n` +
-      `  FROM "connector_entities"\n` +
-      `  WHERE "organization_id" = '${organizationId}'\n` +
-      `    AND "id" IN (${readableIdsLiteral})\n` +
-      `    AND "deleted" IS NULL`;
-    views.push(metaEntitiesDdl);
+        `  FROM "connector_entities"\n` +
+        `  WHERE "organization_id" = '${organizationId}'\n` +
+        `    AND "id" IN (${readableIdsLiteral})\n` +
+        `    AND "deleted" IS NULL`
+    );
     viewMap.set("_meta_entities", "_meta_entities");
 
-    const metaColumnsDdl =
-      `CREATE OR REPLACE TEMP VIEW "_meta_columns" AS\n` +
+    pushTempView(
+      views,
+      `"_meta_columns"`,
       `  SELECT\n` +
-      `    ce."id" AS "connector_entity_id",\n` +
-      `    ce."key" AS "entity_key",\n` +
-      `    cd."id" AS "column_definition_id",\n` +
-      `    cd."key" AS "column_key",\n` +
-      `    fm."normalized_key" AS "normalized_key",\n` +
-      `    wtc."column_name" AS "wide_column_name",\n` +
-      `    cd."label" AS "label",\n` +
-      `    cd."type"::text AS "type",\n` +
-      `    cd."description" AS "description",\n` +
-      `    fm."ref_entity_key" AS "ref_entity_key",\n` +
-      `    fm."ref_normalized_key" AS "ref_normalized_key"\n` +
-      `  FROM "column_definitions" cd\n` +
-      `    JOIN "field_mappings" fm ON fm."column_definition_id" = cd."id"\n` +
-      `    JOIN "connector_entities" ce ON ce."id" = fm."connector_entity_id"\n` +
-      `    JOIN "wide_table_columns" wtc ON wtc."field_mapping_id" = fm."id"\n` +
-      `  WHERE cd."organization_id" = '${organizationId}'\n` +
-      `    AND ce."id" IN (${readableIdsLiteral})\n` +
-      `    AND cd."deleted" IS NULL\n` +
-      `    AND fm."deleted" IS NULL\n` +
-      `    AND ce."deleted" IS NULL\n` +
-      `    AND wtc."deleted" IS NULL\n` +
-      `    AND wtc."retired_at" IS NULL`;
-    views.push(metaColumnsDdl);
+        `    ce."id" AS "connector_entity_id",\n` +
+        `    ce."key" AS "entity_key",\n` +
+        `    cd."id" AS "column_definition_id",\n` +
+        `    cd."key" AS "column_key",\n` +
+        `    fm."normalized_key" AS "normalized_key",\n` +
+        `    wtc."column_name" AS "wide_column_name",\n` +
+        `    cd."label" AS "label",\n` +
+        `    cd."type"::text AS "type",\n` +
+        `    cd."description" AS "description",\n` +
+        `    fm."ref_entity_key" AS "ref_entity_key",\n` +
+        `    fm."ref_normalized_key" AS "ref_normalized_key"\n` +
+        `  FROM "column_definitions" cd\n` +
+        `    JOIN "field_mappings" fm ON fm."column_definition_id" = cd."id"\n` +
+        `    JOIN "connector_entities" ce ON ce."id" = fm."connector_entity_id"\n` +
+        `    JOIN "wide_table_columns" wtc ON wtc."field_mapping_id" = fm."id"\n` +
+        `  WHERE cd."organization_id" = '${organizationId}'\n` +
+        `    AND ce."id" IN (${readableIdsLiteral})\n` +
+        `    AND cd."deleted" IS NULL\n` +
+        `    AND fm."deleted" IS NULL\n` +
+        `    AND ce."deleted" IS NULL\n` +
+        `    AND wtc."deleted" IS NULL\n` +
+        `    AND wtc."retired_at" IS NULL`
+    );
     viewMap.set("_meta_columns", "_meta_columns");
 
     // `_meta_column_catalog` — the org's full column-definition catalog.
@@ -314,18 +361,19 @@ export class PortalSqlServiceImpl {
     // Org-scope only (no station / read-capability filter — the
     // catalog is org-wide and contains no per-row data, just labels +
     // semantic types).
-    const metaColumnCatalogDdl =
-      `CREATE OR REPLACE TEMP VIEW "_meta_column_catalog" AS\n` +
+    pushTempView(
+      views,
+      `"_meta_column_catalog"`,
       `  SELECT\n` +
-      `    "id" AS "column_definition_id",\n` +
-      `    "key" AS "column_key",\n` +
-      `    "label" AS "label",\n` +
-      `    "type"::text AS "type",\n` +
-      `    "description" AS "description"\n` +
-      `  FROM "column_definitions"\n` +
-      `  WHERE "organization_id" = '${organizationId}'\n` +
-      `    AND "deleted" IS NULL`;
-    views.push(metaColumnCatalogDdl);
+        `    "id" AS "column_definition_id",\n` +
+        `    "key" AS "column_key",\n` +
+        `    "label" AS "label",\n` +
+        `    "type"::text AS "type",\n` +
+        `    "description" AS "description"\n` +
+        `  FROM "column_definitions"\n` +
+        `  WHERE "organization_id" = '${organizationId}'\n` +
+        `    AND "deleted" IS NULL`
+    );
     viewMap.set("_meta_column_catalog", "_meta_column_catalog");
 
     // Note: connector instances are NOT exposed as a meta view. They're
@@ -336,6 +384,519 @@ export class PortalSqlServiceImpl {
     // Entities and column definitions, by contrast, CAN change
     // mid-session (the agent creates new ones, syncs add columns), so
     // they get meta views for runtime introspection.
+
+    return { views, viewMap };
+  }
+
+  /**
+   * Build the per-call temp-view set for a **user session** (#599) — the
+   * per-user, curated-view-scoped counterpart to {@link buildSessionViews}.
+   *
+   * The view set is the station's attached curated views (`station_views`)
+   * intersected with the caller's `read curated_view:<id>` grants; each
+   * emitted temp view is named by the view's `key`, projects only the
+   * columns the caller can read (the view's effective projection ∩ the
+   * caller's `read field_mapping` grants), and ANDs the view's stored
+   * `whereClause` after the org + soft-delete guard. A class-level
+   * `deny read entity_record` suppresses all data (deny-wins). The `_meta_*`
+   * introspection views rebuild **per granted view**, so a member never
+   * learns the name of a view/column they cannot query.
+   *
+   * Fail-closed: no readable views ⇒ empty data views (only the `_meta_*`
+   * shells). This is what every user-facing SQL surface uses; the org-wide
+   * {@link buildSessionViews} remains for the no-user map-tile/dissolve
+   * pipeline (#643).
+   */
+  /**
+   * The caller's granted, readable curated views for a station — the single
+   * source of "what data this user can see," shared by the SQL session
+   * ({@link resolveViewsForSession}) and the introspection surfaces
+   * (`buildStationContext` roster + the `station_context` tool) so the three
+   * never drift. Returns the loaded {@link PermissionSet} (callers reuse it)
+   * and, per granted view, the wide columns the caller may actually read —
+   * effective projection ∩ non-hidden ∩ `read field_mapping` (deny-wins).
+   */
+  async resolveGrantedViewColumns(
+    stationId: string,
+    organizationId: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<{
+    set: PermissionSet;
+    views: Array<{ view: CuratedViewSelect; columns: WideTableCachedColumn[] }>;
+  }> {
+    if (!UUID_RE.test(organizationId)) {
+      throw new ApiError(
+        500,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `invalid organizationId for portal sql session: ${organizationId}`
+      );
+    }
+
+    // Resolve the caller's authorization once (roles → policies + grants;
+    // FK conditions expanded to concrete field_mapping reads in loadSet).
+    const roles = (await userRolesRepo.findEffectiveRoleNames(
+      userId,
+      organizationId,
+      client
+    )) as OrgRole[];
+    const set = await PermissionService.loadSet(
+      { userId, organizationId, roles },
+      client
+    );
+
+    // deny-wins: an explicit class-level `deny read entity_record` empties
+    // the whole data plane (never the raw passthrough). Absence of an allow
+    // does NOT suppress — a view's read authority is the view grant itself.
+    const entityRecordDenied = set.isDenied("read", "entity_record", {
+      type: "entity_record",
+    });
+
+    // Attached views ∩ readable views.
+    const attachments = await stationViewsRepo.findByStationId(
+      stationId,
+      client
+    );
+    const attachedViewIds = [
+      ...new Set(attachments.map((a) => a.curatedViewId)),
+    ];
+    const attachedViews = (
+      await Promise.all(
+        attachedViewIds.map((id) => curatedViewsRepo.findById(id, client))
+      )
+    ).filter((v): v is NonNullable<typeof v> => v != null);
+    const grantedViews = entityRecordDenied
+      ? []
+      : attachedViews.filter((v) =>
+          set.can("resource.read", {
+            type: "curated_view",
+            id: v.id,
+            createdBy: v.createdBy,
+          })
+        );
+
+    const usedKeys = new Set<string>();
+    const result: Array<{
+      view: CuratedViewSelect;
+      columns: WideTableCachedColumn[];
+    }> = [];
+    for (const view of grantedViews) {
+      if (!UUID_RE.test(view.connectorEntityId)) {
+        throw new ApiError(
+          500,
+          ApiCode.PORTAL_SQL_FORBIDDEN,
+          `invalid connectorEntityId for curated view: ${view.connectorEntityId}`
+        );
+      }
+      if (usedKeys.has(view.key)) {
+        logger.warn(
+          { stationId, viewKey: view.key, viewId: view.id },
+          "duplicate curated-view key in station — skipping view"
+        );
+        continue;
+      }
+
+      const columns = await this.resolveOneViewColumns(view, set, client);
+      usedKeys.add(view.key);
+      result.push({ view, columns });
+    }
+
+    return { set, views: result };
+  }
+
+  /**
+   * The columns a caller may read through ONE curated view: its effective
+   * projection (explicit field-mapping selection, or — when it has none — all
+   * of the entity's live columns), minus hidden metadata, intersected with the
+   * caller's `read field_mapping` grants (deny-wins). The single source for the
+   * session build ({@link resolveGrantedViewColumns}) and the standalone
+   * detail/records endpoints ({@link resolveViewColumnsById}), so the two can
+   * never drift.
+   */
+  private async resolveOneViewColumns(
+    view: CuratedViewSelect,
+    set: PermissionSet,
+    client: DbClient
+  ): Promise<WideTableCachedColumn[]> {
+    const stmt = await this.deps.statementCache.get(
+      view.connectorEntityId,
+      client
+    );
+    const projectionRows =
+      await curatedViewFieldMappingsRepo.findByCuratedViewId(view.id, client);
+    const effectiveFmIds = projectionRows.length
+      ? new Set(projectionRows.map((p) => p.fieldMappingId))
+      : new Set(stmt.columns.map((c) => c.fieldMappingId));
+    return stmt.columns.filter(
+      (c) =>
+        !VIEW_HIDDEN_COLUMNS.has(c.columnName) &&
+        effectiveFmIds.has(c.fieldMappingId) &&
+        set.can("resource.read", {
+          type: "field_mapping",
+          id: c.fieldMappingId,
+        })
+    );
+  }
+
+  /**
+   * Single-view resolution for the detail/records endpoints — no station
+   * scope. The view must be org-scoped, readable by the caller (`read
+   * curated_view`, not suppressed by an `entity_record` deny). Returns `null`
+   * when the caller cannot read it (→ 404: unreadable == absent).
+   */
+  async resolveViewColumnsById(
+    viewId: string,
+    organizationId: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<{
+    set: PermissionSet;
+    view: CuratedViewSelect;
+    columns: WideTableCachedColumn[];
+  } | null> {
+    if (!UUID_RE.test(organizationId)) {
+      throw new ApiError(
+        500,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `invalid organizationId for curated view records: ${organizationId}`
+      );
+    }
+    const view = await curatedViewsRepo.findById(viewId, client);
+    if (!view || view.organizationId !== organizationId) return null;
+
+    const roles = (await userRolesRepo.findEffectiveRoleNames(
+      userId,
+      organizationId,
+      client
+    )) as OrgRole[];
+    const set = await PermissionService.loadSet(
+      { userId, organizationId, roles },
+      client
+    );
+    const readable =
+      !set.isDenied("read", "entity_record", { type: "entity_record" }) &&
+      set.can("resource.read", {
+        type: "curated_view",
+        id: view.id,
+        createdBy: view.createdBy,
+      });
+    if (!readable) return null;
+    if (!UUID_RE.test(view.connectorEntityId)) {
+      throw new ApiError(
+        500,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `invalid connectorEntityId for curated view: ${view.connectorEntityId}`
+      );
+    }
+    const columns = await this.resolveOneViewColumns(view, set, client);
+    return { set, view, columns };
+  }
+
+  /**
+   * The rows of ONE curated view for the detail records table (#599): the
+   * view's projection (∩ field grants) + its `filter`, under the org +
+   * soft-delete guard, offset-paginated. Returns `null` when the caller
+   * cannot read the view (→ 404). Column names come from the statement cache
+   * (safe idents) and every filter literal is escaped by `renderFilterGroup-
+   * ToSql`, so the raw SQL carries no un-escaped input.
+   */
+  async queryCuratedViewRecords(
+    viewId: string,
+    organizationId: string,
+    userId: string,
+    opts: {
+      limit: number;
+      offset: number;
+      /** A projected column key to order by. Anything outside the view's
+       *  projection (e.g. the default `created`) falls back to the stable
+       *  record-id order — sort can never reach an un-projected column. */
+      sortBy?: string;
+      sortOrder?: "asc" | "desc";
+      /** Case-insensitive substring match across the projected columns. */
+      search?: string;
+    },
+    client: DbClient = db
+  ): Promise<{
+    records: Record<string, unknown>[];
+    total: number;
+    columns: { key: string; label: string }[];
+  } | null> {
+    const resolved = await this.resolveViewColumnsById(
+      viewId,
+      organizationId,
+      userId,
+      client
+    );
+    if (!resolved) return null;
+    const { view, columns } = resolved;
+
+    // Resolve the entity's column definitions once — reused for the display
+    // labels (below) and the filter render's column-type map (further down),
+    // so a filtered view doesn't resolve them twice.
+    const resolvedCols = await resolveColumns(view.connectorEntityId);
+    const labelByKey = new Map(
+      resolvedCols.map((c) => [c.normalizedKey, c.label])
+    );
+    const columnsOut = columns.map((c) => ({
+      key: c.columnName,
+      label: labelByKey.get(c.normalizedKey) ?? c.columnName,
+    }));
+
+    const tableName = `er__${view.connectorEntityId}`;
+    const selectList = [
+      `w."entity_record_id" AS "_record_id"`,
+      `w."source_id" AS "source_id"`,
+      ...columns.map(
+        (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.columnName)}`
+      ),
+    ].join(", ");
+
+    const whereParts = [
+      `w."organization_id" = ${quoteLiteral(organizationId)}`,
+      `w."deleted" IS NULL`,
+    ];
+    if (view.filter) {
+      const stmt = await this.deps.statementCache.get(
+        view.connectorEntityId,
+        client
+      );
+      const columnTypes = Object.fromEntries(
+        resolvedCols.map((c) => [c.normalizedKey, c.type])
+      );
+      const rendered = renderFilterGroupToSql(view.filter, stmt, columnTypes);
+      if (typeof rendered !== "string") {
+        throw new ApiError(
+          500,
+          ApiCode.CURATED_VIEW_INVALID_FILTER,
+          rendered.message
+        );
+      }
+      whereParts.push(`(${rendered})`);
+    }
+    // Search: case-insensitive **literal** substring across the projected
+    // columns only (never an un-projected column). The LIKE metacharacters
+    // (\ % _) are escaped so the term matches literally (ILIKE's default escape
+    // char is backslash), then wrapped in %…%; quoteLiteral handles the
+    // SQL-quote escaping — injection-safe.
+    const search = opts.search?.trim();
+    if (search && columns.length > 0) {
+      const escaped = search.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+      const term = quoteLiteral(`%${escaped}%`);
+      const clauses = columns.map(
+        (c) => `w.${quoteIdent(c.columnName)}::text ILIKE ${term}`
+      );
+      whereParts.push(`(${clauses.join(" OR ")})`);
+    }
+    const whereSql = whereParts.join(" AND ");
+    const limit = Math.max(1, Math.min(opts.limit, 500));
+    const offset = Math.max(0, opts.offset);
+
+    // ORDER BY the requested projected column, always ending in the unique
+    // `entity_record_id` tiebreaker (#433 — a paginated order must be total).
+    // A `sortBy` that names no projected column falls back to record-id order.
+    const dir = opts.sortOrder === "desc" ? "DESC" : "ASC";
+    const sortCol = columns.find((c) => c.columnName === opts.sortBy);
+    const orderBySql = sortCol
+      ? `w.${quoteIdent(sortCol.columnName)} ${dir}, w."entity_record_id" ASC`
+      : `w."entity_record_id" ${dir}`;
+
+    const rowsSql =
+      `SELECT ${selectList}\n` +
+      `  FROM ${quoteIdent(tableName)} w\n` +
+      `  WHERE ${whereSql}\n` +
+      `  ORDER BY ${orderBySql}\n` +
+      `  LIMIT ${limit} OFFSET ${offset}`;
+    const countSql =
+      `SELECT COUNT(*)::int AS n FROM ${quoteIdent(tableName)} w ` +
+      `WHERE ${whereSql}`;
+
+    const [rowsRes, countRes] = await Promise.all([
+      client.execute(sql.raw(rowsSql)),
+      client.execute(sql.raw(countSql)),
+    ]);
+    const records = rowsRes as unknown as Record<string, unknown>[];
+    const countRows = countRes as unknown as Array<{ n: number }>;
+    return {
+      records,
+      total: Number(countRows[0]?.n ?? 0),
+      columns: columnsOut,
+    };
+  }
+
+  async resolveViewsForSession(
+    stationId: string,
+    organizationId: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<SessionViewBuild> {
+    const { set, views: grantedViewColumns } =
+      await this.resolveGrantedViewColumns(
+        stationId,
+        organizationId,
+        userId,
+        client
+      );
+
+    const views: string[] = [];
+    const viewMap = new Map<string, string>();
+    const grantedViewIds: string[] = [];
+    // (viewKey, fieldMappingId) pairs feeding `_meta_columns`.
+    const metaPairs: { viewKey: string; fieldMappingId: string }[] = [];
+
+    for (const { view, columns } of grantedViewColumns) {
+      const projections: string[] = [
+        `w."entity_record_id" AS "_record_id"`,
+        `'${view.connectorEntityId}'::text AS "_connector_entity_id"`,
+        `w."source_id" AS "source_id"`,
+      ];
+      for (const c of columns) {
+        projections.push(
+          `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.columnName)}`
+        );
+        metaPairs.push({ viewKey: view.key, fieldMappingId: c.fieldMappingId });
+      }
+
+      const tableName = `er__${view.connectorEntityId}`;
+      const whereParts = [
+        `w."organization_id" = ${quoteLiteral(organizationId)}`,
+        `w."deleted" IS NULL`,
+      ];
+      // #599: a stored `FilterGroup` is rendered to a safe, escaped inline
+      // WHERE (`renderFilterGroupToSql`) and ANDed inside parens so it cannot
+      // break out of the org/soft-delete guard. A render failure fails closed —
+      // a stored filter must always render.
+      if (view.filter) {
+        const stmt = await this.deps.statementCache.get(
+          view.connectorEntityId,
+          client
+        );
+        const columnTypes = Object.fromEntries(
+          (await resolveColumns(view.connectorEntityId)).map((c) => [
+            c.normalizedKey,
+            c.type,
+          ])
+        );
+        const rendered = renderFilterGroupToSql(view.filter, stmt, columnTypes);
+        if (typeof rendered !== "string") {
+          throw new ApiError(
+            500,
+            ApiCode.PORTAL_SQL_FORBIDDEN,
+            `curated view ${view.id} filter failed to render: ${rendered.message}`
+          );
+        }
+        whereParts.push(`(${rendered})`);
+      }
+
+      pushTempView(
+        views,
+        quoteIdent(view.key),
+        `  SELECT ${projections.join(", ")}\n` +
+          `  FROM ${quoteIdent(tableName)} w\n` +
+          `  WHERE ${whereParts.join("\n    AND ")}`
+      );
+      viewMap.set(view.key, view.key);
+      grantedViewIds.push(view.id);
+    }
+
+    // ── Per-view introspection meta views ─────────────────────────────
+    const orgLiteral = quoteLiteral(organizationId);
+    const grantedIdsLiteral = grantedViewIds.length
+      ? grantedViewIds
+          .map((id) => {
+            if (!UUID_RE.test(id)) {
+              throw new ApiError(
+                500,
+                ApiCode.PORTAL_SQL_FORBIDDEN,
+                `invalid curatedViewId for portal sql session: ${id}`
+              );
+            }
+            return quoteLiteral(id);
+          })
+          .join(", ")
+      : "'00000000-0000-0000-0000-000000000000'";
+
+    pushTempView(
+      views,
+      `"_meta_entities"`,
+      `  SELECT "id", "key", "label"\n` +
+        `  FROM "curated_views"\n` +
+        `  WHERE "organization_id" = ${orgLiteral}\n` +
+        `    AND "id" IN (${grantedIdsLiteral})\n` +
+        `    AND "deleted" IS NULL`
+    );
+    viewMap.set("_meta_entities", "_meta_entities");
+
+    // `_meta_columns` is driven by the in-memory (viewKey, fieldMappingId)
+    // pairs the caller can actually read. A sentinel pair (matching no field
+    // mapping) keeps the VALUES list non-empty and yields zero rows when the
+    // caller has no readable columns.
+    const metaValues = (
+      metaPairs.length
+        ? metaPairs
+        : [
+            {
+              viewKey: "__none__",
+              fieldMappingId: "00000000-0000-0000-0000-000000000000",
+            },
+          ]
+    )
+      .map(
+        (p) => `(${quoteLiteral(p.viewKey)}, ${quoteLiteral(p.fieldMappingId)})`
+      )
+      .join(", ");
+
+    pushTempView(
+      views,
+      `"_meta_columns"`,
+      `  WITH "granted"("entity_key", "field_mapping_id") AS (\n` +
+        `    VALUES ${metaValues}\n` +
+        `  )\n` +
+        `  SELECT\n` +
+        `    g."entity_key" AS "entity_key",\n` +
+        `    ce."id" AS "connector_entity_id",\n` +
+        `    cd."id" AS "column_definition_id",\n` +
+        `    cd."key" AS "column_key",\n` +
+        `    fm."normalized_key" AS "normalized_key",\n` +
+        `    wtc."column_name" AS "wide_column_name",\n` +
+        `    cd."label" AS "label",\n` +
+        `    cd."type"::text AS "type",\n` +
+        `    cd."description" AS "description",\n` +
+        `    fm."ref_entity_key" AS "ref_entity_key",\n` +
+        `    fm."ref_normalized_key" AS "ref_normalized_key"\n` +
+        `  FROM "granted" g\n` +
+        `    JOIN "field_mappings" fm ON fm."id" = g."field_mapping_id"\n` +
+        `    JOIN "column_definitions" cd ON cd."id" = fm."column_definition_id"\n` +
+        `    JOIN "connector_entities" ce ON ce."id" = fm."connector_entity_id"\n` +
+        `    JOIN "wide_table_columns" wtc ON wtc."field_mapping_id" = fm."id"\n` +
+        `  WHERE cd."organization_id" = ${orgLiteral}\n` +
+        `    AND cd."deleted" IS NULL\n` +
+        `    AND fm."deleted" IS NULL\n` +
+        `    AND ce."deleted" IS NULL\n` +
+        `    AND wtc."deleted" IS NULL\n` +
+        `    AND wtc."retired_at" IS NULL`
+    );
+    viewMap.set("_meta_columns", "_meta_columns");
+
+    // `_meta_column_catalog` — the org's full column-definition catalog. It
+    // is admin-facing (used when creating entities), so it is emitted only
+    // for callers who can read column definitions class-wide (owner/admin via
+    // `*`); a member session omits it so the catalog never leaks.
+    if (set.canPerformAny("read", "column_definition")) {
+      pushTempView(
+        views,
+        `"_meta_column_catalog"`,
+        `  SELECT\n` +
+          `    "id" AS "column_definition_id",\n` +
+          `    "key" AS "column_key",\n` +
+          `    "label" AS "label",\n` +
+          `    "type"::text AS "type",\n` +
+          `    "description" AS "description"\n` +
+          `  FROM "column_definitions"\n` +
+          `  WHERE "organization_id" = ${orgLiteral}\n` +
+          `    AND "deleted" IS NULL`
+      );
+      viewMap.set("_meta_column_catalog", "_meta_column_catalog");
+    }
 
     return { views, viewMap };
   }
@@ -378,9 +939,10 @@ export class PortalSqlServiceImpl {
     // this txn holds a connection, or concurrent callers deadlock the pool
     // (each holds one connection and blocks acquiring a second). See the tile
     // renderer for the acute fan-out case. (#314)
-    const build = await this.buildSessionViews(
+    const build = await this.resolveViewsForSession(
       params.stationId,
-      params.organizationId
+      params.organizationId,
+      params.userId
     );
 
     try {
@@ -482,6 +1044,7 @@ export class PortalSqlServiceImpl {
     sql: string;
     stationId: string;
     organizationId: string;
+    userId: string;
   }): Promise<{ totalCost: number; estimatedRows: number }> {
     // Mirror runSqlQuery's validation + implicit-LIMIT wrap so the probed
     // plan matches what the synchronous path would actually run.
@@ -492,9 +1055,10 @@ export class PortalSqlServiceImpl {
 
     // Build the session-view DDL before the txn — same pool-deadlock avoidance
     // as runSqlQuery / the tile renderer. (#314)
-    const build = await this.buildSessionViews(
+    const build = await this.resolveViewsForSession(
       params.stationId,
-      params.organizationId
+      params.organizationId,
+      params.userId
     );
 
     try {

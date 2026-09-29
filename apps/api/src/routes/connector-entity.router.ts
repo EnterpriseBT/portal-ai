@@ -30,6 +30,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { AuditService } from "../services/audit.service.js";
@@ -173,6 +174,16 @@ connectorEntityRouter.get(
         );
       }
 
+      // #599: RBAC-gate raw entity reads — members see only entities they
+      // created (≈none, entities are admin/sync-provisioned); admins (`*`) all.
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("entity", {
+        createdByCol: connectorEntities.createdBy,
+        idCol: connectorEntities.id,
+      });
+      if (visibility) filters.push(visibility);
+
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
       const include_ = include
@@ -304,6 +315,21 @@ connectorEntityRouter.get(
           )
         );
       }
+      // #599: an unreadable entity is indistinguishable from absent (404).
+      if (
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          { type: "entity", id, createdBy: connectorEntity.createdBy }
+        )
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
+      }
 
       return HttpService.success<ConnectorEntityGetResponsePayload>(res, {
         connectorEntity:
@@ -365,6 +391,21 @@ connectorEntityRouter.get(
 
       const entity = await DbService.repository.connectorEntities.findById(id);
       if (!entity || entity.organizationId !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
+      }
+      // #599: unreadable entity == absent (404).
+      if (
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          { type: "entity", id, createdBy: entity.createdBy }
+        )
+      ) {
         return next(
           new ApiError(
             404,
@@ -682,6 +723,17 @@ connectorEntityRouter.patch(
           )
         );
       }
+      // #599: RBAC write gate (in addition to connector capability) — a member
+      // may edit only entities they created; owner/admin any.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "entity",
+          id,
+          createdBy: existing.createdBy,
+        }
+      );
 
       await assertWriteCapability(id);
 
@@ -793,6 +845,21 @@ connectorEntityRouter.get(
       const existing =
         await DbService.repository.connectorEntities.findById(id);
       if (!existing) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
+      }
+      // #599: unreadable entity == absent (404).
+      if (
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          { type: "entity", id, createdBy: existing.createdBy }
+        )
+      ) {
         return next(
           new ApiError(
             404,
@@ -915,6 +982,18 @@ connectorEntityRouter.delete(
     try {
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
+
+      // #599: RBAC delete gate — a member may delete only entities they
+      // created; owner/admin any.
+      const toDelete =
+        await DbService.repository.connectorEntities.findById(id);
+      if (toDelete) {
+        await PermissionService.check(
+          req.application!.metadata,
+          "resource.delete",
+          { type: "entity", id, createdBy: toDelete.createdBy }
+        );
+      }
 
       await JobLockService.assertConnectorEntityUnlocked([id], organizationId);
       await ConnectorEntityValidationService.validateDelete(id);
@@ -1066,6 +1145,19 @@ connectorEntityRouter.post(
       // Scope + read-capability check.
       const entity = await DbService.repository.connectorEntities.findById(id);
       if (!entity || entity.organizationId !== organizationId) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+          "Connector entity not found"
+        );
+      }
+      // #599: unreadable entity == absent (404).
+      if (
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          { type: "entity", id, createdBy: entity.createdBy }
+        )
+      ) {
         throw new ApiError(
           404,
           ApiCode.CONNECTOR_ENTITY_NOT_FOUND,

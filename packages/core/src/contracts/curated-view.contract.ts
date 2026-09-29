@@ -1,0 +1,193 @@
+import { z } from "zod";
+
+import { CuratedViewSchema } from "../models/curated-view.model.js";
+import { FilterExpressionSchema } from "./filter.contract.js";
+import {
+  PaginatedResponsePayloadSchema,
+  PaginationRequestQuerySchema,
+} from "./pagination.contract.js";
+
+// ── Enriched ──────────────────────────────────────────────────────────
+
+/** A curated view plus the ids of the field mappings in its projection
+ *  (empty = unrestricted / all the entity's columns). */
+export const CuratedViewWithProjectionSchema = CuratedViewSchema.extend({
+  fieldMappingIds: z.array(z.string()),
+});
+
+export type CuratedViewWithProjection = z.infer<
+  typeof CuratedViewWithProjectionSchema
+>;
+
+// ── List ──────────────────────────────────────────────────────────────
+
+export const CuratedViewListRequestQuerySchema =
+  PaginationRequestQuerySchema.extend({
+    search: z.string().optional(),
+    sortBy: z.enum(["label", "key", "created"]).optional().default("created"),
+    include: z.string().optional(),
+    connectorEntityId: z.string().optional(),
+    /** Restrict to the curated views attached to this station (#599). */
+    stationId: z.string().optional(),
+  });
+
+export type CuratedViewListRequestQuery = z.infer<
+  typeof CuratedViewListRequestQuerySchema
+>;
+
+export const CuratedViewListResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    curatedViews: z.array(CuratedViewSchema),
+  });
+
+export type CuratedViewListResponsePayload = z.infer<
+  typeof CuratedViewListResponsePayloadSchema
+>;
+
+// ── Get ───────────────────────────────────────────────────────────────
+
+export const CuratedViewGetResponsePayloadSchema = z.object({
+  curatedView: CuratedViewWithProjectionSchema,
+});
+
+export type CuratedViewGetResponsePayload = z.infer<
+  typeof CuratedViewGetResponsePayloadSchema
+>;
+
+// ── Create ────────────────────────────────────────────────────────────
+
+/** Reserved session-view identifiers a curated-view `key` must not collide
+ *  with — the `_meta_*` introspection views + the fixed projection columns
+ *  (#599). A view keyed one of these would clobber the agent's introspection
+ *  when materialized as a temp view. */
+const RESERVED_VIEW_KEYS = new Set([
+  "_meta_entities",
+  "_meta_columns",
+  "_meta_column_catalog",
+  "_record_id",
+  "_connector_entity_id",
+  "source_id",
+]);
+
+/** A curated-view `key` becomes a Postgres temp-view identifier (≤63 bytes),
+ *  so it is length-capped and may not reuse a reserved/system name. */
+export const CuratedViewKeySchema = z
+  .string()
+  .min(1)
+  .max(63)
+  .refine((k) => !k.startsWith("_meta_") && !RESERVED_VIEW_KEYS.has(k), {
+    message:
+      "Reserved key — must not be a _meta_* name, _record_id, _connector_entity_id, or source_id",
+  });
+
+export const CuratedViewCreateRequestBodySchema = z.object({
+  connectorEntityId: z.string().min(1),
+  key: CuratedViewKeySchema,
+  label: z.string().min(1),
+  description: z.string().nullable().optional(),
+  /** A structured `FilterGroup` (filter.contract.ts); omit for no row filter. */
+  filter: FilterExpressionSchema.nullable().optional(),
+  /** The projection's field-mapping ids; omit/empty = unrestricted (all columns). */
+  fieldMappingIds: z.array(z.string()).optional(),
+});
+
+export type CuratedViewCreateRequestBody = z.infer<
+  typeof CuratedViewCreateRequestBodySchema
+>;
+
+export const CuratedViewCreateResponsePayloadSchema = z.object({
+  curatedView: CuratedViewSchema,
+});
+
+export type CuratedViewCreateResponsePayload = z.infer<
+  typeof CuratedViewCreateResponsePayloadSchema
+>;
+
+// ── Update ────────────────────────────────────────────────────────────
+
+export const CuratedViewUpdateRequestBodySchema = z.object({
+  label: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  filter: FilterExpressionSchema.nullable().optional(),
+  fieldMappingIds: z.array(z.string()).optional(),
+});
+
+export type CuratedViewUpdateRequestBody = z.infer<
+  typeof CuratedViewUpdateRequestBodySchema
+>;
+
+export const CuratedViewUpdateResponsePayloadSchema = z.object({
+  curatedView: CuratedViewSchema,
+});
+
+export type CuratedViewUpdateResponsePayload = z.infer<
+  typeof CuratedViewUpdateResponsePayloadSchema
+>;
+
+// ── Delete ────────────────────────────────────────────────────────────
+
+export const CuratedViewDeleteResponsePayloadSchema = z.object({
+  id: z.string(),
+  cascaded: z.object({
+    fieldMappings: z.number(),
+    stationViews: z.number(),
+    grants: z.number(),
+  }),
+});
+
+export type CuratedViewDeleteResponsePayload = z.infer<
+  typeof CuratedViewDeleteResponsePayloadSchema
+>;
+
+// ── Attach / detach (station_views) ───────────────────────────────────
+
+export const CuratedViewAttachRequestBodySchema = z.object({
+  stationId: z.string().min(1),
+});
+
+export type CuratedViewAttachRequestBody = z.infer<
+  typeof CuratedViewAttachRequestBodySchema
+>;
+
+export const CuratedViewAttachResponsePayloadSchema = z.object({
+  stationId: z.string(),
+  curatedViewId: z.string(),
+});
+
+export type CuratedViewAttachResponsePayload = z.infer<
+  typeof CuratedViewAttachResponsePayloadSchema
+>;
+
+// ── Records ───────────────────────────────────────────────────────────
+
+export const CuratedViewRecordsRequestQuerySchema =
+  PaginationRequestQuerySchema.extend({});
+
+export type CuratedViewRecordsRequestQuery = z.infer<
+  typeof CuratedViewRecordsRequestQuerySchema
+>;
+
+/** A projected column of a curated view's record set — the header the detail
+ *  table renders and the key a `sortBy` may reference. `key` is the wide-table
+ *  column name; `label` is its display header. */
+export const CuratedViewRecordColumnSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+});
+
+export type CuratedViewRecordColumn = z.infer<
+  typeof CuratedViewRecordColumnSchema
+>;
+
+export const CuratedViewRecordsResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    /** The view's projected columns, in projection order — the sortable headers
+     *  the detail table renders (a `sortBy` outside this set falls back to the
+     *  stable record-id order server-side). */
+    columns: z.array(CuratedViewRecordColumnSchema),
+    records: z.array(z.record(z.string(), z.unknown())),
+  });
+
+export type CuratedViewRecordsResponsePayload = z.infer<
+  typeof CuratedViewRecordsResponsePayloadSchema
+>;

@@ -1387,6 +1387,37 @@ const options: swaggerJsdoc.Options = {
             deletedBy: { type: ["string", "null"] },
           },
         },
+        CuratedView: {
+          type: "object",
+          required: [
+            "id",
+            "organizationId",
+            "connectorEntityId",
+            "key",
+            "label",
+            "created",
+            "createdBy",
+          ],
+          properties: {
+            id: { type: "string" },
+            organizationId: { type: "string" },
+            connectorEntityId: { type: "string" },
+            key: { type: "string", example: "ne_accounts" },
+            label: { type: "string", example: "NE Accounts" },
+            description: { type: ["string", "null"] },
+            filter: {
+              type: ["object", "null"],
+              description:
+                "A structured FilterGroup (row filter); null = all rows",
+            },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: ["number", "null"] },
+            updatedBy: { type: ["string", "null"] },
+            deleted: { type: ["number", "null"] },
+            deletedBy: { type: ["string", "null"] },
+          },
+        },
         EntityGroupMember: {
           type: "object",
           required: [

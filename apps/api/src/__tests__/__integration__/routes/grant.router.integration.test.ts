@@ -122,6 +122,84 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     return id;
   }
 
+  async function addCuratedView(orgId: string, createdBy: string) {
+    const base = {
+      created: Date.now(),
+      createdBy,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    const connDefId = generateId();
+    await db.insert(schema.connectorDefinitions).values({
+      id: connDefId,
+      slug: `cd-${connDefId.slice(0, 8)}`,
+      display: "CD",
+      category: "crm",
+      authType: "oauth2",
+      configSchema: {},
+      capabilityFlags: { read: true, write: true, sync: true },
+      isActive: true,
+      version: "1.0.0",
+      iconUrl: null,
+      ...base,
+    } as never);
+    const instId = generateId();
+    await db.insert(schema.connectorInstances).values({
+      id: instId,
+      connectorDefinitionId: connDefId,
+      organizationId: orgId,
+      name: "Inst",
+      status: "active",
+      config: {},
+      credentials: null,
+      lastSyncAt: null,
+      lastErrorMessage: null,
+      enabledCapabilityFlags: { read: true, write: true, sync: true },
+      ...base,
+    } as never);
+    const entityId = generateId();
+    await db.insert(schema.connectorEntities).values({
+      id: entityId,
+      organizationId: orgId,
+      connectorInstanceId: instId,
+      key: `e-${entityId.slice(0, 6)}`,
+      label: "E",
+      ...base,
+    } as never);
+    const viewId = generateId();
+    await db.insert(schema.curatedViews).values({
+      id: viewId,
+      organizationId: orgId,
+      connectorEntityId: entityId,
+      key: `v-${viewId.slice(0, 6)}`,
+      label: "V",
+      description: null,
+      filter: null,
+      ...base,
+    } as never);
+    return viewId;
+  }
+
+  const fieldGrantsForView = (
+    orgId: string,
+    principalId: string,
+    viewId: string
+  ) =>
+    db
+      .select()
+      .from(permissionGrants)
+      .where(
+        and(
+          eq(permissionGrants.organizationId, orgId),
+          eq(permissionGrants.principalId, principalId),
+          eq(permissionGrants.resourceType, "field_mapping"),
+          eq(permissionGrants.condition, "in_curated_view"),
+          eq(permissionGrants.conditionParam, viewId)
+        )
+      );
+
   const liveGrants = (orgId: string, resourceId: string) =>
     db
       .select()
@@ -307,5 +385,73 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     // m1's two rows gone; m2's one remains.
     const remaining = await liveGrants(orgId, station);
     expect(remaining.every((r) => r.principalId === m2)).toBe(true);
+  });
+
+  // #599: sharing a curated view composes the view read grant + the
+  // `in_curated_view` field grant (so the recipient sees the view's columns).
+  it("sharing a curated_view composes a read grant + the in_curated_view field grant", async () => {
+    const { orgId, callerId } = await seedOrg("owner");
+    const member = await addMember(orgId);
+    const viewId = await addCuratedView(orgId, callerId);
+
+    const res = await share({
+      resourceType: "curated_view",
+      resourceId: viewId,
+      grantee: { type: "user", userId: member },
+      access: "read",
+    });
+    expect(res.status).toBe(200);
+
+    const viewGrants = await liveGrants(orgId, viewId);
+    expect(viewGrants).toHaveLength(1);
+    expect(viewGrants[0].verb).toBe("read");
+    expect(viewGrants[0].resourceType).toBe("curated_view");
+
+    const fieldGrants = await fieldGrantsForView(orgId, member, viewId);
+    expect(fieldGrants).toHaveLength(1);
+    expect(fieldGrants[0].conditionParam).toBe(viewId);
+    expect(fieldGrants[0].resourceId).toBeNull();
+  });
+
+  it("sharing a curated_view to the team grants the member role", async () => {
+    const { orgId, callerId } = await seedOrg("owner");
+    const viewId = await addCuratedView(orgId, callerId);
+    const res = await share({
+      resourceType: "curated_view",
+      resourceId: viewId,
+      grantee: { type: "team" },
+      access: "read",
+    });
+    expect(res.status).toBe(200);
+    const viewGrants = await liveGrants(orgId, viewId);
+    expect(viewGrants[0].principalType).toBe("role");
+    expect(viewGrants[0].principalId).toBe(`sysrole:${orgId}:member`);
+    const fieldGrants = await fieldGrantsForView(
+      orgId,
+      `sysrole:${orgId}:member`,
+      viewId
+    );
+    expect(fieldGrants).toHaveLength(1);
+  });
+
+  it("revoking a curated_view share drops both the view grant and the field grant", async () => {
+    const { orgId, callerId } = await seedOrg("owner");
+    const member = await addMember(orgId);
+    const viewId = await addCuratedView(orgId, callerId);
+    const shared = await share({
+      resourceType: "curated_view",
+      resourceId: viewId,
+      grantee: { type: "user", userId: member },
+      access: "read",
+    });
+    const grantId = shared.body.payload.grant.id as string;
+
+    const del = await request(app)
+      .delete(`/api/grants/${grantId}`)
+      .set("Authorization", "Bearer t");
+    expect(del.status).toBe(200);
+
+    expect(await liveGrants(orgId, viewId)).toHaveLength(0);
+    expect(await fieldGrantsForView(orgId, member, viewId)).toHaveLength(0);
   });
 });

@@ -62,7 +62,8 @@ describe("PortfolioMetricsTool", () => {
 describe("TechnicalIndicatorTool", () => {
   const built = new TechnicalIndicatorTool().build(
     "station-1",
-    "org-1"
+    "org-1",
+    "user-1"
   ) as unknown as ExecTool;
 
   it("computes an SMA over inline rows", async () => {

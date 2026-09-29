@@ -73,7 +73,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
   it("re-executes the pipeline and maps an inline delivery", async () => {
     const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 1, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 1,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({ resolveSqlDelivery: resolveSqlDelivery as never })
     );
     expect(out).toEqual({
@@ -84,13 +89,18 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
     // pipeline's SQL — never client input.
     expect(resolveSqlDelivery).toHaveBeenCalledWith(
       { sql: PIPELINE.sql },
-      { stationId: "st-1", organizationId: "org-1" }
+      { stationId: "st-1", organizationId: "org-1", userId: "user-1" }
     );
   });
 
   it("maps a handle delivery to the handle variant", async () => {
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 1, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 1,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({ resolveSqlDelivery: jest.fn(async () => handleDelivery) as never })
     );
     expect(out).toMatchObject({
@@ -103,7 +113,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
   it("missing message → VIZ_WIDGET_NOT_FOUND (404)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "nope", blockIndex: 1, organizationId: "org-1" },
+        {
+          messageId: "nope",
+          blockIndex: 1,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
         deps({ findMessageById: jest.fn(async () => undefined) as never })
       ),
       ApiCode.VIZ_WIDGET_NOT_FOUND,
@@ -114,7 +129,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
   it("out-of-range or non-d3 block → VIZ_WIDGET_NOT_FOUND (404)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" }, // the text block
+        {
+          messageId: "msg-1",
+          blockIndex: 0,
+          organizationId: "org-1",
+          userId: "user-1",
+        }, // the text block
         deps()
       ),
       ApiCode.VIZ_WIDGET_NOT_FOUND,
@@ -122,7 +142,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
     );
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "msg-1", blockIndex: 9, organizationId: "org-1" }, // out of range
+        {
+          messageId: "msg-1",
+          blockIndex: 9,
+          organizationId: "org-1",
+          userId: "user-1",
+        }, // out of range
         deps()
       ),
       ApiCode.VIZ_WIDGET_NOT_FOUND,
@@ -144,7 +169,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
       ],
     } as never;
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 0,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({ findMessageById: jest.fn(async () => geoMessage) as never })
     );
     expect(out).toEqual({
@@ -191,7 +221,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
       ],
     }));
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 0,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({
         findMessageById: jest.fn(async () => geoMessage) as never,
         resolveSqlDelivery: jest.fn(async () => rawInline) as never,
@@ -215,7 +250,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
   it("cross-org caller → VIZ_WIDGET_NOT_FOUND (404, no existence leak)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "msg-1", blockIndex: 1, organizationId: "other-org" },
+        {
+          messageId: "msg-1",
+          blockIndex: 1,
+          organizationId: "other-org",
+          userId: "user-1",
+        },
         deps()
       ),
       ApiCode.VIZ_WIDGET_NOT_FOUND,
@@ -229,7 +269,12 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
     });
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+        {
+          messageId: "msg-1",
+          blockIndex: 0,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
         deps({ findMessageById: jest.fn(async () => noPipeline) as never })
       ),
       ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
@@ -305,7 +350,12 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
   it("re-executes an inline data-table block's pipeline", async () => {
     const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 0,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({
         findMessageById: jest.fn(async () =>
           tableMessage(inlineTable)
@@ -319,13 +369,18 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
     });
     expect(resolveSqlDelivery).toHaveBeenCalledWith(
       { sql: PIPELINE.sql },
-      { stationId: "st-1", organizationId: "org-1" }
+      { stationId: "st-1", organizationId: "org-1", userId: "user-1" }
     );
   });
 
   it("maps a large re-execution to the handle variant", async () => {
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 0,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({
         findMessageById: jest.fn(async () =>
           tableMessage(inlineTable)
@@ -338,7 +393,12 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
 
   it("refreshes a handle-backed data-table block", async () => {
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 0,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({
         findMessageById: jest.fn(async () =>
           tableMessage({
@@ -362,7 +422,12 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
   it("legacy data-table block without a pipeline → VIZ_WIDGET_NOT_REFRESHABLE (422, not 404)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+        {
+          messageId: "msg-1",
+          blockIndex: 0,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
         deps({
           findMessageById: jest.fn(async () =>
             tableMessage({
@@ -388,7 +453,12 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
     } as never;
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+        {
+          messageId: "msg-1",
+          blockIndex: 0,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
         deps({ findMessageById: jest.fn(async () => mutation) as never })
       ),
       ApiCode.VIZ_WIDGET_NOT_FOUND,
@@ -399,7 +469,12 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
   it("cross-org caller → VIZ_WIDGET_NOT_FOUND (404, no existence leak)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(
-        { messageId: "msg-1", blockIndex: 0, organizationId: "org-OTHER" },
+        {
+          messageId: "msg-1",
+          blockIndex: 0,
+          organizationId: "org-OTHER",
+          userId: "user-1",
+        },
         deps({
           findMessageById: jest.fn(async () =>
             tableMessage(inlineTable)
@@ -433,7 +508,12 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
     }));
 
     const out = await PortalVizRefreshService.refresh(
-      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      {
+        messageId: "msg-1",
+        blockIndex: 0,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
       deps({
         findMessageById: jest.fn(async () => tableMessage(topN)) as never,
         resolveSqlDelivery: resolveSqlDelivery as never,
@@ -442,7 +522,7 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
 
     expect(resolveSqlDelivery).toHaveBeenCalledWith(
       { sql: topN.pipeline.sql },
-      { stationId: "st-1", organizationId: "org-1" }
+      { stationId: "st-1", organizationId: "org-1", userId: "user-1" }
     );
     expect(out).toEqual({
       kind: "inline",
@@ -455,7 +535,7 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
   it("executes the row's pipeline and maps an inline delivery", async () => {
     const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
     const out = await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1" },
+      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
       pinDeps({ resolveSqlDelivery: resolveSqlDelivery as never })
     );
     expect(out).toEqual({
@@ -464,13 +544,13 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
     });
     expect(resolveSqlDelivery).toHaveBeenCalledWith(
       { sql: PIPELINE.sql },
-      { stationId: "st-1", organizationId: "org-1" }
+      { stationId: "st-1", organizationId: "org-1", userId: "user-1" }
     );
   });
 
   it("maps a handle delivery to the handle variant", async () => {
     const out = await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1" },
+      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
       pinDeps({
         resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
       })
@@ -485,7 +565,7 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
   it("missing row → PORTAL_RESULT_NOT_FOUND (404)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refreshPinnedResult(
-        { portalResultId: "nope", organizationId: "org-1" },
+        { portalResultId: "nope", organizationId: "org-1", userId: "user-1" },
         pinDeps({
           findPortalResultById: jest.fn(async () => undefined) as never,
         })
@@ -498,7 +578,11 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
   it("cross-org caller → PORTAL_RESULT_NOT_FOUND (404, no existence leak)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refreshPinnedResult(
-        { portalResultId: "pr-1", organizationId: "other-org" },
+        {
+          portalResultId: "pr-1",
+          organizationId: "other-org",
+          userId: "user-1",
+        },
         pinDeps()
       ),
       ApiCode.PORTAL_RESULT_NOT_FOUND,
@@ -513,7 +597,7 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
     });
     await expectApiCode(
       PortalVizRefreshService.refreshPinnedResult(
-        { portalResultId: "pr-1", organizationId: "org-1" },
+        { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
         pinDeps({
           findPortalResultById: jest.fn(async () => staticPin) as never,
         })
@@ -527,7 +611,7 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
     const updatePortalResult = jest.fn(async () => pinRow());
     const before = Date.now();
     await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1" },
+      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
       pinDeps({ updatePortalResult: updatePortalResult as never })
     );
     expect(updatePortalResult).toHaveBeenCalledTimes(1);
@@ -558,7 +642,7 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
       limit: 5000,
     }));
     await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1" },
+      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
       pinDeps({
         resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
         updatePortalResult: updatePortalResult as never,
@@ -582,7 +666,7 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
       throw new Error("db blip");
     });
     const out = await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1" },
+      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
       pinDeps({ updatePortalResult: updatePortalResult as never })
     );
     expect(out).toEqual({

@@ -91,6 +91,12 @@ const PAGE_NAV: Record<NavPageId, Omit<SidebarNavItemDef, "pageId">> = {
     icon: IconName.Extension,
     match: "prefix",
   },
+  views: {
+    route: ApplicationRoute.CuratedViews,
+    label: "Views",
+    icon: IconName.Layers,
+    match: "prefix",
+  },
 };
 
 /** The full ordered nav: the un-gated Dashboard, then every page in

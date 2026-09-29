@@ -522,6 +522,8 @@ export const SqlQueryJobMetadataSchema = z.object({
   sql: z.string(),
   stationId: z.string(),
   organizationId: z.string(),
+  /** #599: the enqueuing user — the off-thread scan is per-user view-scoped. */
+  userId: z.string(),
 });
 export type SqlQueryJobMetadata = z.infer<typeof SqlQueryJobMetadataSchema>;
 

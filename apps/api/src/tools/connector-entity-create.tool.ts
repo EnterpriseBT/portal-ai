@@ -154,11 +154,14 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
             }
           });
 
-          // Provision each new entity's `er__<id>` wide-table so it's
-          // immediately queryable through portal-sql `buildSessionViews`.
-          // Without this the CREATE VIEW statement that aliases the
-          // entity references a missing relation and the entire portal
-          // SQL surface errors. The route at
+          // Provision each new entity's `er__<id>` wide-table so any curated
+          // view over it can materialize (the CREATE VIEW aliasing the entity
+          // would otherwise reference a missing relation). NOTE (#599): a new
+          // entity is NOT auto-exposed — the agent SQL session is scoped to
+          // granted curated views (`resolveViewsForSession`), and no default
+          // view is created (explicit views only). Raw data is reachable via
+          // the Entities API (RBAC-gated); in-session view creation is #645.
+          // The route at
           // `connector-entity.router.ts:459` does the same thing; this
           // closes the gap between the route- and tool-driven creation
           // paths. Per-entity failures don't abort the tool result —

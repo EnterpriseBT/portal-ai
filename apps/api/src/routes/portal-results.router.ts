@@ -200,6 +200,7 @@ portalResultsRouter.post(
         await PortalResultPinService.materialize(type, block.content, {
           stationId: portal.stationId,
           organizationId,
+          userId,
         });
 
       const now = new DateFactory("UTC").now().getTime();
@@ -367,6 +368,7 @@ portalResultsRouter.post(
       const payload = await PortalVizRefreshService.refreshPinnedResult({
         portalResultId: req.params.id,
         organizationId,
+        userId: req.application!.metadata.userId,
       });
 
       // #472: recompute the low-zoom dissolve over the freshly-refreshed data.

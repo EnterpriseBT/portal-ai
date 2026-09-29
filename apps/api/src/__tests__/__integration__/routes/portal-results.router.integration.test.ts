@@ -382,7 +382,7 @@ describe("Portal Results Router", () => {
     // #312 smoke find: the display block for a query-backed handle carries no
     // `sql` — the pipeline must derive from the server-side handle meta.
     it("derives a query-backed table pin's pipeline from the handle meta", async () => {
-      const { organizationId } = await seedUserAndOrg(
+      const { organizationId, userId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
@@ -403,6 +403,7 @@ describe("Portal Results Router", () => {
         sql: "SELECT 1 AS x",
         stationId: station.id,
         organizationId,
+        userId,
       });
 
       // The persisted display block strips the envelope's sql — mirror that.

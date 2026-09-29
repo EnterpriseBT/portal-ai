@@ -51,6 +51,9 @@ const SAMPLE_PEEK_SIZE = 10;
 export interface ProduceOptions {
   stationId: string;
   organizationId: string;
+  /** #599: the calling user — the cursor tier re-executes `sql` per-user
+   *  view-scoped, so the id is persisted in the handle meta (`_userId`). */
+  userId: string;
   sql: string;
   /** Override the synchronous `statement_timeout` — set by the job tier
    *  (#130 E1) so a long scan runs off-thread at `SQL_QUERY_JOB_TIMEOUT_MS`. */
@@ -70,6 +73,9 @@ export interface SnapshotResult {
 export interface StoredHandleMeta extends QueryHandleEnvelope {
   _stationId: string;
   _organizationId: string;
+  /** #599: the user the handle's `sql` re-executes as (per-user view-scoped).
+   *  Absent for row/stream handles that carry no re-executable `sql`. */
+  _userId?: string;
   /** #159: a derived "transform handle" — instead of a `sql` to re-run, its
    *  rows are a deterministic fold over `sourceHandle`. The cursor tier
    *  re-folds the source (via `applyTransformFold`) past the snapshot, the
@@ -89,6 +95,22 @@ function metaKey(handleId: string): string {
 }
 function batchKey(handleId: string, batchIndex: number): string {
   return `${HANDLE_PREFIX}${handleId}:batches:${batchIndex}`;
+}
+
+/**
+ * The user a SQL-backed handle re-executes as (#599). A handle with a
+ * re-executable `sql` is always staged with `_userId`; its absence is an
+ * invariant violation (never fall back to an unscoped re-run).
+ */
+function requireHandleUser(meta: StoredHandleMeta): string {
+  if (!meta._userId) {
+    throw new ApiError(
+      500,
+      ApiCode.PORTAL_SQL_FORBIDDEN,
+      "SQL handle is missing its user scope — cannot re-execute view-scoped"
+    );
+  }
+  return meta._userId;
 }
 
 export class PortalSqlHandleService {
@@ -121,6 +143,7 @@ export class PortalSqlHandleService {
     const result = await PortalSqlService.runSqlQuery({
       stationId: opts.stationId,
       organizationId: opts.organizationId,
+      userId: opts.userId,
       sql: opts.sql,
       rowCap: HANDLE_ROW_CAP,
       cellCap: Number.MAX_SAFE_INTEGER,
@@ -201,7 +224,8 @@ export class PortalSqlHandleService {
       rowsRaw,
       envelope,
       opts.stationId,
-      opts.organizationId
+      opts.organizationId,
+      opts.userId
     );
   }
 
@@ -265,7 +289,10 @@ export class PortalSqlHandleService {
       rowsRaw,
       envelope,
       opts.stationId,
-      opts.organizationId
+      opts.organizationId,
+      // Rows are caller-supplied (webhook) — no re-executable `sql`, so no
+      // per-user re-scoping is needed and there may be no user in scope.
+      undefined
     );
   }
 
@@ -287,6 +314,8 @@ export class PortalSqlHandleService {
     transform: TransformDescriptor;
     stationId: string;
     organizationId: string;
+    /** #599: the user the re-fold's source `sql` re-executes as. */
+    userId: string;
   }): Promise<{ envelope: QueryHandleEnvelope }> {
     const { transform } = opts;
     const sourceStream = this.streamHandle(
@@ -297,6 +326,7 @@ export class PortalSqlHandleService {
     return this.stageFromStream(`qh-${randomUUID()}`, folded, {
       stationId: opts.stationId,
       organizationId: opts.organizationId,
+      userId: opts.userId,
       transform,
     });
   }
@@ -315,10 +345,14 @@ export class PortalSqlHandleService {
     schema?: Array<{ name: string; type: string }>;
     stationId: string;
     organizationId: string;
+    /** #599: present when the stream originates from a per-user SQL source; a
+     *  one-shot stream (`sql: null`) is snapshot-only and needs no re-scoping. */
+    userId?: string;
   }): Promise<{ envelope: QueryHandleEnvelope }> {
     return this.stageFromStream(`qh-${randomUUID()}`, opts.rows, {
       stationId: opts.stationId,
       organizationId: opts.organizationId,
+      userId: opts.userId,
       schema: opts.schema,
     });
   }
@@ -336,6 +370,7 @@ export class PortalSqlHandleService {
     ctx: {
       stationId: string;
       organizationId: string;
+      userId?: string;
       schema?: Array<{ name: string; type: string }>;
       transform?: TransformDescriptor;
     }
@@ -385,6 +420,7 @@ export class PortalSqlHandleService {
       envelope,
       ctx.stationId,
       ctx.organizationId,
+      ctx.userId,
       ctx.transform
     );
   }
@@ -403,6 +439,7 @@ export class PortalSqlHandleService {
     envelope: QueryHandleEnvelope,
     stationId: string,
     organizationId: string,
+    userId?: string,
     transform?: TransformDescriptor
   ): Promise<{ envelope: QueryHandleEnvelope }> {
     const redis = getRedisClient();
@@ -412,6 +449,7 @@ export class PortalSqlHandleService {
       ...envelope,
       _stationId: stationId,
       _organizationId: organizationId,
+      ...(userId ? { _userId: userId } : {}),
       ...(transform ? { _transform: transform } : {}),
     };
     await redis.set(
@@ -527,6 +565,7 @@ export class PortalSqlHandleService {
       sql: wrapped,
       stationId: meta._stationId,
       organizationId: meta._organizationId,
+      userId: requireHandleUser(meta),
       rowCap: 1,
       cellCap: Number.MAX_SAFE_INTEGER,
       payloadCap: Number.MAX_SAFE_INTEGER,
@@ -638,6 +677,7 @@ export class PortalSqlHandleService {
         sql: wrapped,
         stationId: meta._stationId,
         organizationId: meta._organizationId,
+        userId: requireHandleUser(meta),
         rowCap: BATCH_SIZE,
         cellCap: Number.MAX_SAFE_INTEGER,
         payloadCap: Number.MAX_SAFE_INTEGER,

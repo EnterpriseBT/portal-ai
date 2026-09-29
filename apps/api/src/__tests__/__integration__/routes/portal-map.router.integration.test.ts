@@ -23,6 +23,7 @@ import {
   teardownOrg,
   createUser,
   createOrganization,
+  attachCuratedView,
 } from "../utils/application.util.js";
 
 describe("Portal map tile route (#316)", () => {
@@ -30,6 +31,7 @@ describe("Portal map tile route (#316)", () => {
   let db!: DbClient;
   let reconciler: WideTableReconcilerService;
   let orgId: string;
+  let userId: string;
   let entityId: string;
   let pinId: string;
   let stationId: string;
@@ -66,6 +68,7 @@ describe("Portal map tile route (#316)", () => {
     const org = createOrganization(user.id);
     await dbTyped.insert(schema.organizations).values(org as never);
     orgId = org.id;
+    userId = user.id;
 
     const connDefId = generateId();
     await dbTyped.insert(schema.connectorDefinitions).values({
@@ -192,6 +195,19 @@ describe("Portal map tile route (#316)", () => {
 
     await reconciler.reconcileEntity(entityId, db);
 
+    // #599: attach a default (unrestricted) curated view for the entity and
+    // grant it to the owner — so the org-wide map-tile path (via station_views)
+    // and the per-user `runSqlQuery` both resolve it.
+    await attachCuratedView(dbTyped, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: entityId,
+      key: "parcels",
+      label: "Parcels",
+      createdBy: userId,
+      grantToUserId: userId,
+    });
+
     // One geometry row.
     const erId = generateId();
     await dbTyped.insert(schema.entityRecords).values({
@@ -317,6 +333,7 @@ describe("Portal map tile route (#316)", () => {
       sql: 'SELECT ST_Area("c_geom"::geography) AS area FROM parcels',
       stationId,
       organizationId: orgId,
+      userId,
     });
     const rows = "rows" in res ? res.rows : [];
     expect(rows).toHaveLength(1);

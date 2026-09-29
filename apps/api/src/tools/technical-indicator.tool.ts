@@ -54,7 +54,7 @@ export class TechnicalIndicatorTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, organizationId: string) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -95,6 +95,7 @@ export class TechnicalIndicatorTool extends Tool<typeof InputSchema> {
           },
           stationId,
           organizationId,
+          userId,
         });
         return { type: "data-table", ...envelope };
       },

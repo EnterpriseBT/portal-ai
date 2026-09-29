@@ -99,7 +99,12 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, organizationId: string, deps: VisualizeD3Deps = {}) {
+  build(
+    stationId: string,
+    organizationId: string,
+    userId: string,
+    deps: VisualizeD3Deps = {}
+  ) {
     const resolveSqlDelivery =
       deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
     const generateCode =
@@ -113,7 +118,7 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
 
         const delivery = await resolveSqlDelivery(
           { sql },
-          { stationId, organizationId }
+          { stationId, organizationId, userId }
         );
         const { schema, samplePeek, rows } = deriveShape(delivery);
         const titleField = title ? { title } : {};

@@ -145,6 +145,9 @@ portalEventsRouter.get(
         const stationContext = await buildStationContext({
           station: { id: station.id, name: station.name },
           organizationId: portal.organizationId,
+          // #599: scope the roster to the same identity the session runs as
+          // (below, `userId: portal.createdBy`), so it matches the SQL session.
+          userId: portal.createdBy,
         });
 
         sse = new SseUtil(res);

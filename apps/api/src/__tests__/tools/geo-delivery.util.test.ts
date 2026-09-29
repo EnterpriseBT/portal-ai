@@ -6,7 +6,7 @@ import {
   geometryColumnsFromSpec,
 } from "../../tools/geo-delivery.util.js";
 
-const ctx = { stationId: "s1", organizationId: "o1" };
+const ctx = { stationId: "s1", organizationId: "o1", userId: "user-1" };
 
 type SqlQueryFn = NonNullable<Parameters<typeof geoInlineRows>[4]>["sqlQuery"];
 

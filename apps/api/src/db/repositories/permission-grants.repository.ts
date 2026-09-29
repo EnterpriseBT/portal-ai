@@ -136,6 +136,61 @@ export class PermissionGrantsRepository extends Repository<
     );
   }
 
+  /** Hard-delete a principal's composed `read field_mapping in_curated_view:<viewId>`
+   *  grant (#599). Paired with a curated-view share/revoke — that grant has a null
+   *  `resourceId` so `hardDeleteShare` (keyed on `resourceId`) can't reach it; it is
+   *  identified by `(field_mapping, condition=in_curated_view, conditionParam=viewId)`. */
+  async hardDeleteInCuratedViewFieldGrant(
+    organizationId: string,
+    principalType: PolicyPrincipalType,
+    principalId: string,
+    curatedViewId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await this.findMany(
+      and(
+        eq(permissionGrants.organizationId, organizationId),
+        eq(permissionGrants.principalType, principalType),
+        eq(permissionGrants.principalId, principalId),
+        eq(permissionGrants.resourceType, "field_mapping"),
+        eq(permissionGrants.condition, "in_curated_view"),
+        eq(permissionGrants.conditionParam, curatedViewId)
+      ),
+      {},
+      client
+    );
+    return this.hardDeleteMany(
+      rows.map((r) => r.id),
+      client
+    );
+  }
+
+  /** Hard-delete the composed `read field_mapping in_curated_view:<viewId>`
+   *  grants for **every** principal (curated-view delete cascade, #599). The
+   *  view grant is removed by `hardDeleteByResource("curated_view", …)`, which
+   *  cannot match these (they are `resourceType:"field_mapping"`, `resourceId:
+   *  null`) — so the delete path must drop them by their `conditionParam`. */
+  async hardDeleteFieldGrantsByCuratedView(
+    organizationId: string,
+    curatedViewId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await this.findMany(
+      and(
+        eq(permissionGrants.organizationId, organizationId),
+        eq(permissionGrants.resourceType, "field_mapping"),
+        eq(permissionGrants.condition, "in_curated_view"),
+        eq(permissionGrants.conditionParam, curatedViewId)
+      ),
+      {},
+      client
+    );
+    return this.hardDeleteMany(
+      rows.map((r) => r.id),
+      client
+    );
+  }
+
   /** Hard-delete every grant naming a principal (member-removal revoke). */
   async hardDeleteByPrincipal(
     organizationId: string,

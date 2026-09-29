@@ -4,6 +4,8 @@ import { connectorInstancesRepo } from "../db/repositories/connector-instances.r
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
+import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
+import { curatedViewsRepo } from "../db/repositories/curated-views.repository.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
@@ -90,15 +92,11 @@ export interface StationInstanceCapability {
 export async function resolveStationCapabilities(
   stationId: string
 ): Promise<StationInstanceCapability[]> {
-  const stationLinks = await stationInstancesRepo.findByStationId(stationId, {
-    include: ["connectorInstance"],
-  });
-
-  if (stationLinks.length === 0) return [];
-
-  const instanceIds = [
-    ...new Set(stationLinks.map((l) => l.connectorInstanceId)),
-  ];
+  // #599: a station's data attachment is its curated views (`station_views`),
+  // not connector instances. The instance set is derived through
+  // station_views → curated_view → connector_entity → connector_instance.
+  const instanceIds = await instanceIdsForStation(stationId);
+  if (instanceIds.length === 0) return [];
 
   // Load definitions for all instances
   const instances = await Promise.all(
@@ -120,20 +118,47 @@ export async function resolveStationCapabilities(
 
   const result: StationInstanceCapability[] = [];
 
-  for (const link of stationLinks) {
-    const instance = instanceMap.get(link.connectorInstanceId);
+  for (const instanceId of instanceIds) {
+    const instance = instanceMap.get(instanceId);
     if (!instance) continue;
 
     const definition = definitionMap.get(instance.connectorDefinitionId);
     if (!definition) continue;
 
     result.push({
-      connectorInstanceId: link.connectorInstanceId,
+      connectorInstanceId: instanceId,
       capabilities: resolveCapabilities(definition, instance),
     });
   }
 
   return result;
+}
+
+/**
+ * The connector-entity ids in scope for a station — the entities behind the
+ * station's attached curated views (#599). Dedup'd. The single source both
+ * capability resolvers derive from, replacing the `station_instances` fan-out.
+ */
+async function entityIdsForStation(stationId: string): Promise<string[]> {
+  const attachments = await stationViewsRepo.findByStationId(stationId);
+  if (attachments.length === 0) return [];
+  const viewIds = [...new Set(attachments.map((a) => a.curatedViewId))];
+  const views = await Promise.all(
+    viewIds.map((id) => curatedViewsRepo.findById(id))
+  );
+  return [...new Set(views.filter(Boolean).map((v) => v!.connectorEntityId))];
+}
+
+/** The connector-instance ids behind a station's attached views (#599). */
+async function instanceIdsForStation(stationId: string): Promise<string[]> {
+  const entityIds = await entityIdsForStation(stationId);
+  if (entityIds.length === 0) return [];
+  const entities = await Promise.all(
+    entityIds.map((id) => connectorEntitiesRepo.findById(id))
+  );
+  return [
+    ...new Set(entities.filter(Boolean).map((e) => e!.connectorInstanceId)),
+  ];
 }
 
 /**
@@ -175,27 +200,26 @@ export async function assertStationScope(
 export async function resolveEntityCapabilities(
   stationId: string
 ): Promise<Record<string, ResolvedCapabilities>> {
-  const stationCaps = await resolveStationCapabilities(stationId);
-  if (stationCaps.length === 0) return {};
+  // #599: only the entities behind the station's attached curated views are in
+  // scope (not every entity of an attached instance) — capability still comes
+  // from the entity's instance.
+  const entityIds = await entityIdsForStation(stationId);
+  if (entityIds.length === 0) return {};
 
+  const stationCaps = await resolveStationCapabilities(stationId);
   const capsByInstance = new Map(
     stationCaps.map((sc) => [sc.connectorInstanceId, sc.capabilities])
   );
 
-  // Load all entities for the attached instances
   const entities = (
-    await Promise.all(
-      stationCaps.map((sc) =>
-        connectorEntitiesRepo.findByConnectorInstanceId(sc.connectorInstanceId)
-      )
-    )
-  ).flat();
+    await Promise.all(entityIds.map((id) => connectorEntitiesRepo.findById(id)))
+  ).filter(Boolean);
 
   const result: Record<string, ResolvedCapabilities> = {};
   for (const entity of entities) {
-    const caps = capsByInstance.get(entity.connectorInstanceId);
+    const caps = capsByInstance.get(entity!.connectorInstanceId);
     if (caps) {
-      result[entity.id] = caps;
+      result[entity!.id] = caps;
     }
   }
 

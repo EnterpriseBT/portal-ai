@@ -48,6 +48,7 @@ describe("PortalSqlHandleService.produce", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT acreage, assessed_value FROM parcels",
     });
 
@@ -74,6 +75,7 @@ describe("PortalSqlHandleService.produce", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT x FROM t",
     });
     expect(envelope.sql).toBe("SELECT x FROM t");
@@ -88,6 +90,7 @@ describe("PortalSqlHandleService.produce", () => {
     await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT x FROM t",
       statementTimeoutMs: 120_000,
     });
@@ -104,6 +107,7 @@ describe("PortalSqlHandleService.produce", () => {
     await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT x FROM t",
     });
     const call = (
@@ -122,6 +126,7 @@ describe("PortalSqlHandleService.produce", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-9",
       organizationId: "org-9",
+      userId: "user-1",
       sql: "SELECT x FROM t",
     });
     // not on the public envelope
@@ -146,6 +151,7 @@ describe("PortalSqlHandleService.produce", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT x FROM huge",
     });
 
@@ -160,6 +166,7 @@ describe("PortalSqlHandleService.produce", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT x FROM mid",
     });
 
@@ -197,6 +204,7 @@ describe("PortalSqlHandleService.produce", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
       organizationId: "org-1",
+      userId: "user-1",
       sql: "SELECT * FROM users LIMIT 1",
     });
 
@@ -222,6 +230,7 @@ describe("PortalSqlHandleService.produce", () => {
       PortalSqlHandleService.produce({
         stationId: "station-1",
         organizationId: "org-1",
+        userId: "user-1",
         sql: "SELECT * FROM gigantic",
       })
     ).rejects.toMatchObject({ code: ApiCode.REQUEST_PAYLOAD_TOO_LARGE });
@@ -317,6 +326,7 @@ describe("PortalSqlHandleService.streamHandle", () => {
     sql: "SELECT id, ts FROM t",
     _stationId: "st",
     _organizationId: "org",
+    _userId: "user-1",
   };
 
   it("≤cap: yields the snapshot sorted by (orderBy, id), no re-execution", async () => {
@@ -399,6 +409,7 @@ describe("PortalSqlHandleService.produce — matchedCount (#340)", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "s",
       organizationId: "o",
+      userId: "user-1",
       sql: "SELECT x FROM big",
     });
     expect(envelope.rowCount).toBe(100_001);
@@ -420,6 +431,7 @@ describe("PortalSqlHandleService.produce — matchedCount (#340)", () => {
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "s",
       organizationId: "o",
+      userId: "user-1",
       sql: "SELECT x FROM big",
     });
     expect(envelope.rowCount).toBe(100_001);
