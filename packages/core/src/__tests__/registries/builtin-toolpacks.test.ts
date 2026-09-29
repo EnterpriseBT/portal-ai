@@ -144,6 +144,21 @@ describe("BUILTIN_TOOLPACKS", () => {
   });
 });
 
+// #658 — resolve_identity reads through the caller's curated views; its
+// mirror must tell the agent matches are per view and capped.
+describe("data_query resolve_identity mirror (#658)", () => {
+  const tool = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(
+    (t) => t.name === "resolve_identity"
+  );
+
+  it("describes per-view matches, the sql_query relation name, and truncation", () => {
+    expect(tool).toBeDefined();
+    for (const term of ["viewKey", "sql_query", "truncated", "c_<key>"]) {
+      expect(tool!.description).toContain(term);
+    }
+  });
+});
+
 // #336 — the visualize_map mirror documents the colorBy.scale gradient mode.
 describe("gis pack visualize_map colorBy.scale (#336)", () => {
   const tool = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(

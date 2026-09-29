@@ -162,6 +162,17 @@ const { ToolService, BUILTIN_TOOL_NAMES } =
   await import("../../services/tools.service.js");
 const { CostGateService } = await import("../../services/cost-gate.service.js");
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
+// #658: resolve_identity registration resolves the caller's granted views.
+// Spy on the real singleton (mocking the module would break its other
+// importers); each case seeds the views it needs.
+const { PortalSqlService } =
+  await import("../../services/portal-sql.service.js");
+const mockResolveGrantedViewColumns = jest.spyOn(
+  PortalSqlService,
+  "resolveGrantedViewColumns"
+);
+const { ResolveIdentityTool } =
+  await import("../../tools/resolve-identity.tool.js");
 const callWebhook = ToolService.callWebhook.bind(ToolService);
 
 // ---------------------------------------------------------------------------
@@ -275,6 +286,24 @@ function setupStationMocks(toolPacks: string[]) {
   mockFindByConnectorEntityId_members.mockResolvedValue([]);
   mockFindByStationId_tools.mockResolvedValue(makeToolpackRows(toolPacks));
   mockFindManyByIds_orgPacks.mockResolvedValue([]);
+  // Default: the caller can read nothing (fail-closed); cases that expect
+  // resolve_identity grant views explicitly.
+  mockResolveGrantedViewColumns.mockResolvedValue({
+    set: {} as never,
+    views: [],
+  });
+}
+
+/** A granted view over `entityId` whose readable columns are `normalizedKeys`. */
+function grantedView(entityId: string, ...normalizedKeys: string[]) {
+  return {
+    view: {
+      id: `view-${entityId}`,
+      key: `v_${entityId}`,
+      connectorEntityId: entityId,
+    },
+    columns: normalizedKeys.map((normalizedKey) => ({ normalizedKey })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -491,8 +520,21 @@ describe("buildAnalyticsTools()", () => {
       },
     ]);
 
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: {} as never,
+      views: [
+        grantedView("ent-1", "customer_id"),
+        grantedView("ent-2", "customer_id"),
+      ] as never,
+    });
+
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.resolve_identity).toBeDefined();
+    expect(mockResolveGrantedViewColumns).toHaveBeenCalledWith(
+      STATION_ID,
+      ORG_ID,
+      "user-001"
+    );
   });
 
   it("should NOT register resolve_identity when data_query pack is selected but no entity groups have ≥2 loaded members", async () => {
@@ -500,6 +542,118 @@ describe("buildAnalyticsTools()", () => {
     // Default mock: no entity group members
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.resolve_identity).toBeUndefined();
+  });
+
+  it("#658: does NOT register resolve_identity when the caller can see no group (views don't cover it)", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByConnectorInstanceId.mockResolvedValue([
+      ...ENTITIES,
+      {
+        id: "ent-2",
+        key: "orders",
+        label: "Orders",
+        connectorInstanceId: "ci-1",
+      },
+    ]);
+    mockFindByConnectorEntityId_members
+      .mockResolvedValueOnce([
+        { id: "egm-1", entityGroupId: "eg-1", connectorEntityId: "ent-1" },
+      ])
+      .mockResolvedValueOnce([
+        { id: "egm-2", entityGroupId: "eg-1", connectorEntityId: "ent-2" },
+      ]);
+    mockFindById_group.mockResolvedValue({
+      id: "eg-1",
+      name: "Customer Identity",
+      organizationId: ORG_ID,
+    });
+    mockFindByEntityGroupId.mockResolvedValue([
+      {
+        id: "egm-1",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-1",
+        isPrimary: true,
+        fieldMapping: { id: "fm-1", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+      {
+        id: "egm-2",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-2",
+        isPrimary: false,
+        fieldMapping: { id: "fm-2", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+    ]);
+    // The caller's view over ent-2 cannot read the link column.
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: {} as never,
+      views: [
+        grantedView("ent-1", "customer_id"),
+        grantedView("ent-2", "amount"),
+      ] as never,
+    });
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    expect(tools.resolve_identity).toBeUndefined();
+  });
+
+  it("#658: fails closed — a view-resolution error means no resolve_identity", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByConnectorInstanceId.mockResolvedValue([
+      ...ENTITIES,
+      {
+        id: "ent-2",
+        key: "orders",
+        label: "Orders",
+        connectorInstanceId: "ci-1",
+      },
+    ]);
+    mockFindByConnectorEntityId_members
+      .mockResolvedValueOnce([
+        { id: "egm-1", entityGroupId: "eg-1", connectorEntityId: "ent-1" },
+      ])
+      .mockResolvedValueOnce([
+        { id: "egm-2", entityGroupId: "eg-1", connectorEntityId: "ent-2" },
+      ]);
+    mockFindById_group.mockResolvedValue({
+      id: "eg-1",
+      name: "Customer Identity",
+      organizationId: ORG_ID,
+    });
+    mockFindByEntityGroupId.mockResolvedValue([
+      {
+        id: "egm-1",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-1",
+        isPrimary: true,
+        fieldMapping: { id: "fm-1", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+      {
+        id: "egm-2",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-2",
+        isPrimary: false,
+        fieldMapping: { id: "fm-2", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+    ]);
+    mockResolveGrantedViewColumns.mockRejectedValue(new Error("db down"));
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    expect(tools.resolve_identity).toBeUndefined();
+  });
+
+  it("#658: the resolve_identity mirror description matches the tool (and names viewKey/truncated)", () => {
+    const mirror = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(
+      (t) => t.name === "resolve_identity"
+    );
+    const toolDescription = new ResolveIdentityTool().description;
+    expect(mirror?.description).toBe(toolDescription);
+    for (const term of ["viewKey", "truncated", "sql_query"]) {
+      expect(toolDescription).toContain(term);
+    }
   });
 
   // -----------------------------------------------------------------------
