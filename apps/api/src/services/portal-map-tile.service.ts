@@ -713,6 +713,15 @@ export class PortalMapTileService {
     // Polygon dissolve is handled from the precompute, count-driven inside
     // `runDissolveTile` (individuals ≤ cap, merged coverage over).
     if (dissolveReady) {
+      // #643: mark this scope freshly served so the orphan-scope reap keeps it.
+      // Fire-and-forget — a missed touch only risks an early reap of a still-
+      // live scope, which just re-fills lazily on the next view.
+      this.touchDissolveServed(
+        dissolveOwner!,
+        dissolveColumn,
+        band!,
+        scopeHash
+      );
       return this.runDissolveTile(
         dissolveOwner!,
         dissolveColumn,
@@ -839,8 +848,8 @@ export class PortalMapTileService {
    * session-view transaction and shape the `TileQueryResult`. Extracted so the
    * count-driven probe and the aggregate serve share one path (#532).
    *
-   * The session-view DDL is built BEFORE opening the transaction: `buildSession-
-   * Views` runs its own pooled DB reads, and holding this txn's connection while
+   * The session-view DDL is built BEFORE opening the transaction:
+   * `resolveViewsForSession` runs its own pooled DB reads, and holding this txn's connection while
    * it does would make each concurrent tile request hold one connection and block
    * on a second — MapLibre fans out ~10 tiles at once, which would deadlock the
    * pool. Computing the DDL first keeps the txn to a single connection (#314).
@@ -925,6 +934,36 @@ export class PortalMapTileService {
       ) AS e
     `)) as unknown as Array<{ e: boolean }>;
     return r[0]?.e === true;
+  }
+
+  /**
+   * #643: stamp `last_served_at` on the scope's rows for `(owner, column, band)`
+   * so the orphan-scope retention reap (`dissolve-scope-retention-purge`) treats
+   * this scope as live and keeps it. Fire-and-forget: a failed touch never blocks
+   * the tile, and at worst risks an early reap of a scope that re-fills lazily on
+   * the next view. Scoped by `scopeHash` so only the served scope is touched.
+   */
+  private static touchDissolveServed(
+    owner: DissolveOwner,
+    colorByColumn: string,
+    band: number,
+    scopeHash: string
+  ): void {
+    const servedAt = Date.now();
+    void db
+      .execute(
+        sql`
+          UPDATE map_dissolve_geometries mdg
+          SET last_served_at = ${servedAt}
+          WHERE ${dissolveScopeCond(owner, scopeHash)}
+            AND mdg.column_name = ${colorByColumn}
+            AND mdg.zoom_band = ${band}
+            AND mdg.deleted IS NULL
+        `
+      )
+      .catch(() => {
+        /* best-effort: an un-touched scope may reap early, then re-fills lazily */
+      });
   }
 
   /**

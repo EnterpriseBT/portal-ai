@@ -210,6 +210,16 @@ export const environment = {
     process.env.MESSAGE_DISSOLVE_RETENTION_DAYS || "30",
     10
   ),
+  // #643: how long a per-scope dissolve is kept after its last serve. The
+  // per-user view-scoping makes the dissolve cache content-addressed by scope
+  // (× distinct curated-view entitlements), so entitlement churn leaves orphan
+  // scopes behind; the reap drops any scope not served within this window,
+  // never the most-recently-served scope of a live (owner, column, band) — so
+  // an active pin always keeps at least its current scope.
+  DISSOLVE_SCOPE_TTL_MS: parseInt(
+    process.env.DISSOLVE_SCOPE_TTL_MS || String(30 * 24 * 60 * 60 * 1000),
+    10
+  ),
   // Stranded-job reconciliation (#391). A non-terminal job whose BullMQ
   // entry is gone AND whose last write is older than the threshold is
   // presumed dead and marked failed by the sweep; the sweep runs at boot
