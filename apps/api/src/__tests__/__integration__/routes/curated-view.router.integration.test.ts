@@ -340,13 +340,19 @@ describe("curated-view.router integration", () => {
     expect(created.status).toBe(201);
     const id = created.body.payload.curatedView.id as string;
 
-    // The response advertises the projected columns (the sortable headers).
+    // The response advertises the projected columns (the sortable headers),
+    // each carrying its column-definition display label (not the raw wide
+    // column name).
     const base = await request(app).get(`/api/curated-views/${id}/records`);
     expect(base.status).toBe(200);
-    const colKeys = (base.body.payload.columns as Array<{ key: string }>).map(
-      (c) => c.key
-    );
+    const cols = base.body.payload.columns as Array<{
+      key: string;
+      label: string;
+    }>;
+    const colKeys = cols.map((c) => c.key);
     expect(colKeys).toEqual(expect.arrayContaining(["c_email", "c_age"]));
+    expect(cols.find((c) => c.key === "c_email")?.label).toBe("Email");
+    expect(cols.find((c) => c.key === "c_age")?.label).toBe("Age");
 
     const asc = await request(app).get(
       `/api/curated-views/${id}/records?sortBy=c_age&sortOrder=asc`
@@ -390,6 +396,14 @@ describe("curated-view.router integration", () => {
       `/api/curated-views/${id}/records?search=42`
     );
     expect((ageHit.body.payload.records as unknown[]).length).toBe(1);
+
+    // LIKE metacharacters are escaped — a literal `%` is not a wildcard, so it
+    // matches nothing here (no value contains a literal percent sign).
+    const wildcard = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({ search: "%" });
+    expect(wildcard.status).toBe(200);
+    expect((wildcard.body.payload.records as unknown[]).length).toBe(0);
 
     // The default sortBy (`created`, not a projected column) must not error —
     // it falls back to the stable record-id order.

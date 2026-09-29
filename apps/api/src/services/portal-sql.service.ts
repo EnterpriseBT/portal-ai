@@ -629,9 +629,17 @@ export class PortalSqlServiceImpl {
     );
     if (!resolved) return null;
     const { view, columns } = resolved;
+
+    // Resolve the entity's column definitions once — reused for the display
+    // labels (below) and the filter render's column-type map (further down),
+    // so a filtered view doesn't resolve them twice.
+    const resolvedCols = await resolveColumns(view.connectorEntityId);
+    const labelByKey = new Map(
+      resolvedCols.map((c) => [c.normalizedKey, c.label])
+    );
     const columnsOut = columns.map((c) => ({
       key: c.columnName,
-      label: c.columnName,
+      label: labelByKey.get(c.normalizedKey) ?? c.columnName,
     }));
 
     const tableName = `er__${view.connectorEntityId}`;
@@ -653,10 +661,7 @@ export class PortalSqlServiceImpl {
         client
       );
       const columnTypes = Object.fromEntries(
-        (await resolveColumns(view.connectorEntityId)).map((c) => [
-          c.normalizedKey,
-          c.type,
-        ])
+        resolvedCols.map((c) => [c.normalizedKey, c.type])
       );
       const rendered = renderFilterGroupToSql(view.filter, stmt, columnTypes);
       if (typeof rendered !== "string") {
@@ -668,11 +673,15 @@ export class PortalSqlServiceImpl {
       }
       whereParts.push(`(${rendered})`);
     }
-    // Search: case-insensitive substring across the projected columns only
-    // (never an un-projected column). Escaped by quoteLiteral — injection-safe.
+    // Search: case-insensitive **literal** substring across the projected
+    // columns only (never an un-projected column). The LIKE metacharacters
+    // (\ % _) are escaped so the term matches literally (ILIKE's default escape
+    // char is backslash), then wrapped in %…%; quoteLiteral handles the
+    // SQL-quote escaping — injection-safe.
     const search = opts.search?.trim();
     if (search && columns.length > 0) {
-      const term = quoteLiteral(`%${search}%`);
+      const escaped = search.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+      const term = quoteLiteral(`%${escaped}%`);
       const clauses = columns.map(
         (c) => `w.${quoteIdent(c.columnName)}::text ILIKE ${term}`
       );

@@ -247,6 +247,9 @@ export const CuratedViewDetail: React.FC = () => {
       pagination.setSortBy(column);
       pagination.setSortOrder("asc");
     }
+    // Re-sorting changes the whole ordering — return to page one (offset mode
+    // doesn't reset on sort the way keyset does).
+    pagination.setOffset(0);
   };
 
   return (
