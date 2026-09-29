@@ -12,6 +12,12 @@ import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
+
+import {
+  PERMISSION_RESOURCE_TYPES,
+  resourceAllowsInstanceScope,
+} from "@portalai/core/models";
+
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { SystemUtilities } from "../../../utils/system.util.js";
@@ -43,7 +49,7 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { RbacObjectSearchService } =
+const { RbacObjectSearchService, RBAC_SEARCHABLE_RESOURCE_TYPES } =
   await import("../../../services/rbac-object-search.service.js");
 const { users, organizations, organizationUsers, tiers, stations } = schema;
 
@@ -164,6 +170,150 @@ describe("GET /api/rbac/objects (#622 slice 5)", () => {
     );
     const labels = objects.map((o) => o.label).sort();
     expect(labels).toEqual(["Member Station", "System Station"]);
+  });
+
+  const baseRow = (createdBy: string) => ({
+    created: Date.now(),
+    createdBy,
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  });
+
+  /** The connector catalog is global (no org column) — rows are system-created. */
+  async function addConnectorDefinition(display: string) {
+    const id = generateId();
+    await db.insert(schema.connectorDefinitions).values({
+      id,
+      slug: `cd-${id.slice(0, 8)}`,
+      display,
+      category: "crm",
+      authType: "oauth2",
+      configSchema: {},
+      capabilityFlags: { read: true },
+      isActive: true,
+      version: "1.0.0",
+      iconUrl: null,
+      ...baseRow(SystemUtilities.id.system),
+    } as never);
+    return id;
+  }
+
+  /** A curated view needs an entity → instance → definition chain. */
+  async function addCuratedView(
+    orgId: string,
+    label: string,
+    createdBy: string
+  ) {
+    const defId = await addConnectorDefinition(`Def for ${label}`);
+    const instId = generateId();
+    await db.insert(schema.connectorInstances).values({
+      id: instId,
+      connectorDefinitionId: defId,
+      organizationId: orgId,
+      name: "Inst",
+      status: "active",
+      config: {},
+      credentials: null,
+      lastSyncAt: null,
+      lastErrorMessage: null,
+      enabledCapabilityFlags: { read: true },
+      ...baseRow(createdBy),
+    } as never);
+    const entityId = generateId();
+    await db.insert(schema.connectorEntities).values({
+      id: entityId,
+      organizationId: orgId,
+      connectorInstanceId: instId,
+      key: `e-${entityId.slice(0, 6)}`,
+      label: "E",
+      ...baseRow(createdBy),
+    } as never);
+    const viewId = generateId();
+    await db.insert(schema.curatedViews).values({
+      id: viewId,
+      organizationId: orgId,
+      connectorEntityId: entityId,
+      key: `v-${viewId.slice(0, 6)}`,
+      label,
+      description: null,
+      filter: null,
+      ...baseRow(createdBy),
+    } as never);
+    return viewId;
+  }
+
+  /** A second org (its own owner) the caller has no membership in. */
+  async function addOtherOrg() {
+    const owner = createUser(`auth0|other-${generateId()}`);
+    await db.insert(users).values(owner as never);
+    const org = createOrganization(owner.id);
+    await db.insert(organizations).values(org as never);
+    return { orgId: org.id, ownerId: owner.id };
+  }
+
+  it("connector_definition searches the global catalog — no org filter; search narrows by display (#638)", async () => {
+    const { orgId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    await addOtherOrg();
+    await addConnectorDefinition("File Upload");
+    await addConnectorDefinition("Google Sheets");
+
+    const all = await auth(
+      request(app).get("/api/rbac/objects?resourceType=connector_definition")
+    );
+    expect(all.status).toBe(200);
+    expect(
+      all.body.payload.objects.map((o: { label: string }) => o.label).sort()
+    ).toEqual(["File Upload", "Google Sheets"]);
+
+    const filtered = await auth(
+      request(app).get(
+        "/api/rbac/objects?resourceType=connector_definition&search=file"
+      )
+    );
+    expect(filtered.body.payload.objects).toEqual([
+      expect.objectContaining({ label: "File Upload" }),
+    ]);
+  });
+
+  it("connector_definition candidates are visibility-scoped — a member without catalog read sees none (#638)", async () => {
+    const { orgId, callerId } = await seedOrg("member");
+    await entitleOrg(orgId);
+    await addConnectorDefinition("File Upload");
+
+    const objects = await RbacObjectSearchService.search(
+      { userId: callerId, organizationId: orgId, roles: ["member"] },
+      "connector_definition",
+      ""
+    );
+    expect(objects).toEqual([]);
+  });
+
+  it("curated_view searches this org's views by label, never another org's (#638)", async () => {
+    const { orgId, ownerId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    const other = await addOtherOrg();
+    await addCuratedView(orgId, "Northeast Accounts", ownerId);
+    await addCuratedView(other.orgId, "Foreign View", other.ownerId);
+
+    const res = await auth(
+      request(app).get("/api/rbac/objects?resourceType=curated_view")
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.payload.objects).toEqual([
+      expect.objectContaining({ label: "Northeast Accounts" }),
+    ]);
+  });
+
+  it("the server's searchable types mirror core's instance-scope matrix (minus the fixed-id `page`) (#638)", () => {
+    const coreInstanceScoped = PERMISSION_RESOURCE_TYPES.filter(
+      (t) => t !== "page" && resourceAllowsInstanceScope(t)
+    );
+    expect([...RBAC_SEARCHABLE_RESOURCE_TYPES].sort()).toEqual(
+      [...coreInstanceScoped].sort()
+    );
   });
 
   it("data-plane + pseudo + unknown resource types return no candidates", async () => {
