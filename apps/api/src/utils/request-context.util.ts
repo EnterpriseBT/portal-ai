@@ -11,21 +11,31 @@ export interface RequestContext {
 export const requestContext = new AsyncLocalStorage<RequestContext>();
 
 /**
- * Memoize `factory` for the lifetime of the current request, keyed by `key`
- * (#647). The resolved value is cached — a rejection is not, so a failed call
- * is retried by the next caller. With no request store (a job worker, a test),
- * this is a passthrough that just runs `factory`. Only use it for values that
- * cannot change within one request (e.g. a caller's resolved view grants).
+ * Memoize `factory` for the lifetime of the current request (i.e. one agent
+ * turn / HTTP request), keyed by `key` (#647). The in-flight promise is cached,
+ * so concurrent callers with the same key share one resolution; a rejection is
+ * evicted, so a failed call is retried by the next caller. With no request
+ * store (a job worker, a test), this is a passthrough that just runs `factory`.
+ *
+ * Only for values that cannot change within one request (e.g. a caller's
+ * resolved view grants — a grant changed mid-turn applies on the next request).
+ * `key` shares one per-request namespace across all callers, so it MUST be
+ * prefixed to the concern (e.g. `views:<…>`) to avoid a cross-concern collision.
  */
-export async function memoizeForRequest<T>(
+export function memoizeForRequest<T>(
   key: string,
   factory: () => Promise<T>
 ): Promise<T> {
   const ctx = requestContext.getStore();
   if (!ctx) return factory();
   const memo = (ctx.memo ??= new Map<string, unknown>());
-  if (memo.has(key)) return memo.get(key) as T;
-  const value = await factory();
-  memo.set(key, value);
-  return value;
+  const existing = memo.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const pending = factory().catch((err) => {
+    // Don't cache a failure — evict so the next caller retries.
+    memo.delete(key);
+    throw err;
+  });
+  memo.set(key, pending);
+  return pending;
 }

@@ -46,6 +46,27 @@ describe("memoizeForRequest (#647)", () => {
     });
   });
 
+  it("shares one in-flight resolution for concurrent same-key callers", async () => {
+    let running = 0;
+    let peak = 0;
+    const factory = jest.fn(async () => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 10));
+      running -= 1;
+      return "v";
+    });
+    await requestContext.run(newStore(), async () => {
+      await Promise.all([
+        memoizeForRequest("k", factory),
+        memoizeForRequest("k", factory),
+      ]);
+    });
+    // The promise is cached, so both callers share one run (no overlap).
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(peak).toBe(1);
+  });
+
   it("isolates memo state per request run", async () => {
     const factory = jest.fn(async () => "v");
     await requestContext.run(newStore(), () => memoizeForRequest("k", factory));

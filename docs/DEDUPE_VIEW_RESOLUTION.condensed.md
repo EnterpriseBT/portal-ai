@@ -19,7 +19,9 @@
 
 Both calls run within one request's `requestContext` ALS scope, and `SessionViewBuild` is client-independent pure data (grants don't change mid-request — the issue confirms a stale-within-request value is fine). So memoize `resolveViewsForSession` by `(stationId, userId, organizationId)` in a per-request memo carried on the ALS store. The second call (explain→run, sequential) hits the memo; a worker with no request context just resolves normally.
 
-- **Cache the resolved value, not the promise** — a transient rejection isn't cached, so the tool's existing "explain probe failed → fall back to sync" path still re-resolves cleanly on the run.
+- **Cache the in-flight promise, evict on rejection** — concurrent same-key callers in one turn share a single resolution (not just the sequential explain→run); a transient rejection is evicted so the tool's "explain probe failed → fall back to sync" path re-resolves cleanly.
+- **Window = one request/agent turn.** The memo lives on the ALS store, whose lifetime is one HTTP/streaming request (one agent turn), not a whole conversation — a grant changed mid-turn applies on the next request. That is the intended, design-accepted staleness.
+- **Only the default-connection path is memoized.** The memo key can't capture the `client` arg, so a caller passing a specific client (e.g. a transaction, needing that client's visibility) bypasses the memo and resolves fresh. All current callers (explain/run) use the default `db`.
 - **Correctness-neutral & fail-open:** no ALS store (job worker, tests) → `memoizeForRequest` just runs the factory. The escalated job path resolves once anyway.
 - Memoizing `resolveViewsForSession` (not the inner `resolveGrantedViewColumns`) caches the whole chain **including** the DDL build, so the second call does zero work.
 

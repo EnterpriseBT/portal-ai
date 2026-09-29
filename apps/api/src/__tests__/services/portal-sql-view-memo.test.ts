@@ -48,4 +48,24 @@ describe("resolveViewsForSession request memo (#647)", () => {
     });
     expect(spy).toHaveBeenCalledTimes(2);
   });
+
+  it("bypasses the memo for a non-default client (needs that client's visibility)", async () => {
+    const spy = mockResolution();
+    const txClient = {} as never;
+    await requestContext.run(newStore(), async () => {
+      await PortalSqlService.resolveViewsForSession(
+        "s1",
+        "org1",
+        "u1",
+        txClient
+      );
+      await PortalSqlService.resolveViewsForSession(
+        "s1",
+        "org1",
+        "u1",
+        txClient
+      );
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
 });

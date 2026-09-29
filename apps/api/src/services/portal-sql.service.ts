@@ -731,9 +731,19 @@ export class PortalSqlServiceImpl {
     client: DbClient = db
   ): Promise<SessionViewBuild> {
     // #647: dedupe the explain→run double-resolution within one request. The
-    // build is client-independent pure data and a caller's grants don't change
-    // mid-request, so a request-scoped memo is correctness-neutral (no store —
-    // a job worker or test — resolves normally).
+    // build is pure data and a caller's grants don't change mid-request, so a
+    // request-scoped memo is correctness-neutral (no store — a job worker or
+    // test — resolves normally). Only the default-connection path is memoized:
+    // a caller passing a specific client (e.g. a transaction) needs that
+    // client's visibility, and the key can't capture it, so it resolves fresh.
+    if (client !== db) {
+      return this.buildViewsForSession(
+        stationId,
+        organizationId,
+        userId,
+        client
+      );
+    }
     return memoizeForRequest(
       `views:${stationId}:${userId}:${organizationId}`,
       () => this.buildViewsForSession(stationId, organizationId, userId, client)
