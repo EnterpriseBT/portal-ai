@@ -35,9 +35,17 @@ export type CuratedViewListRequestQuery = z.infer<
   typeof CuratedViewListRequestQuerySchema
 >;
 
+/** A curated view enriched with its connector entity's display identifiers
+ *  (#646) — `entity` is null when the entity is unresolvable (e.g. deleted). */
+export const CuratedViewListItemSchema = CuratedViewSchema.extend({
+  entity: z.object({ key: z.string(), label: z.string() }).nullable(),
+});
+
+export type CuratedViewListItem = z.infer<typeof CuratedViewListItemSchema>;
+
 export const CuratedViewListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    curatedViews: z.array(CuratedViewSchema),
+    curatedViews: z.array(CuratedViewListItemSchema),
   });
 
 export type CuratedViewListResponsePayload = z.infer<

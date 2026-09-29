@@ -120,6 +120,11 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
             >
               <MetadataList
                 items={[
+                  {
+                    label: "Entity",
+                    value: view.entity?.label ?? view.entity?.key ?? "",
+                    hidden: !view.entity,
+                  },
                   { label: "Key", value: view.key, variant: "mono" },
                   {
                     label: "Row filter",

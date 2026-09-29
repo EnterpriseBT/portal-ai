@@ -20,6 +20,7 @@ const views = [
     label: "NE Accounts",
     description: "North-east accounts",
     filter: null,
+    entity: { key: "accounts", label: "Accounts" },
     created: Date.now(),
     createdBy: "u1",
     updated: null,
@@ -35,6 +36,7 @@ const views = [
     label: "SW Accounts",
     description: null,
     filter: { combinator: "and", conditions: [] },
+    entity: null,
     created: Date.now(),
     createdBy: "u1",
     updated: null,
@@ -64,6 +66,12 @@ describe("CuratedViewsUI", () => {
     render(<CuratedViewsUI {...baseProps(false)} />);
     expect(screen.getByText("NE Accounts")).toBeInTheDocument();
     expect(screen.getByText("SW Accounts")).toBeInTheDocument();
+  });
+
+  it("renders the entity label on a card (#646)", () => {
+    render(<CuratedViewsUI {...baseProps(false)} />);
+    // cv-1 carries entity { label: "Accounts" }; cv-2's entity is null → no row.
+    expect(screen.getByText("Accounts")).toBeInTheDocument();
   });
 
   it("hides the Create View action for a non-manager", () => {
