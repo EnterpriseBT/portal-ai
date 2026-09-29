@@ -104,6 +104,15 @@ export function aggregateCellSize(z: number): number {
 export const DISSOLVE_ALL_KEY = "__all__";
 
 /**
+ * #643: coarsest "recently served" granularity the orphan-scope reap needs. A
+ * dissolve serve only re-stamps `last_served_at` when it is staler than this, so
+ * a MapLibre fan-out (~10 tiles at once) or a repeat pan mostly no-ops instead of
+ * all UPDATE-ing the same rows. The reap's TTL is days, so minute-scale freshness
+ * is ample, and the conditional keeps the touch from contending/deadlocking.
+ */
+const DISSOLVE_TOUCH_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
  * Serve-side precompute owner (#542) — a pin or a transient message block. The
  * dissolve serve keys on whichever the tile ref carries; a message ref used to
  * force `null` (→ raw path), now it serves its own coverage.
@@ -724,9 +733,9 @@ export class PortalMapTileService {
     // `runDissolveTile` (individuals ≤ cap, merged coverage over).
     if (dissolveReady) {
       // #643: mark this scope freshly served so the orphan-scope reap keeps it.
-      // Fire-and-forget — a missed touch only risks an early reap of a still-
-      // live scope, which just re-fills lazily on the next view.
-      this.touchDissolveServed(
+      // Awaited + conditional (see touchDissolveServed) so it never leaks past
+      // the request to deadlock a later write, and a fan-out mostly no-ops.
+      await this.touchDissolveServed(
         dissolveOwner!,
         dissolveColumn,
         band!,
@@ -965,19 +974,27 @@ export class PortalMapTileService {
   /**
    * #643: stamp `last_served_at` on the scope's rows for `(owner, column, band)`
    * so the orphan-scope retention reap (`dissolve-scope-retention-purge`) treats
-   * this scope as live and keeps it. Fire-and-forget: a failed touch never blocks
-   * the tile, and at worst risks an early reap of a scope that re-fills lazily on
-   * the next view. Scoped by `scopeHash` so only the served scope is touched.
+   * this scope as live and keeps it. Scoped by `scopeHash` so only the served
+   * scope is touched.
+   *
+   * **Awaited and conditional**, deliberately: the UPDATE only fires when the
+   * scope is staler than `DISSOLVE_TOUCH_MIN_INTERVAL_MS`, so a fan-out of tiles
+   * (or a repeat pan) hitting the same rows mostly matches nothing and takes no
+   * row locks — no contention. And it is awaited so the write never outlives the
+   * request: an *unawaited* touch could still be running when a later op writes
+   * `map_dissolve_geometries` (a concurrent precompute delete, or the next
+   * request) and deadlock it. Best-effort: any failure is swallowed — a missed
+   * touch only risks an early reap of a still-live scope, which re-fills lazily.
    */
-  private static touchDissolveServed(
+  private static async touchDissolveServed(
     owner: DissolveOwner,
     colorByColumn: string,
     band: number,
     scopeHash: string
-  ): void {
+  ): Promise<void> {
     const servedAt = Date.now();
-    void db
-      .execute(
+    try {
+      await db.execute(
         sql`
           UPDATE map_dissolve_geometries mdg
           SET last_served_at = ${servedAt}
@@ -985,11 +1002,15 @@ export class PortalMapTileService {
             AND mdg.column_name = ${colorByColumn}
             AND mdg.zoom_band = ${band}
             AND mdg.deleted IS NULL
+            AND (
+              mdg.last_served_at IS NULL
+              OR mdg.last_served_at < ${servedAt - DISSOLVE_TOUCH_MIN_INTERVAL_MS}
+            )
         `
-      )
-      .catch(() => {
-        /* best-effort: an un-touched scope may reap early, then re-fills lazily */
-      });
+      );
+    } catch {
+      /* best-effort: an un-touched scope may reap early, then re-fills lazily */
+    }
   }
 
   /**
