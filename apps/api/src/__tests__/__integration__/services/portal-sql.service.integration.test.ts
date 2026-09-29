@@ -1,15 +1,17 @@
 /**
  * Integration tests for PortalSqlService (Phase 3 slice 2).
  *
- * Two describe blocks — `buildSessionViews` (cases 34–41) and
+ * Two describe blocks — `resolveViewsForSession` view machinery (cases
+ * 34–41; the org-wide `buildSessionViews` was retired in #643) and
  * `runSqlQuery` (cases 42–55 from
  * `docs/ENTITY_RECORDS_WIDE_TABLE_PHASE_3.spec.md`).
  *
  * The shared `beforeEach` builds a station with three connector
  * entities — two read-capable (`contacts`, `deals`) and one with read
- * disabled (`private_audit`) — reconciles their wide tables, and seeds
- * a known set of `entity_records` + wide-table rows. Each test then
- * either drives `buildSessionViews` directly (assertions on the
+ * disabled (`private_audit`) — reconciles their wide tables, seeds a
+ * known set of `entity_records` + wide-table rows, and attaches curated
+ * views granting `userId` read on the two readable ones. Each test then
+ * either drives `resolveViewsForSession` directly (assertions on the
  * generated DDL + a probe SELECT inside a transaction) or calls
  * `runSqlQuery` against the live station.
  */
@@ -48,6 +50,8 @@ describe("PortalSqlService integration tests", () => {
   let dealsEntityId: string;
   let privateEntityId: string;
   let userId: string;
+  let contactsViewId: string;
+  let dealsViewId: string;
 
   beforeEach(async () => {
     if (!process.env.DATABASE_URL) {
@@ -287,9 +291,8 @@ describe("PortalSqlService integration tests", () => {
     await reconciler.reconcileEntity(privateEntityId, db);
     // #599: attach default curated views (the cutover data attachment). Grant
     // the test user read on the two readable ones; private_audit is attached
-    // but ungranted, so it stays out of the per-user session (and its instance
-    // read=false keeps it out of the org-wide buildSessionViews too).
-    await attachCuratedView(dbTyped, {
+    // but ungranted, so it stays out of the per-user session.
+    contactsViewId = await attachCuratedView(dbTyped, {
       stationId,
       organizationId: orgId,
       connectorEntityId: contactsEntityId,
@@ -298,7 +301,7 @@ describe("PortalSqlService integration tests", () => {
       createdBy: user.id,
       grantToUserId: user.id,
     });
-    await attachCuratedView(dbTyped, {
+    dealsViewId = await attachCuratedView(dbTyped, {
       stationId,
       organizationId: orgId,
       connectorEntityId: dealsEntityId,
@@ -315,6 +318,29 @@ describe("PortalSqlService integration tests", () => {
       label: "Private Audit",
       createdBy: user.id,
     });
+    // Grant the test user class-wide `read column_definition` so the per-user
+    // session includes the admin-facing `_meta_column_catalog` view (it is
+    // gated on `canPerformAny("read","column_definition")` in
+    // buildViewsForSession). This keeps the catalog coverage below on the live
+    // per-user path; a member without this grant simply omits the view.
+    await dbTyped.insert(schema.permissionGrants).values({
+      id: generateId(),
+      organizationId: orgId,
+      principalType: "user",
+      principalId: user.id,
+      effect: "allow",
+      verb: "read",
+      resourceType: "column_definition",
+      resourceId: null,
+      condition: null,
+      conditionParam: null,
+      created: now,
+      createdBy: user.id,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
   });
 
   afterEach(async () => {
@@ -369,8 +395,12 @@ describe("PortalSqlService integration tests", () => {
   }
 
   /**
-   * Helper that runs `buildSessionViews` inside a transaction, materialises
-   * the DDL, runs the provided probe SQL, and rolls the transaction back.
+   * Helper that runs `resolveViewsForSession` (the per-user view builder — the
+   * org-wide `buildSessionViews` was retired in #643) inside a transaction,
+   * materialises the DDL, runs the provided probe SQL, and rolls the
+   * transaction back. The fixture grants `userId` read on the two readable
+   * views (contacts, deals) with all their columns, so the resolved view set +
+   * projections match what the org-wide builder produced for this station.
    */
   async function probeInsideTx<T>(
     probeSql: string
@@ -378,9 +408,10 @@ describe("PortalSqlService integration tests", () => {
     let captured: { ddlByEntity: Map<string, string>; rows: T[] } | undefined;
     try {
       await db.transaction(async (tx) => {
-        const build = await portalSql.buildSessionViews(
+        const build = await portalSql.resolveViewsForSession(
           stationId,
           orgId,
+          userId,
           tx as unknown as DbClient
         );
         const ddlByEntity = new Map<string, string>();
@@ -413,10 +444,12 @@ describe("PortalSqlService integration tests", () => {
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // buildSessionViews — cases 34–41
+  // resolveViewsForSession — view-building machinery (cases 34–41)
+  // (org-wide buildSessionViews retired #643; the same DDL machinery is now
+  // reached per-user, so these assertions run against the live path)
   // ═════════════════════════════════════════════════════════════════════
 
-  describe("buildSessionViews", () => {
+  describe("resolveViewsForSession (view machinery)", () => {
     // Case 34
     it("produces a temp view for each read-capable entity, named after entity.key", async () => {
       const { ddlByEntity } = await probeInsideTx("SELECT 1");
@@ -541,7 +574,7 @@ describe("PortalSqlService integration tests", () => {
     });
 
     // Case 41 — reconciler-added column appears on the next build.
-    it("a column added by the reconciler appears on the next buildSessionViews", async () => {
+    it("a column added by the reconciler appears on the next resolveViewsForSession", async () => {
       // Pre-state: contacts has c_email + c_age.
       const before = await probeInsideTx<{ column_name: string }>(
         `SELECT column_name FROM information_schema.columns WHERE table_name = 'contacts'`
@@ -596,15 +629,17 @@ describe("PortalSqlService integration tests", () => {
 
     // Cases 42–47 — schema-introspection meta views (#87).
 
-    it("emits a _meta_entities view listing every read-capable entity", async () => {
+    it("emits a _meta_entities view listing every granted curated view", async () => {
+      // #643/#599: per-user, `_meta_entities` lists the caller's granted
+      // curated views (id = curated_view id), not raw connector entities.
       const { rows } = await probeInsideTx<{
         id: string;
         key: string;
         label: string;
       }>(`SELECT id, key, label FROM "_meta_entities" ORDER BY key`);
       expect(rows).toEqual([
-        { id: contactsEntityId, key: "contacts", label: "Contacts" },
-        { id: dealsEntityId, key: "deals", label: "Deals" },
+        { id: contactsViewId, key: "contacts", label: "Contacts" },
+        { id: dealsViewId, key: "deals", label: "Deals" },
       ]);
     });
 

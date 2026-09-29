@@ -102,7 +102,7 @@ describe("ConnectorEntityCreateTool", () => {
 
   it("provisions the wide table after creating the entity", async () => {
     // Without this call, the `er__<id>` physical table doesn't exist
-    // and `buildSessionViews` later fails when it tries to alias the
+    // and `resolveViewsForSession` later fails when it tries to alias the
     // entity. Mirrors `connector-entity.router.ts:459`'s ensureTable
     // call so the tool-driven and route-driven paths converge.
     await exec({

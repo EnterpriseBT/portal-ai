@@ -156,7 +156,7 @@ export class WideTableRepository {
     const whereExtra = opts.where ? sql` AND (${opts.where})` : sql``;
 
     // #450: filter on the wide row's own `deleted` — no `JOIN entity_records`
-    // (see buildSessionViews). Every delete path marks it atomically with the
+    // (see resolveViewsForSession). Every delete path marks it atomically with the
     // record soft-delete.
     const rows = await (client as typeof db).execute(sql`
       SELECT ${sql.raw(colList)}
