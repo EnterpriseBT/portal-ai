@@ -5,6 +5,7 @@ import { AnalyticsService } from "../services/analytics.service.js";
 import { DbService } from "../services/db.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { loadConnectorInstanceContexts } from "../services/portal.service.js";
+import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
@@ -236,7 +237,9 @@ export class StationContextTool extends Tool<typeof InputSchema> {
         // admin (via `*`) resolves all attached views; a member only their
         // grants. Computed once when either section needs it.
         const needsViewScope =
-          sections.has("entities") || sections.has("columnDefinitions");
+          sections.has("entities") ||
+          sections.has("columnDefinitions") ||
+          sections.has("entityGroups");
         const viewResolution = needsViewScope
           ? await PortalSqlService.resolveGrantedViewColumns(
               stationId,
@@ -351,7 +354,13 @@ export class StationContextTool extends Tool<typeof InputSchema> {
         }
 
         if (sections.has("entityGroups")) {
-          response.entityGroups = stationData.entityGroups.map((g) => ({
+          // #648: scope groups to the caller's granted views — the same
+          // resolution the `entities` section uses — so ungranted entities'
+          // group metadata never leaks. Fail-closed: no resolution → no groups.
+          response.entityGroups = scopeEntityGroupsToEntities(
+            stationData.entityGroups,
+            viewResolution?.views ?? []
+          ).map((g) => ({
             id: g.id,
             name: g.name,
             members: g.members.map((m) => ({

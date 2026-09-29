@@ -31,6 +31,8 @@ const mockLoadConnectorInstanceContexts = jest
 jest.unstable_mockModule("../../services/portal.service.js", () => ({
   loadConnectorInstanceContexts: mockLoadConnectorInstanceContexts,
 }));
+// #648: scopeEntityGroupsToEntities is imported from its own util (not the
+// mocked portal.service), so the tool test exercises the REAL scoping.
 
 const mockWideTableStatementCacheGet = jest.fn<
   () => Promise<{
@@ -279,6 +281,32 @@ describe("StationContextTool", () => {
     expect(result.connectorInstances).toHaveLength(1);
     expect(result.entityGroups).toHaveLength(1);
     expect(result.columnDefinitions).toHaveLength(2);
+  });
+
+  it("scopes entity groups to the caller's granted entities (#648)", async () => {
+    // A member granted only `contacts` (ent-contacts) — the "Customer Orders"
+    // group's sole member is `parcels` (ent-parcels), which they cannot query,
+    // so the group's structure metadata must not appear.
+    mockResolveGrantedViewColumns.mockResolvedValueOnce({
+      set: { canPerformAny: () => false },
+      views: [
+        {
+          view: {
+            id: "view-contacts",
+            key: "contacts",
+            label: "Contacts",
+            connectorEntityId: "ent-contacts",
+          },
+          columns: [],
+        },
+      ],
+    });
+
+    const result = (await exec({ include: ["entityGroups"] })) as {
+      entityGroups: unknown[];
+    };
+
+    expect(result.entityGroups).toEqual([]);
   });
 
   it("returns the org column-definition catalog (#154)", async () => {

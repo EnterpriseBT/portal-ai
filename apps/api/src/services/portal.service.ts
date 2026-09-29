@@ -24,6 +24,7 @@ import { eq, and } from "drizzle-orm";
 import { AiService } from "./ai.service.js";
 import { AnalyticsService } from "./analytics.service.js";
 import type { EntitySchema } from "./analytics.service.js";
+import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "./portal-sql.service.js";
 import { DissolvePrecomputeService } from "./dissolve-precompute.service.js";
 import { EntitlementService } from "./entitlement.service.js";
@@ -1258,7 +1259,13 @@ export async function buildStationContext(args: {
     stationName: station.name,
     organizationTimezone,
     entities,
-    entityGroups: stationData.entityGroups,
+    // #648: scope the entity-group section to the same granted views as the
+    // roster above — otherwise it leaks structure metadata for entities the
+    // caller cannot query.
+    entityGroups: scopeEntityGroupsToEntities(
+      stationData.entityGroups,
+      grantedViewColumns
+    ),
     effectiveToolPacks,
     unentitledToolPacks,
     customToolPacks,
