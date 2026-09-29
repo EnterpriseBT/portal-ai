@@ -6,6 +6,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 import { DissolvePrecomputeService } from "../../services/dissolve-precompute.service.js";
 import { JobsService } from "../../services/jobs.service.js";
+import { DbService } from "../../services/db.service.js";
 import { db } from "../../db/client.js";
 
 const polygonChoropleth = {
@@ -110,6 +111,7 @@ describe("DissolvePrecomputeService.enqueueForPin", () => {
     expect(params.metadata).toEqual({
       portalResultId: "pr-1",
       organizationId: "org-1",
+      userId: "user-1",
     });
   });
 
@@ -204,6 +206,7 @@ describe("DissolvePrecomputeService.enqueueForMessageBlock (#542)", () => {
       organizationId: "org-1",
       messageId: "m-1",
       blockIndex: 2,
+      userId: "u-1",
     });
   });
 
@@ -224,5 +227,65 @@ describe("DissolvePrecomputeService.enqueueForMessageBlock (#542)", () => {
     });
     await call({ type: "text", content: {} });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("DissolvePrecomputeService.enqueueLazyFill (#643 dedup)", () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const lazyFill = () =>
+    DissolvePrecomputeService.enqueueLazyFill({
+      owner: { kind: "pin", portalResultId: "pr-1" },
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+
+  it("enqueues when no non-terminal dissolve job exists for the owner+user", async () => {
+    const find = jest
+      .spyOn(DbService.repository.jobs, "findRunningDissolveForOwner")
+      .mockResolvedValue([] as never);
+    const create = jest
+      .spyOn(JobsService, "create")
+      .mockResolvedValue({ id: "job" } as never);
+
+    await lazyFill();
+
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(1);
+    const [userId, params] = create.mock.calls[0] as [
+      string,
+      { metadata: Record<string, unknown> },
+    ];
+    expect(userId).toBe("user-1");
+    expect(params.metadata).toEqual({
+      organizationId: "org-1",
+      userId: "user-1",
+      portalResultId: "pr-1",
+    });
+  });
+
+  it("dedups — does NOT enqueue when a non-terminal dissolve job already covers the owner+user", async () => {
+    jest
+      .spyOn(DbService.repository.jobs, "findRunningDissolveForOwner")
+      .mockResolvedValue([{ id: "in-flight" }] as never);
+    const create = jest.spyOn(JobsService, "create");
+
+    await lazyFill();
+
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("fails open — a dedup-check error still enqueues (never blocks the fill)", async () => {
+    jest
+      .spyOn(DbService.repository.jobs, "findRunningDissolveForOwner")
+      .mockRejectedValue(new Error("db down") as never);
+    const create = jest
+      .spyOn(JobsService, "create")
+      .mockResolvedValue({ id: "job" } as never);
+
+    await expect(lazyFill()).resolves.toBeUndefined();
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

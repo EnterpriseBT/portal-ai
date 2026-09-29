@@ -1,4 +1,11 @@
-import { pgTable, text, integer, boolean, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  integer,
+  bigint,
+  boolean,
+  index,
+} from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { portalResults } from "./portal-results.table.js";
@@ -70,15 +77,28 @@ export const mapDissolveGeometries = pgTable(
     /** `false` = one individual source polygon; `true` = a dissolved coverage
      *  piece (#532). The serve picks the representation by per-tile feature count. */
     merged: boolean("merged").notNull().default(false),
+    /** #643: content hash of the caller's resolved session-view scope
+     *  (`resolveScopeHash(build)`), so the dissolve is per curated-view scope —
+     *  a viewer is only served coverage computed for exactly their entitlement.
+     *  The transitional `""` default keeps pre-#643-slice-4 writers valid; every
+     *  real writer sets it explicitly, and `""` never matches a live caller hash. */
+    scopeHash: text("scope_hash").notNull().default(""),
+    /** #643: epoch-ms of the last serve, touched on each dissolve serve to drive
+     *  the orphan-scope retention reap (stale scopes are purged by TTL). Not
+     *  indexed on purpose — the reap reads it only through a full-table grouping,
+     *  so a btree would be write-amplification on the hot touch path with no
+     *  reader. */
+    lastServedAt: bigint("last_served_at", { mode: "number" }),
   },
   (t) => [
-    // The serve lookup: rows for a pin's column at a band + representation, then
-    // geom && envelope.
+    // The serve lookup: rows for a pin's column at a band + representation +
+    // scope, then geom && envelope.
     index("map_dissolve_geometries_lookup_idx").on(
       t.portalResultId,
       t.columnName,
       t.zoomBand,
-      t.merged
+      t.merged,
+      t.scopeHash
     ),
     index("map_dissolve_geometries_pin_idx").on(t.portalResultId),
     // The message-owner serve lookup (#542), mirroring the pin lookup.
@@ -87,7 +107,8 @@ export const mapDissolveGeometries = pgTable(
       t.blockIndex,
       t.columnName,
       t.zoomBand,
-      t.merged
+      t.merged,
+      t.scopeHash
     ),
   ]
 );

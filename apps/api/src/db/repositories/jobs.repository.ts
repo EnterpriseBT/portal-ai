@@ -154,6 +154,44 @@ export class JobsRepository extends Repository<
   }
 
   /**
+   * Find non-terminal `dissolve_precompute` jobs for a specific owner **and
+   * user** (#643). Used to dedup the lazy-fill enqueue on a tile-serve miss:
+   * MapLibre fans out ~10 tiles at once, and a scope with genuinely empty
+   * coverage would otherwise re-enqueue on every tile request forever. Keyed by
+   * `userId` (not the owner alone) because the dissolve scope is per-user — a
+   * different user's distinct scope must still be allowed to fill.
+   */
+  async findRunningDissolveForOwner(
+    owner:
+      | { kind: "pin"; portalResultId: string }
+      | { kind: "message"; messageId: string; blockIndex: number },
+    userId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    const ownerCond =
+      owner.kind === "pin"
+        ? sql`${jobs.metadata}->>'portalResultId' = ${owner.portalResultId}`
+        : sql`${jobs.metadata}->>'messageId' = ${owner.messageId} AND (${jobs.metadata}->>'blockIndex')::int = ${owner.blockIndex}`;
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          eq(jobs.type, "dissolve_precompute"),
+          inArray(
+            jobs.status,
+            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
+          ),
+          sql`${jobs.metadata}->>'userId' = ${userId}`,
+          ownerCond,
+          this.notDeleted()
+        )
+      )) as JobSelect[];
+  }
+
+  /**
    * Find every non-terminal job whose metadata's lock-set overlaps the
    * given connector entity ids. Today this covers `bulk_transform`
    * (`metadata.targetConnectorEntityIds: string[]`); future job types

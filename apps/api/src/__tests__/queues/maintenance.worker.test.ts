@@ -44,6 +44,7 @@ const mockLedger = jest.fn<() => Promise<unknown>>();
 const mockEntityRecord = jest.fn<() => Promise<unknown>>();
 const mockMessageDissolve = jest.fn<() => Promise<unknown>>();
 const mockAuditLog = jest.fn<() => Promise<unknown>>();
+const mockDissolveScope = jest.fn<() => Promise<unknown>>();
 
 jest.unstable_mockModule(
   "../../queues/processors/ledger-retention-purge.processor.js",
@@ -61,6 +62,10 @@ jest.unstable_mockModule(
   "../../queues/processors/audit-log-retention-purge.processor.js",
   () => ({ auditLogRetentionPurgeProcessor: mockAuditLog })
 );
+jest.unstable_mockModule(
+  "../../queues/processors/dissolve-scope-retention-purge.processor.js",
+  () => ({ dissolveScopeRetentionPurgeProcessor: mockDissolveScope })
+);
 
 const { createMaintenanceWorker } =
   await import("../../queues/maintenance.worker.js");
@@ -70,6 +75,7 @@ const {
   ENTITY_RECORD_RETENTION_PURGE_JOB,
   MESSAGE_DISSOLVE_RETENTION_PURGE_JOB,
   AUDIT_LOG_RETENTION_PURGE_JOB,
+  DISSOLVE_SCOPE_RETENTION_PURGE_JOB,
 } = await import("../../queues/maintenance.queue.js");
 
 describe("maintenance worker dispatch", () => {
@@ -78,6 +84,8 @@ describe("maintenance worker dispatch", () => {
     mockLedger.mockReset().mockResolvedValue({ purged: 0 });
     mockEntityRecord.mockReset().mockResolvedValue({ purgedOrphan: 0 });
     mockMessageDissolve.mockReset().mockResolvedValue({ purged: 0 });
+    mockAuditLog.mockReset().mockResolvedValue({ purged: 0 });
+    mockDissolveScope.mockReset().mockResolvedValue({ purged: 0 });
     mockUpsertJobScheduler.mockReset().mockResolvedValue(undefined);
     createMaintenanceWorker();
   });
@@ -105,6 +113,13 @@ describe("maintenance worker dispatch", () => {
     await capturedHandler!({ name: AUDIT_LOG_RETENTION_PURGE_JOB });
     expect(mockAuditLog).toHaveBeenCalledTimes(1);
     expect(mockLedger).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the dissolve-scope retention purge (#643)", async () => {
+    await capturedHandler!({ name: DISSOLVE_SCOPE_RETENTION_PURGE_JOB });
+    expect(mockDissolveScope).toHaveBeenCalledTimes(1);
+    expect(mockLedger).not.toHaveBeenCalled();
+    expect(mockMessageDissolve).not.toHaveBeenCalled();
   });
 
   it("throws on an unknown job name rather than resolving quietly", async () => {

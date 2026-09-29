@@ -146,8 +146,9 @@ adminRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.application!.metadata.userId;
-      const result =
-        await DissolvePrecomputeService.reenqueueAllDissolvable(userId);
+      // #643: each pin re-precomputes under its own creator's scope (no single
+      // operator scope); `userId` here is just the audit actor for the trigger.
+      const result = await DissolvePrecomputeService.reenqueueAllDissolvable();
       logger.info(
         { enqueued: result.enqueued, actorUserId: userId },
         "dissolve reenqueue trigger invoked (#541)"
@@ -180,7 +181,7 @@ adminRouter.post(
  *     tags:
  *       - Admin
  *     summary: Maintenance-queue status (schedulers + recent runs)
- *     description: Operator visibility into the internal maintenance queue (#179) — registered repeatable-job schedulers and the most recent completed/failed runs, read straight from BullMQ state. Each purge's run summary appears as that run's returnvalue — the ledger retention purge reports { purged, batches, cutoff }, and the entity-record retention purge (#442) reports { purgedOrphan, purgedLive, batches, orphanCutoff, liveCutoff }, the two cutoffs naming the windows actually in effect for that run.
+ *     description: Operator visibility into the internal maintenance queue (#179) — registered repeatable-job schedulers and the most recent completed/failed runs, read straight from BullMQ state. Each purge's run summary appears as that run's returnvalue — the ledger retention purge reports { purged, batches, cutoff }, and the entity-record retention purge (#442) reports { purgedOrphan, purgedLive, batches, orphanCutoff, liveCutoff }, the two cutoffs naming the windows actually in effect for that run, and the dissolve-scope retention purge (#643) reports { purged, batches, cutoff }.
  *     security:
  *       - bearerAuth: []
  *     responses:

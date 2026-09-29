@@ -9,12 +9,16 @@ import {
   SyncLockService,
   DISSOLVE_LOCK_NAMESPACE,
 } from "../../services/sync-lock.service.js";
-import { PortalSqlService } from "../../services/portal-sql.service.js";
+import {
+  PortalSqlService,
+  resolveScopeHash,
+} from "../../services/portal-sql.service.js";
 import {
   tileSimplifyTolerance,
   coverageSnapTolerance,
   DISSOLVE_ALL_KEY,
 } from "../../services/portal-map-tile.service.js";
+import { SystemUtilities } from "../../utils/system.util.js";
 import { createLogger } from "../../utils/logger.util.js";
 
 const logger = createLogger({ module: "dissolve-precompute" });
@@ -59,6 +63,12 @@ const ownerWhere = (o: Owner): string =>
   o.kind === "pin"
     ? `portal_result_id = '${o.portalResultId}'`
     : `message_id = '${o.messageId}' AND block_index = ${o.blockIndex}`;
+
+/** #643: owner WHERE + the per-scope key, so a recompute of one scope replaces
+ *  only its own rows and never touches another scope's coverage. `scopeHash` is
+ *  a 32-char hex from `resolveScopeHash` — no escaping needed. */
+const ownerScopeWhere = (o: Owner, scopeHash: string): string =>
+  `${ownerWhere(o)} AND scope_hash = '${scopeHash}'`;
 
 /** Advisory-lock subject — a message block locks on a composite key so two
  *  precomputes of the same block can't race, mirroring the pin lock. */
@@ -112,7 +122,8 @@ function resolvePolygonColorBy(
  */
 async function runDissolve(
   owner: Owner,
-  organizationId: string
+  organizationId: string,
+  userId: string
 ): Promise<DissolvePrecomputeResult> {
   // Load the owner's block content + station. A pin reads its portal_results row;
   // a message block reads blocks[blockIndex].content from its portal_messages row
@@ -170,10 +181,15 @@ async function runDissolve(
   if (!pipeline?.sql) return skip("non-polygon", colorByColumn);
   const pipelineSql = pipeline.sql;
 
-  const build = await PortalSqlService.buildSessionViews(
+  // #643: dissolve the caller's own view scope, not the org-wide data. The
+  // scope hash keys the rows so a viewer is only ever served coverage computed
+  // for exactly their entitlement (was org-wide buildSessionViews).
+  const build = await PortalSqlService.resolveViewsForSession(
     stationId,
-    organizationId
+    organizationId,
+    userId
   );
+  const scopeHash = resolveScopeHash(build);
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
   const applyViews = async (tx: Tx) => {
     await tx.execute(
@@ -206,7 +222,7 @@ async function runDissolve(
   // An owner that no longer qualifies must not keep serving stale dissolve rows.
   if (distinctCount === 0) {
     await db.execute(
-      sql`DELETE FROM map_dissolve_geometries WHERE ${sql.raw(ownerWhere(owner))}`
+      sql`DELETE FROM map_dissolve_geometries WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))}`
     );
     return { columnName: colorByColumn, valuesDissolved: 0, rowsWritten: 0 };
   }
@@ -215,12 +231,14 @@ async function runDissolve(
   let degraded = false;
 
   const insertHead = `INSERT INTO map_dissolve_geometries
-         (id, created, created_by, organization_id,
+         (id, created, created_by, scope_hash, organization_id,
           portal_result_id, message_id, block_index,
           column_name, value, zoom_band, feature_count, merged, geom)`;
+  // #643: written as the system actor (a platform materialization), tagged with
+  // the caller's scope hash. Both values are trusted (SYSTEM_ID env; 32-hex).
   const rowMeta = `gen_random_uuid()::text,
               (extract(epoch from now()) * 1000)::bigint,
-              'dissolve_precompute', '${organizationId}', ${ownerValues(owner)}`;
+              '${SystemUtilities.id.system}', '${scopeHash}', '${organizationId}', ${ownerValues(owner)}`;
   const escapedColumn = storedColumn.replace(/'/g, "''");
 
   // #532: two representations per band, distinguished by `merged`. The serve
@@ -239,7 +257,7 @@ async function runDissolve(
         await applyViews(tx);
         await tx.execute(
           sql`DELETE FROM map_dissolve_geometries
-              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
                 AND merged = false`
         );
         await tx.execute(
@@ -258,7 +276,7 @@ async function runDissolve(
         );
         const c = (await tx.execute(
           sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
                 AND merged = false`
         )) as unknown as Array<{ n: number }>;
         return c[0]?.n ?? 0;
@@ -290,7 +308,7 @@ async function runDissolve(
         await applyViews(tx);
         await tx.execute(
           sql`DELETE FROM map_dissolve_geometries
-              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
                 AND merged = true`
         );
         await tx.execute(
@@ -322,7 +340,7 @@ async function runDissolve(
         );
         const c = (await tx.execute(
           sql`SELECT count(*)::int AS n FROM map_dissolve_geometries
-              WHERE ${sql.raw(ownerWhere(owner))} AND zoom_band = ${band}
+              WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
                 AND merged = true`
         )) as unknown as Array<{ n: number }>;
         return c[0]?.n ?? 0;
@@ -348,8 +366,20 @@ async function runDissolve(
 export const dissolvePrecomputeProcessor: TypedJobProcessor<
   "dissolve_precompute"
 > = async (bullJob) => {
-  const { portalResultId, messageId, blockIndex, organizationId } =
+  const { portalResultId, messageId, blockIndex, organizationId, userId } =
     bullJob.data;
+  // #643: userId keys the per-scope dissolve — resolveViewsForSession(…, userId)
+  // resolves the entitlement whose scope the rows are written under. Job data is
+  // typed but NOT re-validated on read (bullJob.data is cast, not parsed), so a
+  // job enqueued before this deploy carries no userId. Fail loudly rather than
+  // resolving an empty scope and silently deleting the owner's rows / writing
+  // nothing. (New jobs can't reach here without it — model.parse() rejects at
+  // create; migration 0117 truncates the pre-#643 cache so nothing is lost.)
+  if (!userId) {
+    throw new Error(
+      "dissolve_precompute job is missing userId (pre-#643 metadata); refusing to run with an empty scope"
+    );
+  }
   // #542: the job owns a pin OR a message block (the metadata refine guarantees
   // exactly one). Build the owner + lock on its key so two passes can't race.
   const owner: Owner =
@@ -362,7 +392,7 @@ export const dissolvePrecomputeProcessor: TypedJobProcessor<
   const outcome = await SyncLockService.withAdvisoryLock(
     DISSOLVE_LOCK_NAMESPACE,
     lockKey,
-    () => runDissolve(owner, organizationId),
+    () => runDissolve(owner, organizationId, userId),
     { event: "dissolve-lock", subject: "owner" }
   );
 

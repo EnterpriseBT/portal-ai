@@ -13,7 +13,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { PortalMapTileService } from "../../../services/portal-map-tile.service.js";
-import { PortalSqlService } from "../../../services/portal-sql.service.js";
+import {
+  PortalSqlService,
+  resolveScopeHash,
+} from "../../../services/portal-sql.service.js";
 import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { WideTableRepository } from "../../../db/repositories/wide-table.repository.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -35,6 +38,9 @@ describe("Portal map tile route (#316)", () => {
   let entityId: string;
   let pinId: string;
   let stationId: string;
+  // #643: the serving user's resolved scope hash — seeded dissolve rows must
+  // carry it so the per-scope serve matches (else it misses → raw fallback).
+  let dissolveScopeHash: string;
 
   // A large-ish polygon near the origin (lng 0..10, lat 0..10) so it survives
   // low-zoom simplification and sits squarely in the z0 world envelope.
@@ -272,6 +278,12 @@ describe("Portal map tile route (#316)", () => {
       deleted: null,
       deletedBy: null,
     } as never);
+
+    // #643: the scope the serving user (`userId`) resolves to — seeded dissolve
+    // rows below are tagged with it so the per-scope serve matches.
+    dissolveScopeHash = resolveScopeHash(
+      await PortalSqlService.resolveViewsForSession(stationId, orgId, userId)
+    );
   });
 
   afterEach(async () => {
@@ -290,6 +302,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect(res.body).toBeInstanceOf(Buffer);
@@ -297,6 +310,29 @@ describe("Portal map tile route (#316)", () => {
     // #532 ETag format: `"<a|r>~<32-hex>"` — the a/r prefix records whether the
     // tile aggregated so a 304 can report the right notice.
     expect(res.etag).toMatch(/^"[ar]~[0-9a-f]{32}"$/);
+  });
+
+  it("#643: a user with no granted view over the map serves an empty tile (204), not 500 or another scope's data", async () => {
+    // The pin's pipeline references the `parcels` curated view; a user who isn't
+    // granted it has no such temp view in their per-user session, so the tile
+    // query hits `relation "parcels" does not exist` (42P01). The serve must
+    // degrade to an empty tile (AC2: a no-grant member "sees no tile") — never a
+    // 500 and never the data. (Before #643 the org-wide builder made the view
+    // for everyone, so this path never fired.)
+    const stranger = createUser(`auth0|${generateId()}`);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.users)
+      .values(stranger as never);
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pinId },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+      userId: stranger.id,
+    });
+    expect(res.status).toBe(204);
+    expect(res.body).toBeUndefined();
   });
 
   it("returns 204 for a tile envelope that doesn't contain the geometry", async () => {
@@ -308,6 +344,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 7,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
@@ -321,6 +358,7 @@ describe("Portal map tile route (#316)", () => {
         x: 0,
         y: 0,
         organizationId: generateId(),
+        userId,
       })
     ).rejects.toMatchObject({ status: 404, code: "MAP_TILE_NOT_FOUND" });
   });
@@ -426,8 +464,8 @@ describe("Portal map tile route (#316)", () => {
     connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, portal_result_id,
-          column_name, value, zoom_band, feature_count, geom)
-       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,$5,'Private',$6,3,
+          column_name, value, zoom_band, feature_count, scope_hash, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,$5,'Private',$6,3,$8,
          ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($7),4326)))`,
       [
         generateId(),
@@ -440,6 +478,7 @@ describe("Portal map tile route (#316)", () => {
           type: "MultiPolygon",
           coordinates: [POLYGON.coordinates],
         }),
+        dissolveScopeHash,
       ]
     );
 
@@ -458,6 +497,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -476,6 +516,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -496,6 +537,7 @@ describe("Portal map tile route (#316)", () => {
       x: 8419,
       y: 7964,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect(res.aggregated).toBe(false);
@@ -515,6 +557,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -534,8 +577,8 @@ describe("Portal map tile route (#316)", () => {
     await connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, portal_result_id,
-          column_name, value, zoom_band, feature_count, merged, geom)
-       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,10001,true,
+          column_name, value, zoom_band, feature_count, merged, scope_hash, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,10001,true,$6,
          ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
       [
         generateId(),
@@ -546,6 +589,7 @@ describe("Portal map tile route (#316)", () => {
           type: "MultiPolygon",
           coordinates: [POLYGON.coordinates],
         }),
+        dissolveScopeHash,
       ]
     );
     // 10,001 individual rows (merged=false) in the same band, all inside the z0
@@ -553,13 +597,13 @@ describe("Portal map tile route (#316)", () => {
     await connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, portal_result_id,
-          column_name, value, zoom_band, feature_count, merged, geom)
+          column_name, value, zoom_band, feature_count, merged, scope_hash, geom)
        SELECT gen_random_uuid()::text, $1, 'SYSTEM_TEST', $2, $3,
-              '__all__','__all__',0,1,false,
+              '__all__','__all__',0,1,false,$4,
               ST_Multi(ST_Buffer(ST_SetSRID(
                 ST_MakePoint(1 + (g % 100) * 0.01, 1 + (g / 100) * 0.01), 4326), 0.002))
        FROM generate_series(1, 10001) g`,
-      [Date.now(), orgId, pin]
+      [Date.now(), orgId, pin, dissolveScopeHash]
     );
 
     const res = await PortalMapTileService.renderTile({
@@ -568,6 +612,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -582,15 +627,15 @@ describe("Portal map tile route (#316)", () => {
     connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, portal_result_id,
-          column_name, value, zoom_band, feature_count, merged, geom)
+          column_name, value, zoom_band, feature_count, merged, scope_hash, geom)
        SELECT gen_random_uuid()::text, $1, 'SYSTEM_TEST', $2, $3,
-              '__all__','__all__',0,1,false,
+              '__all__','__all__',0,1,false,$4,
               ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(
                 -179 + ((g - 1) % 100) * 3.5,
                 -85 + (((g - 1) / 100)::int % 100) * 1.6
               ), 4326), 0.5))
        FROM generate_series(1, ${n}) g`,
-      [Date.now(), orgId, pin]
+      [Date.now(), orgId, pin, dissolveScopeHash]
     );
 
   it("#541 slice 1: over-cap tile with NO merged coverage → area-ranked individuals, never blank", async () => {
@@ -608,6 +653,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -629,8 +675,8 @@ describe("Portal map tile route (#316)", () => {
     await connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, portal_result_id,
-          column_name, value, zoom_band, feature_count, merged, geom)
-       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,5,true,
+          column_name, value, zoom_band, feature_count, merged, scope_hash, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,'__all__','__all__',0,5,true,$6,
          ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
       [
         generateId(),
@@ -641,6 +687,7 @@ describe("Portal map tile route (#316)", () => {
           type: "MultiPolygon",
           coordinates: [POLYGON.coordinates],
         }),
+        dissolveScopeHash,
       ]
     );
 
@@ -650,6 +697,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -705,8 +753,8 @@ describe("Portal map tile route (#316)", () => {
     connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, message_id, block_index,
-          column_name, value, zoom_band, feature_count, merged, geom)
-       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,0,'__all__','__all__',0,10001,true,
+          column_name, value, zoom_band, feature_count, merged, scope_hash, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,0,'__all__','__all__',0,10001,true,$6,
          ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5),4326)))`,
       [
         generateId(),
@@ -717,21 +765,22 @@ describe("Portal map tile route (#316)", () => {
           type: "MultiPolygon",
           coordinates: [POLYGON.coordinates],
         }),
+        dissolveScopeHash,
       ]
     );
   const insertMsgIndividuals = (messageId: string, n: number) =>
     connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, message_id, block_index,
-          column_name, value, zoom_band, feature_count, merged, geom)
+          column_name, value, zoom_band, feature_count, merged, scope_hash, geom)
        SELECT gen_random_uuid()::text, $1, 'SYSTEM_TEST', $2, $3, 0,
-              '__all__','__all__',0,1,false,
+              '__all__','__all__',0,1,false,$4,
               ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(
                 -179 + ((g - 1) % 100) * 3.5,
                 -85 + (((g - 1) / 100)::int % 100) * 1.6
               ), 4326), 0.5))
        FROM generate_series(1, ${n}) g`,
-      [Date.now(), orgId, messageId]
+      [Date.now(), orgId, messageId, dissolveScopeHash]
     );
 
   it("#542: a message tile ref over-cap serves the merged coverage (owner-keyed)", async () => {
@@ -749,6 +798,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -767,6 +817,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -879,6 +930,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -900,6 +952,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -919,6 +972,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -939,6 +993,7 @@ describe("Portal map tile route (#316)", () => {
       x: 0,
       y: 0,
       organizationId: orgId,
+      userId,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);

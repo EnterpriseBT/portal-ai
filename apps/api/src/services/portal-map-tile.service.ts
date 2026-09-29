@@ -37,7 +37,7 @@ import { db } from "../db/client.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
-import { PortalSqlService } from "./portal-sql.service.js";
+import { PortalSqlService, resolveScopeHash } from "./portal-sql.service.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -104,6 +104,15 @@ export function aggregateCellSize(z: number): number {
 export const DISSOLVE_ALL_KEY = "__all__";
 
 /**
+ * #643: coarsest "recently served" granularity the orphan-scope reap needs. A
+ * dissolve serve only re-stamps `last_served_at` when it is staler than this, so
+ * a MapLibre fan-out (~10 tiles at once) or a repeat pan mostly no-ops instead of
+ * all UPDATE-ing the same rows. The reap's TTL is days, so minute-scale freshness
+ * is ample, and the conditional keeps the touch from contending/deadlocking.
+ */
+const DISSOLVE_TOUCH_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
  * Serve-side precompute owner (#542) — a pin or a transient message block. The
  * dissolve serve keys on whichever the tile ref carries; a message ref used to
  * force `null` (→ raw path), now it serves its own coverage.
@@ -119,6 +128,12 @@ function dissolveOwnerCond(owner: DissolveOwner) {
     : sql`mdg.message_id = ${owner.messageId} AND mdg.block_index = ${owner.blockIndex}`;
 }
 
+/** #643: owner predicate + the caller's per-scope key — the serve only ever
+ *  reads coverage computed for exactly this viewer's curated-view scope. */
+function dissolveScopeCond(owner: DissolveOwner, scopeHash: string) {
+  return sql`${dissolveOwnerCond(owner)} AND mdg.scope_hash = ${scopeHash}`;
+}
+
 export type TileRef =
   | { kind: "message"; messageId: string; blockIndex: number }
   | { kind: "pin"; portalResultId: string };
@@ -129,6 +144,9 @@ export interface RenderTileParams {
   x: number;
   y: number;
   organizationId: string;
+  /** #643: the viewing user — the tile serve resolves this caller's curated-view
+   *  scope so geometry is per-user, matching the rest of the portal session. */
+  userId: string;
   /** `If-None-Match` request header, if any. */
   ifNoneMatch?: string;
 }
@@ -164,10 +182,31 @@ export interface TileQueryResult {
 export interface RenderTileDeps {
   findMessageById?: (id: string) => Promise<unknown>;
   findPortalResultById?: (id: string) => Promise<unknown>;
+  /** #643: resolve the caller's session-view scope hash (injectable for tests).
+   *  Defaults to `resolveScopeHash(resolveViewsForSession(...))`. */
+  resolveTileScopeHash?: (
+    stationId: string,
+    organizationId: string,
+    userId: string
+  ) => Promise<string>;
+  /** #643: does a per-scope dissolve precompute exist for this (owner, column,
+   *  band, scope)? Folded into the ETag so a raw→dissolved transition (a lazy
+   *  fill completing after a raw fallback) busts a cached 304. Injectable for
+   *  tests; defaults to `hasDissolvePrecompute`. */
+  dissolvePrecomputeExists?: (
+    owner: DissolveOwner,
+    colorByColumn: string,
+    band: number,
+    scopeHash: string
+  ) => Promise<boolean>;
   runTileQuery?: (args: {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
+    /** #643: the viewing user + their resolved scope hash — thread to the
+     *  per-user session views and the per-scope dissolve serve. */
+    userId: string;
+    scopeHash: string;
     dissolveOwner: DissolveOwner | null;
     z: number;
     x: number;
@@ -638,6 +677,8 @@ export class PortalMapTileService {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
+    userId: string;
+    scopeHash: string;
     dissolveOwner: DissolveOwner | null;
     z: number;
     x: number;
@@ -652,6 +693,8 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
+      userId,
+      scopeHash,
       dissolveOwner,
       z,
       x,
@@ -678,18 +721,56 @@ export class PortalMapTileService {
       aggregation.treatment === "dissolve" &&
       band !== null &&
       dissolveOwner != null &&
-      (await this.hasDissolvePrecompute(dissolveOwner, dissolveColumn, band));
+      // #643: only a precompute for THIS caller's scope is served.
+      (await this.hasDissolvePrecompute(
+        dissolveOwner,
+        dissolveColumn,
+        band,
+        scopeHash
+      ));
 
     // Polygon dissolve is handled from the precompute, count-driven inside
     // `runDissolveTile` (individuals ≤ cap, merged coverage over).
     if (dissolveReady) {
+      // #643: mark this scope freshly served so the orphan-scope reap keeps it.
+      // Awaited + conditional (see touchDissolveServed) so it never leaks past
+      // the request to deadlock a later write, and a fan-out mostly no-ops.
+      await this.touchDissolveServed(
+        dissolveOwner!,
+        dissolveColumn,
+        band!,
+        scopeHash
+      );
       return this.runDissolveTile(
         dissolveOwner!,
         dissolveColumn,
         band!,
+        scopeHash,
         envelope,
         cap
       );
+    }
+
+    // #643: a dissolve-treatment layer with no precompute for THIS caller's
+    // scope serves the per-user raw fallback below, and lazily enqueues a
+    // background per-scope precompute so repeat views are dissolved. Fire-and-
+    // forget; dynamic import avoids a cycle with the enqueue service.
+    if (
+      aggregation.treatment === "dissolve" &&
+      band !== null &&
+      dissolveOwner != null
+    ) {
+      void import("./dissolve-precompute.service.js")
+        .then(({ DissolvePrecomputeService }) =>
+          DissolvePrecomputeService.enqueueLazyFill({
+            owner: dissolveOwner,
+            organizationId,
+            userId,
+          })
+        )
+        .catch(() => {
+          /* best-effort: a failed lazy fill just means raw tiles persist */
+        });
     }
 
     // #532 slices 3–4: points/lines are count-driven per tile so nothing is ever
@@ -720,6 +801,7 @@ export class PortalMapTileService {
         probeSql,
         pipeline.stationId,
         organizationId,
+        userId,
         false,
         cap + 1
       );
@@ -751,6 +833,7 @@ export class PortalMapTileService {
         ),
         pipeline.stationId,
         organizationId,
+        userId,
         false,
         cap
       );
@@ -773,6 +856,7 @@ export class PortalMapTileService {
       aggTileSql,
       pipeline.stationId,
       organizationId,
+      userId,
       true,
       cap
     );
@@ -783,8 +867,8 @@ export class PortalMapTileService {
    * session-view transaction and shape the `TileQueryResult`. Extracted so the
    * count-driven probe and the aggregate serve share one path (#532).
    *
-   * The session-view DDL is built BEFORE opening the transaction: `buildSession-
-   * Views` runs its own pooled DB reads, and holding this txn's connection while
+   * The session-view DDL is built BEFORE opening the transaction:
+   * `resolveViewsForSession` runs its own pooled DB reads, and holding this txn's connection while
    * it does would make each concurrent tile request hold one connection and block
    * on a second — MapLibre fans out ~10 tiles at once, which would deadlock the
    * pool. Computing the DDL first keeps the txn to a single connection (#314).
@@ -793,12 +877,16 @@ export class PortalMapTileService {
     tileSql: string,
     stationId: string,
     organizationId: string,
+    userId: string,
     aggregate: boolean,
     cap: number
   ): Promise<TileQueryResult> {
-    const build = await PortalSqlService.buildSessionViews(
+    // #643: per-user session views — the tile only ever sees the rows/columns
+    // this caller's granted curated views expose (was org-wide buildSessionViews).
+    const build = await PortalSqlService.resolveViewsForSession(
       stationId,
-      organizationId
+      organizationId,
+      userId
     );
     try {
       return await db.transaction(async (tx) => {
@@ -832,6 +920,22 @@ export class PortalMapTileService {
         };
       });
     } catch (err) {
+      // #643: in a per-user session the temp views are the ONLY tables the tile
+      // query can reference (read-only txn, no base tables). A missing relation
+      // (42P01) therefore means the pin's pipeline references a curated view this
+      // caller isn't granted — they simply can't see this map. Serve a clean
+      // EMPTY tile (→ 204), never a 500 (AC2: a no-grant member "sees no tile")
+      // and never the data. An org-wide-deleted view degrades to empty for
+      // everyone, which is acceptable. This is the per-user counterpart to the
+      // old org-wide builder, where the view always existed so this never fired.
+      if (unwrapPgError(err).code === "42P01") {
+        return {
+          mvt: null,
+          featureCount: 0,
+          truncated: false,
+          aggregated: aggregate,
+        };
+      }
       // `statement_timeout` (57014) arrives wrapped in Drizzle's
       // DrizzleQueryError, so its code is on `.cause` — reading `err.code`
       // directly missed it and the timeout escaped as 500 UNKNOWN (#449).
@@ -851,7 +955,8 @@ export class PortalMapTileService {
   private static async hasDissolvePrecompute(
     owner: DissolveOwner,
     colorByColumn: string,
-    band: number
+    band: number,
+    scopeHash: string
   ): Promise<boolean> {
     const r = (await db.execute(sql`
       SELECT EXISTS(
@@ -859,10 +964,53 @@ export class PortalMapTileService {
         WHERE ${dissolveOwnerCond(owner)}
           AND mdg.column_name = ${colorByColumn}
           AND mdg.zoom_band = ${band}
+          AND mdg.scope_hash = ${scopeHash}
           AND mdg.deleted IS NULL
       ) AS e
     `)) as unknown as Array<{ e: boolean }>;
     return r[0]?.e === true;
+  }
+
+  /**
+   * #643: stamp `last_served_at` on the scope's rows for `(owner, column, band)`
+   * so the orphan-scope retention reap (`dissolve-scope-retention-purge`) treats
+   * this scope as live and keeps it. Scoped by `scopeHash` so only the served
+   * scope is touched.
+   *
+   * **Awaited and conditional**, deliberately: the UPDATE only fires when the
+   * scope is staler than `DISSOLVE_TOUCH_MIN_INTERVAL_MS`, so a fan-out of tiles
+   * (or a repeat pan) hitting the same rows mostly matches nothing and takes no
+   * row locks — no contention. And it is awaited so the write never outlives the
+   * request: an *unawaited* touch could still be running when a later op writes
+   * `map_dissolve_geometries` (a concurrent precompute delete, or the next
+   * request) and deadlock it. Best-effort: any failure is swallowed — a missed
+   * touch only risks an early reap of a still-live scope, which re-fills lazily.
+   */
+  private static async touchDissolveServed(
+    owner: DissolveOwner,
+    colorByColumn: string,
+    band: number,
+    scopeHash: string
+  ): Promise<void> {
+    const servedAt = Date.now();
+    try {
+      await db.execute(
+        sql`
+          UPDATE map_dissolve_geometries mdg
+          SET last_served_at = ${servedAt}
+          WHERE ${dissolveScopeCond(owner, scopeHash)}
+            AND mdg.column_name = ${colorByColumn}
+            AND mdg.zoom_band = ${band}
+            AND mdg.deleted IS NULL
+            AND (
+              mdg.last_served_at IS NULL
+              OR mdg.last_served_at < ${servedAt - DISSOLVE_TOUCH_MIN_INTERVAL_MS}
+            )
+        `
+      );
+    } catch {
+      /* best-effort: an un-touched scope may reap early, then re-fills lazily */
+    }
   }
 
   /**
@@ -888,6 +1036,7 @@ export class PortalMapTileService {
     owner: DissolveOwner,
     colorByColumn: string,
     band: number,
+    scopeHash: string,
     envelope: string,
     cap: number
   ): Promise<TileQueryResult> {
@@ -908,7 +1057,7 @@ export class PortalMapTileService {
           WITH cnt AS (
             SELECT count(*)::int AS n
             FROM map_dissolve_geometries mdg
-            WHERE ${dissolveOwnerCond(owner)}
+            WHERE ${dissolveScopeCond(owner, scopeHash)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = false
@@ -923,7 +1072,7 @@ export class PortalMapTileService {
             -- covered, so it serves empty coverage (not the fallback).
             SELECT EXISTS(
               SELECT 1 FROM map_dissolve_geometries mdg
-              WHERE ${dissolveOwnerCond(owner)}
+              WHERE ${dissolveScopeCond(owner, scopeHash)}
                 AND mdg.column_name = ${colorByColumn}
                 AND mdg.zoom_band = ${band}
                 AND mdg.merged = true
@@ -936,7 +1085,7 @@ export class PortalMapTileService {
             SELECT mdg.geom AS g, mdg.value AS v
             FROM map_dissolve_geometries mdg, cnt
             WHERE (cnt.n <= ${cap} OR NOT (SELECT h FROM has_merged))
-              AND ${dissolveOwnerCond(owner)}
+              AND ${dissolveScopeCond(owner, scopeHash)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = false
@@ -951,7 +1100,7 @@ export class PortalMapTileService {
             FROM map_dissolve_geometries mdg, cnt
             WHERE cnt.n > ${cap}
               AND (SELECT h FROM has_merged)
-              AND ${dissolveOwnerCond(owner)}
+              AND ${dissolveScopeCond(owner, scopeHash)}
               AND mdg.column_name = ${colorByColumn}
               AND mdg.zoom_band = ${band}
               AND mdg.merged = true
@@ -1009,7 +1158,7 @@ export class PortalMapTileService {
     params: RenderTileParams,
     deps: RenderTileDeps = {}
   ): Promise<TileRenderResult> {
-    const { ref, z, x, y, organizationId, ifNoneMatch } = params;
+    const { ref, z, x, y, organizationId, userId, ifNoneMatch } = params;
     const {
       pipeline,
       snapshotUpdatedAt,
@@ -1019,13 +1168,64 @@ export class PortalMapTileService {
       layerTotalExact,
     } = await this.resolvePipeline(ref, organizationId, deps);
 
-    // ETag hash over (pipeline SQL, z, x, y, snapshot clock, tile-gen version).
-    // A fresh pin snapshot, an edited pipeline, or a bumped AGG_TILE_VERSION
-    // (tile-generation behavior change, #532) invalidates cached tiles.
+    // #643: the caller's resolved curated-view scope. The tile serve runs
+    // against these per-user views, and the scope hash keys both the ETag and
+    // the per-scope dissolve serve. Request-memoized (#647), so resolving it
+    // here and again in `runSessionViewTile` is one resolution.
+    const resolveScope =
+      deps.resolveTileScopeHash ??
+      (async (s: string, o: string, u: string) =>
+        resolveScopeHash(
+          await PortalSqlService.resolveViewsForSession(s, o, u)
+        ));
+    const scopeHash = await resolveScope(
+      pipeline.stationId,
+      organizationId,
+      userId
+    );
+
+    // #542: both a pin and a message block address a dissolve precompute, keyed
+    // by their owner. Computed here so the ETag can probe dissolve availability.
+    const dissolveOwner: DissolveOwner =
+      ref.kind === "pin"
+        ? { kind: "pin", portalResultId: ref.portalResultId }
+        : {
+            kind: "message",
+            messageId: ref.messageId,
+            blockIndex: ref.blockIndex,
+          };
+
+    // #643: whether a per-scope dissolve precompute is available for this tile.
+    // Folded into the ETag below so the raw→dissolved transition — a lazy fill
+    // completing after a raw fallback was served — busts a cached 304; without
+    // it the hash never changes and the client keeps the raw tile forever. Only
+    // a dissolve-treatment layer within the dissolve zoom bands can transition.
+    const dissolveBand = bandForZoom(z);
+    let dissolveAvailable = false;
+    if (aggregation.treatment === "dissolve" && dissolveBand !== null) {
+      const dissolveColumn = aggregation.colorByColumn ?? DISSOLVE_ALL_KEY;
+      const existsFn =
+        deps.dissolvePrecomputeExists ??
+        ((o: DissolveOwner, c: string, b: number, s: string) =>
+          this.hasDissolvePrecompute(o, c, b, s));
+      dissolveAvailable = await existsFn(
+        dissolveOwner,
+        dissolveColumn,
+        dissolveBand,
+        scopeHash
+      );
+    }
+
+    // ETag hash over (pipeline SQL, z, x, y, snapshot clock, tile-gen version,
+    // caller scope, dissolve availability). A fresh pin snapshot, an edited
+    // pipeline, a bumped AGG_TILE_VERSION (#532), a changed view scope (#643),
+    // or a raw→dissolved transition invalidates cached tiles — so two callers
+    // with different grants never share a tile and a completed lazy fill is
+    // never masked by a stale 304.
     const hash = crypto
       .createHash("sha256")
       .update(
-        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}`
+        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}|${scopeHash}|${dissolveAvailable ? "d1" : "d0"}`
       )
       .digest("hex")
       .slice(0, 32);
@@ -1052,16 +1252,9 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
-      // #542: both a pin and a message block address a dissolve precompute,
-      // keyed by their owner.
-      dissolveOwner:
-        ref.kind === "pin"
-          ? { kind: "pin", portalResultId: ref.portalResultId }
-          : {
-              kind: "message",
-              messageId: ref.messageId,
-              blockIndex: ref.blockIndex,
-            },
+      userId,
+      scopeHash,
+      dissolveOwner,
       z,
       x,
       y,

@@ -33,6 +33,11 @@ export const MESSAGE_DISSOLVE_RETENTION_PURGE_JOB =
  *  (#575). Same one-const contract as the other purges. */
 export const AUDIT_LOG_RETENTION_PURGE_JOB = "audit-log-retention-purge";
 
+/** Job name AND scheduler id for the daily orphan per-scope dissolve reap
+ *  (#643). Same one-const contract as the other purges. */
+export const DISSOLVE_SCOPE_RETENTION_PURGE_JOB =
+  "dissolve-scope-retention-purge";
+
 let _maintenanceQueue: Queue | null = null;
 
 /**
@@ -104,5 +109,12 @@ export const registerMaintenanceSchedulers = async (): Promise<void> => {
     // contend for the worker's single slot.
     { pattern: "30 5 * * *" },
     { name: AUDIT_LOG_RETENTION_PURGE_JOB }
+  );
+  await getMaintenanceQueue().upsertJobScheduler(
+    DISSOLVE_SCOPE_RETENTION_PURGE_JOB,
+    // Daily 06:00 UTC — after the audit-log purge, so the two never contend
+    // for the worker's single slot.
+    { pattern: "0 6 * * *" },
+    { name: DISSOLVE_SCOPE_RETENTION_PURGE_JOB }
   );
 };

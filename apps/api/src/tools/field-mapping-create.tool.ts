@@ -181,8 +181,8 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
           // Reconcile the wide-table for each affected entity so the
           // new field mappings materialize as physical `c_<key>` columns
           // on `er__<entity_id>`. Without this the wide-table statement
-          // cache stays empty for those columns, the entity-data view in
-          // `buildSessionViews` projects nothing, and the agent sees
+          // cache stays empty for those columns, the entity-data view built
+          // by `resolveViewsForSession` projects nothing, and the agent sees
           // `entity_record_create` fail or `sql_query` return empty
           // projections. Per-entity failures don't abort the result —
           // the field-mapping rows are already persisted; we just log

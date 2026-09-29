@@ -544,6 +544,12 @@ export type SqlQueryJobResult = z.infer<typeof SqlQueryJobResultSchema>;
 export const DissolvePrecomputeMetadataSchema = z
   .object({
     organizationId: z.string(),
+    /** #643: the user whose curated-view scope this dissolve is computed for.
+     *  The processor resolves this user's session views so the coverage is
+     *  keyed by their `scopeHash` (the eager pass uses the pin/block creator;
+     *  a lazy fill uses the viewer who missed). The cache write itself is
+     *  attributed to the system actor. */
+    userId: z.string(),
     /** Pin owner (#472). Exactly one owner is set (pin XOR message block, #542). */
     portalResultId: z.string().optional(),
     /** Message-block owner (#542): the message + which block within it. */
