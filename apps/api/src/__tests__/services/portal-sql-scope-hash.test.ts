@@ -16,6 +16,19 @@ describe("resolveScopeHash (#643)", () => {
     );
   });
 
+  it("is invariant to the order the view set comes back in (#433 — findByStationId has no ORDER BY)", () => {
+    const a = "CREATE TEMP VIEW contacts AS SELECT c_email FROM er__1";
+    const b = "CREATE TEMP VIEW deals AS SELECT c_amount FROM er__2";
+    const c = "CREATE TEMP VIEW _meta_entities AS SELECT id FROM curated_views";
+    // Same set, three different orders → one hash.
+    expect(resolveScopeHash(build([a, b, c]))).toBe(
+      resolveScopeHash(build([c, a, b]))
+    );
+    expect(resolveScopeHash(build([a, b, c]))).toBe(
+      resolveScopeHash(build([b, c, a]))
+    );
+  });
+
   it("differs when a view's row filter differs", () => {
     expect(resolveScopeHash(build(["... WHERE region = 'NE'"]))).not.toBe(
       resolveScopeHash(build(["... WHERE region = 'SW'"]))

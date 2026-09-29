@@ -84,7 +84,10 @@ export const mapDissolveGeometries = pgTable(
      *  real writer sets it explicitly, and `""` never matches a live caller hash. */
     scopeHash: text("scope_hash").notNull().default(""),
     /** #643: epoch-ms of the last serve, touched on each dissolve serve to drive
-     *  the orphan-scope retention reap (stale scopes are purged by TTL). */
+     *  the orphan-scope retention reap (stale scopes are purged by TTL). Not
+     *  indexed on purpose — the reap reads it only through a full-table grouping,
+     *  so a btree would be write-amplification on the hot touch path with no
+     *  reader. */
     lastServedAt: bigint("last_served_at", { mode: "number" }),
   },
   (t) => [
@@ -107,7 +110,5 @@ export const mapDissolveGeometries = pgTable(
       t.merged,
       t.scopeHash
     ),
-    // #643: the orphan-scope reap scans by last-served recency.
-    index("map_dissolve_geometries_last_served_idx").on(t.lastServedAt),
   ]
 );

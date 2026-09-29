@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { DissolvePrecomputeMetadata } from "@portalai/core/models";
 
 import { JobsService } from "./jobs.service.js";
+import { DbService } from "./db.service.js";
 import {
   layerCountFromContent,
   MAP_TILE_FEATURE_CAP,
@@ -141,10 +142,17 @@ export class DissolvePrecomputeService {
    * #643: lazily fill a per-scope dissolve on a tile-serve miss. The tile served
    * the caller's raw/aggregate fallback; this enqueues the background per-scope
    * precompute so repeat views of this scope are dissolved. Best-effort — never
-   * throws into the tile path. The processor's per-owner advisory lock serialises
-   * a burst of first-views, and the delete-then-insert is idempotent, so a
-   * duplicate enqueue only costs a (bounded) redundant recompute, never a wrong
-   * result.
+   * throws into the tile path.
+   *
+   * **Deduped** against a non-terminal `dissolve_precompute` job for the same
+   * (owner, user): MapLibre fans out ~10 tiles at once, and a scope whose
+   * coverage is genuinely empty for a band never satisfies `hasDissolvePrecompute`,
+   * so without this it would re-enqueue on *every* tile request forever. The
+   * dedup is keyed by user (not owner alone) because the scope is per-user — a
+   * different user's distinct scope must still fill. The check is best-effort and
+   * fail-open (a missed dedup only costs an extra advisory-lock-serialised job,
+   * never a wrong result); the processor's per-owner advisory lock + idempotent
+   * delete-then-insert remains the correctness backstop.
    */
   static async enqueueLazyFill(params: {
     owner:
@@ -154,6 +162,22 @@ export class DissolvePrecomputeService {
     userId: string;
   }): Promise<void> {
     const { owner } = params;
+    try {
+      const running =
+        await DbService.repository.jobs.findRunningDissolveForOwner(
+          owner,
+          params.userId,
+          params.organizationId
+        );
+      if (running.length > 0) return;
+    } catch (err) {
+      // Fail-open: a dedup-check failure just risks one extra (lock-serialised)
+      // job, never a wrong result — never let it block the fill.
+      logger.warn(
+        { owner, err },
+        "Lazy-fill dedup check failed; enqueuing anyway (#643)"
+      );
+    }
     const metadata: DissolvePrecomputeMetadata = {
       organizationId: params.organizationId,
       userId: params.userId,

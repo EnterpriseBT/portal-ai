@@ -371,6 +371,15 @@ describe("dissolve-precompute processor (#472)", () => {
     await connection.end();
   });
 
+  it("#643: refuses a job with no userId (pre-deploy metadata) rather than emptying the owner's scope", async () => {
+    // A dissolve_precompute job enqueued before #643 carries no userId; job data
+    // is cast, not re-validated on read, so the processor must fail loudly rather
+    // than resolve an empty scope and silently delete the owner's rows.
+    await expect(
+      runProcessor("pr-whatever", orgId, undefined as unknown as string)
+    ).rejects.toThrow(/missing userId/);
+  });
+
   it("#532: a colorBy layer stores individuals + a merged coverage per band, tagged with its value", async () => {
     // Three adjacent Private, one Federal, one State. Area-ranked (#532) keeps
     // each polygon as its own row — the three adjacent Private are NOT merged

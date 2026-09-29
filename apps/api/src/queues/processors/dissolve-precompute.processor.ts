@@ -368,6 +368,18 @@ export const dissolvePrecomputeProcessor: TypedJobProcessor<
 > = async (bullJob) => {
   const { portalResultId, messageId, blockIndex, organizationId, userId } =
     bullJob.data;
+  // #643: userId keys the per-scope dissolve — resolveViewsForSession(…, userId)
+  // resolves the entitlement whose scope the rows are written under. Job data is
+  // typed but NOT re-validated on read (bullJob.data is cast, not parsed), so a
+  // job enqueued before this deploy carries no userId. Fail loudly rather than
+  // resolving an empty scope and silently deleting the owner's rows / writing
+  // nothing. (New jobs can't reach here without it — model.parse() rejects at
+  // create; migration 0117 truncates the pre-#643 cache so nothing is lost.)
+  if (!userId) {
+    throw new Error(
+      "dissolve_precompute job is missing userId (pre-#643 metadata); refusing to run with an empty scope"
+    );
+  }
   // #542: the job owns a pin OR a message block (the metadata refine guarantees
   // exactly one). Build the owner + lock on its key so two passes can't race.
   const owner: Owner =

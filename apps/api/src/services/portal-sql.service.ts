@@ -125,10 +125,18 @@ export interface SessionViewBuild {
  * column projection, so two callers with identical entitlements hash equal and
  * any filter/grant change re-hashes — the key the per-scope map dissolve is
  * addressed by. An empty build (no grants) yields a stable fail-closed hash.
+ *
+ * The DDL strings are **sorted before hashing** so the hash is invariant to the
+ * order the view set comes back in. That order flows from `findByStationId`,
+ * which has no `ORDER BY` (CLAUDE.md #433), so an unsorted hash could differ
+ * between the precompute process and the serve process for the *same*
+ * entitlement — a permanent dissolve-miss (raw fallback forever + cache thrash).
+ * The emitted `build.views` used to materialise the temp views is untouched:
+ * each `CREATE TEMP VIEW` is independent, so their creation order is irrelevant.
  */
 export function resolveScopeHash(build: SessionViewBuild): string {
   return createHash("sha256")
-    .update([...build.views].join("\n"))
+    .update([...build.views].sort().join("\n"))
     .digest("hex")
     .slice(0, 32);
 }

@@ -180,6 +180,16 @@ export interface RenderTileDeps {
     organizationId: string,
     userId: string
   ) => Promise<string>;
+  /** #643: does a per-scope dissolve precompute exist for this (owner, column,
+   *  band, scope)? Folded into the ETag so a raw→dissolved transition (a lazy
+   *  fill completing after a raw fallback) busts a cached 304. Injectable for
+   *  tests; defaults to `hasDissolvePrecompute`. */
+  dissolvePrecomputeExists?: (
+    owner: DissolveOwner,
+    colorByColumn: string,
+    band: number,
+    scopeHash: string
+  ) => Promise<boolean>;
   runTileQuery?: (args: {
     pipeline: VizPipeline;
     propertyColumns: string[];
@@ -1137,14 +1147,48 @@ export class PortalMapTileService {
       userId
     );
 
+    // #542: both a pin and a message block address a dissolve precompute, keyed
+    // by their owner. Computed here so the ETag can probe dissolve availability.
+    const dissolveOwner: DissolveOwner =
+      ref.kind === "pin"
+        ? { kind: "pin", portalResultId: ref.portalResultId }
+        : {
+            kind: "message",
+            messageId: ref.messageId,
+            blockIndex: ref.blockIndex,
+          };
+
+    // #643: whether a per-scope dissolve precompute is available for this tile.
+    // Folded into the ETag below so the raw→dissolved transition — a lazy fill
+    // completing after a raw fallback was served — busts a cached 304; without
+    // it the hash never changes and the client keeps the raw tile forever. Only
+    // a dissolve-treatment layer within the dissolve zoom bands can transition.
+    const dissolveBand = bandForZoom(z);
+    let dissolveAvailable = false;
+    if (aggregation.treatment === "dissolve" && dissolveBand !== null) {
+      const dissolveColumn = aggregation.colorByColumn ?? DISSOLVE_ALL_KEY;
+      const existsFn =
+        deps.dissolvePrecomputeExists ??
+        ((o: DissolveOwner, c: string, b: number, s: string) =>
+          this.hasDissolvePrecompute(o, c, b, s));
+      dissolveAvailable = await existsFn(
+        dissolveOwner,
+        dissolveColumn,
+        dissolveBand,
+        scopeHash
+      );
+    }
+
     // ETag hash over (pipeline SQL, z, x, y, snapshot clock, tile-gen version,
-    // caller scope). A fresh pin snapshot, an edited pipeline, a bumped
-    // AGG_TILE_VERSION (#532), or a changed view scope (#643) invalidates
-    // cached tiles — so two callers with different grants never share a tile.
+    // caller scope, dissolve availability). A fresh pin snapshot, an edited
+    // pipeline, a bumped AGG_TILE_VERSION (#532), a changed view scope (#643),
+    // or a raw→dissolved transition invalidates cached tiles — so two callers
+    // with different grants never share a tile and a completed lazy fill is
+    // never masked by a stale 304.
     const hash = crypto
       .createHash("sha256")
       .update(
-        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}|${scopeHash}`
+        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}|${scopeHash}|${dissolveAvailable ? "d1" : "d0"}`
       )
       .digest("hex")
       .slice(0, 32);
@@ -1173,16 +1217,7 @@ export class PortalMapTileService {
       organizationId,
       userId,
       scopeHash,
-      // #542: both a pin and a message block address a dissolve precompute,
-      // keyed by their owner.
-      dissolveOwner:
-        ref.kind === "pin"
-          ? { kind: "pin", portalResultId: ref.portalResultId }
-          : {
-              kind: "message",
-              messageId: ref.messageId,
-              blockIndex: ref.blockIndex,
-            },
+      dissolveOwner,
       z,
       x,
       y,

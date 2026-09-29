@@ -46,8 +46,11 @@ function deps(
     findMessageById: async () => messageWithPipeline,
     findPortalResultById: async () => null,
     runTileQuery: async () => query,
-    // #643: stub scope resolution so the unit tests need no DB.
+    // #643: stub scope resolution + dissolve-existence probe so the unit tests
+    // need no DB (a dissolve-treatment tile would otherwise hit the DB for the
+    // ETag availability flag).
     resolveTileScopeHash: async () => "scope-test",
+    dissolvePrecomputeExists: async () => false,
     ...over,
   };
 }
@@ -494,6 +497,49 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     );
     expect(a.etag).not.toBe(b.etag); // different scope → different tile cache
     expect(a.etag).toBe(a2.etag); // same scope → shared ETag
+  });
+
+  it("#643: the ETag flips when a dissolve precompute becomes available (a completed lazy fill busts a stale 304)", async () => {
+    // A polygon (dissolve-treatment) layer at z=8 (dissolve band 2, in-band).
+    const polygonMsg = {
+      id: "msg-poly",
+      organizationId: ORG,
+      blocks: [
+        {
+          type: "geo",
+          content: {
+            spec: {
+              layers: [
+                { kind: "polygons", source: { geometryColumn: "geom" } },
+              ],
+            },
+            pipeline: PIPELINE,
+          },
+        },
+      ],
+    };
+    const polyRef = {
+      ref: { kind: "message" as const, messageId: "msg-poly", blockIndex: 0 },
+      ...base,
+    };
+    const raw = await PortalMapTileService.renderTile(
+      polyRef,
+      deps({
+        findMessageById: async () => polygonMsg,
+        dissolvePrecomputeExists: async () => false,
+      })
+    );
+    const dissolved = await PortalMapTileService.renderTile(
+      polyRef,
+      deps({
+        findMessageById: async () => polygonMsg,
+        dissolvePrecomputeExists: async () => true,
+      })
+    );
+    // Raw-fallback tile and the later dissolved tile for the SAME scope must not
+    // share an ETag — otherwise the client's If-None-Match returns 304 forever
+    // and never receives the dissolved rendering.
+    expect(raw.etag).not.toBe(dissolved.etag);
   });
 
   it("404s for an unknown message", async () => {
