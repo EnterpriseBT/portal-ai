@@ -158,9 +158,11 @@ const STATION_DATA = {
         {
           entityKey: "parcels",
           connectorEntityId: "ent-parcels",
-          linkColumnKey: "owner_id",
-          linkColumnLabel: "Owner ID",
-          linkNormalizedKey: "owner_id",
+          // The link column is one of the member entity's own columns (`id`),
+          // as it always is in real data (a group links on a field mapping).
+          linkColumnKey: "id",
+          linkColumnLabel: "ID",
+          linkNormalizedKey: "id",
           isPrimary: true,
         },
       ],
@@ -209,6 +211,7 @@ describe("StationContextTool", () => {
         columns: e.columns.map((c) => ({
           fieldMappingId: c.fieldMappingId,
           columnName: `c_${c.key}`,
+          normalizedKey: c.key,
         })),
       })),
     });
@@ -307,6 +310,39 @@ describe("StationContextTool", () => {
     };
 
     expect(result.entityGroups).toEqual([]);
+  });
+
+  it("drops an entity group whose link column the caller's view projects out (#651)", async () => {
+    // A member granted a view over `parcels` (the group's member entity) whose
+    // projection excludes the join column `id` — the group, and with it the
+    // column's key/label/normalizedKey, must not appear.
+    mockResolveGrantedViewColumns.mockResolvedValueOnce({
+      set: { canPerformAny: () => false },
+      views: [
+        {
+          view: {
+            id: "view-parcels-lite",
+            key: "parcels_lite",
+            label: "Parcels (lite)",
+            connectorEntityId: "ent-parcels",
+          },
+          columns: [
+            {
+              fieldMappingId: "fm-addr",
+              columnName: "c_address",
+              normalizedKey: "address",
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = (await exec({ include: ["entityGroups"] })) as {
+      entityGroups: unknown[];
+    };
+
+    expect(result.entityGroups).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain('"linkColumnKey"');
   });
 
   it("returns the org column-definition catalog (#154)", async () => {
