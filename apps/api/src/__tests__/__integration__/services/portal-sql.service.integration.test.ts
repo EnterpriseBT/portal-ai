@@ -1237,6 +1237,217 @@ describe("PortalSqlService integration tests", () => {
       expect(rows.map((r) => r.c_email)).toEqual(["adult@x.co"]);
     });
   });
+
+  // #658: the view-scoped row read `resolve_identity` uses — one granted view's
+  // readable columns + its filter, matched on one (readable) column.
+  describe("queryViewRowsByColumn (#658)", () => {
+    async function seedContact(
+      email: string,
+      age: number,
+      opts: { org?: string; deleted?: boolean } = {}
+    ): Promise<string> {
+      const id = generateId();
+      const org = opts.org ?? orgId;
+      const now = Date.now();
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      await dbTyped.insert(schema.entityRecords).values({
+        id,
+        organizationId: org,
+        connectorEntityId: contactsEntityId,
+        sourceId: `src-${id}`,
+        isValid: true,
+        validationErrors: null,
+        normalizedData: {},
+        syncedAt: now,
+        data: {},
+        checksum: `c-${id}`,
+        origin: "sync",
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: opts.deleted ? now : null,
+        deletedBy: opts.deleted ? "test" : null,
+      } as never);
+      await dbTyped.execute(
+        sql`INSERT INTO ${sql.raw(`"er__${contactsEntityId}"`)} ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", "c_email", "c_age", "deleted") VALUES (${id}, ${org}, ${now}, true, ${`src-${id}`}, ${email}, ${age}, ${opts.deleted ? now : null})`
+      );
+      return id;
+    }
+
+    async function grantedView(key: string) {
+      const { views } = await portalSql.resolveGrantedViewColumns(
+        stationId,
+        orgId,
+        userId,
+        db
+      );
+      const v = views.find((x) => x.view.key === key);
+      if (!v) throw new Error(`view ${key} not granted`);
+      return v;
+    }
+
+    it("returns only _record_id, source_id and the view's readable columns", async () => {
+      const id = await seedContact("ada@x.co", 36);
+      const res = await portalSql.queryViewRowsByColumn(
+        await grantedView("contacts"),
+        orgId,
+        { normalizedKey: "email", value: "ada@x.co" },
+        { limit: 10 },
+        db
+      );
+      expect(res?.truncated).toBe(false);
+      expect(res?.records).toHaveLength(1);
+      expect(Object.keys(res!.records[0]).sort()).toEqual(
+        ["_record_id", "c_age", "c_email", "source_id"].sort()
+      );
+      expect(res!.records[0]._record_id).toBe(id);
+    });
+
+    it("applies the view's row filter", async () => {
+      await seedContact("young@x.co", 25);
+      await seedContact("adult@x.co", 42);
+      await attachCuratedView(db as ReturnType<typeof drizzle>, {
+        stationId,
+        organizationId: orgId,
+        connectorEntityId: contactsEntityId,
+        key: "adult_contacts",
+        label: "Adult Contacts",
+        createdBy: userId,
+        grantToUserId: userId,
+        filter: {
+          combinator: "and",
+          conditions: [{ field: "age", operator: "gt", value: 30 }],
+        },
+      });
+      const adults = await grantedView("adult_contacts");
+      const young = await portalSql.queryViewRowsByColumn(
+        adults,
+        orgId,
+        { normalizedKey: "email", value: "young@x.co" },
+        { limit: 10 },
+        db
+      );
+      const adult = await portalSql.queryViewRowsByColumn(
+        adults,
+        orgId,
+        { normalizedKey: "email", value: "adult@x.co" },
+        { limit: 10 },
+        db
+      );
+      expect(young?.records).toEqual([]);
+      expect(adult?.records.map((r) => r.c_email)).toEqual(["adult@x.co"]);
+    });
+
+    it("returns null when the match column is not readable through the view (oracle guard)", async () => {
+      await seedContact("ada@x.co", 36);
+      const [ageMapping] = await (db as ReturnType<typeof drizzle>)
+        .select({ id: schema.fieldMappings.id })
+        .from(schema.fieldMappings)
+        .where(
+          sql`${schema.fieldMappings.connectorEntityId} = ${contactsEntityId} AND ${schema.fieldMappings.normalizedKey} = 'age'`
+        );
+      const ageOnlyId = await attachCuratedView(
+        db as ReturnType<typeof drizzle>,
+        {
+          stationId,
+          organizationId: orgId,
+          connectorEntityId: contactsEntityId,
+          key: "contact_ages",
+          label: "Contact Ages",
+          createdBy: userId,
+          grantToUserId: userId,
+        }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.curatedViewFieldMappings)
+        .values({
+          id: generateId(),
+          organizationId: orgId,
+          curatedViewId: ageOnlyId,
+          fieldMappingId: ageMapping.id,
+          created: Date.now(),
+          createdBy: userId,
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      const ages = await grantedView("contact_ages");
+      expect(ages.columns.map((c) => c.normalizedKey)).toEqual(["age"]);
+
+      const res = await portalSql.queryViewRowsByColumn(
+        ages,
+        orgId,
+        { normalizedKey: "email", value: "ada@x.co" },
+        { limit: 10 },
+        db
+      );
+      expect(res).toBeNull();
+    });
+
+    it("caps at `limit`, ordered by _record_id, and reports truncated", async () => {
+      const ids = [
+        await seedContact("dup@x.co", 30),
+        await seedContact("dup@x.co", 31),
+        await seedContact("dup@x.co", 32),
+      ].sort();
+      const view = await grantedView("contacts");
+      const capped = await portalSql.queryViewRowsByColumn(
+        view,
+        orgId,
+        { normalizedKey: "email", value: "dup@x.co" },
+        { limit: 2 },
+        db
+      );
+      expect(capped?.truncated).toBe(true);
+      expect(capped?.records.map((r) => r._record_id)).toEqual(ids.slice(0, 2));
+      const all = await portalSql.queryViewRowsByColumn(
+        view,
+        orgId,
+        { normalizedKey: "email", value: "dup@x.co" },
+        { limit: 3 },
+        db
+      );
+      expect(all?.truncated).toBe(false);
+      expect(all?.records).toHaveLength(3);
+    });
+
+    it("excludes soft-deleted rows and rows of another org", async () => {
+      const live = await seedContact("same@x.co", 40);
+      await seedContact("same@x.co", 41, { deleted: true });
+      const intruder = createUser(`auth0|${generateId()}`);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(intruder as never);
+      const otherOrg = createOrganization(intruder.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.organizations)
+        .values(otherOrg as never);
+      await seedContact("same@x.co", 42, { org: otherOrg.id });
+
+      const res = await portalSql.queryViewRowsByColumn(
+        await grantedView("contacts"),
+        orgId,
+        { normalizedKey: "email", value: "same@x.co" },
+        { limit: 10 },
+        db
+      );
+      expect(res?.records.map((r) => r._record_id)).toEqual([live]);
+    });
+
+    it("treats a hostile match value as a literal (no injection, no error)", async () => {
+      await seedContact("ada@x.co", 36);
+      const res = await portalSql.queryViewRowsByColumn(
+        await grantedView("contacts"),
+        orgId,
+        { normalizedKey: "email", value: "' OR 1=1 --" },
+        { limit: 10 },
+        db
+      );
+      expect(res?.records).toEqual([]);
+    });
+  });
 });
 
 // ── Local seeders ───────────────────────────────────────────────────

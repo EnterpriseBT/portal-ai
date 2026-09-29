@@ -381,6 +381,119 @@ export class PortalSqlServiceImpl {
   }
 
   /**
+   * A view's stored `FilterGroup` rendered to a safe, escaped inline WHERE
+   * fragment (`renderFilterGroupToSql`), or `null` when the view has no
+   * filter. The single render shared by every view-scoped reader — the SQL
+   * session ({@link buildViewsForSession}), the detail records table
+   * ({@link queryCuratedViewRecords}) and {@link queryViewRowsByColumn} — so
+   * the three can't drift. A render failure throws `onError(message)`; each
+   * caller keeps its own error code (fail closed — a stored filter must
+   * always render). `columnTypes` may be passed when the caller already
+   * resolved them.
+   */
+  private async renderViewFilterWhere(
+    view: CuratedViewSelect,
+    client: DbClient,
+    onError: (message: string) => ApiError,
+    columnTypes?: Parameters<typeof renderFilterGroupToSql>[2]
+  ): Promise<string | null> {
+    if (!view.filter) return null;
+    const stmt = await this.deps.statementCache.get(
+      view.connectorEntityId,
+      client
+    );
+    const types =
+      columnTypes ??
+      Object.fromEntries(
+        (await resolveColumns(view.connectorEntityId)).map((c) => [
+          c.normalizedKey,
+          c.type,
+        ])
+      );
+    const rendered = renderFilterGroupToSql(view.filter, stmt, types);
+    if (typeof rendered !== "string") throw onError(rendered.message);
+    return rendered;
+  }
+
+  /**
+   * The rows of ONE already-resolved granted view whose `match` column equals
+   * a value (#658 — the `resolve_identity` read). Selects only `_record_id`,
+   * `source_id` and the view's readable columns, under the org + soft-delete
+   * guard and the view's own filter, ordered by record id and capped at
+   * `limit` (`truncated` when more exist).
+   *
+   * Returns `null` when the match column is **not** among the view's readable
+   * columns: filtering on a column the caller cannot read would be an oracle
+   * for its values, so that view simply cannot answer the lookup. Identifiers
+   * come from the statement cache and the value goes through `quoteLiteral`
+   * (the same discipline as {@link queryCuratedViewRecords}).
+   */
+  async queryViewRowsByColumn(
+    resolved: { view: CuratedViewSelect; columns: WideTableCachedColumn[] },
+    organizationId: string,
+    match: { normalizedKey: string; value: string },
+    opts: { limit: number },
+    client: DbClient = db
+  ): Promise<{
+    records: Record<string, unknown>[];
+    truncated: boolean;
+  } | null> {
+    const { view, columns } = resolved;
+    const matchCol = columns.find(
+      (c) => c.normalizedKey === match.normalizedKey
+    );
+    if (!matchCol) return null;
+    if (
+      !UUID_RE.test(organizationId) ||
+      !UUID_RE.test(view.connectorEntityId)
+    ) {
+      throw new ApiError(
+        500,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `invalid id for view row lookup: ${view.id}`
+      );
+    }
+
+    const selectList = [
+      `w."entity_record_id" AS "_record_id"`,
+      `w."source_id" AS "source_id"`,
+      ...columns.map(
+        (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.columnName)}`
+      ),
+    ].join(", ");
+    const whereParts = [
+      `w."organization_id" = ${quoteLiteral(organizationId)}`,
+      `w."deleted" IS NULL`,
+      `w.${quoteIdent(matchCol.columnName)} = ${quoteLiteral(match.value)}`,
+    ];
+    const filterWhere = await this.renderViewFilterWhere(
+      view,
+      client,
+      (message) =>
+        new ApiError(
+          500,
+          ApiCode.PORTAL_SQL_FORBIDDEN,
+          `curated view ${view.id} filter failed to render: ${message}`
+        )
+    );
+    if (filterWhere) whereParts.push(`(${filterWhere})`);
+
+    const limit = Math.max(0, Math.floor(opts.limit));
+    const query =
+      `SELECT ${selectList} FROM ${quoteIdent(`er__${view.connectorEntityId}`)} w ` +
+      `WHERE ${whereParts.join(" AND ")} ` +
+      `ORDER BY w."entity_record_id" LIMIT ${limit + 1}`;
+    const rows = (await client.execute(sql.raw(query))) as unknown as Record<
+      string,
+      unknown
+    >[];
+    return {
+      records: rows.slice(0, limit),
+      truncated: rows.length > limit,
+    };
+  }
+
+  /**
    * The rows of ONE curated view for the detail records table (#599): the
    * view's projection (∩ field grants) + its `filter`, under the org +
    * soft-delete guard, offset-paginated. Returns `null` when the caller
@@ -443,24 +556,14 @@ export class PortalSqlServiceImpl {
       `w."organization_id" = ${quoteLiteral(organizationId)}`,
       `w."deleted" IS NULL`,
     ];
-    if (view.filter) {
-      const stmt = await this.deps.statementCache.get(
-        view.connectorEntityId,
-        client
-      );
-      const columnTypes = Object.fromEntries(
-        resolvedCols.map((c) => [c.normalizedKey, c.type])
-      );
-      const rendered = renderFilterGroupToSql(view.filter, stmt, columnTypes);
-      if (typeof rendered !== "string") {
-        throw new ApiError(
-          500,
-          ApiCode.CURATED_VIEW_INVALID_FILTER,
-          rendered.message
-        );
-      }
-      whereParts.push(`(${rendered})`);
-    }
+    const filterWhere = await this.renderViewFilterWhere(
+      view,
+      client,
+      (message) =>
+        new ApiError(500, ApiCode.CURATED_VIEW_INVALID_FILTER, message),
+      Object.fromEntries(resolvedCols.map((c) => [c.normalizedKey, c.type]))
+    );
+    if (filterWhere) whereParts.push(`(${filterWhere})`);
     // Search: case-insensitive **literal** substring across the projected
     // columns only (never an un-projected column). The LIKE metacharacters
     // (\ % _) are escaped so the term matches literally (ILIKE's default escape
@@ -598,27 +701,17 @@ export class PortalSqlServiceImpl {
       // WHERE (`renderFilterGroupToSql`) and ANDed inside parens so it cannot
       // break out of the org/soft-delete guard. A render failure fails closed —
       // a stored filter must always render.
-      if (view.filter) {
-        const stmt = await this.deps.statementCache.get(
-          view.connectorEntityId,
-          client
-        );
-        const columnTypes = Object.fromEntries(
-          (await resolveColumns(view.connectorEntityId)).map((c) => [
-            c.normalizedKey,
-            c.type,
-          ])
-        );
-        const rendered = renderFilterGroupToSql(view.filter, stmt, columnTypes);
-        if (typeof rendered !== "string") {
-          throw new ApiError(
+      const filterWhere = await this.renderViewFilterWhere(
+        view,
+        client,
+        (message) =>
+          new ApiError(
             500,
             ApiCode.PORTAL_SQL_FORBIDDEN,
-            `curated view ${view.id} filter failed to render: ${rendered.message}`
-          );
-        }
-        whereParts.push(`(${rendered})`);
-      }
+            `curated view ${view.id} filter failed to render: ${message}`
+          )
+      );
+      if (filterWhere) whereParts.push(`(${filterWhere})`);
 
       pushTempView(
         views,
