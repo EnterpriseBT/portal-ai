@@ -47,7 +47,7 @@ This changes no contract: same route, same payload shape, and a candidate list f
 
 1. Sign in as an owner/admin of an org entitled to `customRbac`. Go to Settings → **Access** → new custom policy → add statement → Resource `connector_definition` → **Scope** → "Specific objects" is **enabled**.
 2. Type part of a connector name (e.g. "file") → the picker lists matching catalog definitions by display name. Pick **File Upload** and save the policy with `read`.
-3. Attach the policy to a role held by a test member who has no other `connector_definition` grant. As that member, open the new-connector catalog: **only File Upload** is listed.
+3. Attach the policy to a role held by a test member who has no other `connector_definition` grant. The member also needs `allow view page:connectors`, because `MemberAccess` doesn't grant the Connectors page and the catalog would return 403 without it. Add that as a second statement on the same policy. As that member, open Connectors → **Catalog**: **only File Upload** is listed ("1 of 1").
 4. Back in the editor, Resource `curated_view` → "Specific objects" → the picker lists this org's curated views by label (previously it was always empty).
 5. Resource `entity_record` → "Specific objects" stays disabled (no regression to the data-plane rule).
 
