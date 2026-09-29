@@ -4,10 +4,8 @@ import { tool } from "ai";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { DbService } from "../services/db.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
-import {
-  loadConnectorInstanceContexts,
-  scopeEntityGroupsToEntities,
-} from "../services/portal.service.js";
+import { loadConnectorInstanceContexts } from "../services/portal.service.js";
+import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
@@ -356,15 +354,12 @@ export class StationContextTool extends Tool<typeof InputSchema> {
         }
 
         if (sections.has("entityGroups")) {
-          // #648: scope groups to the caller's granted entities — the same
+          // #648: scope groups to the caller's granted views — the same
           // resolution the `entities` section uses — so ungranted entities'
           // group metadata never leaks. Fail-closed: no resolution → no groups.
-          const grantedEntityIds = new Set(
-            (viewResolution?.views ?? []).map((g) => g.view.connectorEntityId)
-          );
           response.entityGroups = scopeEntityGroupsToEntities(
             stationData.entityGroups,
-            grantedEntityIds
+            viewResolution?.views ?? []
           ).map((g) => ({
             id: g.id,
             name: g.name,

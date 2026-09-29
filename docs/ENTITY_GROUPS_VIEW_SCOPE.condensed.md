@@ -14,32 +14,34 @@
 | Entity-group member shape | `station-context.tool.ts:357` | `{ entityKey, connectorEntityId, linkColumnKey, linkColumnLabel, linkNormalizedKey, isPrimary }` — `connectorEntityId` is the join key to the granted set |
 | Group data load | `AnalyticsService.loadStation` → `stationData.entityGroups` | org/station-scoped, **not** per-user |
 
-## Decision — filter entity groups by the granted-entity set, via one shared helper
+## Decision — all-or-nothing group scoping, via one shared util
 
-Both context surfaces already resolve the caller's granted views. Derive `grantedEntityIds = new Set(views.map(v => v.view.connectorEntityId))` and filter the group set through a single pure helper so the two surfaces can't drift (the same single-source discipline #599 used for columns):
+Both context surfaces already resolve the caller's granted views. A single pure helper in `apps/api/src/utils/entity-group-scope.util.ts` takes the resolved `views` (folding in the id-derivation so both callers stay identical) and keeps a group **only when every member's entity is granted**:
 
 ```
-scopeEntityGroupsToEntities(groups, grantedEntityIds):
-  for each group: keep only members whose connectorEntityId ∈ grantedEntityIds
-  drop any group left with zero members   // its structure named only ungranted entities
+scopeEntityGroupsToEntities(groups, grantedViews):
+  grantedEntityIds = { v.view.connectorEntityId for v in grantedViews }
+  keep a group iff it has members AND every member.connectorEntityId ∈ grantedEntityIds
 ```
 
-- A **mixed** group (some granted, some not) keeps only its granted members — an ungranted member's metadata is dropped even when a sibling is granted. A link to an ungranted entity is unusable to the member anyway (they can't query it), so dropping it loses nothing they could act on.
-- **Fail-closed:** no granted entities → `entityGroups` is empty. An admin (resolves all attached views via `*`) sees every group, unchanged.
-- The helper lives beside `buildStationContext` and is exported; the tool imports it — no logic is copy-pasted.
+- **Whole group or nothing.** A partially-granted group is unusable for a join (the member can't query the other side), and keeping it "thinned" would leak the ungranted entity's participation — its `entityKey` / link-column names, or the anchoring role of a dropped **primary** member (an anchorless group). Emitting the group intact or not at all avoids all three.
+- **Fail-closed:** no granted views → `entityGroups` is empty. An admin (resolves all *attached* views via `*`) sees every fully-attached group — consistent with how the `entities` roster already scopes to attached-granted views (an entity with no attached view is absent from both).
+- **One source, no drift.** The util is imported by `buildStationContext` and the `station_context` tool; the tool test exercises the real function (not a re-implemented mock).
 
-*Rejected:* filtering only whole groups (all-or-nothing) — a mixed group would still leak ungranted members' metadata. *Rejected:* redacting fields in place — dropping is simpler and matches how `entities` already handles ungranted entities (absent, not redacted).
+*Rejected:* keeping thinned mixed groups (drop only ungranted members) — leaks the ungranted member's metadata and can strand a group with no primary anchor (code-review #5). *Deferred (#651):* a shown group still carries a member's link-column `key`/`label`/`normalizedKey` even when that column is outside the member's view projection — column-level link-metadata scoping is a follow-up.
 
 ## Plan — 1 slice
 
 **Files**
-- Edit `apps/api/src/services/portal.service.ts` — add + export `scopeEntityGroupsToEntities`; in `buildStationContext` build `grantedEntityIds` from `grantedViewColumns` and pass `entityGroups` through it (`:1261`).
-- Edit `apps/api/src/tools/station-context.tool.ts` — filter `stationData.entityGroups` through the helper using `viewResolution.views` before the `:354` map.
+- New `apps/api/src/utils/entity-group-scope.util.ts` — `scopeEntityGroupsToEntities(groups, grantedViews)` (the all-or-nothing rule; folds in the id-derivation).
+- Edit `apps/api/src/services/portal.service.ts` — `buildStationContext` passes `stationData.entityGroups` + `grantedViewColumns` through the util (`:1261`).
+- Edit `apps/api/src/tools/station-context.tool.ts` — add `entityGroups` to `needsViewScope`, then pass `stationData.entityGroups` + `viewResolution?.views ?? []` through the util before the `:354` map.
 
 **Tests** (npm scripts, never raw jest)
-- `apps/api/src/__tests__/services/portal.service.test.ts` — `buildStationContext` scopes groups: drops the ungranted member of a mixed group; drops a group with no granted member (fail-closed). Runs the real pure helper.
-- `apps/api/src/__tests__/tools/station-context.tool.test.ts` — the tool's `entityGroups` section is view-scoped for a member (runs the real helper).
-- No bespoke integration test: the single source (`resolveGrantedViewColumns`) is already integration-covered (`portal-sql.service.integration.test.ts:1128`), and the addition is a pure filter over its output + `loadStation`'s groups — both halves are covered above. (Fixtures also reconciled: `ENTITY_GROUPS` member ids `ent-customers`/`ent-orders` → `ent-1`/`ent-2` to match `ENTITIES`.)
+- `apps/api/src/__tests__/utils/entity-group-scope.util.test.ts` — direct unit test of the pure helper (keep fully-granted, drop when any member ungranted, empty when no grants).
+- `apps/api/src/__tests__/services/portal.service.test.ts` — `buildStationContext` keeps a group only when every member is granted; drops it entirely when any member is ungranted.
+- `apps/api/src/__tests__/tools/station-context.tool.test.ts` — the tool's `entityGroups` section is view-scoped for a member (imports the real util, not a mock).
+- No bespoke integration test: the single source (`resolveGrantedViewColumns`) is already integration-covered (`portal-sql.service.integration.test.ts:1128`), and the addition is a pure filter over its output + `loadStation`'s groups. (Fixtures also reconciled: `ENTITY_GROUPS` member ids `ent-customers`/`ent-orders` → `ent-1`/`ent-2` to match `ENTITIES`.)
 
 ## Smoke (manual, against your dev stack)
 

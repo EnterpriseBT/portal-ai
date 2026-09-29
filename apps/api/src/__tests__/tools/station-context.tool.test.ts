@@ -30,23 +30,9 @@ const mockLoadConnectorInstanceContexts = jest
   .mockResolvedValue([]);
 jest.unstable_mockModule("../../services/portal.service.js", () => ({
   loadConnectorInstanceContexts: mockLoadConnectorInstanceContexts,
-  // Real (pure) implementation so the tool test exercises actual #648 scoping;
-  // the function itself is unit-tested directly in portal.service.test.ts.
-  scopeEntityGroupsToEntities: <
-    T extends { members: { connectorEntityId: string }[] },
-  >(
-    groups: T[],
-    grantedEntityIds: ReadonlySet<string>
-  ): T[] =>
-    groups
-      .map((g) => ({
-        ...g,
-        members: g.members.filter((m) =>
-          grantedEntityIds.has(m.connectorEntityId)
-        ),
-      }))
-      .filter((g) => g.members.length > 0),
 }));
+// #648: scopeEntityGroupsToEntities is imported from its own util (not the
+// mocked portal.service), so the tool test exercises the REAL scoping.
 
 const mockWideTableStatementCacheGet = jest.fn<
   () => Promise<{

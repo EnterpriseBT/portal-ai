@@ -23,7 +23,8 @@ import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
 import { AnalyticsService } from "./analytics.service.js";
-import type { EntitySchema, EntityGroupContext } from "./analytics.service.js";
+import type { EntitySchema } from "./analytics.service.js";
+import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "./portal-sql.service.js";
 import { DissolvePrecomputeService } from "./dissolve-precompute.service.js";
 import { EntitlementService } from "./entitlement.service.js";
@@ -1186,30 +1187,6 @@ export async function loadOrganizationTimezone(
  * The split against the org's entitlements also happens inside (#284) —
  * callers do not pre-filter, and must not.
  */
-/**
- * #648: restrict a station's entity-group metadata to the caller's granted
- * entities. A member sees group structure only for entities they hold a granted
- * curated view over — an ungranted entity's member row (its `entityKey` /
- * `connectorEntityId` / link-column names) is dropped even when a sibling member
- * in the same group is granted, and a group left with no granted members is
- * dropped entirely. Pure + fail-closed (empty granted set → no groups), and the
- * single source both `buildStationContext` and the `station_context` tool share
- * so the two can't drift (the same discipline #599 used for `entities`).
- */
-export function scopeEntityGroupsToEntities(
-  entityGroups: EntityGroupContext[],
-  grantedEntityIds: ReadonlySet<string>
-): EntityGroupContext[] {
-  return entityGroups
-    .map((group) => ({
-      ...group,
-      members: group.members.filter((m) =>
-        grantedEntityIds.has(m.connectorEntityId)
-      ),
-    }))
-    .filter((group) => group.members.length > 0);
-}
-
 export async function buildStationContext(args: {
   station: { id: string; name: string };
   organizationId: string;
@@ -1277,21 +1254,17 @@ export async function buildStationContext(args: {
     }
   );
 
-  // #648: the entity-group section is scoped to the same granted entities as
-  // the roster above — otherwise it leaks structure metadata for entities the
-  // caller cannot query.
-  const grantedEntityIds = new Set(
-    grantedViewColumns.map(({ view }) => view.connectorEntityId)
-  );
-
   return {
     stationId: station.id,
     stationName: station.name,
     organizationTimezone,
     entities,
+    // #648: scope the entity-group section to the same granted views as the
+    // roster above — otherwise it leaks structure metadata for entities the
+    // caller cannot query.
     entityGroups: scopeEntityGroupsToEntities(
       stationData.entityGroups,
-      grantedEntityIds
+      grantedViewColumns
     ),
     effectiveToolPacks,
     unentitledToolPacks,
