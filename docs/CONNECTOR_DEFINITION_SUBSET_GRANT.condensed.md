@@ -51,6 +51,56 @@ This changes no contract: same route, same payload shape, and a candidate list f
 4. Back in the editor, Resource `curated_view` → "Specific objects" → the picker lists this org's curated views by label (previously it was always empty).
 5. Resource `entity_record` → "Specific objects" stays disabled (no regression to the data-plane rule).
 
+## Adversarial
+
+Probes for how this change breaks. The surfaces are `GET /api/rbac/objects` (now with a global type, where the org filter is skipped), policy authoring over `connector_definition:<id>`, and the member-facing catalog read. Untagged probes can be driven in the browser. `— backend` probes are API or DB checks; for those, use the owner's or member's bearer token from the e2e storageState, and the API on :3001.
+
+### Preflight
+- [ ] Dev stack on this branch (web :3000, API :3001); `e2e:auth:all` fixtures present; `e2e-fixture` org (tier with `customRbac`).
+- [ ] A **second** org's curated-view id on hand for §5, from `db:studio` or psql.
+- [ ] Reset between runs: delete any `ADV-638*` policies/roles and restore e2e-member's roles to `member, Analyst, Station Reader`.
+
+### §1 — Boundary & limit inputs
+- [ ] `GET /api/rbac/objects?resourceType=connector_definition&limit=10000` as owner. Expected SAFE: at most 50 rows (clamped). — backend
+- [ ] `…&search=%25` (a literal `%`) and `…&search=_`. Expected SAFE: only matches the caller could already see (it widens the pattern, never the visibility); 200, no error. — backend
+
+### §2 — Malformed & injection input
+- [ ] `…?resourceType=__proto__` and `…?resourceType=constructor`. Expected SAFE: no rows returned. An error status is acceptable (this is known on `main` and optional to harden), but **no data**, and the response shows no stack. — backend
+- [ ] `…?resourceType=connector_definition&search=' OR 1=1 --`. Expected SAFE: 200 `[]` (parameterized), no SQL error. — backend
+
+### §3 — Concurrency & races
+- N/A: the change is a read-only search. Policy writes are unchanged, single-request operations.
+
+### §4 — Auth & permission boundaries
+- [ ] **Restricted author.** As owner, create role `ADV-638 Author` with a policy holding `manage member` + class-level `view page` but **no** `connector_definition` grant, and give it to e2e-member. As member, open Access → new policy → `connector_definition` → Specific objects. Expected SAFE: the picker lists **nothing** (visibility-scoped).
+- [ ] Same member, hand-crafted `POST` of a policy with `allow read connector_definition:<File Upload id>`. Expected SAFE: rejected with `RBAC_POLICY_EXCEEDS_BOUNDARY` (you can't grant more than you hold); no policy row is created. — backend
+- [ ] Plain member (no author role) calls `GET /api/rbac/objects?resourceType=connector_definition`. Expected SAFE: 403 `INSUFFICIENT_ROLE`. — backend
+- [ ] Owner of an org **without** `customRbac` calls the same endpoint. Expected SAFE: 403 `RBAC_CUSTOM_NOT_ENTITLED`. — backend
+
+### §5 — Multi-tenant isolation
+- [ ] Owner searches `curated_view` with the other org's view label as `search`. Expected SAFE: `[]`; the other org's label is never returned. — backend
+- [ ] Owner hand-crafts a policy with `allow read curated_view:<other org's view id>`. Expected SAFE: rejected (the resolver scopes the org, so a foreign id resolves to nothing); no policy row is created. — backend
+
+### §6 — State & lifecycle abuse
+- [ ] Soft-delete a curated view (Views page), then search `curated_view` in the picker. Expected SAFE: the deleted view is absent.
+- [ ] Hand-crafted policy on `connector_definition:<random uuid>`. Expected SAFE: rejected, no row created. — backend
+- [ ] After a working subset grant (the smoke step 3 setup), **delete the policy** and reload the member's Catalog. Expected SAFE: the catalog empties, or returns 403 once the page grant is gone too. No cached access survives.
+
+### §7 — Misuse sequences
+- [ ] **Subset + class overlap.** Give the member both `read connector_definition:<File Upload>` and a class-level `read connector_definition`. Expected SAFE: the catalog shows **all** definitions (union of allows). The subset doesn't narrow a broader grant; it's additive, not a restriction.
+- [ ] **Deny carve-out.** Class `allow read connector_definition` + `deny read connector_definition:<File Upload>`. Expected SAFE: the catalog shows every definition **except** File Upload (deny wins).
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| | | | |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived with a reason
+- [ ] <date + name>: confirmed against my own running stack
+
+Bug-filing template: Section · Probe · Expected (safe) · Got · Repro · Identifiers (org/policy/role ids)
+
 ## Out of scope
 
 - Other global registries (e.g. system `column_definition`, `toolpack`) as instance-searchable types. Only `connector_definition` has a resolver finder and a subset-aware read today. Add others when one has a caller.
