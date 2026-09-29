@@ -133,7 +133,7 @@ async function assertFieldsReadable(
  *                 payload:
  *                   type: object
  *                   properties:
- *                     curatedViews: { type: array, items: { $ref: '#/components/schemas/CuratedView' } }
+ *                     curatedViews: { type: array, items: { $ref: '#/components/schemas/CuratedViewListItem' } }
  *                     total: { type: integer }
  *                     limit: { type: integer }
  *                     offset: { type: integer }
@@ -191,7 +191,8 @@ curatedViewRouter.get(
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
 
       const [data, total] = await Promise.all([
-        DbService.repository.curatedViews.findMany(where, {
+        // #646: enrich each view with its connector entity's key + label.
+        DbService.repository.curatedViews.findManyWithEntity(where, {
           limit,
           offset,
           orderBy: { column, direction: sortOrder },

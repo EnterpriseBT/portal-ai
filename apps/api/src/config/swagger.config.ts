@@ -1418,6 +1418,25 @@ const options: swaggerJsdoc.Options = {
             deletedBy: { type: ["string", "null"] },
           },
         },
+        CuratedViewListItem: {
+          allOf: [
+            { $ref: "#/components/schemas/CuratedView" },
+            {
+              type: "object",
+              properties: {
+                entity: {
+                  type: ["object", "null"],
+                  description:
+                    "The view's connector entity (#646); null when unresolvable",
+                  properties: {
+                    key: { type: "string" },
+                    label: { type: "string", example: "Contacts" },
+                  },
+                },
+              },
+            },
+          ],
+        },
         EntityGroupMember: {
           type: "object",
           required: [

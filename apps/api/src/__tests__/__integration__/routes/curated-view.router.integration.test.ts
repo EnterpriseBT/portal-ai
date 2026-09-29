@@ -228,11 +228,14 @@ describe("curated-view.router integration", () => {
 
     const list = await request(app).get("/api/curated-views");
     expect(list.status).toBe(200);
-    expect(
-      (list.body.payload.curatedViews as Array<{ key: string }>).map(
-        (v) => v.key
-      )
-    ).toContain("all_contacts");
+    const items = list.body.payload.curatedViews as Array<{
+      key: string;
+      entity: { key: string; label: string } | null;
+    }>;
+    expect(items.map((v) => v.key)).toContain("all_contacts");
+    // #646: each item carries its connector entity's key + label.
+    const item = items.find((v) => v.key === "all_contacts");
+    expect(item?.entity).toEqual({ key: "contacts", label: "Contacts" });
 
     const got = await request(app).get(`/api/curated-views/${id}`);
     expect(got.status).toBe(200);
