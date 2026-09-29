@@ -4,9 +4,16 @@
  * caller can **see** (`visibilityPredicate` from their resolved set) matching a
  * name/label `ILIKE` — so an author picks objects by name, never a typed id,
  * and only ones they could grant on. Only management-plane types with a
- * human-readable label are searchable; `field_mapping`/`entity_record`/`view`
- * and the pseudo-resources return no candidates (spec: instance picking is for
- * management objects; data-plane is #599).
+ * human-readable label are searchable; `field_mapping`/`entity_record` and the
+ * pseudo-resources return no candidates (instance picking is for management
+ * objects). Curated views (#599) and the global connector catalog (#638) are
+ * searchable too.
+ *
+ * The searchable set must equal core's instance-scope matrix
+ * (`resourceAllowsInstanceScope`, minus the fixed-id `page`) — the editor enables
+ * "Specific objects" from core, the candidates come from here. An integration
+ * test pins the two against {@link RBAC_SEARCHABLE_RESOURCE_TYPES} (#638: they
+ * had drifted both ways).
  */
 
 import { and, eq, ilike, isNull, type SQL } from "drizzle-orm";
@@ -19,6 +26,8 @@ import {
   portals,
   connectorInstances,
   connectorEntities,
+  connectorDefinitions,
+  curatedViews,
 } from "../db/schema/index.js";
 import {
   PermissionService,
@@ -31,12 +40,16 @@ interface TypeConfig {
   idCol: PgColumn;
   labelCol: PgColumn;
   createdByCol: PgColumn;
-  orgCol: PgColumn;
+  /** Absent for a **global** registry (no `organizationId` column) — the org
+   *  filter is skipped, mirroring `rbac-object-resolver`'s `GLOBAL_RESOURCE_TYPES`.
+   *  Visibility still scopes the candidates to what the caller can read. */
+  orgCol?: PgColumn;
   deletedCol: PgColumn;
 }
 
-/** resourceType → its searchable columns. `entity` labels by `label`, the
- *  rest by `name`. Absent = not instance-searchable in #622. */
+/** resourceType → its searchable columns. `entity`/`curated_view` label by
+ *  `label`, `connector_definition` by `display`, the rest by `name`. Absent =
+ *  not instance-searchable. */
 const SEARCH_CONFIG: Record<string, TypeConfig> = {
   station: {
     table: stations,
@@ -78,7 +91,28 @@ const SEARCH_CONFIG: Record<string, TypeConfig> = {
     orgCol: connectorEntities.organizationId,
     deletedCol: connectorEntities.deleted,
   },
+  curated_view: {
+    table: curatedViews,
+    idCol: curatedViews.id,
+    labelCol: curatedViews.label,
+    createdByCol: curatedViews.createdBy,
+    orgCol: curatedViews.organizationId,
+    deletedCol: curatedViews.deleted,
+  },
+  // #638: the global catalog — no `orgCol`. Inactive definitions stay pickable
+  // (the resolver accepts them; a grant on a disabled definition is harmless).
+  connector_definition: {
+    table: connectorDefinitions,
+    idCol: connectorDefinitions.id,
+    labelCol: connectorDefinitions.display,
+    createdByCol: connectorDefinitions.createdBy,
+    deletedCol: connectorDefinitions.deleted,
+  },
 };
+
+/** The instance-searchable resource types (the keys of `SEARCH_CONFIG`). */
+export const RBAC_SEARCHABLE_RESOURCE_TYPES: readonly string[] =
+  Object.keys(SEARCH_CONFIG);
 
 export class RbacObjectSearchService {
   static async search(
@@ -96,10 +130,8 @@ export class RbacObjectSearchService {
       idCol: cfg.idCol,
     });
 
-    const conditions: SQL[] = [
-      eq(cfg.orgCol, caller.organizationId),
-      isNull(cfg.deletedCol),
-    ];
+    const conditions: SQL[] = [isNull(cfg.deletedCol)];
+    if (cfg.orgCol) conditions.push(eq(cfg.orgCol, caller.organizationId));
     if (query.trim()) conditions.push(ilike(cfg.labelCol, `%${query.trim()}%`));
     if (visibility) conditions.push(visibility);
 

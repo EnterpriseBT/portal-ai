@@ -267,8 +267,9 @@ export interface ResourceCapability {
   readonly ownership: boolean;
 }
 
-/** The object types with a searchable instance picker (mirrors the server's
- *  `RbacObjectSearchService`); `page` is instance-scoped too but via a fixed id
+/** The object types with a searchable instance picker — must equal the server's
+ *  `RBAC_SEARCHABLE_RESOURCE_TYPES` (`rbac-object-search.service.ts`), pinned by
+ *  its integration test (#638). `page` is instance-scoped too but via a fixed id
  *  list, so it is handled explicitly below. */
 const INSTANCE_SEARCHABLE_TYPES = [
   "station",
@@ -278,6 +279,9 @@ const INSTANCE_SEARCHABLE_TYPES = [
   "entity",
   // #599: curated views are grantable/shareable per instance.
   "curated_view",
+  // #638: the global connector catalog — a catalog-subset grant
+  // (`read connector_definition:<id>`).
+  "connector_definition",
 ] as const satisfies readonly PermissionResourceType[];
 
 const objectCapability = (t: PermissionResourceType): ResourceCapability => ({

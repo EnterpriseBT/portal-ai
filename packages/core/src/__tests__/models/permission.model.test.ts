@@ -539,6 +539,10 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
       expect(resourceAllowsOwnership(t)).toBe(true);
     }
   });
+
+  it("the global connector catalog is instance-scopable — a catalog-subset grant is authorable (#638)", () => {
+    expect(resourceAllowsInstanceScope("connector_definition")).toBe(true);
+  });
 });
 
 describe("validateStatement — shared statement validity (#630)", () => {
