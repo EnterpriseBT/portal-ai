@@ -46,6 +46,10 @@ export const environment = {
   DB_PASSWORD_CACHE_TTL_MS: process.env.DB_PASSWORD_CACHE_TTL_MS
     ? Number(process.env.DB_PASSWORD_CACHE_TTL_MS)
     : undefined,
+  // #660: the NOLOGIN role agent SQL runs under (`SET LOCAL ROLE`). Created
+  // by migration 0118; the SQL tools refuse to run when it isn't usable.
+  PORTAL_SQL_READER_ROLE:
+    process.env.PORTAL_SQL_READER_ROLE || "portalai_sql_reader",
   // ── Stripe subscription billing (#176). Per-env keys — test mode
   //    everywhere except prod. Absent keys ⇒ billing endpoints 503 and the
   //    webhook 503s (Stripe retries until configured); the app boots fine.

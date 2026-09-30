@@ -127,16 +127,16 @@ export interface SessionViewBuild {
 
 ## Surface — PR 2 (role), at contract level
 
-- **Migration** `npm run db:generate -- --name portal-sql-reader-role` (a hand-written SQL migration):
+- **Migration** `0118_portal-sql-reader-role.sql`, hand-written with a journal entry and no snapshot (no schema change; the 0117 precedent, since `db:generate` refuses on the existing 0115/0116 snapshot collision):
   - a `DO` block creates `NOLOGIN` role `current_setting('portalai.sql_reader_role', true)`, defaulting to `portalai_sql_reader`, **only when `current_user` has `rolcreaterole` or is superuser**; otherwise `RAISE NOTICE`;
-  - `GRANT <role> TO CURRENT_USER`;
-  - `REVOKE ALL ON SCHEMA public FROM <role>`;
+  - `GRANT <role> TO CURRENT_USER` (`WITH SET TRUE` on PG16+, where a CREATEROLE creator holds only ADMIN); on `insufficient_privilege`, a NOTICE;
+  - `GRANT USAGE ON SCHEMA public` plus `REVOKE CREATE`. *Amended in PR 2 from `REVOKE ALL`:* some databases (the integration DB among them) don't grant public's USAGE to PUBLIC, and without USAGE the role can't call the PostGIS functions installed there. USAGE is name lookup only; reading still needs a SELECT grant. A non-owner gets a NOTICE instead;
   - no table grants;
   - it is idempotent, is not destructive DDL, and is marked `-- destructive-ok:` only if `lint:migrations` flags REVOKE.
 - **`PORTAL_SQL_READER_ROLE`** env var (default `portalai_sql_reader`), read in `apps/api/src/environment.ts`.
 - **Session:** after the view DDL, and before `transaction_read_only`, run `GRANT SELECT ON <each temp view + _meta_* view> TO <role>`, then `SET LOCAL ROLE <role>`, then `SET LOCAL transaction_read_only = on`, then the user SQL. The GRANT statements are kept out of `build.views` (scope-hash stability).
 - **Dissolve:** the pipeline SELECT runs under the role `INTO` a session temp table. Then server-issued `RESET ROLE`, then `INSERT … SELECT` from that temp table as the owner.
-- **Boot self-check** `PortalSqlService.assertReaderRoleUsable()`: in a rolled-back transaction, `SET LOCAL ROLE <role>` and confirm that `SELECT 1 FROM entity_records LIMIT 1` fails with 42501. On failure, the SQL tools register a typed refusal, **new `ApiCode.PORTAL_SQL_UNAVAILABLE`** (503): "the SQL workspace is unavailable: the restricted reader role is not provisioned". They never run unrestricted. Also checked lazily on the first session per process.
+- **Boot self-check** `PortalSqlReaderRoleService.assertUsable()` (its own service, `services/portal-sql-reader-role.service.ts`): the role exists and isn't a superuser or `BYPASSRLS`; it can read no relation except extension-owned ones (PostGIS reference tables, which PUBLIC reads and which hold no tenant data); and, in a rolled-back transaction, `SET LOCAL ROLE <role>` succeeds and `SELECT 1 FROM entity_records LIMIT 1` fails with 42501. A success is cached per process; a failure is re-probed on the next call. On failure, the SQL tools register a typed refusal, **new `ApiCode.PORTAL_SQL_UNAVAILABLE`** (503): "the SQL workspace is unavailable: the restricted reader role is not provisioned". They never run unrestricted. Also checked lazily on the first session per process.
 - **`MIGRATE_DATABASE_URL`:** `apps/api/src/scripts/db-migrate.ts` and `db:upgrade` prefer it, falling back to `DATABASE_URL`. Helm adds `postgresql.migrationUser` / `postgresql.external.migrationUser` (+ password, or an existing-secret ref). `templates/migrate-job.yaml` uses it when set. `README.md` documents it, with the manual `CREATE ROLE … NOLOGIN; GRANT … TO <app user>` fallback.
 
 ## Migration

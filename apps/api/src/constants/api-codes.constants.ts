@@ -511,6 +511,10 @@ export enum ApiCode {
   PORTAL_SQL_FORBIDDEN = "PORTAL_SQL_FORBIDDEN",
   /** Postgres' `statement_timeout` fired on a portal sql_query. */
   PORTAL_SQL_TIMEOUT = "PORTAL_SQL_TIMEOUT",
+  /** #660: the restricted reader role agent SQL runs under is missing or
+   *  over-privileged, so the SQL tools refuse rather than run as the API's
+   *  own role. 503. */
+  PORTAL_SQL_UNAVAILABLE = "PORTAL_SQL_UNAVAILABLE",
 
   // sql_query job-tier escalation (#130 E1b)
   /** The query is long/expensive (EXPLAIN cost over threshold, or it hit the

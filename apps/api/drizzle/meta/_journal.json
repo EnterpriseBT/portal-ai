@@ -827,6 +827,13 @@
       "when": 1790697267054,
       "tag": "0117_map-dissolve-scope-hash",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1790793450641,
+      "tag": "0118_portal-sql-reader-role",
+      "breakpoints": true
     }
   ]
 }
