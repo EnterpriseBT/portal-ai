@@ -57,6 +57,7 @@ import {
   validatePortalSql,
 } from "./portal-sql-validation.util.js";
 import { applyImplicitLimit } from "./portal-sql-limit.util.js";
+import { PortalSqlReaderRoleService } from "./portal-sql-reader-role.service.js";
 import {
   PORTAL_SQL_DEFAULTS,
   applyRowCap,
@@ -142,6 +143,55 @@ export function resolveScopeHash(build: SessionViewBuild): string {
     .update([...build.views].sort().join("\n"))
     .digest("hex")
     .slice(0, 32);
+}
+
+type SessionTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export interface OpenSqlSessionOptions {
+  statementTimeoutMs: number;
+  /** Default true. Dissolve turns it off because it writes after `RESET ROLE`. */
+  readOnly?: boolean;
+  /** Server-issued statements to run as the API's role after the view DDL
+   *  and before the switch to the reader role (dissolve's staging table). */
+  beforeRole?: (tx: SessionTx) => Promise<void>;
+}
+
+/**
+ * Open an agent-SQL session on `tx` (#660). The one place that sets up a
+ * session, so no caller can build the views and skip the role:
+ *
+ * 1. `DISCARD TEMP`: no temp view a previous build left on this pooled
+ *    connection survives into this session.
+ * 2. `statement_timeout`.
+ * 3. The caller's temp-view DDL (`build.views`).
+ * 4. `beforeRole`, if given.
+ * 5. SELECT on each session view for the reader role, then `SET LOCAL ROLE`
+ *    to it. From here Postgres allows reading only those views.
+ * 6. `transaction_read_only`, unless `readOnly: false`.
+ *
+ * Call `PortalSqlReaderRoleService.assertUsable()` before opening the
+ * transaction: the probe uses its own pooled connection, and acquiring one
+ * while holding this transaction's can deadlock the pool (#314).
+ */
+export async function openSqlSession(
+  tx: SessionTx,
+  build: SessionViewBuild,
+  opts: OpenSqlSessionOptions
+): Promise<void> {
+  await tx.execute(sql.raw("DISCARD TEMP"));
+  await tx.execute(
+    sql.raw(
+      `SET LOCAL statement_timeout = '${Math.trunc(opts.statementTimeoutMs)}ms'`
+    )
+  );
+  for (const ddl of build.views) {
+    await tx.execute(sql.raw(ddl));
+  }
+  if (opts.beforeRole) await opts.beforeRole(tx);
+  await PortalSqlReaderRoleService.enter(tx, build.viewMap.values());
+  if (opts.readOnly !== false) {
+    await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
+  }
 }
 
 export interface PortalSqlParams {
@@ -879,23 +929,14 @@ export class PortalSqlServiceImpl {
     // caller's granted curated views + the _meta_* views it emitted). Checked
     // before the txn — nothing reaches Postgres otherwise.
     assertRelationsAllowed(relations, build);
+    // #660: refuse (503) rather than run as the API's role.
+    await PortalSqlReaderRoleService.assertUsable();
 
     try {
       await db.transaction(async (tx) => {
-        // #660: drop any temp view a previous (committed) build left on this
-        // pooled connection, so none can be referenced in this session.
-        await tx.execute(sql.raw("DISCARD TEMP"));
-        await tx.execute(
-          sql.raw(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`)
-        );
-
-        for (const ddl of build.views) {
-          await tx.execute(sql.raw(ddl));
-        }
-
-        // From here on, no DDL/DML can run. The deny-list-passed LLM
-        // SQL inherits the read-only guard.
-        await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
+        // #660: views, then the reader role, then read-only. From here the
+        // gate-passed LLM SQL can read only this session's views.
+        await openSqlSession(tx, build, { statementTimeoutMs });
 
         let rows: Record<string, unknown>[];
         try {
@@ -1004,20 +1045,13 @@ export class PortalSqlServiceImpl {
     // caller's granted curated views + the _meta_* views it emitted). Checked
     // before the txn — nothing reaches Postgres otherwise.
     assertRelationsAllowed(relations, build);
+    await PortalSqlReaderRoleService.assertUsable();
 
     try {
       await db.transaction(async (tx) => {
-        // #660: drop any temp view a previous (committed) build left on this
-        // pooled connection, so none can be referenced in this session.
-        await tx.execute(sql.raw("DISCARD TEMP"));
-        await tx.execute(
-          sql.raw(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`)
-        );
-
-        for (const ddl of build.views) {
-          await tx.execute(sql.raw(ddl));
-        }
-        await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
+        await openSqlSession(tx, build, {
+          statementTimeoutMs: STATEMENT_TIMEOUT_MS,
+        });
 
         const res = await tx.execute(
           sql.raw(`EXPLAIN (FORMAT JSON) ${wrappedSql}`)

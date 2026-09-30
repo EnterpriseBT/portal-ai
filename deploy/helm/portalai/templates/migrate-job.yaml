@@ -34,6 +34,10 @@ spec:
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
           imagePullPolicy: {{ .Values.image.api.pullPolicy }}
           command: ["node", "dist/scripts/db-migrate.js"]
+          {{- with (include "portalai.migrationEnv" . | trim) }}
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "portalai.fullname" . }}-config

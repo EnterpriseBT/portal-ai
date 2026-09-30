@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -44,24 +45,131 @@ const migrationsFolder = join(
  * migrate path uses a resolver **callback** (per-connection), not a static
  * password — the regression this fix exists to prevent.
  */
-export function buildMigrationClientOptions(resolver: DbPasswordResolver): {
+export function buildMigrationClientOptions(
+  resolver: DbPasswordResolver,
+  readerRole: string = environment.PORTAL_SQL_READER_ROLE
+): {
   max: number;
   password: () => Promise<string>;
+  connection: Record<string, string>;
 } {
-  return { max: 1, password: () => resolver.resolve() };
+  return {
+    max: 1,
+    password: () => resolver.resolve(),
+    // #660: migration 0118 names the reader role from this setting, so the
+    // role it creates is the one the API will SET ROLE to.
+    connection: { "portalai.sql_reader_role": readerRole },
+  };
+}
+
+/** #660: the migration that provisions the restricted SQL reader role. */
+const READER_ROLE_MIGRATION = "0118_portal-sql-reader-role.sql";
+
+/** Client options for the privileged provisioning pass: 0118 reads the role
+ *  name and the grantee (the app user) from these startup settings. */
+export function buildProvisionClientOptions(
+  readerRole: string,
+  grantee: string,
+  password?: string
+): {
+  max: number;
+  connection: Record<string, string>;
+  password?: string;
+} {
+  return {
+    max: 1,
+    connection: {
+      "portalai.sql_reader_role": readerRole,
+      "portalai.sql_reader_grantee": grantee,
+    },
+    // Given to the driver, never interpolated into the URL: a password with
+    // `@`, `/` or `:` would otherwise change the host the URL parses to.
+    ...(password !== undefined ? { password } : {}),
+  };
+}
+
+export interface MigrationPlan {
+  /** Set when MIGRATE_DATABASE_URL is: run 0118's role DDL as that user,
+   *  granting membership to `grantee` (DATABASE_URL's user). */
+  provision: { url: string; grantee: string; password?: string } | null;
+  /** Schema migrations always run as the app user, so it owns every object
+   *  they create. */
+  migrate: {
+    url: string;
+    masterSecretArn: string | undefined;
+    fallbackPassword: string;
+  };
+}
+
+/**
+ * #660 PR 2: how a migration run connects. `MIGRATE_DATABASE_URL`, when set,
+ * is a privileged user (superuser or CREATEROLE) used for one thing only:
+ * provisioning the reader role on the app user's behalf, for installs whose
+ * app user can't create roles. It never runs the schema migrations, since
+ * whoever runs them owns the tables and the API couldn't read them. Those
+ * stay on `DATABASE_URL`, with the #500 master-secret resolver.
+ */
+export function planMigrations(env: {
+  DATABASE_URL: string;
+  MIGRATE_DATABASE_URL?: string;
+  MIGRATE_DATABASE_PASSWORD?: string;
+  DB_MASTER_SECRET_ARN?: string;
+}): MigrationPlan {
+  const migrate = {
+    url: env.DATABASE_URL,
+    masterSecretArn: env.DB_MASTER_SECRET_ARN,
+    fallbackPassword: fallbackPasswordFromUrl(env.DATABASE_URL),
+  };
+  if (!env.MIGRATE_DATABASE_URL) return { provision: null, migrate };
+  return {
+    provision: {
+      url: env.MIGRATE_DATABASE_URL,
+      grantee: decodeURIComponent(new URL(env.DATABASE_URL).username),
+      password: env.MIGRATE_DATABASE_PASSWORD,
+    },
+    migrate,
+  };
+}
+
+/** Run 0118's idempotent role DDL as the privileged user. */
+async function provisionReaderRole(
+  provision: NonNullable<MigrationPlan["provision"]>
+): Promise<void> {
+  const ddl = readFileSync(
+    join(migrationsFolder, READER_ROLE_MIGRATION),
+    "utf8"
+  );
+  const sql = postgres(
+    provision.url,
+    buildProvisionClientOptions(
+      environment.PORTAL_SQL_READER_ROLE,
+      provision.grantee,
+      provision.password
+    )
+  );
+  try {
+    logger.info(
+      { grantee: provision.grantee },
+      "Provisioning the portal SQL reader role via MIGRATE_DATABASE_URL"
+    );
+    await sql.unsafe(ddl);
+  } finally {
+    await sql.end();
+  }
 }
 
 export async function runMigrations(): Promise<void> {
+  const plan = planMigrations(environment);
+  if (plan.provision) await provisionReaderRole(plan.provision);
+
+  const target = plan.migrate;
   const resolver = createDbPasswordResolver({
-    masterSecretArn: environment.DB_MASTER_SECRET_ARN,
-    fallbackPassword: fallbackPasswordFromUrl(environment.DATABASE_URL),
+    masterSecretArn: target.masterSecretArn,
+    fallbackPassword: target.fallbackPassword,
     ttlMs: environment.DB_PASSWORD_CACHE_TTL_MS,
   });
 
-  const sql = postgres(
-    environment.DATABASE_URL,
-    buildMigrationClientOptions(resolver)
-  );
+  const sql = postgres(target.url, buildMigrationClientOptions(resolver));
   try {
     logger.info({ migrationsFolder }, "Running database migrations…");
     await migrate(drizzle(sql), { migrationsFolder });

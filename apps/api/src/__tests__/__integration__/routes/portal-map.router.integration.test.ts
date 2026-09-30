@@ -20,6 +20,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { PortalMapTileService } from "../../../services/portal-map-tile.service.js";
+import { PortalSqlReaderRoleService } from "../../../services/portal-sql-reader-role.service.js";
+import { environment } from "../../../environment.js";
 import {
   PortalSqlService,
   resolveScopeHash,
@@ -418,6 +420,84 @@ describe("Portal map tile route (#316)", () => {
     }
     expect(outcomes.length).toBeGreaterThan(0);
     expect(outcomes.every((o) => o === "rolled-back")).toBe(true); // …but never commits
+  });
+
+  it("#660 PR 2: the tile's pipeline runs under the reader role", async () => {
+    const { db: appDb } = await import("../../../db/client.js");
+    const statements: string[] = [];
+    const original = appDb.transaction.bind(appDb);
+    const spy = jest.spyOn(appDb, "transaction").mockImplementation(((
+      fn: (tx: unknown) => unknown,
+      cfg?: never
+    ) =>
+      original(async (tx) => {
+        const exec = tx.execute.bind(tx);
+        (tx as { execute: unknown }).execute = (q: unknown) => {
+          statements.push(JSON.stringify(q));
+          return exec(q as never);
+        };
+        return fn(tx);
+      }, cfg)) as never);
+    try {
+      const res = await PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: pinId },
+        z: 12,
+        x: 2048,
+        y: 2047,
+        organizationId: orgId,
+        userId,
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      spy.mockRestore();
+    }
+    const roleAt = statements.findIndex((s) => s.includes("SET LOCAL ROLE"));
+    const tileAt = statements.findIndex((s) => s.includes("ST_AsMVT"));
+    expect(roleAt).toBeGreaterThan(-1);
+    expect(tileAt).toBeGreaterThan(roleAt);
+  });
+
+  it("#660 PR 2: a reader role that disappears after a cached success refuses a tile with 503, not a 500", async () => {
+    const tile = () =>
+      PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: pinId },
+        z: 12,
+        x: 2048,
+        y: 2047,
+        organizationId: orgId,
+        userId,
+      });
+    await expect(tile()).resolves.toMatchObject({ status: 200 }); // cached
+    environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_gone";
+    try {
+      await expect(tile()).rejects.toMatchObject({
+        status: 503,
+        code: "PORTAL_SQL_UNAVAILABLE",
+      });
+    } finally {
+      environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader";
+      PortalSqlReaderRoleService.resetForTests();
+    }
+  });
+
+  it("#660 PR 2: with the reader role unusable, a tile refuses (503 PORTAL_SQL_UNAVAILABLE) rather than run as the API's role", async () => {
+    environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_absent";
+    PortalSqlReaderRoleService.resetForTests();
+    try {
+      await expect(
+        PortalMapTileService.renderTile({
+          ref: { kind: "pin", portalResultId: pinId },
+          z: 12,
+          x: 2048,
+          y: 2047,
+          organizationId: orgId,
+          userId,
+        })
+      ).rejects.toMatchObject({ status: 503, code: "PORTAL_SQL_UNAVAILABLE" });
+    } finally {
+      environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader";
+      PortalSqlReaderRoleService.resetForTests();
+    }
   });
 
   it("returns 204 for a tile envelope that doesn't contain the geometry", async () => {

@@ -37,6 +37,14 @@ export const environment = {
   LOG_FORMAT: (process.env.LOG_FORMAT || "pretty") as "pretty" | "json",
   // Database configuration
   DATABASE_URL: process.env.DATABASE_URL || "",
+  // #660: optional, migrations only. A privileged user (superuser or
+  // CREATEROLE) that `db-migrate` / `db:upgrade` use only to provision the
+  // SQL reader role for the app user. Schema migrations still run as
+  // DATABASE_URL, so the app user owns the tables.
+  MIGRATE_DATABASE_URL: process.env.MIGRATE_DATABASE_URL || undefined,
+  // #660: optional password for MIGRATE_DATABASE_URL, passed to the driver
+  // rather than embedded in the URL (so it needs no URL-encoding).
+  MIGRATE_DATABASE_PASSWORD: process.env.MIGRATE_DATABASE_PASSWORD || undefined,
   // #500: ARN of the RDS-managed master secret (rds!…). Set in AWS envs via
   // CFN ImportValue; absent locally — then the pool uses only the URL's
   // embedded password and the AWS SDK is never touched.
@@ -46,6 +54,10 @@ export const environment = {
   DB_PASSWORD_CACHE_TTL_MS: process.env.DB_PASSWORD_CACHE_TTL_MS
     ? Number(process.env.DB_PASSWORD_CACHE_TTL_MS)
     : undefined,
+  // #660: the NOLOGIN role agent SQL runs under (`SET LOCAL ROLE`). Created
+  // by migration 0118; the SQL tools refuse to run when it isn't usable.
+  PORTAL_SQL_READER_ROLE:
+    process.env.PORTAL_SQL_READER_ROLE || "portalai_sql_reader",
   // ── Stripe subscription billing (#176). Per-env keys — test mode
   //    everywhere except prod. Absent keys ⇒ billing endpoints 503 and the
   //    webhook 503s (Stripe retries until configured); the app boots fine.

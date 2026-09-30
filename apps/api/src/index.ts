@@ -14,6 +14,7 @@ import { createMaintenanceWorker } from "./queues/maintenance.worker.js";
 import { processors } from "./queues/processors/index.js";
 import { FileUploadSessionService } from "./services/file-upload-session.service.js";
 import { JobReconciliationService } from "./services/job-reconciliation.service.js";
+import { PortalSqlReaderRoleService } from "./services/portal-sql-reader-role.service.js";
 import { wideTableReconcilerService } from "./services/wide-table-reconciler.service.js";
 import { ApiCode } from "./constants/api-codes.constants.js";
 import { SsoConfig } from "./config/sso.config.js";
@@ -111,6 +112,11 @@ async function start() {
     .catch((err) => {
       logger.warn({ err }, "Startup file_uploads sweep failed");
     });
+
+  // #660: probe the restricted role agent SQL runs under. It never blocks
+  // boot: an unusable role makes the SQL tools refuse (PORTAL_SQL_UNAVAILABLE)
+  // and is re-probed on the next SQL call, so provisioning it needs no restart.
+  void PortalSqlReaderRoleService.checkAtBoot();
 
   // Stranded-job reconciliation (#391): once at boot (covers "Redis died,
   // then we deployed"), then every interval tick (covers a mid-life loss —

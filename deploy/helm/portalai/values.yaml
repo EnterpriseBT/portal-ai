@@ -122,6 +122,20 @@ postgresql:
     database: portalai
     user: portalai
     password: ""
+    # #660: optional privileged user (superuser or CREATEROLE) for an
+    # external DB whose app user (above) lacks CREATEROLE. The migrate/upgrade
+    # jobs use it only to create the restricted SQL reader role and grant it
+    # to the app user; schema migrations still run as the app user, and the
+    # API pods never get it. Give the password inline or through an existing
+    # Secret. Leave the user empty and the app user creates the role itself
+    # (it must then hold CREATEROLE, or provision the role by hand: see
+    # README). With the bundled DB the subchart's postgres superuser is used
+    # automatically.
+    migrationUser: ""
+    migrationPassword: ""
+    migrationExistingSecret:
+      name: ""
+      key: password
 
 redis:
   enabled: true

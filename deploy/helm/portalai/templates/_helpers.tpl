@@ -103,3 +103,34 @@ UPLOAD_S3_BUCKET. Bundled default bucket when enabled, else minio.external.bucke
 {{- .Values.minio.external.bucket -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+#660: env for the migration jobs only (migrate + upgrade), never the API pods.
+MIGRATE_DATABASE_URL is a user able to CREATE ROLE, used only to provision the
+restricted SQL reader role (migration 0118's DDL) and grant it to the app user;
+the schema migrations themselves still run as DATABASE_URL, so the app user
+owns every table. Bundled DB: the subchart's `postgres` superuser. External DB:
+postgresql.external.migrationUser, when set; otherwise nothing is emitted and
+the app user provisions the role itself (it then needs CREATEROLE). The password is passed separately as
+MIGRATE_DATABASE_PASSWORD, never in the URL, so it needs no URL-encoding.
+*/}}
+{{- define "portalai.migrationEnv" -}}
+{{- if .Values.postgresql.enabled }}
+- name: MIGRATE_DATABASE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ printf "%s-postgresql" .Release.Name }}
+      key: postgres-password
+- name: MIGRATE_DATABASE_URL
+  value: {{ printf "postgresql://postgres@%s-postgresql:5432/%s" .Release.Name .Values.postgresql.auth.database | quote }}
+{{- else if .Values.postgresql.external.migrationUser }}
+{{- $ext := .Values.postgresql.external }}
+- name: MIGRATE_DATABASE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $ext.migrationExistingSecret.name | default (printf "%s-migrate" (include "portalai.fullname" .)) }}
+      key: {{ $ext.migrationExistingSecret.key | default "password" }}
+- name: MIGRATE_DATABASE_URL
+  value: {{ printf "postgresql://%s@%s:%v/%s" ($ext.migrationUser | urlquery) $ext.host $ext.port $ext.database | quote }}
+{{- end }}
+{{- end -}}

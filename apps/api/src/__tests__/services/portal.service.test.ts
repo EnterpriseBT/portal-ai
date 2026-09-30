@@ -136,6 +136,8 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   // #643: portal-map-tile.service (a transitive import) statically imports this,
   // so the mock must provide it or the ESM linker fails to resolve the module.
   resolveScopeHash: jest.fn(() => "scope-test"),
+  // #660 PR 2: same reason (the tile service and dissolve processor import it).
+  openSqlSession: jest.fn(),
 }));
 
 // buildAnalyticsTools
