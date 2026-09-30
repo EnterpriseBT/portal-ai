@@ -75,3 +75,7 @@ The decision logic lives in `scripts/integration-skip-base.mjs`, a pure `decideI
 - Unit Tests / Static Checks: they never skip, so they're unaffected.
 - Changing the concurrency or cancellation policy. `cancel-in-progress` is fine once the base is sound.
 - Re-running old PRs' skipped checks. Nothing merged is known to be untested beyond PR #662, whose final code ran (166/166) before merge.
+
+## Smoke walk log
+
+- Step 1: docs-only push on top of green `e0b3ba41`.
