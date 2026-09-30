@@ -78,9 +78,10 @@ As **member**, *"Run sql_query with exactly: `<SQL>`"*. Expected for each: `PORT
 - [ ] `SELECT "pg_sleep"(1)` → rejected, and it returns immediately (no 1 s wait).
 - [ ] `SELECT st_findextent('public', 'er__<smoke660_secret id>', 'c_geom')` → `function not allowed: st_findextent` (security finding, fixed in `1ade8c2c`).
 - [ ] `SELECT st_estimatedextent('er__<smoke660_parcels id>', 'c_geom')` → `function not allowed: st_estimatedextent`.
-- [ ] `SET role postgres` → rejected (only a single SELECT is allowed).
-- [ ] `SELECT 1; SELECT 2` → rejected (`exactly one statement is allowed`).
-- [ ] `SELECT c_parcel_id FROM smoke660_parcel_geo FOR UPDATE` → rejected (locking clause).
+- [ ] `SET role postgres` → rejected (`reserved verb: SET`, from the regex pre-filter that runs before the parser).
+- [ ] `SELECT 1; SELECT 2` → rejected (`multi-statement input`, from the regex pre-filter).
+- [ ] `SELECT c_parcel_id FROM smoke660_parcel_geo FOR UPDATE` → rejected (`reserved verb: UPDATE`, from the regex pre-filter).
+- [ ] `SELECT c_parcel_id FROM smoke660_parcel_geo FOR SHARE` → rejected (`SELECT INTO / FOR UPDATE not allowed`). The regex doesn't match `SHARE`, so this proves the parser's locking-clause check.
 
 ## §4 — Pinned map pipelines (AC4)
 
