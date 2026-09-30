@@ -19,7 +19,15 @@ DECLARE
     nullif(current_setting('portalai.sql_reader_role', true), ''),
     'portalai_sql_reader'
   );
+  -- Who gets membership: the API's login role. db-migrate sets this when a
+  -- privileged MIGRATE_DATABASE_URL provisions the role on the app user's
+  -- behalf; otherwise the migrating user is the app user.
+  grantee text := coalesce(
+    nullif(current_setting('portalai.sql_reader_grantee', true), ''),
+    current_user
+  );
   can_create boolean;
+  has_set boolean;
 BEGIN
   IF reader !~ '^[a-z_][a-z0-9_]{0,62}$' THEN
     RAISE EXCEPTION 'invalid portalai.sql_reader_role: %', reader;
@@ -40,17 +48,25 @@ BEGIN
 
   -- The API's login role must be able to SET ROLE to it. On PG16+ a
   -- CREATEROLE creator holds only ADMIN on the role it created, so SET is
-  -- granted explicitly.
-  BEGIN
-    IF current_setting('server_version_num')::int >= 160000 THEN
-      EXECUTE format('GRANT %I TO %I WITH SET TRUE', reader, current_user);
-    ELSE
-      EXECUTE format('GRANT %I TO %I', reader, current_user);
-    END IF;
-  EXCEPTION WHEN insufficient_privilege THEN
-    RAISE NOTICE 'portal SQL reader role "%" exists but % cannot be granted membership. SQL tools stay unavailable until it is.', reader, current_user;
-    RETURN;
-  END;
+  -- granted explicitly. Skipped when the grantee can already assume it (a
+  -- re-run as the app user after a privileged provisioning pass).
+  IF current_setting('server_version_num')::int >= 160000 THEN
+    EXECUTE 'SELECT pg_has_role($1, $2, ''SET'')' INTO has_set USING grantee, reader;
+  ELSE
+    has_set := pg_has_role(grantee, reader, 'MEMBER');
+  END IF;
+  IF NOT has_set THEN
+    BEGIN
+      IF current_setting('server_version_num')::int >= 160000 THEN
+        EXECUTE format('GRANT %I TO %I WITH SET TRUE', reader, grantee);
+      ELSE
+        EXECUTE format('GRANT %I TO %I', reader, grantee);
+      END IF;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RAISE NOTICE 'portal SQL reader role "%" exists but % cannot grant it to %. SQL tools stay unavailable until it is.', reader, current_user, grantee;
+      RETURN;
+    END;
+  END IF;
 
   -- USAGE on public is name lookup only: it lets the role call the PostGIS
   -- functions installed there and resolve a table name, so a direct read is

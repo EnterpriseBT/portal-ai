@@ -106,11 +106,12 @@ UPLOAD_S3_BUCKET. Bundled default bucket when enabled, else minio.external.bucke
 
 {{/*
 #660: env for the migration jobs only (migrate + upgrade), never the API pods.
-MIGRATE_DATABASE_URL points migrations at a user able to CREATE ROLE, so
-migration 0118 can provision the restricted SQL reader role even when the app
-user can't. Bundled DB: the subchart's `postgres` superuser. External DB:
+MIGRATE_DATABASE_URL is a user able to CREATE ROLE, used only to provision the
+restricted SQL reader role (migration 0118's DDL) and grant it to the app user;
+the schema migrations themselves still run as DATABASE_URL, so the app user
+owns every table. Bundled DB: the subchart's `postgres` superuser. External DB:
 postgresql.external.migrationUser, when set; otherwise nothing is emitted and
-migrations run as DATABASE_URL. The password is interpolated into the URL
+the app user provisions the role itself (it then needs CREATEROLE). The password is interpolated into the URL
 as-is, so it must be URL-safe (the subchart generates alphanumeric ones).
 */}}
 {{- define "portalai.migrationEnv" -}}

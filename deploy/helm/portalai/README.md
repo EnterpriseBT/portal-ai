@@ -64,7 +64,7 @@ helm install portalai deploy/helm/portalai \
 | `postgresql.image.*` | `imresamu/postgis:17-3.5` | Bundled DB image (PostGIS). |
 | `postgresql.auth.*` | `portalai` | Bundled DB user/password/database. |
 | `postgresql.external.*` | `""` | Managed DB host/port/database/user/password. |
-| `postgresql.external.migrationUser` / `.migrationPassword` / `.migrationExistingSecret.{name,key}` | `""` / `""` / `""`,`password` | Optional migration-only user for an external DB whose app user lacks CREATEROLE (#660). Only the migrate/upgrade jobs receive it. See *Restricted SQL reader role* below. |
+| `postgresql.external.migrationUser` / `.migrationPassword` / `.migrationExistingSecret.{name,key}` | `""` / `""` / `""`,`password` | Optional privileged user for an external DB whose app user lacks CREATEROLE; used only to create the SQL reader role and grant it to the app user (#660). Only the migrate/upgrade jobs receive it. See *Restricted SQL reader role* below. |
 | `redis.enabled` | `true` | Bundle Redis (mandatory PVC). `false` → `redis.external.url`. |
 | `redis.master.persistence.size` | `8Gi` | Redis PVC size (durable BullMQ store). |
 | `minio.enabled` | `true` | Bundle MinIO. `false` → `minio.external.*`. Full S3 wiring lands with #567. |
@@ -109,11 +109,13 @@ helm install portalai deploy/helm/portalai \
 - **Restricted SQL reader role (#660).** Agent SQL runs under a NOLOGIN
   Postgres role (`PORTAL_SQL_READER_ROLE`, default `portalai_sql_reader`, set
   it through `config`) that can read only each session's own views. Migration
-  `0118` creates it, which needs a user with CREATEROLE:
-  - **Bundled DB:** the migrate/upgrade jobs use the subchart's `postgres`
-    superuser automatically (`MIGRATE_DATABASE_URL`, jobs only).
-  - **External DB:** set `postgresql.external.migrationUser` to the schema
-    owner or another CREATEROLE user, with `migrationPassword` or
+  `0118` creates it, which needs a user with CREATEROLE. The migrate/upgrade
+  jobs use a privileged `MIGRATE_DATABASE_URL` (jobs only) **just to create
+  the role and grant it to the app user**; the schema migrations still run as
+  the app user, so it keeps owning every table:
+  - **Bundled DB:** the subchart's `postgres` superuser is used automatically.
+  - **External DB:** set `postgresql.external.migrationUser` to a superuser
+    or CREATEROLE user, with `migrationPassword` or
     `migrationExistingSecret`. The password is placed in the URL as-is, so it
     must be URL-safe.
   - **Or provision it by hand** once, as a privileged user, then migrate as
