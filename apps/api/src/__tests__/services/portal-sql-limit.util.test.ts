@@ -51,7 +51,7 @@ describe("applyImplicitLimit", () => {
   });
 
   it("wraps when the top-level select has no aggregation (subquery aggregation ignored)", () => {
-    // node-sql-parser unfortunately may report subquery aggregations as
+    // A parser could report subquery aggregations as
     // top-level — accept either: parser passes through OR wraps.
     const { sql } = applyImplicitLimit(
       "SELECT * FROM (SELECT COUNT(*) FROM contacts) _q",

@@ -10,12 +10,7 @@
  * still gets the row-cap protection at envelope time.
  */
 
-import nodeSqlParser from "node-sql-parser";
-
-const { Parser } = nodeSqlParser as unknown as {
-  Parser: typeof import("node-sql-parser").Parser;
-};
-const parser = new Parser();
+import { parsePortalSql } from "./portal-sql-parse.util.js";
 
 export interface ImplicitLimitResult {
   /** Wrapped SQL (or the original if no wrap was needed). */
@@ -33,29 +28,8 @@ export function applyImplicitLimit(
   rowCap: number
 ): ImplicitLimitResult {
   try {
-    const ast = parser.astify(sql, { database: "postgresql" });
-    const node = Array.isArray(ast) ? ast[0] : ast;
-    if (!node || (node as { type?: string }).type !== "select") {
-      return { sql, appliedLimit: null };
-    }
-    const select = node as {
-      limit?: { value?: unknown[] } | null;
-      columns?: unknown;
-    };
-    // node-sql-parser emits `limit: {seperator: "", value: []}` for
-    // queries without a LIMIT clause — only treat a non-empty value
-    // array as "already has a LIMIT".
-    if (
-      select.limit &&
-      Array.isArray(select.limit.value) &&
-      select.limit.value.length > 0
-    ) {
-      return { sql, appliedLimit: null };
-    }
-    const cols = (select.columns ?? []) as Array<{
-      expr?: { type?: string };
-    }>;
-    if (Array.isArray(cols) && cols.some((c) => c.expr?.type === "aggr_func")) {
+    const parsed = parsePortalSql(sql);
+    if (parsed.statementType !== "SelectStmt" || !parsed.needsImplicitLimit) {
       return { sql, appliedLimit: null };
     }
     const limit = rowCap + 1;

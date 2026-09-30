@@ -22,16 +22,9 @@
  * offending construct in the message so the LLM can self-correct.
  */
 
-// node-sql-parser is CommonJS — pull the class off the default export so
-// the import works under both ESM (tests) and the bundled tsx runtime.
-import nodeSqlParser from "node-sql-parser";
-
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
-
-const { Parser } = nodeSqlParser as unknown as {
-  Parser: typeof import("node-sql-parser").Parser;
-};
+import { parsePortalSql } from "./portal-sql-parse.util.js";
 
 export interface PortalSqlValidationResult {
   /** Comment-free, multi-statement-rejected, deny-list-passed SQL. */
@@ -47,6 +40,10 @@ export interface PortalSqlValidationResult {
    * unbounded scan through.
    */
   needsImplicitLimit: boolean;
+  /** #660: every relation the statement references (by relname, CTE names
+   *  excluded) — checked against the session's allowed relations once the
+   *  views are resolved. Empty when the statement doesn't parse. */
+  relations: ReadonlySet<string>;
 }
 
 const RESERVED_VERBS = new RegExp(
@@ -136,8 +133,6 @@ const SYSTEM_CATALOG = new RegExp(
 
 const SIDE_EFFECT_FUNCTIONS = /\b(pg_|lo_|dblink|query_to_)/i;
 
-const parser = new Parser();
-
 export function validatePortalSql(sql: string): PortalSqlValidationResult {
   const cleaned = stripComments(sql);
   assertNoMultiStatement(cleaned);
@@ -171,8 +166,8 @@ export function validatePortalSql(sql: string): PortalSqlValidationResult {
     );
   }
 
-  const needsImplicitLimit = computeNeedsImplicitLimit(cleaned);
-  return { cleaned, needsImplicitLimit };
+  const { needsImplicitLimit, relations } = analyze(cleaned);
+  return { cleaned, needsImplicitLimit, relations };
 }
 
 /**
@@ -344,32 +339,20 @@ function assertNoMultiStatement(input: string): void {
   }
 }
 
-function computeNeedsImplicitLimit(sql: string): boolean {
+function analyze(sql: string): {
+  needsImplicitLimit: boolean;
+  relations: ReadonlySet<string>;
+} {
   try {
-    const ast = parser.astify(sql, { database: "postgresql" });
-    const node = Array.isArray(ast) ? ast[0] : ast;
-    if (!node || (node as { type?: string }).type !== "select") return true;
-    const select = node as {
-      type: "select";
-      limit?: { value?: unknown[] } | null;
-      columns?: unknown;
+    const parsed = parsePortalSql(sql);
+    return {
+      needsImplicitLimit:
+        parsed.statementType !== "SelectStmt" || parsed.needsImplicitLimit,
+      relations: parsed.relations,
     };
-    if (
-      select.limit &&
-      Array.isArray(select.limit.value) &&
-      select.limit.value.length > 0
-    ) {
-      return false;
-    }
-    const cols = (select.columns ?? []) as Array<{
-      expr?: { type?: string };
-    }>;
-    if (!Array.isArray(cols)) return true;
-    const hasTopAgg = cols.some((c) => c.expr?.type === "aggr_func");
-    return !hasTopAgg;
   } catch {
-    // Parser hiccups should not let an unbounded scan through; default
-    // to wrapping the query with the implicit LIMIT.
-    return true;
+    // A parse failure should not let an unbounded scan through; default to
+    // wrapping the query with the implicit LIMIT.
+    return { needsImplicitLimit: true, relations: new Set() };
   }
 }

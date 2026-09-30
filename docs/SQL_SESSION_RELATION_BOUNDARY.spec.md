@@ -45,7 +45,7 @@ export interface ParsedPortalSql {
   relations: ReadonlySet<string>;
   /** Every function called anywhere, lower-cased, as `name` or `pg_catalog.name`. */
   functions: ReadonlySet<string>;
-  /** Top-level SELECT has no LIMIT and no aggregate in its target list and no GROUP BY. */
+  /** Top-level SELECT has no LIMIT and no top-level (non-window) aggregate in its target list — today's rule, unchanged (a GROUP BY without an aggregate is still wrapped). */
   needsImplicitLimit: boolean;
 }
 export function parsePortalSql(sql: string): ParsedPortalSql; // throws ApiError(400, PORTAL_SQL_FORBIDDEN, …)
