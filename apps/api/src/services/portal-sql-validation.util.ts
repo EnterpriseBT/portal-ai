@@ -516,6 +516,30 @@ const isAllowedFunction = (name: string) =>
   PORTAL_SQL_ALLOWED_FUNCTIONS.has(name) ||
   (/^st_[a-z0-9_]+$/.test(name) && !name.startsWith("postgis_"));
 
+/**
+ * #660: every relation the statement references must be one of this
+ * session's views — the caller's granted curated views plus the `_meta_*`
+ * views the build emitted (all in `build.viewMap`). Anything else (a physical
+ * `er__*` table of any org, `entity_records`, app or catalog tables, an
+ * ungranted view, a temp view left on a pooled connection) is rejected by name
+ * before the SQL reaches Postgres. CTE names in scope are already excluded
+ * from `relations` by the parser.
+ */
+export function assertRelationsAllowed(
+  relations: ReadonlySet<string>,
+  build: { viewMap: ReadonlyMap<string, string> }
+): void {
+  const allowed = new Set(build.viewMap.values());
+  for (const rel of relations) {
+    if (!allowed.has(rel)) {
+      // Same wording as Postgres's own 42P01 translation (`translateExecution-
+      // Error`): an ungranted or physical relation is indistinguishable from
+      // one that doesn't exist, so the answer never confirms a hidden table.
+      throw forbidden(`unknown entity: ${rel}`);
+    }
+  }
+}
+
 function forbidden(message: string): ApiError {
   return new ApiError(400, ApiCode.PORTAL_SQL_FORBIDDEN, message);
 }

@@ -52,7 +52,10 @@ import {
 } from "./wide-table-statement.cache.js";
 import { STATEMENT_TIMEOUT_MS } from "@portalai/core/constants";
 
-import { validatePortalSql } from "./portal-sql-validation.util.js";
+import {
+  assertRelationsAllowed,
+  validatePortalSql,
+} from "./portal-sql-validation.util.js";
 import { applyImplicitLimit } from "./portal-sql-limit.util.js";
 import {
   PORTAL_SQL_DEFAULTS,
@@ -843,7 +846,9 @@ export class PortalSqlServiceImpl {
       params.statementTimeoutMs ?? STATEMENT_TIMEOUT_MS;
 
     // 1. Static validation — throws PORTAL_SQL_FORBIDDEN on violation.
-    const { cleaned, needsImplicitLimit } = validatePortalSql(params.sql);
+    const { cleaned, needsImplicitLimit, relations } = validatePortalSql(
+      params.sql
+    );
 
     // 2. Optional implicit LIMIT wrap.
     const { sql: wrappedSql, appliedLimit } = needsImplicitLimit
@@ -870,9 +875,16 @@ export class PortalSqlServiceImpl {
       params.organizationId,
       params.userId
     );
+    // #660: the statement may reference only this session's views (the
+    // caller's granted curated views + the _meta_* views it emitted). Checked
+    // before the txn — nothing reaches Postgres otherwise.
+    assertRelationsAllowed(relations, build);
 
     try {
       await db.transaction(async (tx) => {
+        // #660: drop any temp view a previous (committed) build left on this
+        // pooled connection, so none can be referenced in this session.
+        await tx.execute(sql.raw("DISCARD TEMP"));
         await tx.execute(
           sql.raw(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`)
         );
@@ -974,7 +986,9 @@ export class PortalSqlServiceImpl {
   }): Promise<{ totalCost: number; estimatedRows: number }> {
     // Mirror runSqlQuery's validation + implicit-LIMIT wrap so the probed
     // plan matches what the synchronous path would actually run.
-    const { cleaned, needsImplicitLimit } = validatePortalSql(params.sql);
+    const { cleaned, needsImplicitLimit, relations } = validatePortalSql(
+      params.sql
+    );
     const { sql: wrappedSql } = needsImplicitLimit
       ? applyImplicitLimit(cleaned, PORTAL_SQL_DEFAULTS.rowCap)
       : { sql: cleaned };
@@ -986,9 +1000,16 @@ export class PortalSqlServiceImpl {
       params.organizationId,
       params.userId
     );
+    // #660: the statement may reference only this session's views (the
+    // caller's granted curated views + the _meta_* views it emitted). Checked
+    // before the txn — nothing reaches Postgres otherwise.
+    assertRelationsAllowed(relations, build);
 
     try {
       await db.transaction(async (tx) => {
+        // #660: drop any temp view a previous (committed) build left on this
+        // pooled connection, so none can be referenced in this session.
+        await tx.execute(sql.raw("DISCARD TEMP"));
         await tx.execute(
           sql.raw(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`)
         );

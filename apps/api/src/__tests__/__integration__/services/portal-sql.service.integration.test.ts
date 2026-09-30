@@ -16,7 +16,14 @@
  * `runSqlQuery` against the live station.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
@@ -1446,6 +1453,201 @@ describe("PortalSqlService integration tests", () => {
         db
       );
       expect(res?.records).toEqual([]);
+    });
+  });
+
+  // #660: agent SQL may reference only the caller's session views (+ _meta_*).
+  // Before this, runSqlQuery ran as the API's DB role and any physical table
+  // (another org's er__*, entity_records, …) was readable.
+  describe("session relation boundary (#660)", () => {
+    const run = (q: string) =>
+      portalSql.runSqlQuery({
+        userId,
+        sql: q,
+        stationId,
+        organizationId: orgId,
+      });
+    const expectRelationForbidden = async (q: string, rel: string) => {
+      await expect(run(q)).rejects.toMatchObject({
+        code: "PORTAL_SQL_FORBIDDEN",
+        message: `unknown entity: ${rel}`,
+      });
+    };
+
+    /** Another org with one reconciled entity — a physical er__ table the
+     *  caller must never reach. */
+    async function seedOtherOrgEntity(): Promise<string> {
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      const now = Date.now();
+      const otherUser = createUser(`auth0|${generateId()}`);
+      await dbTyped.insert(schema.users).values(otherUser as never);
+      const otherOrg = createOrganization(otherUser.id);
+      await dbTyped.insert(schema.organizations).values(otherOrg as never);
+      const [def] = await dbTyped
+        .select({ id: schema.connectorDefinitions.id })
+        .from(schema.connectorDefinitions)
+        .limit(1);
+      const instId = generateId();
+      await dbTyped.insert(schema.connectorInstances).values({
+        id: instId,
+        connectorDefinitionId: def.id,
+        organizationId: otherOrg.id,
+        name: "Other org instance",
+        status: "active",
+        config: {},
+        credentials: null,
+        lastSyncAt: null,
+        lastErrorMessage: null,
+        enabledCapabilityFlags: { read: true, write: true, sync: true },
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      const entId = generateId();
+      await dbTyped.insert(schema.connectorEntities).values({
+        id: entId,
+        organizationId: otherOrg.id,
+        connectorInstanceId: instId,
+        key: `secrets_${entId.slice(0, 6)}`,
+        label: "Other org secrets",
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      const cdId = generateId();
+      await dbTyped
+        .insert(schema.columnDefinitions)
+        .values(
+          mkColumnDef(
+            cdId,
+            otherOrg.id,
+            `secret_${cdId.slice(0, 6)}`,
+            "Secret",
+            "string",
+            now
+          ) as never
+        );
+      await dbTyped
+        .insert(schema.fieldMappings)
+        .values(
+          mkMapping(otherOrg.id, entId, cdId, "secret", "secret", now) as never
+        );
+      await reconciler.reconcileEntity(entId, db);
+      otherOrgEntityIds.push(entId);
+      return entId;
+    }
+    const otherOrgEntityIds: string[] = [];
+    afterEach(async () => {
+      for (const id of otherOrgEntityIds.splice(0)) {
+        try {
+          await reconciler.dropTable(id, db);
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+
+    it("rejects another org's physical er__ table (the reproduced cross-tenant read)", async () => {
+      const otherEntityId = await seedOtherOrgEntity();
+      await expectRelationForbidden(
+        `SELECT * FROM "er__${otherEntityId}"`,
+        `er__${otherEntityId}`
+      );
+    });
+
+    it("rejects the caller's own org's raw tables and app tables too", async () => {
+      await expectRelationForbidden(
+        `SELECT * FROM "er__${privateEntityId}"`,
+        `er__${privateEntityId}`
+      );
+      await expectRelationForbidden(
+        "SELECT count(*) FROM entity_records",
+        "entity_records"
+      );
+      await expectRelationForbidden(
+        "SELECT * FROM contacts WHERE c_email IN (SELECT email FROM users)",
+        "users"
+      );
+    });
+
+    it("a view the caller wasn't granted is not a relation they can name", async () => {
+      // private_audit is attached to the station but ungranted.
+      await expectRelationForbidden(
+        "SELECT * FROM private_audit",
+        "private_audit"
+      );
+    });
+
+    it("a leftover temp view (e.g. from another user's build on a pooled connection) can't be referenced", async () => {
+      await expectRelationForbidden("SELECT * FROM leak_v", "leak_v");
+    });
+
+    it("the granted views, _meta_* views and CTEs over them still work", async () => {
+      await insertEntityRecord(contactsEntityId, generateId(), "c-1");
+      await expect(
+        run("SELECT count(*) AS n FROM contacts")
+      ).resolves.toBeDefined();
+      await expect(
+        run("SELECT entity_key FROM _meta_columns LIMIT 1")
+      ).resolves.toBeDefined();
+      await expect(
+        run("WITH c AS (SELECT * FROM contacts) SELECT count(*) FROM c")
+      ).resolves.toBeDefined();
+    });
+
+    it("explainSqlQuery enforces the same relation boundary", async () => {
+      await expect(
+        portalSql.explainSqlQuery({
+          userId,
+          sql: "SELECT * FROM entity_records",
+          stationId,
+          organizationId: orgId,
+        })
+      ).rejects.toMatchObject({
+        code: "PORTAL_SQL_FORBIDDEN",
+        message: "unknown entity: entity_records",
+      });
+    });
+
+    it("every session transaction starts with DISCARD TEMP (runSqlQuery + explainSqlQuery)", async () => {
+      const { db: appDb } = await import("../../../db/client.js");
+      const firstStatements: string[] = [];
+      const original = appDb.transaction.bind(appDb);
+      const spy = jest.spyOn(appDb, "transaction").mockImplementation((async (
+        fn: (tx: unknown) => unknown,
+        cfg?: unknown
+      ) =>
+        original(async (tx) => {
+          const exec = tx.execute.bind(tx);
+          let first = true;
+          (tx as { execute: unknown }).execute = (q: unknown) => {
+            if (first) {
+              first = false;
+              firstStatements.push(JSON.stringify(q));
+            }
+            return exec(q as never);
+          };
+          return fn(tx);
+        }, cfg as never)) as never);
+      try {
+        await run("SELECT count(*) FROM contacts");
+        await portalSql.explainSqlQuery({
+          userId,
+          sql: "SELECT count(*) FROM contacts",
+          stationId,
+          organizationId: orgId,
+        });
+      } finally {
+        spy.mockRestore();
+      }
+      expect(firstStatements).toHaveLength(2);
+      for (const s of firstStatements) expect(s).toContain("DISCARD TEMP");
     });
   });
 });

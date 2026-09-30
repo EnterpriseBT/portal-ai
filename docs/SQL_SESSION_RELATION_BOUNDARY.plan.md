@@ -90,7 +90,7 @@ This adds the parse util and moves `needsImplicitLimit` / `applyImplicitLimit` o
 
 **Steps**
 1. **Tests (spec cases 10–14).** Seed a second org with its own entity and wide table (the #658 regression-suite pattern).
-   - A member's `SELECT * FROM "er__<other org entity>"` → `relation not allowed`.
+   - A member's `SELECT * FROM "er__<other org entity>"` → `unknown entity`.
    - `SELECT count(*) FROM entity_records` → forbidden.
    - The granted view and `_meta_columns` still work.
    - **Leftover temp view:** on one pooled client, commit a transaction that creates temp view `leak_v`, then a member session referencing `leak_v` → forbidden, and `leak_v` is gone after the session's `DISCARD TEMP`.

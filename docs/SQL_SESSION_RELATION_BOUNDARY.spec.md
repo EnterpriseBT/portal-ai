@@ -80,7 +80,7 @@ export function validatePortalSql(sql: string): PortalSqlValidationResult;
 export function assertRelationsAllowed(
   relations: ReadonlySet<string>,
   build: SessionViewBuild
-): void; // throws PORTAL_SQL_FORBIDDEN `relation not allowed: <name>` for the first relation not in build.allowedRelations
+): void; // throws PORTAL_SQL_FORBIDDEN `unknown entity: <name>` (the same wording as Postgres's 42P01 translation, so a hidden table is indistinguishable from a missing one) for the first relation not in build.allowedRelations
 export const PORTAL_SQL_ALLOWED_FUNCTIONS: ReadonlySet<string>;
 ```
 
@@ -162,7 +162,7 @@ The api runs `npm run test:unit -- --testPathPattern <file>` and `npm run test:i
 9. Allowlist coverage: every function in server-generated wrapper/pushdown SQL (the analytics pushdown builders' output, handle aggregate/keyset wraps, and the tile SQL builder) passes `validatePortalSql`.
 
 ### PR 1 — L2: session boundary (integration) `apps/api/src/__tests__/__integration__/services/portal-sql.service.integration.test.ts`
-10. Member `runSqlQuery` `SELECT * FROM "er__<other org entity>"` → `PORTAL_SQL_FORBIDDEN relation not allowed` (reproduced).
+10. Member `runSqlQuery` `SELECT * FROM "er__<other org entity>"` → `PORTAL_SQL_FORBIDDEN unknown entity` (reproduced).
 11. Member `SELECT count(*) FROM entity_records` → forbidden (reproduced).
 12. The granted view key and `_meta_columns` still work (no regression).
 13. **Leftover temp view:** commit a transaction that creates temp view `leak_v` on a pooled connection (as tiles did), then a member session on the same client referencing `leak_v` → forbidden (relation check), and after `DISCARD TEMP` the view no longer exists.
@@ -185,7 +185,7 @@ The api runs `npm run test:unit -- --testPathPattern <file>` and `npm run test:i
 
 ## Acceptance criteria
 
-- [ ] As a member, `sql_query` against any `er__*`, `entity_records`, catalog or other non-view relation, quoted or not, is rejected with `relation not allowed` / `schema-qualified relation not allowed`, before execution.
+- [ ] As a member, `sql_query` against any `er__*`, `entity_records`, catalog or other non-view relation, quoted or not, is rejected with `unknown entity` / `schema-qualified relation not allowed`, before execution.
 - [ ] `set_config`, `current_setting`, role statements and every non-allowlisted function are rejected.
 - [ ] A temp view created by another session on the same pooled connection cannot be referenced.
 - [ ] Pinned tile and dissolve pipelines with raw relations produce no data.
