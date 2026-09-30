@@ -18,6 +18,26 @@ import { db } from "../db/client.js";
 import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "./wide-table-statement.cache.js";
 import { createLogger } from "../utils/logger.util.js";
+import {
+  assertFunctionsAllowed,
+  assertScalarOver,
+  parsePortalSql,
+} from "./portal-sql-parse.util.js";
+
+/**
+ * #660: agent SQL (the projection and the sourceFilter WHERE fragment) is
+ * spliced into queries run on the default connection — outside the view-scoped
+ * SQL session — so re-check the exact statement about to run: a single SELECT
+ * whose only relation is the source entity's own wide table, with no
+ * sub-select and only allowlisted functions. Holds even for a job that
+ * bypassed the tool's pre-flight. Throws `PORTAL_SQL_FORBIDDEN` before any
+ * query executes.
+ */
+function assertTransformSql(selectSql: string, sourceTableName: string): void {
+  const parsed = parsePortalSql(selectSql);
+  assertScalarOver(parsed, sourceTableName);
+  assertFunctionsAllowed(parsed.functions);
+}
 
 const logger = createLogger({ module: "bulk-transform-service" });
 
@@ -90,10 +110,14 @@ export class BulkTransformService {
       wideTableRepo.tableName(sourceConnectorEntityId)
     );
     const orgLit = `'${organizationId.replace(/'/g, "''")}'`;
-    const sqlText =
-      `EXPLAIN SELECT ${expression} FROM ${sourceTable} ` +
+    const selectText =
+      `SELECT ${expression} FROM ${sourceTable} ` +
       `WHERE "organization_id" = ${orgLit} LIMIT 1`;
-    await db.execute(sql.raw(sqlText));
+    assertTransformSql(
+      selectText,
+      wideTableRepo.tableName(sourceConnectorEntityId)
+    );
+    await db.execute(sql.raw(`EXPLAIN ${selectText}`));
   }
 
   /**
@@ -199,6 +223,10 @@ export class BulkTransformService {
       projectionClause +
       ` FROM batch_deduped`;
 
+    assertTransformSql(
+      selectSql,
+      wideTableRepo.tableName(opts.sourceConnectorEntityId)
+    );
     const result = await db.execute(sql.raw(selectSql));
     const rows = Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)
@@ -222,14 +250,16 @@ export class BulkTransformService {
     const filterClause = opts.whereSqlFragment
       ? ` AND (${opts.whereSqlFragment})`
       : "";
-    const result = await db.execute(
-      sql.raw(
-        `SELECT * FROM ${sourceTable} ` +
-          `WHERE "organization_id" = ${orgLit}${filterClause} ` +
-          `ORDER BY "entity_record_id" ` +
-          `LIMIT ${opts.batchSize} OFFSET ${opts.offset}`
-      )
+    const selectSql =
+      `SELECT * FROM ${sourceTable} ` +
+      `WHERE "organization_id" = ${orgLit}${filterClause} ` +
+      `ORDER BY "entity_record_id" ` +
+      `LIMIT ${opts.batchSize} OFFSET ${opts.offset}`;
+    assertTransformSql(
+      selectSql,
+      wideTableRepo.tableName(opts.sourceConnectorEntityId)
     );
+    const result = await db.execute(sql.raw(selectSql));
     return Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)
       : [];

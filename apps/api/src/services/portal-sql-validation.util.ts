@@ -25,9 +25,12 @@
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import {
+  assertFunctionsAllowed,
   parsePortalSql,
   type ParsedPortalSql,
 } from "./portal-sql-parse.util.js";
+
+export { PORTAL_SQL_ALLOWED_FUNCTIONS } from "./portal-sql-parse.util.js";
 
 export interface PortalSqlValidationResult {
   /** Comment-free, multi-statement-rejected, deny-list-passed SQL. */
@@ -352,171 +355,6 @@ function assertNoMultiStatement(input: string): void {
 }
 
 /**
- * #660: the functions agent SQL may call. Everything else is rejected by name,
- * so a missing legitimate function is a one-line, reviewed addition (with a
- * test). PostGIS `st_*` is allowed as a family (`postgis_*` admin/introspection
- * functions are not). Schema-qualified calls are rejected outright.
- */
-export const PORTAL_SQL_ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
-  // aggregates
-  "count",
-  "sum",
-  "avg",
-  "min",
-  "max",
-  "stddev",
-  "stddev_samp",
-  "stddev_pop",
-  "variance",
-  "var_samp",
-  "var_pop",
-  "mode",
-  "percentile_cont",
-  "percentile_disc",
-  "corr",
-  "covar_samp",
-  "covar_pop",
-  "regr_slope",
-  "regr_intercept",
-  "regr_r2",
-  "regr_count",
-  "regr_avgx",
-  "regr_avgy",
-  "regr_sxx",
-  "regr_syy",
-  "regr_sxy",
-  "array_agg",
-  "string_agg",
-  "json_agg",
-  "jsonb_agg",
-  "json_object_agg",
-  "jsonb_object_agg",
-  "bool_and",
-  "bool_or",
-  "every",
-  // math
-  "abs",
-  "round",
-  "ceil",
-  "ceiling",
-  "floor",
-  "trunc",
-  "power",
-  "sqrt",
-  "cbrt",
-  "exp",
-  "ln",
-  "log",
-  "log10",
-  "mod",
-  "sign",
-  "greatest",
-  "least",
-  "width_bucket",
-  "random",
-  "pi",
-  "degrees",
-  "radians",
-  "sin",
-  "cos",
-  "tan",
-  "asin",
-  "acos",
-  "atan",
-  "atan2",
-  // text
-  "lower",
-  "upper",
-  "initcap",
-  "length",
-  "char_length",
-  "substring",
-  "substr",
-  "left",
-  "right",
-  "trim",
-  "btrim",
-  "ltrim",
-  "rtrim",
-  "lpad",
-  "rpad",
-  "replace",
-  "translate",
-  "concat",
-  "concat_ws",
-  "split_part",
-  "position",
-  "strpos",
-  "starts_with",
-  "regexp_replace",
-  "regexp_match",
-  "regexp_matches",
-  "regexp_split_to_array",
-  "format",
-  "to_char",
-  "md5",
-  "reverse",
-  "repeat",
-  // date / time
-  "now",
-  "date_trunc",
-  "date_part",
-  "extract",
-  "age",
-  "to_timestamp",
-  "to_date",
-  "make_date",
-  "make_timestamp",
-  "make_interval",
-  "justify_interval",
-  // window
-  "row_number",
-  "rank",
-  "dense_rank",
-  "percent_rank",
-  "cume_dist",
-  "ntile",
-  "lag",
-  "lead",
-  "first_value",
-  "last_value",
-  "nth_value",
-  // JSON
-  "json_build_object",
-  "jsonb_build_object",
-  "json_build_array",
-  "jsonb_build_array",
-  "to_json",
-  "to_jsonb",
-  "row_to_json",
-  "json_extract_path_text",
-  "jsonb_extract_path_text",
-  "jsonb_array_length",
-  "json_array_length",
-  "jsonb_typeof",
-  "json_typeof",
-  "jsonb_array_elements",
-  "jsonb_array_elements_text",
-  "json_array_elements",
-  "jsonb_each",
-  "jsonb_object_keys",
-  // arrays / sets / misc
-  "array_length",
-  "cardinality",
-  "unnest",
-  "array_to_string",
-  "string_to_array",
-  "generate_series",
-  "num_nulls",
-  "num_nonnulls",
-  "gen_random_uuid",
-]);
-
-const isAllowedFunction = (name: string) =>
-  PORTAL_SQL_ALLOWED_FUNCTIONS.has(name) ||
-  (/^st_[a-z0-9_]+$/.test(name) && !name.startsWith("postgis_"));
-
-/**
  * #660: every relation the statement references must be one of this
  * session's views — the caller's granted curated views plus the `_meta_*`
  * views the build emitted (all in `build.viewMap`). Anything else (a physical
@@ -558,12 +396,5 @@ function assertAllowedShape(parsed: ParsedPortalSql): void {
   if (qualified) {
     throw forbidden(`schema-qualified relation not allowed: ${qualified}`);
   }
-  for (const fn of parsed.functions) {
-    if (fn.includes(".")) {
-      throw forbidden(`schema-qualified function not allowed: ${fn}`);
-    }
-    if (!isAllowedFunction(fn)) {
-      throw forbidden(`function not allowed: ${fn}`);
-    }
-  }
+  assertFunctionsAllowed(parsed.functions);
 }

@@ -6,7 +6,10 @@
  */
 import { describe, it, expect } from "@jest/globals";
 
-import { parsePortalSql } from "../../services/portal-sql-parse.util.js";
+import {
+  parsePortalSql,
+  parsePortalSqlExpression,
+} from "../../services/portal-sql-parse.util.js";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
@@ -143,5 +146,47 @@ describe("parsePortalSql — rejections (#660)", () => {
     expect(code("SELECT 1; SELECT 2")?.message).toBe(
       "exactly one statement is allowed"
     );
+  });
+});
+
+describe("parsePortalSqlExpression — transform fragments (#660)", () => {
+  const rejects = (f: string, kind: "target" | "where", msg: RegExp) =>
+    expect(() => parsePortalSqlExpression(f, kind)).toThrow(msg);
+
+  it("accepts scalar projections (with aliases) and predicates over the source row", () => {
+    expect(() =>
+      parsePortalSqlExpression("c_a * 2 AS doubled, upper(c_b) AS b", "target")
+    ).not.toThrow();
+    expect(() =>
+      parsePortalSqlExpression("c_parcel_id IN ('p-99','p-499')", "where")
+    ).not.toThrow();
+  });
+
+  it("rejects any sub-select — the cross-tenant exfiltration shape", () => {
+    rejects("(SELECT max(c) FROM er__x) AS stolen", "target", /subquer/i);
+    rejects("c_a IN (SELECT c FROM entity_records)", "where", /subquer/i);
+    rejects("EXISTS (SELECT 1 FROM users)", "where", /subquer/i);
+  });
+
+  it("rejects smuggling a relation by closing the wrapper", () => {
+    rejects(
+      "c_a FROM entity_records --",
+      "target",
+      /unknown entity: entity_records|syntax error/
+    );
+    rejects(
+      "1 = 1) UNION SELECT secret FROM er__y WHERE (1 = 1",
+      "where",
+      /unknown entity|subquer|syntax error/
+    );
+  });
+
+  it("rejects disallowed functions and multi-statement", () => {
+    rejects(
+      "set_config('role','x',true)",
+      "target",
+      /function not allowed: set_config/
+    );
+    rejects("1; DROP TABLE x", "where", /statement|syntax error/);
   });
 });
