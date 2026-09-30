@@ -1682,16 +1682,22 @@ describe("PortalSqlService integration tests", () => {
         orgId,
         userId
       );
+      // Always rolls back, as the real session paths do, so no temp view
+      // outlives the attempt on the pooled connection.
+      const READ = Symbol("read");
       const attempt = (q: string) =>
         appDb
           .transaction(async (tx) => {
             await openSqlSession(tx, build, { statementTimeoutMs: 5000 });
-            return tx.execute(sql.raw(q));
+            await tx.execute(sql.raw(q));
+            throw READ;
           })
           .then(
-            () => "read",
+            () => "committed",
             (err: unknown) =>
-              (err as { cause?: { code?: string } }).cause?.code ?? "?"
+              err === READ
+                ? "read"
+                : ((err as { cause?: { code?: string } }).cause?.code ?? "?")
           );
       await insertEntityRecord(contactsEntityId, generateId(), "c-1");
       await expect(attempt("SELECT count(*) FROM contacts")).resolves.toBe(
@@ -1706,6 +1712,29 @@ describe("PortalSqlService integration tests", () => {
       await expect(attempt("SELECT 1 FROM users LIMIT 1")).resolves.toBe(
         "42501"
       );
+    });
+
+    it("a role that disappears after a cached success refuses with PORTAL_SQL_UNAVAILABLE (503), not a 500, and is re-probed next call", async () => {
+      // Cache a success with the real role.
+      await expect(run("SELECT 1 AS one")).resolves.toBeDefined();
+      // The role "disappears" (the service now names one that doesn't exist:
+      // the same failure as a DROP ROLE under a running API).
+      environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_gone";
+      await expect(run("SELECT 1 AS one")).rejects.toMatchObject({
+        status: 503,
+        code: "PORTAL_SQL_UNAVAILABLE",
+      });
+      // The cached success was cleared, so the next call re-probes (and
+      // refuses before opening a session) instead of failing mid-session.
+      const probe = jest.spyOn(PortalSqlReaderRoleService, "probe");
+      try {
+        await expect(run("SELECT 1 AS one")).rejects.toMatchObject({
+          code: "PORTAL_SQL_UNAVAILABLE",
+        });
+        expect(probe).toHaveBeenCalledTimes(1);
+      } finally {
+        probe.mockRestore();
+      }
     });
 
     it("an unusable role refuses runSqlQuery and explainSqlQuery with PORTAL_SQL_UNAVAILABLE, before any transaction", async () => {

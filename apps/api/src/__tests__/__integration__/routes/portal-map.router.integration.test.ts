@@ -457,6 +457,29 @@ describe("Portal map tile route (#316)", () => {
     expect(tileAt).toBeGreaterThan(roleAt);
   });
 
+  it("#660 PR 2: a reader role that disappears after a cached success refuses a tile with 503, not a 500", async () => {
+    const tile = () =>
+      PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: pinId },
+        z: 12,
+        x: 2048,
+        y: 2047,
+        organizationId: orgId,
+        userId,
+      });
+    await expect(tile()).resolves.toMatchObject({ status: 200 }); // cached
+    environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_gone";
+    try {
+      await expect(tile()).rejects.toMatchObject({
+        status: 503,
+        code: "PORTAL_SQL_UNAVAILABLE",
+      });
+    } finally {
+      environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader";
+      PortalSqlReaderRoleService.resetForTests();
+    }
+  });
+
   it("#660 PR 2: with the reader role unusable, a tile refuses (503 PORTAL_SQL_UNAVAILABLE) rather than run as the API's role", async () => {
     environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_absent";
     PortalSqlReaderRoleService.resetForTests();

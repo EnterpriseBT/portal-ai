@@ -58,6 +58,7 @@ describe("migration plan (#660 PR 2)", () => {
     expect(plan.provision).toEqual({
       url: "postgresql://owner:owner-pw@db:5432/portal",
       grantee: "app@x",
+      password: undefined,
     });
     // Schema migrations stay on the app user, so it owns what they create.
     expect(plan.migrate).toEqual({
@@ -75,6 +76,24 @@ describe("migration plan (#660 PR 2)", () => {
     });
     expect(plan.provision).toBeNull();
     expect(plan.migrate.url).toBe("postgresql://app:app-pw@db:5432/portal");
+  });
+
+  it("takes MIGRATE_DATABASE_PASSWORD separately, so a password with URL-special characters never goes into the URL", () => {
+    const plan = planMigrations({
+      DATABASE_URL: "postgresql://app:app-pw@db:5432/portal",
+      MIGRATE_DATABASE_URL: "postgresql://owner@db.example:5432/portal",
+      MIGRATE_DATABASE_PASSWORD: "p@ss/w:rd",
+    });
+    expect(plan.provision).toEqual({
+      url: "postgresql://owner@db.example:5432/portal",
+      grantee: "app",
+      password: "p@ss/w:rd",
+    });
+    // The host the provisioning client will reach is the URL's, untouched.
+    expect(new URL(plan.provision!.url).hostname).toBe("db.example");
+    expect(buildProvisionClientOptions("r", "app", "p@ss/w:rd")).toMatchObject({
+      password: "p@ss/w:rd",
+    });
   });
 
   it("passes the reader-role name as the portalai.sql_reader_role setting", () => {

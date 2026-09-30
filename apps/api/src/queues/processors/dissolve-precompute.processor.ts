@@ -255,6 +255,9 @@ async function runDissolve(
   // longer a storage problem — it was, when each value got its own union), so
   // there is no cardinality ceiling: this pass only detects "no geometry → clear
   // and stop" and reports the distinct colorBy value count for the result.
+  // #660: these transactions commit (the band ones write), so drop this
+  // session's temp views, and their grants to the shared reader role, before
+  // they can outlive it on the pooled connection.
   const distinctCount = await db.transaction(async (tx) => {
     await openSqlSession(tx, build, {
       statementTimeoutMs: DISSOLVE_STATEMENT_TIMEOUT_MS,
@@ -268,6 +271,7 @@ async function runDissolve(
          FROM (${pipelineSql}) src WHERE src.geom IS NOT NULL`
       )
     )) as unknown as Array<{ n: number }>;
+    await tx.execute(sql.raw("DISCARD TEMP"));
     return r[0]?.n ?? 0;
   });
 
@@ -341,6 +345,7 @@ async function runDissolve(
               WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
                 AND merged = false`
         )) as unknown as Array<{ n: number }>;
+        await tx.execute(sql.raw("DISCARD TEMP"));
         return c[0]?.n ?? 0;
       });
       rowsWritten += inserted;
@@ -414,6 +419,7 @@ async function runDissolve(
               WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
                 AND merged = true`
         )) as unknown as Array<{ n: number }>;
+        await tx.execute(sql.raw("DISCARD TEMP"));
         return c[0]?.n ?? 0;
       });
       rowsWritten += inserted;

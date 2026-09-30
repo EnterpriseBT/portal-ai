@@ -42,6 +42,9 @@ export const environment = {
   // SQL reader role for the app user. Schema migrations still run as
   // DATABASE_URL, so the app user owns the tables.
   MIGRATE_DATABASE_URL: process.env.MIGRATE_DATABASE_URL || undefined,
+  // #660: optional password for MIGRATE_DATABASE_URL, passed to the driver
+  // rather than embedded in the URL (so it needs no URL-encoding).
+  MIGRATE_DATABASE_PASSWORD: process.env.MIGRATE_DATABASE_PASSWORD || undefined,
   // #500: ARN of the RDS-managed master secret (rds!…). Set in AWS envs via
   // CFN ImportValue; absent locally — then the pool uses only the URL's
   // embedded password and the AWS SDK is never touched.

@@ -69,21 +69,29 @@ const READER_ROLE_MIGRATION = "0118_portal-sql-reader-role.sql";
  *  name and the grantee (the app user) from these startup settings. */
 export function buildProvisionClientOptions(
   readerRole: string,
-  grantee: string
-): { max: number; connection: Record<string, string> } {
+  grantee: string,
+  password?: string
+): {
+  max: number;
+  connection: Record<string, string>;
+  password?: string;
+} {
   return {
     max: 1,
     connection: {
       "portalai.sql_reader_role": readerRole,
       "portalai.sql_reader_grantee": grantee,
     },
+    // Given to the driver, never interpolated into the URL: a password with
+    // `@`, `/` or `:` would otherwise change the host the URL parses to.
+    ...(password !== undefined ? { password } : {}),
   };
 }
 
 export interface MigrationPlan {
   /** Set when MIGRATE_DATABASE_URL is: run 0118's role DDL as that user,
    *  granting membership to `grantee` (DATABASE_URL's user). */
-  provision: { url: string; grantee: string } | null;
+  provision: { url: string; grantee: string; password?: string } | null;
   /** Schema migrations always run as the app user, so it owns every object
    *  they create. */
   migrate: {
@@ -104,6 +112,7 @@ export interface MigrationPlan {
 export function planMigrations(env: {
   DATABASE_URL: string;
   MIGRATE_DATABASE_URL?: string;
+  MIGRATE_DATABASE_PASSWORD?: string;
   DB_MASTER_SECRET_ARN?: string;
 }): MigrationPlan {
   const migrate = {
@@ -116,6 +125,7 @@ export function planMigrations(env: {
     provision: {
       url: env.MIGRATE_DATABASE_URL,
       grantee: decodeURIComponent(new URL(env.DATABASE_URL).username),
+      password: env.MIGRATE_DATABASE_PASSWORD,
     },
     migrate,
   };
@@ -133,7 +143,8 @@ async function provisionReaderRole(
     provision.url,
     buildProvisionClientOptions(
       environment.PORTAL_SQL_READER_ROLE,
-      provision.grantee
+      provision.grantee,
+      provision.password
     )
   );
   try {

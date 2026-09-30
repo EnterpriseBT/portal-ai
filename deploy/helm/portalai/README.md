@@ -116,8 +116,9 @@ helm install portalai deploy/helm/portalai \
   - **Bundled DB:** the subchart's `postgres` superuser is used automatically.
   - **External DB:** set `postgresql.external.migrationUser` to a superuser
     or CREATEROLE user, with `migrationPassword` or
-    `migrationExistingSecret`. The password is placed in the URL as-is, so it
-    must be URL-safe.
+    `migrationExistingSecret`. The password reaches the job as its own
+    variable (`MIGRATE_DATABASE_PASSWORD`), never inside the URL, so it needs
+    no URL-encoding.
   - **Or provision it by hand** once, as a privileged user, then migrate as
     the app user as usual:
     ```sql
@@ -133,5 +134,11 @@ helm install portalai deploy/helm/portalai \
   the reason) at boot, and re-checks on the next SQL call, so no restart is
   needed once the role exists. The role must hold no grants of its own: the
   check refuses a role that can read any application table.
+- **After restoring a database onto another cluster, provision the role
+  again.** Roles belong to the cluster, not the database, so a `pg_dump`
+  restore doesn't bring the reader role, and `db:upgrade` won't recreate it:
+  migration `0118` is already recorded as applied. The API then refuses SQL
+  tools (`reader-role-unavailable … does not exist`) until the role exists.
+  Re-apply `0118` as a CREATEROLE user, or run the manual statements above.
 - **No AWS runtime dependency.** `DB_MASTER_SECRET_ARN` is never set; the DB
   password is carried in the `DATABASE_URL` Secret.

@@ -436,6 +436,24 @@ describe("dissolve-precompute processor (#472)", () => {
     ]);
   });
 
+  it("#660 PR 2: a committed dissolve leaves no temp views (granted to the shared reader role) on its pooled connection", async () => {
+    await insertParcel(0, "Private");
+    const pinId = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    await runProcessor(pinId, orgId, userId);
+    // pg_class lists every backend's temp relations, so this sees the app
+    // pool's connections as well as ours.
+    const left = (await connection.unsafe(
+      `SELECT c.relname FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relpersistence = 't' AND n.nspname LIKE 'pg_temp%'
+         AND c.relname IN ('parcels', '_meta_entities', '_meta_columns', '_dissolve_rows')`
+    )) as unknown as Array<{ relname: string }>;
+    expect(left).toEqual([]);
+  });
+
   it("#660 PR 2: with the reader role unusable, the precompute refuses and writes nothing", async () => {
     await insertParcel(0, "Private");
     const pinId = await createPin(

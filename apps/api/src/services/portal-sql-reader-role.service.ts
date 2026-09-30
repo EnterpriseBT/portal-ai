@@ -76,11 +76,35 @@ export class PortalSqlReaderRoleService {
     return [...grants, `SET LOCAL ROLE ${role}`];
   }
 
-  /** Run {@link enterStatements} on `tx`. */
+  /**
+   * Run {@link enterStatements} on `tx`. A failure here means the role
+   * changed under a running API after a cached success (dropped, renamed, or
+   * membership revoked), so the cache is cleared and the session refuses with
+   * PORTAL_SQL_UNAVAILABLE. The next call re-probes. The failing transaction
+   * aborts, so the caller's SQL never runs.
+   */
   static async enter(tx: Tx, viewNames: Iterable<string>): Promise<void> {
-    for (const stmt of this.enterStatements(viewNames)) {
-      await tx.execute(sql.raw(stmt));
+    try {
+      for (const stmt of this.enterStatements(viewNames)) {
+        await tx.execute(sql.raw(stmt));
+      }
+    } catch (err) {
+      this.usable = false;
+      const { code, message } = unwrapPgError(err);
+      logger.error(
+        { event: "portal-sql.reader-role-unavailable", code, reason: message },
+        "Portal SQL reader role could not be assumed; refusing SQL tools until it is"
+      );
+      throw this.unavailable();
     }
+  }
+
+  private static unavailable(): ApiError {
+    return new ApiError(
+      503,
+      ApiCode.PORTAL_SQL_UNAVAILABLE,
+      "The SQL workspace is unavailable: the restricted database role it runs under is missing or misconfigured. An administrator must fix it; the API log gives the reason."
+    );
   }
 
   /**
@@ -181,11 +205,7 @@ export class PortalSqlReaderRoleService {
       { event: "portal-sql.reader-role-unavailable", reason: result.reason },
       "Portal SQL reader role is not usable; refusing SQL tools"
     );
-    throw new ApiError(
-      503,
-      ApiCode.PORTAL_SQL_UNAVAILABLE,
-      "The SQL workspace is unavailable: the restricted database role it runs under is missing or misconfigured. An administrator must fix it; the API log gives the reason."
-    );
+    throw this.unavailable();
   }
 
   /** Boot-time check: logs the outcome and never throws. */

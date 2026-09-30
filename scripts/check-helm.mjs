@@ -107,7 +107,7 @@ const apiHasNoMigrationCreds = (out) => {
   return (
     api !== "" &&
     !api.includes("MIGRATE_DATABASE_URL") &&
-    !api.includes("PORTALAI_MIGRATE_PASSWORD")
+    !api.includes("MIGRATE_DATABASE_PASSWORD")
   );
 };
 
@@ -177,8 +177,9 @@ const scenarios = [
             return (
               doc.includes("name: p-postgresql\n") &&
               doc.includes("key: postgres-password") &&
+              doc.includes("name: MIGRATE_DATABASE_PASSWORD") &&
               doc.includes(
-                'value: "postgresql://postgres:$(PORTALAI_MIGRATE_PASSWORD)@p-postgresql:5432/portalai"'
+                'value: "postgresql://postgres@p-postgresql:5432/portalai"'
               )
             );
           }),
@@ -308,7 +309,7 @@ const scenarios = [
         (out) =>
           ["p-portalai-migrate", "p-portalai-upgrade"].every((job) =>
             manifest(out, "Job", job).includes(
-              'value: "postgresql://owner:$(PORTALAI_MIGRATE_PASSWORD)@db.example.com:5432/portalai"'
+              'value: "postgresql://owner@db.example.com:5432/portalai"'
             )
           ),
       ],
@@ -325,6 +326,34 @@ const scenarios = [
         },
       ],
       ["the API pods never get the migration credentials", apiHasNoMigrationCreds],
+    ],
+  },
+  {
+    name: "external + migration password with URL-special characters (#660)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
+      ...MIGRATION_USER_ARGS,
+      "--set-string",
+      "postgresql.external.migrationPassword=p@ss/w:rd",
+    ],
+    assertions: [
+      [
+        "the password never enters the URL, so the host can't shift",
+        (out) =>
+          ["p-portalai-migrate", "p-portalai-upgrade"].every((job) => {
+            const doc = manifest(out, "Job", job);
+            const url = /name: MIGRATE_DATABASE_URL\n\s+value: "([^"]+)"/.exec(doc)?.[1];
+            return (
+              url === "postgresql://owner@db.example.com:5432/portalai" &&
+              new URL(url).hostname === "db.example.com" &&
+              !doc.includes("p@ss")
+            );
+          }),
+      ],
     ],
   },
   {
