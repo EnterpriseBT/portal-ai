@@ -140,6 +140,14 @@ describe("portal SQL reader role (#660 PR 2)", () => {
     const result = await PortalSqlReaderRoleService.probe();
     expect(result.usable).toBe(false);
     expect(result.reason).toMatch(/can read public\.entity_records/);
+    // The refusal names both causes, not just "not provisioned": the role
+    // exists here, it's over-privileged.
+    await expect(
+      PortalSqlReaderRoleService.assertUsable()
+    ).rejects.toMatchObject({
+      code: ApiCode.PORTAL_SQL_UNAVAILABLE,
+      message: expect.stringMatching(/missing or misconfigured/),
+    });
   });
 
   it("assertUsable: a missing role refuses with PORTAL_SQL_UNAVAILABLE (503)", async () => {

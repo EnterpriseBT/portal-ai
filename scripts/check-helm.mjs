@@ -170,7 +170,7 @@ const scenarios = [
           out.includes('command: ["node", "dist/scripts/db-upgrade.js"]'),
       ],
       [
-        "bundled: migrate + upgrade jobs migrate as the subchart's postgres superuser (#660)",
+        "bundled: migrate + upgrade jobs provision the reader role as the subchart's postgres superuser (#660)",
         (out) =>
           ["p-portalai-migrate", "p-portalai-upgrade"].every((job) => {
             const doc = manifest(out, "Job", job);

@@ -184,7 +184,7 @@ export class PortalSqlReaderRoleService {
     throw new ApiError(
       503,
       ApiCode.PORTAL_SQL_UNAVAILABLE,
-      "The SQL workspace is unavailable: the restricted reader role is not provisioned."
+      "The SQL workspace is unavailable: the restricted database role it runs under is missing or misconfigured. An administrator must fix it; the API log gives the reason."
     );
   }
 
