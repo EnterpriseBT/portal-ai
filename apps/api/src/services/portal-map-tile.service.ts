@@ -720,6 +720,25 @@ export class PortalMapTileService {
     } = args;
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
 
+    // #660: validate the pinned pipeline before choosing ANY serve path —
+    // precomputed dissolve rows may have been computed from it before the gate
+    // existed, so a rejected pipeline must serve nothing even on a dissolve hit.
+    if (
+      !(await this.pipelineAllowed(
+        pipeline.sql,
+        pipeline.stationId,
+        organizationId,
+        userId
+      ))
+    ) {
+      return {
+        mvt: null,
+        featureCount: 0,
+        truncated: false,
+        aggregated: false,
+      };
+    }
+
     // #472/#532/#542: a low-zoom polygon map is served from precomputed dissolved
     // geometry keyed by its owner — a pin OR a message block. Its readiness feeds
     // the mode decision; a miss falls through to raw (real simplified polygons),
@@ -879,6 +898,44 @@ export class PortalMapTileService {
   }
 
   /**
+   * #660: may this caller's pinned pipeline run at all? It must pass the SQL
+   * gate against the caller's session views (a pinned pipeline only ever
+   * passed the pre-#660 gate). Checked before ANY serve path — the dissolve
+   * serve too, whose stored rows may predate the gate — so a rejected pipeline
+   * serves nothing at any zoom. Memoized view resolution makes the repeat
+   * inside `runSessionViewTile` free.
+   */
+  private static async pipelineAllowed(
+    pipelineSql: string,
+    stationId: string,
+    organizationId: string,
+    userId: string
+  ): Promise<boolean> {
+    const build = await PortalSqlService.resolveViewsForSession(
+      stationId,
+      organizationId,
+      userId
+    );
+    try {
+      const { relations } = validatePortalSql(pipelineSql);
+      assertRelationsAllowed(relations, build);
+      return true;
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN
+      ) {
+        logger.warn(
+          { event: "tile.pipeline-rejected", stationId, reason: err.message },
+          "Pinned map pipeline rejected by the SQL gate; serving an empty tile"
+        );
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Run a tile query (raw / aggregate / hybrid SQL) inside the read-only
    * session-view transaction and shape the `TileQueryResult`. Extracted so the
    * count-driven probe and the aggregate serve share one path (#532).
@@ -908,30 +965,21 @@ export class PortalMapTileService {
       organizationId,
       userId
     );
-    // #660: the pipeline may reference only this caller's session views. A
-    // pinned pipeline that names anything else (a physical er__* table,
-    // entity_records, an ungranted view) serves an empty tile — never the data,
-    // never a 500.
-    try {
-      const { relations } = validatePortalSql(pipelineSql);
-      assertRelationsAllowed(relations, build);
-    } catch (err) {
-      if (
-        err instanceof ApiError &&
-        err.code === ApiCode.PORTAL_SQL_FORBIDDEN
-      ) {
-        logger.warn(
-          { event: "tile.pipeline-rejected", stationId, reason: err.message },
-          "Pinned map pipeline rejected by the SQL gate; serving an empty tile"
-        );
-        return {
-          mvt: null,
-          featureCount: 0,
-          truncated: false,
-          aggregated: aggregate,
-        };
-      }
-      throw err;
+    // #660: the pipeline may reference only this caller's session views.
+    if (
+      !(await this.pipelineAllowed(
+        pipelineSql,
+        stationId,
+        organizationId,
+        userId
+      ))
+    ) {
+      return {
+        mvt: null,
+        featureCount: 0,
+        truncated: false,
+        aggregated: aggregate,
+      };
     }
     try {
       // #660: the txn always rolls back (the result rides out on a sentinel),

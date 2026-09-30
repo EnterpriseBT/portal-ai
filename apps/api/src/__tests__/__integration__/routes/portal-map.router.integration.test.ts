@@ -568,10 +568,19 @@ describe("Portal map tile route (#316)", () => {
     );
 
   it("dissolve HIT: serves precomputed geometry, never running the pipeline", async () => {
-    // The pipeline references a view that does not exist — if the dissolve-hit
-    // path ran it, the tile would 500. It serves from the stored geometry instead.
+    // #660: the pipeline is validated (a real granted view), but a dissolve HIT
+    // serves the stored geometry without running it — the pipeline path
+    // (runSessionViewTile) is never entered. (Before #660 this used a
+    // nonexistent view as the proof; the relation gate now rejects that pin at
+    // any zoom, which is the point.)
+    const pipelineRun = jest.spyOn(
+      PortalMapTileService as unknown as {
+        runSessionViewTile: (...a: unknown[]) => unknown;
+      },
+      "runSessionViewTile"
+    );
     const pin = await createColorByPin(
-      'SELECT "c_geom" AS geom, c_own_type FROM does_not_exist',
+      'SELECT "c_geom" AS geom, c_own_type FROM parcels',
       "c_own_type"
     );
     await insertDissolveRow(pin, "c_own_type", 0); // band 0 = z0
@@ -587,6 +596,29 @@ describe("Portal map tile route (#316)", () => {
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
     expect(res.aggregated).toBe(false); // real geometry, not centroid bins
+    expect(pipelineRun).not.toHaveBeenCalled();
+    pipelineRun.mockRestore();
+  });
+
+  it("#660: a raw-table pipeline serves nothing even when precomputed dissolve rows exist for the caller's scope", async () => {
+    // Rows computed before #660 from a pipeline that read a physical table (the
+    // leak) must not be served: the tile validates the pipeline before choosing
+    // the dissolve branch, so it serves nothing at any zoom.
+    const pin = await createColorByPin(
+      `SELECT "c_geom" AS geom, c_own_type FROM "er__${entityId}"`,
+      "c_own_type"
+    );
+    await insertDissolveRow(pin, "c_own_type", 0);
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+      userId,
+    });
+    expect(res.status).toBe(204);
+    expect(res.body).toBeUndefined();
   });
 
   it("dissolve MISS: falls back to raw simplified polygons, never bins", async () => {
@@ -632,7 +664,7 @@ describe("Portal map tile route (#316)", () => {
     // The pipeline references a nonexistent view — if the serve path ran it, the
     // tile would error. It serves from the precomputed "__all__" rows instead.
     const pin = await createNoColorByPin(
-      'SELECT "c_geom" AS geom FROM does_not_exist'
+      'SELECT "c_geom" AS geom FROM parcels'
     );
     await insertDissolveRow(pin, "__all__", 0); // band 0 = z0, sentinel column
 
@@ -656,7 +688,7 @@ describe("Portal map tile route (#316)", () => {
     // polygon is represented — instead of area-ranking to the largest N and
     // dropping the rest (which is what made whole swathes disappear).
     const pin = await createNoColorByPin(
-      'SELECT "c_geom" AS geom FROM does_not_exist'
+      'SELECT "c_geom" AS geom FROM parcels'
     );
     // One merged-coverage row (band 0) spanning the data area.
     await connection.unsafe(
@@ -728,7 +760,7 @@ describe("Portal map tile route (#316)", () => {
     // wrote coverage. Before #541 this served an EMPTY tile; now it falls back to
     // area-ranked individuals (the honest degraded state) rather than blanking.
     const pin = await createNoColorByPin(
-      'SELECT "c_geom" AS geom FROM does_not_exist'
+      'SELECT "c_geom" AS geom FROM parcels'
     );
     await insertManyIndividuals(pin, 10_001); // > cap, no merged=true rows
 
@@ -752,7 +784,7 @@ describe("Portal map tile route (#316)", () => {
     // has_merged is band-level; it must not force the coverage path when the tile
     // itself is under the cap — a sparse tile still shows individual polygons.
     const pin = await createNoColorByPin(
-      'SELECT "c_geom" AS geom FROM does_not_exist'
+      'SELECT "c_geom" AS geom FROM parcels'
     );
     await insertManyIndividuals(pin, 5); // ≤ cap
     await insertDissolveRow(pin, "__all__", 0); // a merged=false row (individual)
@@ -872,7 +904,7 @@ describe("Portal map tile route (#316)", () => {
     // The message's pipeline references a nonexistent view — serving proves it
     // reads the message-owned precompute, not the raw pipeline.
     const messageId = await createMessageMap(
-      'SELECT "c_geom" AS geom FROM does_not_exist'
+      'SELECT "c_geom" AS geom FROM parcels'
     );
     await insertMsgMerged(messageId);
     await insertMsgIndividuals(messageId, 10_001); // over cap
@@ -892,7 +924,7 @@ describe("Portal map tile route (#316)", () => {
 
   it("#542: a message tile ref over-cap with NO coverage falls back to individuals, never blank", async () => {
     const messageId = await createMessageMap(
-      'SELECT "c_geom" AS geom FROM does_not_exist'
+      'SELECT "c_geom" AS geom FROM parcels'
     );
     await insertMsgIndividuals(messageId, 10_001); // over cap, no merged rows
 

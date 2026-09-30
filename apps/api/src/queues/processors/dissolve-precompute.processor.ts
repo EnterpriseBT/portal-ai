@@ -210,6 +210,11 @@ async function runDissolve(
         { event: "dissolve.pipeline-rejected", owner, reason: err.message },
         "Pinned map pipeline rejected by the SQL gate; failing the precompute"
       );
+      // Rows previously precomputed for this owner/scope may have come from
+      // this pipeline before the gate existed — never leave them to be served.
+      await db.execute(
+        sql`DELETE FROM map_dissolve_geometries WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))}`
+      );
       throw new UnrecoverableError(
         `pipeline rejected by the SQL gate: ${err.message}`
       );

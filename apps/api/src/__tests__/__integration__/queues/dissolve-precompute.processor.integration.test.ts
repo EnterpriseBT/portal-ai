@@ -396,6 +396,26 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(await countRows(pinId)).toBe(0);
   });
 
+  it("#660: a rejected pipeline also clears that owner/scope's previously precomputed rows", async () => {
+    await insertParcel(0, "Private");
+    // First precompute from a valid pipeline → rows exist.
+    const pinId = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    await runProcessor(pinId, orgId, userId);
+    expect(await countRows(pinId)).toBeGreaterThan(0);
+    // The pin's pipeline is now one the gate rejects (e.g. pinned pre-#660).
+    await connection.unsafe(
+      `UPDATE portal_results SET content = jsonb_set(content, '{pipeline,sql}', to_jsonb($1::text)) WHERE id = $2`,
+      [`SELECT "c_geom" AS geom, "c_own_type" FROM "er__${entityId}"`, pinId]
+    );
+    await expect(runProcessor(pinId, orgId, userId)).rejects.toThrow(
+      /unknown entity: er__/
+    );
+    expect(await countRows(pinId)).toBe(0);
+  });
+
   it("#532: a colorBy layer stores individuals + a merged coverage per band, tagged with its value", async () => {
     // Three adjacent Private, one Federal, one State. Area-ranked (#532) keeps
     // each polygon as its own row — the three adjacent Private are NOT merged
