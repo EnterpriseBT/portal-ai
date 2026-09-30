@@ -1044,6 +1044,107 @@ describe("buildAnalyticsTools()", () => {
     }
   });
 
+  // #658 read-scoping guard. `resolve_identity` read raw wide tables past the
+  // caller's curated views because nothing forced a decision about how a new
+  // entity_records reader is scoped. Every tool whose capability declares
+  // `reads: ["entity_records"]` must be classified here WITH its reason; a new
+  // reader fails CI until someone decides. The permission gate (#629) only
+  // authorizes writes, so read scoping is each reader's own job.
+  const READ_SCOPING: Record<
+    string,
+    {
+      scoping:
+        | "view-session"
+        | "view-handle"
+        | "view-helper"
+        | "metadata"
+        | "admin-bulk";
+      reason: string;
+    }
+  > = {
+    sql_query: {
+      scoping: "view-session",
+      reason:
+        "runs in runSqlQuery against the caller's granted-view temp views",
+    },
+    display_entity_records: {
+      scoping: "view-session",
+      reason:
+        "produces its handle through runSqlQuery with the caller's userId",
+    },
+    visualize_d3: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    visualize_map: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    hypothesis_test: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    regression: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    var_cvar: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    resolve_identity: {
+      scoping: "view-helper",
+      reason: "queryViewRowsByColumn over resolveGrantedViewColumns (#658)",
+    },
+    station_context: {
+      scoping: "metadata",
+      reason:
+        "schema only, view-scoped (#599 entities, #648/#651 entity groups)",
+    },
+    platform_help: {
+      scoping: "metadata",
+      reason: "org metadata only — never reads the user's records",
+    },
+    transform_entity_records: {
+      scoping: "admin-bulk",
+      reason:
+        "TOOL_AUTHORIZATION mode bulk: unconditional class write (admin-only)",
+    },
+    bulk_geocode_records: {
+      scoping: "admin-bulk",
+      reason:
+        "TOOL_AUTHORIZATION mode bulk: unconditional class write (admin-only)",
+    },
+  };
+
+  it("#658: every entity_records reader has a read-scoping classification (coverage guard)", async () => {
+    const { ALL_TOOL_CAPABILITIES } = await import("@portalai/core/registries");
+    const readers = Object.entries(ALL_TOOL_CAPABILITIES)
+      .filter(([, cap]) => cap.reads.includes("entity_records"))
+      .map(([name]) => name);
+    expect(readers.length).toBeGreaterThan(0);
+    const unclassified = readers.filter((name) => !READ_SCOPING[name]);
+    expect(unclassified).toEqual([]);
+  });
+
+  it("#658: the read-scoping table has no stale entries, and admin-bulk rows really are bulk-gated", async () => {
+    const { ALL_TOOL_CAPABILITIES, TOOL_AUTHORIZATION } =
+      await import("@portalai/core/registries");
+    for (const [name, { scoping }] of Object.entries(READ_SCOPING)) {
+      expect(
+        ALL_TOOL_CAPABILITIES[name]?.reads.includes("entity_records") ?? false
+      ).toBe(true);
+      if (scoping === "admin-bulk") {
+        expect(TOOL_AUTHORIZATION[name]?.mode).toBe("bulk");
+      }
+    }
+  });
+
   it("does not warn about a missing capability for the real built-in tool set (#184)", async () => {
     setupStationMocks([
       "data_query",
