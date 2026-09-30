@@ -79,3 +79,4 @@ The decision logic lives in `scripts/integration-skip-base.mjs`, a pure `decideI
 ## Smoke walk log
 
 - Step 1: docs-only push on top of green `e0b3ba41`.
+- Step 2: code change `bd3a02bd`, then this docs push immediately (the code run should be cancelled).
