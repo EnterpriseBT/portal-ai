@@ -33,7 +33,12 @@ import {
   WideTableStatementCache,
   wideTableStatementCache as singletonStatementCache,
 } from "../../../services/wide-table-statement.cache.js";
-import { PortalSqlServiceImpl } from "../../../services/portal-sql.service.js";
+import {
+  PortalSqlServiceImpl,
+  openSqlSession,
+} from "../../../services/portal-sql.service.js";
+import { PortalSqlReaderRoleService } from "../../../services/portal-sql-reader-role.service.js";
+import { environment } from "../../../environment.js";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
@@ -1648,6 +1653,85 @@ describe("PortalSqlService integration tests", () => {
       }
       expect(firstStatements).toHaveLength(2);
       for (const s of firstStatements) expect(s).toContain("DISCARD TEMP");
+    });
+  });
+
+  describe("reader role (#660 PR 2)", () => {
+    const run = (q: string) =>
+      portalSql.runSqlQuery({
+        userId,
+        sql: q,
+        stationId,
+        organizationId: orgId,
+      });
+
+    afterEach(() => {
+      environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader";
+      PortalSqlReaderRoleService.resetForTests();
+    });
+
+    it("agent SQL runs as the reader role, not the API's role", async () => {
+      const res = await run("SELECT current_user AS u");
+      expect(res).toMatchObject({ rows: [{ u: "portalai_sql_reader" }] });
+    });
+
+    it("Postgres denies a raw read under the role even when the SQL gate is bypassed", async () => {
+      const { db: appDb } = await import("../../../db/client.js");
+      const build = await portalSql.resolveViewsForSession(
+        stationId,
+        orgId,
+        userId
+      );
+      const attempt = (q: string) =>
+        appDb
+          .transaction(async (tx) => {
+            await openSqlSession(tx, build, { statementTimeoutMs: 5000 });
+            return tx.execute(sql.raw(q));
+          })
+          .then(
+            () => "read",
+            (err: unknown) =>
+              (err as { cause?: { code?: string } }).cause?.code ?? "?"
+          );
+      await insertEntityRecord(contactsEntityId, generateId(), "c-1");
+      await expect(attempt("SELECT count(*) FROM contacts")).resolves.toBe(
+        "read"
+      );
+      await expect(
+        attempt("SELECT 1 FROM entity_records LIMIT 1")
+      ).resolves.toBe("42501");
+      await expect(
+        attempt(`SELECT 1 FROM "er__${privateEntityId}" LIMIT 1`)
+      ).resolves.toBe("42501");
+      await expect(attempt("SELECT 1 FROM users LIMIT 1")).resolves.toBe(
+        "42501"
+      );
+    });
+
+    it("an unusable role refuses runSqlQuery and explainSqlQuery with PORTAL_SQL_UNAVAILABLE, before any transaction", async () => {
+      const { db: appDb } = await import("../../../db/client.js");
+      environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_absent";
+      PortalSqlReaderRoleService.resetForTests();
+      const spy = jest.spyOn(appDb, "transaction");
+      try {
+        await expect(run("SELECT 1")).rejects.toMatchObject({
+          status: 503,
+          code: "PORTAL_SQL_UNAVAILABLE",
+        });
+        await expect(
+          portalSql.explainSqlQuery({
+            userId,
+            sql: "SELECT 1",
+            stationId,
+            organizationId: orgId,
+          })
+        ).rejects.toMatchObject({ code: "PORTAL_SQL_UNAVAILABLE" });
+        // A missing role is detected before the probe opens a transaction,
+        // so no transaction ran at all: nothing reached a session.
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 });

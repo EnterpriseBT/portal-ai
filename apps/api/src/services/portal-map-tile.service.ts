@@ -37,7 +37,12 @@ import { db } from "../db/client.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
-import { PortalSqlService, resolveScopeHash } from "./portal-sql.service.js";
+import {
+  PortalSqlService,
+  openSqlSession,
+  resolveScopeHash,
+} from "./portal-sql.service.js";
+import { PortalSqlReaderRoleService } from "./portal-sql-reader-role.service.js";
 import {
   assertRelationsAllowed,
   validatePortalSql,
@@ -981,20 +986,15 @@ export class PortalMapTileService {
         aggregated: aggregate,
       };
     }
+    // #660: refuse (503) rather than run the pipeline as the API's role.
+    await PortalSqlReaderRoleService.assertUsable();
     try {
       // #660: the txn always rolls back (the result rides out on a sentinel),
       // so this build's temp views never persist on the pooled connection.
       await db.transaction(async (tx) => {
-        await tx.execute(sql.raw("DISCARD TEMP"));
-        await tx.execute(
-          sql.raw(
-            `SET LOCAL statement_timeout = '${TILE_STATEMENT_TIMEOUT_MS}ms'`
-          )
-        );
-        for (const ddl of build.views) {
-          await tx.execute(sql.raw(ddl));
-        }
-        await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
+        await openSqlSession(tx, build, {
+          statementTimeoutMs: TILE_STATEMENT_TIMEOUT_MS,
+        });
 
         const rows = (await tx.execute(sql.raw(tileSql))) as unknown as Array<{
           mvt: Buffer | Uint8Array | null;

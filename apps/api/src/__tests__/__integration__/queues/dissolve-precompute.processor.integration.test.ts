@@ -27,6 +27,8 @@ import { WideTableRepository } from "../../../db/repositories/wide-table.reposit
 import { DISSOLVE_LOCK_NAMESPACE } from "../../../services/sync-lock.service.js";
 import { DissolvePrecomputeService } from "../../../services/dissolve-precompute.service.js";
 import { JobsService } from "../../../services/jobs.service.js";
+import { PortalSqlReaderRoleService } from "../../../services/portal-sql-reader-role.service.js";
+import { environment } from "../../../environment.js";
 import { dissolvePrecomputeProcessor } from "../../../queues/processors/dissolve-precompute.processor.js";
 import { messageDissolveRetentionPurgeProcessor } from "../../../queues/processors/message-dissolve-retention-purge.processor.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -413,6 +415,43 @@ describe("dissolve-precompute processor (#472)", () => {
     await expect(runProcessor(pinId, orgId, userId)).rejects.toThrow(
       /unknown entity: er__/
     );
+    expect(await countRows(pinId)).toBe(0);
+  });
+
+  it("#660 PR 2: the pipeline runs under the reader role, and the owner still writes the rows", async () => {
+    await insertParcel(0, "Private");
+    const pinId = await createPin(
+      'SELECT "c_geom" AS geom, current_user::text AS who FROM parcels',
+      "who"
+    );
+    const result = await runProcessor(pinId, orgId, userId);
+    expect(result).toMatchObject({ valuesDissolved: 1 });
+    const rows = (await connection.unsafe(
+      `SELECT DISTINCT value, merged FROM map_dissolve_geometries WHERE portal_result_id = $1 ORDER BY merged`,
+      [pinId]
+    )) as unknown as Array<{ value: string; merged: boolean }>;
+    expect(rows).toEqual([
+      { value: "portalai_sql_reader", merged: false },
+      { value: "portalai_sql_reader", merged: true },
+    ]);
+  });
+
+  it("#660 PR 2: with the reader role unusable, the precompute refuses and writes nothing", async () => {
+    await insertParcel(0, "Private");
+    const pinId = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_absent";
+    PortalSqlReaderRoleService.resetForTests();
+    try {
+      await expect(runProcessor(pinId, orgId, userId)).rejects.toMatchObject({
+        code: "PORTAL_SQL_UNAVAILABLE",
+      });
+    } finally {
+      environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader";
+      PortalSqlReaderRoleService.resetForTests();
+    }
     expect(await countRows(pinId)).toBe(0);
   });
 

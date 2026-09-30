@@ -13,7 +13,9 @@ import {
 import {
   PortalSqlService,
   resolveScopeHash,
+  openSqlSession,
 } from "../../services/portal-sql.service.js";
+import { PortalSqlReaderRoleService } from "../../services/portal-sql-reader-role.service.js";
 import {
   tileSimplifyTolerance,
   coverageSnapTolerance,
@@ -222,18 +224,31 @@ async function runDissolve(
     throw err;
   }
 
+  // #660: refuse rather than run the pipeline as the API's role. Not
+  // UnrecoverableError: provisioning the role lets a retry succeed.
+  await PortalSqlReaderRoleService.assertUsable();
+
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-  const applyViews = async (tx: Tx) => {
-    // #660: drop temp views a previous committed build left on this pooled
-    // connection before building this caller's.
-    await tx.execute(sql.raw("DISCARD TEMP"));
-    await tx.execute(
-      sql.raw(
-        `SET LOCAL statement_timeout = '${DISSOLVE_STATEMENT_TIMEOUT_MS}ms'`
-      )
-    );
-    for (const ddl of build.views) await tx.execute(sql.raw(ddl));
-  };
+  const reader = quoteIdent(PortalSqlReaderRoleService.roleName());
+  // #660: the pipeline runs under the reader role, which can read only this
+  // caller's session views and write nothing but the staging table. The
+  // owner creates `_dissolve_rows` and lets the role insert into it; after
+  // `RESET ROLE` the owner copies the rows into map_dissolve_geometries. The
+  // pipeline is gate-validated above, so it can't issue its own RESET ROLE.
+  const STAGE = "_dissolve_rows";
+  const openStagedSession = (tx: Tx) =>
+    openSqlSession(tx, build, {
+      statementTimeoutMs: DISSOLVE_STATEMENT_TIMEOUT_MS,
+      readOnly: false,
+      beforeRole: async (t) => {
+        await t.execute(
+          sql.raw(
+            `CREATE TEMP TABLE ${STAGE} (value text, fc int, g geometry) ON COMMIT DROP`
+          )
+        );
+        await t.execute(sql.raw(`GRANT INSERT ON ${STAGE} TO ${reader}`));
+      },
+    });
 
   // Geometry probe + reporting count. The area-ranked store keeps one row per
   // polygon regardless of colorBy cardinality (a high-category choropleth is no
@@ -241,7 +256,9 @@ async function runDissolve(
   // there is no cardinality ceiling: this pass only detects "no geometry → clear
   // and stop" and reports the distinct colorBy value count for the result.
   const distinctCount = await db.transaction(async (tx) => {
-    await applyViews(tx);
+    await openSqlSession(tx, build, {
+      statementTimeoutMs: DISSOLVE_STATEMENT_TIMEOUT_MS,
+    });
     const countExpr = colorByColumn
       ? `count(DISTINCT (${quoteIdent(colorByColumn)})::text)`
       : `LEAST(count(*), 1)`;
@@ -289,7 +306,23 @@ async function runDissolve(
     const tol = tileSimplifyTolerance(representativeZoom);
     try {
       const inserted = await db.transaction(async (tx) => {
-        await applyViews(tx);
+        await openStagedSession(tx);
+        // Under the reader role: evaluate the pipeline into the stage.
+        await tx.execute(
+          sql.raw(
+            `INSERT INTO ${STAGE} (value, fc, g)
+             WITH src AS (${pipelineSql}),
+             simplified AS (
+               SELECT ${valueExpr} AS value,
+                      ST_Multi(ST_CollectionExtract(ST_SimplifyPreserveTopology(src.geom, ${tol}), 3)) AS g
+               FROM src WHERE src.geom IS NOT NULL
+             )
+             SELECT value, 1, g
+             FROM simplified WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`
+          )
+        );
+        // Back as the owner: replace this band's rows from the stage.
+        await tx.execute(sql.raw("RESET ROLE"));
         await tx.execute(
           sql`DELETE FROM map_dissolve_geometries
               WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
@@ -298,15 +331,9 @@ async function runDissolve(
         await tx.execute(
           sql.raw(
             `${insertHead}
-             WITH src AS (${pipelineSql}),
-             simplified AS (
-               SELECT ${valueExpr} AS value,
-                      ST_Multi(ST_CollectionExtract(ST_SimplifyPreserveTopology(src.geom, ${tol}), 3)) AS g
-               FROM src WHERE src.geom IS NOT NULL
-             )
              SELECT ${rowMeta},
-                    '${escapedColumn}', value, ${band}, 1, false, g
-             FROM simplified WHERE g IS NOT NULL AND NOT ST_IsEmpty(g)`
+                    '${escapedColumn}', value, ${band}, fc, false, g
+             FROM ${STAGE}`
           )
         );
         const c = (await tx.execute(
@@ -340,15 +367,11 @@ async function runDissolve(
     const snap = coverageSnapTolerance(representativeZoom);
     try {
       const inserted = await db.transaction(async (tx) => {
-        await applyViews(tx);
-        await tx.execute(
-          sql`DELETE FROM map_dissolve_geometries
-              WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
-                AND merged = true`
-        );
+        await openStagedSession(tx);
+        // Under the reader role: evaluate the pipeline into the stage.
         await tx.execute(
           sql.raw(
-            `${insertHead}
+            `INSERT INTO ${STAGE} (value, fc, g)
              WITH src AS (${pipelineSql}),
              snapped AS (
                SELECT ${valueExpr} AS value,
@@ -364,13 +387,26 @@ async function runDissolve(
                SELECT value, fc, ST_Subdivide(geom, ${SUBDIVIDE_MAX_VERTICES}) AS piece
                FROM dissolved
              )
-             SELECT ${rowMeta},
-                    '${escapedColumn}', value, ${band}, fc, true,
-                    ST_Multi(ST_CollectionExtract(piece, 3))
+             SELECT value, fc, ST_Multi(ST_CollectionExtract(piece, 3))
              FROM pieces
              WHERE piece IS NOT NULL AND NOT ST_IsEmpty(piece)
                AND ST_CollectionExtract(piece, 3) IS NOT NULL
                AND NOT ST_IsEmpty(ST_CollectionExtract(piece, 3))`
+          )
+        );
+        // Back as the owner: replace this band's rows from the stage.
+        await tx.execute(sql.raw("RESET ROLE"));
+        await tx.execute(
+          sql`DELETE FROM map_dissolve_geometries
+              WHERE ${sql.raw(ownerScopeWhere(owner, scopeHash))} AND zoom_band = ${band}
+                AND merged = true`
+        );
+        await tx.execute(
+          sql.raw(
+            `${insertHead}
+             SELECT ${rowMeta},
+                    '${escapedColumn}', value, ${band}, fc, true, g
+             FROM ${STAGE}`
           )
         );
         const c = (await tx.execute(
