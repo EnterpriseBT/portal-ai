@@ -80,3 +80,4 @@ The decision logic lives in `scripts/integration-skip-base.mjs`, a pure `decideI
 
 - Step 1: docs-only push on top of green `e0b3ba41`.
 - Step 2: code change `bd3a02bd`, then this docs push immediately (the code run should be cancelled).
+- Step 3: failing test `26c9608d` (red), then this docs push (should run and stay red).
