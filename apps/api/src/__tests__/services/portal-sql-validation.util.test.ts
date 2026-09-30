@@ -137,3 +137,90 @@ describe("validatePortalSql", () => {
     expectForbidden("SELECT 'unterminated", "unbalanced string literal");
   });
 });
+
+// ── #660: the AST gate (libpg-query) — statements, qualification, functions ──
+describe("validatePortalSql — #660 AST gate", () => {
+  const passes = (sql: string) =>
+    expect(() => validatePortalSql(sql)).not.toThrow();
+
+  it("rejects a quoted schema-qualified catalog relation (the reproduced bypass)", () => {
+    expectForbidden(
+      'SELECT count(*) FROM "pg_catalog"."pg_roles"',
+      "schema-qualified relation not allowed: pg_catalog.pg_roles"
+    );
+    expectForbidden(
+      'SELECT * FROM "public"."entity_records"',
+      "schema-qualified relation not allowed: public.entity_records"
+    );
+  });
+
+  it("rejects set_config — it could disable the statement timeout or switch role (reproduced)", () => {
+    expectForbidden(
+      "SELECT set_config('statement_timeout','0',true)",
+      "function not allowed: set_config"
+    );
+    expectForbidden(
+      "SELECT 1 WHERE set_config('role','portalai',true) IS NOT NULL",
+      "function not allowed: set_config"
+    );
+  });
+
+  it("rejects every non-SELECT statement the regex pre-filter might miss", () => {
+    // Quoted / unusual spellings the verb regex can't see; the AST can.
+    expectForbidden(
+      "SELECT * INTO new_t FROM contacts",
+      "SELECT INTO / FOR UPDATE not allowed"
+    );
+    // FOR UPDATE is also caught earlier by the verb pre-filter (UPDATE).
+    expectForbidden("SELECT * FROM contacts FOR UPDATE", "UPDATE");
+    expectForbidden(
+      "SELECT * FROM contacts FOR SHARE",
+      "SELECT INTO / FOR UPDATE not allowed"
+    );
+    // A bare VALUES list parses as a SelectStmt with valuesLists — harmless, allowed.
+    expect(() => validatePortalSql("VALUES (1), (2)")).not.toThrow();
+  });
+
+  it("rejects functions outside the allowlist, wherever they appear", () => {
+    for (const [sql, fn] of [
+      // Everything the old regex pre-filter misses (unquoted pg_*/lo_*/dblink/
+      // query_to_* are still caught earlier by it, with its own message).
+      ["SELECT current_setting('role')", "current_setting"],
+      ['SELECT "pg_sleep"(1)', "pg_sleep"],
+      ["SELECT nextval('s')", "nextval"],
+      ["SELECT postgis_full_version()", "postgis_full_version"],
+      ["SELECT txid_current()", "txid_current"],
+      [
+        "SELECT x FROM contacts WHERE x IN (SELECT inet_server_addr()::text)",
+        "inet_server_addr",
+      ],
+    ] as const) {
+      expectForbidden(sql, `function not allowed: ${fn}`);
+    }
+  });
+
+  it("rejects every schema-qualified function", () => {
+    expectForbidden(
+      "SELECT public.lower('A')",
+      "schema-qualified function not allowed: public.lower"
+    );
+    expectForbidden(
+      "SELECT \"pg_catalog\".\"set_config\"('a','b',true)",
+      "schema-qualified function not allowed: pg_catalog.set_config"
+    );
+  });
+
+  it("allows ordinary analytics SQL: aggregates, windows, math/text/date, JSON, PostGIS st_*", () => {
+    passes(
+      "SELECT region, count(*), avg(amount), percentile_cont(0.5) WITHIN GROUP (ORDER BY amount), " +
+        "stddev_samp(amount), row_number() OVER (ORDER BY region), round(sqrt(abs(sum(amount)))), " +
+        "date_trunc('month', max(created_at)), lower(max(name)), coalesce(max(note), '') " +
+        "FROM deals GROUP BY region"
+    );
+    passes(
+      "SELECT st_area(geom), st_asgeojson(st_centroid(geom)) FROM parcels"
+    );
+    passes("SELECT jsonb_extract_path_text(payload, 'status') FROM events");
+    passes("SELECT * FROM generate_series(1, 3) g");
+  });
+});

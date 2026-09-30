@@ -72,6 +72,8 @@ export interface ParsedPortalSql {
   functions: ReadonlySet<string>;
   /** Top-level SELECT with no LIMIT and no top-level (non-window) aggregate. */
   needsImplicitLimit: boolean;
+  /** Any SELECT (at any depth) carries `INTO` or a locking clause (FOR UPDATE/SHARE…). */
+  intoOrLocking: boolean;
 }
 
 const str = (n: unknown): string =>
@@ -90,6 +92,7 @@ interface Collector {
   relations: Set<string>;
   qualified: string[];
   functions: Set<string>;
+  intoOrLocking: boolean;
 }
 
 /** Walk `node`, reporting relations/functions; `scope` = CTE names visible here. */
@@ -147,6 +150,7 @@ function walkSelect(
     | undefined;
   const names = cteNames(withClause);
   const all = new Set([...outer, ...names]);
+  if (select.intoClause || select.lockingClause) out.intoOrLocking = true;
 
   (withClause?.ctes ?? []).forEach((cte, i) => {
     const visible = withClause?.recursive
@@ -209,6 +213,7 @@ export function parsePortalSql(sql: string): ParsedPortalSql {
     relations: new Set(),
     qualified: [],
     functions: new Set(),
+    intoOrLocking: false,
   };
   walk(statement, new Set(), out);
   return {
@@ -218,5 +223,6 @@ export function parsePortalSql(sql: string): ParsedPortalSql {
     qualifiedRelations: out.qualified,
     functions: out.functions,
     needsImplicitLimit: computeNeedsImplicitLimit(statement),
+    intoOrLocking: out.intoOrLocking,
   };
 }
