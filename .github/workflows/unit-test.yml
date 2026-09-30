@@ -78,6 +78,12 @@ jobs:
       - name: Check CI cache wiring and required-check invariants
         run: npm run lint:ci-cache
 
+      # The Integration Tests docs-only skip decision (#663): the self-test
+      # proves a docs push never skips after a cancelled or failed code run.
+      # Nothing else tests it, and a wrong skip reports success.
+      - name: Check the integration docs-only skip decision
+        run: npm run lint:integration-skip
+
       # Guards the review-chain merge gate against silent drift between the
       # surfaces that describe it (#634): CLAUDE.md's merge-gate section +
       # coverage matrix + PR checklist, the copilot mirror, and the two skills

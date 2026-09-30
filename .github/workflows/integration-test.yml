@@ -44,6 +44,11 @@ jobs:
   test-integration:
     name: Integration Tests
     runs-on: ubuntu-latest
+    # actions: read lets the skip decision read this workflow's run history
+    # (#663); contents: read is the checkout.
+    permissions:
+      contents: read
+      actions: read
 
     steps:
       - name: Checkout
@@ -61,30 +66,20 @@ jobs:
       # waiting for a status that will never arrive. Filtering inside the job
       # keeps the check reporting success while skipping the work (#427).
       #
-      # Fails safe: any doubt about the diff (new branch, force-push, base not
-      # fetched, workflow_call with no push range) runs the suite.
-      - name: Does anything outside docs/ change?
+      # "Docs-only" is measured from this branch's LAST SUCCESSFUL run of this
+      # workflow, not the previous push (#663). Against the previous push, a
+      # docs push went green after a code push's run was cancelled (code never
+      # tested) or failed (a red suite masked on head).
+      #
+      # Fails safe: any doubt (not a push, no green run on the branch yet, the
+      # run-history lookup failing, a force-push, a diff failure) runs the
+      # suite. The logic and its self-test live in the script
+      # (`npm run lint:integration-skip`).
+      - name: Does anything outside docs/ change since the last green run?
         id: changes
-        run: |
-          set -euo pipefail
-          run_tests() { echo "run=true" >>"$GITHUB_OUTPUT"; echo "$1 — running the suite"; exit 0; }
-
-          base="${{ github.event.before }}"
-          head="${{ github.sha }}"
-
-          [ -n "$base" ] || run_tests "no base SHA"
-          case "$base" in *[!0]*) ;; *) run_tests "all-zero base (new branch)" ;; esac
-          git cat-file -e "$base^{commit}" 2>/dev/null || run_tests "base $base not present"
-
-          changed="$(git diff --name-only "$base" "$head")" || run_tests "diff failed"
-          [ -n "$changed" ] || run_tests "empty diff"
-
-          if printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
-            run_tests "code changed"
-          fi
-          echo "run=false" >>"$GITHUB_OUTPUT"
-          echo "docs-only push — skipping the integration suite:"
-          printf '  %s\n' $changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/integration-skip-base.mjs
 
       - name: Start test services
         if: steps.changes.outputs.run == 'true'
