@@ -56,6 +56,12 @@ jobs:
 
   integration-test:
     uses: ./.github/workflows/integration-test.yml
+    # The called job reads its own run history for the docs-only skip (#663)
+    # and a called workflow can't hold more than its caller grants. Stated
+    # here so a restricted repo default can't fail every release at startup.
+    permissions:
+      contents: read
+      actions: read
     secrets:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}

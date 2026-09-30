@@ -39,6 +39,8 @@ const DOCS_ONLY = /^docs\/|\.md$/;
  *                                 runs, newest first; null when the lookup failed
  * @param {(sha: string, head: string) => boolean} p.isAncestor
  * @param {(base: string, head: string) => string[] | null} p.changedFiles  null on failure
+ * @param {(sha: string) => boolean} [p.hasSkipLogic]  whether a commit carries this
+ *                                 script, i.e. its run decided under this logic
  * @returns {{ run: boolean, reason: string, base: string | null }}
  */
 export function decideIntegrationRun(p) {
@@ -50,7 +52,14 @@ export function decideIntegrationRun(p) {
   if (!p.head) return run("no head SHA");
   if (p.successfulShas === null) return run("run history unavailable");
 
-  const base = p.successfulShas.find((sha) => p.isAncestor(sha, p.head)) ?? null;
+  // Only a green run decided under THIS logic is a sound base. A green skip
+  // recorded under the old previous-push logic may have skipped untested code,
+  // so it never counts. The workflow runs from the pushed commit, so "this
+  // commit carries the script" is exactly "its run used this logic".
+  const hasSkipLogic = p.hasSkipLogic ?? (() => true);
+  const base =
+    p.successfulShas.find((sha) => hasSkipLogic(sha) && p.isAncestor(sha, p.head)) ??
+    null;
   if (!base) return run("no successful run on this branch is an ancestor of HEAD");
 
   const changed = p.changedFiles(base, p.head);
@@ -77,6 +86,8 @@ function fixture(history, changes, extra = {}) {
     isAncestor: (sha, head) => idx(sha) !== -1 && idx(sha) <= idx(head),
     changedFiles: (base, head) =>
       history.slice(idx(base) + 1, idx(head) + 1).flatMap((s) => changes[s] ?? []),
+    // By default every commit carries the script (ran under this logic).
+    hasSkipLogic: () => true,
     ...extra,
   };
 }
@@ -145,6 +156,32 @@ const CASES = [
     input: fixture(["G0"], {}, { successfulShas: ["G0"] }),
     expect: { run: true },
   },
+  {
+    name: "greens recorded under the old logic (pre-#663) are never a base: run",
+    // G0 was green, C1's run was cancelled, D2 went green as an OLD-logic skip
+    // (never testing C1), M3 merged main (bringing this script), D4 is docs.
+    input: fixture(
+      ["G0", "C1", "D2", "M3", "D4"],
+      { C1: ["apps/api/src/x.ts"], M3: ["scripts/integration-skip-base.mjs"], D4: ["docs/a.md"] },
+      {
+        successfulShas: ["D2", "G0"],
+        hasSkipLogic: (sha) => ["M3", "D4"].includes(sha),
+      }
+    ),
+    expect: { run: true, base: null },
+  },
+  {
+    name: "once a green run carries the new logic, a docs push after it skips",
+    input: fixture(
+      ["G0", "C1", "D2", "M3", "D4"],
+      { C1: ["apps/api/src/x.ts"], M3: ["scripts/integration-skip-base.mjs"], D4: ["docs/a.md"] },
+      {
+        successfulShas: ["M3", "D2", "G0"],
+        hasSkipLogic: (sha) => ["M3", "D4"].includes(sha),
+      }
+    ),
+    expect: { run: false, base: "M3" },
+  },
 ];
 
 function selfTest() {
@@ -207,6 +244,14 @@ function main() {
     isAncestor: (sha, head) => {
       try {
         git(["merge-base", "--is-ancestor", sha, head]);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    hasSkipLogic: (sha) => {
+      try {
+        git(["cat-file", "-e", `${sha}:scripts/integration-skip-base.mjs`]);
         return true;
       } catch {
         return false;
