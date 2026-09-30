@@ -59,6 +59,25 @@ const isAggregate = (name: string) =>
 
 type Node = Record<string, unknown>;
 
+/** Functions Postgres 17's grammar emits as `pg_catalog.<fn>` for SQL-standard
+ *  syntax (verified against libpg-query): EXTRACT, substring(… FROM … FOR …),
+ *  substring(… SIMILAR … ESCAPE …), position(… IN …), trim(both/leading/
+ *  trailing FROM …), AT TIME ZONE / AT LOCAL, overlay(… placing …), SIMILAR TO,
+ *  normalize / IS NORMALIZED. */
+const GRAMMAR_GENERATED_FUNCTIONS = new Set([
+  "extract",
+  "substring",
+  "position",
+  "btrim",
+  "ltrim",
+  "rtrim",
+  "timezone",
+  "overlay",
+  "similar_to_escape",
+  "normalize",
+  "is_normalized",
+]);
+
 export interface ParsedPortalSql {
   /** The single top-level statement node (e.g. `{ SelectStmt: … }`). */
   statement: Node;
@@ -128,7 +147,19 @@ function walk(node: unknown, scope: ReadonlySet<string>, out: Collector): void {
     }
     if (key === "FuncCall") {
       const fc = value as { funcname?: unknown[] };
-      const name = (fc.funcname ?? []).map(str).join(".").toLowerCase();
+      const parts = (fc.funcname ?? []).map(str).map((p) => p.toLowerCase());
+      // #660: the grammar rewrites SQL-standard syntax (EXTRACT, substring
+      // FROM/FOR, trim(both FROM …), AT TIME ZONE, SIMILAR TO, …) into
+      // `pg_catalog.<fn>` calls. Those are ordinary SQL, not a user qualifying
+      // a function, so report them by bare name for the allowlist. Only this
+      // closed set is unwrapped; any other qualified call stays qualified (and
+      // is rejected).
+      const name =
+        parts.length === 2 &&
+        parts[0] === "pg_catalog" &&
+        GRAMMAR_GENERATED_FUNCTIONS.has(parts[1])
+          ? parts[1]
+          : parts.join(".");
       if (name) out.functions.add(name);
       walk(value, scope, out); // args, filter, over
       continue;
@@ -339,6 +370,10 @@ export const PORTAL_SQL_ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
   "md5",
   "reverse",
   "repeat",
+  "overlay",
+  "similar_to_escape",
+  "normalize",
+  "is_normalized",
   // date / time
   "now",
   "date_trunc",
@@ -351,6 +386,7 @@ export const PORTAL_SQL_ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
   "make_timestamp",
   "make_interval",
   "justify_interval",
+  "timezone",
   // window
   "row_number",
   "rank",

@@ -224,3 +224,31 @@ describe("validatePortalSql — #660 AST gate", () => {
     passes("SELECT * FROM generate_series(1, 3) g");
   });
 });
+
+// #660 code-review F1: Postgres's grammar rewrites SQL-standard syntax into
+// pg_catalog-qualified calls (EXTRACT → pg_catalog.extract, trim(both FROM …) →
+// pg_catalog.btrim, AT TIME ZONE → pg_catalog.timezone, SIMILAR TO →
+// pg_catalog.similar_to_escape, …). Those are ordinary SQL, not a user
+// qualifying a function, and must pass.
+describe("validatePortalSql — #660 SQL-standard syntax forms", () => {
+  it.each([
+    "SELECT EXTRACT(year FROM created_at) FROM deals",
+    "SELECT substring(name FROM 2 FOR 3) FROM contacts",
+    "SELECT substring(name SIMILAR 'a%' ESCAPE '#') FROM contacts",
+    "SELECT position('a' IN name) FROM contacts",
+    "SELECT trim(both FROM name), trim(leading 'x' FROM name) FROM contacts",
+    "SELECT created_at AT TIME ZONE 'UTC' FROM deals",
+    "SELECT overlay(name placing 'z' FROM 2) FROM contacts",
+    "SELECT * FROM contacts WHERE name SIMILAR TO 'a%'",
+    "SELECT normalize(name), name IS NORMALIZED FROM contacts",
+  ])("allows %s", (sql) => {
+    expect(() => validatePortalSql(sql)).not.toThrow();
+  });
+
+  it("still rejects a user-written qualified call of a non-grammar function", () => {
+    expectForbidden(
+      'SELECT "pg_catalog"."pg_sleep"(1)',
+      "schema-qualified function not allowed: pg_catalog.pg_sleep"
+    );
+  });
+});
