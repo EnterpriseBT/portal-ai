@@ -7,7 +7,7 @@ This is the manual smoke test for [#660](https://github.com/EnterpriseBT/portal-
 - pinned map pipelines are re-validated on every tile serve (dissolve included) and every dissolve precompute;
 - `transform_entity_records` fragments are scalar over the source row, and its entities are org-checked.
 
-**Branch under test:** `fix/660-sql-session-relation-boundary` (PR [#661](https://github.com/EnterpriseBT/portal-ai/pull/661)). PR 2 (the DB reader role, AC7) is **not** covered here.
+**Branches under test:** §1–§6 cover PR 1, `fix/660-sql-session-relation-boundary` (PR [#661](https://github.com/EnterpriseBT/portal-ai/pull/661), merged; walked and confirmed there). **§7–§12 cover PR 2**, `fix/660-sql-reader-role` (PR [#662](https://github.com/EnterpriseBT/portal-ai/pull/662)): the restricted DB reader role (AC7). On PR 2, walk the PR 2 preflight and §7–§12; §1–§6 are regression-covered by §7.
 
 Run **§Preflight** once. After that the sections are independent.
 
@@ -107,6 +107,57 @@ As **admin** (the tool is admin-gated), in a new session on SMOKE-660 Station:
 - [ ] As **member**, ask: *"Run sql_query with exactly: `SELEC c_parcel_id FRM smoke660_parcel_geo`."* Expected: a clean `PORTAL_SQL_FORBIDDEN` (syntax error) the agent relays; the agent may then correct the query and succeed. No 500 in the API log.
 - [ ] As **member**, ask: *"Run sql_query with exactly: `SELECT replace(c_parcel_id, 'P', 'Q') FROM smoke660_parcel_geo`."* Expected: note the result. A rejection here is the **pre-existing** regex behaviour (recorded as a known residual, not a regression of this PR).
 - [ ] — manual. CI on PR #661 is green (**Unit Tests**, **Integration Tests**, **Static Checks**), including `portal-sql-parse.util.test.ts`, `bulk-transform-sql-gate.integration.test.ts` and the "session relation boundary (#660)" describe.
+
+---
+
+## PR 2 preflight
+
+- [ ] `git checkout fix/660-sql-reader-role && git pull --ff-only && npm install`
+- [ ] `cd apps/api && npm run db:migrate`: applies **0118** (`npm run dev` seeds but doesn't migrate). Then `psql` → `SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname = 'portalai_sql_reader'` → one row, `rolcanlogin = f`.
+- [ ] `npm run dev`, and confirm the API process started **after** the branch's last commit (`ps -eo lstart,cmd | grep tsx/dist/preflight`; the PR 1 walk found a stale `:3001`). The API log shows `event: "portal-sql.reader-role-ok"` at boot.
+- [ ] The SMOKE-660 fixture from §Fixtures (re-seed it), and the member / admin e2e identities.
+
+## §7 — Agent SQL runs as the reader role; legitimate paths unchanged (AC7, AC6)
+
+- [ ] As **member**, in a new portal session on SMOKE-660 Station: *"Run sql_query with exactly: `SELECT current_user AS u`"*. Expected: one row, `u = portalai_sql_reader` (not the API's DB user).
+- [ ] Same session, re-run §1's four queries (granted view, SQL-standard forms, UNION-branch CTE, `ST_Area` / `ST_Centroid`). Expected: the same results as §1. PostGIS functions still work under the role.
+- [ ] Same session: *"What columns does smoke660_parcel_geo have? Query the _meta views, then show the parcels on a map."* Expected: `_meta_columns` answers, and the map renders both parcels.
+- [ ] Re-run one §2 probe (another org's `er__…`). Expected: still `unknown entity` from the gate, before Postgres is reached.
+
+## §8 — Postgres itself denies raw reads under the role (AC7)
+
+- [ ] — backend. In `psql` as the API's DB user: `BEGIN; SET LOCAL ROLE portalai_sql_reader; SELECT 1 FROM entity_records LIMIT 1;` Expected: `ERROR: permission denied for table entity_records` (42501). `ROLLBACK;`
+- [ ] — backend. The same with `SELECT * FROM "er__<smoke660_secret id>"` (another org) and `SELECT * FROM users`. Expected: 42501 each.
+- [ ] — backend. The same session, after `ROLLBACK`: `BEGIN; CREATE TEMP VIEW v AS SELECT 1 AS one; GRANT SELECT ON v TO portalai_sql_reader; SET LOCAL ROLE portalai_sql_reader; SELECT * FROM v; SELECT ST_AsText(ST_MakePoint(1,2));` Expected: `1` and `POINT(1 2)`: a granted temp view and PostGIS work, and nothing else does. `ROLLBACK;`
+- [ ] — backend. `SELECT n.nspname, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE has_table_privilege('portalai_sql_reader', c.oid, 'SELECT') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\_temp%' AND n.nspname NOT LIKE 'pg\_toast%'`. Expected: only PostGIS / topology / tiger extension tables (`spatial_ref_sys`, `geometry_columns`, …), never an application table.
+
+## §9 — Maps and dissolve under the role (AC7, AC4)
+
+- [ ] — backend. As **member**: `GET /api/portal-map/tiles/pin/<Pin A id>/14/8192/8191.mvt`. Expected: **200**, non-empty. Pin B (raw `er__` pipeline): **204**, as in §4.
+- [ ] — backend. Run the dissolve precompute for Pin A (the processor called directly, as the §4 walk did). Expected: `completed`, rows in `map_dissolve_geometries` for Pin A, and Pin A at z6 `32/31` serves 200. With a pin whose pipeline is `SELECT "c_geom" AS geom, current_user::text AS who FROM smoke660_parcel_geo` coloured by `who`, the stored `value` is `portalai_sql_reader`: the pipeline ran as the role, and the owner wrote the rows.
+
+## §10 — Refusal when the role isn't usable (AC7)
+
+- [ ] — backend. Boot a second API on an alternate port with a role that doesn't exist: `cd apps/api && PORT=3011 PORTAL_SQL_READER_ROLE=portalai_sql_reader_smoke npx dotenv -e .env -- tsx src/index.ts`. Expected: the boot log shows `portal-sql.reader-role-unavailable` with reason `role portalai_sql_reader_smoke does not exist`, and the API still serves `GET /api/health` 200.
+- [ ] — backend. As **member**, against `:3011`: the Pin A tile request from §9. Expected: **503**, `code: PORTAL_SQL_UNAVAILABLE`. No tile data.
+- [ ] — backend. Provision that role without restarting `:3011`: run `apps/api/drizzle/0118_portal-sql-reader-role.sql` in `psql` after `SET portalai.sql_reader_role = 'portalai_sql_reader_smoke'`. Then repeat the tile request. Expected: **200**. The failure was re-probed, and no restart was needed.
+- [ ] — backend. Over-privileged: `GRANT SELECT ON entity_records TO portalai_sql_reader_smoke`, then restart `:3011`. Expected: the boot log reads `reader-role-unavailable … can read public.entity_records`, and the tile returns 503. Afterwards: stop `:3011`, `REVOKE ALL ON SCHEMA public FROM portalai_sql_reader_smoke; REVOKE SELECT ON entity_records FROM portalai_sql_reader_smoke; DROP ROLE portalai_sql_reader_smoke;`.
+
+## §11 — Migrating through `MIGRATE_DATABASE_URL` (AC7: the migration user provisions the role)
+
+- [ ] — backend. Against a throwaway database owned by a non-superuser app user (`CREATE ROLE smoke_app LOGIN PASSWORD '…'; CREATE DATABASE smoke660 OWNER smoke_app;`, then `CREATE EXTENSION postgis` as the superuser), run `npx tsx src/scripts/db-migrate.ts` with `DATABASE_URL` = `smoke_app`, `MIGRATE_DATABASE_URL` = the superuser, and `PORTAL_SQL_READER_ROLE=portalai_sql_reader_smoke2`. Expected:
+  - the log shows `Provisioning the portal SQL reader role via MIGRATE_DATABASE_URL`, then `Migrations completed`;
+  - every table in `public` and `drizzle`, and the `drizzle` schema, is owned by `smoke_app`;
+  - the reader role's only member is `smoke_app`;
+  - `npx tsx src/scripts/db-upgrade.ts` as `smoke_app` prints `UPGRADE COMPLETE`.
+
+  Afterwards drop the database and both roles.
+- [ ] — backend. `npm run lint:helm`. Expected: all checks pass, including the #660 scenarios: the bundled jobs migrate with the subchart's `postgres` superuser, the external inline and existing-secret variants, and the API Deployment never carrying `MIGRATE_DATABASE_URL`.
+- [ ] — manual. On a real cluster (the EKS / residency smoke), `helm install` with the bundled DB, then `helm upgrade`: the upgrade job logs `Provisioning the portal SQL reader role`, and the API logs `portal-sql.reader-role-ok`.
+
+## §12 — PR 2 CI
+
+- [ ] — manual. CI on PR #662 is green (**Unit Tests**, **Integration Tests**, **Static Checks**), including `portal-sql-reader-role.integration.test.ts`, the "reader role (#660 PR 2)" describe, and `lint:helm` in Static Checks.
 
 ---
 
