@@ -485,10 +485,6 @@ export class AnalyticsService {
   }
 
   /**
-   * Look up an Entity Group by name, query each member's in-memory AlaSQL table,
-   * and return matched records grouped by source entity with primary entity first.
-   */
-  /**
    * #658: find the records sharing a link value across an entity group's
    * members **as the caller can see them**. Resolution goes through the
    * caller's granted curated views on every call (a revoked grant drops out
