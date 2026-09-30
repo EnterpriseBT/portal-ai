@@ -178,7 +178,7 @@ This adds the parse util and moves `needsImplicitLimit` / `applyImplicitLimit` o
 2. **Session role + GRANTs + dissolve split:** per-session `GRANT SELECT` + `SET LOCAL ROLE`, and dissolve's `RESET ROLE` then `INSERT` from a temp table. Cases 20 and 22.
 3. **Migration connection + Helm:** `MIGRATE_DATABASE_URL` in `db-migrate.ts` / `db:upgrade`, the Helm `migrationUser` values plus `migrate-job.yaml`, and the README. Case 23.
 
-It gets its own spec amendment if its surface shifts, and its own full review chain.
+It gets its own spec amendment if its surface shifts, and its own full review chain. **The adversarial phase is a required gate on PR 2.** It was waived on PR 1 and deferred here, so it runs against the DB reader role, the hard enforcement, rather than the parser alone.
 
 ## Cross-slice notes
 
