@@ -924,7 +924,7 @@ entityGroupRouter.delete(
  *         description: The identity value to resolve across group members
  *     responses:
  *       200:
- *         description: Identity resolution results
+ *         description: Identity resolution results. Records are limited to those the caller may read (entity_record visibility, #658) — a caller who can read the group but not its records gets empty record lists.
  *         content:
  *           application/json:
  *             schema:
@@ -992,8 +992,11 @@ entityGroupRouter.get(
           )
         );
       }
+      // One resolved set for both the group gate and the per-record
+      // visibility below.
+      const permissionSet = await PermissionService.loadSet(ctx);
       if (
-        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+        !permissionSet.can("resource.read", {
           type: "entity_group",
           id,
           createdBy: entityGroup.createdBy,
@@ -1018,6 +1021,14 @@ entityGroupRouter.get(
       const { wideTableStatementCache } =
         await import("../services/wide-table-statement.cache.js");
       const { entityRecords } = await import("../db/schema/index.js");
+      // #658: reading the group is not reading its records. Apply the same
+      // raw-record RBAC predicate as the sibling entity-record routes (#599):
+      // an admin (`*`) sees everything, a member only records they may read
+      // (e.g. `created_by_caller`), a caller with no entity_record read none.
+      const recordVisibility = permissionSet.visibilityPredicate(
+        "entity_record",
+        { createdByCol: entityRecords.createdBy, idCol: entityRecords.id }
+      );
 
       for (const member of enrichedMembers) {
         const normalizedKey = member.fieldMapping?.normalizedKey;
@@ -1049,7 +1060,8 @@ entityGroupRouter.get(
         }
         const where = and(
           eq(entityRecords.connectorEntityId, member.connectorEntityId),
-          sql`${sql.raw(colRefBuilder("w"))} = ${linkValue}`
+          sql`${sql.raw(colRefBuilder("w"))} = ${linkValue}`,
+          recordVisibility ?? undefined
         );
 
         const records =
