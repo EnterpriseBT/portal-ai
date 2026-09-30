@@ -36,7 +36,7 @@ The decision logic lives in `scripts/integration-skip-base.mjs`, a pure `decideI
 - New: `scripts/integration-skip-base.mjs`:
   - `decideIntegrationRun` (pure);
   - a CLI mode for the workflow: it reads the candidates from `gh`, does the ancestry and diff checks through `git`, and writes `run=` / `reason=` / `base=` to `$GITHUB_OUTPUT`;
-  - `--self-test`, with fixtures covering:
+  - `--self-test`, with 10 fixtures covering:
     1. last green then docs-only → skip;
     2. green → **cancelled code** → docs → run (base is the green, code in range);
     3. green → **failed code** → docs → run;
@@ -49,12 +49,14 @@ The decision logic lives in `scripts/integration-skip-base.mjs`, a pure `decideI
   - `permissions: { contents: read, actions: read }` on the job;
   - the "Does anything outside docs/ change?" step calls the script with `GH_TOKEN: ${{ github.token }}`;
   - the comments explain the new base, and the step logs the base it used.
+- Edit: `.github/workflows/deploy-dev.yml`: the `integration-test` caller job states `permissions: { contents: read, actions: read }`. A called workflow can't exceed its caller's token, and the repo default being `write` today is a setting, not a guarantee.
 - Edit: `package.json`: `"lint:integration-skip": "node scripts/integration-skip-base.mjs --self-test"`.
 - Edit: `.github/workflows/unit-test.yml`: run `npm run lint:integration-skip` beside `lint:ci-cache`.
-- Edit: `CLAUDE.md:43` + `.github/copilot-instructions.md` (its mirror): "a docs-only push **since the branch's last green Integration Tests run** skips the suite".
+- Edit: `CLAUDE.md:43`: "a push that is docs-only **since the branch's last successful Integration Tests run** skips the suite". (`.github/copilot-instructions.md` doesn't describe the skip, so there's nothing to mirror.)
 
 **Tests**
-- `npm run lint:integration-skip`: the 8 fixtures must fail before the logic exists (no module), then pass.
+- `npm run lint:integration-skip`: 10 fixtures (the 8 above, plus "an earlier green skip that's still an ancestor → skip from it" and "a re-run of an already-green head → run"). All failed against a stub, then passed.
+- A replay of PR #662's real history through `decideIntegrationRun`, with real git. `e7ed4c1b` (the docs push after three cancelled code runs) now **runs** ("code changed since 8624181c"). `3d29bf40` (docs after a green `6c6f36d4`) still skips.
 - `npm run lint:ci-cache`: still clean (required-check name and concurrency literals unchanged).
 - The Smoke below is the real proof: it runs on GitHub.
 
@@ -65,6 +67,8 @@ The decision logic lives in `scripts/integration-skip-base.mjs`, a pure `decideI
 3. **Case 2 (manual, then reverted):** push a commit that makes one integration test fail, let it go red, then push a docs-only commit. The docs run runs the suite and is **red**, not green. Revert both.
 4. `gh run view <id> --log` for each shows the chosen base SHA and reason. Unit Tests shows `lint:integration-skip` passing.
 5. The PR's required checks report on head in every case: never a missing context.
+
+**Transitional caveat:** a successful run recorded under the old logic counts as green, including a bogus docs-only skip on a branch open at merge time. That exposure lasts only until that branch's next code push. Only runs made under the new logic are sound by induction.
 
 ## Out of scope
 

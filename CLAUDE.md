@@ -40,7 +40,7 @@ Prettier is enforced, not advisory: a husky pre-commit hook (installed by `npm i
 
 The suites do **not** re-run when a PR merges. `main` requires branches to be up to date and the convention is squash, so the merged commit's *tree* is identical to the branch tree the checks just passed against — re-running it tests nothing. `deploy-dev` therefore runs the suites only for `workflow_dispatch`, which has no PR behind it. **This depends on "require branches to be up to date" staying on**; if it is ever disabled, `deploy-dev.yml`'s test jobs must go back to unconditional (the file says so too).
 
-A push to a branch cancels that branch's in-flight run, and a docs-only push skips the integration suite while still reporting its check — filtering happens *inside* the job, never via `paths-ignore`, because a required check that never runs never reports and GitHub blocks the PR forever waiting for it.
+A push to a branch cancels that branch's in-flight run, and a push that is docs-only **since the branch's last successful Integration Tests run** skips the integration suite while still reporting its check (#663: measured from the previous push, a docs push went green after a code push's run was cancelled or failed; the decision lives in `scripts/integration-skip-base.mjs`, self-tested by `npm run lint:integration-skip`). Filtering happens *inside* the job, never via `paths-ignore`, because a required check that never runs never reports and GitHub blocks the PR forever waiting for it.
 
 #### Turborepo remote caching (#454)
 
