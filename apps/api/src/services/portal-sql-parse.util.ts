@@ -201,6 +201,17 @@ function walkSelect(
 
   for (const [key, value] of Object.entries(select)) {
     if (key === "withClause") continue;
+    // #660: a set operation's branches arrive as bare select objects (no
+    // `SelectStmt` wrapper), so walk them as SELECTs — each opens its own CTE
+    // scope and has INTO / locking clauses checked.
+    if (
+      (key === "larg" || key === "rarg") &&
+      value &&
+      typeof value === "object"
+    ) {
+      walkSelect(value as Node, all, out);
+      continue;
+    }
     walk(value, all, out);
   }
 }

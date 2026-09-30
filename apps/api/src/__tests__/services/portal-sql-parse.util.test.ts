@@ -190,3 +190,31 @@ describe("parsePortalSqlExpression — transform fragments (#660)", () => {
     rejects("1; DROP TABLE x", "where", /statement|syntax error/);
   });
 });
+
+// #660 code-review F3: a set operation's branches (larg/rarg) arrive as bare
+// select objects without the SelectStmt wrapper — they must still open their
+// own CTE scope and have INTO / locking clauses checked.
+describe("parsePortalSql — set-operation branches (#660)", () => {
+  it("a WITH inside a UNION branch scopes its CTE to that branch", () => {
+    expect(
+      rels("SELECT a FROM v UNION (WITH c AS (SELECT 1 AS a) SELECT a FROM c)")
+    ).toEqual(["v"]);
+    // …but the branch's CTE does not shadow the same name in the other branch.
+    expect(
+      rels("SELECT a FROM c UNION (WITH c AS (SELECT 1 AS a) SELECT a FROM c)")
+    ).toEqual(["c"]);
+  });
+
+  it("flags a locking clause on a set-operation branch", () => {
+    expect(
+      parsePortalSql("SELECT a FROM v UNION ALL (SELECT a FROM v FOR SHARE)")
+        .intoOrLocking
+    ).toBe(true);
+  });
+
+  it("still reports relations in every branch", () => {
+    expect(
+      rels("SELECT a FROM v UNION SELECT a FROM er__x EXCEPT SELECT a FROM w")
+    ).toEqual(["er__x", "v", "w"]);
+  });
+});
