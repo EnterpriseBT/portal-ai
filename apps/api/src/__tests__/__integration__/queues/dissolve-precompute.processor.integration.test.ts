@@ -380,6 +380,22 @@ describe("dissolve-precompute processor (#472)", () => {
     ).rejects.toThrow(/missing userId/);
   });
 
+  it("#660: a pin whose stored pipeline reads a raw er__ table fails terminally and writes nothing", async () => {
+    await insertParcel(0, "Private");
+    const pinId = await createPin(
+      `SELECT "c_geom" AS geom, "c_own_type" FROM "er__${entityId}"`,
+      "c_own_type"
+    );
+    const { UnrecoverableError } = await import("bullmq");
+    await expect(runProcessor(pinId, orgId, userId)).rejects.toBeInstanceOf(
+      UnrecoverableError
+    );
+    await expect(runProcessor(pinId, orgId, userId)).rejects.toThrow(
+      /unknown entity: er__/
+    );
+    expect(await countRows(pinId)).toBe(0);
+  });
+
   it("#532: a colorBy layer stores individuals + a merged coverage per band, tagged with its value", async () => {
     // Three adjacent Private, one Federal, one State. Area-ranked (#532) keeps
     // each polygon as its own row — the three adjacent Private are NOT merged

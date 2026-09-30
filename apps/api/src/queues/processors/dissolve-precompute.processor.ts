@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { UnrecoverableError } from "bullmq";
 
 import { DISSOLVE_ZOOM_BANDS } from "@portalai/core/constants";
 import type { DissolvePrecomputeResult } from "@portalai/core/models";
@@ -20,6 +21,12 @@ import {
 } from "../../services/portal-map-tile.service.js";
 import { SystemUtilities } from "../../utils/system.util.js";
 import { createLogger } from "../../utils/logger.util.js";
+import { ApiError } from "../../services/http.service.js";
+import { ApiCode } from "../../constants/api-codes.constants.js";
+import {
+  assertRelationsAllowed,
+  validatePortalSql,
+} from "../../services/portal-sql-validation.util.js";
 
 const logger = createLogger({ module: "dissolve-precompute" });
 
@@ -190,8 +197,31 @@ async function runDissolve(
     userId
   );
   const scopeHash = resolveScopeHash(build);
+
+  // #660: a pinned pipeline only ever passed the pre-#660 gate, so re-validate
+  // it against this caller's session views before running it. A rejection is
+  // terminal (retrying can't make the SQL valid) and writes nothing.
+  try {
+    const { relations } = validatePortalSql(pipelineSql);
+    assertRelationsAllowed(relations, build);
+  } catch (err) {
+    if (err instanceof ApiError && err.code === ApiCode.PORTAL_SQL_FORBIDDEN) {
+      logger.warn(
+        { event: "dissolve.pipeline-rejected", owner, reason: err.message },
+        "Pinned map pipeline rejected by the SQL gate; failing the precompute"
+      );
+      throw new UnrecoverableError(
+        `pipeline rejected by the SQL gate: ${err.message}`
+      );
+    }
+    throw err;
+  }
+
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
   const applyViews = async (tx: Tx) => {
+    // #660: drop temp views a previous committed build left on this pooled
+    // connection before building this caller's.
+    await tx.execute(sql.raw("DISCARD TEMP"));
     await tx.execute(
       sql.raw(
         `SET LOCAL statement_timeout = '${DISSOLVE_STATEMENT_TIMEOUT_MS}ms'`

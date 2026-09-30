@@ -8,7 +8,14 @@
  * view; the service wraps it in ST_AsMVT.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -333,6 +340,84 @@ describe("Portal map tile route (#316)", () => {
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
+  });
+
+  it("#660: a pin whose stored pipeline reads a raw er__ table serves an empty tile, never the data", async () => {
+    // A pinned pipeline only ever passed the pre-#660 regex gate, so one could
+    // hold a physical-table reference. The tile re-validates it every run and
+    // rejects any relation outside the caller's session views.
+    const rawPinId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id: rawPinId,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Raw-table map",
+        type: "geo",
+        content: {
+          pipeline: {
+            sql: `SELECT "c_geom" AS geom FROM "er__${entityId}"`,
+            stationId,
+            organizationId: orgId,
+          },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: rawPinId },
+      z: 12,
+      x: 2048,
+      y: 2047,
+      organizationId: orgId,
+      userId,
+    });
+    expect(res.status).toBe(204);
+    expect(res.body).toBeUndefined();
+  });
+
+  it("#660: the tile transaction always rolls back (its temp views never persist on the pooled connection)", async () => {
+    const { db: appDb } = await import("../../../db/client.js");
+    const outcomes: string[] = [];
+    const original = appDb.transaction.bind(appDb);
+    const spy = jest.spyOn(appDb, "transaction").mockImplementation(((
+      fn: never,
+      cfg?: never
+    ) =>
+      original(fn, cfg).then(
+        (v: unknown) => {
+          outcomes.push("committed");
+          return v;
+        },
+        (e: unknown) => {
+          outcomes.push("rolled-back");
+          throw e;
+        }
+      )) as never);
+    try {
+      const res = await PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: pinId },
+        z: 12,
+        x: 2048,
+        y: 2047,
+        organizationId: orgId,
+        userId,
+      });
+      expect(res.status).toBe(200); // still renders…
+    } finally {
+      spy.mockRestore();
+    }
+    expect(outcomes.length).toBeGreaterThan(0);
+    expect(outcomes.every((o) => o === "rolled-back")).toBe(true); // …but never commits
   });
 
   it("returns 204 for a tile envelope that doesn't contain the geometry", async () => {
