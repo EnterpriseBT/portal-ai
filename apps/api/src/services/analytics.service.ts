@@ -29,15 +29,12 @@ import {
 } from "technicalindicators";
 import * as financial from "financial";
 
-import { sql as drizzleSql } from "drizzle-orm";
-
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { PortalSqlService } from "./portal-sql.service.js";
+import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import type { PortalSqlResponse } from "./portal-sql-response.util.js";
-import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
-import { wideTableStatementCache } from "./wide-table-statement.cache.js";
 
 const logger = createLogger({ module: "analytics-service" });
 
@@ -237,13 +234,26 @@ export type DepreciationResult =
   | { schedule: DepreciationRow[] }
   | { row: DepreciationRow };
 
+/** #658: the most records one `resolve_identity` match returns; beyond it the
+ *  match is `truncated` and the agent narrows with `sql_query`. */
+export const RESOLVE_IDENTITY_MATCH_LIMIT = 100;
+
 export interface ResolveIdentityResult {
   entityGroupName: string;
   linkValue: string;
+  /** One per (group member × curated view the caller may read that can see
+   *  the member's link column), primary member first, then by `viewKey`. */
   matches: {
+    /** The curated view answering this match — the relation name to use in
+     *  `sql_query`. */
+    viewKey: string;
+    /** The member's connector-entity key. */
     entityKey: string;
     isPrimary: boolean;
+    /** `_record_id`, `source_id` and the view's readable `c_<key>` columns —
+     *  the same shape `sql_query` returns for that view. */
     records: Record<string, unknown>[];
+    truncated: boolean;
   }[];
 }
 
@@ -475,74 +485,84 @@ export class AnalyticsService {
   }
 
   /**
-   * Look up an Entity Group by name, query each member's in-memory AlaSQL table,
-   * and return matched records grouped by source entity with primary entity first.
+   * #658: find the records sharing a link value across an entity group's
+   * members **as the caller can see them**. Resolution goes through the
+   * caller's granted curated views on every call (a revoked grant drops out
+   * on the next call), the group must be one the caller is shown
+   * (`scopeEntityGroupsToEntities`: every member granted, every link column
+   * readable), and each member is read per granted view with that view's
+   * filter + readable columns (`queryViewRowsByColumn`). It never reads the
+   * raw wide table. Fail closed: a member-view that errors is omitted.
    */
   static async resolveIdentity(params: {
+    stationId: string;
+    organizationId: string;
+    userId: string;
     entityGroupName: string;
     linkValue: string;
-    organizationId: string;
+    /** The station's unscoped groups; scoped here against the caller. */
     entityGroups: EntityGroupContext[];
   }): Promise<ResolveIdentityResult> {
-    const { entityGroupName, linkValue, organizationId, entityGroups } = params;
+    const {
+      stationId,
+      organizationId,
+      userId,
+      entityGroupName,
+      linkValue,
+      entityGroups,
+    } = params;
 
-    const group = entityGroups.find((g) => g.name === entityGroupName);
+    const { views } = await PortalSqlService.resolveGrantedViewColumns(
+      stationId,
+      organizationId,
+      userId
+    );
+    const group = scopeEntityGroupsToEntities(entityGroups, views).find(
+      (g) => g.name === entityGroupName
+    );
     if (!group) {
       throw new Error(`Entity group not found: ${entityGroupName}`);
     }
 
     const matches: ResolveIdentityResult["matches"] = [];
-
     for (const member of group.members) {
-      try {
-        // Resolve the link column to its `c_<column_name>` so we can
-        // filter the wide-table row by value, then ask for every live
-        // normalizedKey on that entity so the matched record contains
-        // the same field set the LLM was already seeing under AlaSQL.
-        const stmt = await wideTableStatementCache.get(
-          member.connectorEntityId
-        );
-        const cachedCol = stmt.columns.find(
-          (c) => c.normalizedKey === member.linkNormalizedKey
-        );
-        if (!cachedCol) {
-          matches.push({
-            entityKey: member.entityKey,
-            isPrimary: member.isPrimary,
-            records: [],
-          });
+      for (const granted of views) {
+        if (granted.view.connectorEntityId !== member.connectorEntityId) {
           continue;
         }
-        const projectedKeys = stmt.columns.map((c) => c.normalizedKey);
-        const rows = await wideTableRepo.fetchProjectedRows(
-          member.connectorEntityId,
-          projectedKeys,
-          {
+        try {
+          const found = await PortalSqlService.queryViewRowsByColumn(
+            granted,
             organizationId,
-            where: drizzleSql`w.${drizzleSql.raw(`"${cachedCol.columnName}"`)} = ${String(linkValue)}`,
-          }
-        );
-        matches.push({
-          entityKey: member.entityKey,
-          isPrimary: member.isPrimary,
-          records: rows,
-        });
-      } catch (err) {
-        logger.warn(
-          { entityKey: member.entityKey, error: err },
-          "Failed to query entity for identity resolution"
-        );
-        matches.push({
-          entityKey: member.entityKey,
-          isPrimary: member.isPrimary,
-          records: [],
-        });
+            { normalizedKey: member.linkNormalizedKey, value: linkValue },
+            { limit: RESOLVE_IDENTITY_MATCH_LIMIT }
+          );
+          if (!found) continue; // this view can't read the link column
+          matches.push({
+            viewKey: granted.view.key,
+            entityKey: member.entityKey,
+            isPrimary: member.isPrimary,
+            records: found.records,
+            truncated: found.truncated,
+          });
+        } catch (err) {
+          logger.warn(
+            {
+              entityKey: member.entityKey,
+              viewKey: granted.view.key,
+              error: err,
+            },
+            "Failed to query curated view for identity resolution"
+          );
+        }
       }
     }
 
-    // Sort: primary entity first
-    matches.sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
-
+    matches.sort(
+      (a, b) =>
+        Number(b.isPrimary) - Number(a.isPrimary) ||
+        a.viewKey.localeCompare(b.viewKey)
+    );
     return { entityGroupName, linkValue, matches };
   }
 

@@ -203,6 +203,16 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("  Bad (claims a listing the widget does not show):");
       lines.push('    "Showing all 10,254 asteroids."');
       lines.push("");
+      // #658: resolve_identity reads through the caller's curated views, so
+      // its matches are per view and name the relation to query next.
+      lines.push(
+        "**`resolve_identity`** returns one match per curated view that can " +
+          "see the link value — its `viewKey` is the relation name to use in " +
+          "`sql_query`, and its records use the same `c_<key>` columns. " +
+          "`truncated: true` means more records exist; narrow with `sql_query` " +
+          "on that `viewKey` rather than calling it again."
+      );
+      lines.push("");
       return lines;
     },
   },

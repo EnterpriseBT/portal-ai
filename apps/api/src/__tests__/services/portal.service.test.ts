@@ -341,6 +341,7 @@ describe("PortalService", () => {
         columns: e.columns.map((c) => ({
           fieldMappingId: c.fieldMappingId,
           columnName: `c_${c.key}`,
+          normalizedKey: c.key,
         })),
       })),
     });
@@ -591,7 +592,13 @@ describe("PortalService", () => {
               label: "Customers",
               connectorEntityId: "ent-1",
             },
-            columns: [{ fieldMappingId: "fm-1", columnName: "c_id" }],
+            columns: [
+              {
+                fieldMappingId: "fm-1",
+                columnName: "c_id",
+                normalizedKey: "id",
+              },
+            ],
           },
         ],
       });
@@ -628,7 +635,13 @@ describe("PortalService", () => {
               label: "Customers",
               connectorEntityId: "ent-1",
             },
-            columns: [{ fieldMappingId: "fm-1", columnName: "c_id" }],
+            columns: [
+              {
+                fieldMappingId: "fm-1",
+                columnName: "c_id",
+                normalizedKey: "id",
+              },
+            ],
           },
           {
             view: {
@@ -637,7 +650,13 @@ describe("PortalService", () => {
               label: "Orders",
               connectorEntityId: "ent-2",
             },
-            columns: [{ fieldMappingId: "fm-3", columnName: "c_customer_id" }],
+            columns: [
+              {
+                fieldMappingId: "fm-3",
+                columnName: "c_customer_id",
+                normalizedKey: "customer_id",
+              },
+            ],
           },
         ],
       });
@@ -676,7 +695,13 @@ describe("PortalService", () => {
               label: "Customers",
               connectorEntityId: "ent-1",
             },
-            columns: [{ fieldMappingId: "fm-1", columnName: "c_id" }],
+            columns: [
+              {
+                fieldMappingId: "fm-1",
+                columnName: "c_id",
+                normalizedKey: "id",
+              },
+            ],
           },
         ],
       });

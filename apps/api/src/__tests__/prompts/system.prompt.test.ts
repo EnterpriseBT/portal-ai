@@ -340,6 +340,15 @@ describe("buildSystemPrompt — response style", () => {
   // neither the statistics nor the web_search pack. Those names are now
   // assembled from the effective packs, so they are asserted against a
   // context that actually provides them.
+  it("#658: explains resolve_identity's per-view matches and viewKey", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query"] })
+    );
+    expect(prompt).toContain("`resolve_identity`");
+    expect(prompt).toContain("viewKey");
+    expect(prompt).toContain("truncated");
+  });
+
   it("names interpretive tools for the packs that provide them", () => {
     const prompt = buildSystemPrompt(
       makeContext({

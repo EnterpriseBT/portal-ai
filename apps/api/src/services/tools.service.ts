@@ -24,6 +24,8 @@ import {
 } from "./permission.service.js";
 import { wrapWithPermissionGate } from "./permission-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
+import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
+import { PortalSqlService } from "./portal-sql.service.js";
 import type { CostHint, OrgRole } from "@portalai/core/models";
 
 // Tool classes
@@ -592,11 +594,34 @@ export class ToolService {
         organizationId,
         userId
       );
+      // #658: offered only when the caller can see at least one group (every
+      // member granted, every link column readable — the same scoping
+      // station_context shows). The tool re-resolves grants on each call.
       if (stationData.entityGroups.length > 0) {
-        tools.resolve_identity = new ResolveIdentityTool().build(
-          organizationId,
-          stationData.entityGroups
-        );
+        try {
+          const { views } = await PortalSqlService.resolveGrantedViewColumns(
+            stationId,
+            organizationId,
+            userId
+          );
+          if (
+            scopeEntityGroupsToEntities(stationData.entityGroups, views)
+              .length > 0
+          ) {
+            tools.resolve_identity = new ResolveIdentityTool().build(
+              stationId,
+              organizationId,
+              userId,
+              stationData.entityGroups
+            );
+          }
+        } catch (err) {
+          // Fail closed: an unresolvable caller gets no identity resolution.
+          logger.warn(
+            { stationId, userId, error: err },
+            "Could not resolve granted views; resolve_identity not registered"
+          );
+        }
       }
     }
 

@@ -17,6 +17,8 @@ import {
   generateId,
   seedUserAndOrg,
   teardownOrg,
+  createUser,
+  createOrganizationUser,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
@@ -678,12 +680,20 @@ describe("Entity Group Router", () => {
   // ── GET /api/entity-groups/:id/resolve ──────────────────────────────
 
   describe("GET /api/entity-groups/:id/resolve", () => {
-    it("should return matching records from each member entity", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-
+    /**
+     * Seed the "People" group: Employees (primary, link `email`) + Contacts
+     * (link `contact_email`), with one `test@example.com` record on each side
+     * (+ one non-matching employee), mirrored into the wide tables.
+     * `recordCreatedBy` sets who created each matching record — the
+     * entity_record visibility predicate (#658) keys on it.
+     */
+    async function seedPeopleGroup(
+      organizationId: string,
+      recordCreatedBy: { employee: string; contact: string } = {
+        employee: "SYSTEM_TEST",
+        contact: "SYSTEM_TEST",
+      }
+    ) {
       const group = createEntityGroup(organizationId, { name: "People" });
       await (db as ReturnType<typeof drizzle>)
         .insert(entityGroups)
@@ -786,18 +796,22 @@ describe("Entity Group Router", () => {
       );
 
       // Create records on both sides.
-      const r1 = createEntityRecord(organizationId, entity1.id, {
-        email: "test@example.com",
-        name: "Alice",
-      });
+      const r1 = createEntityRecord(
+        organizationId,
+        entity1.id,
+        { email: "test@example.com", name: "Alice" },
+        { createdBy: recordCreatedBy.employee }
+      );
       const r2 = createEntityRecord(organizationId, entity1.id, {
         email: "other@example.com",
         name: "Bob",
       });
-      const r3 = createEntityRecord(organizationId, entity2.id, {
-        contact_email: "test@example.com",
-        phone: "555",
-      });
+      const r3 = createEntityRecord(
+        organizationId,
+        entity2.id,
+        { contact_email: "test@example.com", phone: "555" },
+        { createdBy: recordCreatedBy.contact }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(entityRecords)
         .values([r1, r2, r3] as never);
@@ -856,6 +870,59 @@ describe("Entity Group Router", () => {
         db as unknown as DbClient
       );
 
+      return { group, r1, r3 };
+    }
+
+    /** A member caller (AUTH0_ID) in an org owned by someone else, holding a
+     *  class-level `read entity_group` grant (the route's gate) but only
+     *  MemberAccess' conditional `entity_record` read (own + system). */
+    async function seedMemberCaller() {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        `auth0|owner-${generateId()}`
+      );
+      const caller = createUser(AUTH0_ID);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(caller as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.organizationUsers)
+        .values(
+          createOrganizationUser(organizationId, caller.id, {
+            role: "member",
+            lastLogin: Date.now() + 1000,
+          }) as never
+        );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.permissionGrants)
+        .values({
+          id: generateId(),
+          organizationId,
+          principalType: "user",
+          principalId: caller.id,
+          effect: "allow",
+          verb: "read",
+          resourceType: "entity_group",
+          resourceId: null,
+          condition: null,
+          conditionParam: null,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      return { organizationId, callerId: caller.id };
+    }
+
+    it("should return matching records from each member entity", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const { group } = await seedPeopleGroup(organizationId);
+
       const res = await request(app)
         .get(
           `/api/entity-groups/${group.id}/resolve?linkValue=test@example.com`
@@ -879,6 +946,57 @@ describe("Entity Group Router", () => {
       );
       expect(contactResult.records).toHaveLength(1);
       expect(contactResult.isPrimary).toBe(false);
+    });
+
+    // Records created by another user — synced data carries the syncing actor
+    // as `createdBy`. (Not "SYSTEM_TEST": that is SYSTEM_ID in the integration
+    // env, and system-created records are readable by members by design.)
+    const OTHER_USER = "user-someone-else";
+
+    it("#658: a caller who can read the group but not the records gets no records", async () => {
+      const { organizationId } = await seedMemberCaller();
+      const { group } = await seedPeopleGroup(organizationId, {
+        employee: OTHER_USER,
+        contact: OTHER_USER,
+      });
+
+      const res = await request(app)
+        .get(
+          `/api/entity-groups/${group.id}/resolve?linkValue=test@example.com`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.results).toHaveLength(2);
+      for (const result of res.body.payload.results) {
+        expect(result.records).toEqual([]);
+      }
+    });
+
+    it("#658: a created_by_caller entity_record read sees only the caller's own records", async () => {
+      const { organizationId, callerId } = await seedMemberCaller();
+      const { group, r1 } = await seedPeopleGroup(organizationId, {
+        employee: callerId, // the caller created the Employees match
+        contact: OTHER_USER,
+      });
+
+      const res = await request(app)
+        .get(
+          `/api/entity-groups/${group.id}/resolve?linkValue=test@example.com`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const byLabel = Object.fromEntries(
+        res.body.payload.results.map(
+          (r: { connectorEntityLabel: string; records: { id: string }[] }) => [
+            r.connectorEntityLabel,
+            r.records.map((rec) => rec.id),
+          ]
+        )
+      );
+      expect(byLabel.Employees).toEqual([r1.id]);
+      expect(byLabel.Contacts).toEqual([]);
     });
 
     it("should return empty results array when no records match", async () => {

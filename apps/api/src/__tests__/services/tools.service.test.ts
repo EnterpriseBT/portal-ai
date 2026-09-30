@@ -162,6 +162,17 @@ const { ToolService, BUILTIN_TOOL_NAMES } =
   await import("../../services/tools.service.js");
 const { CostGateService } = await import("../../services/cost-gate.service.js");
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
+// #658: resolve_identity registration resolves the caller's granted views.
+// Spy on the real singleton (mocking the module would break its other
+// importers); each case seeds the views it needs.
+const { PortalSqlService } =
+  await import("../../services/portal-sql.service.js");
+const mockResolveGrantedViewColumns = jest.spyOn(
+  PortalSqlService,
+  "resolveGrantedViewColumns"
+);
+const { ResolveIdentityTool } =
+  await import("../../tools/resolve-identity.tool.js");
 const callWebhook = ToolService.callWebhook.bind(ToolService);
 
 // ---------------------------------------------------------------------------
@@ -275,6 +286,24 @@ function setupStationMocks(toolPacks: string[]) {
   mockFindByConnectorEntityId_members.mockResolvedValue([]);
   mockFindByStationId_tools.mockResolvedValue(makeToolpackRows(toolPacks));
   mockFindManyByIds_orgPacks.mockResolvedValue([]);
+  // Default: the caller can read nothing (fail-closed); cases that expect
+  // resolve_identity grant views explicitly.
+  mockResolveGrantedViewColumns.mockResolvedValue({
+    set: {} as never,
+    views: [],
+  });
+}
+
+/** A granted view over `entityId` whose readable columns are `normalizedKeys`. */
+function grantedView(entityId: string, ...normalizedKeys: string[]) {
+  return {
+    view: {
+      id: `view-${entityId}`,
+      key: `v_${entityId}`,
+      connectorEntityId: entityId,
+    },
+    columns: normalizedKeys.map((normalizedKey) => ({ normalizedKey })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -491,8 +520,21 @@ describe("buildAnalyticsTools()", () => {
       },
     ]);
 
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: {} as never,
+      views: [
+        grantedView("ent-1", "customer_id"),
+        grantedView("ent-2", "customer_id"),
+      ] as never,
+    });
+
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.resolve_identity).toBeDefined();
+    expect(mockResolveGrantedViewColumns).toHaveBeenCalledWith(
+      STATION_ID,
+      ORG_ID,
+      "user-001"
+    );
   });
 
   it("should NOT register resolve_identity when data_query pack is selected but no entity groups have ≥2 loaded members", async () => {
@@ -500,6 +542,118 @@ describe("buildAnalyticsTools()", () => {
     // Default mock: no entity group members
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.resolve_identity).toBeUndefined();
+  });
+
+  it("#658: does NOT register resolve_identity when the caller can see no group (views don't cover it)", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByConnectorInstanceId.mockResolvedValue([
+      ...ENTITIES,
+      {
+        id: "ent-2",
+        key: "orders",
+        label: "Orders",
+        connectorInstanceId: "ci-1",
+      },
+    ]);
+    mockFindByConnectorEntityId_members
+      .mockResolvedValueOnce([
+        { id: "egm-1", entityGroupId: "eg-1", connectorEntityId: "ent-1" },
+      ])
+      .mockResolvedValueOnce([
+        { id: "egm-2", entityGroupId: "eg-1", connectorEntityId: "ent-2" },
+      ]);
+    mockFindById_group.mockResolvedValue({
+      id: "eg-1",
+      name: "Customer Identity",
+      organizationId: ORG_ID,
+    });
+    mockFindByEntityGroupId.mockResolvedValue([
+      {
+        id: "egm-1",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-1",
+        isPrimary: true,
+        fieldMapping: { id: "fm-1", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+      {
+        id: "egm-2",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-2",
+        isPrimary: false,
+        fieldMapping: { id: "fm-2", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+    ]);
+    // The caller's view over ent-2 cannot read the link column.
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: {} as never,
+      views: [
+        grantedView("ent-1", "customer_id"),
+        grantedView("ent-2", "amount"),
+      ] as never,
+    });
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    expect(tools.resolve_identity).toBeUndefined();
+  });
+
+  it("#658: fails closed — a view-resolution error means no resolve_identity", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByConnectorInstanceId.mockResolvedValue([
+      ...ENTITIES,
+      {
+        id: "ent-2",
+        key: "orders",
+        label: "Orders",
+        connectorInstanceId: "ci-1",
+      },
+    ]);
+    mockFindByConnectorEntityId_members
+      .mockResolvedValueOnce([
+        { id: "egm-1", entityGroupId: "eg-1", connectorEntityId: "ent-1" },
+      ])
+      .mockResolvedValueOnce([
+        { id: "egm-2", entityGroupId: "eg-1", connectorEntityId: "ent-2" },
+      ]);
+    mockFindById_group.mockResolvedValue({
+      id: "eg-1",
+      name: "Customer Identity",
+      organizationId: ORG_ID,
+    });
+    mockFindByEntityGroupId.mockResolvedValue([
+      {
+        id: "egm-1",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-1",
+        isPrimary: true,
+        fieldMapping: { id: "fm-1", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+      {
+        id: "egm-2",
+        entityGroupId: "eg-1",
+        connectorEntityId: "ent-2",
+        isPrimary: false,
+        fieldMapping: { id: "fm-2", normalizedKey: "customer_id" },
+        columnDefinition: { key: "customer_id", label: "Customer ID" },
+      },
+    ]);
+    mockResolveGrantedViewColumns.mockRejectedValue(new Error("db down"));
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    expect(tools.resolve_identity).toBeUndefined();
+  });
+
+  it("#658: the resolve_identity mirror description matches the tool (and names viewKey/truncated)", () => {
+    const mirror = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(
+      (t) => t.name === "resolve_identity"
+    );
+    const toolDescription = new ResolveIdentityTool().description;
+    expect(mirror?.description).toBe(toolDescription);
+    for (const term of ["viewKey", "truncated", "sql_query"]) {
+      expect(toolDescription).toContain(term);
+    }
   });
 
   // -----------------------------------------------------------------------
@@ -887,6 +1041,107 @@ describe("buildAnalyticsTools()", () => {
       expect(ALL_TOOL_CAPABILITIES[name]?.writes.length ?? 0).toBeGreaterThan(
         0
       );
+    }
+  });
+
+  // #658 read-scoping guard. `resolve_identity` read raw wide tables past the
+  // caller's curated views because nothing forced a decision about how a new
+  // entity_records reader is scoped. Every tool whose capability declares
+  // `reads: ["entity_records"]` must be classified here WITH its reason; a new
+  // reader fails CI until someone decides. The permission gate (#629) only
+  // authorizes writes, so read scoping is each reader's own job.
+  const READ_SCOPING: Record<
+    string,
+    {
+      scoping:
+        | "view-session"
+        | "view-handle"
+        | "view-helper"
+        | "metadata"
+        | "admin-bulk";
+      reason: string;
+    }
+  > = {
+    sql_query: {
+      scoping: "view-session",
+      reason:
+        "runs in runSqlQuery against the caller's granted-view temp views",
+    },
+    display_entity_records: {
+      scoping: "view-session",
+      reason:
+        "produces its handle through runSqlQuery with the caller's userId",
+    },
+    visualize_d3: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    visualize_map: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    hypothesis_test: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    regression: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    var_cvar: {
+      scoping: "view-handle",
+      reason:
+        "consumes a queryHandle re-run through runSqlQuery with its _userId",
+    },
+    resolve_identity: {
+      scoping: "view-helper",
+      reason: "queryViewRowsByColumn over resolveGrantedViewColumns (#658)",
+    },
+    station_context: {
+      scoping: "metadata",
+      reason:
+        "schema only, view-scoped (#599 entities, #648/#651 entity groups)",
+    },
+    platform_help: {
+      scoping: "metadata",
+      reason: "org metadata only — never reads the user's records",
+    },
+    transform_entity_records: {
+      scoping: "admin-bulk",
+      reason:
+        "TOOL_AUTHORIZATION mode bulk: unconditional class write (admin-only)",
+    },
+    bulk_geocode_records: {
+      scoping: "admin-bulk",
+      reason:
+        "TOOL_AUTHORIZATION mode bulk: unconditional class write (admin-only)",
+    },
+  };
+
+  it("#658: every entity_records reader has a read-scoping classification (coverage guard)", async () => {
+    const { ALL_TOOL_CAPABILITIES } = await import("@portalai/core/registries");
+    const readers = Object.entries(ALL_TOOL_CAPABILITIES)
+      .filter(([, cap]) => cap.reads.includes("entity_records"))
+      .map(([name]) => name);
+    expect(readers.length).toBeGreaterThan(0);
+    const unclassified = readers.filter((name) => !READ_SCOPING[name]);
+    expect(unclassified).toEqual([]);
+  });
+
+  it("#658: the read-scoping table has no stale entries, and admin-bulk rows really are bulk-gated", async () => {
+    const { ALL_TOOL_CAPABILITIES, TOOL_AUTHORIZATION } =
+      await import("@portalai/core/registries");
+    for (const [name, { scoping }] of Object.entries(READ_SCOPING)) {
+      expect(
+        ALL_TOOL_CAPABILITIES[name]?.reads.includes("entity_records") ?? false
+      ).toBe(true);
+      if (scoping === "admin-bulk") {
+        expect(TOOL_AUTHORIZATION[name]?.mode).toBe("bulk");
+      }
     }
   });
 

@@ -207,7 +207,7 @@ const DATA_QUERY_PACK: BuiltinToolpackSpec = {
     {
       name: "resolve_identity",
       description:
-        "Find all records across an Entity Group's member entities that share a given link value. Returns matches grouped by source entity with the primary entity first.",
+        "Find the records across an Entity Group's member entities that share a link value, as the current user can see them. Returns one match per curated view (`viewKey`, the name to use in `sql_query`), primary entity first. Records use the same column names as `sql_query` (`c_<key>`) and are capped at 100 per match (`truncated: true` means more exist \u2014 narrow with `sql_query`). Only groups listed in `station_context` resolve.",
       parameterSchema: objectSchema(
         {
           entityGroupName: stringField("Name of the Entity Group"),

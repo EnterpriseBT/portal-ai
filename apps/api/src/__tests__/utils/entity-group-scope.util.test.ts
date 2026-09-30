@@ -20,8 +20,20 @@ const GROUP: EntityGroupContext = {
   members: [member("ent-1", true), member("ent-2", false)],
 };
 
+// Each granted view can read the members' link column `k` by default — the
+// #648 cases are about entity grants; the #651 cases below vary the columns.
 function views(...ids: string[]) {
-  return ids.map((id) => ({ view: { connectorEntityId: id } }));
+  return ids.map((id) => ({
+    view: { connectorEntityId: id },
+    columns: [{ normalizedKey: "k" }],
+  }));
+}
+
+function viewWith(connectorEntityId: string, ...normalizedKeys: string[]) {
+  return {
+    view: { connectorEntityId },
+    columns: normalizedKeys.map((normalizedKey) => ({ normalizedKey })),
+  };
 }
 
 describe("scopeEntityGroupsToEntities (#648)", () => {
@@ -55,5 +67,38 @@ describe("scopeEntityGroupsToEntities (#648)", () => {
       views("ent-1", "ent-3")
     );
     expect(out.map((g) => g.id)).toEqual(["g-2"]);
+  });
+});
+
+describe("scopeEntityGroupsToEntities — link-column scoping (#651)", () => {
+  it("drops the group when a member's only view projects its link column out", () => {
+    // ent-2's view can read `amount` but not the link column `k`.
+    expect(
+      scopeEntityGroupsToEntities(
+        [GROUP],
+        [viewWith("ent-1", "k"), viewWith("ent-2", "amount")]
+      )
+    ).toEqual([]);
+  });
+
+  it("keeps the group when any of several views over an entity reads the link column (union)", () => {
+    const out = scopeEntityGroupsToEntities(
+      [GROUP],
+      [
+        viewWith("ent-1", "k"),
+        viewWith("ent-2", "amount"), // no link column…
+        viewWith("ent-2", "k", "name"), // …but this view over ent-2 has it
+      ]
+    );
+    expect(out).toEqual([GROUP]);
+  });
+
+  it("does not count a readable column that is not the member's link column", () => {
+    expect(
+      scopeEntityGroupsToEntities(
+        [GROUP],
+        [viewWith("ent-1", "k"), viewWith("ent-2", "name", "email")]
+      )
+    ).toEqual([]);
   });
 });
