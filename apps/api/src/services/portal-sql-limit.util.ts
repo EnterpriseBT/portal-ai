@@ -11,6 +11,7 @@
  */
 
 import { parsePortalSql } from "./portal-sql-parse.util.js";
+import { fenceSql } from "./portal-sql-validation.util.js";
 
 export interface ImplicitLimitResult {
   /** Wrapped SQL (or the original if no wrap was needed). */
@@ -34,7 +35,7 @@ export function applyImplicitLimit(
     }
     const limit = rowCap + 1;
     return {
-      sql: `SELECT * FROM (${sql}) _q LIMIT ${limit}`,
+      sql: `SELECT * FROM (${fenceSql(sql)}) _q LIMIT ${limit}`,
       appliedLimit: limit,
     };
   } catch {

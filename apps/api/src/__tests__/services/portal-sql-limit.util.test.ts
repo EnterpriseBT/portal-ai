@@ -13,7 +13,8 @@ describe("applyImplicitLimit", () => {
       500
     );
     expect(appliedLimit).toBe(501);
-    expect(sql).toBe("SELECT * FROM (SELECT * FROM contacts) _q LIMIT 501");
+    // #667: the agent SQL sits on its own lines inside the wrapper (fenceSql).
+    expect(sql).toBe("SELECT * FROM (\nSELECT * FROM contacts\n) _q LIMIT 501");
   });
 
   it("does not wrap a query that already has a LIMIT", () => {
@@ -70,6 +71,24 @@ describe("applyImplicitLimit", () => {
     );
     // Either wrapped (CTE shape) or passed through — same safety net.
     expect([501, null]).toContain(appliedLimit);
+  });
+
+  it("#667: a trailing line comment in the SQL can't swallow the wrapper's LIMIT", async () => {
+    const { loadModule, parseSync } = await import("libpg-query");
+    await loadModule();
+    const { sql, appliedLimit } = applyImplicitLimit(
+      "SELECT * FROM contacts -- note",
+      500
+    );
+    expect(appliedLimit).toBe(501);
+    const stmt = (
+      parseSync(sql) as {
+        stmts: Array<{ stmt: { SelectStmt?: { limitCount?: unknown } } }>;
+      }
+    ).stmts;
+    expect(stmt).toHaveLength(1);
+    // The outer statement still carries the LIMIT: the comment ended at the fence.
+    expect(stmt[0].stmt.SelectStmt?.limitCount).toBeDefined();
   });
 
   it("returns the SQL unchanged when the parser fails", () => {

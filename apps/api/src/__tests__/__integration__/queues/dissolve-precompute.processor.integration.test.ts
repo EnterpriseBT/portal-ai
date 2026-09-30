@@ -436,6 +436,30 @@ describe("dissolve-precompute processor (#472)", () => {
     ]);
   });
 
+  it("#667: a commented pipeline dissolves to the same rows as its comment-free twin", async () => {
+    await insertParcel(0, "Private");
+    await insertParcel(1, "Federal");
+    const plainPin = await createPin(
+      'SELECT "c_geom" AS geom, "c_own_type" FROM parcels',
+      "c_own_type"
+    );
+    const commentedPin = await createPin(
+      'SELECT "c_geom" AS geom, /* the type */ "c_own_type" FROM parcels -- trailing note',
+      "c_own_type"
+    );
+    const a = await runProcessor(plainPin, orgId, userId);
+    const b = await runProcessor(commentedPin, orgId, userId);
+    expect(b).toEqual(a);
+    const rows = (pin: string) =>
+      connection.unsafe(
+        `SELECT zoom_band, merged, value, feature_count, ST_AsText(geom) AS g
+         FROM map_dissolve_geometries WHERE portal_result_id = $1
+         ORDER BY zoom_band, merged, value, g`,
+        [pin]
+      );
+    expect(await rows(commentedPin)).toEqual(await rows(plainPin));
+  });
+
   it("#660 PR 2: a committed dissolve leaves no temp views (granted to the shared reader role) on its pooled connection", async () => {
     await insertParcel(0, "Private");
     const pinId = await createPin(

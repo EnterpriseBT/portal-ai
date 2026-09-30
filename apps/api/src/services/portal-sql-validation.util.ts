@@ -13,8 +13,9 @@
  *
  * The deny-list is intentionally aggressive — every DML / DDL verb,
  * every server-side side-effect verb, every `pg_*` / `information_schema`
- * reference, every set-/get-config-style verb. Callers run the cleaned
- * SQL inside a `READ ONLY` transaction with `statement_timeout` set;
+ * reference, every set-/get-config-style verb. Callers run exactly the
+ * returned `cleaned` SQL (spliced through `fenceSql`, #667), never the raw
+ * input, inside a `READ ONLY` transaction with `statement_timeout` set;
  * the validator is the first wall, the transaction-level guard is the
  * belt-and-suspenders.
  *
@@ -138,6 +139,20 @@ const SYSTEM_CATALOG = new RegExp(
 );
 
 const SIDE_EFFECT_FUNCTIONS = /\b(pg_|lo_|dblink|query_to_)/i;
+
+/**
+ * #667: splice validated SQL into a server-built wrapper on its own lines.
+ *
+ * The invariant every caller keeps: **execute exactly `cleaned`**, the text
+ * the regex pre-filter and the AST gate saw, never the raw input. And splice
+ * it through this fence, so nothing in it (e.g. a line comment the stripper
+ * left for Postgres to honour) can share a line with, and swallow, the
+ * wrapper's own text. With both, the stripper's fidelity to Postgres's lexer
+ * only affects error messages, never what runs unchecked.
+ */
+export function fenceSql(cleaned: string): string {
+  return `\n${cleaned}\n`;
+}
 
 export function validatePortalSql(sql: string): PortalSqlValidationResult {
   const cleaned = stripComments(sql);
