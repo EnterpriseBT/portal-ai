@@ -38,11 +38,24 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
 import { PortalSqlService, resolveScopeHash } from "./portal-sql.service.js";
+import {
+  assertRelationsAllowed,
+  validatePortalSql,
+} from "./portal-sql-validation.util.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "portal-map-tile" });
+
+/** #660: carries a tile result out of its transaction as a throw, so the txn
+ *  always rolls back (a committed txn would leave its temp views on the pooled
+ *  connection for the next session). */
+class TileTxResult extends Error {
+  constructor(readonly result: TileQueryResult) {
+    super("tile-tx-result");
+  }
+}
 
 /**
  * Max features rasterised into a single tile before clipping (limits row 3).
@@ -707,6 +720,25 @@ export class PortalMapTileService {
     } = args;
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
 
+    // #660: validate the pinned pipeline before choosing ANY serve path —
+    // precomputed dissolve rows may have been computed from it before the gate
+    // existed, so a rejected pipeline must serve nothing even on a dissolve hit.
+    if (
+      !(await this.pipelineAllowed(
+        pipeline.sql,
+        pipeline.stationId,
+        organizationId,
+        userId
+      ))
+    ) {
+      return {
+        mvt: null,
+        featureCount: 0,
+        truncated: false,
+        aggregated: false,
+      };
+    }
+
     // #472/#532/#542: a low-zoom polygon map is served from precomputed dissolved
     // geometry keyed by its owner — a pin OR a message block. Its readiness feeds
     // the mode decision; a miss falls through to raw (real simplified polygons),
@@ -798,6 +830,7 @@ export class PortalMapTileService {
         aggregation.rankByLength
       );
       probeResult = await this.runSessionViewTile(
+        pipeline.sql,
         probeSql,
         pipeline.stationId,
         organizationId,
@@ -823,6 +856,7 @@ export class PortalMapTileService {
       // The probe (when run) already IS the raw serve for a tile that fits.
       if (probeResult) return { ...probeResult, truncated: false };
       return this.runSessionViewTile(
+        pipeline.sql,
         this.buildRawTileSql(
           pipeline.sql,
           envelope,
@@ -853,6 +887,7 @@ export class PortalMapTileService {
             cap
           );
     return this.runSessionViewTile(
+      pipeline.sql,
       aggTileSql,
       pipeline.stationId,
       organizationId,
@@ -860,6 +895,44 @@ export class PortalMapTileService {
       true,
       cap
     );
+  }
+
+  /**
+   * #660: may this caller's pinned pipeline run at all? It must pass the SQL
+   * gate against the caller's session views (a pinned pipeline only ever
+   * passed the pre-#660 gate). Checked before ANY serve path — the dissolve
+   * serve too, whose stored rows may predate the gate — so a rejected pipeline
+   * serves nothing at any zoom. Memoized view resolution makes the repeat
+   * inside `runSessionViewTile` free.
+   */
+  private static async pipelineAllowed(
+    pipelineSql: string,
+    stationId: string,
+    organizationId: string,
+    userId: string
+  ): Promise<boolean> {
+    const build = await PortalSqlService.resolveViewsForSession(
+      stationId,
+      organizationId,
+      userId
+    );
+    try {
+      const { relations } = validatePortalSql(pipelineSql);
+      assertRelationsAllowed(relations, build);
+      return true;
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN
+      ) {
+        logger.warn(
+          { event: "tile.pipeline-rejected", stationId, reason: err.message },
+          "Pinned map pipeline rejected by the SQL gate; serving an empty tile"
+        );
+        return false;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -874,6 +947,10 @@ export class PortalMapTileService {
    * pool. Computing the DDL first keeps the txn to a single connection (#314).
    */
   private static async runSessionViewTile(
+    /** #660: the pin's stored pipeline SQL (the part the agent authored) —
+     *  re-validated on every run, since pinned SQL only ever passed the pre-#660
+     *  gate. `tileSql` is the server-built wrapper around it. */
+    pipelineSql: string,
     tileSql: string,
     stationId: string,
     organizationId: string,
@@ -888,8 +965,27 @@ export class PortalMapTileService {
       organizationId,
       userId
     );
+    // #660: the pipeline may reference only this caller's session views.
+    if (
+      !(await this.pipelineAllowed(
+        pipelineSql,
+        stationId,
+        organizationId,
+        userId
+      ))
+    ) {
+      return {
+        mvt: null,
+        featureCount: 0,
+        truncated: false,
+        aggregated: aggregate,
+      };
+    }
     try {
-      return await db.transaction(async (tx) => {
+      // #660: the txn always rolls back (the result rides out on a sentinel),
+      // so this build's temp views never persist on the pooled connection.
+      await db.transaction(async (tx) => {
+        await tx.execute(sql.raw("DISCARD TEMP"));
         await tx.execute(
           sql.raw(
             `SET LOCAL statement_timeout = '${TILE_STATEMENT_TIMEOUT_MS}ms'`
@@ -910,18 +1006,23 @@ export class PortalMapTileService {
         const limited = row ? Number(row.n_limited) : 0;
         const raw = row?.mvt ?? null;
         const mvt = raw ? Buffer.from(raw as Uint8Array) : null;
-        return {
+        throw new TileTxResult({
           mvt,
           featureCount,
           // The aggregate/hybrid path summarizes rather than clips, so it never
           // truncates; the raw path is only ever served when it fits under `cap`.
           truncated: aggregate ? false : limited >= cap,
           aggregated: aggregate,
-        };
+        });
       });
+      throw new Error(
+        "unreachable: tile transaction must exit via TileTxResult"
+      );
     } catch (err) {
-      // #643: in a per-user session the temp views are the ONLY tables the tile
-      // query can reference (read-only txn, no base tables). A missing relation
+      if (err instanceof TileTxResult) return err.result;
+      // #643/#660: the pipeline was validated above to reference only this caller's
+      // session views (the relation gate), so a missing relation here means a view
+      // vanished between resolution and execution (e.g. deleted). A missing relation
       // (42P01) therefore means the pin's pipeline references a curated view this
       // caller isn't granted — they simply can't see this map. Serve a clean
       // EMPTY tile (→ 204), never a 500 (AC2: a no-grant member "sees no tile")

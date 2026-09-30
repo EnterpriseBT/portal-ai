@@ -10,6 +10,7 @@ import { ApiError } from "../services/http.service.js";
 import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { BulkTransformService } from "../services/bulk-transform.service.js";
+import { parsePortalSqlExpression } from "../services/portal-sql-parse.util.js";
 import { JobsService } from "../services/jobs.service.js";
 import { ToolService } from "../services/tools.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
@@ -304,7 +305,8 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           const source = await DbService.repository.connectorEntities.findById(
             parsed.sourceConnectorEntityId
           );
-          if (!source) {
+          // #660: an entity in another org is indistinguishable from absent.
+          if (!source || source.organizationId !== organizationId) {
             throw new ApiError(
               404,
               ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
@@ -315,11 +317,25 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
             await DbService.repository.connectorEntities.findById(
               primaryTargetId
             );
-          if (!target) {
+          if (!target || target.organizationId !== organizationId) {
             throw new ApiError(
               404,
               ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
               `Target entity not found: ${primaryTargetId}`
+            );
+          }
+
+          // #660: the agent's SQL fragments are spliced into queries that run
+          // outside the view-scoped SQL session, so each must be a scalar
+          // expression over the source row — no relation, no sub-select, only
+          // allowlisted functions. Checked before EXPLAIN / enqueue.
+          if (parsed.expression.kind === "sql") {
+            parsePortalSqlExpression(parsed.expression.value, "target");
+          }
+          if (parsed.sourceFilter?.whereSqlFragment) {
+            parsePortalSqlExpression(
+              parsed.sourceFilter.whereSqlFragment,
+              "where"
             );
           }
 

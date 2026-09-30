@@ -443,6 +443,54 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     });
   });
 
+  it("#660: a source entity in another org is not found (no cross-org transform)", async () => {
+    mockFindEntityById.mockImplementation(async (id) =>
+      id === VALID_INPUT.sourceConnectorEntityId
+        ? {
+            id,
+            organizationId: "org-someone-else",
+            connectorInstanceId: "ci-9",
+          }
+        : { id, organizationId: ORG_ID, connectorInstanceId: "ci-1" }
+    );
+    const result = (await exec()) as { code: string };
+    expect(result.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
+  it("#660: rejects an expression with a sub-select (cross-tenant read) before EXPLAIN or enqueue", async () => {
+    const result = (await exec({
+      ...VALID_INPUT,
+      expression: {
+        ...VALID_INPUT.expression,
+        value: "(SELECT count(*) FROM entity_records) AS stolen",
+      },
+    } as never)) as { code: string; message?: string };
+    expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
+    expect(mockExplain).not.toHaveBeenCalled();
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
+  it("#660: rejects a sourceFilter.whereSqlFragment with a sub-select, for either expression kind", async () => {
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({}),
+      metadata: { maxConcurrency: 10, timeoutMs: 5_000, idempotent: true },
+    });
+    const result = (await exec({
+      ...VALID_INPUT,
+      expression: {
+        kind: "tool",
+        ref: "compute_x",
+        writes: [toolWrite("acreage")],
+      },
+      sourceFilter: {
+        whereSqlFragment: "c_parcel_id IN (SELECT c FROM er__other)",
+      },
+    })) as { code: string };
+    expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
   it("rejects when EXPLAIN fails (BULK_JOB_EXPRESSION_INVALID)", async () => {
     mockExplain.mockRejectedValueOnce(new Error("syntax error at AS"));
     const result = (await exec()) as { code: string };

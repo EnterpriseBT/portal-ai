@@ -22,16 +22,15 @@
  * offending construct in the message so the LLM can self-correct.
  */
 
-// node-sql-parser is CommonJS — pull the class off the default export so
-// the import works under both ESM (tests) and the bundled tsx runtime.
-import nodeSqlParser from "node-sql-parser";
-
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
+import {
+  assertFunctionsAllowed,
+  parsePortalSql,
+  type ParsedPortalSql,
+} from "./portal-sql-parse.util.js";
 
-const { Parser } = nodeSqlParser as unknown as {
-  Parser: typeof import("node-sql-parser").Parser;
-};
+export { PORTAL_SQL_ALLOWED_FUNCTIONS } from "./portal-sql-parse.util.js";
 
 export interface PortalSqlValidationResult {
   /** Comment-free, multi-statement-rejected, deny-list-passed SQL. */
@@ -47,6 +46,10 @@ export interface PortalSqlValidationResult {
    * unbounded scan through.
    */
   needsImplicitLimit: boolean;
+  /** #660: every relation the statement references (by relname, CTE names
+   *  excluded) — checked against the session's allowed relations once the
+   *  views are resolved. Empty when the statement doesn't parse. */
+  relations: ReadonlySet<string>;
 }
 
 const RESERVED_VERBS = new RegExp(
@@ -136,8 +139,6 @@ const SYSTEM_CATALOG = new RegExp(
 
 const SIDE_EFFECT_FUNCTIONS = /\b(pg_|lo_|dblink|query_to_)/i;
 
-const parser = new Parser();
-
 export function validatePortalSql(sql: string): PortalSqlValidationResult {
   const cleaned = stripComments(sql);
   assertNoMultiStatement(cleaned);
@@ -171,8 +172,17 @@ export function validatePortalSql(sql: string): PortalSqlValidationResult {
     );
   }
 
-  const needsImplicitLimit = computeNeedsImplicitLimit(cleaned);
-  return { cleaned, needsImplicitLimit };
+  // #660: the AST gate — Postgres's own grammar decides what the statement
+  // actually does, so quoted identifiers and new syntax can't slip past the
+  // regex pre-filter above. Fail closed: a statement that doesn't parse is
+  // rejected (Postgres would reject it too).
+  const parsed = parsePortalSql(cleaned);
+  assertAllowedShape(parsed);
+  return {
+    cleaned,
+    needsImplicitLimit: parsed.needsImplicitLimit,
+    relations: parsed.relations,
+  };
 }
 
 /**
@@ -344,32 +354,47 @@ function assertNoMultiStatement(input: string): void {
   }
 }
 
-function computeNeedsImplicitLimit(sql: string): boolean {
-  try {
-    const ast = parser.astify(sql, { database: "postgresql" });
-    const node = Array.isArray(ast) ? ast[0] : ast;
-    if (!node || (node as { type?: string }).type !== "select") return true;
-    const select = node as {
-      type: "select";
-      limit?: { value?: unknown[] } | null;
-      columns?: unknown;
-    };
-    if (
-      select.limit &&
-      Array.isArray(select.limit.value) &&
-      select.limit.value.length > 0
-    ) {
-      return false;
+/**
+ * #660: every relation the statement references must be one of this
+ * session's views — the caller's granted curated views plus the `_meta_*`
+ * views the build emitted (all in `build.viewMap`). Anything else (a physical
+ * `er__*` table of any org, `entity_records`, app or catalog tables, an
+ * ungranted view, a temp view left on a pooled connection) is rejected by name
+ * before the SQL reaches Postgres. CTE names in scope are already excluded
+ * from `relations` by the parser.
+ */
+export function assertRelationsAllowed(
+  relations: ReadonlySet<string>,
+  build: { viewMap: ReadonlyMap<string, string> }
+): void {
+  const allowed = new Set(build.viewMap.values());
+  for (const rel of relations) {
+    if (!allowed.has(rel)) {
+      // Same wording as Postgres's own 42P01 translation (`translateExecution-
+      // Error`): an ungranted or physical relation is indistinguishable from
+      // one that doesn't exist, so the answer never confirms a hidden table.
+      throw forbidden(`unknown entity: ${rel}`);
     }
-    const cols = (select.columns ?? []) as Array<{
-      expr?: { type?: string };
-    }>;
-    if (!Array.isArray(cols)) return true;
-    const hasTopAgg = cols.some((c) => c.expr?.type === "aggr_func");
-    return !hasTopAgg;
-  } catch {
-    // Parser hiccups should not let an unbounded scan through; default
-    // to wrapping the query with the implicit LIMIT.
-    return true;
   }
+}
+
+function forbidden(message: string): ApiError {
+  return new ApiError(400, ApiCode.PORTAL_SQL_FORBIDDEN, message);
+}
+
+/** #660: a single plain SELECT, no schema-qualified relation or function, and
+ *  only allowlisted functions. Relations themselves are checked against the
+ *  session's views once they are resolved ({@link assertRelationsAllowed}). */
+function assertAllowedShape(parsed: ParsedPortalSql): void {
+  if (parsed.statementType !== "SelectStmt") {
+    throw forbidden(`statement not allowed: ${parsed.statementType}`);
+  }
+  if (parsed.intoOrLocking) {
+    throw forbidden("SELECT INTO / FOR UPDATE not allowed");
+  }
+  const [qualified] = parsed.qualifiedRelations;
+  if (qualified) {
+    throw forbidden(`schema-qualified relation not allowed: ${qualified}`);
+  }
+  assertFunctionsAllowed(parsed.functions);
 }

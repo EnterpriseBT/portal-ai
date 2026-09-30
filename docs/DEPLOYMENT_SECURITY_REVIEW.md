@@ -52,6 +52,7 @@ The client-owned controls around the install. The chart (`deploy/helm/portalai`)
 | Network egress rules | Egress allow-list matching the §1 decision (Anthropic/Tavily/geocoder endpoints, or none). |
 | Least-privilege | Chart `podSecurityContext` (non-root), resource requests/limits, secrets via `existingSecret`, no cluster-admin. |
 | Data residency | Confirm all bundled/external data deps (PostGIS, Redis, MinIO/S3) sit in the client's region/boundary. |
+| Agent SQL boundary | Agent-authored SQL (`sql_query`, `display_entity_records`, `visualize_*`, analytics pushdowns, map tiles/dissolve, `transform_entity_records` fragments) is gated by **Postgres's own parser** (`libpg-query`): a single `SELECT` over only the caller's granted curated views (+ `_meta_*`), allowlisted functions, no schema-qualified names, no role/GUC changes (#660). Record whether the **restricted DB reader role** is provisioned (#660 PR 2) — without it the gate is app-level only. |
 
 ## Sign-off
 
@@ -86,5 +87,6 @@ Our own SaaS deployment run through the same review — the "client" is us. Doub
 | Network egress | Anthropic + Tavily + geocoding endpoints; no telemetry egress. VPC/security-group egress allow-list — `confirm` against the prod VPC. |
 | Least-privilege | ECS `TaskRole` (app perms) + `TaskExecutionRole` (pull/secrets), separate roles (`infra/cloudformation/backend.yml`). Container non-root is tracked in **#578/#571** (not yet on the SaaS image) — `in progress`. |
 | Data residency | Single region (our AWS) — `confirm` region. |
+| Agent SQL boundary | **App-level AST gate on every agent SQL path** (#660 PR 1 — `apps/api/src/services/portal-sql-parse.util.ts`, `portal-sql-validation.util.ts`): caller's session views only, function allowlist, `DISCARD TEMP` per session, pinned map pipelines re-validated each run, transform fragments limited to the source row. **DB reader-role enforcement — `pending` (#660 PR 2).** Before #660 a member could read other orgs' physical tables through agent SQL; the post-deploy pin scan (discovery OQ5) is the open incident item. |
 
 **Sign-off (SaaS baseline):** reviewed by `<our security owner>` · Date `<date>` — the `confirm`/`in progress` items above are the open action list.

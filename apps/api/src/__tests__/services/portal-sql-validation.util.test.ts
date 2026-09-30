@@ -137,3 +137,181 @@ describe("validatePortalSql", () => {
     expectForbidden("SELECT 'unterminated", "unbalanced string literal");
   });
 });
+
+// ── #660: the AST gate (libpg-query) — statements, qualification, functions ──
+describe("validatePortalSql — #660 AST gate", () => {
+  const passes = (sql: string) =>
+    expect(() => validatePortalSql(sql)).not.toThrow();
+
+  it("rejects a quoted schema-qualified catalog relation (the reproduced bypass)", () => {
+    expectForbidden(
+      'SELECT count(*) FROM "pg_catalog"."pg_roles"',
+      "schema-qualified relation not allowed: pg_catalog.pg_roles"
+    );
+    expectForbidden(
+      'SELECT * FROM "public"."entity_records"',
+      "schema-qualified relation not allowed: public.entity_records"
+    );
+  });
+
+  it("rejects set_config — it could disable the statement timeout or switch role (reproduced)", () => {
+    expectForbidden(
+      "SELECT set_config('statement_timeout','0',true)",
+      "function not allowed: set_config"
+    );
+    expectForbidden(
+      "SELECT 1 WHERE set_config('role','portalai',true) IS NOT NULL",
+      "function not allowed: set_config"
+    );
+  });
+
+  it("rejects every non-SELECT statement the regex pre-filter might miss", () => {
+    // Quoted / unusual spellings the verb regex can't see; the AST can.
+    expectForbidden(
+      "SELECT * INTO new_t FROM contacts",
+      "SELECT INTO / FOR UPDATE not allowed"
+    );
+    // FOR UPDATE is also caught earlier by the verb pre-filter (UPDATE).
+    expectForbidden("SELECT * FROM contacts FOR UPDATE", "UPDATE");
+    expectForbidden(
+      "SELECT * FROM contacts FOR SHARE",
+      "SELECT INTO / FOR UPDATE not allowed"
+    );
+    // A bare VALUES list parses as a SelectStmt with valuesLists — harmless, allowed.
+    expect(() => validatePortalSql("VALUES (1), (2)")).not.toThrow();
+  });
+
+  it("rejects functions outside the allowlist, wherever they appear", () => {
+    for (const [sql, fn] of [
+      // Everything the old regex pre-filter misses (unquoted pg_*/lo_*/dblink/
+      // query_to_* are still caught earlier by it, with its own message).
+      ["SELECT current_setting('role')", "current_setting"],
+      ['SELECT "pg_sleep"(1)', "pg_sleep"],
+      ["SELECT nextval('s')", "nextval"],
+      ["SELECT postgis_full_version()", "postgis_full_version"],
+      ["SELECT txid_current()", "txid_current"],
+      [
+        "SELECT x FROM contacts WHERE x IN (SELECT inet_server_addr()::text)",
+        "inet_server_addr",
+      ],
+    ] as const) {
+      expectForbidden(sql, `function not allowed: ${fn}`);
+    }
+  });
+
+  it("rejects every schema-qualified function", () => {
+    expectForbidden(
+      "SELECT public.lower('A')",
+      "schema-qualified function not allowed: public.lower"
+    );
+    expectForbidden(
+      "SELECT \"pg_catalog\".\"set_config\"('a','b',true)",
+      "schema-qualified function not allowed: pg_catalog.set_config"
+    );
+  });
+
+  it("allows ordinary analytics SQL: aggregates, windows, math/text/date, JSON, PostGIS st_*", () => {
+    passes(
+      "SELECT region, count(*), avg(amount), percentile_cont(0.5) WITHIN GROUP (ORDER BY amount), " +
+        "stddev_samp(amount), row_number() OVER (ORDER BY region), round(sqrt(abs(sum(amount)))), " +
+        "date_trunc('month', max(created_at)), lower(max(name)), coalesce(max(note), '') " +
+        "FROM deals GROUP BY region"
+    );
+    passes(
+      "SELECT st_area(geom), st_asgeojson(st_centroid(geom)) FROM parcels"
+    );
+    passes("SELECT jsonb_extract_path_text(payload, 'status') FROM events");
+    passes("SELECT * FROM generate_series(1, 3) g");
+  });
+});
+
+// #660 code-review F1: Postgres's grammar rewrites SQL-standard syntax into
+// pg_catalog-qualified calls (EXTRACT → pg_catalog.extract, trim(both FROM …) →
+// pg_catalog.btrim, AT TIME ZONE → pg_catalog.timezone, SIMILAR TO →
+// pg_catalog.similar_to_escape, …). Those are ordinary SQL, not a user
+// qualifying a function, and must pass.
+describe("validatePortalSql — #660 SQL-standard syntax forms", () => {
+  it.each([
+    "SELECT EXTRACT(year FROM created_at) FROM deals",
+    "SELECT substring(name FROM 2 FOR 3) FROM contacts",
+    "SELECT substring(name SIMILAR 'a%' ESCAPE '#') FROM contacts",
+    "SELECT position('a' IN name) FROM contacts",
+    "SELECT trim(both FROM name), trim(leading 'x' FROM name) FROM contacts",
+    "SELECT created_at AT TIME ZONE 'UTC' FROM deals",
+    "SELECT overlay(name placing 'z' FROM 2) FROM contacts",
+    "SELECT * FROM contacts WHERE name SIMILAR TO 'a%'",
+    "SELECT normalize(name), name IS NORMALIZED FROM contacts",
+  ])("allows %s", (sql) => {
+    expect(() => validatePortalSql(sql)).not.toThrow();
+  });
+
+  it("still rejects a user-written qualified call of a non-grammar function", () => {
+    expectForbidden(
+      'SELECT "pg_catalog"."pg_sleep"(1)',
+      "schema-qualified function not allowed: pg_catalog.pg_sleep"
+    );
+  });
+});
+
+// #660 security-review Vuln 1: the `st_*` family rule admitted PostGIS functions
+// that take a table name as text and read that table with the API role's
+// privileges (bypassing the relation gate), plus the postgis_topology st_*
+// functions. PostGIS is now an explicit allowlist of pure geometry functions.
+describe("validatePortalSql — #660 explicit PostGIS allowlist", () => {
+  it.each([
+    ["SELECT st_findextent('public','er__x','c_geom')", "st_findextent"],
+    ["SELECT st_findextent('er__x','c_geom')", "st_findextent"],
+    [
+      "SELECT st_estimatedextent('public','er__x','c_geom')",
+      "st_estimatedextent",
+    ],
+    ["SELECT st_getfacegeometry('topo', 1)", "st_getfacegeometry"],
+    ["SELECT st_getfaceedges('topo', 1)", "st_getfaceedges"],
+    ["SELECT st_addisonode('topo', 0, 'POINT(0 0)')", "st_addisonode"],
+    ["SELECT st_remedgemodface('topo', 1)", "st_remedgemodface"],
+    ["SELECT st_createtopogeo('topo', 'POINT(0 0)')", "st_createtopogeo"],
+  ])("rejects %s", (sql, fn) => {
+    expectForbidden(sql, `function not allowed: ${fn}`);
+  });
+
+  it("allows every PostGIS function the GIS prompts, tools and pipelines use", () => {
+    const used = [
+      "st_setsrid",
+      "st_geomfromgeojson",
+      "st_multi",
+      "st_makepoint",
+      "st_area",
+      "st_asgeojson",
+      "st_transform",
+      "st_tileenvelope",
+      "st_makevalid",
+      "st_length",
+      "st_intersects",
+      "st_geometrytype",
+      "st_buffer",
+      "st_srid",
+      "st_makeenvelope",
+      "st_isvalid",
+      "st_geomfromewkb",
+      "st_centroid",
+      "st_ymin",
+      "st_ymax",
+      "st_xmin",
+      "st_xmax",
+      "st_snaptogrid",
+      "st_simplifypreservetopology",
+      "st_geomfromtext",
+      "st_extent",
+      "st_expand",
+      "st_dwithin",
+      "st_distance",
+      "st_contains",
+      "st_asmvt",
+    ];
+    for (const fn of used) {
+      expect(() =>
+        validatePortalSql(`SELECT ${fn}(geom) FROM parcels`)
+      ).not.toThrow();
+    }
+  });
+});
