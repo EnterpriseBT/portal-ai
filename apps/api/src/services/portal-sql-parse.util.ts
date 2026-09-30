@@ -441,9 +441,170 @@ export const PORTAL_SQL_ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
   "gen_random_uuid",
 ]);
 
+/**
+ * #660: PostGIS functions agent SQL may call — an explicit list of **pure
+ * geometry** functions (value in, value out). It replaced an `st_*` family
+ * rule, which admitted functions that take a *table name as text* and read that
+ * table with the API role's privileges — `st_findextent` / `st_estimatedextent`
+ * — bypassing the relation gate, plus the postgis_topology `st_*` functions
+ * that read (and write) topology tables by name. Anything not listed is
+ * rejected by name; adding one is a reviewed, one-line change with a test.
+ *
+ * `st_geometrytype`, `st_simplify` and `st_srid` also have postgis_topology
+ * overloads (for a `topogeometry` argument); they are kept for their geometry
+ * use — the topology overloads only read topology tables, which hold no tenant
+ * data — and the DB reader role (#660 PR 2) removes that residue entirely.
+ */
+export const POSTGIS_ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
+  // constructors / input
+  "st_point",
+  "st_makepoint",
+  "st_makepointm",
+  "st_makeline",
+  "st_makepolygon",
+  "st_polygon",
+  "st_makeenvelope",
+  "st_tileenvelope",
+  "st_collect",
+  "st_geomfromtext",
+  "st_geomfromewkt",
+  "st_geomfromwkb",
+  "st_geomfromewkb",
+  "st_geomfromgeojson",
+  "st_geogfromtext",
+  "st_geographyfromtext",
+  "st_geogfromwkb",
+  "st_pointfromgeohash",
+  "st_linefromtext",
+  "st_polygonfromtext",
+  // output
+  "st_asgeojson",
+  "st_astext",
+  "st_asewkt",
+  "st_asbinary",
+  "st_asewkb",
+  "st_askml",
+  "st_asgml",
+  "st_assvg",
+  "st_asmvt",
+  "st_asmvtgeom",
+  "st_geohash",
+  // accessors
+  "st_x",
+  "st_y",
+  "st_z",
+  "st_m",
+  "st_xmin",
+  "st_xmax",
+  "st_ymin",
+  "st_ymax",
+  "st_srid",
+  "st_geometrytype",
+  "st_dimension",
+  "st_ndims",
+  "st_npoints",
+  "st_numpoints",
+  "st_numgeometries",
+  "st_geometryn",
+  "st_pointn",
+  "st_startpoint",
+  "st_endpoint",
+  "st_exteriorring",
+  "st_interiorringn",
+  "st_numinteriorrings",
+  "st_envelope",
+  "st_boundary",
+  "st_isempty",
+  "st_issimple",
+  "st_isclosed",
+  "st_isring",
+  "st_isvalid",
+  "st_isvalidreason",
+  // predicates
+  "st_intersects",
+  "st_contains",
+  "st_within",
+  "st_covers",
+  "st_coveredby",
+  "st_crosses",
+  "st_disjoint",
+  "st_equals",
+  "st_overlaps",
+  "st_touches",
+  "st_dwithin",
+  "st_dfullywithin",
+  "st_relate",
+  "st_containsproperly",
+  // measurement
+  "st_area",
+  "st_length",
+  "st_length2d",
+  "st_perimeter",
+  "st_distance",
+  "st_distancesphere",
+  "st_distancespheroid",
+  "st_maxdistance",
+  "st_hausdorffdistance",
+  "st_azimuth",
+  "st_closestpoint",
+  "st_shortestline",
+  // processing (pure)
+  "st_setsrid",
+  "st_transform",
+  "st_buffer",
+  "st_expand",
+  "st_centroid",
+  "st_pointonsurface",
+  "st_convexhull",
+  "st_concavehull",
+  "st_intersection",
+  "st_union",
+  "st_unaryunion",
+  "st_difference",
+  "st_symdifference",
+  "st_simplify",
+  "st_simplifypreservetopology",
+  "st_simplifyvw",
+  "st_snaptogrid",
+  "st_snap",
+  "st_makevalid",
+  "st_multi",
+  "st_collectionextract",
+  "st_force2d",
+  "st_flipcoordinates",
+  "st_reverse",
+  "st_segmentize",
+  "st_subdivide",
+  "st_split",
+  "st_linemerge",
+  "st_linesubstring",
+  "st_lineinterpolatepoint",
+  "st_linelocatepoint",
+  "st_dump",
+  "st_dumppoints",
+  "st_dumprings",
+  "st_minimumboundingcircle",
+  "st_orientedenvelope",
+  "st_voronoipolygons",
+  "st_delaunaytriangles",
+  "st_hexagongrid",
+  "st_squaregrid",
+  "st_generatepoints",
+  "st_scale",
+  "st_translate",
+  "st_rotate",
+  "st_affine",
+  // aggregates / clustering (over rows the query already reads)
+  "st_extent",
+  "st_memunion",
+  "st_clusterdbscan",
+  "st_clusterkmeans",
+  "st_clusterintersecting",
+  "st_clusterwithin",
+]);
+
 const isAllowedFunction = (name: string) =>
-  PORTAL_SQL_ALLOWED_FUNCTIONS.has(name) ||
-  (/^st_[a-z0-9_]+$/.test(name) && !name.startsWith("postgis_"));
+  PORTAL_SQL_ALLOWED_FUNCTIONS.has(name) || POSTGIS_ALLOWED_FUNCTIONS.has(name);
 
 /** #660: every function called must be allowlisted and unqualified. */
 export function assertFunctionsAllowed(functions: ReadonlySet<string>): void {

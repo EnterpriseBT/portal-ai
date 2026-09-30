@@ -252,3 +252,66 @@ describe("validatePortalSql — #660 SQL-standard syntax forms", () => {
     );
   });
 });
+
+// #660 security-review Vuln 1: the `st_*` family rule admitted PostGIS functions
+// that take a table name as text and read that table with the API role's
+// privileges (bypassing the relation gate), plus the postgis_topology st_*
+// functions. PostGIS is now an explicit allowlist of pure geometry functions.
+describe("validatePortalSql — #660 explicit PostGIS allowlist", () => {
+  it.each([
+    ["SELECT st_findextent('public','er__x','c_geom')", "st_findextent"],
+    ["SELECT st_findextent('er__x','c_geom')", "st_findextent"],
+    [
+      "SELECT st_estimatedextent('public','er__x','c_geom')",
+      "st_estimatedextent",
+    ],
+    ["SELECT st_getfacegeometry('topo', 1)", "st_getfacegeometry"],
+    ["SELECT st_getfaceedges('topo', 1)", "st_getfaceedges"],
+    ["SELECT st_addisonode('topo', 0, 'POINT(0 0)')", "st_addisonode"],
+    ["SELECT st_remedgemodface('topo', 1)", "st_remedgemodface"],
+    ["SELECT st_createtopogeo('topo', 'POINT(0 0)')", "st_createtopogeo"],
+  ])("rejects %s", (sql, fn) => {
+    expectForbidden(sql, `function not allowed: ${fn}`);
+  });
+
+  it("allows every PostGIS function the GIS prompts, tools and pipelines use", () => {
+    const used = [
+      "st_setsrid",
+      "st_geomfromgeojson",
+      "st_multi",
+      "st_makepoint",
+      "st_area",
+      "st_asgeojson",
+      "st_transform",
+      "st_tileenvelope",
+      "st_makevalid",
+      "st_length",
+      "st_intersects",
+      "st_geometrytype",
+      "st_buffer",
+      "st_srid",
+      "st_makeenvelope",
+      "st_isvalid",
+      "st_geomfromewkb",
+      "st_centroid",
+      "st_ymin",
+      "st_ymax",
+      "st_xmin",
+      "st_xmax",
+      "st_snaptogrid",
+      "st_simplifypreservetopology",
+      "st_geomfromtext",
+      "st_extent",
+      "st_expand",
+      "st_dwithin",
+      "st_distance",
+      "st_contains",
+      "st_asmvt",
+    ];
+    for (const fn of used) {
+      expect(() =>
+        validatePortalSql(`SELECT ${fn}(geom) FROM parcels`)
+      ).not.toThrow();
+    }
+  });
+});
