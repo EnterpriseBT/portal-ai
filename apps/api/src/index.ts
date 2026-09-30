@@ -1,4 +1,3 @@
-// #663 smoke step 2: trivial code change (reverted in step 3).
 import { app } from "./app.js";
 import { environment } from "./environment.js";
 import { connectDatabase, closeDatabase } from "./db/index.js";

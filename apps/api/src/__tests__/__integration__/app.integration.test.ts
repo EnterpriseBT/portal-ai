@@ -49,11 +49,6 @@ jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({
 const { app } = await import("../../app.js");
 
 describe("App Integration", () => {
-  // #663 smoke step 3: deliberately failing; reverted at the end of the walk.
-  it("#663 smoke: deliberately failing", () => {
-    expect(1).toBe(2);
-  });
-
   describe("Health endpoint", () => {
     it("should respond to GET /health with status 200", async () => {
       const res = await request(app).get("/api/health");
