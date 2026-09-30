@@ -37,6 +37,10 @@ export const environment = {
   LOG_FORMAT: (process.env.LOG_FORMAT || "pretty") as "pretty" | "json",
   // Database configuration
   DATABASE_URL: process.env.DATABASE_URL || "",
+  // #660: optional, migrations only. A more privileged user (the schema
+  // owner, able to CREATE ROLE) that `db-migrate` / `db:upgrade` use in place
+  // of DATABASE_URL, so the app user needn't hold CREATEROLE.
+  MIGRATE_DATABASE_URL: process.env.MIGRATE_DATABASE_URL || undefined,
   // #500: ARN of the RDS-managed master secret (rds!…). Set in AWS envs via
   // CFN ImportValue; absent locally — then the pool uses only the URL's
   // embedded password and the AWS SDK is never touched.

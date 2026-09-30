@@ -92,6 +92,30 @@ function buildDependencies() {
 }
 
 /** A rendered scenario plus the assertions it must satisfy. */
+// #660: the rendered manifest for one object, so an assertion can check what a
+// single workload carries (the migration credentials must stay off the API).
+const manifest = (out, kind, name) =>
+  out
+    .split(/^---$/m)
+    .find(
+      (doc) =>
+        doc.includes(`kind: ${kind}\n`) && doc.includes(`name: ${name}\n`)
+    ) ?? "";
+
+const apiHasNoMigrationCreds = (out) => {
+  const api = manifest(out, "Deployment", "p-portalai-api");
+  return (
+    api !== "" &&
+    !api.includes("MIGRATE_DATABASE_URL") &&
+    !api.includes("PORTALAI_MIGRATE_PASSWORD")
+  );
+};
+
+const MIGRATION_USER_ARGS = [
+  "--set",
+  "postgresql.external.migrationUser=owner",
+];
+
 const scenarios = [
   {
     name: "defaults (api + web + bundled data deps)",
@@ -145,6 +169,21 @@ const scenarios = [
           out.includes('"helm.sh/hook": pre-upgrade') &&
           out.includes('command: ["node", "dist/scripts/db-upgrade.js"]'),
       ],
+      [
+        "bundled: migrate + upgrade jobs migrate as the subchart's postgres superuser (#660)",
+        (out) =>
+          ["p-portalai-migrate", "p-portalai-upgrade"].every((job) => {
+            const doc = manifest(out, "Job", job);
+            return (
+              doc.includes("name: p-postgresql\n") &&
+              doc.includes("key: postgres-password") &&
+              doc.includes(
+                'value: "postgresql://postgres:$(PORTALAI_MIGRATE_PASSWORD)@p-postgresql:5432/portalai"'
+              )
+            );
+          }),
+      ],
+      ["the API pods never get the migration credentials (#660)", apiHasNoMigrationCreds],
       [
         "no ingress or bundled issuer by default",
         (out) => !out.includes("kind: Ingress") && !out.includes("keycloak"),
@@ -242,6 +281,78 @@ const scenarios = [
           !out.includes("p-postgresql") &&
           !out.includes("p-redis") &&
           !out.includes("p-minio"),
+      ],
+      [
+        "no migration user configured: migrations run as DATABASE_URL (#660)",
+        (out) =>
+          !out.includes("MIGRATE_DATABASE_URL") &&
+          manifest(out, "Secret", "p-portalai-migrate") === "",
+      ],
+    ],
+  },
+  {
+    name: "external + migration user, inline password (#660)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
+      ...MIGRATION_USER_ARGS,
+      "--set",
+      "postgresql.external.migrationPassword=owner-pw",
+    ],
+    assertions: [
+      [
+        "migration jobs get MIGRATE_DATABASE_URL for the migration user",
+        (out) =>
+          ["p-portalai-migrate", "p-portalai-upgrade"].every((job) =>
+            manifest(out, "Job", job).includes(
+              'value: "postgresql://owner:$(PORTALAI_MIGRATE_PASSWORD)@db.example.com:5432/portalai"'
+            )
+          ),
+      ],
+      [
+        "the inline password lives in its own hook Secret, not the app Secret",
+        (out) => {
+          const own = manifest(out, "Secret", "p-portalai-migrate");
+          const app = manifest(out, "Secret", "p-portalai-secret");
+          return (
+            own.includes('password: "owner-pw"') &&
+            own.includes('"helm.sh/hook": pre-install,pre-upgrade') &&
+            !app.includes("owner-pw")
+          );
+        },
+      ],
+      ["the API pods never get the migration credentials", apiHasNoMigrationCreds],
+    ],
+  },
+  {
+    name: "external + migration user, existing Secret (#660)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
+      ...MIGRATION_USER_ARGS,
+      "--set",
+      "postgresql.external.migrationExistingSecret.name=db-owner",
+      "--set",
+      "postgresql.external.migrationExistingSecret.key=pw",
+    ],
+    assertions: [
+      [
+        "migration jobs read the password from the existing Secret",
+        (out) =>
+          ["p-portalai-migrate", "p-portalai-upgrade"].every((job) => {
+            const doc = manifest(out, "Job", job);
+            return doc.includes("name: db-owner\n") && doc.includes("key: pw\n");
+          }),
+      ],
+      [
+        "no chart-rendered migrate Secret",
+        (out) => manifest(out, "Secret", "p-portalai-migrate") === "",
       ],
     ],
   },

@@ -11,7 +11,10 @@
 import { jest, describe, it, expect } from "@jest/globals";
 
 import type { DbPasswordResolver } from "../../db/credentials.util.js";
-import { buildMigrationClientOptions } from "../../scripts/db-migrate.js";
+import {
+  buildMigrationClientOptions,
+  resolveMigrationConnection,
+} from "../../scripts/db-migrate.js";
 
 const makeResolver = (resolve: () => Promise<string>): DbPasswordResolver => ({
   resolve,
@@ -41,5 +44,43 @@ describe("buildMigrationClientOptions (#505)", () => {
   it("uses a single connection for the one-shot task", () => {
     const opts = buildMigrationClientOptions(makeResolver(async () => "pw"));
     expect(opts.max).toBe(1);
+  });
+});
+
+describe("migration connection (#660 PR 2)", () => {
+  it("prefers MIGRATE_DATABASE_URL, with that URL's own password (no master-secret resolution)", () => {
+    const target = resolveMigrationConnection({
+      DATABASE_URL: "postgresql://app:app-pw@db:5432/portal",
+      MIGRATE_DATABASE_URL: "postgresql://owner:owner-pw@db:5432/portal",
+      DB_MASTER_SECRET_ARN: "arn:aws:secretsmanager:rds!db-1",
+    });
+    expect(target).toEqual({
+      url: "postgresql://owner:owner-pw@db:5432/portal",
+      masterSecretArn: undefined,
+      fallbackPassword: "owner-pw",
+    });
+  });
+
+  it("falls back to DATABASE_URL, keeping the #500 master-secret resolver", () => {
+    const target = resolveMigrationConnection({
+      DATABASE_URL: "postgresql://app:app-pw@db:5432/portal",
+      MIGRATE_DATABASE_URL: undefined,
+      DB_MASTER_SECRET_ARN: "arn:aws:secretsmanager:rds!db-1",
+    });
+    expect(target).toEqual({
+      url: "postgresql://app:app-pw@db:5432/portal",
+      masterSecretArn: "arn:aws:secretsmanager:rds!db-1",
+      fallbackPassword: "app-pw",
+    });
+  });
+
+  it("passes the reader-role name to the migration as the portalai.sql_reader_role setting", () => {
+    const opts = buildMigrationClientOptions(
+      makeResolver(async () => "pw"),
+      "custom_reader"
+    );
+    expect(opts.connection).toEqual({
+      "portalai.sql_reader_role": "custom_reader",
+    });
   });
 });

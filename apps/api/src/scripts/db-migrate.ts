@@ -44,24 +44,62 @@ const migrationsFolder = join(
  * migrate path uses a resolver **callback** (per-connection), not a static
  * password — the regression this fix exists to prevent.
  */
-export function buildMigrationClientOptions(resolver: DbPasswordResolver): {
+export function buildMigrationClientOptions(
+  resolver: DbPasswordResolver,
+  readerRole: string = environment.PORTAL_SQL_READER_ROLE
+): {
   max: number;
   password: () => Promise<string>;
+  connection: Record<string, string>;
 } {
-  return { max: 1, password: () => resolver.resolve() };
+  return {
+    max: 1,
+    password: () => resolver.resolve(),
+    // #660: migration 0118 names the reader role from this setting, so the
+    // role it creates is the one the API will SET ROLE to.
+    connection: { "portalai.sql_reader_role": readerRole },
+  };
+}
+
+/**
+ * #660 PR 2: which connection migrations run on. `MIGRATE_DATABASE_URL`, when
+ * set, is a more privileged user (the schema owner, able to CREATE ROLE) for
+ * installs whose app user can't provision the reader role. It carries its
+ * own password: the #500 master-secret resolver belongs to the app user's
+ * `DATABASE_URL` and is kept only for that fallback.
+ */
+export function resolveMigrationConnection(env: {
+  DATABASE_URL: string;
+  MIGRATE_DATABASE_URL?: string;
+  DB_MASTER_SECRET_ARN?: string;
+}): {
+  url: string;
+  masterSecretArn: string | undefined;
+  fallbackPassword: string;
+} {
+  if (env.MIGRATE_DATABASE_URL) {
+    return {
+      url: env.MIGRATE_DATABASE_URL,
+      masterSecretArn: undefined,
+      fallbackPassword: fallbackPasswordFromUrl(env.MIGRATE_DATABASE_URL),
+    };
+  }
+  return {
+    url: env.DATABASE_URL,
+    masterSecretArn: env.DB_MASTER_SECRET_ARN,
+    fallbackPassword: fallbackPasswordFromUrl(env.DATABASE_URL),
+  };
 }
 
 export async function runMigrations(): Promise<void> {
+  const target = resolveMigrationConnection(environment);
   const resolver = createDbPasswordResolver({
-    masterSecretArn: environment.DB_MASTER_SECRET_ARN,
-    fallbackPassword: fallbackPasswordFromUrl(environment.DATABASE_URL),
+    masterSecretArn: target.masterSecretArn,
+    fallbackPassword: target.fallbackPassword,
     ttlMs: environment.DB_PASSWORD_CACHE_TTL_MS,
   });
 
-  const sql = postgres(
-    environment.DATABASE_URL,
-    buildMigrationClientOptions(resolver)
-  );
+  const sql = postgres(target.url, buildMigrationClientOptions(resolver));
   try {
     logger.info({ migrationsFolder }, "Running database migrations…");
     await migrate(drizzle(sql), { migrationsFolder });

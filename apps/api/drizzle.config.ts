@@ -5,7 +5,8 @@ export default defineConfig({
   schema: "./src/db/schema/*.table.ts",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    // #660: the migration-only user, when set (see .env.example).
+    url: process.env.MIGRATE_DATABASE_URL || process.env.DATABASE_URL!,
   },
   // Exclude the dynamic per-entity wide tables (`er__<connector_entity_id>`).
   // They are created at runtime by the wide-table reconciler and intentionally

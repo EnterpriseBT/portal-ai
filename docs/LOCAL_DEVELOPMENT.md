@@ -91,6 +91,8 @@ The guard (`npm run lint:ci-cache`) enforces the CI half of this; nothing enforc
 
 ## Troubleshooting
 
+- **Every SQL tool fails with `PORTAL_SQL_UNAVAILABLE`.** Agent SQL runs under the restricted `portalai_sql_reader` role (#660), which migration `0118` creates. `npm run dev` seeds but doesn't migrate, so run `npm run db:migrate` (from `apps/api`) once. The API log's `portal-sql.reader-role-unavailable` line gives the reason; the next SQL call re-checks, so no restart is needed.
+
 - **Maps 500 with `Cannot find SRID (3857) in spatial_ref_sys`.** PostGIS's coordinate-system table on your local DB is empty. `CREATE EXTENSION postgis` (migration `0076`) populates it (~8500 rows) on a fresh DB, so this only happens if it was truncated out-of-band. Repopulate from the PostGIS-shipped SQL:
   ```bash
   docker exec portalai-postgres-1 sh -c \

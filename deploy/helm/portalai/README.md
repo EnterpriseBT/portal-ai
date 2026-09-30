@@ -64,6 +64,7 @@ helm install portalai deploy/helm/portalai \
 | `postgresql.image.*` | `imresamu/postgis:17-3.5` | Bundled DB image (PostGIS). |
 | `postgresql.auth.*` | `portalai` | Bundled DB user/password/database. |
 | `postgresql.external.*` | `""` | Managed DB host/port/database/user/password. |
+| `postgresql.external.migrationUser` / `.migrationPassword` / `.migrationExistingSecret.{name,key}` | `""` / `""` / `""`,`password` | Optional migration-only user for an external DB whose app user lacks CREATEROLE (#660). Only the migrate/upgrade jobs receive it. See *Restricted SQL reader role* below. |
 | `redis.enabled` | `true` | Bundle Redis (mandatory PVC). `false` → `redis.external.url`. |
 | `redis.master.persistence.size` | `8Gi` | Redis PVC size (durable BullMQ store). |
 | `minio.enabled` | `true` | Bundle MinIO. `false` → `minio.external.*`. Full S3 wiring lands with #567. |
@@ -105,5 +106,30 @@ helm install portalai deploy/helm/portalai \
 - **Bitnami catalog.** Subchart versions are pinned and `Chart.lock` is
   committed; `helm dependency build` fails loudly if a pinned chart is moved or
   removed (Bitnami is restricting its free catalog).
+- **Restricted SQL reader role (#660).** Agent SQL runs under a NOLOGIN
+  Postgres role (`PORTAL_SQL_READER_ROLE`, default `portalai_sql_reader`, set
+  it through `config`) that can read only each session's own views. Migration
+  `0118` creates it, which needs a user with CREATEROLE:
+  - **Bundled DB:** the migrate/upgrade jobs use the subchart's `postgres`
+    superuser automatically (`MIGRATE_DATABASE_URL`, jobs only).
+  - **External DB:** set `postgresql.external.migrationUser` to the schema
+    owner or another CREATEROLE user, with `migrationPassword` or
+    `migrationExistingSecret`. The password is placed in the URL as-is, so it
+    must be URL-safe.
+  - **Or provision it by hand** once, as a privileged user, then migrate as
+    the app user as usual:
+    ```sql
+    CREATE ROLE portalai_sql_reader NOLOGIN;
+    GRANT portalai_sql_reader TO <app user> WITH SET TRUE;  -- PG16+; plain GRANT before 16
+    GRANT USAGE ON SCHEMA public TO portalai_sql_reader;
+    ```
+
+  Without a usable role the API still boots, but every SQL tool (and map
+  tiles over session views) refuses with `PORTAL_SQL_UNAVAILABLE` (503); it
+  never runs agent SQL with the app user's privileges. The API logs
+  `portal-sql.reader-role-ok` or `portal-sql.reader-role-unavailable` (with
+  the reason) at boot, and re-checks on the next SQL call, so no restart is
+  needed once the role exists. The role must hold no grants of its own: the
+  check refuses a role that can read any application table.
 - **No AWS runtime dependency.** `DB_MASTER_SECRET_ARN` is never set; the DB
   password is carried in the `DATABASE_URL` Secret.
