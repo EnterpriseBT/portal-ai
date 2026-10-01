@@ -50,6 +50,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { StationAttachmentService } =
+  await import("../../../services/station-attachment.service.js");
 
 const {
   stations,
@@ -611,5 +613,29 @@ describe("station attachments (#674)", () => {
       .delete(`/api/curated-views/${v1}/attach/${stationId}`)
       .expect(403);
     expect(await liveViewIds(stationId)).toEqual([v1]);
+  });
+
+  // ── Agent-facing counts ─────────────────────────────────────────────
+
+  it("case 17: countsForCaller tallies attached vs readable per kind for the caller", async () => {
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewIds: [v1, v2], connectorInstanceIds: [ci1] })
+      .expect(200);
+    await grant(memberId, "read", "curated_view", v2);
+
+    expect(
+      await StationAttachmentService.countsForCaller(stationId, orgId, memberId)
+    ).toEqual({
+      views: { attached: 2, readable: 1 },
+      connectors: { attached: 1, readable: 0 },
+    });
+    expect(
+      await StationAttachmentService.countsForCaller(stationId, orgId, ownerId)
+    ).toEqual({
+      views: { attached: 2, readable: 2 },
+      connectors: { attached: 1, readable: 1 },
+    });
   });
 });

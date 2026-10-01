@@ -14,8 +14,11 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { PermissionService } from "./permission.service.js";
 import type { PermissionSet } from "./permission-set.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
+import type { StationAttachmentCounts } from "@portalai/core/content";
+import type { OrgRole } from "@portalai/core/models";
 import type {
   StationInstanceWithConnectorInstance,
   StationViewWithCuratedView,
@@ -361,5 +364,38 @@ export class StationAttachmentService {
     }) as unknown as StationViewWithCuratedView[];
 
     return { instances, views };
+  }
+
+  /**
+   * The attachment counts the empty-station copy needs, for one caller: how
+   * many views and connectors are attached (the same for everyone) and how
+   * many of them this caller can read. Feeds the system prompt and
+   * platform_help through `describeStationAttachmentGaps`.
+   */
+  static async countsForCaller(
+    stationId: string,
+    organizationId: string,
+    userId: string
+  ): Promise<StationAttachmentCounts> {
+    const roles = (await DbService.repository.userRole.findEffectiveRoleNames(
+      userId,
+      organizationId
+    )) as OrgRole[];
+    const set = await PermissionService.loadSet({
+      userId,
+      organizationId,
+      roles,
+    });
+    const { instances, views = [] } =
+      await StationAttachmentService.listForStation(
+        set,
+        { stationId, organizationId },
+        { include: ["curatedView"] }
+      );
+    const tally = (rows: { canRead: boolean }[]) => ({
+      attached: rows.length,
+      readable: rows.filter((r) => r.canRead).length,
+    });
+    return { views: tally(views), connectors: tally(instances) };
   }
 }

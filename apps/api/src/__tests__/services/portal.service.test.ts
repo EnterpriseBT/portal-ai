@@ -140,6 +140,21 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   openSqlSession: jest.fn(),
 }));
 
+// #674: buildStationContext reads the caller's attachment counts.
+const ATTACHMENT_COUNTS = {
+  views: { attached: 2, readable: 1 },
+  connectors: { attached: 0, readable: 0 },
+};
+const mockCountsForCaller = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue(ATTACHMENT_COUNTS);
+jest.unstable_mockModule(
+  "../../services/station-attachment.service.js",
+  () => ({
+    StationAttachmentService: { countsForCaller: mockCountsForCaller },
+  })
+);
+
 // buildAnalyticsTools
 const mockBuildAnalyticsTools =
   jest.fn<() => Promise<Record<string, unknown>>>();
@@ -571,6 +586,32 @@ describe("PortalService", () => {
     // capability surface (#284) was empty on every turn. The function now
     // derives the packs from `station_toolpacks` itself and cannot be handed
     // the wrong array.
+
+    it("#674: carries the caller's attachment counts for the empty-station lines", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query"])
+      );
+      mockResolveGrantedViewColumns.mockResolvedValueOnce({
+        set: { canPerformAny: () => false },
+        views: [],
+      });
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "S" },
+        organizationId: ORG_ID,
+        userId: "user-001",
+      });
+
+      expect(ctx.attachments).toEqual(ATTACHMENT_COUNTS);
+      expect(mockCountsForCaller).toHaveBeenCalledWith(
+        STATION_ID,
+        ORG_ID,
+        "user-001"
+      );
+    });
 
     // ── #599: view-scoping (the OQ2 roster leak fix) ──────────────────
 
@@ -1178,6 +1219,10 @@ describe("PortalService", () => {
       entityGroups: [],
       effectiveToolPacks: ["data_query"],
       unentitledToolPacks: [],
+      attachments: {
+        views: { attached: 1, readable: 1 },
+        connectors: { attached: 1, readable: 1 },
+      },
     };
 
     const stationContextWithGroups = {

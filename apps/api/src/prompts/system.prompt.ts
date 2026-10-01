@@ -3,6 +3,10 @@ import {
   BuiltinToolpackSlugSchema,
   type BuiltinToolpackSlug,
 } from "@portalai/core/registries";
+import {
+  describeStationAttachmentGaps,
+  type StationAttachmentCounts,
+} from "@portalai/core/content";
 
 import type {
   EntitySchema,
@@ -39,6 +43,12 @@ export interface StationContext {
   stationName: string;
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
+  /**
+   * #674: how many views and connectors are attached, and how many the caller
+   * can read. Drives the empty-station lines through
+   * `describeStationAttachmentGaps` (shared with the UI and platform_help).
+   */
+  attachments: StationAttachmentCounts;
   /**
    * The packs whose tools actually EXIST in this session: the station's
    * configured packs ∩ the org tier's entitlements (#284).
@@ -621,9 +631,19 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // (#97). Previously this section re-emitted every entity's full
   // column list plus all ID markers on every turn — expensive at
   // scale and the agent still kept inventing wrong column names.
+  // #674: what's missing from the station (the same for everyone) and what
+  // the caller can't read, worded once in @portalai/core/content.
+  const gaps = describeStationAttachmentGaps(stationContext.attachments);
+  for (const sentence of [gaps.missing, gaps.noAccess]) {
+    if (sentence) lines.push(`_${sentence}_`);
+  }
+  if (gaps.missing || gaps.noAccess) lines.push("");
+
   if (stationContext.entities.length === 0) {
-    lines.push("_No entities attached to this station yet._");
-    lines.push("");
+    if (!gaps.missing && !gaps.noAccess) {
+      lines.push("_No entities are available on this station yet._");
+      lines.push("");
+    }
   } else {
     lines.push("Entities on this station:");
     for (const entity of stationContext.entities) {

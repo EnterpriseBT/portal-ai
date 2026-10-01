@@ -19,6 +19,10 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
     // `unentitledToolPacks` defaults to none so existing cases describe a
     // fully-entitled station, exactly as they did pre-rename.
     unentitledToolPacks: [],
+    attachments: {
+      views: { attached: 2, readable: 2 },
+      connectors: { attached: 1, readable: 1 },
+    },
     entities: [
       {
         id: "entity-1",
@@ -87,11 +91,49 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     expect(prompt).toMatch(/Always call this before any tool that takes an id/);
   });
 
-  it("renders empty-state copy when no entities are attached", () => {
-    const prompt = buildSystemPrompt(makeContext({ entities: [] }));
+  // #674: the empty-station lines come from describeStationAttachmentGaps,
+  // the one source shared with the UI alerts and platform_help.
+  const attach = (
+    views: [number, number],
+    connectors: [number, number]
+  ): StationContext["attachments"] => ({
+    views: { attached: views[0], readable: views[1] },
+    connectors: { attached: connectors[0], readable: connectors[1] },
+  });
 
-    expect(prompt).toContain("_No entities attached to this station yet._");
+  it("#674: says both kinds are missing when nothing is attached", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ entities: [], attachments: attach([0, 0], [0, 0]) })
+    );
+    expect(prompt).toContain(
+      "_No views or connectors are attached to this station yet._"
+    );
     expect(prompt).not.toContain("Entities on this station:");
+  });
+
+  it("#674: names only the missing kind when connectors are attached but views aren't", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ entities: [], attachments: attach([0, 0], [1, 1]) })
+    );
+    expect(prompt).toContain("_No views are attached to this station yet._");
+    expect(prompt).not.toContain("connectors are attached");
+  });
+
+  it("#674: says the caller has no access when every attached view is unreadable", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ entities: [], attachments: attach([2, 0], [1, 1]) })
+    );
+    expect(prompt).toContain(
+      "_You don't have access to any views on this station._"
+    );
+  });
+
+  it("#674: lists entities and adds no gap lines when everything is attached and readable", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("Entities on this station:");
+    expect(prompt).not.toMatch(
+      /attached to this station yet|don't have access/
+    );
   });
 
   it("never embeds connectorEntityId / columnDefinitionId / fieldMappingId / capability markers (those moved to the tool)", () => {
