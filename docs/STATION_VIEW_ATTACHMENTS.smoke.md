@@ -81,7 +81,7 @@ Setup (owner): S has V-A, V-B and C-1 attached. On S → **Share** → member �
 Use the member's bearer token (DevTools → any `/api` request → `Authorization`) with `curl -s -X <method> localhost:3001/api/... -H "Authorization: Bearer $T" -H 'content-type: application/json'`.
 
 - [ ] Owner: on S, revoke the member's share and grant **Read** only. Member `PATCH /api/stations/<S>` `{"curatedViewIds":["<V-B>"]}` returns **403**, and `station_views` is unchanged.
-- [ ] Restore **Read & write**. Member `PATCH` `{"curatedViewIds":["<V-B>","<V-A>"]}` returns **403** `STATION_ATTACHMENT_NOT_READABLE`, and nothing is written.
+- [ ] Restore **Read & write**. Owner: detach **V-A** from S, so V-A is no longer attached. Member `PATCH` `{"curatedViewIds":["<V-B>","<V-A>"]}` returns **403** `STATION_ATTACHMENT_NOT_READABLE`, and nothing is written. (Only ids being *added* are checked. Re-sending a V-A that is **already** attached is allowed and returns 200, by design.)
 - [ ] Member `PATCH` `{"curatedViewIds":["00000000-0000-0000-0000-000000000000"]}` returns the **same** 403 code and the same message as the previous step, so it doesn't reveal whether the id exists.
 - [ ] Member `POST /api/stations` `{"name":"Smoke denied","curatedViewIds":["<V-A>"]}` returns 403, and Stations has **no** "Smoke denied" row.
 - [ ] Owner: share **V-A** with the member as **Read & write** but take S down to **Read**. Member `POST /api/curated-views/<V-A>/attach` `{"stationId":"<S>"}` returns **403**, because write on a view never grants attach.
@@ -91,7 +91,7 @@ Use the member's bearer token (DevTools → any `/api` request → `Authorizatio
 
 - [ ] Owner: attach nothing to S (Edit → remove all). Open a portal on S and ask: **"Why can't you see any of my data?"** The answer contains "No views or connectors are attached to this station yet." and "Ask someone who can edit the station to attach them." (from `platform_help`).
 - [ ] Attach C-1 only, start a **new** portal, and ask the same. The answer names "No views are attached to this station yet."
-- [ ] Attach only **V-A**. As the **member** (S shared Read & write, V-A not readable), start a portal on S and ask the same question. The answer contains "You don't have access to any views on this station."
+- [ ] Attach **V-A** and **C-1** (keep a connector the member can read, so "missing" doesn't apply). As the **member** (S shared Read & write, V-A not readable), start a portal on S and ask the same question. `platform_help` returns "You don't have access to any views on this station. They're attached, but they haven't been shared with your account. Ask someone who can share them to give you access." The answer says the member's account lacks access to views that **are** attached. It never says the station has no views, and never asks the member to attach data (#676).
 - [ ] The answer never names `Smoke view A`; the agent only ever gets counts. — manual (read the transcript)
 
 ## §7 — Lifecycle
