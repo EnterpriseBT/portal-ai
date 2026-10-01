@@ -19,9 +19,11 @@ import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "./wide-table-statement.cache.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
+  assertAndOfTwo,
   assertFunctionsAllowed,
   assertScalarOver,
   fenceSql,
+  isColumnEquality,
   parsePortalSql,
 } from "./portal-sql-parse.util.js";
 
@@ -261,6 +263,15 @@ export class BulkTransformService {
       selectSql,
       wideTableRepo.tableName(opts.sourceConnectorEntityId)
     );
+    // #669: with a fragment, the WHERE must stay `org = … AND (<fragment>)`,
+    // the fragment as one narrowing condition (re-checked on the exact SQL, so
+    // a queued job that bypassed the tool's pre-flight is held too).
+    if (opts.whereSqlFragment) {
+      assertAndOfTwo(
+        parsePortalSql(selectSql),
+        isColumnEquality("organization_id")
+      );
+    }
     const result = await db.execute(sql.raw(selectSql));
     return Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)

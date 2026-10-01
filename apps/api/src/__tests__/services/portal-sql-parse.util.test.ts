@@ -232,3 +232,26 @@ describe("parsePortalSqlExpression — commented fragments (#667)", () => {
     ).toEqual(new Set(["__source"]));
   });
 });
+
+describe("parsePortalSqlExpression — the WHERE fragment stays one AND-ed condition (#669)", () => {
+  it.each([
+    "c_a > 1",
+    "c_a > 1 OR c_b < 2",
+    "(c_a > 1) AND (c_b < 2)",
+    "c_a IN (1, 2)",
+    "c_a > 1 -- trailing note",
+  ])("allows %s", (f) => {
+    expect(() => parsePortalSqlExpression(f, "where")).not.toThrow();
+  });
+
+  it.each([
+    // Closes the wrapper's parenthesis and opens an OR branch of its own.
+    "c_a > 1) OR (c_b < 2",
+    // Closes it and AND-s another condition outside the fragment's own parens.
+    "c_a > 1) AND (c_b < 2",
+  ])("refuses a fragment that escapes its parentheses: %s", (f) => {
+    expect(() => parsePortalSqlExpression(f, "where")).toThrow(
+      /single condition/
+    );
+  });
+});
