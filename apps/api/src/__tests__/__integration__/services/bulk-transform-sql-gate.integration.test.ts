@@ -62,4 +62,35 @@ describe("BulkTransformService SQL gate (#660)", () => {
       } as never)
     ).rejects.toMatchObject({ code: "PORTAL_SQL_FORBIDDEN" });
   });
+
+  // #667: a commented fragment must pass the gate (fenced on its own lines)
+  // and reach Postgres. The source table doesn't exist in this suite, so a
+  // gate pass shows up as a database error, not PORTAL_SQL_FORBIDDEN.
+  it("#667: a WHERE fragment with a trailing comment passes the gate (reaches Postgres)", async () => {
+    const err = await BulkTransformService.fetchSourceBatch({
+      sourceConnectorEntityId: SOURCE,
+      organizationId: ORG,
+      whereSqlFragment: "c_id > 1 -- note",
+      batchSize: 10,
+      offset: 0,
+    } as never).then(
+      () => null,
+      (e: unknown) => e as { code?: string; cause?: { code?: string } }
+    );
+    expect(err?.code).not.toBe("PORTAL_SQL_FORBIDDEN");
+    expect(err?.cause?.code).toBe("42P01"); // the missing source table
+  });
+
+  it("#667: a projection with a trailing comment keeps its FROM (reaches Postgres against the source)", async () => {
+    const err = await BulkTransformService.explainExpression(
+      SOURCE,
+      ORG,
+      "c_id * 2 AS x -- note"
+    ).then(
+      () => null,
+      (e: unknown) => e as { code?: string; cause?: { code?: string } }
+    );
+    expect(err?.code).not.toBe("PORTAL_SQL_FORBIDDEN");
+    expect(err?.cause?.code).toBe("42P01"); // FROM the (missing) source table
+  });
 });

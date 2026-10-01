@@ -40,6 +40,13 @@
 - `apps/api/src/__tests__/__integration__/queues/dissolve-precompute.processor.integration.test.ts`: a commented pipeline dissolves to the same rows as its comment-free twin.
 - `npm run test:unit` / `npm run test:integration -- --testPathPattern "portal-sql|portal-map|dissolve"`, `type-check`, `lint`.
 
+**Code review addendum: every splice, not just tiles and dissolve.** The review found seven more places that wrap agent SQL unfenced:
+- `geoInlineRows` (`tools/geo-delivery.util.ts`, used by inline map mint and pin refresh);
+- `visualize-map.tool.ts`'s colour-stop, fit-extent and stored-pipeline wrappers;
+- `portal-sql-handle.service.ts`'s `aggregateOverHandle` and keyset `streamHandle`.
+
+A sweep found the same pattern in the transform path: `parsePortalSqlExpression`'s wrappers and `BulkTransformService`'s projection and WHERE splices. These paths already validate exactly the text they run (fail-closed). The gap was functional: a trailing comment broke the query. All are fenced now, so the rule is uniform: **every splice of agent SQL goes through `fenceSql`** (moved to `portal-sql-parse.util.ts`, re-exported from the validator). Tests per surface run the captured SQL through the real `validatePortalSql`, or reach Postgres.
+
 ## Smoke (manual, against your dev stack)
 
 1. As a member, ask the agent to run `sql_query` on a granted view with a trailing `-- comment` and an inline `/* note */`. The rows come back as without them.

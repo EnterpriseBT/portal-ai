@@ -13,6 +13,7 @@ import {
   geoInlineRows,
 } from "./geo-delivery.util.js";
 import { AnalyticsService } from "../services/analytics.service.js";
+import { fenceSql } from "../services/portal-sql-validation.util.js";
 
 // -- Tool input --------------------------------------------------------------
 //
@@ -234,7 +235,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           if (cb.scale === "interpolate") {
             const rampSql =
               `SELECT MIN(_q.${quoteIdent(cb.column)}) AS lo, ` +
-              `MAX(_q.${quoteIdent(cb.column)}) AS hi FROM (${sql}) _q ` +
+              `MAX(_q.${quoteIdent(cb.column)}) AS hi FROM (${fenceSql(sql)}) _q ` +
               `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL`;
             const rres = (await sqlQuery({
               sql: rampSql,
@@ -259,7 +260,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           // just means that if the platform's row cap ever trims the list, the
           // most common values are kept.
           const distinctSql =
-            `SELECT _q.${quoteIdent(cb.column)} AS v FROM (${sql}) _q ` +
+            `SELECT _q.${quoteIdent(cb.column)} AS v FROM (${fenceSql(sql)}) _q ` +
             `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL ` +
             `GROUP BY _q.${quoteIdent(cb.column)} ORDER BY count(*) DESC, 1`;
           const dres = (await sqlQuery({
@@ -296,7 +297,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           primaryGeom === "geom"
             ? sql
             : geomExpr
-              ? `SELECT _q.*, ${geomExpr} AS geom FROM (${sql}) _q`
+              ? `SELECT _q.*, ${geomExpr} AS geom FROM (${fenceSql(sql)}) _q`
               : sql;
         const pipeline = { sql: pipelineSql, stationId, organizationId };
 
@@ -310,7 +311,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
             try {
               const extSql =
                 `SELECT ST_XMin(e) AS xmin, ST_YMin(e) AS ymin, ST_XMax(e) AS xmax, ST_YMax(e) AS ymax ` +
-                `FROM (SELECT ST_Extent((${geomExpr})::geometry) AS e FROM (${sql}) _q) x`;
+                `FROM (SELECT ST_Extent((${geomExpr})::geometry) AS e FROM (${fenceSql(sql)}) _q) x`;
               const eres = (await sqlQuery({
                 sql: extSql,
                 stationId,

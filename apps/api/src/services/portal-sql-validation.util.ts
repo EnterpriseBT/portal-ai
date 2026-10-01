@@ -31,7 +31,10 @@ import {
   type ParsedPortalSql,
 } from "./portal-sql-parse.util.js";
 
-export { PORTAL_SQL_ALLOWED_FUNCTIONS } from "./portal-sql-parse.util.js";
+export {
+  PORTAL_SQL_ALLOWED_FUNCTIONS,
+  fenceSql,
+} from "./portal-sql-parse.util.js";
 
 export interface PortalSqlValidationResult {
   /** Comment-free, multi-statement-rejected, deny-list-passed SQL. */
@@ -139,20 +142,6 @@ const SYSTEM_CATALOG = new RegExp(
 );
 
 const SIDE_EFFECT_FUNCTIONS = /\b(pg_|lo_|dblink|query_to_)/i;
-
-/**
- * #667: splice validated SQL into a server-built wrapper on its own lines.
- *
- * The invariant every caller keeps: **execute exactly `cleaned`**, the text
- * the regex pre-filter and the AST gate saw, never the raw input. And splice
- * it through this fence, so nothing in it (e.g. a line comment the stripper
- * left for Postgres to honour) can share a line with, and swallow, the
- * wrapper's own text. With both, the stripper's fidelity to Postgres's lexer
- * only affects error messages, never what runs unchecked.
- */
-export function fenceSql(cleaned: string): string {
-  return `\n${cleaned}\n`;
-}
 
 export function validatePortalSql(sql: string): PortalSqlValidationResult {
   const cleaned = stripComments(sql);

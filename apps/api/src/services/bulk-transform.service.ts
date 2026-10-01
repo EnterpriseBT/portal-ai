@@ -21,6 +21,7 @@ import { createLogger } from "../utils/logger.util.js";
 import {
   assertFunctionsAllowed,
   assertScalarOver,
+  fenceSql,
   parsePortalSql,
 } from "./portal-sql-parse.util.js";
 
@@ -111,7 +112,7 @@ export class BulkTransformService {
     );
     const orgLit = `'${organizationId.replace(/'/g, "''")}'`;
     const selectText =
-      `SELECT ${expression} FROM ${sourceTable} ` +
+      `SELECT ${fenceSql(expression)} FROM ${sourceTable} ` +
       `WHERE "organization_id" = ${orgLit} LIMIT 1`;
     assertTransformSql(
       selectText,
@@ -205,7 +206,8 @@ export class BulkTransformService {
     // The pre-flight EXPLAIN already validated each segment as a legal
     // PG expression with a usable alias; here we just splice.
     const projection = opts.expression.trim();
-    const projectionClause = projection.length > 0 ? `, ${projection}` : "";
+    const projectionClause =
+      projection.length > 0 ? `, ${fenceSql(projection)}` : "";
 
     const selectSql =
       `WITH batch AS (` +
@@ -248,7 +250,7 @@ export class BulkTransformService {
     );
     const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
     const filterClause = opts.whereSqlFragment
-      ? ` AND (${opts.whereSqlFragment})`
+      ? ` AND (${fenceSql(opts.whereSqlFragment)})`
       : "";
     const selectSql =
       `SELECT * FROM ${sourceTable} ` +

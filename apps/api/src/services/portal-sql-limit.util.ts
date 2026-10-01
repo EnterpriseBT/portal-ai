@@ -10,8 +10,7 @@
  * still gets the row-cap protection at envelope time.
  */
 
-import { parsePortalSql } from "./portal-sql-parse.util.js";
-import { fenceSql } from "./portal-sql-validation.util.js";
+import { fenceSql, parsePortalSql } from "./portal-sql-parse.util.js";
 
 export interface ImplicitLimitResult {
   /** Wrapped SQL (or the original if no wrap was needed). */

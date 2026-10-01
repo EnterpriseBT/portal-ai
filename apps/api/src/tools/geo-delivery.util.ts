@@ -12,6 +12,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 import { AnalyticsService } from "../services/analytics.service.js";
 import { db } from "../db/client.js";
+import { fenceSql } from "../services/portal-sql-validation.util.js";
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -99,7 +100,7 @@ export async function geoInlineRows(
   const overrides = geometryColumns
     .map((c) => `${quoteLit(c)}, ST_AsGeoJSON(_q.${quoteIdent(c)})::jsonb`)
     .join(", ");
-  const displaySql = `SELECT to_jsonb(_q) || jsonb_build_object(${overrides}) AS _row FROM (${sql}) _q`;
+  const displaySql = `SELECT to_jsonb(_q) || jsonb_build_object(${overrides}) AS _row FROM (${fenceSql(sql)}) _q`;
   const disp = (await sqlQuery({
     sql: displaySql,
     stationId: ctx.stationId,

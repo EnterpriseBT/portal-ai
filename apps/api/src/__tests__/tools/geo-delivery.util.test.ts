@@ -1,5 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
+import { validatePortalSql } from "../../services/portal-sql-validation.util.js";
+
 import {
   geoInlineRows,
   geoReencodeRows,
@@ -150,5 +152,26 @@ describe("geometryColumnsFromSpec", () => {
       ],
     };
     expect(geometryColumnsFromSpec(spec).sort()).toEqual(["boundary", "geom"]);
+  });
+});
+
+describe("geoInlineRows (#667 — a commented pipeline survives the reproject wrapper)", () => {
+  it("wraps agent SQL on its own lines, so a trailing comment can't swallow `) _q`", async () => {
+    const sent: string[] = [];
+    await geoInlineRows(
+      "SELECT geom FROM parcels -- note",
+      ["geom"],
+      [{ geom: "x" }],
+      ctx,
+      {
+        sqlQuery: (async ({ sql }: { sql: string }) => {
+          sent.push(sql);
+          return { rows: [] };
+        }) as never,
+      }
+    );
+    expect(sent).toHaveLength(1);
+    // runSqlQuery validates exactly this text; before #667 it failed to parse.
+    expect(validatePortalSql(sent[0]).relations).toEqual(new Set(["parcels"]));
   });
 });

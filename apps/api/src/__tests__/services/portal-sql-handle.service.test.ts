@@ -27,6 +27,8 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
 const { PortalSqlHandleService, streamChannelKey } =
   await import("../../services/portal-sql-handle.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
+const { validatePortalSql } =
+  await import("../../services/portal-sql-validation.util.js");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -373,7 +375,10 @@ describe("PortalSqlHandleService.streamHandle", () => {
       [{ sql: string }]
     >;
     const firstSql = calls[0][0].sql;
-    expect(firstSql).toContain(`SELECT * FROM (SELECT id, ts FROM t) "_cur"`);
+    // #667: the handle query sits on its own lines inside the wrapper.
+    expect(firstSql).toContain(
+      `SELECT * FROM (\nSELECT id, ts FROM t\n) "_cur"`
+    );
     expect(firstSql).toContain(`ORDER BY "ts" ASC, "id" ASC`);
     expect(firstSql).toContain("LIMIT 1000");
     expect(firstSql).not.toContain("WHERE");
@@ -448,5 +453,47 @@ describe("PortalSqlHandleService.produce — matchedCount (#340)", () => {
     });
     expect(envelope.matchedCount).toBe(7);
     expect(envelope.matchedCountExact).toBe(true);
+  });
+});
+
+describe("handle re-execution (#667 — a commented handle query in every wrapper)", () => {
+  const meta = (rowCount: number) =>
+    JSON.stringify({
+      queryHandle: "qh-667",
+      rowCount,
+      schema: [
+        { name: "_record_id", type: "string" },
+        { name: "d", type: "date" },
+        { name: "r", type: "numeric" },
+      ],
+      sampled: false,
+      truncated: false,
+      samplePeek: [],
+      sql: "SELECT _record_id, d, r FROM parcels -- note",
+      _stationId: "s1",
+      _organizationId: "o1",
+      _userId: "u1",
+    });
+  const sentSql = () =>
+    (mockRunSqlQuery.mock.calls as unknown as Array<[{ sql: string }]>).map(
+      (c) => c[0].sql
+    );
+
+  it("aggregateOverHandle's wrapper validates", async () => {
+    mockRedisGet.mockResolvedValue(meta(10));
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ n: 1 }] });
+    await PortalSqlHandleService.aggregateOverHandle("qh-667", "count(*) AS n");
+    expect(sentSql()).toHaveLength(1);
+    expect(() => validatePortalSql(sentSql()[0])).not.toThrow();
+  });
+
+  it("streamHandle's keyset wrapper validates", async () => {
+    mockRedisGet.mockResolvedValue(meta(1_000_000));
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [] });
+    const batches = [];
+    for await (const b of PortalSqlHandleService.streamHandle("qh-667", "d"))
+      batches.push(b);
+    expect(sentSql().length).toBeGreaterThan(0);
+    for (const q of sentSql()) expect(() => validatePortalSql(q)).not.toThrow();
   });
 });
