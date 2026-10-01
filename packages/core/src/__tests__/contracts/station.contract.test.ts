@@ -162,13 +162,40 @@ describe("UpdateStationBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("#674: accepts an update carrying only curatedViewIds (it counts toward the refine)", () => {
+  it("#674: update takes add/remove changes per kind, not full sets", () => {
     expect(
-      UpdateStationBodySchema.safeParse({ curatedViewIds: [] }).success
+      UpdateStationBodySchema.safeParse({
+        curatedViewChanges: { add: ["cv-1"], remove: ["cv-2"] },
+      }).success
     ).toBe(true);
     expect(
-      UpdateStationBodySchema.safeParse({ curatedViewIds: ["cv-1"] }).success
+      UpdateStationBodySchema.safeParse({
+        connectorInstanceChanges: { remove: ["ci-1"] },
+      }).success
     ).toBe(true);
+    // A changes object counts toward the at-least-one-field refine.
+    expect(
+      UpdateStationBodySchema.safeParse({ curatedViewChanges: { add: [] } })
+        .success
+    ).toBe(true);
+  });
+
+  it("#674: update no longer accepts full-set attachment lists", () => {
+    const parsed = UpdateStationBodySchema.safeParse({
+      name: "S",
+      curatedViewIds: ["cv-1"],
+      connectorInstanceIds: ["ci-1"],
+    });
+    expect(parsed.success && "curatedViewIds" in parsed.data).toBe(false);
+    expect(parsed.success && "connectorInstanceIds" in parsed.data).toBe(false);
+  });
+
+  it("#674: rejects an id that is both added and removed", () => {
+    expect(
+      UpdateStationBodySchema.safeParse({
+        curatedViewChanges: { add: ["cv-1"], remove: ["cv-1"] },
+      }).success
+    ).toBe(false);
   });
 
   it("should reject empty object (at least one field required)", () => {

@@ -539,7 +539,12 @@ stationRouter.post(
           tx,
           set,
           { stationId: created.id, organizationId, userId },
-          { curatedViewIds, connectorInstanceIds }
+          {
+            curatedViews: curatedViewIds ? { add: curatedViewIds } : undefined,
+            connectorInstances: connectorInstanceIds
+              ? { add: connectorInstanceIds }
+              : undefined,
+          }
         );
         return { station: created, change: applied };
       });
@@ -590,12 +595,12 @@ stationRouter.post(
  *       - Stations
  *     summary: Update a station
  *     description: >
- *       Updates station fields. `curatedViewIds` and `connectorInstanceIds`
- *       are each the full set for that kind; a field left out is untouched.
- *       Attachments the caller can't read are preserved whatever the request
- *       says, and only the difference is written: new ids are attached
- *       (each must be readable by the caller) and dropped ones soft-deleted
- *       (#674).
+ *       Updates station fields. `curatedViewChanges` and
+ *       `connectorInstanceChanges` change one attachment kind by difference:
+ *       `add` attaches ids not already attached (each must be readable by the
+ *       caller), `remove` soft-deletes attached ids the caller can read and
+ *       skips any they can't. Nothing else is touched, so a stale editor can't
+ *       re-attach what another just removed (#674).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -694,8 +699,8 @@ stationRouter.patch(
       const {
         name,
         description,
-        connectorInstanceIds,
-        curatedViewIds,
+        connectorInstanceChanges,
+        curatedViewChanges,
         toolPacks,
       } = parsed.data;
 
@@ -764,7 +769,10 @@ stationRouter.patch(
           tx,
           set,
           { stationId: id, organizationId, userId },
-          { curatedViewIds, connectorInstanceIds }
+          {
+            curatedViews: curatedViewChanges,
+            connectorInstances: connectorInstanceChanges,
+          }
         );
         return { station: updated, change: applied };
       });

@@ -338,18 +338,18 @@ describe("station attachments (#674)", () => {
 
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ connectorInstanceIds: [ci1, ci2] })
+      .send({ connectorInstanceChanges: { add: [ci1, ci2] } })
       .expect(200);
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1] })
+      .send({ curatedViewChanges: { add: [v1] } })
       .expect(200);
     expect(await liveInstanceIds(stationId)).toEqual([ci1, ci2].sort());
     expect(await liveViewIds(stationId)).toEqual([v1]);
 
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ connectorInstanceIds: [ci2] })
+      .send({ connectorInstanceChanges: { remove: [ci1] } })
       .expect(200);
     expect(await liveViewIds(stationId)).toEqual([v1]);
     expect(await liveInstanceIds(stationId)).toEqual([ci2]);
@@ -359,11 +359,17 @@ describe("station attachments (#674)", () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1], connectorInstanceIds: [ci1] })
+      .send({
+        curatedViewChanges: { add: [v1] },
+        connectorInstanceChanges: { add: [ci1] },
+      })
       .expect(200);
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [], connectorInstanceIds: [] })
+      .send({
+        curatedViewChanges: { remove: [v1] },
+        connectorInstanceChanges: { remove: [ci1] },
+      })
       .expect(200);
 
     const views = await db
@@ -382,7 +388,7 @@ describe("station attachments (#674)", () => {
 
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1] })
+      .send({ curatedViewChanges: { add: [v1] } })
       .expect(200);
     const after = await db
       .select()
@@ -397,11 +403,11 @@ describe("station attachments (#674)", () => {
 
   it("case 10: an attachment the editor can't read is preserved", async () => {
     // The owner attaches V1 and V2. The second user can edit the station and
-    // read only V2, and sends an empty set.
+    // read only V2, and asks to remove both.
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1, v2] })
+      .send({ curatedViewChanges: { add: [v1, v2] } })
       .expect(200);
 
     await grant(memberId, "write", "station", stationId);
@@ -409,7 +415,7 @@ describe("station attachments (#674)", () => {
     currentSub = MEMBER_SUB;
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [] })
+      .send({ curatedViewChanges: { remove: [v1, v2] } })
       .expect(200);
 
     expect(await liveViewIds(stationId)).toEqual([v1]);
@@ -427,10 +433,59 @@ describe("station attachments (#674)", () => {
     currentSub = MEMBER_SUB;
     const res = await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1] })
+      .send({ curatedViewChanges: { add: [v1] } })
       .expect(403);
     expect(res.body.code).toBe(ApiCode.STATION_ATTACHMENT_NOT_READABLE);
     expect(await liveViewIds(stationId)).toEqual([]);
+  });
+
+  it("adversarial walk: a stale editor's save never re-attaches what another editor removed", async () => {
+    // Editor A and editor B both open the dialog on {V1, V2}. A removes V1 and
+    // saves. B, still showing V1, removes V2 and saves. Before the fix B sent
+    // the full set [V1] and V1 came back.
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewChanges: { add: [v1, v2] } })
+      .expect(200);
+
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewChanges: { remove: [v1] } })
+      .expect(200);
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewChanges: { remove: [v2] } })
+      .expect(200);
+
+    expect(await liveViewIds(stationId)).toEqual([]);
+  });
+
+  it("rejects an update that adds and removes the same id, writing nothing", async () => {
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewChanges: { add: [v1], remove: [v1] } })
+      .expect(400);
+    expect(await liveViewIds(stationId)).toEqual([]);
+  });
+
+  it("ignores full-set attachment lists on update (they no longer exist there)", async () => {
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewChanges: { add: [v1] } })
+      .expect(200);
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({
+        name: "Renamed",
+        curatedViewIds: [],
+        connectorInstanceIds: [ci1],
+      })
+      .expect(200);
+    expect(await liveViewIds(stationId)).toEqual([v1]);
+    expect(await liveInstanceIds(stationId)).toEqual([]);
   });
 
   it("case 11: two concurrent updates adding the same view leave one live row", async () => {
@@ -438,10 +493,10 @@ describe("station attachments (#674)", () => {
     const results = await Promise.all([
       request(app)
         .patch(`/api/stations/${stationId}`)
-        .send({ curatedViewIds: [v1] }),
+        .send({ curatedViewChanges: { add: [v1] } }),
       request(app)
         .patch(`/api/stations/${stationId}`)
-        .send({ curatedViewIds: [v1] }),
+        .send({ curatedViewChanges: { add: [v1] } }),
     ]);
     for (const r of results) expect(r.status).toBe(200);
     expect(await liveViewIds(stationId)).toEqual([v1]);
@@ -454,7 +509,7 @@ describe("station attachments (#674)", () => {
     currentSub = MEMBER_SUB;
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1] })
+      .send({ curatedViewChanges: { add: [v1] } })
       .expect(403);
     expect(await liveViewIds(stationId)).toEqual([]);
     expect(await attachmentAudits(stationId)).toHaveLength(0);
@@ -466,7 +521,10 @@ describe("station attachments (#674)", () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1, v2], connectorInstanceIds: [ci1] })
+      .send({
+        curatedViewChanges: { add: [v1, v2] },
+        connectorInstanceChanges: { add: [ci1] },
+      })
       .expect(200);
 
     await request(app).delete(`/api/stations/${stationId}`).expect(200);
@@ -487,7 +545,10 @@ describe("station attachments (#674)", () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1, v2], connectorInstanceIds: [ci1, ci2] })
+      .send({
+        curatedViewChanges: { add: [v1, v2] },
+        connectorInstanceChanges: { add: [ci1, ci2] },
+      })
       .expect(200);
 
     await grant(memberId, "read", "station", stationId);
@@ -542,7 +603,10 @@ describe("station attachments (#674)", () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1], connectorInstanceIds: [ci1] })
+      .send({
+        curatedViewChanges: { add: [v1] },
+        connectorInstanceChanges: { add: [ci1] },
+      })
       .expect(200);
     const res = await request(app)
       .get(`/api/stations/${stationId}`)
@@ -601,7 +665,7 @@ describe("station attachments (#674)", () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1] })
+      .send({ curatedViewChanges: { add: [v1] } })
       .expect(200);
     await grant(memberId, "write", "station", stationId);
     await grant(memberId, "read", "station", stationId);
@@ -618,7 +682,7 @@ describe("station attachments (#674)", () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1] })
+      .send({ curatedViewChanges: { add: [v1] } })
       .expect(200);
     await grant(memberId, "read", "station", stationId);
     await grant(memberId, "write", "curated_view", v1);
@@ -635,7 +699,10 @@ describe("station attachments (#674)", () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
-      .send({ curatedViewIds: [v1, v2], connectorInstanceIds: [ci1] })
+      .send({
+        curatedViewChanges: { add: [v1, v2] },
+        connectorInstanceChanges: { add: [ci1] },
+      })
       .expect(200);
     await grant(memberId, "read", "curated_view", v2);
 

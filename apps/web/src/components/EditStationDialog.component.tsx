@@ -92,9 +92,26 @@ interface StationViewAttachment {
   canRead: boolean;
 }
 
-/** Sorted-set equality, for "did this attachment kind change?". */
-const sameSet = (a: string[], b: string[]): boolean =>
-  JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+/**
+ * #674: what changed in one attachment kind since the dialog opened, as the
+ * add/remove changes the update API takes, or undefined when nothing did. The
+ * dialog never sends its full set: that set goes stale while the dialog is
+ * open, and saving it re-attached what another editor had just removed.
+ */
+function attachmentChanges(
+  initial: string[],
+  current: string[]
+): { add?: string[]; remove?: string[] } | undefined {
+  const before = new Set(initial);
+  const after = new Set(current);
+  const add = current.filter((id) => !before.has(id));
+  const remove = initial.filter((id) => !after.has(id));
+  if (add.length === 0 && remove.length === 0) return undefined;
+  return {
+    ...(add.length > 0 ? { add } : {}),
+    ...(remove.length > 0 ? { remove } : {}),
+  };
+}
 
 export interface EditStationDialogProps {
   open: boolean;
@@ -128,8 +145,8 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
   // #674: the pickers hold only what the viewer can read. Attachments they
-  // can't read aren't theirs to remove; the server preserves them whatever
-  // this dialog sends, so the readable set is the whole of what we send.
+  // can't read aren't theirs to remove, and the dialog only ever sends what
+  // changed among the readable ones (see attachmentChanges).
   const initialInstanceIds = (station.instances ?? [])
     .filter((i) => i.canRead)
     .map((i) => i.connectorInstanceId);
@@ -216,12 +233,13 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {
       body.toolPacks = form.toolPacks;
     }
-    if (!sameSet(form.connectorInstanceIds, initialInstanceIds)) {
-      body.connectorInstanceIds = form.connectorInstanceIds;
-    }
-    if (!sameSet(form.curatedViewIds, initialViewIds)) {
-      body.curatedViewIds = form.curatedViewIds;
-    }
+    const connectorChanges = attachmentChanges(
+      initialInstanceIds,
+      form.connectorInstanceIds
+    );
+    if (connectorChanges) body.connectorInstanceChanges = connectorChanges;
+    const viewChanges = attachmentChanges(initialViewIds, form.curatedViewIds);
+    if (viewChanges) body.curatedViewChanges = viewChanges;
 
     if (Object.keys(body).length === 0) {
       onClose();

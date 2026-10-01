@@ -155,28 +155,35 @@ describe("StationAttachmentService.assertAttachable", () => {
 });
 
 // ---------------------------------------------------------------------------
-// applyDiff (spec case 5)
+// applyChanges (spec case 5, reworked by the adversarial walk: add/remove
+// changes instead of a full set, so a stale editor can't re-attach what
+// another editor just removed)
 // ---------------------------------------------------------------------------
 
-describe("StationAttachmentService.applyDiff", () => {
-  const args = (requested: string[], kind = "curated_view" as const) => ({
+describe("StationAttachmentService.applyChanges", () => {
+  const args = (
+    add: string[],
+    remove: string[],
+    kind: "curated_view" | "connector_instance" = "curated_view"
+  ) => ({
     stationId: "st-1",
     organizationId: ORG,
     userId: "user-1",
     kind,
-    requested,
+    add,
+    remove,
   });
 
-  it("adds the new ids and soft-deletes the dropped readable ones", async () => {
+  it("adds new ids and soft-deletes removed readable ones", async () => {
     mockViewLinks.mockResolvedValue([
       { curatedViewId: "v1" },
       { curatedViewId: "v2" },
     ]);
     mockViewOwners.mockImplementation(ownersOf("v1", "v2", "v3"));
-    const diff = await StationAttachmentService.applyDiff(
+    const diff = await StationAttachmentService.applyChanges(
       TX,
       setReading("v1", "v2", "v3"),
-      args(["v2", "v3"])
+      args(["v3"], ["v1"])
     );
     expect(diff).toEqual({ added: ["v3"], removed: ["v1"] });
     expect(
@@ -190,43 +197,73 @@ describe("StationAttachmentService.applyDiff", () => {
     );
   });
 
-  it("preserves an existing attachment the caller can't read, even when omitted", async () => {
+  it("leaves attachments it isn't told about alone (no full-set replace)", async () => {
+    mockViewLinks.mockResolvedValue([
+      { curatedViewId: "v1" },
+      { curatedViewId: "v2" },
+    ]);
+    mockViewOwners.mockImplementation(ownersOf("v1", "v2", "v3"));
+    const diff = await StationAttachmentService.applyChanges(
+      TX,
+      setReading("v1", "v2", "v3"),
+      args(["v3"], [])
+    );
+    expect(diff).toEqual({ added: ["v3"], removed: [] });
+    expect(mockViewSoftDelete).not.toHaveBeenCalled();
+  });
+
+  it("skips removing an attachment the caller can't read", async () => {
     mockViewLinks.mockResolvedValue([
       { curatedViewId: "v1" },
       { curatedViewId: "v2" },
     ]);
     mockViewOwners.mockImplementation(ownersOf("v1", "v2"));
-    const diff = await StationAttachmentService.applyDiff(
+    const diff = await StationAttachmentService.applyChanges(
       TX,
       setReading("v2"),
-      args([])
+      args([], ["v1", "v2"])
     );
     expect(diff).toEqual({ added: [], removed: ["v2"] });
   });
 
-  it("allows re-sending an existing attachment the caller can't read", async () => {
+  it("removes a dangling attachment (its object is gone)", async () => {
+    mockViewLinks.mockResolvedValue([{ curatedViewId: "gone" }]);
+    mockViewOwners.mockImplementation(ownersOf());
+    const diff = await StationAttachmentService.applyChanges(
+      TX,
+      setReading(),
+      args([], ["gone"])
+    );
+    expect(diff.removed).toEqual(["gone"]);
+  });
+
+  it("treats adding an already-attached id (even unreadable) and removing an unattached one as no-ops", async () => {
     mockViewLinks.mockResolvedValue([{ curatedViewId: "v1" }]);
-    mockViewOwners.mockImplementation(ownersOf("v1"));
+    mockViewOwners.mockImplementation(ownersOf("v1", "v9"));
     await expect(
-      StationAttachmentService.applyDiff(TX, setReading(), args(["v1"]))
+      StationAttachmentService.applyChanges(
+        TX,
+        setReading("v9"),
+        args(["v1"], ["v9"])
+      )
     ).resolves.toEqual({ added: [], removed: [] });
   });
 
   it("refuses to add an unreadable id, before writing anything", async () => {
     mockViewOwners.mockImplementation(ownersOf("v9"));
     await expect(
-      StationAttachmentService.applyDiff(TX, setReading(), args(["v9"]))
+      StationAttachmentService.applyChanges(TX, setReading(), args(["v9"], []))
     ).rejects.toMatchObject({ code: ApiCode.STATION_ATTACHMENT_NOT_READABLE });
     expect(mockViewInsert).not.toHaveBeenCalled();
     expect(mockViewSoftDelete).not.toHaveBeenCalled();
   });
 
-  it("de-dupes the requested ids", async () => {
+  it("de-dupes the ids", async () => {
     mockViewOwners.mockImplementation(ownersOf("v1"));
-    const diff = await StationAttachmentService.applyDiff(
+    const diff = await StationAttachmentService.applyChanges(
       TX,
       setReading("v1"),
-      args(["v1", "v1"])
+      args(["v1", "v1"], [])
     );
     expect(diff.added).toEqual(["v1"]);
     expect(mockViewInsert.mock.calls[0]![0]).toHaveLength(1);
@@ -235,10 +272,10 @@ describe("StationAttachmentService.applyDiff", () => {
   it("reports only the rows actually inserted (a concurrent add wins the conflict)", async () => {
     mockViewOwners.mockImplementation(ownersOf("v1"));
     mockViewInsert.mockResolvedValue([]);
-    const diff = await StationAttachmentService.applyDiff(
+    const diff = await StationAttachmentService.applyChanges(
       TX,
       setReading("v1"),
-      args(["v1"])
+      args(["v1"], [])
     );
     expect(diff.added).toEqual([]);
   });
@@ -249,12 +286,12 @@ describe("StationAttachmentService.applyDiff", () => {
       { connectorInstanceId: "c2" },
     ]);
     mockInstanceOwners.mockImplementation(ownersOf("c1", "c2", "c3"));
-    const diff = await StationAttachmentService.applyDiff(
+    const diff = await StationAttachmentService.applyChanges(
       TX,
       setReading("c2", "c3"),
-      args(["c3"], "connector_instance" as never)
+      args(["c3"], ["c1", "c2"], "connector_instance")
     );
-    // c1 is unreadable, so it's preserved; c2 is dropped; c3 is added.
+    // c1 is unreadable, so its removal is skipped; c2 goes; c3 is added.
     expect(diff).toEqual({ added: ["c3"], removed: ["c2"] });
     expect(mockInstanceLinks).toHaveBeenCalledWith("st-1", {}, TX);
     expect(mockInstanceSoftDelete).toHaveBeenCalledWith(

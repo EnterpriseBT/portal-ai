@@ -138,7 +138,7 @@ describe("EditStationDialog — views and readable seeding (#674)", () => {
     expect(screen.queryByText("ci-hidden")).not.toBeInTheDocument();
   });
 
-  it("sends the readable view set when it changes, leaving connectors out", async () => {
+  it("sends only what was added, leaving connectors out", async () => {
     const onSubmit = jest.fn();
     render(
       <EditStationDialog {...base} station={station} onSubmit={onSubmit} />
@@ -148,7 +148,37 @@ describe("EditStationDialog — views and readable seeding (#674)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith({
-        curatedViewIds: ["cv-9", "cv-1"],
+        curatedViewChanges: { add: ["cv-1"] },
+      })
+    );
+  });
+
+  it("sends only what was removed, never a full set (a stale dialog can't re-attach)", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog {...base} station={station} onSubmit={onSubmit} />
+    );
+    const chip = await screen.findByRole("button", { name: "Seeded view" });
+    fireEvent.click(chip.querySelector("svg")!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({
+        curatedViewChanges: { remove: ["cv-9"] },
+      })
+    );
+  });
+
+  it("sends connector changes the same way", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog {...base} station={station} onSubmit={onSubmit} />
+    );
+    fireEvent.mouseDown(screen.getByLabelText("Connector Instances"));
+    fireEvent.click(await screen.findByText("Billing"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({
+        connectorInstanceChanges: { add: ["ci-2"] },
       })
     );
   });

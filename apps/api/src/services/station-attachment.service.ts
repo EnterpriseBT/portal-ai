@@ -4,10 +4,10 @@
  *
  * Attaching is an edit to the **station** (the route checks `resource.write`
  * on it); on top of that, every newly attached object must be one the caller
- * can `read`. The request carries the full set of each kind, but the caller
- * only decides about what they can see: existing attachments they can't read
- * are preserved whatever the request says. Writes are a diff (insert the
- * added, soft-delete the removed), never a replace.
+ * can `read`. An update names what to add and what to remove for each kind,
+ * never a full set, and the caller only decides about what they can see: an
+ * attachment they can't read is never removed. Writes insert the added and
+ * soft-delete the removed, never replace.
  */
 
 import { ApiError } from "./http.service.js";
@@ -119,17 +119,23 @@ export class StationAttachmentService {
   }
 
   /**
-   * Bring one attachment kind of a station to the requested set, inside `tx`.
+   * Change one attachment kind of a station by difference, inside `tx`.
    *
-   * Final set = (existing ids the caller can't read) ∪ (requested ids). An
-   * existing attachment whose object no longer exists is not preserved: no
-   * one can read it, so there's nothing to protect. Only the newly added ids
-   * are checked with {@link assertAttachable}, so re-sending an attachment
-   * the caller can't read is harmless. Adds use ON CONFLICT DO NOTHING (two
-   * concurrent adds leave one live row), removals are soft deletes. Returns
-   * the ids actually inserted and soft-deleted.
+   * - `add`: ids not already attached are checked with {@link assertAttachable}
+   *   (missing, cross-org or unreadable rejects the whole request) and inserted
+   *   with ON CONFLICT DO NOTHING, so two concurrent adds leave one live row.
+   *   An already-attached id is a no-op, even one the caller can't read.
+   * - `remove`: attached ids the caller can read are soft-deleted. An
+   *   attachment the caller can't read is skipped: an editor never detaches
+   *   what they can't see. One whose object is gone is removable, since no one
+   *   can read it. An unattached id is a no-op.
+   *
+   * Nothing outside `add` and `remove` is touched. That's the point: a full set
+   * read when an edit dialog opened goes stale, and saving it later silently
+   * re-attached what another editor had just removed. Returns the ids
+   * actually inserted and soft-deleted.
    */
-  static async applyDiff(
+  static async applyChanges(
     tx: DbClient,
     set: PermissionSet,
     args: {
@@ -137,14 +143,14 @@ export class StationAttachmentService {
       organizationId: string;
       userId: string;
       kind: StationAttachmentKind;
-      requested: string[];
+      add: string[];
+      remove: string[];
     }
   ): Promise<StationAttachmentDiff> {
     const { stationId, organizationId, userId, kind } = args;
-    const requested = unique(args.requested);
     const repo = DbService.repository;
 
-    const existing = unique(
+    const existing = new Set(
       kind === "curated_view"
         ? (await repo.stationViews.findByStationId(stationId, tx)).map(
             (r) => r.curatedViewId
@@ -154,25 +160,23 @@ export class StationAttachmentService {
           )
     );
 
-    const existingOwners =
-      existing.length === 0
+    const toAdd = unique(args.add).filter((id) => !existing.has(id));
+    const removeCandidates = unique(args.remove).filter((id) =>
+      existing.has(id)
+    );
+    const owners = new Map(
+      (removeCandidates.length === 0
         ? []
-        : await findOwners(kind, existing, organizationId, tx);
-    const hidden = existingOwners
-      .filter(
-        (o) =>
-          !set.can("resource.read", {
-            type: kind,
-            id: o.id,
-            createdBy: o.createdBy,
-          })
-      )
-      .map((o) => o.id);
-
-    const existingSet = new Set(existing);
-    const finalSet = new Set([...hidden, ...requested]);
-    const toAdd = requested.filter((id) => !existingSet.has(id));
-    const toRemove = existing.filter((id) => !finalSet.has(id));
+        : await findOwners(kind, removeCandidates, organizationId, tx)
+      ).map((o) => [o.id, o])
+    );
+    const toRemove = removeCandidates.filter((id) => {
+      const o = owners.get(id);
+      return (
+        !o ||
+        set.can("resource.read", { type: kind, id, createdBy: o.createdBy })
+      );
+    });
 
     const ids: StationAttachmentIds =
       kind === "curated_view"
@@ -208,12 +212,14 @@ export class StationAttachmentService {
         tx
       );
       added = rows.map((r) => r.curatedViewId);
-      await repo.stationViews.softDeleteByStationAndViews(
-        stationId,
-        toRemove,
-        userId,
-        tx
-      );
+      if (toRemove.length > 0) {
+        await repo.stationViews.softDeleteByStationAndViews(
+          stationId,
+          toRemove,
+          userId,
+          tx
+        );
+      }
     } else {
       const rows = await repo.stationInstances.insertManyIgnoreConflicts(
         toAdd.map((connectorInstanceId) => ({
@@ -225,44 +231,50 @@ export class StationAttachmentService {
         tx
       );
       added = rows.map((r) => r.connectorInstanceId);
-      await repo.stationInstances.softDeleteByStationAndInstances(
-        stationId,
-        toRemove,
-        userId,
-        tx
-      );
+      if (toRemove.length > 0) {
+        await repo.stationInstances.softDeleteByStationAndInstances(
+          stationId,
+          toRemove,
+          userId,
+          tx
+        );
+      }
     }
 
     return { added, removed: toRemove };
   }
 
   /**
-   * Apply {@link applyDiff} to each kind present in `ids` (an absent field
-   * leaves that kind untouched), inside `tx`. Returns the combined change for
-   * the audit event.
+   * Apply {@link applyChanges} to each kind present in `changes` (an absent
+   * kind is untouched), inside `tx`. Create passes its id lists as `add`.
+   * Returns the combined change for the audit event.
    */
   static async applyAll(
     tx: DbClient,
     set: PermissionSet,
     args: { stationId: string; organizationId: string; userId: string },
-    ids: StationAttachmentIds
+    changes: {
+      curatedViews?: { add?: string[]; remove?: string[] };
+      connectorInstances?: { add?: string[]; remove?: string[] };
+    }
   ): Promise<StationAttachmentChange> {
-    const views =
-      ids.curatedViewIds === undefined
-        ? { added: [], removed: [] }
-        : await StationAttachmentService.applyDiff(tx, set, {
-            ...args,
-            kind: "curated_view",
-            requested: ids.curatedViewIds,
-          });
-    const instances =
-      ids.connectorInstanceIds === undefined
-        ? { added: [], removed: [] }
-        : await StationAttachmentService.applyDiff(tx, set, {
-            ...args,
-            kind: "connector_instance",
-            requested: ids.connectorInstanceIds,
-          });
+    const none = { added: [] as string[], removed: [] as string[] };
+    const views = changes.curatedViews
+      ? await StationAttachmentService.applyChanges(tx, set, {
+          ...args,
+          kind: "curated_view",
+          add: changes.curatedViews.add ?? [],
+          remove: changes.curatedViews.remove ?? [],
+        })
+      : none;
+    const instances = changes.connectorInstances
+      ? await StationAttachmentService.applyChanges(tx, set, {
+          ...args,
+          kind: "connector_instance",
+          add: changes.connectorInstances.add ?? [],
+          remove: changes.connectorInstances.remove ?? [],
+        })
+      : none;
     return {
       added: {
         curatedViewIds: views.added,
