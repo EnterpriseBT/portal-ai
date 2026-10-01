@@ -387,6 +387,77 @@ describe("Portal map tile route (#316)", () => {
     expect(res.body).toBeUndefined();
   });
 
+  it("#667: a commented pipeline executes its validated (comment-free) text and renders the same tile", async () => {
+    const commentedPinId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id: commentedPinId,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Commented map",
+        type: "geo",
+        content: {
+          pipeline: {
+            sql: 'SELECT "c_geom" AS geom /* inline note */ FROM parcels -- trailing note',
+            stationId,
+            organizationId: orgId,
+          },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    const tile = (id: string) =>
+      PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: id },
+        z: 12,
+        x: 2048,
+        y: 2047,
+        organizationId: orgId,
+        userId,
+      });
+    const plain = await tile(pinId);
+
+    const { db: appDb } = await import("../../../db/client.js");
+    const executed: string[] = [];
+    const original = appDb.transaction.bind(appDb);
+    const spy = jest.spyOn(appDb, "transaction").mockImplementation(((
+      fn: (tx: unknown) => unknown,
+      cfg?: never
+    ) =>
+      original(async (tx) => {
+        const exec = tx.execute.bind(tx);
+        (tx as { execute: unknown }).execute = (q: unknown) => {
+          executed.push(JSON.stringify(q));
+          return exec(q as never);
+        };
+        return fn(tx);
+      }, cfg)) as never);
+    let commented;
+    try {
+      commented = await tile(commentedPinId);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(commented.status).toBe(200);
+    expect(Buffer.compare(commented.body as Buffer, plain.body as Buffer)).toBe(
+      0
+    );
+    const tileSql = executed.find((q) => q.includes("ST_AsMVT"));
+    expect(tileSql).toBeDefined();
+    expect(tileSql).toContain("FROM parcels");
+    expect(tileSql).not.toMatch(/inline note|trailing note/);
+  });
+
   it("#660: the tile transaction always rolls back (its temp views never persist on the pooled connection)", async () => {
     const { db: appDb } = await import("../../../db/client.js");
     const outcomes: string[] = [];

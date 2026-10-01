@@ -45,6 +45,7 @@ import {
 import { PortalSqlReaderRoleService } from "./portal-sql-reader-role.service.js";
 import {
   assertRelationsAllowed,
+  fenceSql,
   validatePortalSql,
 } from "./portal-sql-validation.util.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
@@ -573,7 +574,7 @@ export class PortalMapTileService {
     return (
       `WITH lim AS (` +
       `SELECT ${propSelect}ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
-      `FROM (${pipelineSql}) src ` +
+      `FROM (${fenceSql(pipelineSql)}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
       `${orderBy}LIMIT ${cap}` +
       `) SELECT ` +
@@ -613,7 +614,7 @@ export class PortalMapTileService {
       `WITH cells AS (` +
       `SELECT ST_SnapToGrid(ST_Centroid(ST_Transform(src.geom, 3857)), ${cellSize}) AS cell, ` +
       `${catAgg}count(*)::int AS _count ` +
-      `FROM (${pipelineSql}) src ` +
+      `FROM (${fenceSql(pipelineSql)}) src ` +
       `WHERE src.geom && ST_Transform(ST_Expand(${envelope}, ${cellSize}), 4326) ` +
       `GROUP BY 1 ` +
       `LIMIT ${cap}` +
@@ -656,7 +657,7 @@ export class PortalMapTileService {
       `WITH ranked AS (` +
       `SELECT src.geom AS g, ` +
       `row_number() OVER (ORDER BY ST_Length(ST_Transform(src.geom, 3857)) DESC) AS rn ` +
-      `FROM (${pipelineSql}) src ` +
+      `FROM (${fenceSql(pipelineSql)}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326)` +
       `), ` +
       // The longest `cap` lines, drawn raw (the skeleton).
@@ -728,14 +729,14 @@ export class PortalMapTileService {
     // #660: validate the pinned pipeline before choosing ANY serve path —
     // precomputed dissolve rows may have been computed from it before the gate
     // existed, so a rejected pipeline must serve nothing even on a dissolve hit.
-    if (
-      !(await this.pipelineAllowed(
-        pipeline.sql,
-        pipeline.stationId,
-        organizationId,
-        userId
-      ))
-    ) {
+    // #667: every tile SQL below embeds this validated text, never the raw pin.
+    const pipelineSql = await this.validatedPipeline(
+      pipeline.sql,
+      pipeline.stationId,
+      organizationId,
+      userId
+    );
+    if (pipelineSql === null) {
       return {
         mvt: null,
         featureCount: 0,
@@ -827,7 +828,7 @@ export class PortalMapTileService {
     let tileCount: number | null = null;
     if (needsProbe) {
       const probeSql = this.buildRawTileSql(
-        pipeline.sql,
+        pipelineSql,
         envelope,
         propertyColumns,
         tolerance,
@@ -835,7 +836,7 @@ export class PortalMapTileService {
         aggregation.rankByLength
       );
       probeResult = await this.runSessionViewTile(
-        pipeline.sql,
+        pipelineSql,
         probeSql,
         pipeline.stationId,
         organizationId,
@@ -861,9 +862,9 @@ export class PortalMapTileService {
       // The probe (when run) already IS the raw serve for a tile that fits.
       if (probeResult) return { ...probeResult, truncated: false };
       return this.runSessionViewTile(
-        pipeline.sql,
+        pipelineSql,
         this.buildRawTileSql(
-          pipeline.sql,
+          pipelineSql,
           envelope,
           propertyColumns,
           tolerance,
@@ -883,16 +884,16 @@ export class PortalMapTileService {
     // density bins (short lines represented, never dropped).
     const aggTileSql =
       mode === "hybrid-lines"
-        ? this.buildLineHybridTileSql(pipeline.sql, z, envelope, tolerance, cap)
+        ? this.buildLineHybridTileSql(pipelineSql, z, envelope, tolerance, cap)
         : this.buildAggregateTileSql(
-            pipeline.sql,
+            pipelineSql,
             z,
             envelope,
             aggregation,
             cap
           );
     return this.runSessionViewTile(
-      pipeline.sql,
+      pipelineSql,
       aggTileSql,
       pipeline.stationId,
       organizationId,
@@ -910,21 +911,22 @@ export class PortalMapTileService {
    * serves nothing at any zoom. Memoized view resolution makes the repeat
    * inside `runSessionViewTile` free.
    */
-  private static async pipelineAllowed(
+  private static async validatedPipeline(
     pipelineSql: string,
     stationId: string,
     organizationId: string,
     userId: string
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     const build = await PortalSqlService.resolveViewsForSession(
       stationId,
       organizationId,
       userId
     );
     try {
-      const { relations } = validatePortalSql(pipelineSql);
+      const { cleaned, relations } = validatePortalSql(pipelineSql);
       assertRelationsAllowed(relations, build);
-      return true;
+      // #667: callers execute exactly this validated text, never the raw pin.
+      return cleaned;
     } catch (err) {
       if (
         err instanceof ApiError &&
@@ -934,7 +936,7 @@ export class PortalMapTileService {
           { event: "tile.pipeline-rejected", stationId, reason: err.message },
           "Pinned map pipeline rejected by the SQL gate; serving an empty tile"
         );
-        return false;
+        return null;
       }
       throw err;
     }
@@ -972,12 +974,12 @@ export class PortalMapTileService {
     );
     // #660: the pipeline may reference only this caller's session views.
     if (
-      !(await this.pipelineAllowed(
+      (await this.validatedPipeline(
         pipelineSql,
         stationId,
         organizationId,
         userId
-      ))
+      )) === null
     ) {
       return {
         mvt: null,

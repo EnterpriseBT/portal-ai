@@ -7,6 +7,7 @@ import {
   categoryColor,
 } from "../../tools/visualize-map.tool.js";
 import type { VisualizeMapDeps } from "../../tools/visualize-map.tool.js";
+import { validatePortalSql } from "../../services/portal-sql-validation.util.js";
 
 // visualize_map composes only resolveSqlDelivery (#164) — no codegen. It is
 // injected via build()'s deps seam so the test drives the inline/handle
@@ -101,7 +102,8 @@ describe("VisualizeMapTool.execute (#314)", () => {
     // past the inline threshold) has `src.geom` (#520). Inline display rows
     // above come from the original query, so they're unaffected.
     expect(out.pipeline).toEqual({
-      sql: 'SELECT _q.*, ST_SetSRID(ST_MakePoint(_q."lng", _q."lat"), 4326) AS geom FROM (SELECT lat, lng, prop_class FROM parcels) _q',
+      // #667: the agent SQL sits on its own lines inside the wrapper.
+      sql: 'SELECT _q.*, ST_SetSRID(ST_MakePoint(_q."lng", _q."lat"), 4326) AS geom FROM (\nSELECT lat, lng, prop_class FROM parcels\n) _q',
       stationId: "station-1",
       organizationId: "org-1",
     });
@@ -366,5 +368,103 @@ describe("VisualizeMapTool.execute (#314)", () => {
 
     expect(out.error).toMatchObject({ code: "MAP_SPEC_INVALID" });
     expect(resolveSqlDelivery).not.toHaveBeenCalled();
+  });
+});
+
+describe("visualize_map (#667 — commented agent SQL in every wrapper)", () => {
+  const expectAllValid = (sqls: string[]) => {
+    expect(sqls.length).toBeGreaterThan(0);
+    for (const q of sqls) expect(() => validatePortalSql(q)).not.toThrow();
+  };
+
+  it("handle path: the MIN/MAX ramp, the fit extent and the stored pipeline all validate", async () => {
+    const resolveSqlDelivery = jest.fn(async () => ({
+      kind: "handle" as const,
+      envelope: {
+        ...handleEnvelope,
+        schema: [
+          { name: "c_geom", type: "geometry" },
+          { name: "mkt", type: "numeric" },
+        ],
+      },
+    }));
+    const sqlQuery = jest.fn(async ({ sql }: { sql: string }) => {
+      if (/\bMIN\(/i.test(sql)) return { rows: [{ lo: 0, hi: 500 }] };
+      if (/ST_Extent/i.test(sql))
+        return { rows: [{ xmin: 0, ymin: 0, xmax: 1, ymax: 1 }] };
+      return { rows: [] };
+    });
+    const exec = buildTool({
+      resolveSqlDelivery: resolveSqlDelivery as never,
+      sqlQuery: sqlQuery as never,
+    });
+    const out = await exec({
+      sql: 'SELECT "c_geom", "mkt" FROM "parcels" -- note',
+      spec: {
+        initialView: "fit",
+        layers: [
+          {
+            kind: "polygons",
+            source: { geometryColumn: "c_geom" },
+            style: { colorBy: { column: "mkt", scale: "interpolate" } },
+          },
+        ],
+      },
+    });
+    const sent = (sqlQuery.mock.calls as Array<[{ sql: string }]>).map(
+      (c) => c[0].sql
+    );
+    expect(sent.some((q) => /\bMIN\(/i.test(q))).toBe(true);
+    expect(sent.some((q) => /ST_Extent/i.test(q))).toBe(true);
+    expectAllValid(sent);
+    // The pipeline a pin stores (and tiles later validate) survives too.
+    const pipelineSql = (out.pipeline as { sql: string }).sql;
+    expect(pipelineSql).toContain("AS geom");
+    expect(() => validatePortalSql(pipelineSql)).not.toThrow();
+  });
+
+  it("inline path: the categorical stops and the GeoJSON reproject validate", async () => {
+    const resolveSqlDelivery = jest.fn(async () => ({
+      kind: "inline" as const,
+      result: {
+        rows: [{ c_geometry: "0101000020E6100000", c_state_name: "alpha" }],
+      },
+    }));
+    const sqlQuery = jest.fn(async ({ sql }: { sql: string }) =>
+      sql.includes("GROUP BY")
+        ? { rows: [{ v: "alpha" }] }
+        : {
+            rows: [
+              {
+                _row: {
+                  c_geometry: { type: "Point", coordinates: [0, 0] },
+                  c_state_name: "alpha",
+                },
+              },
+            ],
+          }
+    );
+    const exec = buildTool({
+      resolveSqlDelivery: resolveSqlDelivery as never,
+      sqlQuery: sqlQuery as never,
+    });
+    await exec({
+      sql: 'SELECT "c_geometry", "c_state_name" FROM "smoke" -- note',
+      spec: {
+        layers: [
+          {
+            kind: "points",
+            source: { geometryColumn: "c_geometry" },
+            style: { colorBy: { column: "c_state_name" } },
+          },
+        ],
+      },
+    });
+    const sent = (sqlQuery.mock.calls as Array<[{ sql: string }]>).map(
+      (c) => c[0].sql
+    );
+    expect(sent.some((q) => q.includes("GROUP BY"))).toBe(true);
+    expect(sent.some((q) => q.includes("ST_AsGeoJSON"))).toBe(true);
+    expectAllValid(sent);
   });
 });

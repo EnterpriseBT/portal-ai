@@ -27,6 +27,7 @@ import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import {
   assertRelationsAllowed,
+  fenceSql,
   validatePortalSql,
 } from "../../services/portal-sql-validation.util.js";
 
@@ -188,7 +189,9 @@ async function runDissolve(
   // A geo polygon map is handle-backed and always carries a re-runnable
   // pipeline; without one there is nothing to dissolve from.
   if (!pipeline?.sql) return skip("non-polygon", colorByColumn);
-  const pipelineSql = pipeline.sql;
+  const rawPipelineSql = pipeline.sql;
+  // Set only once the SQL gate below has passed (#667).
+  let pipelineSql = "";
 
   // #643: dissolve the caller's own view scope, not the org-wide data. The
   // scope hash keys the rows so a viewer is only ever served coverage computed
@@ -204,8 +207,10 @@ async function runDissolve(
   // it against this caller's session views before running it. A rejection is
   // terminal (retrying can't make the SQL valid) and writes nothing.
   try {
-    const { relations } = validatePortalSql(pipelineSql);
-    assertRelationsAllowed(relations, build);
+    const validated = validatePortalSql(rawPipelineSql);
+    assertRelationsAllowed(validated.relations, build);
+    // #667: every embed below runs exactly the validated text, fenced.
+    pipelineSql = fenceSql(validated.cleaned);
   } catch (err) {
     if (err instanceof ApiError && err.code === ApiCode.PORTAL_SQL_FORBIDDEN) {
       logger.warn(

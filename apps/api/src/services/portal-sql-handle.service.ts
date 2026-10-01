@@ -40,6 +40,7 @@ import {
   applyTransformFold,
   type TransformDescriptor,
 } from "./transform-fold.js";
+import { fenceSql } from "./portal-sql-validation.util.js";
 
 const logger = createLogger({ module: "portal-sql-handle" });
 
@@ -560,7 +561,7 @@ export class PortalSqlHandleService {
     if (meta.sql === null) return null;
 
     const whereClause = opts.where ? ` WHERE ${opts.where}` : "";
-    const wrapped = `SELECT ${projection} FROM (${meta.sql}) "_src"${whereClause}`;
+    const wrapped = `SELECT ${projection} FROM (${fenceSql(meta.sql)}) "_src"${whereClause}`;
     const result = await PortalSqlService.runSqlQuery({
       sql: wrapped,
       stationId: meta._stationId,
@@ -670,7 +671,7 @@ export class PortalSqlHandleService {
           `(${sqlLiteral(last.o)}, ${sqlLiteral(last.i)})`
         : "";
       const wrapped =
-        `SELECT * FROM (${meta.sql}) "_cur" ${where} ` +
+        `SELECT * FROM (${fenceSql(meta.sql)}) "_cur" ${where} ` +
         `ORDER BY ${quoteIdent(orderBy)} ASC, ${quoteIdent(idCol)} ASC ` +
         `LIMIT ${BATCH_SIZE}`;
       const result = await PortalSqlService.runSqlQuery({

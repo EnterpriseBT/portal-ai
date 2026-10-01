@@ -218,3 +218,17 @@ describe("parsePortalSql — set-operation branches (#660)", () => {
     ).toEqual(["er__x", "v", "w"]);
   });
 });
+
+describe("parsePortalSqlExpression — commented fragments (#667)", () => {
+  it("a projection with a trailing comment still parses against the source row", () => {
+    expect(
+      parsePortalSqlExpression("c_a * 2 AS x -- note", "target").relations
+    ).toEqual(new Set(["__source"]));
+  });
+
+  it("a WHERE fragment with a trailing comment still parses", () => {
+    expect(
+      parsePortalSqlExpression("c_a > 1 -- note", "where").relations
+    ).toEqual(new Set(["__source"]));
+  });
+});

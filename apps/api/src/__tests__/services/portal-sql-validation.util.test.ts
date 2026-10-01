@@ -8,7 +8,10 @@
 
 import { describe, it, expect } from "@jest/globals";
 
-import { validatePortalSql } from "../../services/portal-sql-validation.util.js";
+import {
+  fenceSql,
+  validatePortalSql,
+} from "../../services/portal-sql-validation.util.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
 function expectForbidden(sql: string, fragment: string): void {
@@ -313,5 +316,18 @@ describe("validatePortalSql — #660 explicit PostGIS allowlist", () => {
         validatePortalSql(`SELECT ${fn}(geom) FROM parcels`)
       ).not.toThrow();
     }
+  });
+});
+
+describe("fenceSql (#667)", () => {
+  it("puts validated SQL on its own lines, so a wrapper's text can't share a line with it", () => {
+    expect(fenceSql("SELECT 1")).toBe("\nSELECT 1\n");
+  });
+
+  it("validatePortalSql returns the text the callers must execute: comment-free", () => {
+    const { cleaned } = validatePortalSql(
+      "SELECT 1 AS one /* inline */ -- trailing"
+    );
+    expect(cleaned).not.toMatch(/inline|trailing/);
   });
 });

@@ -13,8 +13,9 @@
  *
  * The deny-list is intentionally aggressive — every DML / DDL verb,
  * every server-side side-effect verb, every `pg_*` / `information_schema`
- * reference, every set-/get-config-style verb. Callers run the cleaned
- * SQL inside a `READ ONLY` transaction with `statement_timeout` set;
+ * reference, every set-/get-config-style verb. Callers run exactly the
+ * returned `cleaned` SQL (spliced through `fenceSql`, #667), never the raw
+ * input, inside a `READ ONLY` transaction with `statement_timeout` set;
  * the validator is the first wall, the transaction-level guard is the
  * belt-and-suspenders.
  *
@@ -30,7 +31,10 @@ import {
   type ParsedPortalSql,
 } from "./portal-sql-parse.util.js";
 
-export { PORTAL_SQL_ALLOWED_FUNCTIONS } from "./portal-sql-parse.util.js";
+export {
+  PORTAL_SQL_ALLOWED_FUNCTIONS,
+  fenceSql,
+} from "./portal-sql-parse.util.js";
 
 export interface PortalSqlValidationResult {
   /** Comment-free, multi-statement-rejected, deny-list-passed SQL. */

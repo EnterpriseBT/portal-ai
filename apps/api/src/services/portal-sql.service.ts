@@ -54,6 +54,7 @@ import { STATEMENT_TIMEOUT_MS } from "@portalai/core/constants";
 
 import {
   assertRelationsAllowed,
+  fenceSql,
   validatePortalSql,
 } from "./portal-sql-validation.util.js";
 import { applyImplicitLimit } from "./portal-sql-limit.util.js";
@@ -955,7 +956,9 @@ export class PortalSqlServiceImpl {
         if (params.computeExactTotal) {
           try {
             const counted = (await tx.execute(
-              sql.raw(`SELECT count(*)::bigint AS n FROM (${cleaned}) _c`)
+              sql.raw(
+                `SELECT count(*)::bigint AS n FROM (${fenceSql(cleaned)}) _c`
+              )
             )) as unknown as Array<{ n: string | number }>;
             const n = Number(counted[0]?.n);
             exactTotal = Number.isFinite(n) ? n : null;
