@@ -51,8 +51,19 @@ const failingKeys = new Set(["p-3", "p-7"]);
 jest.unstable_mockModule("../../../services/bulk-transform.service.js", () => ({
   BulkTransformService: {
     countSourceRows: async () => sourceRows.length,
-    fetchSourceBatch: async (opts: { offset: number; batchSize: number }) =>
-      sourceRows.slice(opts.offset, opts.offset + opts.batchSize),
+    // #671: keyset paging — the page after the cursor, in entity_record_id
+    // order (the fixture ids sort that way).
+    fetchSourceBatch: async (opts: {
+      afterEntityRecordId?: string;
+      batchSize: number;
+    }) =>
+      sourceRows
+        .filter(
+          (r) =>
+            opts.afterEntityRecordId === undefined ||
+            r.entity_record_id > opts.afterEntityRecordId
+        )
+        .slice(0, opts.batchSize),
     // Processor expects `{ rowsUpserted, droppedKeys }` since the
     // upsert-result refactor that added targetColumn-aware drops.
     upsertSuccesses: async (opts: {

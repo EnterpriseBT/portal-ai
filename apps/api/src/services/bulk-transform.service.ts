@@ -19,12 +19,14 @@ import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "./wide-table-statement.cache.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
-  assertAndOfTwo,
+  assertConjunction,
   assertFunctionsAllowed,
   assertScalarOver,
   fenceSql,
+  isColumnComparison,
   isColumnEquality,
   parsePortalSql,
+  assertFramingAliasesOnce,
 } from "./portal-sql-parse.util.js";
 
 /**
@@ -42,6 +44,77 @@ function assertTransformSql(selectSql: string, sourceTableName: string): void {
   assertFunctionsAllowed(parsed.functions);
 }
 
+/**
+ * #671: the source rows a transform job reads, as one WHERE shared by every
+ * read and count:
+ *
+ *   "organization_id" = <org> [AND (<fenced fragment>)] [AND "entity_record_id" > <cursor>]
+ *
+ * The fragment is the job's `sourceFilter`; the cursor is the keyset position
+ * (server-built from the previous page's last row, never agent input). The
+ * exact statement is checked by {@link assertTransformSql}, and its WHERE by
+ * {@link assertConjunction}: exactly the org filter, the fragment as ONE
+ * conjunct, then the cursor. So a fragment can only narrow, and can't stand in
+ * for or escape around the cursor. The SQL-kind batch read, the tool-kind read
+ * and both counts all apply the filter the same way, behind the same gate.
+ */
+interface SourceScope {
+  sourceConnectorEntityId: string;
+  organizationId: string;
+  whereSqlFragment?: string;
+  /** Keyset position: only rows with a greater `entity_record_id`. */
+  afterEntityRecordId?: string;
+}
+
+const literal = (value: string): string => `'${value.replace(/'/g, "''")}'`;
+
+function sourceWhere(scope: SourceScope): string {
+  let where = `WHERE "organization_id" = ${literal(scope.organizationId)}`;
+  if (scope.whereSqlFragment) {
+    where += ` AND (${fenceSql(scope.whereSqlFragment)})`;
+  }
+  if (scope.afterEntityRecordId !== undefined) {
+    where += ` AND "entity_record_id" > ${literal(scope.afterEntityRecordId)}`;
+  }
+  return where;
+}
+
+function assertSourceSql(selectSql: string, scope: SourceScope): void {
+  assertTransformSql(
+    selectSql,
+    wideTableRepo.tableName(scope.sourceConnectorEntityId)
+  );
+  const conjuncts = [
+    isColumnEquality("organization_id"),
+    ...(scope.whereSqlFragment ? [() => true] : []),
+    ...(scope.afterEntityRecordId !== undefined
+      ? [isColumnComparison("entity_record_id", ">")]
+      : []),
+  ];
+  if (conjuncts.length > 1) {
+    assertConjunction(parsePortalSql(selectSql), conjuncts);
+  }
+}
+
+/**
+ * One keyset page of the (filtered) source, checked standalone, in
+ * `entity_record_id` order. Keyset, not OFFSET (#671 code review): a job that
+ * writes back into its own source can make processed rows stop matching the
+ * filter, and an OFFSET over the shrinking set skipped rows. `runBatch`
+ * splices this exact text into its `batch` CTE: a fragment that could escape
+ * the CTE's parentheses would already have failed this standalone parse.
+ */
+function sourcePageSql(scope: SourceScope & { batchSize: number }): string {
+  const sourceTable = quoteIdent(
+    wideTableRepo.tableName(scope.sourceConnectorEntityId)
+  );
+  const pageSql =
+    `SELECT * FROM ${sourceTable} ${sourceWhere(scope)} ` +
+    `ORDER BY "entity_record_id" LIMIT ${scope.batchSize}`;
+  assertSourceSql(pageSql, scope);
+  return pageSql;
+}
+
 const logger = createLogger({ module: "bulk-transform-service" });
 
 export interface BulkTransformBatchOptions {
@@ -55,10 +128,13 @@ export interface BulkTransformBatchOptions {
    *  the target's `source_id` column. */
   keyField: string;
   batchSize: number;
-  offset: number;
+  /** #671: keyset position; omit for the first page. */
+  afterEntityRecordId?: string;
   jobId: string;
   /** User id stamped into the created entity_records audit columns. */
   userId: string;
+  /** #671: the job's sourceFilter fragment; only matching rows are read. */
+  whereSqlFragment?: string;
 }
 
 function quoteIdent(name: string): string {
@@ -70,7 +146,8 @@ export interface FetchSourceBatchOptions {
   organizationId: string;
   keyField: string;
   batchSize: number;
-  offset: number;
+  /** #671: keyset position; omit for the first page. */
+  afterEntityRecordId?: string;
   /** Optional source-side WHERE fragment (#85 Phase 4 retry-failed-only). */
   whereSqlFragment?: string;
 }
@@ -149,23 +226,25 @@ export class BulkTransformService {
   }
 
   /**
-   * Count rows visible in the source wide table for the given org.
-   * Used by the processor to derive `totalRecords` for the per-batch
-   * SSE event.
+   * Count the source rows a job will process: the org's rows in the source
+   * wide table, narrowed by the job's `sourceFilter` fragment when it has one
+   * (#671). Drives the processor's `totalRecords` and the tool's
+   * `expectedRecords` (its message, ETA and max-records guard).
    */
   static async countSourceRows(
     sourceConnectorEntityId: string,
-    organizationId: string
+    organizationId: string,
+    whereSqlFragment?: string
   ): Promise<number> {
     const tableName = quoteIdent(
       wideTableRepo.tableName(sourceConnectorEntityId)
     );
-    const result = await db.execute(
-      sql.raw(
-        `SELECT COUNT(*)::bigint AS count FROM ${tableName} ` +
-          `WHERE "organization_id" = '${organizationId.replace(/'/g, "''")}'`
-      )
-    );
+    const scope = { sourceConnectorEntityId, organizationId, whereSqlFragment };
+    const countSql =
+      `SELECT COUNT(*)::bigint AS count FROM ${tableName} ` +
+      sourceWhere(scope);
+    assertSourceSql(countSql, scope);
+    const result = await db.execute(sql.raw(countSql));
     const rows = result as unknown as Array<{ count: string | number }>;
     return Number(rows[0]?.count ?? 0);
   }
@@ -194,15 +273,13 @@ export class BulkTransformService {
    * (NEO-style sources can repeat one asteroid across close-approach
    * rows; dedupe avoids PG 21000 in the downstream UPSERT).
    */
-  static async runBatch(
-    opts: BulkTransformBatchOptions
-  ): Promise<{ rowsCommitted: number; rows: Array<Record<string, unknown>> }> {
-    const sourceTable = quoteIdent(
-      wideTableRepo.tableName(opts.sourceConnectorEntityId)
-    );
-
+  static async runBatch(opts: BulkTransformBatchOptions): Promise<{
+    rowsCommitted: number;
+    rows: Array<Record<string, unknown>>;
+    /** #671: the keyset cursor for the next page (undefined when empty). */
+    lastEntityRecordId?: string;
+  }> {
     const keyCol = quoteIdent(opts.keyField);
-    const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
 
     // The agent's projection — passed through to the SELECT verbatim.
     // The pre-flight EXPLAIN already validated each segment as a legal
@@ -211,31 +288,40 @@ export class BulkTransformService {
     const projectionClause =
       projection.length > 0 ? `, ${fenceSql(projection)}` : "";
 
+    // #671: the batch is the filtered source page, checked standalone first.
+    const batchSql = sourcePageSql(opts);
     const selectSql =
-      `WITH batch AS (` +
-      `  SELECT * FROM ${sourceTable} ` +
-      `  WHERE "organization_id" = ${orgLit} ` +
-      `  ORDER BY "entity_record_id" ` +
-      `  LIMIT ${opts.batchSize} OFFSET ${opts.offset}` +
-      `), ` +
+      `WITH batch AS (${batchSql}), ` +
       `batch_deduped AS (` +
       `  SELECT DISTINCT ON (${keyCol}) * FROM batch ` +
       `  ORDER BY ${keyCol}, "entity_record_id" DESC` +
       `) ` +
       `SELECT ${keyCol}::text AS "__src_key", ` +
-      `row_to_json(batch_deduped.*) AS "__source_row"` +
+      `row_to_json(batch_deduped.*) AS "__source_row", ` +
+      // #671: the keyset cursor, as its own server column.
+      `batch_deduped."entity_record_id"::text AS "__cursor"` +
       projectionClause +
-      ` FROM batch_deduped`;
+      // #671: in keyset order, so the last row carries the next cursor. The
+      // dedupe keeps each key's greatest entity_record_id, so the batch's
+      // greatest one always survives it.
+      ` FROM batch_deduped ORDER BY "entity_record_id"`;
 
     assertTransformSql(
       selectSql,
       wideTableRepo.tableName(opts.sourceConnectorEntityId)
     );
+    // #671: each framing column exactly once, so the projection can't shadow one.
+    assertFramingAliasesOnce(parsePortalSql(selectSql));
     const result = await db.execute(sql.raw(selectSql));
     const rows = Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)
       : [];
-    return { rowsCommitted: rows.length, rows };
+    const last = rows[rows.length - 1]?.["__cursor"];
+    return {
+      rowsCommitted: rows.length,
+      rows,
+      lastEntityRecordId: typeof last === "string" ? last : undefined,
+    };
   }
 
   /**
@@ -247,31 +333,8 @@ export class BulkTransformService {
   static async fetchSourceBatch(
     opts: FetchSourceBatchOptions
   ): Promise<Array<Record<string, unknown>>> {
-    const sourceTable = quoteIdent(
-      wideTableRepo.tableName(opts.sourceConnectorEntityId)
-    );
-    const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
-    const filterClause = opts.whereSqlFragment
-      ? ` AND (${fenceSql(opts.whereSqlFragment)})`
-      : "";
-    const selectSql =
-      `SELECT * FROM ${sourceTable} ` +
-      `WHERE "organization_id" = ${orgLit}${filterClause} ` +
-      `ORDER BY "entity_record_id" ` +
-      `LIMIT ${opts.batchSize} OFFSET ${opts.offset}`;
-    assertTransformSql(
-      selectSql,
-      wideTableRepo.tableName(opts.sourceConnectorEntityId)
-    );
-    // #669: with a fragment, the WHERE must stay `org = … AND (<fragment>)`,
-    // the fragment as one narrowing condition (re-checked on the exact SQL, so
-    // a queued job that bypassed the tool's pre-flight is held too).
-    if (opts.whereSqlFragment) {
-      assertAndOfTwo(
-        parsePortalSql(selectSql),
-        isColumnEquality("organization_id")
-      );
-    }
+    // #671: the same filtered, checked source page `runBatch` uses.
+    const selectSql = sourcePageSql(opts);
     const result = await db.execute(sql.raw(selectSql));
     return Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)

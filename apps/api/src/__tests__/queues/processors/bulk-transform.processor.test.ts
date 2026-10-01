@@ -9,12 +9,15 @@ const mockCountSourceRows = jest
 type BatchResult = {
   rowsCommitted: number;
   rows: Array<Record<string, unknown>>;
+  lastEntityRecordId?: string;
 };
 const mockRunBatch = jest
-  .fn<() => Promise<BatchResult>>()
+  .fn<(opts: Record<string, unknown>) => Promise<BatchResult>>()
   .mockResolvedValue({ rowsCommitted: 0, rows: [] });
 const mockFetchSourceBatch = jest
-  .fn<() => Promise<Array<Record<string, unknown>>>>()
+  .fn<
+    (opts: Record<string, unknown>) => Promise<Array<Record<string, unknown>>>
+  >()
   .mockResolvedValue([]);
 // Slice 4 (#99) replaced the legacy upsert-result-as-number shape with
 // `{ rowsUpserted, droppedKeys }`. Default mock returns a clean batch.
@@ -144,6 +147,121 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
           .recordsProcessed
     );
     expect(counters).toEqual([1_000, 2_000, 3_000]);
+  });
+
+  it("#671: threads sourceFilter into the SQL-kind count and every batch read", async () => {
+    mockCountSourceRows.mockResolvedValue(2);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 2,
+      rows: [{ id: "r-1" }, { id: "r-2" }],
+    });
+
+    const result = await bulkTransformProcessor(
+      makeJob({ sourceFilter: { whereSqlFragment: "c_amount > 10" } })
+    );
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      "org-1",
+      "c_amount > 10"
+    );
+    expect(mockRunBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ whereSqlFragment: "c_amount > 10" })
+    );
+    expect(result.recordsProcessed).toBe(2);
+  });
+
+  it("#671: pages SQL-kind batches by keyset, handing each batch's last id to the next read", async () => {
+    mockCountSourceRows.mockResolvedValue(4);
+    mockRunBatch
+      .mockResolvedValueOnce({
+        rowsCommitted: 2,
+        rows: [{ id: "a" }, { id: "b" }],
+        lastEntityRecordId: "r-2",
+      })
+      .mockResolvedValueOnce({
+        rowsCommitted: 2,
+        rows: [{ id: "c" }, { id: "d" }],
+        lastEntityRecordId: "r-4",
+      });
+
+    await bulkTransformProcessor(makeJob({ batchSize: 2 }));
+
+    const cursors = mockRunBatch.mock.calls.map(
+      (c) => (c[0] as { afterEntityRecordId?: string }).afterEntityRecordId
+    );
+    expect(cursors).toEqual([undefined, "r-2"]);
+    expect(
+      mockRunBatch.mock.calls.every((c) => !("offset" in (c[0] as object)))
+    ).toBe(true);
+  });
+
+  it("#671: a deduped (short) SQL-kind batch doesn't end the job early; an empty page does", async () => {
+    mockCountSourceRows.mockResolvedValue(5);
+    mockRunBatch
+      // A full page of 2 raw rows deduped to 1 by key.
+      .mockResolvedValueOnce({
+        rowsCommitted: 1,
+        rows: [{ id: "a" }],
+        lastEntityRecordId: "r-2",
+      })
+      .mockResolvedValueOnce({
+        rowsCommitted: 2,
+        rows: [{ id: "b" }, { id: "c" }],
+        lastEntityRecordId: "r-4",
+      })
+      .mockResolvedValueOnce({ rowsCommitted: 0, rows: [] });
+
+    const result = await bulkTransformProcessor(makeJob({ batchSize: 2 }));
+
+    expect(mockRunBatch).toHaveBeenCalledTimes(3);
+    expect(result.recordsProcessed).toBe(3);
+  });
+
+  it("#671: strips the __cursor framing column like the other framing columns", async () => {
+    mockCountSourceRows.mockResolvedValue(1);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 1,
+      rows: [
+        {
+          __src_key: "p-1",
+          __source_row: { entity_record_id: "r-1" },
+          __cursor: "r-1",
+          acreage: 2.5,
+        },
+      ],
+      lastEntityRecordId: "r-1",
+    });
+
+    await bulkTransformProcessor(makeJob());
+
+    const payload = (
+      mockPublishCustomEvent.mock.calls[0] as unknown as [
+        string,
+        string,
+        { rows?: Array<Record<string, unknown>> },
+      ]
+    )[2];
+    expect(payload.rows).toEqual([{ acreage: 2.5 }]);
+  });
+
+  it("#671: without a sourceFilter the SQL-kind count and reads are unfiltered", async () => {
+    mockCountSourceRows.mockResolvedValue(1);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 1,
+      rows: [{ id: "r" }],
+    });
+
+    await bulkTransformProcessor(makeJob());
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      "org-1",
+      undefined
+    );
+    expect(mockRunBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ whereSqlFragment: undefined })
+    );
   });
 
   it("each emitted event has _eventType = 'batch' and is keyed to the jobId", async () => {
@@ -336,6 +454,58 @@ describe("bulkTransformProcessor — tool path multi-write (Phase 4 / #99 slice 
 
   // Case 4.1 — two writes against the SAME target → one upsertSuccesses
   // call with both columns in the per-record value object.
+  it("#671: the tool-kind count uses the same sourceFilter its batch reads use", async () => {
+    const job = makeToolJob([
+      {
+        targetConnectorEntityId: TARGET_A,
+        column: "c_km",
+        valueFrom: { kind: "tool_path", path: "km" },
+      },
+    ]);
+    (job.data as unknown as Record<string, unknown>).sourceFilter = {
+      whereSqlFragment: "c_name IS NOT NULL",
+    };
+
+    await bulkTransformProcessor(job);
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      "org-1",
+      "c_name IS NOT NULL"
+    );
+    expect(mockFetchSourceBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ whereSqlFragment: "c_name IS NOT NULL" })
+    );
+  });
+
+  it("#671: pages tool-kind reads by keyset from the last row's entity_record_id", async () => {
+    const pageOf = (from: number) =>
+      Array.from({ length: 10 }, (_, i) => ({
+        entity_record_id: `r-${String(from + i).padStart(2, "0")}`,
+        c_id: `p-${from + i}`,
+      }));
+    mockCountSourceRows.mockResolvedValue(20);
+    mockFetchSourceBatch
+      .mockReset()
+      .mockResolvedValueOnce(pageOf(0))
+      .mockResolvedValueOnce(pageOf(10));
+    const job = makeToolJob([
+      {
+        targetConnectorEntityId: TARGET_A,
+        column: "c_km",
+        valueFrom: { kind: "tool_path", path: "km" },
+      },
+    ]);
+
+    const result = await bulkTransformProcessor(job);
+
+    const cursors = mockFetchSourceBatch.mock.calls.map(
+      (c) => (c[0] as { afterEntityRecordId?: string }).afterEntityRecordId
+    );
+    expect(cursors).toEqual([undefined, "r-09"]);
+    expect(result.recordsProcessed).toBe(20);
+  });
+
   it("groups two writes against one target into a single upsertSuccesses call carrying both columns", async () => {
     const job = makeToolJob([
       {

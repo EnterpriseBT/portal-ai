@@ -8,6 +8,9 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   parsePortalSql,
+  assertConjunction,
+  isColumnEquality,
+  isColumnComparison,
   parsePortalSqlExpression,
 } from "../../services/portal-sql-parse.util.js";
 import { ApiError } from "../../services/http.service.js";
@@ -253,5 +256,54 @@ describe("parsePortalSqlExpression — the WHERE fragment stays one AND-ed condi
     expect(() => parsePortalSqlExpression(f, "where")).toThrow(
       /single condition/
     );
+  });
+});
+
+// #671: the keyset-paged source read is `org AND (<fragment>) AND <cursor>`.
+describe("assertConjunction — the WHERE is exactly these conjuncts (#671)", () => {
+  const where = (frag: string) =>
+    parsePortalSql(
+      `SELECT * FROM t WHERE "organization_id" = 'o' AND (\n${frag}\n) AND "entity_record_id" > 'r1'`
+    );
+  const check = (frag: string) =>
+    assertConjunction(where(frag), [
+      isColumnEquality("organization_id"),
+      () => true,
+      isColumnComparison("entity_record_id", ">"),
+    ]);
+
+  it.each([
+    "c_a > 1",
+    "c_a > 1 OR c_b < 2",
+    "(c_a > 1) AND (c_b < 2)",
+    "c_a > 1 AND c_b < 2",
+  ])("allows a fragment that stays one conjunct: %s", (f) => {
+    expect(() => check(f)).not.toThrow();
+  });
+
+  it.each([
+    ["an OR-escape", "c_a > 1) OR (c_b < 2"],
+    ["an AND-escape", "c_a > 1) AND (c_b < 2"],
+    [
+      "a fake cursor appended by the fragment",
+      `c_a > 1) AND ("entity_record_id" > 'zzz'`,
+    ],
+  ])("refuses %s", (_label, f) => {
+    expect(() => check(f)).toThrow(/single condition/);
+  });
+
+  it("refuses a WHERE whose last conjunct isn't the server's cursor", () => {
+    expect(() =>
+      assertConjunction(
+        parsePortalSql(
+          `SELECT * FROM t WHERE "organization_id" = 'o' AND (c_a > 1) AND c_b > 2`
+        ),
+        [
+          isColumnEquality("organization_id"),
+          () => true,
+          isColumnComparison("entity_record_id", ">"),
+        ]
+      )
+    ).toThrow(/single condition/);
   });
 });

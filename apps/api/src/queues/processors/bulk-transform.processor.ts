@@ -71,13 +71,16 @@ export const bulkTransformProcessor: TypedJobProcessor<
     "bulk_transform started"
   );
 
+  // #671: the job's source filter applies to both expression kinds. It used to
+  // reach only the tool-kind loop, so an SQL-kind job processed every row.
+  const whereSqlFragment = (
+    bullJob.data as unknown as {
+      sourceFilter?: { whereSqlFragment: string };
+    }
+  ).sourceFilter?.whereSqlFragment;
+
   let result: BulkTransformResult;
   if (expression.kind === "tool") {
-    const sourceFilter = (
-      bullJob.data as unknown as {
-        sourceFilter?: { whereSqlFragment: string };
-      }
-    ).sourceFilter;
     result = await runToolDispatchLoop(bullJob, {
       jobId,
       sourceConnectorEntityId,
@@ -87,7 +90,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
       writes: expression.writes,
       keyField,
       batchSize,
-      whereSqlFragment: sourceFilter?.whereSqlFragment,
+      whereSqlFragment,
       userId,
     });
   } else {
@@ -100,6 +103,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
       keyField,
       batchSize,
       userId,
+      whereSqlFragment,
     });
   }
 
@@ -181,7 +185,8 @@ async function runToolDispatchLoop(
 
   const totalRecords = await BulkTransformService.countSourceRows(
     opts.sourceConnectorEntityId,
-    opts.organizationId
+    opts.organizationId,
+    opts.whereSqlFragment
   );
   if (totalRecords === 0) {
     return {
@@ -196,7 +201,10 @@ async function runToolDispatchLoop(
   }
 
   let recordsProcessed = 0;
-  let offset = 0;
+  // #671: keyset cursor (the last entity_record_id read), not an OFFSET — a job
+  // writing into its own source can make processed rows stop matching the
+  // filter, and an OFFSET over the shrinking set skipped rows.
+  let afterEntityRecordId: string | undefined;
   const partialFailures: NonNullable<BulkTransformResult["partialFailures"]> =
     [];
   const droppedAcc = new DroppedAccumulator();
@@ -219,7 +227,7 @@ async function runToolDispatchLoop(
       organizationId: opts.organizationId,
       keyField: opts.keyField,
       batchSize: opts.batchSize,
-      offset,
+      afterEntityRecordId,
       whereSqlFragment: opts.whereSqlFragment,
     });
     if (sourceBatch.length === 0) break;
@@ -257,7 +265,9 @@ async function runToolDispatchLoop(
 
     recordsProcessed +=
       dispatched.successes.length + dispatched.failures.length;
-    offset += opts.batchSize;
+    afterEntityRecordId = String(
+      sourceBatch[sourceBatch.length - 1]!["entity_record_id"]
+    );
 
     for (const f of dispatched.failures) {
       partialFailures.push({
@@ -326,13 +336,15 @@ async function runSqlBatchLoop(
     keyField: string;
     batchSize: number;
     userId: string;
+    whereSqlFragment?: string;
   }
 ): Promise<BulkTransformResult> {
   const startedAt = Date.now();
 
   const totalRecords = await BulkTransformService.countSourceRows(
     opts.sourceConnectorEntityId,
-    opts.organizationId
+    opts.organizationId,
+    opts.whereSqlFragment
   );
   if (totalRecords === 0) {
     return {
@@ -347,7 +359,10 @@ async function runSqlBatchLoop(
   }
 
   let recordsProcessed = 0;
-  let offset = 0;
+  // #671: keyset cursor (the last entity_record_id read), not an OFFSET — a job
+  // writing into its own source can make processed rows stop matching the
+  // filter, and an OFFSET over the shrinking set skipped rows.
+  let afterEntityRecordId: string | undefined;
   const partialFailures: NonNullable<BulkTransformResult["partialFailures"]> =
     [];
   const droppedAcc = new DroppedAccumulator();
@@ -369,19 +384,21 @@ async function runSqlBatchLoop(
     const batchStart = Date.now();
     // runBatch (#99 slice 4) returns the projected rows; the actual
     // wide-table write happens below via the fan-out.
-    const { rowsCommitted, rows } = await BulkTransformService.runBatch({
-      sourceConnectorEntityId: opts.sourceConnectorEntityId,
-      // Carried for back-compat; runBatch ignores it under the
-      // SELECT-only contract.
-      targetConnectorEntityId: opts.writes[0].targetConnectorEntityId,
-      organizationId: opts.organizationId,
-      expression: opts.expression,
-      keyField: opts.keyField,
-      batchSize: opts.batchSize,
-      offset,
-      jobId: opts.jobId,
-      userId: opts.userId,
-    });
+    const { rowsCommitted, rows, lastEntityRecordId } =
+      await BulkTransformService.runBatch({
+        sourceConnectorEntityId: opts.sourceConnectorEntityId,
+        // Carried for back-compat; runBatch ignores it under the
+        // SELECT-only contract.
+        targetConnectorEntityId: opts.writes[0].targetConnectorEntityId,
+        organizationId: opts.organizationId,
+        expression: opts.expression,
+        keyField: opts.keyField,
+        batchSize: opts.batchSize,
+        afterEntityRecordId,
+        jobId: opts.jobId,
+        userId: opts.userId,
+        whereSqlFragment: opts.whereSqlFragment,
+      });
     const batchDurationMs = Date.now() - batchStart;
     if (rows.length === 0) break;
 
@@ -390,7 +407,7 @@ async function runSqlBatchLoop(
         const sourceRow =
           (row["__source_row"] as Record<string, unknown> | undefined) ?? {};
         // Strip the framing keys; the rest is the projection's aliases.
-        const { __src_key, __source_row, ...aliasValues } = row;
+        const { __src_key, __source_row, __cursor, ...aliasValues } = row;
         return {
           sourceKey: String(row["__src_key"]),
           toolResult: null as unknown,
@@ -406,13 +423,13 @@ async function runSqlBatchLoop(
     droppedAcc.absorb(fanOut.droppedByTarget);
 
     recordsProcessed += rowsCommitted;
-    offset += opts.batchSize;
+    afterEntityRecordId = lastEntityRecordId;
 
     for (const wf of fanOut.failures) partialFailures.push(wf);
 
     // SSE rows: just the projection aliases (drop the framing keys).
     const sseRows = rows.map((row) => {
-      const { __src_key, __source_row, ...aliasValues } = row;
+      const { __src_key, __source_row, __cursor, ...aliasValues } = row;
       return aliasValues;
     });
     const serializedRows = JSON.stringify(sseRows);
@@ -427,7 +444,9 @@ async function runSqlBatchLoop(
       ...(includeRows ? { rows: sseRows } : {}),
     });
 
-    if (rowsCommitted < opts.batchSize) break;
+    // No short-batch exit here: runBatch dedupes by key, so a full page can
+    // return fewer rows than batchSize. The next keyset read coming back empty
+    // ends the loop.
   }
 
   return finalize({

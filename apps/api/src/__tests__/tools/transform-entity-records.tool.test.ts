@@ -491,6 +491,40 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
+  it.each([
+    `'{"entity_record_id":"zzz"}'::json AS "__source_row"`,
+    "'k' AS __src_key",
+    "1 AS __CURSOR",
+  ])(
+    "#671: rejects a projection using a reserved alias (%s), before EXPLAIN and with no job",
+    async (value) => {
+      const result = (await exec({
+        ...VALID_INPUT,
+        expression: { ...VALID_INPUT.expression, value },
+      })) as { code: string; message?: string };
+      expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
+      expect(result.message).toMatch(/reserved/);
+      expect(mockExplain).not.toHaveBeenCalled();
+      expect(mockJobsCreate).not.toHaveBeenCalled();
+    }
+  );
+
+  it("#671: counts expectedRecords with the sourceFilter, so the message and guard match what will run", async () => {
+    mockCountSourceRows.mockResolvedValueOnce(2);
+    const result = (await exec({
+      ...VALID_INPUT,
+      sourceFilter: { whereSqlFragment: "c_acreage > 10" },
+    })) as { expectedRecords?: number; message?: string };
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      ORG_ID,
+      "c_acreage > 10"
+    );
+    expect(result.expectedRecords).toBe(2);
+    expect(result.message).toMatch(/Importing 2 records/);
+  });
+
   it("#669: rejects a sourceFilter.whereSqlFragment that escapes its parentheses, before EXPLAIN and with no job", async () => {
     const result = (await exec({
       ...VALID_INPUT,
