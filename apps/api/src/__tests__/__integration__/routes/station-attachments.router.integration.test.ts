@@ -477,4 +477,139 @@ describe("station attachments (#674)", () => {
     expect(all).toHaveLength(2);
     expect(all.every((r) => r.deleted !== null)).toBe(true);
   });
+
+  // ── Read ────────────────────────────────────────────────────────────
+
+  it("case 12: GET returns every attachment with canRead, labelled even when unreadable", async () => {
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewIds: [v1, v2], connectorInstanceIds: [ci1, ci2] })
+      .expect(200);
+
+    await grant(memberId, "read", "station", stationId);
+    await grant(memberId, "read", "curated_view", v2);
+    await grant(memberId, "read", "connector_instance", ci2);
+    currentSub = MEMBER_SUB;
+    const res = await request(app)
+      .get(`/api/stations/${stationId}?include=curatedView,connectorInstance`)
+      .expect(200);
+
+    const views = res.body.payload.station.views as {
+      curatedViewId: string;
+      canRead: boolean;
+      curatedView?: { label: string };
+    }[];
+    const byView = new Map(views.map((v) => [v.curatedViewId, v]));
+    expect(views).toHaveLength(2);
+    expect(byView.get(v1)).toMatchObject({
+      canRead: false,
+      curatedView: { label: "v_one" },
+    });
+    expect(byView.get(v2)).toMatchObject({ canRead: true });
+
+    const instances = res.body.payload.station.instances as {
+      connectorInstanceId: string;
+      canRead: boolean;
+      connectorInstance?: { name: string };
+    }[];
+    const byInstance = new Map(
+      instances.map((i) => [i.connectorInstanceId, i])
+    );
+    expect(instances).toHaveLength(2);
+    expect(byInstance.get(ci1)!.canRead).toBe(false);
+    expect(byInstance.get(ci1)!.connectorInstance?.name).toBeTruthy();
+    expect(byInstance.get(ci2)!.canRead).toBe(true);
+  });
+
+  it("case 12: GET without include=curatedView omits views, but instances still carry canRead", async () => {
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewIds: [v1], connectorInstanceIds: [ci1] })
+      .expect(200);
+    const res = await request(app)
+      .get(`/api/stations/${stationId}`)
+      .expect(200);
+    expect(res.body.payload.station.views).toBeUndefined();
+    expect(res.body.payload.station.instances[0].canRead).toBe(true);
+  });
+
+  // ── Attach / detach routes ──────────────────────────────────────────
+
+  it("case 15: attach with station write + view read returns 200 and audits", async () => {
+    const stationId = await insertStation();
+    await grant(memberId, "write", "station", stationId);
+    await grant(memberId, "read", "station", stationId);
+    await grant(memberId, "read", "curated_view", v1);
+    currentSub = MEMBER_SUB;
+    await request(app)
+      .post(`/api/curated-views/${v1}/attach`)
+      .send({ stationId })
+      .expect(200);
+    // Idempotent: a second attach writes nothing new.
+    await request(app)
+      .post(`/api/curated-views/${v1}/attach`)
+      .send({ stationId })
+      .expect(200);
+    expect(await liveViewIds(stationId)).toEqual([v1]);
+    expect(await attachmentAudits(stationId)).toHaveLength(1);
+  });
+
+  it("case 15: attach with view write but no station write returns 403", async () => {
+    const stationId = await insertStation();
+    await grant(memberId, "read", "station", stationId);
+    await grant(memberId, "write", "curated_view", v1);
+    await grant(memberId, "read", "curated_view", v1);
+    currentSub = MEMBER_SUB;
+    await request(app)
+      .post(`/api/curated-views/${v1}/attach`)
+      .send({ stationId })
+      .expect(403);
+    expect(await liveViewIds(stationId)).toEqual([]);
+  });
+
+  it("case 15: attach of a view the caller can't read returns 403 STATION_ATTACHMENT_NOT_READABLE", async () => {
+    const stationId = await insertStation();
+    await grant(memberId, "write", "station", stationId);
+    await grant(memberId, "read", "station", stationId);
+    currentSub = MEMBER_SUB;
+    const res = await request(app)
+      .post(`/api/curated-views/${v1}/attach`)
+      .send({ stationId })
+      .expect(403);
+    expect(res.body.code).toBe(ApiCode.STATION_ATTACHMENT_NOT_READABLE);
+  });
+
+  it("case 15: detach with station write (no read on the view) soft-deletes and audits", async () => {
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewIds: [v1] })
+      .expect(200);
+    await grant(memberId, "write", "station", stationId);
+    await grant(memberId, "read", "station", stationId);
+    currentSub = MEMBER_SUB;
+    await request(app)
+      .delete(`/api/curated-views/${v1}/attach/${stationId}`)
+      .expect(200);
+    expect(await liveViewIds(stationId)).toEqual([]);
+    const audits = await attachmentAudits(stationId);
+    expect(audits.filter((a) => a.userId === memberId)).toHaveLength(1);
+  });
+
+  it("case 15: detach without station write returns 403 and keeps the link", async () => {
+    const stationId = await insertStation();
+    await request(app)
+      .patch(`/api/stations/${stationId}`)
+      .send({ curatedViewIds: [v1] })
+      .expect(200);
+    await grant(memberId, "read", "station", stationId);
+    await grant(memberId, "write", "curated_view", v1);
+    currentSub = MEMBER_SUB;
+    await request(app)
+      .delete(`/api/curated-views/${v1}/attach/${stationId}`)
+      .expect(403);
+    expect(await liveViewIds(stationId)).toEqual([v1]);
+  });
 });

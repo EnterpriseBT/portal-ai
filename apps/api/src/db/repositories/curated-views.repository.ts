@@ -142,6 +142,43 @@ export class CuratedViewsRepository extends Repository<
         )
       );
   }
+
+  /**
+   * #674: the display fields of the live curated views among `ids` in the org,
+   * plus `createdBy` for the permission check. Used to label every station
+   * attachment, readable or not.
+   */
+  async findSummariesByIds(
+    ids: string[],
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<
+    {
+      id: string;
+      key: string;
+      label: string;
+      connectorEntityId: string;
+      createdBy: string;
+    }[]
+  > {
+    if (ids.length === 0) return [];
+    return (client as typeof db)
+      .select({
+        id: curatedViews.id,
+        key: curatedViews.key,
+        label: curatedViews.label,
+        connectorEntityId: curatedViews.connectorEntityId,
+        createdBy: curatedViews.createdBy,
+      })
+      .from(curatedViews)
+      .where(
+        and(
+          inArray(curatedViews.id, ids),
+          eq(curatedViews.organizationId, organizationId),
+          isNull(curatedViews.deleted)
+        )
+      );
+  }
 }
 
 /** Singleton instance. */

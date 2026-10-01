@@ -94,6 +94,9 @@ import {
   SuggestTransformResponseSchema,
   CreateStationBodySchema,
   UpdateStationBodySchema,
+  StationGetResponsePayloadSchema,
+  StationInstanceWithConnectorInstanceSchema,
+  StationViewWithCuratedViewSchema,
 } from "@portalai/core/contracts";
 import {
   EntityRecordListItemSchema,
@@ -490,13 +493,26 @@ const usageLedgerSchemas: Record<string, unknown> = {
 };
 
 /**
- * Station write bodies (#674). Sourced from `@portalai/core/contracts`, so the
- * create/update route JSDoc describes exactly what the route validates —
- * including `curatedViewIds` beside `connectorInstanceIds`.
+ * Station bodies and the GET payload (#674). Sourced from
+ * `@portalai/core/contracts`, so the route JSDoc describes exactly what the
+ * routes validate and return: `curatedViewIds` beside `connectorInstanceIds`,
+ * and every attachment with `canRead`.
  */
 const stationSchemas: Record<string, unknown> = {
   CreateStationBody: z.toJSONSchema(CreateStationBodySchema, JSON_SCHEMA_OPTS),
   UpdateStationBody: z.toJSONSchema(UpdateStationBodySchema, JSON_SCHEMA_OPTS),
+  StationInstanceWithConnectorInstance: z.toJSONSchema(
+    StationInstanceWithConnectorInstanceSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  StationViewWithCuratedView: z.toJSONSchema(
+    StationViewWithCuratedViewSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  StationGetResponsePayload: z.toJSONSchema(
+    StationGetResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
 };
 
 /**
@@ -1658,42 +1674,6 @@ const options: swaggerJsdoc.Options = {
             deleted: { type: ["number", "null"] },
             deletedBy: { type: ["string", "null"] },
           },
-        },
-        StationInstance: {
-          type: "object",
-          required: [
-            "id",
-            "stationId",
-            "connectorInstanceId",
-            "created",
-            "createdBy",
-          ],
-          properties: {
-            id: { type: "string" },
-            stationId: { type: "string" },
-            connectorInstanceId: { type: "string" },
-            created: { type: "number", description: "Epoch ms" },
-            createdBy: { type: "string" },
-            updated: { type: ["number", "null"] },
-            updatedBy: { type: ["string", "null"] },
-            deleted: { type: ["number", "null"] },
-            deletedBy: { type: ["string", "null"] },
-          },
-        },
-        StationWithInstances: {
-          allOf: [
-            { $ref: "#/components/schemas/Station" },
-            {
-              type: "object",
-              required: ["instances"],
-              properties: {
-                instances: {
-                  type: "array",
-                  items: { $ref: "#/components/schemas/StationInstance" },
-                },
-              },
-            },
-          ],
         },
         StationListResponse: {
           allOf: [

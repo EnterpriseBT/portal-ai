@@ -5,6 +5,7 @@ import {
   StationCreateResponsePayloadSchema,
   UpdateStationBodySchema,
   StationUpdateResponsePayloadSchema,
+  StationGetResponsePayloadSchema,
 } from "../../contracts/station.contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -191,5 +192,58 @@ describe("StationUpdateResponsePayloadSchema", () => {
       station: validStation,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("StationGetResponsePayloadSchema (#674)", () => {
+  const audit = {
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+  const instance = {
+    ...audit,
+    id: "si-1",
+    stationId: "st-1",
+    connectorInstanceId: "ci-1",
+  };
+  const view = {
+    ...audit,
+    id: "sv-1",
+    organizationId: "org-1",
+    stationId: "st-1",
+    curatedViewId: "cv-1",
+    curatedView: {
+      id: "cv-1",
+      key: "v_one",
+      label: "View one",
+      connectorEntityId: "ce-1",
+    },
+  };
+  const payload = (instances: unknown[], views: unknown[]) => ({
+    station: { ...validStation, instances, views },
+    canShare: false,
+    canWrite: true,
+    canDelete: false,
+  });
+
+  it("accepts instances and views carrying canRead", () => {
+    expect(
+      StationGetResponsePayloadSchema.safeParse(
+        payload([{ ...instance, canRead: true }], [{ ...view, canRead: false }])
+      ).success
+    ).toBe(true);
+  });
+
+  it("requires canRead on every instance and view", () => {
+    expect(
+      StationGetResponsePayloadSchema.safeParse(payload([instance], [])).success
+    ).toBe(false);
+    expect(
+      StationGetResponsePayloadSchema.safeParse(payload([], [view])).success
+    ).toBe(false);
   });
 });

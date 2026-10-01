@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
+import { CuratedViewSchema } from "../models/curated-view.model.js";
 import { StationInstanceSchema } from "../models/station-instance.model.js";
 import { StationSchema } from "../models/station.model.js";
+import { StationViewSchema } from "../models/station-view.model.js";
 import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
@@ -46,19 +48,45 @@ export type StationGetRequestQuery = z.infer<
   typeof StationGetRequestQuerySchema
 >;
 
-/** Station instance with its attached connector instance details. */
+/**
+ * Station instance with its attached connector instance details. #674: every
+ * attachment is returned, readable or not; `canRead` says whether the caller
+ * can read the connector (an unreadable one renders as a locked chip, with
+ * its real name).
+ */
 export const StationInstanceWithConnectorInstanceSchema =
   StationInstanceSchema.extend({
     connectorInstance: ConnectorInstanceSchema.optional(),
+    canRead: z.boolean(),
   });
 
 export type StationInstanceWithConnectorInstance = z.infer<
   typeof StationInstanceWithConnectorInstanceSchema
 >;
 
+/**
+ * #674: a station's curated-view attachment, with the view's display fields
+ * (from include=curatedView) and whether the caller can read the view.
+ */
+export const StationViewWithCuratedViewSchema = StationViewSchema.extend({
+  curatedView: CuratedViewSchema.pick({
+    id: true,
+    key: true,
+    label: true,
+    connectorEntityId: true,
+  }).optional(),
+  canRead: z.boolean(),
+});
+
+export type StationViewWithCuratedView = z.infer<
+  typeof StationViewWithCuratedViewSchema
+>;
+
 export const StationGetResponsePayloadSchema = z.object({
   station: StationWithToolpacksSchema.extend({
     instances: z.array(StationInstanceWithConnectorInstanceSchema).optional(),
+    /** #674: present when include=curatedView. */
+    views: z.array(StationViewWithCuratedViewSchema).optional(),
   }),
   /** #621: whether the caller may share this station (`resource.share`) — gates
    *  the Share entry point. Server-computed per-object, never a client role

@@ -270,7 +270,10 @@ stationRouter.get(
  *     tags:
  *       - Stations
  *     summary: Get a station
- *     description: Returns a single station with its connector instances.
+ *     description: >
+ *       Returns a single station with all its attachments, readable or not.
+ *       Each instance and view carries `canRead` (#674); an unreadable one keeps
+ *       its name so the UI can show it as locked.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -284,7 +287,10 @@ stationRouter.get(
  *         name: include
  *         schema:
  *           type: string
- *         description: Comma-separated list of related data to include — connectorInstance
+ *         description: >
+ *           Comma-separated list of related data to include — connectorInstance
+ *           (each instance's connector), curatedView (the station's view
+ *           attachments, with their labels)
  *     responses:
  *       200:
  *         description: Station retrieved successfully
@@ -297,10 +303,7 @@ stationRouter.get(
  *                   type: boolean
  *                   example: true
  *                 payload:
- *                   type: object
- *                   properties:
- *                     station:
- *                       $ref: '#/components/schemas/StationWithInstances'
+ *                   $ref: '#/components/schemas/StationGetResponsePayload'
  *       404:
  *         description: Station not found
  *         content:
@@ -349,10 +352,13 @@ stationRouter.get(
       const canWrite = set.can("resource.write", object);
       const canDelete = set.can("resource.delete", object);
 
-      const instances =
-        await DbService.repository.stationInstances.findByStationId(id, {
-          include: include_,
-        });
+      // #674: every attachment, readable or not, each with canRead.
+      const { instances, views } =
+        await StationAttachmentService.listForStation(
+          set,
+          { stationId: id, organizationId },
+          { include: include_ }
+        );
 
       const enabled =
         await DbService.repository.stationToolpacks.findByStationId(id);
@@ -366,6 +372,7 @@ stationRouter.get(
         station: {
           ...station,
           instances,
+          ...(views ? { views } : {}),
           enabledToolpacks,
         } as unknown as StationGetResponsePayload["station"],
         canShare,

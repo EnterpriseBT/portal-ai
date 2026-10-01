@@ -16,6 +16,10 @@ import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import type { PermissionSet } from "./permission-set.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
+import type {
+  StationInstanceWithConnectorInstance,
+  StationViewWithCuratedView,
+} from "@portalai/core/contracts";
 
 export type StationAttachmentKind = "curated_view" | "connector_instance";
 
@@ -274,5 +278,88 @@ export class StationAttachmentService {
       (side) =>
         side.curatedViewIds.length > 0 || side.connectorInstanceIds.length > 0
     );
+  }
+
+  /**
+   * Every live attachment of a station, readable or not, each with `canRead`.
+   * One batched object read per kind and one permission set, so it never loads
+   * permissions per row. An attachment whose object is gone reads as
+   * `canRead: false`. With `include=curatedView` the views are returned too,
+   * labelled even when unreadable (the chip shows the real name); with
+   * `include=connectorInstance` each instance carries its connector.
+   */
+  static async listForStation(
+    set: PermissionSet,
+    args: { stationId: string; organizationId: string },
+    opts: { include: string[] },
+    client?: DbClient
+  ): Promise<{
+    instances: StationInstanceWithConnectorInstance[];
+    views?: StationViewWithCuratedView[];
+  }> {
+    const { stationId, organizationId } = args;
+    const repo = DbService.repository;
+    const readable = (
+      type: StationAttachmentKind,
+      o: { id: string; createdBy: string } | undefined
+    ): boolean =>
+      !!o &&
+      set.can("resource.read", { type, id: o.id, createdBy: o.createdBy });
+
+    const links = await repo.stationInstances.findByStationId(
+      stationId,
+      { include: opts.include },
+      client
+    );
+    const instanceOwners = new Map(
+      (
+        await findOwners(
+          "connector_instance",
+          unique(links.map((l) => l.connectorInstanceId)),
+          organizationId,
+          client
+        )
+      ).map((o) => [o.id, o])
+    );
+    const instances = links.map((l) => ({
+      ...l,
+      canRead: readable(
+        "connector_instance",
+        instanceOwners.get(l.connectorInstanceId)
+      ),
+    })) as unknown as StationInstanceWithConnectorInstance[];
+
+    if (!opts.include.includes("curatedView")) return { instances };
+
+    const viewLinks = await repo.stationViews.findByStationId(
+      stationId,
+      client
+    );
+    const summaries = new Map(
+      (
+        await repo.curatedViews.findSummariesByIds(
+          unique(viewLinks.map((l) => l.curatedViewId)),
+          organizationId,
+          client
+        )
+      ).map((v) => [v.id, v])
+    );
+    const views = viewLinks.map((l) => {
+      const summary = summaries.get(l.curatedViewId);
+      return {
+        ...l,
+        curatedView: summary
+          ? {
+              id: summary.id,
+              key: summary.key,
+              label: summary.label,
+              connectorEntityId: summary.connectorEntityId,
+            }
+          : undefined,
+        canRead: readable("curated_view", summary),
+      };
+    }) as unknown as StationViewWithCuratedView[];
+
+    return { instances, views };
   }
 }
