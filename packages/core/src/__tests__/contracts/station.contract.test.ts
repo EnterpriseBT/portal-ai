@@ -105,6 +105,19 @@ describe("CreateStationBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("#674: accepts curatedViewIds beside connectorInstanceIds", () => {
+    const result = CreateStationBodySchema.safeParse({
+      name: "Analytics Station",
+      connectorInstanceIds: ["ci-1"],
+      curatedViewIds: ["cv-1", "cv-2"],
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.curatedViewIds).toEqual([
+      "cv-1",
+      "cv-2",
+    ]);
+  });
+
   it("should reject empty name", () => {
     const result = CreateStationBodySchema.safeParse({
       name: "",
@@ -146,6 +159,15 @@ describe("UpdateStationBodySchema", () => {
       description: "New desc",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("#674: accepts an update carrying only curatedViewIds (it counts toward the refine)", () => {
+    expect(
+      UpdateStationBodySchema.safeParse({ curatedViewIds: [] }).success
+    ).toBe(true);
+    expect(
+      UpdateStationBodySchema.safeParse({ curatedViewIds: ["cv-1"] }).success
+    ).toBe(true);
   });
 
   it("should reject empty object (at least one field required)", () => {

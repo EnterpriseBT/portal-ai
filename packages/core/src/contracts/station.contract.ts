@@ -82,6 +82,9 @@ export const CreateStationBodySchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   connectorInstanceIds: z.array(z.string()).optional(),
+  /** #674: curated views to attach, independent of the connectors. Each must
+   *  be readable by the caller. */
+  curatedViewIds: z.array(z.string()).optional(),
   toolPacks: z.array(z.string()).min(1).optional(),
 });
 
@@ -101,7 +104,12 @@ export const UpdateStationBodySchema = z
   .object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
+    /** Full set of attached connector instances among those the caller can
+     *  read. Attachments the caller can't read are preserved server-side (#674). */
     connectorInstanceIds: z.array(z.string()).optional(),
+    /** #674: full set of attached curated views among those the caller can
+     *  read; same preservation rule. */
+    curatedViewIds: z.array(z.string()).optional(),
     toolPacks: z.array(z.string()).min(1).optional(),
   })
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
