@@ -120,6 +120,28 @@ export class CuratedViewsRepository extends Repository<
       .limit(1);
     return row as CuratedViewSelect | undefined;
   }
+
+  /**
+   * #674: the `id` + `createdBy` of the live curated views among `ids` in the org.
+   * The ownership a permission check needs, without reading the full row.
+   */
+  async findOwnersByIds(
+    ids: string[],
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<{ id: string; createdBy: string }[]> {
+    if (ids.length === 0) return [];
+    return (client as typeof db)
+      .select({ id: curatedViews.id, createdBy: curatedViews.createdBy })
+      .from(curatedViews)
+      .where(
+        and(
+          inArray(curatedViews.id, ids),
+          eq(curatedViews.organizationId, organizationId),
+          isNull(curatedViews.deleted)
+        )
+      );
+  }
 }
 
 /** Singleton instance. */

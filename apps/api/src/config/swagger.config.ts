@@ -92,6 +92,8 @@ import {
   ProbeEndpointDraftRequestBodySchema,
   SuggestTransformRequestBodySchema,
   SuggestTransformResponseSchema,
+  CreateStationBodySchema,
+  UpdateStationBodySchema,
 } from "@portalai/core/contracts";
 import {
   EntityRecordListItemSchema,
@@ -485,6 +487,16 @@ const usageLedgerSchemas: Record<string, unknown> = {
     AuditLogListResponseSchema,
     JSON_SCHEMA_OPTS
   ),
+};
+
+/**
+ * Station write bodies (#674). Sourced from `@portalai/core/contracts`, so the
+ * create/update route JSDoc describes exactly what the route validates —
+ * including `curatedViewIds` beside `connectorInstanceIds`.
+ */
+const stationSchemas: Record<string, unknown> = {
+  CreateStationBody: z.toJSONSchema(CreateStationBodySchema, JSON_SCHEMA_OPTS),
+  UpdateStationBody: z.toJSONSchema(UpdateStationBodySchema, JSON_SCHEMA_OPTS),
 };
 
 /**
@@ -1999,6 +2011,7 @@ const options: swaggerJsdoc.Options = {
         ...billingSchemas,
         ...usageLedgerSchemas,
         ...publicSiteSchemas,
+        ...stationSchemas,
         ...portalStreamEventSchemas,
       },
     },

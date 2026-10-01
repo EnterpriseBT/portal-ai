@@ -102,7 +102,7 @@ export class StationAttachmentService {
     client?: DbClient
   ): Promise<void>;
 
-  /** Final set = (existing ids the caller can't read) ∪ (requested ids). Inserts added with
+  /** Final set = (existing ids the caller can't read) ∪ (requested ids). Asserts the added ids are attachable, inserts them with
    *  ON CONFLICT DO NOTHING (restating WHERE deleted IS NULL), soft-deletes removed. Returns the diff. */
   static async applyDiff(
     tx: DbClient, set: PermissionSet,
@@ -118,6 +118,7 @@ export class StationAttachmentService {
 ```
 
 - **`canRead`:** `set.can("resource.read", { type: "curated_view" | "connector_instance", id, createdBy })`.
+- **Dangling attachments:** an existing attachment whose object no longer exists isn't preserved. No one can read it, so a full-set update drops it.
 - **Diff inside the transaction:** `applyDiff` reads the current rows **inside** `tx`, so two concurrent editors can't duplicate or lose an attachment. The partial unique indexes (`station_views_station_view_unique`, and `station_instances`' equivalent) are the backstop.
 
 ### Repositories
@@ -129,8 +130,8 @@ export class StationAttachmentService {
 
 - **`POST /`:**
   1. After the existing `resource.write` check (`:462`), call `PermissionService.loadSet(ctx)` once.
-  2. Call `assertAttachable` on both arrays.
-  3. In one `DbService.transaction`: create the station, set its toolpacks, then `applyDiff` for both kinds (with empty `existing`).
+  2. In one `DbService.transaction`: create the station, set its toolpacks, then `applyDiff` for both kinds (with empty `existing`).
+  3. `applyDiff` calls `assertAttachable` on the ids it is about to **add** (requested minus already attached), inside the transaction. A refusal throws and rolls everything back, so no station row is left. Checking only additions means re-sending an existing attachment the caller can't read is harmless.
   4. Post-commit, emit `station.attachments.change` if anything was added.
 - **`PATCH /:id`:** the same as `POST`, but each `applyDiff` runs only for a field present in the body. The toolpack logic is unchanged and moves inside the transaction.
 - **`GET /:id`:** `include` gains `curatedView`. The response sets `station.instances` and `station.views` (when included) from `listForStation`. `canShare` / `canWrite` / `canDelete` are unchanged.

@@ -17,14 +17,37 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { StationAttachmentService } from "../services/station-attachment.service.js";
+import type { StationAttachmentChange } from "../services/station-attachment.service.js";
+import { AuditService } from "../services/audit.service.js";
+import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
-import { SystemUtilities } from "../utils/system.util.js";
 
 const logger = createLogger({ module: "station" });
 
 export const stationRouter = Router();
+
+/**
+ * #674: emit `station.attachments.change` after the write commits. Only a
+ * real change is audited. `AuditService.record` is fail-open, so an audit
+ * failure never fails the request.
+ */
+async function auditAttachmentChange(
+  req: Request,
+  stationId: string,
+  change: StationAttachmentChange
+): Promise<void> {
+  if (!StationAttachmentService.hasChanges(change)) return;
+  await AuditService.record({
+    ...auditContextFromRequest(req),
+    action: "station.attachments.change",
+    targetType: "station",
+    targetId: stationId,
+    metadata: change as unknown as Record<string, unknown>,
+  });
+}
 
 /**
  * Split a `toolPacks: string[]` wire value into built-in slugs and
@@ -378,29 +401,16 @@ stationRouter.get(
  *     summary: Create a station
  *     security:
  *       - bearerAuth: []
+ *     description: >
+ *       Creates a station. `curatedViewIds` and `connectorInstanceIds` attach
+ *       views and connectors; every id must exist in the organization and be
+ *       readable by the caller (#674).
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [name, toolPacks]
- *             properties:
- *               name:
- *                 type: string
- *                 example: Sales Analytics
- *               description:
- *                 type: [string, "null"]
- *               toolPacks:
- *                 type: array
- *                 items:
- *                   type: string
- *                 example: [data_query]
- *               connectorInstanceIds:
- *                 type: array
- *                 items:
- *                   type: string
- *                 description: Connector instances to link to this station
+ *             $ref: '#/components/schemas/CreateStationBody'
  *     responses:
  *       201:
  *         description: Station created successfully
@@ -425,9 +435,11 @@ stationRouter.get(
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: >
- *           A built-in tool pack in the payload is not included in the
- *           organization's plan. Only newly attached packs are rejected;
- *           packs the station already carries stay writable.
+ *           The caller can't write the station; a built-in tool pack in the
+ *           payload is not included in the organization's plan (only newly
+ *           attached packs are rejected); or an attachment id is missing, in
+ *           another organization, or not readable by the caller
+ *           (`STATION_ATTACHMENT_NOT_READABLE`, one code for all three).
  *         content:
  *           application/json:
  *             schema:
@@ -459,12 +471,15 @@ stationRouter.post(
       const { organizationId, userId } = ctx;
       // #621: creating a station is a write on a to-be-owned object
       // (createdBy = caller) — every member can create their own.
-      await PermissionService.check(ctx, "resource.write", {
-        type: "station",
-        createdBy: userId,
-      });
-      const { name, description, connectorInstanceIds, toolPacks } =
-        parsed.data;
+      const set = await PermissionService.loadSet(ctx);
+      set.check("resource.write", { type: "station", createdBy: userId });
+      const {
+        name,
+        description,
+        connectorInstanceIds,
+        curatedViewIds,
+        toolPacks,
+      } = parsed.data;
 
       const requestedRefs = toolPacks ?? ["data_query"];
       const refs = await parseToolpackRefs(requestedRefs, organizationId);
@@ -496,35 +511,32 @@ stationRouter.post(
         description: description ?? null,
       });
 
-      const station = await DbService.repository.stations.create(model.parse());
-
-      await DbService.repository.stationToolpacks.replaceForStation(
-        station.id,
-        {
-          builtinSlugs: refs.builtinSlugs,
-          organizationToolpackIds: refs.customIds,
-        },
-        { userId }
-      );
-
-      if (connectorInstanceIds && connectorInstanceIds.length > 0) {
-        const now = Date.now();
-        await Promise.all(
-          connectorInstanceIds.map((connectorInstanceId) =>
-            DbService.repository.stationInstances.create({
-              id: SystemUtilities.id.v4.generate(),
-              stationId: station.id,
-              connectorInstanceId,
-              created: now,
-              createdBy: userId,
-              updated: null,
-              updatedBy: null,
-              deleted: null,
-              deletedBy: null,
-            })
-          )
+      // #674: the station row, its toolpacks and both attachment kinds land
+      // in one transaction. An attachment the caller can't read rolls it all
+      // back (403 STATION_ATTACHMENT_NOT_READABLE), leaving no station row.
+      const { station, change } = await DbService.transaction(async (tx) => {
+        const created = await DbService.repository.stations.create(
+          model.parse(),
+          tx
         );
-      }
+        await DbService.repository.stationToolpacks.replaceForStation(
+          created.id,
+          {
+            builtinSlugs: refs.builtinSlugs,
+            organizationToolpackIds: refs.customIds,
+          },
+          { userId },
+          tx
+        );
+        const applied = await StationAttachmentService.applyAll(
+          tx,
+          set,
+          { stationId: created.id, organizationId, userId },
+          { curatedViewIds, connectorInstanceIds }
+        );
+        return { station: created, change: applied };
+      });
+      await auditAttachmentChange(req, station.id, change);
 
       logger.info({ id: station.id, organizationId }, "Station created");
 
@@ -570,7 +582,13 @@ stationRouter.post(
  *     tags:
  *       - Stations
  *     summary: Update a station
- *     description: Updates station fields. Providing connectorInstanceIds replaces all existing instances.
+ *     description: >
+ *       Updates station fields. `curatedViewIds` and `connectorInstanceIds`
+ *       are each the full set for that kind; a field left out is untouched.
+ *       Attachments the caller can't read are preserved whatever the request
+ *       says, and only the difference is written: new ids are attached
+ *       (each must be readable by the caller) and dropped ones soft-deleted
+ *       (#674).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -584,21 +602,7 @@ stationRouter.post(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               description:
- *                 type: [string, "null"]
- *               toolPacks:
- *                 type: array
- *                 items:
- *                   type: string
- *               connectorInstanceIds:
- *                 type: array
- *                 items:
- *                   type: string
- *                 description: Replaces all linked connector instances
+ *             $ref: '#/components/schemas/UpdateStationBody'
  *     responses:
  *       200:
  *         description: Station updated successfully
@@ -629,9 +633,11 @@ stationRouter.post(
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: >
- *           A built-in tool pack in the payload is not included in the
- *           organization's plan. Only newly attached packs are rejected;
- *           packs the station already carries stay writable.
+ *           The caller can't write the station; a built-in tool pack in the
+ *           payload is not included in the organization's plan (only newly
+ *           attached packs are rejected); or an attachment id is missing, in
+ *           another organization, or not readable by the caller
+ *           (`STATION_ATTACHMENT_NOT_READABLE`, one code for all three).
  *         content:
  *           application/json:
  *             schema:
@@ -671,14 +677,20 @@ stationRouter.patch(
       }
       // #621: writing a station requires resource.write on it (own via
       // MemberAccess, any via owner/admin, or a read-write grant).
-      await PermissionService.check(ctx, "resource.write", {
+      const set = await PermissionService.loadSet(ctx);
+      set.check("resource.write", {
         type: "station",
         id,
         createdBy: existing.createdBy,
       });
 
-      const { name, description, connectorInstanceIds, toolPacks } =
-        parsed.data;
+      const {
+        name,
+        description,
+        connectorInstanceIds,
+        curatedViewIds,
+        toolPacks,
+      } = parsed.data;
 
       let parsedRefs: { builtinSlugs: string[]; customIds: string[] } | null =
         null;
@@ -722,49 +734,34 @@ stationRouter.patch(
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
 
-      const station = await DbService.repository.stations.update(
-        id,
-        updates as never
-      );
-
-      if (parsedRefs !== null) {
-        await DbService.repository.stationToolpacks.replaceForStation(
+      // #674: the row, toolpacks and attachment diffs commit together. Each
+      // attachment kind is written only when its field is in the body.
+      const { station, change } = await DbService.transaction(async (tx) => {
+        const updated = await DbService.repository.stations.update(
           id,
-          {
-            builtinSlugs: parsedRefs.builtinSlugs,
-            organizationToolpackIds: parsedRefs.customIds,
-          },
-          { userId }
+          updates as never,
+          tx
         );
-      }
-
-      if (connectorInstanceIds !== undefined) {
-        const existingInstances =
-          await DbService.repository.stationInstances.findByStationId(id);
-        await Promise.all(
-          existingInstances.map((si) =>
-            DbService.repository.stationInstances.hardDelete(si.id)
-          )
-        );
-        if (connectorInstanceIds.length > 0) {
-          const now = Date.now();
-          await Promise.all(
-            connectorInstanceIds.map((connectorInstanceId) =>
-              DbService.repository.stationInstances.create({
-                id: SystemUtilities.id.v4.generate(),
-                stationId: id,
-                connectorInstanceId,
-                created: now,
-                createdBy: userId,
-                updated: null,
-                updatedBy: null,
-                deleted: null,
-                deletedBy: null,
-              })
-            )
+        if (parsedRefs !== null) {
+          await DbService.repository.stationToolpacks.replaceForStation(
+            id,
+            {
+              builtinSlugs: parsedRefs.builtinSlugs,
+              organizationToolpackIds: parsedRefs.customIds,
+            },
+            { userId },
+            tx
           );
         }
-      }
+        const applied = await StationAttachmentService.applyAll(
+          tx,
+          set,
+          { stationId: id, organizationId, userId },
+          { curatedViewIds, connectorInstanceIds }
+        );
+        return { station: updated, change: applied };
+      });
+      await auditAttachmentChange(req, id, change);
 
       logger.info({ id }, "Station updated");
 
@@ -809,7 +806,7 @@ stationRouter.patch(
  *     tags:
  *       - Stations
  *     summary: Delete a station
- *     description: Soft-deletes a station.
+ *     description: Soft-deletes a station and its view and connector attachments.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -909,6 +906,19 @@ stationRouter.delete(
             eq(organizations.defaultStationId, id)
           ) as SQL,
           { defaultStationId: null },
+          tx
+        );
+
+        // #674: the station's attachments go with it (soft delete, like the
+        // station row).
+        await DbService.repository.stationViews.softDeleteByStation(
+          id,
+          userId,
+          tx
+        );
+        await DbService.repository.stationInstances.softDeleteByStation(
+          id,
+          userId,
           tx
         );
 

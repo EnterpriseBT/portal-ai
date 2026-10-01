@@ -292,6 +292,9 @@ export enum ApiCode {
   // Stations
   STATION_NOT_FOUND = "STATION_NOT_FOUND",
   STATION_SCOPE_VIOLATION = "STATION_SCOPE_VIOLATION",
+  /** #674: an attachment id is missing, in another org, or not readable by
+   *  the caller. One code for all three, so it never confirms existence. */
+  STATION_ATTACHMENT_NOT_READABLE = "STATION_ATTACHMENT_NOT_READABLE",
 
   // Portals
   PORTAL_NOT_FOUND = "PORTAL_NOT_FOUND",

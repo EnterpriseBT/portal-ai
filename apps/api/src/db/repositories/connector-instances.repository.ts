@@ -334,6 +334,31 @@ export class ConnectorInstancesRepository extends Repository<
       );
     return decryptRows(rows);
   }
+
+  /**
+   * #674: the `id` + `createdBy` of the live connector instances among `ids` in the org.
+   * The ownership a permission check needs, without reading the full row.
+   */
+  async findOwnersByIds(
+    ids: string[],
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<{ id: string; createdBy: string }[]> {
+    if (ids.length === 0) return [];
+    return (client as typeof db)
+      .select({
+        id: connectorInstances.id,
+        createdBy: connectorInstances.createdBy,
+      })
+      .from(connectorInstances)
+      .where(
+        and(
+          inArray(connectorInstances.id, ids),
+          eq(connectorInstances.organizationId, organizationId),
+          isNull(connectorInstances.deleted)
+        )
+      );
+  }
 }
 
 /** Singleton instance. */
