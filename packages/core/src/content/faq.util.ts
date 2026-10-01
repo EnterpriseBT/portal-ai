@@ -54,9 +54,15 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What is a Station and why do I need one?",
     answer:
-      "A station is a workspace that bundles together the connector instances and tool packs you want to analyze together. You need at least one station before you can open a portal, because the portal uses the station's data and tools to answer your questions.",
+      "A station is a workspace that bundles together the views, connector instances and tool packs you want to analyze together. You need at least one station before you can open a portal, because the portal uses the station's data and tools to answer your questions.",
     category: FAQCategory.GettingStarted,
-    relatedGlossaryTerms: ["Station", "Tool Pack", "Portal", "Default Station"],
+    relatedGlossaryTerms: [
+      "Station",
+      "Curated View",
+      "Tool Pack",
+      "Portal",
+      "Default Station",
+    ],
   },
   {
     question: "How do I start asking questions about my data?",
@@ -260,7 +266,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Why are the assistant's answers vague or missing my data?",
     answer:
-      "Almost always because the station has nothing to answer from. A portal answers from records that have actually been imported into the station's entities — not from general knowledge — so a station with no connected source, or one whose sync hasn't run yet, can only answer in generalities. Open the station and check that it has a connector instance and that its entities have records. If a source is connected but empty, run a sync and wait for the job to finish, then ask again.",
+      "Almost always because the station has nothing to answer from. A portal answers from records that have actually been imported into the station's entities — not from general knowledge — so a station with no connected source, or one whose sync hasn't run yet, can only answer in generalities. Open the station and check that it has a view attached and shared with you, or a connector instance, and that its entities have records. A view you can't read shows on the station with a lock. If a source is connected but empty, run a sync and wait for the job to finish, then ask again.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: [
       "Portal",

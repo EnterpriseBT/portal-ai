@@ -344,3 +344,22 @@ describe("FAQ_ENTRIES source ordering", () => {
     }
   });
 });
+
+// ── Curated views (#674) ────────────────────────────────────────────
+
+describe("FAQ mentions views (#674)", () => {
+  const answer = (q: string) =>
+    FAQ_ENTRIES.find((e) => e.question === q)!.answer;
+
+  it("the station explainer names views beside connectors", () => {
+    expect(answer("What is a Station and why do I need one?")).toMatch(
+      /views/i
+    );
+  });
+
+  it("the vague-answers entry says to check a view is attached and shared", () => {
+    expect(
+      answer("Why are the assistant's answers vague or missing my data?")
+    ).toMatch(/view attached and shared with you/i);
+  });
+});

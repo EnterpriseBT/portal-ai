@@ -94,12 +94,23 @@ const stationFixture = {
         stationId: "station-1",
         connectorInstanceId: "ci-1",
         connectorInstance: { id: "ci-1", name: "My CRM" },
+        canRead: true,
       },
       {
         id: "si-2",
         stationId: "station-1",
         connectorInstanceId: "ci-2",
         connectorInstance: { id: "ci-2", name: "My CSV" },
+        canRead: true,
+      },
+    ],
+    views: [
+      {
+        id: "sv-1",
+        stationId: "station-1",
+        curatedViewId: "cv-1",
+        curatedView: { id: "cv-1", key: "q3", label: "Q3 orders" },
+        canRead: true,
       },
     ],
   },
@@ -183,14 +194,70 @@ describe("PortalHeaderMeta", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("hides the Connectors section when the station has no instances", () => {
+    it("#674: fetches both attachment kinds", () => {
+      mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(mockStationsGet).toHaveBeenCalledWith("station-1", {
+        include: "connectorInstance,curatedView",
+      });
+    });
+
+    it("#674: renders a Views row beside Connectors, with no alert when both are attached", () => {
+      mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(screen.getByText("Views")).toBeInTheDocument();
+      expect(screen.getByText("Q3 orders")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("#674: shows an unreadable attachment as a locked chip with its real name", () => {
+      const locked = {
+        ...stationFixture,
+        station: {
+          ...stationFixture.station,
+          views: [
+            {
+              ...stationFixture.station.views[0],
+              curatedView: { id: "cv-1", key: "pay", label: "Payroll" },
+              canRead: false,
+            },
+          ],
+        },
+      };
+      mockStationsGet.mockReturnValue(mockStationResult(locked));
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(screen.getByTestId("attachment-chip-no-access")).toHaveTextContent(
+        "Payroll"
+      );
+    });
+
+    it("#674: keeps both rows when empty, shows —, and one combined alert", () => {
       const bare = {
         ...stationFixture,
-        station: { ...stationFixture.station, instances: [] },
+        station: { ...stationFixture.station, instances: [], views: [] },
       };
       mockStationsGet.mockReturnValue(mockStationResult(bare));
       render(<PortalHeaderMeta stationId="station-1" />);
-      expect(screen.queryByText("Connectors")).not.toBeInTheDocument();
+      expect(screen.getByText("Connectors")).toBeInTheDocument();
+      expect(screen.getByText("Views")).toBeInTheDocument();
+      expect(screen.getAllByText("—")).toHaveLength(2);
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toHaveTextContent(
+        "No views or connectors are attached to this station yet."
+      );
+    });
+
+    it("#674: names only the missing kind", () => {
+      const noViews = {
+        ...stationFixture,
+        station: { ...stationFixture.station, views: [] },
+      };
+      mockStationsGet.mockReturnValue(mockStationResult(noViews));
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "No views are attached to this station yet."
+      );
     });
 
     it("hides the Tool Packs section when the station has none", () => {

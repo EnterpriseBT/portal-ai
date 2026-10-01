@@ -12,19 +12,20 @@ import {
   Stack,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import Chip from "@mui/material/Chip";
 import Collapse from "@mui/material/Collapse";
 import MuiLink from "@mui/material/Link";
 import TextField from "@mui/material/TextField";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
+import { StationAttachmentAlertsUI } from "../components/StationAttachmentAlerts.component";
+import { StationAttachmentListUI } from "../components/StationAttachmentList.component";
+import { toStationAttachmentItems } from "../utils/station-attachments.util";
 import { PortalSession } from "../components/PortalSession.component";
 import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import { sdk, queryKeys } from "../api/sdk";
@@ -138,8 +139,9 @@ interface PortalHeaderMetaProps {
 export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   stationId,
 }) => {
+  // #674: both attachment kinds, each with canRead.
   const { data } = sdk.stations.get(stationId, {
-    include: "connectorInstance",
+    include: "connectorInstance,curatedView",
   });
   // Org-level usage balance (#172) — same query the Settings page reads, so
   // React Query dedupes it. Surfaced here so users see where their account
@@ -152,7 +154,7 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   const station = data?.station;
   if (!station) return null;
 
-  const instances = station.instances ?? [];
+  const attachments = toStationAttachmentItems(station);
   const toolPacks = station.enabledToolpacks ?? [];
   const usage = usageData?.usage.byClass;
 
@@ -174,26 +176,23 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
             </MuiLink>
           ),
         },
+        // #674: both rows always show (— when empty); the alert says why.
         {
           label: "Connectors",
           value: (
-            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-              {instances.map((inst) => (
-                <Chip
-                  key={inst.id}
-                  icon={<MemoryOutlined fontSize="small" />}
-                  label={
-                    inst.connectorInstance?.name ?? inst.connectorInstanceId
-                  }
-                  size="small"
-                  variant="outlined"
-                  color="primary"
-                />
-              ))}
-            </Stack>
+            <StationAttachmentListUI
+              kind="connector"
+              items={attachments.connectors}
+            />
           ),
           variant: "chip",
-          hidden: instances.length === 0,
+        },
+        {
+          label: "Views",
+          value: (
+            <StationAttachmentListUI kind="view" items={attachments.views} />
+          ),
+          variant: "chip",
         },
         {
           label: "Tool Packs",
@@ -268,6 +267,10 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   return (
     <Stack spacing={1}>
       {usageMeta}
+      <StationAttachmentAlertsUI
+        viewCount={attachments.views.length}
+        connectorCount={attachments.connectors.length}
+      />
       {sessionDetails}
     </Stack>
   );

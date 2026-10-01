@@ -79,6 +79,7 @@ describe("GLOSSARY_ENTRIES", () => {
     "Overlap Preview",
     // Analytics
     "Station",
+    "Curated View",
     "Tool Pack",
     "Custom Toolpack",
     "Portal",
@@ -190,6 +191,8 @@ describe("filterGlossary", () => {
     const terms = result.map((e) => e.term).sort();
     expect(terms).toEqual(
       [
+        // #674: views are what a station's session queries.
+        "Curated View",
         "Custom Toolpack",
         "Geocoding",
         "Map Visualization",
@@ -396,5 +399,26 @@ describe("portal best-practices guidance", () => {
   it("surfaces the guidance to a reader searching Help", () => {
     const hits = filterGlossary(GLOSSARY_ENTRIES, { query: "imported" });
     expect(hits.map((e) => e.term)).toContain("Portal");
+  });
+});
+
+// ── Curated views (#674) ────────────────────────────────────────────
+
+describe("Curated View term (#674)", () => {
+  const find = (term: string) => GLOSSARY_ENTRIES.find((e) => e.term === term)!;
+
+  it("defines a curated view as a filtered window attached to stations, queryable with read", () => {
+    const entry = find("Curated View");
+    expect(entry.definition).toMatch(/station/i);
+    expect(entry.definition).toMatch(/read/i);
+    expect(entry.relatedTerms).toEqual(
+      expect.arrayContaining(["Station", "Connector Instance"])
+    );
+  });
+
+  it("the Station entry mentions views and links to Curated View", () => {
+    const station = find("Station");
+    expect(station.definition).toMatch(/views/i);
+    expect(station.relatedTerms).toContain("Curated View");
   });
 });
