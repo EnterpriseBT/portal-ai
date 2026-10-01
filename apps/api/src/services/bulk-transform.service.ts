@@ -42,6 +42,67 @@ function assertTransformSql(selectSql: string, sourceTableName: string): void {
   assertFunctionsAllowed(parsed.functions);
 }
 
+/**
+ * #671: the source rows a transform job reads, as one filtered WHERE shared by
+ * every read and count. With a fragment it is spliced as
+ * `"organization_id" = <org> AND (<fenced fragment>)`, and the exact statement
+ * is checked twice: by {@link assertTransformSql}, and by #669's shape check
+ * (the fragment must stay one narrowing condition). So the SQL-kind batch read,
+ * the tool-kind read and both counts all apply the filter the same way, behind
+ * the same gate.
+ */
+function sourceWhere(
+  organizationId: string,
+  whereSqlFragment?: string
+): string {
+  const orgLit = `'${organizationId.replace(/'/g, "''")}'`;
+  const filterClause = whereSqlFragment
+    ? ` AND (${fenceSql(whereSqlFragment)})`
+    : "";
+  return `WHERE "organization_id" = ${orgLit}${filterClause}`;
+}
+
+function assertSourceSql(
+  selectSql: string,
+  sourceConnectorEntityId: string,
+  whereSqlFragment?: string
+): void {
+  assertTransformSql(
+    selectSql,
+    wideTableRepo.tableName(sourceConnectorEntityId)
+  );
+  if (whereSqlFragment) {
+    assertAndOfTwo(
+      parsePortalSql(selectSql),
+      isColumnEquality("organization_id")
+    );
+  }
+}
+
+/**
+ * One page of the (filtered) source, checked standalone. `runBatch` splices
+ * this exact text into its `batch` CTE: a fragment that could escape the CTE's
+ * parentheses would already have failed this standalone parse.
+ */
+function sourcePageSql(opts: {
+  sourceConnectorEntityId: string;
+  organizationId: string;
+  whereSqlFragment?: string;
+  batchSize: number;
+  offset: number;
+}): string {
+  const sourceTable = quoteIdent(
+    wideTableRepo.tableName(opts.sourceConnectorEntityId)
+  );
+  const pageSql =
+    `SELECT * FROM ${sourceTable} ` +
+    `${sourceWhere(opts.organizationId, opts.whereSqlFragment)} ` +
+    `ORDER BY "entity_record_id" ` +
+    `LIMIT ${opts.batchSize} OFFSET ${opts.offset}`;
+  assertSourceSql(pageSql, opts.sourceConnectorEntityId, opts.whereSqlFragment);
+  return pageSql;
+}
+
 const logger = createLogger({ module: "bulk-transform-service" });
 
 export interface BulkTransformBatchOptions {
@@ -59,6 +120,8 @@ export interface BulkTransformBatchOptions {
   jobId: string;
   /** User id stamped into the created entity_records audit columns. */
   userId: string;
+  /** #671: the job's sourceFilter fragment; only matching rows are read. */
+  whereSqlFragment?: string;
 }
 
 function quoteIdent(name: string): string {
@@ -149,23 +212,24 @@ export class BulkTransformService {
   }
 
   /**
-   * Count rows visible in the source wide table for the given org.
-   * Used by the processor to derive `totalRecords` for the per-batch
-   * SSE event.
+   * Count the source rows a job will process: the org's rows in the source
+   * wide table, narrowed by the job's `sourceFilter` fragment when it has one
+   * (#671). Drives the processor's `totalRecords` and the tool's
+   * `expectedRecords` (its message, ETA and max-records guard).
    */
   static async countSourceRows(
     sourceConnectorEntityId: string,
-    organizationId: string
+    organizationId: string,
+    whereSqlFragment?: string
   ): Promise<number> {
     const tableName = quoteIdent(
       wideTableRepo.tableName(sourceConnectorEntityId)
     );
-    const result = await db.execute(
-      sql.raw(
-        `SELECT COUNT(*)::bigint AS count FROM ${tableName} ` +
-          `WHERE "organization_id" = '${organizationId.replace(/'/g, "''")}'`
-      )
-    );
+    const countSql =
+      `SELECT COUNT(*)::bigint AS count FROM ${tableName} ` +
+      sourceWhere(organizationId, whereSqlFragment);
+    assertSourceSql(countSql, sourceConnectorEntityId, whereSqlFragment);
+    const result = await db.execute(sql.raw(countSql));
     const rows = result as unknown as Array<{ count: string | number }>;
     return Number(rows[0]?.count ?? 0);
   }
@@ -197,12 +261,7 @@ export class BulkTransformService {
   static async runBatch(
     opts: BulkTransformBatchOptions
   ): Promise<{ rowsCommitted: number; rows: Array<Record<string, unknown>> }> {
-    const sourceTable = quoteIdent(
-      wideTableRepo.tableName(opts.sourceConnectorEntityId)
-    );
-
     const keyCol = quoteIdent(opts.keyField);
-    const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
 
     // The agent's projection — passed through to the SELECT verbatim.
     // The pre-flight EXPLAIN already validated each segment as a legal
@@ -211,13 +270,10 @@ export class BulkTransformService {
     const projectionClause =
       projection.length > 0 ? `, ${fenceSql(projection)}` : "";
 
+    // #671: the batch is the filtered source page, checked standalone first.
+    const batchSql = sourcePageSql(opts);
     const selectSql =
-      `WITH batch AS (` +
-      `  SELECT * FROM ${sourceTable} ` +
-      `  WHERE "organization_id" = ${orgLit} ` +
-      `  ORDER BY "entity_record_id" ` +
-      `  LIMIT ${opts.batchSize} OFFSET ${opts.offset}` +
-      `), ` +
+      `WITH batch AS (${batchSql}), ` +
       `batch_deduped AS (` +
       `  SELECT DISTINCT ON (${keyCol}) * FROM batch ` +
       `  ORDER BY ${keyCol}, "entity_record_id" DESC` +
@@ -247,31 +303,8 @@ export class BulkTransformService {
   static async fetchSourceBatch(
     opts: FetchSourceBatchOptions
   ): Promise<Array<Record<string, unknown>>> {
-    const sourceTable = quoteIdent(
-      wideTableRepo.tableName(opts.sourceConnectorEntityId)
-    );
-    const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
-    const filterClause = opts.whereSqlFragment
-      ? ` AND (${fenceSql(opts.whereSqlFragment)})`
-      : "";
-    const selectSql =
-      `SELECT * FROM ${sourceTable} ` +
-      `WHERE "organization_id" = ${orgLit}${filterClause} ` +
-      `ORDER BY "entity_record_id" ` +
-      `LIMIT ${opts.batchSize} OFFSET ${opts.offset}`;
-    assertTransformSql(
-      selectSql,
-      wideTableRepo.tableName(opts.sourceConnectorEntityId)
-    );
-    // #669: with a fragment, the WHERE must stay `org = … AND (<fragment>)`,
-    // the fragment as one narrowing condition (re-checked on the exact SQL, so
-    // a queued job that bypassed the tool's pre-flight is held too).
-    if (opts.whereSqlFragment) {
-      assertAndOfTwo(
-        parsePortalSql(selectSql),
-        isColumnEquality("organization_id")
-      );
-    }
+    // #671: the same filtered, checked source page `runBatch` uses.
+    const selectSql = sourcePageSql(opts);
     const result = await db.execute(sql.raw(selectSql));
     return Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)

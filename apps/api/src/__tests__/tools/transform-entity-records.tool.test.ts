@@ -491,6 +491,22 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
+  it("#671: counts expectedRecords with the sourceFilter, so the message and guard match what will run", async () => {
+    mockCountSourceRows.mockResolvedValueOnce(2);
+    const result = (await exec({
+      ...VALID_INPUT,
+      sourceFilter: { whereSqlFragment: "c_acreage > 10" },
+    })) as { expectedRecords?: number; message?: string };
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      ORG_ID,
+      "c_acreage > 10"
+    );
+    expect(result.expectedRecords).toBe(2);
+    expect(result.message).toMatch(/Importing 2 records/);
+  });
+
   it("#669: rejects a sourceFilter.whereSqlFragment that escapes its parentheses, before EXPLAIN and with no job", async () => {
     const result = (await exec({
       ...VALID_INPUT,

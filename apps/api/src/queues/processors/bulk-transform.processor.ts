@@ -71,13 +71,16 @@ export const bulkTransformProcessor: TypedJobProcessor<
     "bulk_transform started"
   );
 
+  // #671: the job's source filter applies to both expression kinds. It used to
+  // reach only the tool-kind loop, so an SQL-kind job processed every row.
+  const whereSqlFragment = (
+    bullJob.data as unknown as {
+      sourceFilter?: { whereSqlFragment: string };
+    }
+  ).sourceFilter?.whereSqlFragment;
+
   let result: BulkTransformResult;
   if (expression.kind === "tool") {
-    const sourceFilter = (
-      bullJob.data as unknown as {
-        sourceFilter?: { whereSqlFragment: string };
-      }
-    ).sourceFilter;
     result = await runToolDispatchLoop(bullJob, {
       jobId,
       sourceConnectorEntityId,
@@ -87,7 +90,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
       writes: expression.writes,
       keyField,
       batchSize,
-      whereSqlFragment: sourceFilter?.whereSqlFragment,
+      whereSqlFragment,
       userId,
     });
   } else {
@@ -100,6 +103,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
       keyField,
       batchSize,
       userId,
+      whereSqlFragment,
     });
   }
 
@@ -181,7 +185,8 @@ async function runToolDispatchLoop(
 
   const totalRecords = await BulkTransformService.countSourceRows(
     opts.sourceConnectorEntityId,
-    opts.organizationId
+    opts.organizationId,
+    opts.whereSqlFragment
   );
   if (totalRecords === 0) {
     return {
@@ -326,13 +331,15 @@ async function runSqlBatchLoop(
     keyField: string;
     batchSize: number;
     userId: string;
+    whereSqlFragment?: string;
   }
 ): Promise<BulkTransformResult> {
   const startedAt = Date.now();
 
   const totalRecords = await BulkTransformService.countSourceRows(
     opts.sourceConnectorEntityId,
-    opts.organizationId
+    opts.organizationId,
+    opts.whereSqlFragment
   );
   if (totalRecords === 0) {
     return {
@@ -381,6 +388,7 @@ async function runSqlBatchLoop(
       offset,
       jobId: opts.jobId,
       userId: opts.userId,
+      whereSqlFragment: opts.whereSqlFragment,
     });
     const batchDurationMs = Date.now() - batchStart;
     if (rows.length === 0) break;

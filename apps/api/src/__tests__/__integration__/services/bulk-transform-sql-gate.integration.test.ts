@@ -6,8 +6,10 @@
  * only allowlisted functions — so a queued job can't read another org's data
  * even if it bypassed the tool's pre-flight. Rejected before any query runs.
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
+import { sql } from "drizzle-orm";
 
+import { db } from "../../../db/client.js";
 import { BulkTransformService } from "../../../services/bulk-transform.service.js";
 import { generateId } from "../utils/application.util.js";
 
@@ -108,4 +110,94 @@ describe("BulkTransformService SQL gate (#660)", () => {
       message: expect.stringMatching(/single condition/),
     });
   });
+});
+
+/**
+ * #671: the SQL-kind batch read and every source count honour
+ * sourceFilter.whereSqlFragment. A real 4-row source wide table (amounts 5,
+ * 20, 0, 50) carries only the columns these queries read.
+ */
+describe("BulkTransformService sourceFilter on the SQL-kind path (#671)", () => {
+  const ENTITY = generateId();
+  const TABLE = `"er__${ENTITY}"`;
+  const FILTER = "c_amount > 10 OR c_amount IS NULL";
+
+  beforeAll(async () => {
+    await db.execute(
+      sql.raw(
+        `CREATE TABLE ${TABLE} (entity_record_id text PRIMARY KEY, ` +
+          `organization_id text NOT NULL, c_id text NOT NULL, c_amount numeric)`
+      )
+    );
+    await db.execute(
+      sql.raw(
+        `INSERT INTO ${TABLE} VALUES ` +
+          `('r1','${ORG}','O1',5), ('r2','${ORG}','O2',20), ` +
+          `('r3','${ORG}','O3',0), ('r4','${ORG}','O4',50), ` +
+          // Another org's row must never be counted or read.
+          `('r5','${generateId()}','X1',99)`
+      )
+    );
+  });
+
+  afterAll(async () => {
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS ${TABLE}`));
+  });
+
+  const batch = (whereSqlFragment?: string) =>
+    BulkTransformService.runBatch({
+      sourceConnectorEntityId: ENTITY,
+      targetConnectorEntityId: ENTITY,
+      organizationId: ORG,
+      expression: "c_amount * 2 AS c_doubled",
+      keyField: "c_id",
+      batchSize: 100,
+      offset: 0,
+      jobId: "job-671",
+      userId: "user-671",
+      whereSqlFragment,
+    });
+
+  it("countSourceRows counts only the rows the fragment selects", async () => {
+    expect(
+      await BulkTransformService.countSourceRows(ENTITY, ORG, FILTER)
+    ).toBe(2);
+  });
+
+  it("countSourceRows without a fragment still counts the whole org's source", async () => {
+    expect(await BulkTransformService.countSourceRows(ENTITY, ORG)).toBe(4);
+  });
+
+  it("runBatch with the fragment returns exactly the selected rows", async () => {
+    const { rows } = await batch(FILTER);
+    expect(rows.map((r) => r.__src_key).sort()).toEqual(["O2", "O4"]);
+    expect(rows.map((r) => Number(r.c_doubled)).sort((a, b) => a - b)).toEqual([
+      40, 100,
+    ]);
+  });
+
+  it("runBatch without a fragment still returns every row of the org", async () => {
+    const { rows } = await batch();
+    expect(rows.map((r) => r.__src_key).sort()).toEqual([
+      "O1",
+      "O2",
+      "O3",
+      "O4",
+    ]);
+  });
+
+  it.each([
+    ["an OR-escape", "c_amount > 10) OR (c_amount < 0"],
+    ["a CTE-escape", "true ORDER BY 1) , evil AS (SELECT 1"],
+  ])(
+    "runBatch and countSourceRows refuse %s before any query",
+    async (_label, fragment) => {
+      await expect(batch(fragment)).rejects.toMatchObject({
+        code: "PORTAL_SQL_FORBIDDEN",
+      });
+      await expect(
+        BulkTransformService.countSourceRows(ENTITY, ORG, fragment)
+      ).rejects.toMatchObject({ code: "PORTAL_SQL_FORBIDDEN" });
+    }
+  );
 });

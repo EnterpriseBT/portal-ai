@@ -676,9 +676,11 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           }
 
           // Step 5 — max-records guard.
+          // #671: count what the job will actually process, filter included.
           const expectedRecords = await BulkTransformService.countSourceRows(
             parsed.sourceConnectorEntityId,
-            organizationId
+            organizationId,
+            parsed.sourceFilter?.whereSqlFragment
           );
 
           // Phase 4 ETA: when toolMetadata.estimatedMsPerCall is set,

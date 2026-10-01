@@ -146,6 +146,47 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
     expect(counters).toEqual([1_000, 2_000, 3_000]);
   });
 
+  it("#671: threads sourceFilter into the SQL-kind count and every batch read", async () => {
+    mockCountSourceRows.mockResolvedValue(2);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 2,
+      rows: [{ id: "r-1" }, { id: "r-2" }],
+    });
+
+    const result = await bulkTransformProcessor(
+      makeJob({ sourceFilter: { whereSqlFragment: "c_amount > 10" } })
+    );
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      "org-1",
+      "c_amount > 10"
+    );
+    expect(mockRunBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ whereSqlFragment: "c_amount > 10" })
+    );
+    expect(result.recordsProcessed).toBe(2);
+  });
+
+  it("#671: without a sourceFilter the SQL-kind count and reads are unfiltered", async () => {
+    mockCountSourceRows.mockResolvedValue(1);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 1,
+      rows: [{ id: "r" }],
+    });
+
+    await bulkTransformProcessor(makeJob());
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      "org-1",
+      undefined
+    );
+    expect(mockRunBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ whereSqlFragment: undefined })
+    );
+  });
+
   it("each emitted event has _eventType = 'batch' and is keyed to the jobId", async () => {
     mockCountSourceRows.mockResolvedValue(1_000);
     mockRunBatch.mockResolvedValueOnce({
@@ -336,6 +377,30 @@ describe("bulkTransformProcessor — tool path multi-write (Phase 4 / #99 slice 
 
   // Case 4.1 — two writes against the SAME target → one upsertSuccesses
   // call with both columns in the per-record value object.
+  it("#671: the tool-kind count uses the same sourceFilter its batch reads use", async () => {
+    const job = makeToolJob([
+      {
+        targetConnectorEntityId: TARGET_A,
+        column: "c_km",
+        valueFrom: { kind: "tool_path", path: "km" },
+      },
+    ]);
+    (job.data as unknown as Record<string, unknown>).sourceFilter = {
+      whereSqlFragment: "c_name IS NOT NULL",
+    };
+
+    await bulkTransformProcessor(job);
+
+    expect(mockCountSourceRows).toHaveBeenCalledWith(
+      "ce-source",
+      "org-1",
+      "c_name IS NOT NULL"
+    );
+    expect(mockFetchSourceBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ whereSqlFragment: "c_name IS NOT NULL" })
+    );
+  });
+
   it("groups two writes against one target into a single upsertSuccesses call carrying both columns", async () => {
     const job = makeToolJob([
       {
