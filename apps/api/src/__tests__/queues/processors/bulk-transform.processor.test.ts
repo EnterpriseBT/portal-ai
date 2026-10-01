@@ -218,6 +218,33 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
     expect(result.recordsProcessed).toBe(3);
   });
 
+  it("#671: strips the __cursor framing column like the other framing columns", async () => {
+    mockCountSourceRows.mockResolvedValue(1);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 1,
+      rows: [
+        {
+          __src_key: "p-1",
+          __source_row: { entity_record_id: "r-1" },
+          __cursor: "r-1",
+          acreage: 2.5,
+        },
+      ],
+      lastEntityRecordId: "r-1",
+    });
+
+    await bulkTransformProcessor(makeJob());
+
+    const payload = (
+      mockPublishCustomEvent.mock.calls[0] as unknown as [
+        string,
+        string,
+        { rows?: Array<Record<string, unknown>> },
+      ]
+    )[2];
+    expect(payload.rows).toEqual([{ acreage: 2.5 }]);
+  });
+
   it("#671: without a sourceFilter the SQL-kind count and reads are unfiltered", async () => {
     mockCountSourceRows.mockResolvedValue(1);
     mockRunBatch.mockResolvedValueOnce({

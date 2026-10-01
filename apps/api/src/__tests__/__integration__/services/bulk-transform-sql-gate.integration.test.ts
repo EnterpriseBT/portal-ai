@@ -263,6 +263,36 @@ describe("BulkTransformService keyset paging (#671)", () => {
     expect(seen.sort()).toEqual(["K1", "K2", "K3", "K4", "K5", "K6"]);
   });
 
+  it("refuses a projection that shadows a framing column (it would steer the cursor), before any query", async () => {
+    await expect(
+      BulkTransformService.runBatch({
+        sourceConnectorEntityId: ENTITY,
+        targetConnectorEntityId: ENTITY,
+        organizationId: ORG,
+        expression: `'{"entity_record_id":"zzz"}'::json AS "__source_row"`,
+        keyField: "c_id",
+        batchSize: 2,
+        jobId: "job-671-alias",
+        userId: "user-671",
+      })
+    ).rejects.toMatchObject({ code: "PORTAL_SQL_FORBIDDEN" });
+  });
+
+  it("takes the cursor from the server's own column", async () => {
+    const { rows, lastEntityRecordId } = await BulkTransformService.runBatch({
+      sourceConnectorEntityId: ENTITY,
+      targetConnectorEntityId: ENTITY,
+      organizationId: ORG,
+      expression: "",
+      keyField: "c_id",
+      batchSize: 3,
+      jobId: "job-671-cursor",
+      userId: "user-671",
+    });
+    expect(rows).toHaveLength(3);
+    expect(lastEntityRecordId).toBe("r3");
+  });
+
   it("refuses a fragment that escapes into the cursor position, before any query", async () => {
     await expect(
       BulkTransformService.fetchSourceBatch({

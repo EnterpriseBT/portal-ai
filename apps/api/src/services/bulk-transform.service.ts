@@ -26,6 +26,7 @@ import {
   isColumnComparison,
   isColumnEquality,
   parsePortalSql,
+  assertFramingAliasesOnce,
 } from "./portal-sql-parse.util.js";
 
 /**
@@ -296,7 +297,9 @@ export class BulkTransformService {
       `  ORDER BY ${keyCol}, "entity_record_id" DESC` +
       `) ` +
       `SELECT ${keyCol}::text AS "__src_key", ` +
-      `row_to_json(batch_deduped.*) AS "__source_row"` +
+      `row_to_json(batch_deduped.*) AS "__source_row", ` +
+      // #671: the keyset cursor, as its own server column.
+      `batch_deduped."entity_record_id"::text AS "__cursor"` +
       projectionClause +
       // #671: in keyset order, so the last row carries the next cursor. The
       // dedupe keeps each key's greatest entity_record_id, so the batch's
@@ -307,17 +310,17 @@ export class BulkTransformService {
       selectSql,
       wideTableRepo.tableName(opts.sourceConnectorEntityId)
     );
+    // #671: each framing column exactly once, so the projection can't shadow one.
+    assertFramingAliasesOnce(parsePortalSql(selectSql));
     const result = await db.execute(sql.raw(selectSql));
     const rows = Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)
       : [];
-    const last = rows[rows.length - 1]?.["__source_row"] as
-      | { entity_record_id?: string }
-      | undefined;
+    const last = rows[rows.length - 1]?.["__cursor"];
     return {
       rowsCommitted: rows.length,
       rows,
-      lastEntityRecordId: last?.entity_record_id,
+      lastEntityRecordId: typeof last === "string" ? last : undefined,
     };
   }
 

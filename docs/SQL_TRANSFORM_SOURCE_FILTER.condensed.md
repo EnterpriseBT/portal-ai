@@ -35,6 +35,7 @@ Filtering exposed an OFFSET hazard: a job writing into **its own source** (targe
   - `runBatch` returns its output in `entity_record_id` order with `lastEntityRecordId`. The per-key dedupe keeps each key's greatest id, so the page's greatest survives.
   - The tool-kind loop takes the last fetched row's id.
 - **The shape check generalises:** `assertConjunction` requires the WHERE to be exactly org filter, then fragment (one conjunct), then cursor. `assertAndOfTwo` becomes its two-part case. A fragment escaping its parentheses adds conjuncts or makes the root an OR, and it can't stand in for the cursor, which is always last.
+- **The cursor is a server column the projection can't shadow** (security-review hardening). `runBatch` adds `batch_deduped."entity_record_id"::text AS "__cursor"` beside `__src_key` and `__source_row`. Those three framing aliases are reserved: the tool's pre-flight refuses a projection naming any of them (`assertNoFramingAliases`), and `runBatch` checks its exact statement names each exactly once (`assertFramingAliasesOnce`). Otherwise `'{"entity_record_id":"zzz"}'::json AS "__source_row"` could steer the cursor.
 - **The SQL loop no longer exits on a short batch.** Dedupe can return fewer rows than `batchSize` from a full page, which ended jobs early. An empty keyset page ends the loop.
 
 ## Plan — 1 slice

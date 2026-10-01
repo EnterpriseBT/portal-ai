@@ -755,6 +755,58 @@ export function assertConjunction(
 }
 
 /**
+ * #671: the framing columns `BulkTransformService.runBatch` adds around the
+ * agent's projection. The processor reads them back by name: `__src_key` (the
+ * upsert key), `__source_row` (source values for `source_column` writes) and
+ * `__cursor` (the keyset position). A projection alias with one of these names
+ * would shadow the server's column in the returned row and could steer the
+ * cursor, so they are reserved.
+ */
+export const TRANSFORM_FRAMING_ALIASES = [
+  "__src_key",
+  "__source_row",
+  "__cursor",
+] as const;
+
+/** The top-level SELECT's output names (Postgres-folded). */
+function targetAliases(parsed: ParsedPortalSql): string[] {
+  const targets =
+    (
+      parsed.statement as {
+        SelectStmt?: { targetList?: Array<{ ResTarget?: { name?: string } }> };
+      }
+    ).SelectStmt?.targetList ?? [];
+  return targets
+    .map((t) => t.ResTarget?.name)
+    .filter((n): n is string => typeof n === "string");
+}
+
+function framingAliasError(alias: string): ApiError {
+  return new ApiError(
+    400,
+    ApiCode.PORTAL_SQL_FORBIDDEN,
+    `the projection can't use the reserved alias "${alias}"`
+  );
+}
+
+/** #671 pre-flight: a parsed projection names none of the framing aliases. */
+export function assertNoFramingAliases(projection: ParsedPortalSql): void {
+  const reserved = new Set<string>(TRANSFORM_FRAMING_ALIASES);
+  const clash = targetAliases(projection).find((a) => reserved.has(a));
+  if (clash) throw framingAliasError(clash);
+}
+
+/** #671 runtime: runBatch's exact statement names each framing alias once. */
+export function assertFramingAliasesOnce(statement: ParsedPortalSql): void {
+  const aliases = targetAliases(statement);
+  for (const reserved of TRANSFORM_FRAMING_ALIASES) {
+    if (aliases.filter((a) => a === reserved).length !== 1) {
+      throw framingAliasError(reserved);
+    }
+  }
+}
+
+/**
  * #660: a statement built around agent SQL may read only `sourceRelation` —
  * a single SELECT, no sub-select, no schema-qualified name, no other relation.
  * Shared by the fragment parser and `BulkTransformService`, which re-checks

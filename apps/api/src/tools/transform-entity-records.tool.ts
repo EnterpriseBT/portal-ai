@@ -10,7 +10,10 @@ import { ApiError } from "../services/http.service.js";
 import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { BulkTransformService } from "../services/bulk-transform.service.js";
-import { parsePortalSqlExpression } from "../services/portal-sql-parse.util.js";
+import {
+  assertNoFramingAliases,
+  parsePortalSqlExpression,
+} from "../services/portal-sql-parse.util.js";
 import { JobsService } from "../services/jobs.service.js";
 import { ToolService } from "../services/tools.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
@@ -330,7 +333,11 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           // expression over the source row — no relation, no sub-select, only
           // allowlisted functions. Checked before EXPLAIN / enqueue.
           if (parsed.expression.kind === "sql") {
-            parsePortalSqlExpression(parsed.expression.value, "target");
+            // #671: the projection can't shadow runBatch's framing columns
+            // (__src_key / __source_row / __cursor), which would steer the cursor.
+            assertNoFramingAliases(
+              parsePortalSqlExpression(parsed.expression.value, "target")
+            );
           }
           if (parsed.sourceFilter?.whereSqlFragment) {
             parsePortalSqlExpression(

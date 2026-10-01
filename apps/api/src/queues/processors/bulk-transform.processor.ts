@@ -407,7 +407,7 @@ async function runSqlBatchLoop(
         const sourceRow =
           (row["__source_row"] as Record<string, unknown> | undefined) ?? {};
         // Strip the framing keys; the rest is the projection's aliases.
-        const { __src_key, __source_row, ...aliasValues } = row;
+        const { __src_key, __source_row, __cursor, ...aliasValues } = row;
         return {
           sourceKey: String(row["__src_key"]),
           toolResult: null as unknown,
@@ -429,7 +429,7 @@ async function runSqlBatchLoop(
 
     // SSE rows: just the projection aliases (drop the framing keys).
     const sseRows = rows.map((row) => {
-      const { __src_key, __source_row, ...aliasValues } = row;
+      const { __src_key, __source_row, __cursor, ...aliasValues } = row;
       return aliasValues;
     });
     const serializedRows = JSON.stringify(sseRows);
