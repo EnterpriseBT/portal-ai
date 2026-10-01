@@ -56,7 +56,17 @@ export type StationGetRequestQuery = z.infer<
  */
 export const StationInstanceWithConnectorInstanceSchema =
   StationInstanceSchema.extend({
-    connectorInstance: ConnectorInstanceSchema.optional(),
+    /**
+     * Readable: the connector without its `credentials`, which never leave in
+     * this payload. Unreadable: only `id` and `name`, enough for the locked
+     * chip and nothing more (no config, error text or flags).
+     */
+    connectorInstance: z
+      .union([
+        ConnectorInstanceSchema.omit({ credentials: true }),
+        ConnectorInstanceSchema.pick({ id: true, name: true }),
+      ])
+      .optional(),
     canRead: z.boolean(),
   });
 

@@ -324,13 +324,24 @@ export class StationAttachmentService {
         )
       ).map((o) => [o.id, o])
     );
-    const instances = links.map((l) => ({
-      ...l,
-      canRead: readable(
+    const instances = links.map((l) => {
+      const canRead = readable(
         "connector_instance",
         instanceOwners.get(l.connectorInstanceId)
-      ),
-    })) as unknown as StationInstanceWithConnectorInstance[];
+      );
+      const { connectorInstance, ...link } = l;
+      if (!connectorInstance) return { ...link, canRead };
+      // Credentials never leave in this payload. An unreadable connector
+      // keeps only what the locked chip shows: its id and name.
+      const { credentials: _omit, ...withoutCredentials } = connectorInstance;
+      return {
+        ...link,
+        connectorInstance: canRead
+          ? withoutCredentials
+          : { id: connectorInstance.id, name: connectorInstance.name },
+        canRead,
+      };
+    }) as unknown as StationInstanceWithConnectorInstance[];
 
     if (!opts.include.includes("curatedView")) return { instances };
 

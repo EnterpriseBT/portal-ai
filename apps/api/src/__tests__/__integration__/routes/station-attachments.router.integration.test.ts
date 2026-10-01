@@ -102,7 +102,8 @@ describe("station attachments (#674)", () => {
       name: `Instance ${id.slice(0, 6)}`,
       status: "active",
       config: null,
-      credentials: null,
+      // A stand-in ciphertext, so a leak would be visible in the GET.
+      credentials: "enc:fake-ciphertext",
       lastSyncAt: null,
       lastErrorMessage: null,
       enabledCapabilityFlags: null,
@@ -522,6 +523,19 @@ describe("station attachments (#674)", () => {
     expect(byInstance.get(ci1)!.canRead).toBe(false);
     expect(byInstance.get(ci1)!.connectorInstance?.name).toBeTruthy();
     expect(byInstance.get(ci2)!.canRead).toBe(true);
+
+    // Code review: an unreadable connector carries its name and nothing else
+    // (no config, error text, flags or credentials), and no connector ever
+    // carries credentials here, readable or not.
+    expect(Object.keys(byInstance.get(ci1)!.connectorInstance!).sort()).toEqual(
+      ["id", "name"]
+    );
+    const readable = byInstance.get(ci2)!.connectorInstance as Record<
+      string,
+      unknown
+    >;
+    expect(readable).not.toHaveProperty("credentials");
+    expect(readable).toHaveProperty("config");
   });
 
   it("case 12: GET without include=curatedView omits views, but instances still carry canRead", async () => {

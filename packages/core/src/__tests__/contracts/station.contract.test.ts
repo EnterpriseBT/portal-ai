@@ -238,6 +238,23 @@ describe("StationGetResponsePayloadSchema (#674)", () => {
     ).toBe(true);
   });
 
+  it("accepts an unreadable instance whose connector carries only id and name", () => {
+    expect(
+      StationGetResponsePayloadSchema.safeParse(
+        payload(
+          [
+            {
+              ...instance,
+              connectorInstance: { id: "ci-1", name: "HR system" },
+              canRead: false,
+            },
+          ],
+          []
+        )
+      ).success
+    ).toBe(true);
+  });
+
   it("requires canRead on every instance and view", () => {
     expect(
       StationGetResponsePayloadSchema.safeParse(payload([instance], [])).success
