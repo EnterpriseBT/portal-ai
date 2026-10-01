@@ -26,6 +26,17 @@
 
 So progress totals, the max-records guard and the "Importing N records" message all count what will actually be processed.
 
+## Decision — page by keyset, not OFFSET (code-review finding)
+
+Filtering exposed an OFFSET hazard: a job writing into **its own source** (target = source, e.g. filter `c_doubled IS NULL` writing `c_doubled`) makes processed rows stop matching. The filtered set shrinks under the cursor, and `OFFSET n` skipped the next n matching rows (about half the rows went unprocessed on a job reporting `completed`). The tool-kind loop already had the same exposure.
+
+- **Both loops page by keyset:** `… AND "entity_record_id" > <last id> ORDER BY "entity_record_id" LIMIT n`.
+  - The cursor is server-built from the previous page.
+  - `runBatch` returns its output in `entity_record_id` order with `lastEntityRecordId`. The per-key dedupe keeps each key's greatest id, so the page's greatest survives.
+  - The tool-kind loop takes the last fetched row's id.
+- **The shape check generalises:** `assertConjunction` requires the WHERE to be exactly org filter, then fragment (one conjunct), then cursor. `assertAndOfTwo` becomes its two-part case. A fragment escaping its parentheses adds conjuncts or makes the root an OR, and it can't stand in for the cursor, which is always last.
+- **The SQL loop no longer exits on a short batch.** Dedupe can return fewer rows than `batchSize` from a full page, which ended jobs early. An empty keyset page ends the loop.
+
 ## Plan — 1 slice
 
 **Files**
@@ -35,6 +46,8 @@ So progress totals, the max-records guard and the "Importing N records" message 
   - `runBatch` and `fetchSourceBatch` use the builder (`BulkTransformBatchOptions.whereSqlFragment?`).
 - Edit `apps/api/src/queues/processors/bulk-transform.processor.ts`: read `sourceFilter` once for both kinds; pass it to `runSqlBatchLoop` and to both counts.
 - Edit `apps/api/src/tools/transform-entity-records.tool.ts`: `expectedRecords` counts with the fragment.
+
+Plus `services/portal-sql-parse.util.ts` (`isColumnComparison`, `assertConjunction`) and the processor's keyset cursors (decision 2).
 
 **Tests** (failing first)
 - `__tests__/__integration__/services/bulk-transform-sql-gate.integration.test.ts`, against a real 4-row wide table (amounts 5, 20, 0, 50):
@@ -51,9 +64,9 @@ So progress totals, the max-records guard and the "Importing N records" message 
 1. As a user with write on the target (owner in `e2e-fixture`), seed a 4-row source (amounts 5, 20, 0, 50), as in the #669 walk. Run an **SQL-kind** transform with `sourceFilter.whereSqlFragment: "c_amount > 10 OR c_amount IS NULL"`. The tool says "Importing **2** records". The job ends `recordsProcessed: 2`, and only O2 and O4 rows are written (`er__<target>` in `db:studio`).
 2. The same transform **without** a filter: "Importing 4 records", `recordsProcessed: 4`.
 3. A **tool-kind** transform with the same filter: still 2 processed, and its progress total is now 2, not 4.
-4. An SQL-kind transform whose fragment closes the parenthesis and opens an `OR` branch. It's rejected before any job (`PORTAL_SQL_FORBIDDEN`, "single condition"), as since #669.
+4. **Self-target fill-in:** a SQL-kind transform with target = source, `batchSize: 1` and filter `c_doubled IS NULL`, writing `c_doubled`. Every matching row gets a value, and `recordsProcessed` equals the starting count. Under OFFSET paging it skipped about half.
+5. An SQL-kind transform whose fragment closes the parenthesis and opens an `OR` branch. It's rejected before any job (`PORTAL_SQL_FORBIDDEN`, "single condition"), as since #669.
 
 ## Out of scope
 
 - Changing what a filter may contain (the #660/#667/#669 gates are unchanged).
-- Keyset pagination for the batch loop (`OFFSET` stays, as today).

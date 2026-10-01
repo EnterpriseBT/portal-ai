@@ -675,11 +675,11 @@ const isTrueConst = (n: AstNode): boolean =>
     ?.boolval === true;
 
 /**
- * #669: the predicate `"<column>" = …`, used to identify the server's own
- * conjunct (e.g. the org filter) at the head of a WHERE.
+ * #671: the predicate `"<column>" <op> …`, used to identify a server-built
+ * conjunct in a WHERE (the org filter, or a keyset cursor).
  */
-export const isColumnEquality =
-  (column: string) =>
+export const isColumnComparison =
+  (column: string, op: string) =>
   (n: AstNode): boolean => {
     const e = n.A_Expr as
       | {
@@ -693,11 +693,18 @@ export const isColumnEquality =
     const fields = e?.lexpr?.ColumnRef?.fields;
     return (
       e?.kind === "AEXPR_OP" &&
-      e.name?.[0]?.String?.sval === "=" &&
+      e.name?.[0]?.String?.sval === op &&
       fields?.length === 1 &&
       fields[0]?.String?.sval === column
     );
   };
+
+/**
+ * #669: the predicate `"<column>" = …`, used to identify the server's own
+ * conjunct (e.g. the org filter) at the head of a WHERE.
+ */
+export const isColumnEquality = (column: string) =>
+  isColumnComparison(column, "=");
 
 /**
  * #669: a filter fragment spliced as `<server conjunct> AND (<fragment>)` may
@@ -712,6 +719,22 @@ export function assertAndOfTwo(
   parsed: ParsedPortalSql,
   isFirst: (n: AstNode) => boolean
 ): void {
+  assertConjunction(parsed, [isFirst, () => true]);
+}
+
+/**
+ * #671: the general form of {@link assertAndOfTwo}. The WHERE root must be an
+ * AND of exactly `conjuncts.length` args, each matching its predicate in order.
+ * The keyset-paged source read is `org AND (<fragment>) AND <cursor>`: a
+ * fragment that stays in its parentheses is one arg (Postgres flattens only the
+ * left-nested AND chain, never a parenthesised one), so escaping it adds args
+ * or turns the root into an OR. It can't stand in for the cursor either,
+ * because the server's cursor is always the last arg.
+ */
+export function assertConjunction(
+  parsed: ParsedPortalSql,
+  conjuncts: Array<(n: AstNode) => boolean>
+): void {
   const where = (parsed.statement as { SelectStmt?: { whereClause?: AstNode } })
     .SelectStmt?.whereClause;
   const and = where?.BoolExpr as
@@ -720,8 +743,8 @@ export function assertAndOfTwo(
   if (
     !and ||
     and.boolop !== "AND_EXPR" ||
-    and.args?.length !== 2 ||
-    !isFirst(and.args[0]!)
+    and.args?.length !== conjuncts.length ||
+    !conjuncts.every((matches, i) => matches(and.args![i]!))
   ) {
     throw new ApiError(
       400,

@@ -201,7 +201,10 @@ async function runToolDispatchLoop(
   }
 
   let recordsProcessed = 0;
-  let offset = 0;
+  // #671: keyset cursor (the last entity_record_id read), not an OFFSET — a job
+  // writing into its own source can make processed rows stop matching the
+  // filter, and an OFFSET over the shrinking set skipped rows.
+  let afterEntityRecordId: string | undefined;
   const partialFailures: NonNullable<BulkTransformResult["partialFailures"]> =
     [];
   const droppedAcc = new DroppedAccumulator();
@@ -224,7 +227,7 @@ async function runToolDispatchLoop(
       organizationId: opts.organizationId,
       keyField: opts.keyField,
       batchSize: opts.batchSize,
-      offset,
+      afterEntityRecordId,
       whereSqlFragment: opts.whereSqlFragment,
     });
     if (sourceBatch.length === 0) break;
@@ -262,7 +265,9 @@ async function runToolDispatchLoop(
 
     recordsProcessed +=
       dispatched.successes.length + dispatched.failures.length;
-    offset += opts.batchSize;
+    afterEntityRecordId = String(
+      sourceBatch[sourceBatch.length - 1]!["entity_record_id"]
+    );
 
     for (const f of dispatched.failures) {
       partialFailures.push({
@@ -354,7 +359,10 @@ async function runSqlBatchLoop(
   }
 
   let recordsProcessed = 0;
-  let offset = 0;
+  // #671: keyset cursor (the last entity_record_id read), not an OFFSET — a job
+  // writing into its own source can make processed rows stop matching the
+  // filter, and an OFFSET over the shrinking set skipped rows.
+  let afterEntityRecordId: string | undefined;
   const partialFailures: NonNullable<BulkTransformResult["partialFailures"]> =
     [];
   const droppedAcc = new DroppedAccumulator();
@@ -376,20 +384,21 @@ async function runSqlBatchLoop(
     const batchStart = Date.now();
     // runBatch (#99 slice 4) returns the projected rows; the actual
     // wide-table write happens below via the fan-out.
-    const { rowsCommitted, rows } = await BulkTransformService.runBatch({
-      sourceConnectorEntityId: opts.sourceConnectorEntityId,
-      // Carried for back-compat; runBatch ignores it under the
-      // SELECT-only contract.
-      targetConnectorEntityId: opts.writes[0].targetConnectorEntityId,
-      organizationId: opts.organizationId,
-      expression: opts.expression,
-      keyField: opts.keyField,
-      batchSize: opts.batchSize,
-      offset,
-      jobId: opts.jobId,
-      userId: opts.userId,
-      whereSqlFragment: opts.whereSqlFragment,
-    });
+    const { rowsCommitted, rows, lastEntityRecordId } =
+      await BulkTransformService.runBatch({
+        sourceConnectorEntityId: opts.sourceConnectorEntityId,
+        // Carried for back-compat; runBatch ignores it under the
+        // SELECT-only contract.
+        targetConnectorEntityId: opts.writes[0].targetConnectorEntityId,
+        organizationId: opts.organizationId,
+        expression: opts.expression,
+        keyField: opts.keyField,
+        batchSize: opts.batchSize,
+        afterEntityRecordId,
+        jobId: opts.jobId,
+        userId: opts.userId,
+        whereSqlFragment: opts.whereSqlFragment,
+      });
     const batchDurationMs = Date.now() - batchStart;
     if (rows.length === 0) break;
 
@@ -414,7 +423,7 @@ async function runSqlBatchLoop(
     droppedAcc.absorb(fanOut.droppedByTarget);
 
     recordsProcessed += rowsCommitted;
-    offset += opts.batchSize;
+    afterEntityRecordId = lastEntityRecordId;
 
     for (const wf of fanOut.failures) partialFailures.push(wf);
 
@@ -435,7 +444,9 @@ async function runSqlBatchLoop(
       ...(includeRows ? { rows: sseRows } : {}),
     });
 
-    if (rowsCommitted < opts.batchSize) break;
+    // No short-batch exit here: runBatch dedupes by key, so a full page can
+    // return fewer rows than batchSize. The next keyset read coming back empty
+    // ends the loop.
   }
 
   return finalize({
