@@ -17,6 +17,7 @@ import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
+import { CuratedViewPicker } from "./CuratedViewPicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import {
@@ -65,6 +66,7 @@ interface FormState {
   name: string;
   toolPacks: string[];
   connectorInstanceIds: string[];
+  curatedViewIds: string[];
 }
 
 const EditStationFormSchema = z.object({
@@ -79,6 +81,36 @@ function validateForm(form: FormState): FormErrors {
 
 interface StationInstance {
   connectorInstanceId: string;
+  /** #674: false for a connector the viewer can't read. */
+  canRead: boolean;
+}
+
+interface StationViewAttachment {
+  curatedViewId: string;
+  curatedView?: { label: string };
+  /** #674: false for a view the viewer can't read. */
+  canRead: boolean;
+}
+
+/**
+ * #674: what changed in one attachment kind since the dialog opened, as the
+ * add/remove changes the update API takes, or undefined when nothing did. The
+ * dialog never sends its full set: that set goes stale while the dialog is
+ * open, and saving it re-attached what another editor had just removed.
+ */
+function attachmentChanges(
+  initial: string[],
+  current: string[]
+): { add?: string[]; remove?: string[] } | undefined {
+  const before = new Set(initial);
+  const after = new Set(current);
+  const add = current.filter((id) => !before.has(id));
+  const remove = initial.filter((id) => !after.has(id));
+  if (add.length === 0 && remove.length === 0) return undefined;
+  return {
+    ...(add.length > 0 ? { add } : {}),
+    ...(remove.length > 0 ? { remove } : {}),
+  };
 }
 
 export interface EditStationDialogProps {
@@ -86,6 +118,8 @@ export interface EditStationDialogProps {
   onClose: () => void;
   station: Station & {
     instances?: StationInstance[];
+    /** #674: from include=curatedView. */
+    views?: StationViewAttachment[];
     enabledToolpacks?: string[];
   };
   onSubmit: (body: UpdateStationBody) => void;
@@ -110,14 +144,30 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   serverError,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
-  const initialInstanceIds = (station.instances ?? []).map(
-    (i) => i.connectorInstanceId
+  // #674: the pickers hold only what the viewer can read. Attachments they
+  // can't read aren't theirs to remove, and the dialog only ever sends what
+  // changed among the readable ones (see attachmentChanges).
+  const initialInstanceIds = (station.instances ?? [])
+    .filter((i) => i.canRead)
+    .map((i) => i.connectorInstanceId);
+  const readableViews = (station.views ?? []).filter((v) => v.canRead);
+  const initialViewIds = readableViews.map((v) => v.curatedViewId);
+  // Seeded once: the dialog remounts per station, and a stable object keeps
+  // the picker from re-searching on every render.
+  const [viewLabels] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      readableViews.map((v) => [
+        v.curatedViewId,
+        v.curatedView?.label ?? v.curatedViewId,
+      ])
+    )
   );
   const initialToolpacks = station.enabledToolpacks ?? [];
   const [form, setForm] = useState<FormState>({
     name: station.name,
     toolPacks: [...initialToolpacks],
     connectorInstanceIds: [...initialInstanceIds],
+    curatedViewIds: [...initialViewIds],
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -183,11 +233,13 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {
       body.toolPacks = form.toolPacks;
     }
-    const sortedCurrent = [...initialInstanceIds].sort();
-    const sortedNew = [...form.connectorInstanceIds].sort();
-    if (JSON.stringify(sortedNew) !== JSON.stringify(sortedCurrent)) {
-      body.connectorInstanceIds = form.connectorInstanceIds;
-    }
+    const connectorChanges = attachmentChanges(
+      initialInstanceIds,
+      form.connectorInstanceIds
+    );
+    if (connectorChanges) body.connectorInstanceChanges = connectorChanges;
+    const viewChanges = attachmentChanges(initialViewIds, form.curatedViewIds);
+    if (viewChanges) body.curatedViewChanges = viewChanges;
 
     if (Object.keys(body).length === 0) {
       onClose();
@@ -284,6 +336,11 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
         <ConnectorInstancePicker
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
+        />
+        <CuratedViewPicker
+          selected={form.curatedViewIds}
+          onChange={(ids) => handleChange("curatedViewIds", ids)}
+          selectedLabels={viewLabels}
         />
         <FormAlert serverError={serverError} />
       </Stack>

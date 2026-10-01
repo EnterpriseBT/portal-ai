@@ -239,14 +239,29 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Station",
     category: GlossaryCategory.Analytics,
     definition:
-      "A workspace that groups connector instances and tool packs together so you can analyze them in a portal.",
+      "A workspace that groups views, connector instances and tool packs together so you can analyze them in a portal. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read.",
     example:
-      'Create a "Sales" station with your CRM and billing connectors plus the statistics tool pack.',
+      'Create a "Sales" station with your "Open deals" and "Invoices" views, your CRM connector, and the statistics tool pack.',
     relatedTerms: [
+      "Curated View",
       "Connector Instance",
       "Tool Pack",
       "Portal",
       "Default Station",
+    ],
+  },
+  {
+    term: "Curated View",
+    category: GlossaryCategory.Analytics,
+    definition:
+      "A named, filtered window onto one entity's records: a chosen set of columns and an optional row filter. Views are attached to stations, and a portal session queries the attached views the user has read access to. A view someone can't read still shows on the station, locked, so it's clear it's there.",
+    example:
+      'An "Active customers" view over the Customers entity, showing only name, region and plan for rows where status is active.',
+    relatedTerms: [
+      "Station",
+      "Connector Instance",
+      "Connector Entity",
+      "Policy",
     ],
   },
   {

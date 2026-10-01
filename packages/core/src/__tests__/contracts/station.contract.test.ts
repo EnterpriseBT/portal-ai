@@ -5,6 +5,7 @@ import {
   StationCreateResponsePayloadSchema,
   UpdateStationBodySchema,
   StationUpdateResponsePayloadSchema,
+  StationGetResponsePayloadSchema,
 } from "../../contracts/station.contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -105,6 +106,19 @@ describe("CreateStationBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("#674: accepts curatedViewIds beside connectorInstanceIds", () => {
+    const result = CreateStationBodySchema.safeParse({
+      name: "Analytics Station",
+      connectorInstanceIds: ["ci-1"],
+      curatedViewIds: ["cv-1", "cv-2"],
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.curatedViewIds).toEqual([
+      "cv-1",
+      "cv-2",
+    ]);
+  });
+
   it("should reject empty name", () => {
     const result = CreateStationBodySchema.safeParse({
       name: "",
@@ -148,6 +162,42 @@ describe("UpdateStationBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("#674: update takes add/remove changes per kind, not full sets", () => {
+    expect(
+      UpdateStationBodySchema.safeParse({
+        curatedViewChanges: { add: ["cv-1"], remove: ["cv-2"] },
+      }).success
+    ).toBe(true);
+    expect(
+      UpdateStationBodySchema.safeParse({
+        connectorInstanceChanges: { remove: ["ci-1"] },
+      }).success
+    ).toBe(true);
+    // A changes object counts toward the at-least-one-field refine.
+    expect(
+      UpdateStationBodySchema.safeParse({ curatedViewChanges: { add: [] } })
+        .success
+    ).toBe(true);
+  });
+
+  it("#674: update no longer accepts full-set attachment lists", () => {
+    const parsed = UpdateStationBodySchema.safeParse({
+      name: "S",
+      curatedViewIds: ["cv-1"],
+      connectorInstanceIds: ["ci-1"],
+    });
+    expect(parsed.success && "curatedViewIds" in parsed.data).toBe(false);
+    expect(parsed.success && "connectorInstanceIds" in parsed.data).toBe(false);
+  });
+
+  it("#674: rejects an id that is both added and removed", () => {
+    expect(
+      UpdateStationBodySchema.safeParse({
+        curatedViewChanges: { add: ["cv-1"], remove: ["cv-1"] },
+      }).success
+    ).toBe(false);
+  });
+
   it("should reject empty object (at least one field required)", () => {
     const result = UpdateStationBodySchema.safeParse({});
     expect(result.success).toBe(false);
@@ -169,5 +219,75 @@ describe("StationUpdateResponsePayloadSchema", () => {
       station: validStation,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("StationGetResponsePayloadSchema (#674)", () => {
+  const audit = {
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+  const instance = {
+    ...audit,
+    id: "si-1",
+    stationId: "st-1",
+    connectorInstanceId: "ci-1",
+  };
+  const view = {
+    ...audit,
+    id: "sv-1",
+    organizationId: "org-1",
+    stationId: "st-1",
+    curatedViewId: "cv-1",
+    curatedView: {
+      id: "cv-1",
+      key: "v_one",
+      label: "View one",
+      connectorEntityId: "ce-1",
+    },
+  };
+  const payload = (instances: unknown[], views: unknown[]) => ({
+    station: { ...validStation, instances, views },
+    canShare: false,
+    canWrite: true,
+    canDelete: false,
+  });
+
+  it("accepts instances and views carrying canRead", () => {
+    expect(
+      StationGetResponsePayloadSchema.safeParse(
+        payload([{ ...instance, canRead: true }], [{ ...view, canRead: false }])
+      ).success
+    ).toBe(true);
+  });
+
+  it("accepts an unreadable instance whose connector carries only id and name", () => {
+    expect(
+      StationGetResponsePayloadSchema.safeParse(
+        payload(
+          [
+            {
+              ...instance,
+              connectorInstance: { id: "ci-1", name: "HR system" },
+              canRead: false,
+            },
+          ],
+          []
+        )
+      ).success
+    ).toBe(true);
+  });
+
+  it("requires canRead on every instance and view", () => {
+    expect(
+      StationGetResponsePayloadSchema.safeParse(payload([instance], [])).success
+    ).toBe(false);
+    expect(
+      StationGetResponsePayloadSchema.safeParse(payload([], [view])).success
+    ).toBe(false);
   });
 });

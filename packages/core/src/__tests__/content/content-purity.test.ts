@@ -32,6 +32,9 @@ describe("content module purity", () => {
       // #367 — the writer for the #365 Help URL grammar. Pure string
       // building, no imports, so it belongs to the same guarantee.
       "help-url.util.ts",
+      // #674 — the shared empty-station sentences (web alerts, system prompt,
+      // platform_help). Pure string logic, no imports.
+      "station-attachments.util.ts",
     ]);
   });
 

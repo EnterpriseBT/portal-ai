@@ -26,6 +26,7 @@ import { AnalyticsService } from "./analytics.service.js";
 import type { EntitySchema } from "./analytics.service.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "./portal-sql.service.js";
+import { StationAttachmentService } from "./station-attachment.service.js";
 import { DissolvePrecomputeService } from "./dissolve-precompute.service.js";
 import { EntitlementService } from "./entitlement.service.js";
 import { ToolService } from "./tools.service.js";
@@ -1271,6 +1272,12 @@ export async function buildStationContext(args: {
     customToolPacks,
     entityCapabilities,
     connectorInstances,
+    // #674: attachment counts for the empty-station lines.
+    attachments: await StationAttachmentService.countsForCaller(
+      station.id,
+      organizationId,
+      userId
+    ),
   };
 }
 

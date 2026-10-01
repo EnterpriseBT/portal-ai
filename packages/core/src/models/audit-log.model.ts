@@ -53,6 +53,8 @@ export const AUDIT_ACTIONS = [
   "connector.credential.update",
   "connector.credential.access",
   "toolpack.secret.rotate",
+  // #674: a station's attached views / connector instances changed (ids only).
+  "station.attachments.change",
   "data.export",
   "data.delete",
 ] as const;

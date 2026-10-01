@@ -51,6 +51,19 @@ jest.unstable_mockModule("../../services/analytics.service.js", () => ({
   AnalyticsService: { loadStation: mockLoadStation },
 }));
 
+// #674: the attachment counts for the caller.
+const mockCountsForCaller = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule(
+  "../../services/station-attachment.service.js",
+  () => ({
+    StationAttachmentService: { countsForCaller: mockCountsForCaller },
+  })
+);
+const counts = (views: [number, number], connectors: [number, number]) => ({
+  views: { attached: views[0], readable: views[1] },
+  connectors: { attached: connectors[0], readable: connectors[1] },
+});
+
 jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
   EntitlementService: { splitBuiltinPacks: mockSplitBuiltinPacks },
 }));
@@ -73,7 +86,7 @@ interface HelpResult {
 }
 
 const exec = async (question?: string): Promise<HelpResult> =>
-  (await new PlatformHelpTool().build("station-1", "org-1").execute!(
+  (await new PlatformHelpTool().build("station-1", "org-1", "user-1").execute!(
     { question },
     {} as never
   )) as HelpResult;
@@ -100,6 +113,7 @@ const healthy = () => {
     tier: "standard",
   });
   mockCountByConnectorEntityIds.mockResolvedValue(42);
+  mockCountsForCaller.mockResolvedValue(counts([1, 1], [1, 1]));
 };
 
 beforeEach(() => {
@@ -153,13 +167,50 @@ describe("PlatformHelpTool — station situations", () => {
     expect(answer).toMatch(/sync/i);
   });
 
-  it("tells a station with no entities to connect a source first", async () => {
+  it("#674: says both kinds are missing, and who can fix it, when nothing is attached", async () => {
+    mockCountsForCaller.mockResolvedValue(counts([0, 0], [0, 0]));
     mockLoadStation.mockResolvedValue({ entities: [] });
 
     const { answer } = await exec("why are my answers empty");
 
-    expect(answer).toMatch(/connect/i);
-    expect(answer).toMatch(/source|connector/i);
+    expect(answer).toBe(
+      "No views or connectors are attached to this station yet. " +
+        "Ask someone who can edit the station to attach them."
+    );
+  });
+
+  it("#674: names only the missing kind", async () => {
+    mockCountsForCaller.mockResolvedValue(counts([0, 0], [1, 1]));
+    const { answer } = await exec();
+    expect(answer).toMatch(/^No views are attached to this station yet\./);
+  });
+
+  it("#674: reports no access when attached views are all unreadable", async () => {
+    mockCountsForCaller.mockResolvedValue(counts([2, 0], [1, 1]));
+    const { answer } = await exec();
+    // #676: the no-access answer says the views ARE attached, so it can't be
+    // relayed as "nothing attached".
+    expect(answer).toBe(
+      "You don't have access to any views on this station. " +
+        "They're attached, but they haven't been shared with your account. " +
+        "Ask someone who can share them to give you access."
+    );
+  });
+
+  it("#674: missing outranks no-access, and both outrank no-records", async () => {
+    mockCountsForCaller.mockResolvedValue(counts([0, 0], [1, 0]));
+    mockCountByConnectorEntityIds.mockResolvedValue(0);
+    const { answer } = await exec();
+    expect(answer).toMatch(/^No views are attached/);
+  });
+
+  it("#674: reads the counts for the calling user", async () => {
+    await exec();
+    expect(mockCountsForCaller).toHaveBeenCalledWith(
+      "station-1",
+      "org-1",
+      "user-1"
+    );
   });
 
   it("explains tool packs when the station has none attached", async () => {

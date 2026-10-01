@@ -36,3 +36,12 @@ describe("GETTING_STARTED_STEPS", () => {
     }
   });
 });
+
+describe("Create a station step (#674)", () => {
+  it("names views beside connector instances and tool packs", () => {
+    const step = GETTING_STARTED_STEPS.find(
+      (s) => s.title === "Create a station"
+    )!;
+    expect(step.description).toMatch(/connector instances, views/i);
+  });
+});

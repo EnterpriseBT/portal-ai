@@ -13,6 +13,7 @@ import {
   GLOSSARY_PAGE_ROUTES,
   withPageRoutes,
 } from "../utils/glossary-routes.util";
+import { ApplicationRoute } from "../utils/routes.util";
 
 describe("GLOSSARY_PAGE_ROUTES", () => {
   it("maps only terms that actually exist in the shared glossary", () => {
@@ -23,6 +24,12 @@ describe("GLOSSARY_PAGE_ROUTES", () => {
     // An orphan means a term was renamed in core and this table wasn't —
     // the link silently disappears from Help. Catch it here.
     expect(orphans).toEqual([]);
+  });
+
+  it("#674: links Curated View to the Views page", () => {
+    expect(GLOSSARY_PAGE_ROUTES["Curated View"]).toBe(
+      ApplicationRoute.CuratedViews
+    );
   });
 
   it("maps every route to an in-app path, never an absolute URL", () => {

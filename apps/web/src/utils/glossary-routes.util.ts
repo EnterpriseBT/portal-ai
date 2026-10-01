@@ -39,6 +39,7 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   "Overlap Preview": ApplicationRoute.EntityGroups,
   // Analytics
   Station: ApplicationRoute.Stations,
+  "Curated View": ApplicationRoute.CuratedViews,
   "Map Visualization": ApplicationRoute.Stations,
   "Tool Pack": ApplicationRoute.Toolpacks,
   "Plan Entitlement": ApplicationRoute.Toolpacks,

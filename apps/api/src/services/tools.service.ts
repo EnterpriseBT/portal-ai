@@ -572,7 +572,8 @@ export class ToolService {
     if (SYSTEM_TOOL_CAPABILITIES.platform_help?.alwaysAvailable) {
       tools.platform_help = new PlatformHelpTool().build(
         stationId,
-        organizationId
+        organizationId,
+        userId
       );
     }
 

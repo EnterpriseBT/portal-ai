@@ -6,13 +6,17 @@ import {
   HELP_TAB,
   buildHelpUrl,
   contentEntrySlug,
+  describeStationAttachmentGaps,
   filterFAQ,
+  STATION_ATTACHMENT_MISSING_ACTION,
+  STATION_ATTACHMENT_NO_ACCESS_ACTION,
   filterGlossary,
 } from "@portalai/core/content";
 
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
+import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { Tool } from "../types/tools.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -39,11 +43,16 @@ interface StationFindings {
   unentitledPacks: string[];
   entityCount: number;
   recordCount: number;
+  /** #674: the station-level gap (null when both kinds are attached). */
+  attachmentsMissing: string | null;
+  /** #674: the caller-level gap (null when they can read something of each attached kind). */
+  attachmentsNoAccess: string | null;
 }
 
 type Situation =
   | "no_packs"
-  | "no_entities"
+  | "attachments_missing"
+  | "attachments_inaccessible"
   | "no_records"
   | "unentitled_packs"
   | "default";
@@ -69,8 +78,9 @@ export class PlatformHelpTool extends Tool<typeof InputSchema> {
     "Answer a question about **Portals AI itself** — what portals, stations, " +
     "connectors, entities, tool packs, or pinned results are; how to get " +
     "better answers out of a session; and why this station may be returning " +
-    "thin or empty results. Also reports this station's own setup: connected " +
-    "sources, whether records have been imported, and which tool packs are " +
+    "thin or empty results. Also reports this station's own setup: whether " +
+    "views and connectors are attached and whether the user can read them, " +
+    "whether records have been imported, and which tool packs are " +
     "enabled or excluded by the plan. Use it whenever the user asks how the " +
     "product works, what they can do here, or why something isn't working. " +
     "**This is not a data-query tool** — it never reads the user's records to " +
@@ -80,12 +90,17 @@ export class PlatformHelpTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, organizationId: string) {
+  /** #674: `userId` is the caller — the no-access situation is per user. */
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input: z.infer<typeof InputSchema>) => {
-        const findings = await gatherFindings(stationId, organizationId);
+        const findings = await gatherFindings(
+          stationId,
+          organizationId,
+          userId
+        );
         const situation = matchSituation(findings);
         const selected = selectContent(input.question);
         return composeAnswer(situation, findings, selected);
@@ -101,7 +116,8 @@ export class PlatformHelpTool extends Tool<typeof InputSchema> {
  */
 async function gatherFindings(
   stationId: string,
-  organizationId: string
+  organizationId: string,
+  userId: string
 ): Promise<StationFindings> {
   try {
     const repo = DbService.repository;
@@ -136,12 +152,22 @@ async function gatherFindings(
         ? await repo.entityRecords.countByConnectorEntityIds(entityIds)
         : 0;
 
+    const gaps = describeStationAttachmentGaps(
+      await StationAttachmentService.countsForCaller(
+        stationId,
+        organizationId,
+        userId
+      )
+    );
+
     return {
       available: true,
       hasPacks: builtinSlugs.length > 0 || customPackIds.length > 0,
       unentitledPacks: unentitled,
       entityCount: entityIds.length,
       recordCount,
+      attachmentsMissing: gaps.missing,
+      attachmentsNoAccess: gaps.noAccess,
     };
   } catch (error) {
     logger.warn(
@@ -154,6 +180,8 @@ async function gatherFindings(
       unentitledPacks: [],
       entityCount: 0,
       recordCount: 0,
+      attachmentsMissing: null,
+      attachmentsNoAccess: null,
     };
   }
 }
@@ -162,7 +190,8 @@ async function gatherFindings(
 function matchSituation(findings: StationFindings): Situation {
   if (!findings.available) return "default";
   if (!findings.hasPacks) return "no_packs";
-  if (findings.entityCount === 0) return "no_entities";
+  if (findings.attachmentsMissing) return "attachments_missing";
+  if (findings.attachmentsNoAccess) return "attachments_inaccessible";
   if (findings.recordCount === 0) return "no_records";
   if (findings.unentitledPacks.length > 0) return "unentitled_packs";
   return "default";
@@ -206,11 +235,14 @@ const SITUATION_PROSE: Record<Situation, (f: StationFindings) => string> = {
     "abilities here — querying your data, statistics, charts, maps, and so " +
     "on. Open the station and attach at least the data-query pack, then ask " +
     "again.",
-  no_entities: () =>
-    "This station has no data connected yet, which is why answers are thin. " +
-    "A portal answers from records that have been brought into the station, " +
-    "not from general knowledge. Connect a source — a file, a spreadsheet, a " +
-    "database, or an API — and its entities will show up on the station.",
+  // #674: the sentences come from describeStationAttachmentGaps, shared with
+  // the UI alerts and the system prompt, so all three say the same thing.
+  attachments_missing: (f) =>
+    `${f.attachmentsMissing} ${STATION_ATTACHMENT_MISSING_ACTION}`,
+  // #676: the follow-up says the items ARE attached, so a relay can't turn
+  // "no access" into "nothing attached".
+  attachments_inaccessible: (f) =>
+    `${f.attachmentsNoAccess} ${STATION_ATTACHMENT_NO_ACCESS_ACTION}`,
   no_records: () =>
     "This station has entities set up, but **no records have been imported " +
     "into them yet** — that is why answers come back empty. The assistant " +

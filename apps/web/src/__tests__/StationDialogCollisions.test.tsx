@@ -23,6 +23,12 @@ jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     toolpacks: { list: mockToolpacksList },
     connectorInstances: { list: mockConnectorInstancesList },
+    // #674: both dialogs embed the curated-view picker.
+    curatedViews: {
+      search: () => ({
+        mutateAsync: async () => ({ curatedViews: [], total: 0 }),
+      }),
+    },
   },
   queryKeys: { toolpacks: { root: ["toolpacks"] } },
 }));

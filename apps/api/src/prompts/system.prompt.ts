@@ -3,6 +3,11 @@ import {
   BuiltinToolpackSlugSchema,
   type BuiltinToolpackSlug,
 } from "@portalai/core/registries";
+import {
+  describeStationAttachmentGaps,
+  STATION_ATTACHMENT_NO_ACCESS_ACTION,
+  type StationAttachmentCounts,
+} from "@portalai/core/content";
 
 import type {
   EntitySchema,
@@ -39,6 +44,12 @@ export interface StationContext {
   stationName: string;
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
+  /**
+   * #674: how many views and connectors are attached, and how many the caller
+   * can read. Drives the empty-station lines through
+   * `describeStationAttachmentGaps` (shared with the UI and platform_help).
+   */
+  attachments: StationAttachmentCounts;
   /**
    * The packs whose tools actually EXIST in this session: the station's
    * configured packs ∩ the org tier's entitlements (#284).
@@ -621,9 +632,30 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // (#97). Previously this section re-emitted every entity's full
   // column list plus all ID markers on every turn — expensive at
   // scale and the agent still kept inventing wrong column names.
+  // #674: what's missing from the station (the same for everyone) and what
+  // the caller can't read, worded once in @portalai/core/content.
+  const gaps = describeStationAttachmentGaps(stationContext.attachments);
+  if (gaps.missing) lines.push(`_${gaps.missing}_`);
+  if (gaps.noAccess) {
+    // #676: the user can't read what's attached, which is not the same as
+    // nothing being attached. Say so plainly, because a model relaying the bare
+    // sentence told a user their station was empty.
+    lines.push(`_${gaps.noAccess} ${STATION_ATTACHMENT_NO_ACCESS_ACTION}_`);
+    lines.push(
+      "These are attached but not shared with the user's account (this is " +
+        "about the user's access, not yours): never tell the user the station " +
+        "has nothing attached or ask them to attach data. Tell them their " +
+        "account doesn't have access and to ask for the items to be shared " +
+        "with them."
+    );
+  }
+  if (gaps.missing || gaps.noAccess) lines.push("");
+
   if (stationContext.entities.length === 0) {
-    lines.push("_No entities attached to this station yet._");
-    lines.push("");
+    if (!gaps.missing && !gaps.noAccess) {
+      lines.push("_No entities are available on this station yet._");
+      lines.push("");
+    }
   } else {
     lines.push("Entities on this station:");
     for (const entity of stationContext.entities) {

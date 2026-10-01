@@ -31,6 +31,10 @@ import { DbService } from "../services/db.service.js";
 import { curatedViews, stationViews } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import type { PermissionSet } from "../services/permission-set.js";
+import { StationAttachmentService } from "../services/station-attachment.service.js";
+import { AuditService } from "../services/audit.service.js";
+import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 
@@ -673,17 +677,66 @@ curatedViewRouter.delete(
 );
 
 /**
+ * #674: load the station an attach/detach targets and require `resource.write`
+ * on it — attaching is an edit to the station, not to the view. A station
+ * that's missing, in another org or unreadable 404s, as the station GET does.
+ */
+async function loadWritableStation(
+  req: Request,
+  stationId: string
+): Promise<{ set: PermissionSet }> {
+  const ctx = req.application!.metadata;
+  const station = await DbService.repository.stations.findById(stationId);
+  const set = await PermissionService.loadSet(ctx);
+  const object = station
+    ? { type: "station", id: station.id, createdBy: station.createdBy }
+    : undefined;
+  if (
+    !station ||
+    station.organizationId !== ctx.organizationId ||
+    !set.can("resource.read", object)
+  ) {
+    throw new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found");
+  }
+  set.check("resource.write", object);
+  return { set };
+}
+
+/** #674: the `station.attachments.change` event for a single view (post-commit, fail-open). */
+async function auditViewAttachment(
+  req: Request,
+  stationId: string,
+  change: { added: string[]; removed: string[] }
+): Promise<void> {
+  if (change.added.length === 0 && change.removed.length === 0) return;
+  await AuditService.record({
+    ...auditContextFromRequest(req),
+    action: "station.attachments.change",
+    targetType: "station",
+    targetId: stationId,
+    metadata: {
+      added: { curatedViewIds: change.added, connectorInstanceIds: [] },
+      removed: { curatedViewIds: change.removed, connectorInstanceIds: [] },
+    },
+  });
+}
+
+/**
  * @openapi
  * /api/curated-views/{id}/attach:
  *   post:
  *     tags: [Curated Views]
  *     summary: Attach a curated view to a station (station_views)
+ *     description: >
+ *       Requires `resource.write` on the station and `resource.read` on the view
+ *       (#674); write access to the view isn't needed. Idempotent.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
  *     responses:
  *       200: { description: Attached }
- *       404: { description: Not found }
+ *       403: { description: "No write on the station, or the view is missing, in another org or unreadable (STATION_ATTACHMENT_NOT_READABLE)" }
+ *       404: { description: Station not found }
  */
 curatedViewRouter.post(
   "/:id/attach",
@@ -701,60 +754,29 @@ curatedViewRouter.post(
         );
       }
       const { organizationId, userId } = req.application!.metadata;
-      const existing = await DbService.repository.curatedViews.findById(
-        req.params.id
-      );
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CURATED_VIEW_NOT_FOUND,
-            "Curated view not found"
-          )
-        );
-      }
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "curated_view",
-          id: existing.id,
-          createdBy: existing.createdBy,
-        }
-      );
+      const { stationId } = parsed.data;
+      const curatedViewId = req.params.id;
 
-      // #599: the target station must exist in the caller's org — otherwise
-      // the attach would stamp a dangling / cross-org station_views row.
-      const station = await DbService.repository.stations.findById(
-        parsed.data.stationId
-      );
-      if (!station || station.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
-        );
-      }
+      const { set } = await loadWritableStation(req, stationId);
+      await StationAttachmentService.assertAttachable(set, organizationId, {
+        curatedViewIds: [curatedViewId],
+      });
 
-      // Idempotent: skip if already attached.
-      const already = await DbService.repository.stationViews.findMany(
-        and(
-          eq(stationViews.stationId, parsed.data.stationId),
-          eq(stationViews.curatedViewId, existing.id)
-        )
-      );
-      if (already.length === 0) {
-        const factory = new StationViewModelFactory();
-        const m = factory.create(userId);
-        m.update({
-          organizationId,
-          stationId: parsed.data.stationId,
-          curatedViewId: existing.id,
-        });
-        await DbService.repository.stationViews.create(m.parse() as never);
-      }
+      const factory = new StationViewModelFactory();
+      const m = factory.create(userId);
+      m.update({ organizationId, stationId, curatedViewId });
+      const inserted =
+        await DbService.repository.stationViews.insertManyIgnoreConflicts([
+          m.parse() as never,
+        ]);
+      await auditViewAttachment(req, stationId, {
+        added: inserted.map((r) => r.curatedViewId),
+        removed: [],
+      });
 
       return HttpService.success<CuratedViewAttachResponsePayload>(res, {
-        stationId: parsed.data.stationId,
-        curatedViewId: existing.id,
+        stationId,
+        curatedViewId,
       });
     } catch (error) {
       return next(error);
@@ -768,55 +790,39 @@ curatedViewRouter.post(
  *   delete:
  *     tags: [Curated Views]
  *     summary: Detach a curated view from a station
+ *     description: >
+ *       Requires `resource.write` on the station (#674). Read on the view isn't
+ *       needed: detaching is an edit to the station. Soft-deletes the link.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
  *       - { in: path, name: stationId, required: true, schema: { type: string } }
  *     responses:
  *       200: { description: Detached }
+ *       403: { description: No write on the station }
+ *       404: { description: Station not found }
  */
 curatedViewRouter.delete(
   "/:id/attach/:stationId",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { organizationId, userId } = req.application!.metadata;
-      const existing = await DbService.repository.curatedViews.findById(
-        req.params.id
-      );
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CURATED_VIEW_NOT_FOUND,
-            "Curated view not found"
-          )
-        );
-      }
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "curated_view",
-          id: existing.id,
-          createdBy: existing.createdBy,
-        }
-      );
-      const rows = await DbService.repository.stationViews.findMany(
-        and(
-          eq(stationViews.stationId, req.params.stationId),
-          eq(stationViews.curatedViewId, existing.id)
-        )
-      );
-      if (rows.length > 0) {
-        await DbService.repository.stationViews.softDeleteMany(
-          rows.map((r) => r.id),
+      const { userId } = req.application!.metadata;
+      const { id: curatedViewId, stationId } = req.params;
+      await loadWritableStation(req, stationId);
+      const removed =
+        await DbService.repository.stationViews.softDeleteByStationAndViews(
+          stationId,
+          [curatedViewId],
           userId
         );
-      }
+      await auditViewAttachment(req, stationId, {
+        added: [],
+        removed: removed > 0 ? [curatedViewId] : [],
+      });
       return HttpService.success<CuratedViewAttachResponsePayload>(res, {
-        stationId: req.params.stationId,
-        curatedViewId: existing.id,
+        stationId,
+        curatedViewId,
       });
     } catch (error) {
       return next(error);

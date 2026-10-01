@@ -76,6 +76,10 @@ describe("AuditLogEntrySchema", () => {
     );
   });
 
+  it("includes the station attachment change action (#674)", () => {
+    expect(AUDIT_ACTIONS).toContain("station.attachments.change");
+  });
+
   it("accepts every declared AuditAction", () => {
     for (const action of AUDIT_ACTIONS) {
       const model = new AuditLogEntryModelFactory()

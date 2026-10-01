@@ -4,7 +4,7 @@
  * Links stations to connector instances.
  */
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { stationInstances, connectorInstances } from "../schema/index.js";
 import { db } from "../client.js";
@@ -54,6 +54,63 @@ export class StationInstancesRepository extends Repository<
       ...row,
       connectorInstance: instanceMap.get(row.connectorInstanceId),
     }));
+  }
+
+  /**
+   * #674: insert connector links, skipping any already live. The conflict
+   * target restates the partial unique index's `WHERE deleted IS NULL`, so a
+   * concurrent attach of the same connector is a no-op rather than a 23505.
+   * Returns only the rows actually inserted.
+   */
+  async insertManyIgnoreConflicts(
+    rows: StationInstanceInsert[],
+    client: DbClient = db
+  ): Promise<StationInstanceSelect[]> {
+    if (rows.length === 0) return [];
+    return (await (client as typeof db)
+      .insert(stationInstances)
+      .values(rows)
+      .onConflictDoNothing({
+        target: [
+          stationInstances.stationId,
+          stationInstances.connectorInstanceId,
+        ],
+        where: sql`deleted IS NULL`,
+      })
+      .returning()) as StationInstanceSelect[];
+  }
+
+  /** #674: soft-delete a station's live links to the given connectors. */
+  async softDeleteByStationAndInstances(
+    stationId: string,
+    connectorInstanceIds: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorInstanceIds.length === 0) return 0;
+    const rows = await this.updateWhere(
+      and(
+        eq(stationInstances.stationId, stationId),
+        inArray(stationInstances.connectorInstanceId, connectorInstanceIds)
+      )!,
+      { deleted: Date.now(), deletedBy },
+      client
+    );
+    return rows.length;
+  }
+
+  /** #674: soft-delete every live connector link of a station. */
+  async softDeleteByStation(
+    stationId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await this.updateWhere(
+      eq(stationInstances.stationId, stationId),
+      { deleted: Date.now(), deletedBy },
+      client
+    );
+    return rows.length;
   }
 
   /** Count station links for a given connector instance. */

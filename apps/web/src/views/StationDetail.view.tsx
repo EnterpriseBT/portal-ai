@@ -19,12 +19,9 @@ import {
   Typography,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import Alert from "@mui/material/Alert";
-import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ShareIcon from "@mui/icons-material/IosShare";
-import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
@@ -33,6 +30,8 @@ import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
 import { ShareDialog } from "../components/ShareDialog.component";
+import { StationAttachmentAlertsUI } from "../components/StationAttachmentAlerts.component";
+import { StationAttachmentListUI } from "../components/StationAttachmentList.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import {
@@ -43,6 +42,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useAuthFetch, toServerError } from "../utils/api.util";
 import { useToast } from "../utils/toast.context";
+import { toStationAttachmentItems } from "../utils/station-attachments.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -52,7 +52,10 @@ interface StationDataItemProps {
 }
 
 const StationDataItem: React.FC<StationDataItemProps> = ({ id, children }) => {
-  const res = sdk.stations.get(id, { include: "connectorInstance" });
+  // #674: both attachment kinds, each with canRead.
+  const res = sdk.stations.get(id, {
+    include: "connectorInstance,curatedView",
+  });
   return <>{children(res)}</>;
 };
 
@@ -107,6 +110,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
         onSuccess: () => {
           setEditOpen(false);
           queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+          // #674: the station's view attachments changed too.
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.curatedViews.root,
+          });
         },
       });
     },
@@ -171,6 +178,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
           <DataResult results={{ item: itemResult }}>
             {({ item }: { item: StationGetResponsePayload }) => {
               const station = item.station;
+              const attachments = toStationAttachmentItems(station);
               return (
                 <>
                   <Stack spacing={4}>
@@ -261,30 +269,27 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                             hidden:
                               (station.enabledToolpacks ?? []).length === 0,
                           },
+                          // #674: both rows always show (— when empty);
+                          // the attachment alert below says why.
                           {
                             label: "Connectors",
                             value: (
-                              <Stack
-                                direction="row"
-                                sx={{ flexWrap: "wrap", gap: 0.75 }}
-                              >
-                                {(station.instances ?? []).map((inst) => (
-                                  <Chip
-                                    key={inst.id}
-                                    icon={<MemoryOutlined fontSize="small" />}
-                                    label={
-                                      inst.connectorInstance?.name ??
-                                      inst.connectorInstanceId
-                                    }
-                                    size="small"
-                                    variant="outlined"
-                                    color="primary"
-                                  />
-                                ))}
-                              </Stack>
+                              <StationAttachmentListUI
+                                kind="connector"
+                                items={attachments.connectors}
+                              />
                             ),
                             variant: "chip",
-                            hidden: (station.instances ?? []).length === 0,
+                          },
+                          {
+                            label: "Views",
+                            value: (
+                              <StationAttachmentListUI
+                                kind="view"
+                                items={attachments.views}
+                              />
+                            ),
+                            variant: "chip",
                           },
                           {
                             label: "Created",
@@ -297,12 +302,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           },
                         ]}
                       />
-                      {(station.instances ?? []).length === 0 && (
-                        <Alert severity="warning" variant="outlined">
-                          This station has no connector instances. Add
-                          connectors to enable data access.
-                        </Alert>
-                      )}
+                      <StationAttachmentAlertsUI
+                        viewCount={attachments.views.length}
+                        connectorCount={attachments.connectors.length}
+                      />
                     </PageHeader>
 
                     {/* Portals Section */}
