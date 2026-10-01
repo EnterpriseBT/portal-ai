@@ -4,7 +4,8 @@ import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
 import LockOutlined from "@mui/icons-material/LockOutlined";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
-import ViewQuiltOutlined from "@mui/icons-material/ViewQuiltOutlined";
+
+import { Icon, IconName } from "@portalai/core/ui";
 
 export type AttachmentChipKind = "connector" | "view";
 
@@ -32,10 +33,16 @@ export const AttachmentChipUI: React.FC<AttachmentChipUIProps> = ({
   canRead,
 }) => {
   if (canRead) {
-    const Icon = kind === "connector" ? MemoryOutlined : ViewQuiltOutlined;
+    // A view chip uses the Views nav item's icon, so the two read as the same thing.
+    const icon =
+      kind === "connector" ? (
+        <MemoryOutlined fontSize="small" />
+      ) : (
+        <Icon name={IconName.Layers} fontSize="small" />
+      );
     return (
       <Chip
-        icon={<Icon fontSize="small" />}
+        icon={icon}
         label={label}
         size="small"
         variant="outlined"

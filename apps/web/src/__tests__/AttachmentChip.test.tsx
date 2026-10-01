@@ -10,6 +10,14 @@ describe("AttachmentChipUI (#674)", () => {
     expect(screen.queryByTestId("LockOutlinedIcon")).not.toBeInTheDocument();
   });
 
+  it("uses the Views nav item's icon (Layers) for a readable view chip", () => {
+    render(<AttachmentChipUI kind="view" label="Q3 orders" canRead />);
+    expect(screen.getByTestId("LayersIcon")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("ViewQuiltOutlinedIcon")
+    ).not.toBeInTheDocument();
+  });
+
   it.each([
     ["view", "You don't have access to this view"],
     ["connector", "You don't have access to this connector"],
