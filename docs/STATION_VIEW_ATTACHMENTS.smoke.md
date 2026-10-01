@@ -80,9 +80,9 @@ Setup (owner): S has V-A, V-B and C-1 attached. On S → **Share** → member �
 
 Use the member's bearer token (DevTools → any `/api` request → `Authorization`) with `curl -s -X <method> localhost:3001/api/... -H "Authorization: Bearer $T" -H 'content-type: application/json'`.
 
-- [ ] Owner: on S, revoke the member's share and grant **Read** only. Member `PATCH /api/stations/<S>` `{"curatedViewIds":["<V-B>"]}` returns **403**, and `station_views` is unchanged.
-- [ ] Restore **Read & write**. Owner: detach **V-A** from S, so V-A is no longer attached. Member `PATCH` `{"curatedViewIds":["<V-B>","<V-A>"]}` returns **403** `STATION_ATTACHMENT_NOT_READABLE`, and nothing is written. (Only ids being *added* are checked. Re-sending a V-A that is **already** attached is allowed and returns 200, by design.)
-- [ ] Member `PATCH` `{"curatedViewIds":["00000000-0000-0000-0000-000000000000"]}` returns the **same** 403 code and the same message as the previous step, so it doesn't reveal whether the id exists.
+- [ ] Owner: on S, revoke the member's share and grant **Read** only. Member `PATCH /api/stations/<S>` `{"curatedViewChanges":{"add":["<V-B>"]}}` returns **403**, and `station_views` is unchanged.
+- [ ] Restore **Read & write**. Owner: detach **V-A** from S, so V-A is no longer attached. Member `PATCH` `{"curatedViewChanges":{"add":["<V-B>","<V-A>"]}}` returns **403** `STATION_ATTACHMENT_NOT_READABLE`, and nothing is written, V-B included. (Adding a V-A that is **already** attached is a no-op returning 200, by design.)
+- [ ] Member `PATCH` `{"curatedViewChanges":{"add":["00000000-0000-0000-0000-000000000000"]}}` returns the **same** 403 code and the same message as the previous step, so it doesn't reveal whether the id exists.
 - [ ] Member `POST /api/stations` `{"name":"Smoke denied","curatedViewIds":["<V-A>"]}` returns 403, and Stations has **no** "Smoke denied" row.
 - [ ] Owner: share **V-A** with the member as **Read & write** but take S down to **Read**. Member `POST /api/curated-views/<V-A>/attach` `{"stationId":"<S>"}` returns **403**, because write on a view never grants attach.
 - [ ] Restore S to **Read & write**, revoke the member's V-A share. Member `DELETE /api/curated-views/<V-A>/attach/<S>` returns **200**, and V-A's row is soft-deleted: detaching needs station write only.

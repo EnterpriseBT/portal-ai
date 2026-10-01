@@ -13,7 +13,7 @@ Pins the contract for making curated views a first-class station attachment besi
 ## Key decisions (flag for review)
 
 1. **One attach rule, every endpoint.** Attaching or detaching is an edit **to the station**: `resource.write` on the station, plus `resource.read` on each attached curated view or connector instance. `write` on the view is irrelevant. It applies to station create/update and to the standalone `POST`/`DELETE /api/curated-views/:id/attach`.
-2. **Full-set contract, server-preserved.** Create/update take `curatedViewIds` beside `connectorInstanceIds`, both as full sets. On update, the server keeps every existing attachment the caller can't read, whatever the request says, and writes only the difference.
+2. **Create takes id lists; update takes changes, server-preserved.** Create takes `curatedViewIds` beside `connectorInstanceIds`. Update takes `curatedViewChanges` / `connectorInstanceChanges`, each `{ add?, remove? }`, never a full set: a full set read when an edit dialog opened goes stale, and saving it re-attached what another editor had just removed (found on the adversarial walk). `remove` never detaches an attachment the caller can't read.
 3. **Atomic and fail-closed.** The station row, toolpacks and both attachment diffs run in one `DbService.transaction`. Any requested id that's missing, in another org or unreadable rejects the whole request with 403 `STATION_ATTACHMENT_NOT_READABLE`, with nothing written. That code doesn't reveal which id failed or whether it exists.
 4. **Show, don't filter.** The station GET returns **every** attachment, each with a server-computed `canRead`. Unreadable ones render by their real name as a shared **no-access chip**. The warnings key on the full lists, so they're the same for every user.
 5. **One shared copy function for every empty-station message.** `describeStationAttachmentGaps` (core) returns the "missing" and "no access" sentences, and the web alerts, system prompt and `platform_help` all render from it.
@@ -49,8 +49,12 @@ CreateStationBodySchema = z.object({
   curatedViewIds: z.array(z.string()).optional(),          // NEW
   toolPacks: z.array(z.string()).min(1).optional(),
 });
-UpdateStationBodySchema = z.object({ /* same four + */ curatedViewIds: z.array(z.string()).optional() })
-  .refine(/* at least one field */);                        // refine unchanged; curatedViewIds counts
+StationAttachmentChangesSchema = z.object({ add: z.array(z.string()).optional(), remove: z.array(z.string()).optional() })
+  .refine(/* no id in both add and remove */);
+UpdateStationBodySchema = z.object({ name, description, toolPacks,
+  connectorInstanceChanges: StationAttachmentChangesSchema.optional(),  // replaces connectorInstanceIds
+  curatedViewChanges: StationAttachmentChangesSchema.optional(),        // NEW
+}).refine(/* at least one field */);                       // a changes object counts
 
 /** NEW — an attached curated view, with the caller's readability. */
 StationViewWithCuratedViewSchema = StationViewSchema.extend({
@@ -102,12 +106,13 @@ export class StationAttachmentService {
     client?: DbClient
   ): Promise<void>;
 
-  /** Final set = (existing ids the caller can't read) ∪ (requested ids). Asserts the added ids are attachable, inserts them with
-   *  ON CONFLICT DO NOTHING (restating WHERE deleted IS NULL), soft-deletes removed. Returns the diff. */
-  static async applyDiff(
+  /** add: ids not already attached are asserted attachable, then inserted with ON CONFLICT DO NOTHING (restating
+   *  WHERE deleted IS NULL). remove: attached ids the caller can read are soft-deleted; unreadable ones are skipped.
+   *  Nothing else is touched. Create calls it with its id lists as `add`. Returns what actually changed. */
+  static async applyChanges(
     tx: DbClient, set: PermissionSet,
     args: { stationId: string; organizationId: string; userId: string;
-            kind: "curated_view" | "connector_instance"; requested: string[] }
+            kind: "curated_view" | "connector_instance"; add: string[]; remove: string[] }
   ): Promise<{ added: string[]; removed: string[] }>;
 
   /** Every attachment of a station with canRead; one batched object read per kind, no per-row permission loads. */
@@ -118,8 +123,8 @@ export class StationAttachmentService {
 ```
 
 - **`canRead`:** `set.can("resource.read", { type: "curated_view" | "connector_instance", id, createdBy })`.
-- **Dangling attachments:** an existing attachment whose object no longer exists isn't preserved. No one can read it, so a full-set update drops it.
-- **Diff inside the transaction:** `applyDiff` reads the current rows **inside** `tx`, so two concurrent editors can't duplicate or lose an attachment. The partial unique indexes (`station_views_station_view_unique`, and `station_instances`' equivalent) are the backstop.
+- **Dangling attachments:** an attachment whose object no longer exists is removable by anyone with edit on the station, since no one can read it.
+- **Changes inside the transaction:** `applyChanges` reads the current rows **inside** `tx`, so two concurrent editors can't duplicate or lose an attachment. The partial unique indexes (`station_views_station_view_unique`, and `station_instances`' equivalent) are the backstop.
 
 ### Repositories
 
@@ -204,7 +209,7 @@ export class StationAttachmentService {
 - **`CreateStationDialog`:** adds the view picker after `ConnectorInstancePicker` (`:316`) and sends `curatedViewIds` when non-empty. When none are picked, a non-blocking `helperText` reads: "No views selected — this station won't have data to query until a view is attached."
 - **`EditStationDialog`:**
   - **Seeding:** both pickers seed **only from `canRead` rows** of `station.instances` / `station.views` (fetched with `include=connectorInstance,curatedView`).
-  - **Diff and send:** the sorted readable sets are compared as today (`:186-189`), and the full readable set is sent. The server preserves the rest.
+  - **Changes, not sets:** each kind's readable selection is diffed against what the dialog opened with, and only `{ add, remove }` is sent (omitted when nothing changed). A stale dialog therefore can't re-attach what another editor removed.
 - **`components/StationAttachmentAlerts.component.tsx` (NEW, pure UI):** `StationAttachmentAlertsUI({ viewCount, connectorCount })` renders **one** `Alert severity="warning"` with `describeStationAttachmentGaps(...).missing`, or nothing. A combined sentence covers both missing, and a single one covers either. Station-level, so it's the same for every user. Unreadable attachments show as no-access chips, not as an alert.
 - **`StationDetail.view.tsx`:**
   - **Fetch:** `include: "connectorInstance,curatedView"`.
@@ -233,7 +238,7 @@ export class StationAttachmentService {
 Run from each package: `npm run test:unit`, and `npm run test:integration -- --testPathPattern …` (api).
 
 ### core: `packages/core/src/__tests__/contracts/station.contract.test.ts`
-1. Create and Update accept `curatedViewIds`, and the Update refine counts it.
+1. Create accepts `curatedViewIds`. Update accepts `curatedViewChanges` / `connectorInstanceChanges` (counted by the refine), rejects an id in both `add` and `remove`, and drops full-set fields.
 2. The GET payload requires `canRead` on instances and views.
 3. `AuditActionSchema` accepts `station.attachments.change`.
 
@@ -244,9 +249,9 @@ Run from each package: `npm run test:unit`, and `npm run test:integration -- --t
 ### api integration: `apps/api/src/__tests__/__integration__/routes/station-attachments.router.integration.test.ts` (NEW)
 6. Create with readable views and connectors attaches both, and emits one audit event with the ids.
 7. Create naming an unreadable view returns 403 and writes **no** station.
-8. Update with `curatedViewIds` alone leaves connectors untouched, and vice versa.
+8. Update with `curatedViewChanges` alone leaves connectors untouched, and vice versa. A stale editor's `remove` of one view never re-attaches another editor's removal.
 9. Update removing a readable view soft-deletes that row (`deleted` set, not hard-deleted). Re-attaching it creates a new live row.
-10. **Preservation:** user A attaches views V1 (readable to A only) and V2. User B, with edit on the station and read only on V2, sends `curatedViewIds: []`. Result: V1 is still attached and V2 is detached.
+10. **Preservation:** user A attaches views V1 (readable to A only) and V2. User B, with edit on the station and read only on V2, sends `curatedViewChanges: { remove: [V1, V2] }`. Result: V1 is still attached and V2 is detached.
 11. **Concurrency:** two concurrent updates adding the same view leave exactly one live row.
 12. **GET with `include=curatedView,connectorInstance`:** returns every attachment, with `canRead` false for an unreadable one, and its label present.
 13. A caller without `resource.write` on the station gets 403 from update, and nothing changes.
@@ -261,7 +266,7 @@ Run from each package: `npm run test:unit`, and `npm run test:integration -- --t
 18. `AttachmentChip.test.tsx`: the readable chip renders its label. The unreadable chip has the error colour, the lock icon, the tooltip and aria-label text, and isn't clickable.
 19. `CuratedViewPicker.test.tsx` (UI): async options load from the injected fetcher, selection calls `onChange`, and selected labels render.
 20. `CreateStationDialog.test.tsx`: picking views sends `curatedViewIds`; with none picked, the helper hint shows; the form schema is unchanged otherwise.
-21. `EditStationDialog.test.tsx`: it seeds from `canRead` rows only, sends the readable set when changed, and makes no call when unchanged.
+21. `EditStationDialog.test.tsx`: it seeds from `canRead` rows only, sends only `{ add }` / `{ remove }` changes per kind, and makes no call when unchanged.
 22. `StationAttachmentAlerts.test.tsx`: both missing gives **one** combined alert; views only and connectors only each give their alert; neither gives none.
 23. `Portal.view.test.tsx` (existing) and a new `StationDetail.view.test.tsx`: Views and Connectors rows with no-access chips, and the alerts render from the payload.
 24. `StationDialogCollisions.test.tsx`: add the `sdk.curatedViews.list` mock.
