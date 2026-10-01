@@ -142,17 +142,19 @@ This is the feature that makes views a first-class station attachment, alongside
 - **Chip:** the no-access chip is a new shared component used for both kinds, with an error outline, a lock icon, the tooltip "You don't have access to this view" / "…connector", and no click-through.
 - **Edit dialog:** seeds its pickers only from `canRead` rows. The unreadable ones are preserved server-side (Decision 1) and never shown as removable.
 
-### Decision 6 — Agent-facing "no views" situation
+### Decision 6 — Agent-facing (and UI) empty-station messages
 
-- **A. A new `no_views` situation in `platform_help`, plus system-prompt text, keyed on the station-level view count.** It is checked **before** `no_entities`, because with no views there's nothing to read regardless of connectors. The existing connector-based check is renamed to its real meaning (`no_connectors`).
-- **B. Keep `no_entities` and reword it.**
+*Amended in spec review.* Views don't gate all data access: connectors reach entity data through the entity-management toolpack. So neither kind's absence means "no data".
 
-**Decided: A.** "No entities" conflates two different fixes: attach a connector versus attach or share a view. The agent should name the right one, and an explicit situation is testable.
-- **Second case:** when views or connectors **are** attached but the caller can read none of them, add `no_access_views` / `no_access_connectors`. The agent says exactly "You don't have access to any views on this station" or "…any connectors on this station".
+**Decided:**
+- **One shared copy function in core** (`describeStationAttachmentGaps`) drives the UI alerts, the system prompt and `platform_help`, so they can't drift.
+- **Missing:** when **neither** views nor connectors are attached, one combined message says both are missing. Otherwise it names whichever is missing.
+- **No access:** among the kinds that are attached, when the caller can read none of them, "You don't have access to any views/connectors (or both) on this station."
+- **`platform_help`:** its connector-based `no_entities` becomes `attachments_missing` and `attachments_inaccessible`.
 
 ## Tradeoff comparison
 
-| | D1 full set, server-preserved | D2 one rule, both routes | D3 one transaction | D4 async picker | D5 all attachments + `canRead` | D6 `no_views` situation |
+| | D1 full set, server-preserved | D2 one rule, both routes | D3 one transaction | D4 async picker | D5 all attachments + `canRead` | D6 shared empty-station copy |
 |---|---|---|---|---|---|---|
 | Spread to spec | yes | yes | yes | yes | yes | yes |
 | Changes an existing contract | station create/update | attach/detach permission | no | no | station GET (additive) | `platform_help` situation names |
@@ -167,7 +169,7 @@ This is the feature that makes views a first-class station attachment, alongside
 6. GET `/api/stations/:id` adds `include=curatedView` and returns **all** attached `instances` and `views`, each with `canRead`, evaluated with one loaded permission set.
 7. Both station dialogs add a view picker (`MultiAsyncSearchableSelect` over `GET /api/curated-views?search=`) next to the connector picker. Edit seeds it from the GET's filtered `views` and sends the full set when changed.
 8. The station detail page and the portal header list every attached connector and view. Unreadable ones render, by real name, as a shared **no-access chip**: error outline, lock icon, tooltip "You don't have access to this view/connector", not clickable. Each surface warns when either list is empty, identically for every user. The edit dialog seeds its pickers from `canRead` rows only.
-9. `platform_help` gains `no_views` and `no_access_views` / `no_access_connectors`, all checked before the connector check, which becomes `no_connectors`. The system prompt and `platform_help` say "no views attached" when the station has none. When some are attached but the caller can read none, they say exactly "You don't have access to any views on this station" / "…any connectors on this station".
+9. One core function, `describeStationAttachmentGaps`, provides every empty-station sentence for the UI, the system prompt and `platform_help`. It gives a combined "no views or connectors" when both are missing, otherwise names whichever is missing. When attached kinds aren't readable, it says "You don't have access to any views/connectors on this station". `platform_help`'s `no_entities` becomes `attachments_missing` / `attachments_inaccessible`.
 10. Emit audit events for attachment changes on station create, update and attach/detach, with ids, not names.
 11. Station delete soft-deletes its `station_views` alongside its other attachments.
 12. Invalidate `stations.root` and `curatedViews.root` on station create, update and attach/detach.
