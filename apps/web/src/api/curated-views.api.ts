@@ -30,6 +30,28 @@ export const curatedViews = {
       options
     ),
 
+  /**
+   * #674: an imperative, per-keystroke search for the station view picker.
+   * The list endpoint is visibility-filtered server-side, so it only ever
+   * offers views the caller can read.
+   */
+  search: () =>
+    useAuthMutation<
+      CuratedViewListResponsePayload,
+      { search: string; limit: number }
+    >({
+      url: (vars) =>
+        buildUrl(CURATED_VIEWS_URL, {
+          search: vars.search,
+          limit: vars.limit,
+          offset: 0,
+          sortBy: "label",
+          sortOrder: "asc",
+        }),
+      method: "GET",
+      body: () => undefined,
+    }),
+
   get: (id: string, options?: QueryOptions<CuratedViewGetResponsePayload>) =>
     useAuthQuery<CuratedViewGetResponsePayload>(
       queryKeys.curatedViews.get(id),

@@ -52,7 +52,10 @@ interface StationDataItemProps {
 }
 
 const StationDataItem: React.FC<StationDataItemProps> = ({ id, children }) => {
-  const res = sdk.stations.get(id, { include: "connectorInstance" });
+  // #674: both attachment kinds, each with canRead.
+  const res = sdk.stations.get(id, {
+    include: "connectorInstance,curatedView",
+  });
   return <>{children(res)}</>;
 };
 
@@ -107,6 +110,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
         onSuccess: () => {
           setEditOpen(false);
           queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+          // #674: the station's view attachments changed too.
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.curatedViews.root,
+          });
         },
       });
     },

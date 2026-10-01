@@ -144,10 +144,14 @@ export const StationsView: React.FC = () => {
         onSuccess: () => {
           handleCreateClose();
           invalidate();
+          // #674: a create can attach views.
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.curatedViews.root,
+          });
         },
       });
     },
-    [createMutation, handleCreateClose, invalidate]
+    [createMutation, handleCreateClose, invalidate, queryClient]
   );
 
   // Set as default

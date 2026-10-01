@@ -10,6 +10,7 @@ import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
+import { CuratedViewPicker } from "./CuratedViewPicker.component";
 import { FormAlert } from "./FormAlert.component";
 import { ToolPackChip } from "./ToolPackChip.component";
 import type { ServerError } from "../utils/api.util";
@@ -37,6 +38,7 @@ interface StationFormState {
   name: string;
   description: string;
   connectorInstanceIds: string[];
+  curatedViewIds: string[];
   toolPacks: string[];
 }
 
@@ -49,8 +51,13 @@ const INITIAL_FORM: StationFormState = {
   name: "",
   description: "",
   connectorInstanceIds: [],
+  curatedViewIds: [],
   toolPacks: ["data_query"],
 };
+
+/** #674: a non-blocking hint — a station can be created without views. */
+export const NO_VIEWS_SELECTED_HINT =
+  "No views selected — this station won't have data to query until a view is attached.";
 
 function validateForm(form: StationFormState): FormErrors {
   const result = validateWithSchema(StationFormSchema, form);
@@ -150,6 +157,9 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
         : {}),
       ...(form.connectorInstanceIds.length > 0
         ? { connectorInstanceIds: form.connectorInstanceIds }
+        : {}),
+      ...(form.curatedViewIds.length > 0
+        ? { curatedViewIds: form.curatedViewIds }
         : {}),
     };
     onSubmit(body);
@@ -316,6 +326,15 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
         <ConnectorInstancePicker
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
+        />
+        <CuratedViewPicker
+          selected={form.curatedViewIds}
+          onChange={(ids) => handleChange("curatedViewIds", ids)}
+          helperText={
+            form.curatedViewIds.length === 0
+              ? NO_VIEWS_SELECTED_HINT
+              : undefined
+          }
         />
         <FormAlert serverError={serverError} />
       </Stack>

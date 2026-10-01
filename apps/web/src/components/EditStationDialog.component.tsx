@@ -17,6 +17,7 @@ import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
+import { CuratedViewPicker } from "./CuratedViewPicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import {
@@ -65,6 +66,7 @@ interface FormState {
   name: string;
   toolPacks: string[];
   connectorInstanceIds: string[];
+  curatedViewIds: string[];
 }
 
 const EditStationFormSchema = z.object({
@@ -79,13 +81,28 @@ function validateForm(form: FormState): FormErrors {
 
 interface StationInstance {
   connectorInstanceId: string;
+  /** #674: false for a connector the viewer can't read. */
+  canRead: boolean;
 }
+
+interface StationViewAttachment {
+  curatedViewId: string;
+  curatedView?: { label: string };
+  /** #674: false for a view the viewer can't read. */
+  canRead: boolean;
+}
+
+/** Sorted-set equality, for "did this attachment kind change?". */
+const sameSet = (a: string[], b: string[]): boolean =>
+  JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
 export interface EditStationDialogProps {
   open: boolean;
   onClose: () => void;
   station: Station & {
     instances?: StationInstance[];
+    /** #674: from include=curatedView. */
+    views?: StationViewAttachment[];
     enabledToolpacks?: string[];
   };
   onSubmit: (body: UpdateStationBody) => void;
@@ -110,14 +127,30 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   serverError,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
-  const initialInstanceIds = (station.instances ?? []).map(
-    (i) => i.connectorInstanceId
+  // #674: the pickers hold only what the viewer can read. Attachments they
+  // can't read aren't theirs to remove; the server preserves them whatever
+  // this dialog sends, so the readable set is the whole of what we send.
+  const initialInstanceIds = (station.instances ?? [])
+    .filter((i) => i.canRead)
+    .map((i) => i.connectorInstanceId);
+  const readableViews = (station.views ?? []).filter((v) => v.canRead);
+  const initialViewIds = readableViews.map((v) => v.curatedViewId);
+  // Seeded once: the dialog remounts per station, and a stable object keeps
+  // the picker from re-searching on every render.
+  const [viewLabels] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      readableViews.map((v) => [
+        v.curatedViewId,
+        v.curatedView?.label ?? v.curatedViewId,
+      ])
+    )
   );
   const initialToolpacks = station.enabledToolpacks ?? [];
   const [form, setForm] = useState<FormState>({
     name: station.name,
     toolPacks: [...initialToolpacks],
     connectorInstanceIds: [...initialInstanceIds],
+    curatedViewIds: [...initialViewIds],
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -183,10 +216,11 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {
       body.toolPacks = form.toolPacks;
     }
-    const sortedCurrent = [...initialInstanceIds].sort();
-    const sortedNew = [...form.connectorInstanceIds].sort();
-    if (JSON.stringify(sortedNew) !== JSON.stringify(sortedCurrent)) {
+    if (!sameSet(form.connectorInstanceIds, initialInstanceIds)) {
       body.connectorInstanceIds = form.connectorInstanceIds;
+    }
+    if (!sameSet(form.curatedViewIds, initialViewIds)) {
+      body.curatedViewIds = form.curatedViewIds;
     }
 
     if (Object.keys(body).length === 0) {
@@ -284,6 +318,11 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
         <ConnectorInstancePicker
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
+        />
+        <CuratedViewPicker
+          selected={form.curatedViewIds}
+          onChange={(ids) => handleChange("curatedViewIds", ids)}
+          selectedLabels={viewLabels}
         />
         <FormAlert serverError={serverError} />
       </Stack>
