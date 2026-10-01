@@ -8,6 +8,8 @@ import {
   contentEntrySlug,
   describeStationAttachmentGaps,
   filterFAQ,
+  STATION_ATTACHMENT_MISSING_ACTION,
+  STATION_ATTACHMENT_NO_ACCESS_ACTION,
   filterGlossary,
 } from "@portalai/core/content";
 
@@ -236,8 +238,11 @@ const SITUATION_PROSE: Record<Situation, (f: StationFindings) => string> = {
   // #674: the sentences come from describeStationAttachmentGaps, shared with
   // the UI alerts and the system prompt, so all three say the same thing.
   attachments_missing: (f) =>
-    `${f.attachmentsMissing} Ask someone who can edit the station to attach them.`,
-  attachments_inaccessible: (f) => f.attachmentsNoAccess ?? "",
+    `${f.attachmentsMissing} ${STATION_ATTACHMENT_MISSING_ACTION}`,
+  // #676: the follow-up says the items ARE attached, so a relay can't turn
+  // "no access" into "nothing attached".
+  attachments_inaccessible: (f) =>
+    `${f.attachmentsNoAccess} ${STATION_ATTACHMENT_NO_ACCESS_ACTION}`,
   no_records: () =>
     "This station has entities set up, but **no records have been imported " +
     "into them yet** — that is why answers come back empty. The assistant " +

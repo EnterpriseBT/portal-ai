@@ -188,7 +188,13 @@ describe("PlatformHelpTool — station situations", () => {
   it("#674: reports no access when attached views are all unreadable", async () => {
     mockCountsForCaller.mockResolvedValue(counts([2, 0], [1, 1]));
     const { answer } = await exec();
-    expect(answer).toBe("You don't have access to any views on this station.");
+    // #676: the no-access answer says the views ARE attached, so it can't be
+    // relayed as "nothing attached".
+    expect(answer).toBe(
+      "You don't have access to any views on this station. " +
+        "They're attached, but they haven't been shared with your account. " +
+        "Ask someone who can share them to give you access."
+    );
   });
 
   it("#674: missing outranks no-access, and both outrank no-records", async () => {

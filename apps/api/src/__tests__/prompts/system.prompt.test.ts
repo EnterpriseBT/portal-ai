@@ -124,8 +124,20 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
       makeContext({ entities: [], attachments: attach([2, 0], [1, 1]) })
     );
     expect(prompt).toContain(
-      "_You don't have access to any views on this station._"
+      "_You don't have access to any views on this station. They're attached"
     );
+    // #676: the agent is told these are attached, not missing.
+    expect(prompt).toContain(
+      "They're attached, but they haven't been shared with your account."
+    );
+    expect(prompt).toMatch(/never tell the user .*nothing attached/i);
+    // The model read "you" as itself; the guidance names whose access it is.
+    expect(prompt).toMatch(/the user's access, not yours/);
+  });
+
+  it("#676: adds no no-access guidance when the caller can read what's attached", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).not.toContain("haven't been shared with you");
   });
 
   it("#674: lists entities and adds no gap lines when everything is attached and readable", () => {

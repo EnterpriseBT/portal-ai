@@ -24,6 +24,18 @@ export interface StationAttachmentGaps {
   noAccess: string | null;
 }
 
+/** Follows a `missing` sentence: who can fix it. */
+export const STATION_ATTACHMENT_MISSING_ACTION =
+  "Ask someone who can edit the station to attach them.";
+
+/**
+ * #676: follows a `noAccess` sentence. It says the items ARE attached: without
+ * it, an agent relaying the bare sentence told a user the station had nothing
+ * attached and sent them to attach data instead of asking for access.
+ */
+export const STATION_ATTACHMENT_NO_ACCESS_ACTION =
+  "They're attached, but they haven't been shared with your account. Ask someone who can share them to give you access.";
+
 export function describeStationAttachmentGaps(
   c: StationAttachmentCounts
 ): StationAttachmentGaps {

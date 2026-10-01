@@ -190,7 +190,7 @@ export class StationAttachmentService {
   - **`Situation`** becomes `no_packs | attachments_missing | attachments_inaccessible | no_records | unentitled_packs | default`. `no_entities` is removed.
   - **Match order:** unavailable → `no_packs` → `attachments_missing` → `attachments_inaccessible` → `no_records` → `unentitled_packs` → `default`.
   - **Data source:** `gatherFindings` takes the counts from `listForStation`.
-  - **Prose:** the prose for both attachment situations is the function's sentence, plus "Ask someone who can edit the station to attach them." for `attachments_missing"
+  - **Prose:** each situation is the function's sentence plus a shared follow-up from `@portalai/core/content`: `STATION_ATTACHMENT_MISSING_ACTION` ("Ask someone who can edit the station to attach them.") for `attachments_missing`, and `STATION_ATTACHMENT_NO_ACCESS_ACTION` ("They're attached, but they haven't been shared with your account. Ask someone who can share them to give you access.") for `attachments_inaccessible`. The system prompt carries the no-access follow-up too, plus a line telling the agent never to report a no-access station as empty (#676, found on the smoke walk: the bare sentence was relayed as "no views attached").
 
 ### Web (`apps/web/src`)
 

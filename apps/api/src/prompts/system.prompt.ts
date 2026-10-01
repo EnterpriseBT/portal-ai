@@ -5,6 +5,7 @@ import {
 } from "@portalai/core/registries";
 import {
   describeStationAttachmentGaps,
+  STATION_ATTACHMENT_NO_ACCESS_ACTION,
   type StationAttachmentCounts,
 } from "@portalai/core/content";
 
@@ -634,8 +635,19 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // #674: what's missing from the station (the same for everyone) and what
   // the caller can't read, worded once in @portalai/core/content.
   const gaps = describeStationAttachmentGaps(stationContext.attachments);
-  for (const sentence of [gaps.missing, gaps.noAccess]) {
-    if (sentence) lines.push(`_${sentence}_`);
+  if (gaps.missing) lines.push(`_${gaps.missing}_`);
+  if (gaps.noAccess) {
+    // #676: the user can't read what's attached, which is not the same as
+    // nothing being attached. Say so plainly, because a model relaying the bare
+    // sentence told a user their station was empty.
+    lines.push(`_${gaps.noAccess} ${STATION_ATTACHMENT_NO_ACCESS_ACTION}_`);
+    lines.push(
+      "These are attached but not shared with the user's account (this is " +
+        "about the user's access, not yours): never tell the user the station " +
+        "has nothing attached or ask them to attach data. Tell them their " +
+        "account doesn't have access and to ask for the items to be shared " +
+        "with them."
+    );
   }
   if (gaps.missing || gaps.noAccess) lines.push("");
 

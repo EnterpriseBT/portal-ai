@@ -2,6 +2,8 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   describeStationAttachmentGaps,
+  STATION_ATTACHMENT_MISSING_ACTION,
+  STATION_ATTACHMENT_NO_ACCESS_ACTION,
   type StationAttachmentCounts,
 } from "../../content/station-attachments.util.js";
 
@@ -77,5 +79,24 @@ describe("describeStationAttachmentGaps (#674)", () => {
         describeStationAttachmentGaps(counts([0, 0], [0, 0])).noAccess
       ).toBeNull();
     });
+  });
+});
+
+// #676: each gap carries a follow-up sentence. The no-access one says the
+// items ARE attached, so an agent relaying it can't turn "no access" into
+// "nothing attached".
+describe("the follow-up actions (#676)", () => {
+  it("tells a missing-attachment reader who can fix it", () => {
+    expect(STATION_ATTACHMENT_MISSING_ACTION).toBe(
+      "Ask someone who can edit the station to attach them."
+    );
+  });
+
+  it("says no-access items are attached and points at sharing, not attaching", () => {
+    expect(STATION_ATTACHMENT_NO_ACCESS_ACTION).toMatch(/attached/);
+    expect(STATION_ATTACHMENT_NO_ACCESS_ACTION).toMatch(
+      /shared with your account/
+    );
+    expect(STATION_ATTACHMENT_NO_ACCESS_ACTION).not.toMatch(/attach them/);
   });
 });
