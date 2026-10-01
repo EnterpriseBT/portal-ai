@@ -491,6 +491,17 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
+  it("#669: rejects a sourceFilter.whereSqlFragment that escapes its parentheses, before EXPLAIN and with no job", async () => {
+    const result = (await exec({
+      ...VALID_INPUT,
+      sourceFilter: { whereSqlFragment: "c_acreage > 1) OR (c_acreage < 0" },
+    })) as { code: string; message?: string };
+    expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
+    expect(result.message).toMatch(/single condition/);
+    expect(mockExplain).not.toHaveBeenCalled();
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
   it("rejects when EXPLAIN fails (BULK_JOB_EXPRESSION_INVALID)", async () => {
     mockExplain.mockRejectedValueOnce(new Error("syntax error at AS"));
     const result = (await exec()) as { code: string };

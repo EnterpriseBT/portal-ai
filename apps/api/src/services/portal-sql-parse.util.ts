@@ -659,11 +659,76 @@ export function parsePortalSqlExpression(
   const wrapped =
     kind === "target"
       ? `SELECT ${fenceSql(fragment)} FROM ${FRAGMENT_SOURCE}`
-      : `SELECT 1 FROM ${FRAGMENT_SOURCE} WHERE (${fenceSql(fragment)})`;
+      : // #669: a TRUE sentinel conjunct, so the fragment's shape is checkable.
+        `SELECT 1 FROM ${FRAGMENT_SOURCE} WHERE TRUE AND (${fenceSql(fragment)})`;
   const parsed = parsePortalSql(wrapped);
   assertScalarOver(parsed, FRAGMENT_SOURCE);
   assertFunctionsAllowed(parsed.functions);
+  if (kind === "where") assertAndOfTwo(parsed, isTrueConst);
   return parsed;
+}
+
+type AstNode = Record<string, unknown>;
+
+const isTrueConst = (n: AstNode): boolean =>
+  (n.A_Const as { boolval?: { boolval?: boolean } } | undefined)?.boolval
+    ?.boolval === true;
+
+/**
+ * #669: the predicate `"<column>" = …`, used to identify the server's own
+ * conjunct (e.g. the org filter) at the head of a WHERE.
+ */
+export const isColumnEquality =
+  (column: string) =>
+  (n: AstNode): boolean => {
+    const e = n.A_Expr as
+      | {
+          kind?: string;
+          name?: Array<{ String?: { sval?: string } }>;
+          lexpr?: {
+            ColumnRef?: { fields?: Array<{ String?: { sval?: string } }> };
+          };
+        }
+      | undefined;
+    const fields = e?.lexpr?.ColumnRef?.fields;
+    return (
+      e?.kind === "AEXPR_OP" &&
+      e.name?.[0]?.String?.sval === "=" &&
+      fields?.length === 1 &&
+      fields[0]?.String?.sval === column
+    );
+  };
+
+/**
+ * #669: a filter fragment spliced as `<server conjunct> AND (<fragment>)` may
+ * only narrow the rows. Its contents are checked elsewhere; this checks its
+ * SHAPE in Postgres's own parse tree. The WHERE root must be an AND of exactly
+ * two args, the first the server's conjunct. A fragment that stays inside its
+ * parentheses is always one arg, even with its own OR or AND inside. One that
+ * closes them and opens an OR branch turns the root into an OR. One that
+ * AND-s more conditions outside them adds a third arg. Both are refused.
+ */
+export function assertAndOfTwo(
+  parsed: ParsedPortalSql,
+  isFirst: (n: AstNode) => boolean
+): void {
+  const where = (parsed.statement as { SelectStmt?: { whereClause?: AstNode } })
+    .SelectStmt?.whereClause;
+  const and = where?.BoolExpr as
+    | { boolop?: string; args?: AstNode[] }
+    | undefined;
+  if (
+    !and ||
+    and.boolop !== "AND_EXPR" ||
+    and.args?.length !== 2 ||
+    !isFirst(and.args[0]!)
+  ) {
+    throw new ApiError(
+      400,
+      ApiCode.PORTAL_SQL_FORBIDDEN,
+      "the source filter must be a single condition: it can narrow the rows but can't escape its parentheses"
+    );
+  }
 }
 
 /**

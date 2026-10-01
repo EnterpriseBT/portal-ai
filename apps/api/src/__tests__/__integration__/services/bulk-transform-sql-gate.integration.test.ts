@@ -93,4 +93,19 @@ describe("BulkTransformService SQL gate (#660)", () => {
     expect(err?.code).not.toBe("PORTAL_SQL_FORBIDDEN");
     expect(err?.cause?.code).toBe("42P01"); // FROM the (missing) source table
   });
+
+  it("#669: fetchSourceBatch refuses a WHERE fragment that escapes its parentheses, before any query", async () => {
+    await expect(
+      BulkTransformService.fetchSourceBatch({
+        sourceConnectorEntityId: SOURCE,
+        organizationId: ORG,
+        whereSqlFragment: "c_id > 1) OR (c_id < 0",
+        batchSize: 10,
+        offset: 0,
+      } as never)
+    ).rejects.toMatchObject({
+      code: "PORTAL_SQL_FORBIDDEN",
+      message: expect.stringMatching(/single condition/),
+    });
+  });
 });
