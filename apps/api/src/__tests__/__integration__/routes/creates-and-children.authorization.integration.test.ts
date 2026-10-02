@@ -439,4 +439,33 @@ describe("Child rows and creates authorization (#685)", () => {
       .where(eq(schema.jobs.organizationId, fx.otherOrgId));
     expect(jobs).toHaveLength(0);
   });
+
+  // ── Slice 6b: cross-tenant gaps the route inventory found ───────────
+
+  it("an owner can't change or delete another org's connector entity by id (404); it's unchanged", async () => {
+    const theirs = await entity(fx.otherOrgId, fx.otherOwnerId);
+    const patch = await request(app)
+      .patch(`/api/connector-entities/${theirs}`)
+      .send({ label: "Hijacked" });
+    expect(patch.status).toBe(404);
+    expect(patch.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+    const del = await request(app).delete(`/api/connector-entities/${theirs}`);
+    expect(del.status).toBe(404);
+    const [row] = await db
+      .select()
+      .from(schema.connectorEntities)
+      .where(eq(schema.connectorEntities.id, theirs));
+    expect(row.label).toBe("Entity");
+    expect(row.deleted).toBeNull();
+  });
+
+  it("the cross-org /api/admin routes no longer exist", async () => {
+    for (const send of [
+      () => request(app).post("/api/admin/wide-table/resync"),
+      () => request(app).post("/api/admin/dissolve/reenqueue"),
+      () => request(app).get("/api/admin/maintenance"),
+    ]) {
+      expect((await send()).status).toBe(404);
+    }
+  });
 });

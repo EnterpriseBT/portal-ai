@@ -10,11 +10,14 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
   seedUserAndOrg,
+  createUser,
+  createOrganization,
   teardownOrg,
 } from "../utils/application.util.js";
 
@@ -486,5 +489,107 @@ describe("api-endpoints totalCount config (#458)", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.REST_API_INVALID_CONFIG);
+  });
+});
+
+/**
+ * #685: PATCH and DELETE looked the endpoint up by entity id alone. With any
+ * rest-api instance of your own org in the path, another org's entity id
+ * rewrote or deleted that org's endpoint (its path, headers, auth params).
+ */
+describe("api-endpoints by another org's entity id (#685)", () => {
+  async function otherOrgEndpoint() {
+    const created = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: `theirs_${generateId().slice(0, 6)}`,
+        label: "Theirs",
+        config: {
+          path: "/secret",
+          method: "GET",
+          recordsPath: "",
+          pagination: { strategy: "none" },
+        },
+      })
+      .expect(201);
+    const entityId = created.body.payload.entity.id as string;
+    // Move that instance, its entity and its config into another org.
+    const owner = createUser(`auth0|other-${generateId()}`);
+    await db.insert(schema.users).values(owner as never);
+    const org = createOrganization(owner.id);
+    await db.insert(schema.organizations).values(org as never);
+    await db
+      .update(schema.connectorInstances)
+      .set({ organizationId: org.id } as never)
+      .where(eq(schema.connectorInstances.id, restApiInstanceId));
+    await db
+      .update(schema.connectorEntities)
+      .set({ organizationId: org.id } as never)
+      .where(eq(schema.connectorEntities.id, entityId));
+    await db
+      .update(schema.apiEndpointConfigs)
+      .set({ organizationId: org.id } as never)
+      .where(eq(schema.apiEndpointConfigs.connectorEntityId, entityId));
+    // A rest-api instance the caller does own, for the URL.
+    const mine = await seedInstance(connDefId);
+    return { entityId, mine };
+  }
+
+  async function config(entityId: string) {
+    const [row] = await db
+      .select()
+      .from(schema.apiEndpointConfigs)
+      .where(eq(schema.apiEndpointConfigs.connectorEntityId, entityId));
+    return row;
+  }
+
+  it("PATCH is a 404 and the other org's endpoint is unchanged", async () => {
+    const { entityId, mine } = await otherOrgEndpoint();
+    const res = await request(app)
+      .patch(`/api/connector-instances/${mine}/api-endpoints/${entityId}`)
+      .send({ label: "Hijacked", config: { path: "/exfil" } });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.REST_API_ENDPOINT_NOT_FOUND);
+    expect((await config(entityId)).path).toBe("/secret");
+  });
+
+  it("GET is a 404 and reveals nothing of the other org's endpoint", async () => {
+    const { entityId, mine } = await otherOrgEndpoint();
+    const res = await request(app).get(
+      `/api/connector-instances/${mine}/api-endpoints/${entityId}`
+    );
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain("/secret");
+  });
+
+  it("DELETE is a 404 and the other org's endpoint stays", async () => {
+    const { entityId, mine } = await otherOrgEndpoint();
+    const res = await request(app).delete(
+      `/api/connector-instances/${mine}/api-endpoints/${entityId}`
+    );
+    expect(res.status).toBe(404);
+    expect((await config(entityId)).deleted).toBeNull();
+  });
+
+  it("PATCH with an endpoint of a different instance in the same org is a 404", async () => {
+    const created = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: `other_inst_${generateId().slice(0, 6)}`,
+        label: "Other",
+        config: {
+          path: "/p",
+          method: "GET",
+          recordsPath: "",
+          pagination: { strategy: "none" },
+        },
+      })
+      .expect(201);
+    const entityId = created.body.payload.entity.id as string;
+    const second = await seedInstance(connDefId);
+    const res = await request(app)
+      .patch(`/api/connector-instances/${second}/api-endpoints/${entityId}`)
+      .send({ label: "Wrong parent" });
+    expect(res.status).toBe(404);
   });
 });

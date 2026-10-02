@@ -727,9 +727,15 @@ connectorEntityRouter.patch(
         );
       }
 
+      // #685: org-scoped first. The permission engine doesn't see orgs, so
+      // without this an owner or admin of any org could edit another org's
+      // entity by id.
       const existing =
         await DbService.repository.connectorEntities.findById(id);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -1000,8 +1006,22 @@ connectorEntityRouter.delete(
 
       // #599: RBAC delete gate — a member may delete only entities they
       // created; owner/admin any.
+      // #685: org-scoped first (an owner/admin of another org passed the
+      // check below, which doesn't see orgs).
       const toDelete =
         await DbService.repository.connectorEntities.findById(id);
+      if (
+        toDelete &&
+        toDelete.organizationId !== req.application!.metadata.organizationId
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
+      }
       if (toDelete) {
         await PermissionService.check(
           req.application!.metadata,

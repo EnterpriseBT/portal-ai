@@ -393,11 +393,17 @@ apiEndpointsRouter.get(
         entityId: string;
       };
       const { organizationId } = req.application!.metadata;
-      await requireRestApiInstance(instanceId, organizationId);
+      const instance = await requireRestApiInstance(instanceId, organizationId);
 
+      // #685: in the caller's org and on the URL's instance (the lookup is by
+      // entity id alone, so this returned another org's endpoint config).
       const found =
         await DbService.repository.apiEndpoints.findByEntityId(entityId);
-      if (!found) {
+      if (
+        !found ||
+        found.entity.organizationId !== organizationId ||
+        found.entity.connectorInstanceId !== instance.id
+      ) {
         throw new ApiError(
           404,
           ApiCode.REST_API_ENDPOINT_NOT_FOUND,
@@ -745,9 +751,16 @@ apiEndpointsRouter.patch(
         );
       }
 
+      // #685: the endpoint's entity must be in the caller's org and on the
+      // instance in the URL. It was looked up by entity id alone, so another
+      // org's endpoint could be rewritten or deleted.
       const existing =
         await DbService.repository.apiEndpoints.findByEntityId(entityId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.entity.organizationId !== organizationId ||
+        existing.entity.connectorInstanceId !== instance.id
+      ) {
         throw new ApiError(
           404,
           ApiCode.REST_API_ENDPOINT_NOT_FOUND,
@@ -882,9 +895,16 @@ apiEndpointsRouter.delete(
       const { organizationId, userId } = req.application!.metadata;
       const instance = await requireRestApiInstance(instanceId, organizationId);
 
+      // #685: the endpoint's entity must be in the caller's org and on the
+      // instance in the URL. It was looked up by entity id alone, so another
+      // org's endpoint could be rewritten or deleted.
       const existing =
         await DbService.repository.apiEndpoints.findByEntityId(entityId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.entity.organizationId !== organizationId ||
+        existing.entity.connectorInstanceId !== instance.id
+      ) {
         throw new ApiError(
           404,
           ApiCode.REST_API_ENDPOINT_NOT_FOUND,

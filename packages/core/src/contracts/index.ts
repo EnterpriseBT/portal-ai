@@ -99,7 +99,6 @@ export * from "./billing.contract.js";
 
 /** Usage-ledger endpoint contracts — schemas & types (#179) */
 export * from "./usage-ledger.contract.js";
-export * from "./maintenance.contract.js";
 
 /** Audit-log endpoint contracts — schemas & types (#575) */
 export * from "./audit-log.contract.js";

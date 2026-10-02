@@ -67,7 +67,6 @@ import {
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
   AuditLogListResponseSchema,
-  MaintenanceStatusResponseSchema,
   PublicSitePriceSchema,
   PublicSiteTierSchema,
   PublicSiteConfigResponseSchema,
@@ -480,10 +479,6 @@ const usageLedgerSchemas: Record<string, unknown> = {
   ),
   UsageLedgerListResponse: z.toJSONSchema(
     UsageLedgerListResponseSchema,
-    JSON_SCHEMA_OPTS
-  ),
-  MaintenanceStatusResponse: z.toJSONSchema(
-    MaintenanceStatusResponseSchema,
     JSON_SCHEMA_OPTS
   ),
   AuditLogEntry: z.toJSONSchema(AuditLogEntrySchema, JSON_SCHEMA_OPTS),
