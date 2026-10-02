@@ -12,8 +12,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *  loop drains the backlog batch by batch. */
 export const PURGE_BATCH_SIZE = 10_000;
 
-/** The run summary — the BullMQ return value surfaced verbatim by
- *  `GET /api/admin/maintenance` as `recentRuns[].returnvalue`. */
+/** The run summary — the BullMQ return value, kept on the completed job. */
 export interface MessageDissolveRetentionPurgeSummary {
   purged: number;
   batches: number;

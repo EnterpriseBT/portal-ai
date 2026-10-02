@@ -146,6 +146,12 @@ portalEventsRouter.get(
           "resource.write",
           PortalAccessService.object(accessible)
         );
+        // #685: the turn answers the pending message, so it runs with its
+        // author's data access (who posted it via POST /messages). The
+        // stream caller only claims the turn. An owner/admin who can open any
+        // portal must not answer a member's question with rows the member
+        // can't see, saved into the member's portal.
+        const turnUserId = last?.createdBy ?? caller.userId;
 
         // Load station data (re-populates in-memory AlaSQL tables)
         const station = await DbService.repository.stations.findById(
@@ -165,8 +171,8 @@ portalEventsRouter.get(
           station: { id: station.id, name: station.name },
           organizationId: portal.organizationId,
           // #599 / #685: scope the roster to the identity the session runs
-          // as, which is the caller, never the portal's creator.
-          userId: caller.userId,
+          // as: the pending message's author, never the portal's creator.
+          userId: turnUserId,
         });
 
         sse = new SseUtil(res);
@@ -176,7 +182,7 @@ portalEventsRouter.get(
           messages: coreMessages,
           stationContext,
           organizationId: portal.organizationId,
-          userId: caller.userId,
+          userId: turnUserId,
           sse,
         });
 

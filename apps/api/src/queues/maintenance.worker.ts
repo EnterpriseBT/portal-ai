@@ -21,8 +21,7 @@ const logger = createLogger({ module: "maintenance-worker" });
 /**
  * Dedicated tiny worker for the maintenance queue (#179 D5) —
  * deliberately NOT the jobs-table wrapper (no job row, no SSE, no
- * entity locks). The BullMQ return value is the run's summary,
- * surfaced by `GET /api/admin/maintenance`.
+ * entity locks). The BullMQ return value is the run's summary.
  */
 export const createMaintenanceWorker = (): Worker => {
   const worker = new Worker(

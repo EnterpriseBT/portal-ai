@@ -12,8 +12,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *  per-entity wide table, and 10,000 measured fine against an 8 GB table. */
 export const PURGE_BATCH_SIZE = 10_000;
 
-/** The run summary — the BullMQ return value surfaced verbatim by
- *  `GET /api/admin/maintenance` as `recentRuns[].returnvalue`. Reports both
+/** The run summary — the BullMQ return value, kept on the completed job. Reports both
  *  cutoffs so an operator can tell which windows were actually in effect
  *  without reading the env off the task. */
 export interface EntityRecordRetentionPurgeSummary {

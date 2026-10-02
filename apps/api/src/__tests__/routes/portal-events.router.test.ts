@@ -128,7 +128,8 @@ const PORTAL = {
   organizationId: "org-1",
   createdBy: "user-1",
 };
-const USER_ROW = { id: "u1", role: "user", blocks: [] };
+// The pending user message's author (who posted it via POST /messages).
+const USER_ROW = { id: "u1", role: "user", blocks: [], createdBy: "author-1" };
 const ASSISTANT_ROW = {
   id: "a1",
   role: "assistant",
@@ -194,7 +195,7 @@ describe("fresh pending turn", () => {
 // ── #685: identity + access ──────────────────────────────────────────
 
 describe("authorization (#685)", () => {
-  it("a fresh turn runs as the caller, not the portal's creator", async () => {
+  it("a fresh turn runs as the pending message's author, not the stream caller or the portal's creator", async () => {
     mockGetPortal.mockResolvedValue(pendingTurn);
     mockAcquire.mockResolvedValue(true);
 
@@ -206,11 +207,14 @@ describe("authorization (#685)", () => {
       id: PORTAL_ID,
       createdBy: "user-1",
     });
+    // The caller (an owner/admin can open any portal's stream) only claims
+    // the turn; its data access is the author's, so a reply never carries
+    // rows the author can't see into the author's portal.
     expect(mockBuildStationContext.mock.calls[0]).toEqual([
-      expect.objectContaining({ userId: "caller-1" }),
+      expect.objectContaining({ userId: "author-1" }),
     ]);
     expect(mockStreamResponse.mock.calls[0]).toEqual([
-      expect.objectContaining({ userId: "caller-1" }),
+      expect.objectContaining({ userId: "author-1" }),
     ]);
   });
 

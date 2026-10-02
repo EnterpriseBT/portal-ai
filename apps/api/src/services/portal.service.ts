@@ -535,6 +535,11 @@ export class PortalService {
       return;
     }
 
+    // #685: the message (and its precompute) belongs to the member who started
+    // the job, read from the job row rather than inferred from the portal.
+    const job = await repo.jobs.findById(jobId);
+    const authorId = job?.createdBy ?? portal.createdBy;
+
     const blocks: Record<string, unknown>[] = [];
 
     if (terminal.status === "completed") {
@@ -578,7 +583,7 @@ export class PortalService {
       role: "assistant",
       blocks,
       created: now,
-      createdBy: portal.createdBy,
+      createdBy: authorId,
       updated: null,
       updatedBy: null,
       deleted: null,
@@ -592,7 +597,7 @@ export class PortalService {
           messageId: bulkMessageId,
           blockIndex,
           organizationId: portal.organizationId,
-          userId: portal.createdBy,
+          userId: authorId,
           block,
         })
       )

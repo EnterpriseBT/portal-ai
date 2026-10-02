@@ -8,8 +8,7 @@ const logger = createLogger({ module: "audit-log-retention-purge" });
  *  the loop drains the backlog batch by batch. */
 export const AUDIT_LOG_PURGE_BATCH_SIZE = 10_000;
 
-/** The run summary — the BullMQ return value surfaced verbatim by
- *  `GET /api/admin/maintenance` as `recentRuns[].returnvalue`. */
+/** The run summary — the BullMQ return value, kept on the completed job. */
 export interface AuditLogRetentionPurgeSummary {
   purged: number;
   batches: number;
