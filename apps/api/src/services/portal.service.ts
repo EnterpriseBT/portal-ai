@@ -460,7 +460,9 @@ export class PortalService {
    */
   static async addMessage(
     portalId: string,
-    { role, content }: { role: "user" | "assistant"; content: string }
+    { role, content }: { role: "user" | "assistant"; content: string },
+    /** #685: the caller who sent it; the message is theirs. */
+    userId: string
   ): Promise<PortalMessageSelect> {
     const repo = DbService.repository;
 
@@ -479,7 +481,7 @@ export class PortalService {
       role,
       blocks,
       created: now,
-      createdBy: portal.createdBy,
+      createdBy: userId,
       updated: null,
       updatedBy: null,
       deleted: null,

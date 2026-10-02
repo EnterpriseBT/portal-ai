@@ -1152,10 +1152,11 @@ describe("PortalService", () => {
       mockFindById_portal.mockResolvedValue(PORTAL);
       mockCreate_message.mockResolvedValue(savedMsg);
 
-      const result = await PortalService.addMessage(PORTAL_ID, {
-        role: "user",
-        content: "Hello!",
-      });
+      const result = await PortalService.addMessage(
+        PORTAL_ID,
+        { role: "user", content: "Hello!" },
+        "caller-1"
+      );
 
       expect(result).toBe(savedMsg);
       expect(mockCreate_message).toHaveBeenCalledWith(
@@ -1164,6 +1165,8 @@ describe("PortalService", () => {
           organizationId: ORG_ID,
           role: "user",
           blocks: [{ type: "text", content: "Hello!" }],
+          // #685: the message belongs to the caller who sent it.
+          createdBy: "caller-1",
         })
       );
     });
@@ -1172,7 +1175,11 @@ describe("PortalService", () => {
       mockFindById_portal.mockResolvedValue(null);
 
       await expect(
-        PortalService.addMessage(PORTAL_ID, { role: "user", content: "hi" })
+        PortalService.addMessage(
+          PORTAL_ID,
+          { role: "user", content: "hi" },
+          "caller-1"
+        )
       ).rejects.toMatchObject({ code: ApiCode.PORTAL_NOT_FOUND });
     });
   });
