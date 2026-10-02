@@ -20,7 +20,6 @@ import { environment } from "../../../environment.js";
 import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import {
   generateId,
-  createUser,
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
@@ -1233,6 +1232,17 @@ describe("Connector Instance Router", () => {
   // ── POST /api/connector-instances ───────────────────────────────
 
   describe("POST /api/connector-instances", () => {
+    // #685: the route resolves the caller like every other route, so each
+    // test needs a real member of a real org, and creates in that org. (These
+    // tests used to create into a random organizationId with a user who
+    // belonged to no org, which is the bug.)
+    let callerOrgId: string;
+    beforeEach(async () => {
+      callerOrgId = (
+        await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID)
+      ).organizationId;
+    });
+
     it("should return 400 for invalid payload", async () => {
       const res = await request(app)
         .post("/api/connector-instances")
@@ -1250,7 +1260,7 @@ describe("Connector Instance Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           connectorDefinitionId: generateId(),
-          organizationId: generateId(),
+          organizationId: callerOrgId,
           name: "",
           status: "active",
           enabledCapabilityFlags: { read: true, write: false, sync: false },
@@ -1261,17 +1271,12 @@ describe("Connector Instance Router", () => {
     });
 
     it("should return 404 when connector definition does not exist", async () => {
-      const user = createUser(AUTH0_ID);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.users)
-        .values(user as never);
-
       const res = await request(app)
         .post("/api/connector-instances")
         .set("Authorization", "Bearer test-token")
         .send({
           connectorDefinitionId: generateId(),
-          organizationId: generateId(),
+          organizationId: callerOrgId,
           name: "New Instance",
           status: "active",
           enabledCapabilityFlags: { read: true, write: false, sync: false },
@@ -1281,7 +1286,7 @@ describe("Connector Instance Router", () => {
       expect(res.body.code).toBe(ApiCode.CONNECTOR_DEFINITION_NOT_FOUND);
     });
 
-    it("should return 404 when user does not exist", async () => {
+    it("refuses a body organizationId that isn't the caller's org (403) and writes nothing (#685)", async () => {
       const def = createConnectorDefinition();
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
@@ -1298,23 +1303,19 @@ describe("Connector Instance Router", () => {
           enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
-      expect(res.status).toBe(404);
-      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_USER_NOT_FOUND);
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
     });
 
     it("inherits enabledCapabilityFlags from the definition when the body omits them", async () => {
       const def = createConnectorDefinition({
         capabilityFlags: { sync: true, read: true, write: false, push: true },
       });
-      const user = createUser(AUTH0_ID);
-      const orgId = generateId();
+      const orgId = callerOrgId;
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.users)
-        .values(user as never);
 
       const res = await request(app)
         .post("/api/connector-instances")
@@ -1340,15 +1341,11 @@ describe("Connector Instance Router", () => {
       const def = createConnectorDefinition({
         capabilityFlags: { sync: true, read: true, write: true, push: false },
       });
-      const user = createUser(AUTH0_ID);
-      const orgId = generateId();
+      const orgId = callerOrgId;
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.users)
-        .values(user as never);
 
       const res = await request(app)
         .post("/api/connector-instances")
@@ -1375,15 +1372,11 @@ describe("Connector Instance Router", () => {
 
     it("should create a connector instance successfully", async () => {
       const def = createConnectorDefinition();
-      const user = createUser(AUTH0_ID);
-      const orgId = generateId();
+      const orgId = callerOrgId;
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.users)
-        .values(user as never);
 
       const res = await request(app)
         .post("/api/connector-instances")
@@ -1412,15 +1405,11 @@ describe("Connector Instance Router", () => {
 
     it("should create an instance with config and credentials but redact credentials from the response", async () => {
       const def = createConnectorDefinition();
-      const user = createUser(AUTH0_ID);
-      const orgId = generateId();
+      const orgId = callerOrgId;
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.users)
-        .values(user as never);
 
       const res = await request(app)
         .post("/api/connector-instances")
@@ -1451,10 +1440,7 @@ describe("Connector Instance Router", () => {
       const def = createConnectorDefinition();
       // #630: the caller (owner) must belong to the org so the GET-back resolves
       // metadata and passes the object read (`* *`).
-      const { organizationId: orgId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
+      const orgId = callerOrgId;
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
@@ -1485,10 +1471,7 @@ describe("Connector Instance Router", () => {
     });
 
     it("surfaces accountInfo.identity for google-sheets instances and never leaks credentials", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
+      const organizationId = callerOrgId;
       const def = createConnectorDefinition({ slug: "google-sheets" });
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)

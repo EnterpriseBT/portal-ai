@@ -370,6 +370,8 @@ entityGroupRouter.get(
  *               description:
  *                 type: [string, "null"]
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       201:
  *         description: Entity group created
  *         content:
@@ -421,6 +423,17 @@ entityGroupRouter.post(
       }
 
       const { organizationId, userId } = req.application!.metadata;
+
+      // #685: creating one is owner/admin only (class write on entity_group).
+      // MemberAccess holds nothing on this type, so members can't create
+      // what they couldn't then edit or delete.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "entity_group",
+        }
+      );
 
       const duplicate = await DbService.repository.entityGroups.findByName(
         organizationId,

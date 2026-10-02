@@ -40,6 +40,7 @@ import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
@@ -682,6 +683,8 @@ entityRecordRouter.get(
  *                 type: string
  *                 description: Optional source identifier (auto-generated UUID if omitted)
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       201:
  *         description: Record created
  *         content:
@@ -734,6 +737,25 @@ entityRecordRouter.post(
         next
       );
       if (!entity) return;
+
+      // #685: the entity must be readable by the caller (unreadable ==
+      // absent), and creating a record is an owned write.
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      if (
+        !set.can("resource.read", ObjectAccessService.object("entity", entity))
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
+      }
+      set.check("resource.write", {
+        type: "entity_record",
+        createdBy: req.application!.metadata.userId,
+      });
 
       await assertWriteCapability(connectorEntityId);
       await JobLockService.assertConnectorInstanceUnlocked(

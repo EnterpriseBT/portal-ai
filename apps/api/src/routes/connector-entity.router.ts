@@ -33,6 +33,7 @@ import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
@@ -474,6 +475,8 @@ connectorEntityRouter.get(
  *                 minLength: 1
  *                 description: Human-readable label
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       201:
  *         description: Connector entity created
  *         content:
@@ -521,12 +524,23 @@ connectorEntityRouter.post(
         );
       }
 
-      // Verify connector instance exists
+      // #685: the connector instance must be in the caller's org (it wasn't
+      // checked) and readable by them, else 404; creating an entity is an
+      // owned write.
+      const caller = req.application!.metadata;
+      const set = await PermissionService.loadSet(caller);
       const connectorInstance =
         await DbService.repository.connectorInstances.findById(
           parsed.data.connectorInstanceId
         );
-      if (!connectorInstance) {
+      if (
+        !ObjectAccessService.readableInOrg(
+          set,
+          caller.organizationId,
+          "connector_instance",
+          connectorInstance
+        )
+      ) {
         return next(
           new ApiError(
             404,
@@ -536,7 +550,8 @@ connectorEntityRouter.post(
         );
       }
 
-      const { userId, organizationId } = req.application!.metadata;
+      const { userId, organizationId } = caller;
+      set.check("resource.write", { type: "entity", createdBy: userId });
 
       await JobLockService.assertConnectorInstanceUnlocked(
         parsed.data.connectorInstanceId,
