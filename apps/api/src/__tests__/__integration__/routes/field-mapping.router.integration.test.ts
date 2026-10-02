@@ -18,6 +18,8 @@ import {
   generateId,
   seedUserAndOrg,
   teardownOrg,
+  createUser,
+  createOrganization,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
@@ -2042,6 +2044,41 @@ describe("Field Mapping Router", () => {
         expect(res.status).toBe(422);
         expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
       });
+    });
+  });
+
+  // ── #685: DELETE resolved any mapping by id, across orgs ───────────
+
+  describe("cross-tenant DELETE (#685)", () => {
+    it("DELETE another org's field mapping is a 404, and the mapping stays", async () => {
+      const drz = db as ReturnType<typeof drizzle>;
+      await seedFullChain(drz); // the caller's own org
+      const owner = createUser(`auth0|other-${generateId()}`);
+      await drz.insert(schema.users).values(owner as never);
+      const org = createOrganization(owner.id);
+      await drz.insert(schema.organizations).values(org as never);
+      const def = createConnectorDefinition();
+      await drz.insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, org.id);
+      await drz.insert(connectorInstances).values(instance as never);
+      const entity = createConnEntity(org.id, instance.id);
+      await drz.insert(connectorEntities).values(entity as never);
+      const colDef = createColDef(org.id);
+      await drz.insert(columnDefinitions).values(colDef as never);
+      const mapping = createFieldMap(org.id, entity.id, colDef.id);
+      await drz.insert(fieldMappings).values(mapping as never);
+
+      const res = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+
+      const [row] = await drz
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, mapping.id));
+      expect(row?.deleted).toBeNull();
     });
   });
 });

@@ -10,6 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -17,6 +18,8 @@ import {
   generateId,
   seedUserAndOrg,
   teardownOrg,
+  createUser,
+  createOrganization,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
@@ -766,6 +769,122 @@ describe("Entity Group Member Router", () => {
       expect(res.body.payload.matchingRecordCount).toBe(1);
       expect(res.body.payload.overlapPercentage).toBeGreaterThan(0);
       expect(res.body.payload.overlapPercentage).toBeLessThanOrEqual(100);
+    });
+  });
+
+  // ── #685: a member id must belong to the URL's group and the caller's org
+
+  describe("cross-tenant / wrong-group member ids (#685)", () => {
+    async function insertMember(
+      organizationId: string,
+      entityGroupId: string,
+      connectorEntityId: string,
+      linkFieldMappingId: string
+    ) {
+      const id = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values({
+          id,
+          organizationId,
+          entityGroupId,
+          connectorEntityId,
+          linkFieldMappingId,
+          isPrimary: false,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      return id;
+    }
+
+    async function isLive(memberId: string) {
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(entityGroupMembers)
+        .where(eq(entityGroupMembers.id, memberId));
+      return row?.deleted === null;
+    }
+
+    /** Another org with its own group, entity and member. */
+    async function otherOrgMember() {
+      const owner = createUser(`auth0|other-${generateId()}`);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(owner as never);
+      const org = createOrganization(owner.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.organizations)
+        .values(org as never);
+      const group = createEntityGroup(org.id, { name: "Theirs" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
+      const connDef = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(connDef as never);
+      const connInst = createConnectorInstance(connDef.id, org.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(connInst as never);
+      const { entityId, fieldMappingId } = await seedEntityWithMapping(
+        org.id,
+        connInst.id
+      );
+      return insertMember(org.id, group.id, entityId, fieldMappingId);
+    }
+
+    it("PATCH/DELETE with a member of another group in the same org is a 404, and nothing changes", async () => {
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const otherGroup = createEntityGroup(organizationId, { name: "Other" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(otherGroup as never);
+      const { entityId, fieldMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId
+      );
+      const memberId = await insertMember(
+        organizationId,
+        otherGroup.id,
+        entityId,
+        fieldMappingId
+      );
+
+      const patch = await request(app)
+        .patch(`/api/entity-groups/${groupId}/members/${memberId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ isPrimary: true });
+      expect(patch.status).toBe(404);
+      expect(patch.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_NOT_FOUND);
+
+      const del = await request(app)
+        .delete(`/api/entity-groups/${groupId}/members/${memberId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(del.status).toBe(404);
+      expect(await isLive(memberId)).toBe(true);
+    });
+
+    it("PATCH/DELETE with another org's member id is a 404, and nothing changes", async () => {
+      const { groupId } = await seedGroupWithInfra();
+      const memberId = await otherOrgMember();
+
+      const patch = await request(app)
+        .patch(`/api/entity-groups/${groupId}/members/${memberId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ isPrimary: true });
+      expect(patch.status).toBe(404);
+
+      const del = await request(app)
+        .delete(`/api/entity-groups/${groupId}/members/${memberId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(del.status).toBe(404);
+      expect(await isLive(memberId)).toBe(true);
     });
   });
 });

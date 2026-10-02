@@ -986,22 +986,35 @@ fieldMappingRouter.delete(
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
 
-      // Block if a revalidation job is active for this mapping's entity
+      // #685: resolve the mapping within the caller's org first. This used
+      // to find any mapping by id, across orgs, before anything else.
       const mappingToDelete =
         await DbService.repository.fieldMappings.findById(id);
-      if (mappingToDelete) {
-        // Assert write capability on the parent connector instance
-        await assertWriteCapability(mappingToDelete.connectorEntityId);
-
-        await JobLockService.assertConnectorEntityUnlocked(
-          [mappingToDelete.connectorEntityId],
-          organizationId
-        );
-
-        await RevalidationService.assertNoActiveJob(
-          mappingToDelete.connectorEntityId
+      if (
+        !mappingToDelete ||
+        mappingToDelete.organizationId !== organizationId
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.FIELD_MAPPING_NOT_FOUND,
+            "Field mapping not found"
+          )
         );
       }
+
+      // Assert write capability on the parent connector instance, then block
+      // if a job holds the entity or a revalidation is active for it.
+      await assertWriteCapability(mappingToDelete.connectorEntityId);
+
+      await JobLockService.assertConnectorEntityUnlocked(
+        [mappingToDelete.connectorEntityId],
+        organizationId
+      );
+
+      await RevalidationService.assertNoActiveJob(
+        mappingToDelete.connectorEntityId
+      );
 
       await FieldMappingValidationService.validateDelete(id);
 

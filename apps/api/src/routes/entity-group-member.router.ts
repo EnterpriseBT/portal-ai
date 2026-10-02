@@ -435,9 +435,15 @@ entityGroupMemberRouter.patch(
         );
       }
 
+      // #685: the member must belong to the caller's org and to the group
+      // in the URL. It used to resolve any member by id.
       const existing =
         await DbService.repository.entityGroupMembers.findById(memberId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId ||
+        existing.entityGroupId !== entityGroupId
+      ) {
         return next(
           new ApiError(
             404,
@@ -577,11 +583,17 @@ entityGroupMemberRouter.delete(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { memberId } = req.params;
+      const { entityGroupId, memberId } = req.params;
 
+      // #685: the member must belong to the caller's org and to the group
+      // in the URL. It used to resolve any member by id.
       const existing =
         await DbService.repository.entityGroupMembers.findById(memberId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId ||
+        existing.entityGroupId !== entityGroupId
+      ) {
         return next(
           new ApiError(
             404,

@@ -368,11 +368,17 @@ entityTagAssignmentRouter.delete(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { assignmentId } = req.params;
+      const { connectorEntityId, assignmentId } = req.params;
 
+      // #685: the assignment must belong to the caller's org and to the
+      // connector entity in the URL. It used to resolve any assignment by id.
       const existing =
         await DbService.repository.entityTagAssignments.findById(assignmentId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId ||
+        existing.connectorEntityId !== connectorEntityId
+      ) {
         return next(
           new ApiError(
             404,

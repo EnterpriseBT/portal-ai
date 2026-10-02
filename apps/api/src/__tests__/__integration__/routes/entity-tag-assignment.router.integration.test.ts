@@ -10,6 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -17,6 +18,8 @@ import {
   generateId,
   seedUserAndOrg,
   teardownOrg,
+  createUser,
+  createOrganization,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
@@ -590,6 +593,74 @@ describe("Entity Tag Assignment Router", () => {
       );
       expect(tagNames).toContain("filter-tag");
       expect(tagNames).toContain("extra-tag");
+    });
+  });
+
+  // ── #685: an assignment id must belong to the URL's entity and the org ──
+
+  describe("cross-tenant / wrong-entity assignment ids (#685)", () => {
+    const drz = () => db as ReturnType<typeof drizzle>;
+
+    async function entityWithAssignment(organizationId: string) {
+      const connInstId = await seedConnectorInstance(drz(), organizationId);
+      const entity = createConnectorEntity(organizationId, connInstId);
+      await drz()
+        .insert(connectorEntities)
+        .values(entity as never);
+      const tag = createEntityTag(organizationId);
+      await drz()
+        .insert(entityTags)
+        .values(tag as never);
+      const assignment = createAssignment(organizationId, entity.id, tag.id);
+      await drz()
+        .insert(entityTagAssignments)
+        .values(assignment as never);
+      return { entityId: entity.id, assignmentId: assignment.id };
+    }
+
+    async function isLive(assignmentId: string) {
+      const [row] = await drz()
+        .select()
+        .from(entityTagAssignments)
+        .where(eq(entityTagAssignments.id, assignmentId));
+      return row?.deleted === null;
+    }
+
+    it("DELETE with an assignment of another entity in the same org is a 404, and it stays", async () => {
+      const { organizationId } = await seedUserAndOrg(drz(), AUTH0_ID);
+      const mine = await entityWithAssignment(organizationId);
+      const other = await entityWithAssignment(organizationId);
+
+      const res = await request(app)
+        .delete(
+          `/api/connector-entities/${mine.entityId}/tags/${other.assignmentId}`
+        )
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_TAG_ASSIGNMENT_NOT_FOUND);
+      expect(await isLive(other.assignmentId)).toBe(true);
+    });
+
+    it("DELETE with another org's assignment id is a 404, and it stays", async () => {
+      const { organizationId } = await seedUserAndOrg(drz(), AUTH0_ID);
+      const mine = await entityWithAssignment(organizationId);
+      const owner = createUser(`auth0|other-${generateId()}`);
+      await drz()
+        .insert(schema.users)
+        .values(owner as never);
+      const org = createOrganization(owner.id);
+      await drz()
+        .insert(schema.organizations)
+        .values(org as never);
+      const theirs = await entityWithAssignment(org.id);
+
+      const res = await request(app)
+        .delete(
+          `/api/connector-entities/${mine.entityId}/tags/${theirs.assignmentId}`
+        )
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(404);
+      expect(await isLive(theirs.assignmentId)).toBe(true);
     });
   });
 });
