@@ -36,6 +36,7 @@ User feedback (apps/web): failures **inside a dialog** render `<FormAlert server
 
 - Services: classes with static methods (not loose functions)
 - Errors: `ApiError` class + `next(error)` — never `res.status().json()` directly
+- Authorization (#685): every mutation and SSE route authorizes server-side and is classified in `apps/api/src/__tests__/config/route-authorization.map.ts` (CI guard). Resolve the caller with `getApplicationMetadata` (never an org/user id from the body); load the object **org-scoped** first (the permission engine doesn't see orgs); then `resource.<verb>` on `{type, id, createdBy}`; creates check the parent's read plus owned or class create; unreadable == 404, forbidden == 403.
 - Error codes: `ApiCode` enum in `src/constants/api-codes.constants.ts`
 - Validation: middleware with typed `Request` interfaces
 - Logging: Pino logger at route, service, and DB layers

@@ -424,6 +424,13 @@ Reference implementation: `packages/core/src/models/user.model.ts`
 - **Request validation**: Middleware with typed `Request` interfaces
 - **Response validation**: Validate payload structure before sending
 - **Error handling**: Use `ApiError` class with `next(error)` — never send error responses directly
+- **Authorization (#685)**: every mutation route and every SSE route authorizes **server-side** and is classified in `apps/api/src/__tests__/config/route-authorization.map.ts`. The guard test fails CI on an unclassified or stale route. The rules:
+  - **Resolve the caller from the request.** That means `getApplicationMetadata`, on SSE too (after `sseAuth`). Never trust an `organizationId` or user id from the body.
+  - **Load the object org-scoped first.** `PermissionSet` doesn't see orgs, so without the row's org check an owner or admin of *any* org passes.
+  - **Then check the verb on the object itself.** `PermissionService.check(ctx, "resource.<verb>", {type, id, createdBy})`. A create checks read on its parent plus the type's create rule: owned `{type, createdBy: userId}`, or class `{type}` for owner/admin-only types.
+  - **A child row** (group member, tag assignment) is authorized through its parent, and must belong to that parent.
+  - **Unreadable == absent (404).** Readable but not permitted is 403.
+  - **The shared loaders** are `PortalAccessService`, `ConnectorInstanceAccessService`, `FileUploadAccessService` and `ObjectAccessService`. Hiding a UI action is never a substitute (#684).
 - **Error codes**: Add to `ApiCode` enum in `src/constants/api-codes.constants.ts`, format: `<DOMAIN>_<FAILURE>`
 - **OpenAPI annotations**: Every route handler must carry a `@openapi` JSDoc block above it. The block declares the route path, method, tags, security scheme, parameters, request body schema, and per-status response schemas. SSE endpoints declare `text/event-stream` as the response content type and reference the event's payload schema.
 
