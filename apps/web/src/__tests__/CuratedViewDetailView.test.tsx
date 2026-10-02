@@ -178,21 +178,42 @@ describe("CuratedViewDetailUI", () => {
     const { unmount } = render(<CuratedViewDetailUI {...baseProps} />);
     expect(screen.getByText("All rows")).toBeInTheDocument();
     unmount();
+    // #680: a reader without write gets filter: null and filtered: true.
     render(
       <CuratedViewDetailUI
         {...baseProps}
-        view={
-          {
-            ...view,
-            filter: {
-              combinator: "and",
-              conditions: [{ field: "region", operator: "eq", value: "NE" }],
-            },
-          } as never
-        }
+        view={{ ...view, filter: null, filtered: true }}
       />
     );
     expect(screen.getByText("Filtered")).toBeInTheDocument();
+  });
+
+  it("#680: Columns reads `projected`: the reader's count, never 'All columns' for a projected view", () => {
+    const { unmount } = render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        view={{ ...view, projected: true, fieldMappingIds: ["fm-1", "fm-2"] }}
+      />
+    );
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    unmount();
+    // A projected view whose columns the reader can't read any of.
+    const second = render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        view={{ ...view, projected: true, fieldMappingIds: [] }}
+      />
+    );
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
+    expect(screen.queryByText("All columns")).not.toBeInTheDocument();
+    second.unmount();
+    render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        view={{ ...view, projected: false, fieldMappingIds: [] }}
+      />
+    );
+    expect(screen.getByText("All columns")).toBeInTheDocument();
   });
 
   it("shows Edit/Delete when canManage is true", () => {

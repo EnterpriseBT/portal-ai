@@ -20,6 +20,8 @@ const views = [
     label: "NE Accounts",
     description: "North-east accounts",
     filter: null,
+    filtered: false,
+    projected: false,
     entity: { key: "accounts", label: "Accounts" },
     created: Date.now(),
     createdBy: "u1",
@@ -35,7 +37,10 @@ const views = [
     key: "sw_accounts",
     label: "SW Accounts",
     description: null,
-    filter: { combinator: "and", conditions: [] },
+    // #680: a reader without write on the view gets no filter contents.
+    filter: null,
+    filtered: true,
+    projected: true,
     entity: null,
     created: Date.now(),
     createdBy: "u1",
@@ -62,6 +67,12 @@ function baseProps(canManage: boolean) {
 }
 
 describe("CuratedViewsUI", () => {
+  it("#680: Row filter reads `filtered`, not the (redacted) filter", () => {
+    render(<CuratedViewsUI {...baseProps(false)} />);
+    expect(screen.getByText("All rows")).toBeInTheDocument();
+    expect(screen.getByText("Filtered")).toBeInTheDocument();
+  });
+
   it("renders a card per granted view", () => {
     render(<CuratedViewsUI {...baseProps(false)} />);
     expect(screen.getByText("NE Accounts")).toBeInTheDocument();

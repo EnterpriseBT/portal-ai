@@ -160,11 +160,15 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
             },
             {
               label: "Row filter",
-              value: view.filter ? "Filtered" : "All rows",
+              // #680: a reader without write gets filter: null; `filtered` is
+              // what every reader may know.
+              value: view.filtered ? "Filtered" : "All rows",
             },
             {
               label: "Columns",
-              value: view.fieldMappingIds.length
+              // `fieldMappingIds` holds only the columns this caller can read,
+              // so a projected view shows their count, never "All columns".
+              value: view.projected
                 ? `${view.fieldMappingIds.length} selected`
                 : "All columns",
             },

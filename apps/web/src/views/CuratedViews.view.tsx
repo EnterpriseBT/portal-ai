@@ -130,7 +130,8 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
                   { label: "Key", value: view.key, variant: "mono" },
                   {
                     label: "Row filter",
-                    value: view.filter ? "Filtered" : "All rows",
+                    // #680: `filter` is null for a reader without write.
+                    value: view.filtered ? "Filtered" : "All rows",
                   },
                   {
                     label: "Description",
