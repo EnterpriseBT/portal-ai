@@ -803,7 +803,8 @@ export class PortalService {
       role: "assistant",
       blocks: assistantBlocks,
       created: now,
-      createdBy: portal.createdBy,
+      // #685: the turn runs as the caller; its reply is theirs.
+      createdBy: userId,
       updated: null,
       updatedBy: null,
       deleted: null,
@@ -817,7 +818,7 @@ export class PortalService {
           messageId: savedMessage.id,
           blockIndex,
           organizationId: portal.organizationId,
-          userId: portal.createdBy,
+          userId,
           block,
         })
       )
