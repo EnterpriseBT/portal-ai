@@ -109,7 +109,7 @@ The fix spans `core` (the records contract), `api` (column metadata, normalizedK
 ## Open questions
 
 1. ~~Should the view's own filter appear in the builder, or as read-only conditions in the details?~~ **Decided: no** (2026-10-02). The builder holds only the reader's extra narrowing, and the details keep today's "Row filter: Filtered / All rows". A reader doesn't need to see the filter that shaped their view.
-   - **Found while deciding (pre-existing, out of scope here):** `GET /api/curated-views/:id` and the list endpoint return the full view row to any reader, including the raw `filter` (field names and literal values, possibly on columns the reader can't read) and the full `fieldMappingIds`. The UI never renders them, but they are in the payload. This predates #678 and should be its own bug: e.g. send non-editors only whether the view is filtered.
+   - **Found while deciding (pre-existing, out of scope here):** `GET /api/curated-views/:id` and the list endpoint return the full view row to any reader, including the raw `filter` (field names and literal values, possibly on columns the reader can't read) and the full `fieldMappingIds`. The UI never renders them, but they are in the payload. This predates #678 and is filed as #680.
 2. ~~Should ad-hoc filters persist per view across visits?~~ **Decided: yes** (same `pagination:*` persistence, cleaned against the current projection on load).
 3. ~~Should agent tools get the ad-hoc filter?~~ **Decided: no** (they have SQL; this is a UI table feature).
 4. ~~Drop a saved filter that references a no-longer-readable column?~~ **Decided: yes** (`stripInvalidColumns` on load; the server would 400 it anyway). The same applies to saved column config: unknown keys drop out.
