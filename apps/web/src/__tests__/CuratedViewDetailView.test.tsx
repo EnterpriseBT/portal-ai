@@ -18,7 +18,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   queryKeys: { curatedViews: { root: ["curatedViews"] } },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, fireEvent } = await import("./test-utils");
 const { CuratedViewDetailUI } = await import("../views/CuratedViewDetail.view");
 
 const view = {
@@ -38,14 +38,50 @@ const view = {
   deletedBy: null,
 };
 
+// #678: the records endpoint returns ResolvedColumns (the entity table's
+// shape) keyed by normalizedKey. `name` and `alias` share one column
+// definition ("Name"); `tags` is json (unsortable).
+const col = (
+  normalizedKey: string,
+  key: string,
+  label: string,
+  type: "string" | "json"
+) => ({
+  key,
+  normalizedKey,
+  label,
+  type,
+  required: false,
+  enumValues: null,
+  defaultValue: null,
+  format: null,
+  validationPattern: null,
+  canonicalFormat: null,
+});
 const columns = [
-  { key: "c_name", label: "c_name" },
-  { key: "c_region", label: "c_region" },
+  col("name", "name", "Name", "string"),
+  col("region", "region", "Region", "string"),
+  col("tags", "tags", "Tags", "json"),
+  col("alias", "name", "Name", "string"),
 ];
 
 const records = [
-  { _record_id: "r1", source_id: "s1", c_name: "Acme", c_region: "NE" },
-  { _record_id: "r2", source_id: "s2", c_name: "Globex", c_region: "NE" },
+  {
+    _record_id: "r1",
+    _source_id: "s1",
+    name: "Acme",
+    region: "NE",
+    tags: ["a"],
+    alias: "ACME Co",
+  },
+  {
+    _record_id: "r2",
+    _source_id: "s2",
+    name: "Globex",
+    region: "NE",
+    tags: [],
+    alias: "Globex Corp",
+  },
 ];
 
 const baseProps = {
@@ -56,7 +92,7 @@ const baseProps = {
   recordsError: false,
   canManage: true,
   paginationToolbar: <div data-testid="pagination-toolbar" />,
-  sortColumn: "c_name",
+  sortColumn: "name",
   sortDirection: "asc" as const,
   onSort: jest.fn(),
   onEdit: jest.fn(),
@@ -67,13 +103,66 @@ const baseProps = {
 describe("CuratedViewDetailUI", () => {
   it("renders the records table with data columns (excluding internal keys)", () => {
     render(<CuratedViewDetailUI {...baseProps} />);
-    expect(screen.getByText("c_name")).toBeInTheDocument();
-    expect(screen.getByText("c_region")).toBeInTheDocument();
-    // Internal identifier keys are not rendered as columns.
-    expect(screen.queryByText("_record_id")).not.toBeInTheDocument();
-    expect(screen.queryByText("source_id")).not.toBeInTheDocument();
     expect(screen.getByText("Acme")).toBeInTheDocument();
     expect(screen.getByText("Globex")).toBeInTheDocument();
+    // Internal identifier keys are not rendered as columns.
+    expect(screen.queryByText("_record_id")).not.toBeInTheDocument();
+    expect(screen.queryByText("_source_id")).not.toBeInTheDocument();
+  });
+
+  it("#678: headers are field-mapping keys with a label · type caption, distinct for a shared definition", () => {
+    render(<CuratedViewDetailUI {...baseProps} />);
+    for (const h of ["name", "region", "tags", "alias"]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
+    // `alias` shares the "Name" definition, so it gets a caption naming it.
+    expect(screen.getByText("Name · string")).toBeInTheDocument();
+    expect(screen.queryByText("c_name")).not.toBeInTheDocument();
+  });
+
+  it("#678: a json column isn't sortable; a string column is", () => {
+    const onSort = jest.fn();
+    render(<CuratedViewDetailUI {...baseProps} onSort={onSort} />);
+    fireEvent.click(screen.getByText("tags"));
+    expect(onSort).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("region"));
+    expect(onSort).toHaveBeenCalledWith("region");
+  });
+
+  it("#678: the column picker lists exactly the view's columns (no validity column)", async () => {
+    render(<CuratedViewDetailUI {...baseProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "Configure columns" }));
+    const handles = await screen.findAllByLabelText(/^Drag to reorder /);
+    expect(
+      handles
+        .map((h) =>
+          h.getAttribute("aria-label")!.replace("Drag to reorder ", "")
+        )
+        .sort()
+    ).toEqual(["alias", "name", "region", "tags"]);
+    expect(screen.queryByText("Valid")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cached")).not.toBeInTheDocument();
+  });
+
+  it("#678: the Row filter metadata still reads Filtered / All rows", () => {
+    const { unmount } = render(<CuratedViewDetailUI {...baseProps} />);
+    expect(screen.getByText("All rows")).toBeInTheDocument();
+    unmount();
+    render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        view={
+          {
+            ...view,
+            filter: {
+              combinator: "and",
+              conditions: [{ field: "region", operator: "eq", value: "NE" }],
+            },
+          } as never
+        }
+      />
+    );
+    expect(screen.getByText("Filtered")).toBeInTheDocument();
   });
 
   it("shows Edit/Delete when canManage is true", () => {

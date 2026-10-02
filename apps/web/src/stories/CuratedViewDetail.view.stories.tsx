@@ -23,14 +23,41 @@ const view = {
   deletedBy: null,
 };
 
+// #678: ResolvedColumns keyed by normalizedKey, as the records endpoint
+// returns them; `alias` shares the "Name" definition (distinct headers).
+const col = (normalizedKey: string, key: string, label: string) => ({
+  key,
+  normalizedKey,
+  label,
+  type: "string" as const,
+  required: false,
+  enumValues: null,
+  defaultValue: null,
+  format: null,
+  validationPattern: null,
+  canonicalFormat: null,
+});
 const columns = [
-  { key: "c_name", label: "c_name" },
-  { key: "c_region", label: "c_region" },
+  col("name", "name", "Name"),
+  col("region", "region", "Region"),
+  col("alias", "name", "Name"),
 ];
 
 const records = [
-  { _record_id: "r1", source_id: "s1", c_name: "Acme", c_region: "NE" },
-  { _record_id: "r2", source_id: "s2", c_name: "Globex", c_region: "NE" },
+  {
+    _record_id: "r1",
+    _source_id: "s1",
+    name: "Acme",
+    region: "NE",
+    alias: "ACME Co",
+  },
+  {
+    _record_id: "r2",
+    _source_id: "s2",
+    name: "Globex",
+    region: "NE",
+    alias: "Globex Corp",
+  },
 ];
 
 const meta = {
@@ -46,7 +73,7 @@ const meta = {
     recordsError: false,
     canManage: true,
     paginationToolbar: null,
-    sortColumn: "c_name",
+    sortColumn: "name",
     sortDirection: "asc",
     onSort: fn(),
     onEdit: fn(),

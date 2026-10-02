@@ -6,7 +6,7 @@ This pins the contract that makes the curated view detail table the same table a
 
 ## Key decisions (flag for review)
 
-1. **One column shape.** The records response returns the caller's readable projected columns as `ResolvedColumn` (the entity list's shape), in projection order. Rows, `sortBy`, filter fields and headers are all keyed by `normalizedKey`.
+1. **One column shape.** The records response returns the caller's readable projected columns as `ResolvedColumn` (the entity list's shape), in the entity's field-mapping order. Rows, `sortBy`, filter fields and headers are all keyed by `normalizedKey`.
 2. **The picker's universe is the readable projection.** The columns that can be reordered or shown/hidden are exactly the readable projected field mappings the response returns. Nothing outside the projection or the caller's grants appears, not even hidden. The table has no validity column and no Cached/Live chip.
 3. **Ad-hoc filter = the entity list's `filters`** (base64 `FilterExpression`). It's validated against **only** the readable projected columns: a field outside them is "Unknown field", 400. It's then rendered with `renderFilterGroupToSql` and ANDed **after** the view's own filter. It narrows by construction and is never an oracle on a hidden column (the `queryViewRowsByColumn` rule).
 4. **Sorting json/array columns is refused.** `sortBy` naming a projected column whose type isn't in `SORTABLE_COLUMN_TYPES` gives 400 `CURATED_VIEW_INVALID_SORT`; the UI never offers it. A `sortBy` naming no projected column (e.g. the default `created`) still falls back to the stable record-id order, unchanged.
@@ -46,7 +46,7 @@ export const CuratedViewRecordsRequestQuerySchema =
 
 export const CuratedViewRecordsResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    /** #678: the caller's readable projected columns, in projection order — the
+    /** #678: the caller's readable projected columns, in the entity's field-mapping order (as the entity table) — the
      *  whole set the table can show, sort, filter, reorder or hide. */
     columns: z.array(ResolvedColumnSchema),
     /** Keyed by normalizedKey, plus `_record_id` and `_source_id`. */
@@ -75,7 +75,7 @@ async queryCuratedViewRecords(
 ```
 
 1. **Scope (unchanged):** `resolveViewColumnsById` handles org, read on the view, `deny read entity_record`, and the projection ∩ the caller's field grants. `null` → 404.
-2. **Readable columns:** `readable = columns.map(c => resolvedCols.find(r => r.normalizedKey === c.normalizedKey)).filter(Boolean)`. That's projection order, only readable projected columns. It is returned as `columns`, and it's the **only** column set used below.
+2. **Readable columns:** `readable = resolvedCols` filtered to the projected (readable) normalizedKeys, in field-mapping order (the entity table's order), each carrying its `columnName`. It is returned as `columns`, and it's the **only** column set used below.
 3. **Select list:** `w."entity_record_id" AS "_record_id"`, `w."source_id" AS "_source_id"`, and for each projected column `w.<quoteIdent(columnName)> AS <quoteIdent(normalizedKey)>`.
 4. **WHERE**, in this order, joined with AND:
    - org guard; deleted guard;
@@ -148,7 +148,7 @@ Run from each package: `npm run test:unit`, and `npm run test:integration -- --t
 2. The records response requires `ResolvedColumn` columns (a `{key,label}`-only column is rejected).
 
 ### api — `apps/api/src/__tests__/__integration__/routes/curated-view.router.integration.test.ts`
-3. `columns` are `ResolvedColumn`s in projection order, each with its normalizedKey, column-definition label and type. Rows are keyed by normalizedKey, plus `_record_id`/`_source_id` (the pinning `Email`/`Age` header assertions are replaced).
+3. `columns` are `ResolvedColumn`s in field-mapping order, each with its normalizedKey, column-definition label and type. Rows are keyed by normalizedKey, plus `_record_id`/`_source_id` (the pinning `Email`/`Age` header assertions are replaced).
 4. Two field mappings sharing **one** column definition come back as two columns with distinct `normalizedKey`s.
 5. A caller without read on one projected field mapping gets `columns` and rows without it.
 6. `sortBy=<normalizedKey>` sorts asc and desc.

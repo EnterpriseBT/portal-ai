@@ -497,6 +497,9 @@ export enum ApiCode {
   // Curated views (#599)
   /** A curated view's `filter` failed `FilterGroup` validation. */
   CURATED_VIEW_INVALID_FILTER = "CURATED_VIEW_INVALID_FILTER",
+  /** #678: a records `sortBy` names a projected column whose type can't be
+   *  sorted (json, arrays). */
+  CURATED_VIEW_INVALID_SORT = "CURATED_VIEW_INVALID_SORT",
   CURATED_VIEW_NOT_FOUND = "CURATED_VIEW_NOT_FOUND",
   CURATED_VIEW_DUPLICATE_KEY = "CURATED_VIEW_DUPLICATE_KEY",
   CURATED_VIEW_INVALID_PAYLOAD = "CURATED_VIEW_INVALID_PAYLOAD",

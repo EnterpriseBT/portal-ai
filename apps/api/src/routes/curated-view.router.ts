@@ -838,9 +838,11 @@ curatedViewRouter.delete(
  *     summary: List the rows of a curated view (projection + filter applied)
  *     description: >
  *       Returns the view's rows scoped to the caller's readable columns and the view's filter, plus the
- *       projected `columns` (the sortable headers). `sortBy` may name a projected column (anything else,
- *       e.g. the default `created`, falls back to the stable record-id order); `search` is a
- *       case-insensitive substring match across the projected columns. Unreadable == 404.
+ *       caller's readable projected `columns` as ResolvedColumns (#678). Rows are keyed by `normalizedKey`,
+ *       plus `_record_id` and `_source_id`. `sortBy` names a projected column's normalizedKey (anything else,
+ *       e.g. the default `created`, falls back to the stable record-id order; an unsortable type such as json
+ *       or an array is a 400). `search` is a case-insensitive substring match across the projected columns.
+ *       Unreadable == 404.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
@@ -859,11 +861,12 @@ curatedViewRouter.delete(
  *               properties:
  *                 columns:
  *                   type: array
- *                   items: { type: object, properties: { key: { type: string }, label: { type: string } } }
+ *                   items: { $ref: '#/components/schemas/ResolvedColumn' }
  *                 records: { type: array, items: { type: object } }
  *                 total: { type: number }
  *                 limit: { type: number }
  *                 offset: { type: number }
+ *       400: { description: "sortBy names an unsortable column (CURATED_VIEW_INVALID_SORT)" }
  *       404: { description: Not found or not readable }
  */
 curatedViewRouter.get(

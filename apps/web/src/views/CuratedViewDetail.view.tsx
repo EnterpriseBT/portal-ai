@@ -1,14 +1,13 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 
 import type {
   CuratedViewGetResponsePayload,
-  CuratedViewRecordColumn,
   CuratedViewRecordsResponsePayload,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import {
   Box,
   Button,
-  DataTable,
   Icon,
   IconName,
   MetadataList,
@@ -16,13 +15,13 @@ import {
   PageHeader,
   PageSection,
   Stack,
-  type DataTableColumn,
 } from "@portalai/core/ui";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
+import { EntityRecordDataTableUI } from "../components/EntityRecordDataTable.component";
 import {
   usePagination,
   PaginationToolbar,
@@ -43,8 +42,10 @@ type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
 
 export interface CuratedViewDetailUIProps {
   view: CuratedView;
-  /** The view's projected columns (server-resolved) — the sortable headers. */
-  columns: CuratedViewRecordColumn[];
+  /** #678: the caller's readable projected columns (server-resolved), in the
+   *  entity table's ResolvedColumn shape. The whole set the table can show,
+   *  sort, reorder or hide. */
+  columns: ResolvedColumn[];
   records: RecordRow[];
   recordsLoading: boolean;
   recordsError: boolean;
@@ -75,18 +76,6 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   onDelete,
   onNavigate,
 }) => {
-  const tableColumns: DataTableColumn[] = useMemo(
-    () =>
-      columns.map((c) => ({
-        key: c.key,
-        label: c.label,
-        sortable: true,
-        render: (value) =>
-          value === null || value === undefined ? "" : String(value),
-      })),
-    [columns]
-  );
-
   let recordsBody: React.ReactNode;
   if (recordsError) {
     recordsBody = <EmptyResults />;
@@ -99,14 +88,20 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
       />
     );
   } else {
+    // #678: the same table as the entity records page (normalizedKey headers
+    // with a label · type caption, type-aware cells, sortable types only, the
+    // column picker), minus what a view doesn't have: no validity column and
+    // no Cached/Live chip. Column config is remembered per view.
     recordsBody = (
-      <DataTable
-        columns={tableColumns}
+      <EntityRecordDataTableUI
+        connectorEntityId={view.connectorEntityId}
+        columns={columns}
         rows={records as unknown as Record<string, unknown>[]}
+        showValidity={false}
+        columnConfigKey={`column-config:curated-view:${view.id}`}
         sortColumn={sortColumn}
         sortDirection={sortDirection}
         onSort={onSort}
-        emptyMessage="No rows"
       />
     );
   }

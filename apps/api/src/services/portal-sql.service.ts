@@ -45,6 +45,8 @@ import { PermissionService } from "./permission.service.js";
 import type { PermissionSet } from "./permission-set.js";
 import type { CuratedViewSelect } from "../db/schema/zod.js";
 import type { OrgRole } from "@portalai/core/models";
+import { SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
+import type { ResolvedColumn } from "../adapters/adapter.interface.js";
 import {
   wideTableStatementCache,
   type WideTableStatementCache,
@@ -562,9 +564,10 @@ export class PortalSqlServiceImpl {
     opts: {
       limit: number;
       offset: number;
-      /** A projected column key to order by. Anything outside the view's
-       *  projection (e.g. the default `created`) falls back to the stable
-       *  record-id order — sort can never reach an un-projected column. */
+      /** A projected column's normalizedKey to order by (#678). Anything
+       *  outside the view's projection (e.g. the default `created`) falls back
+       *  to the stable record-id order: sort can never reach an un-projected
+       *  column. An unsortable type (json, arrays) is refused. */
       sortBy?: string;
       sortOrder?: "asc" | "desc";
       /** Case-insensitive substring match across the projected columns. */
@@ -574,7 +577,7 @@ export class PortalSqlServiceImpl {
   ): Promise<{
     records: Record<string, unknown>[];
     total: number;
-    columns: { key: string; label: string }[];
+    columns: ResolvedColumn[];
   } | null> {
     const resolved = await this.resolveViewColumnsById(
       viewId,
@@ -585,24 +588,30 @@ export class PortalSqlServiceImpl {
     if (!resolved) return null;
     const { view, columns } = resolved;
 
-    // Resolve the entity's column definitions once — reused for the display
-    // labels (below) and the filter render's column-type map (further down),
-    // so a filtered view doesn't resolve them twice.
+    // Resolve the entity's columns once: reused for the returned column
+    // metadata (below) and the filter render's column-type map (further down).
     const resolvedCols = await resolveColumns(view.connectorEntityId);
-    const labelByKey = new Map(
-      resolvedCols.map((c) => [c.normalizedKey, c.label])
+    // #678: the caller's readable projected columns as ResolvedColumns, in the
+    // entity's field-mapping order (the order the entity records table uses).
+    // This is the only column set used below: the response, the row keys and
+    // the sort all come from it.
+    const columnNameByKey = new Map(
+      columns.map((c) => [c.normalizedKey, c.columnName])
     );
-    const columnsOut = columns.map((c) => ({
-      key: c.columnName,
-      label: labelByKey.get(c.normalizedKey) ?? c.columnName,
-    }));
+    const readable = resolvedCols.flatMap((c) => {
+      const columnName = columnNameByKey.get(c.normalizedKey);
+      return columnName ? [{ ...c, columnName }] : [];
+    });
 
     const tableName = `er__${view.connectorEntityId}`;
+    // #678: rows are keyed by normalizedKey (the table's header). The framing
+    // keys start with `_`, which a normalizedKey (^[a-z][a-z0-9_]*$) can't, so
+    // they never collide with a column.
     const selectList = [
       `w."entity_record_id" AS "_record_id"`,
-      `w."source_id" AS "source_id"`,
-      ...columns.map(
-        (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.columnName)}`
+      `w."source_id" AS "_source_id"`,
+      ...readable.map(
+        (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.normalizedKey)}`
       ),
     ].join(", ");
 
@@ -636,11 +645,19 @@ export class PortalSqlServiceImpl {
     const limit = Math.max(1, Math.min(opts.limit, 500));
     const offset = Math.max(0, opts.offset);
 
-    // ORDER BY the requested projected column, always ending in the unique
-    // `entity_record_id` tiebreaker (#433 — a paginated order must be total).
-    // A `sortBy` that names no projected column falls back to record-id order.
+    // ORDER BY the requested projected column (by normalizedKey, #678),
+    // always ending in the unique `entity_record_id` tiebreaker (#433: a
+    // paginated order must be total). A `sortBy` that names no projected column
+    // falls back to record-id order; one naming an unsortable type is refused.
     const dir = opts.sortOrder === "desc" ? "DESC" : "ASC";
-    const sortCol = columns.find((c) => c.columnName === opts.sortBy);
+    const sortCol = readable.find((c) => c.normalizedKey === opts.sortBy);
+    if (sortCol && !SORTABLE_COLUMN_TYPES.has(sortCol.type)) {
+      throw new ApiError(
+        400,
+        ApiCode.CURATED_VIEW_INVALID_SORT,
+        `Column "${sortCol.normalizedKey}" can't be sorted`
+      );
+    }
     const orderBySql = sortCol
       ? `w.${quoteIdent(sortCol.columnName)} ${dir}, w."entity_record_id" ASC`
       : `w."entity_record_id" ${dir}`;
@@ -664,7 +681,7 @@ export class PortalSqlServiceImpl {
     return {
       records,
       total: Number(countRows[0]?.n ?? 0),
-      columns: columnsOut,
+      columns: readable.map(({ columnName: _columnName, ...c }) => c),
     };
   }
 
