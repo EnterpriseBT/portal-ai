@@ -15,6 +15,7 @@ import type {
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { FileUploadAccessService } from "../services/file-upload-access.service.js";
 import { FileUploadSessionService } from "../services/file-upload-session.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 
@@ -144,6 +145,11 @@ fileUploadsRouter.post(
           )
         );
       }
+      // #685: only the uploader may confirm it.
+      await FileUploadAccessService.assertOwnUploads(
+        req.application!.metadata,
+        [parsed.data.uploadId]
+      );
       const payload = await FileUploadSessionService.confirm(
         organizationId,
         parsed.data.uploadId
@@ -185,6 +191,8 @@ fileUploadsRouter.post(
  *     security:
  *       - bearerAuth: []
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       202:
  *         description: Job enqueued; client tracks completion via SSE.
  */
@@ -208,6 +216,11 @@ fileUploadsRouter.post(
           )
         );
       }
+      // #685: only the uploader may parse (and so read) their uploads.
+      await FileUploadAccessService.assertOwnUploads(
+        req.application!.metadata,
+        parsed.data.uploadIds
+      );
       const payload = await FileUploadSessionService.parseSession(
         organizationId,
         userId,

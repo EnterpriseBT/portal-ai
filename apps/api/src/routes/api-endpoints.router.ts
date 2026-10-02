@@ -20,6 +20,10 @@ import { ApiError, HttpService } from "../services/http.service.js";
 import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import {
+  ConnectorInstanceAccessService,
+  type ConnectorInstanceVerb,
+} from "../services/connector-instance-access.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
   ApiEndpointConfigBaseSchema,
@@ -122,22 +126,19 @@ function toWire(pair: ApiEndpoint): {
 // 404 is uniform from the client's perspective.
 
 async function requireRestApiInstance(
+  req: Request,
   instanceId: string,
-  organizationId: string
+  verb: ConnectorInstanceVerb
 ): Promise<{ id: string; organizationId: string }> {
-  const instance =
-    await DbService.repository.connectorInstances.findById(instanceId);
-  if (
-    !instance ||
-    instance.organizationId !== organizationId ||
-    instance.deleted !== null
-  ) {
-    throw new ApiError(
-      404,
-      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-      `Connector instance ${instanceId} not found`
-    );
-  }
+  // #685: in the caller's org and readable by them (404), with the verb the
+  // route needs (403). This used to check the org only, so a member could add
+  // endpoints to, change, or drive the credentials of another member's
+  // instance.
+  const { instance } = await ConnectorInstanceAccessService.load(
+    req.application!.metadata,
+    instanceId,
+    verb
+  );
   const definition = await DbService.repository.connectorDefinitions.findById(
     instance.connectorDefinitionId
   );
@@ -309,8 +310,7 @@ apiEndpointsRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { instanceId } = req.params as { instanceId: string };
-      const { organizationId } = req.application!.metadata;
-      const instance = await requireRestApiInstance(instanceId, organizationId);
+      const instance = await requireRestApiInstance(req, instanceId, "read");
 
       const rows = await DbService.repository.apiEndpoints.findByInstance(
         instance.id
@@ -393,7 +393,7 @@ apiEndpointsRouter.get(
         entityId: string;
       };
       const { organizationId } = req.application!.metadata;
-      const instance = await requireRestApiInstance(instanceId, organizationId);
+      const instance = await requireRestApiInstance(req, instanceId, "read");
 
       // #685: in the caller's org and on the URL's instance (the lookup is by
       // entity id alone, so this returned another org's endpoint config).
@@ -453,6 +453,8 @@ apiEndpointsRouter.get(
  *           schema:
  *             $ref: '#/components/schemas/CreateApiEndpointRequestBody'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       201:
  *         description: Endpoint created
  *         content:
@@ -500,7 +502,7 @@ apiEndpointsRouter.post(
     try {
       const { instanceId } = req.params as { instanceId: string };
       const { organizationId, userId } = req.application!.metadata;
-      const instance = await requireRestApiInstance(instanceId, organizationId);
+      const instance = await requireRestApiInstance(req, instanceId, "write");
 
       let body: z.infer<typeof CreateApiEndpointRequestBodySchema>;
       try {
@@ -689,6 +691,8 @@ apiEndpointsRouter.post(
  *           schema:
  *             $ref: '#/components/schemas/PatchApiEndpointRequestBody'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Endpoint patched
  *         content:
@@ -737,7 +741,7 @@ apiEndpointsRouter.patch(
         entityId: string;
       };
       const { organizationId, userId } = req.application!.metadata;
-      const instance = await requireRestApiInstance(instanceId, organizationId);
+      const instance = await requireRestApiInstance(req, instanceId, "write");
 
       let body: z.infer<typeof PatchApiEndpointRequestBodySchema>;
       try {
@@ -851,6 +855,8 @@ apiEndpointsRouter.patch(
  *         schema:
  *           type: string
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Endpoint deleted
  *         content:
@@ -893,7 +899,7 @@ apiEndpointsRouter.delete(
         entityId: string;
       };
       const { organizationId, userId } = req.application!.metadata;
-      const instance = await requireRestApiInstance(instanceId, organizationId);
+      const instance = await requireRestApiInstance(req, instanceId, "write");
 
       // #685: the endpoint's entity must be in the caller's org and on the
       // instance in the URL. It was looked up by entity id alone, so another
@@ -992,6 +998,8 @@ apiEndpointsRouter.delete(
  *           schema:
  *             $ref: '#/components/schemas/DiscoverColumnsRequestBody'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Probe completed (possibly with degradation)
  *         content:
@@ -1045,8 +1053,7 @@ apiEndpointsRouter.post(
         instanceId: string;
         entityId: string;
       };
-      const { organizationId } = req.application!.metadata;
-      await requireRestApiInstance(instanceId, organizationId);
+      await requireRestApiInstance(req, instanceId, "write");
 
       // Parse optional body. Empty body is fine — `forceRefresh`
       // defaults to false.

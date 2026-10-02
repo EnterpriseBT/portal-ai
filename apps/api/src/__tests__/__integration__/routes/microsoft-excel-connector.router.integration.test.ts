@@ -638,7 +638,8 @@ describe("Microsoft Excel Connector Router — GET /workbooks", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 403 when the instance belongs to a different org", async () => {
+  // #685: another org's instance is unreadable, and unreadable == absent.
+  it("returns 404 when the instance belongs to a different org", async () => {
     await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
     const definitionId = await insertMicrosoftExcelDefinition(
       db as ReturnType<typeof drizzle>
@@ -655,7 +656,7 @@ describe("Microsoft Excel Connector Router — GET /workbooks", () => {
         `/api/connectors/microsoft-excel/workbooks?connectorInstanceId=${id}`
       )
       .set("Authorization", "Bearer test-token");
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("returns 200 with mapped items on the happy path", async () => {

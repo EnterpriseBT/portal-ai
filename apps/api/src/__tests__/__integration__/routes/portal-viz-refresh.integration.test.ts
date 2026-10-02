@@ -27,6 +27,7 @@ import {
   createUser,
   createOrganization,
   createOrganizationUser,
+  seedRbacForOrg,
   teardownOrg,
 } from "../utils/application.util.js";
 
@@ -74,6 +75,11 @@ describe("POST /api/portal-sql/widget-refresh", () => {
         createOrganizationUser(org.id, owner.id),
         createOrganizationUser(otherOrg.id, other.id),
       ] as never);
+    // #685: widget refresh now checks the caller may read the widget's portal,
+    // so the RBAC system policies must exist (without them the set is empty and
+    // fails closed). The caller created the portal, so the member grant allows it.
+    await seedRbacForOrg(db as never, org.id);
+    await seedRbacForOrg(db as never, otherOrg.id);
 
     const now = Date.now();
     const station = {

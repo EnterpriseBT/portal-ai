@@ -23,6 +23,8 @@ import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 import { createLogger } from "../utils/logger.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PortalAccessService } from "../services/portal-access.service.js";
+import { DbService } from "../services/db.service.js";
 
 const logger = createLogger({ module: "portal-sql-handle-router" });
 
@@ -143,6 +145,8 @@ portalSqlHandleRouter.get(
  *           schema:
  *             $ref: '#/components/schemas/WidgetRefreshRequest'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: A fresh delivery for the widget
  *         content:
@@ -213,6 +217,25 @@ portalSqlHandleRouter.post(
           { err },
           "viz-refresh rate limiter unavailable; failing open"
         );
+      }
+
+      // #685: the widget's portal must be the caller's (portals are
+      // per-user). Anything else is the same 404 as a missing widget.
+      const message =
+        await DbService.repository.portalMessages.findById(messageId);
+      if (message) {
+        try {
+          await PortalAccessService.load(
+            req.application!.metadata,
+            message.portalId
+          );
+        } catch {
+          throw new ApiError(
+            404,
+            ApiCode.VIZ_WIDGET_NOT_FOUND,
+            "No refreshable visualization widget for this reference."
+          );
+        }
       }
 
       const payload = await PortalVizRefreshService.refresh({

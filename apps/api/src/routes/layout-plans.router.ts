@@ -11,6 +11,8 @@ import type {
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { FileUploadAccessService } from "../services/file-upload-access.service.js";
+import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
@@ -19,6 +21,32 @@ import { createLogger } from "../utils/logger.util.js";
 const logger = createLogger({ module: "layout-plans" });
 
 export const layoutPlansRouter = Router();
+
+/**
+ * #685: a draft's workbook source must be the caller's: their own upload
+ * session, or a connector instance they can read (interpret) or write
+ * (commit). Org scope alone let a member read or recommit another member's.
+ */
+async function assertSourceAccessible(
+  req: Request,
+  body: { uploadSessionId?: string; connectorInstanceId?: string },
+  verb: "read" | "write"
+): Promise<void> {
+  const caller = req.application!.metadata;
+  if (body.uploadSessionId) {
+    await FileUploadAccessService.assertOwnUploadSession(
+      caller,
+      body.uploadSessionId
+    );
+  }
+  if (body.connectorInstanceId) {
+    await ConnectorInstanceAccessService.load(
+      caller,
+      body.connectorInstanceId,
+      verb
+    );
+  }
+}
 
 /**
  * @openapi
@@ -43,6 +71,8 @@ export const layoutPlansRouter = Router();
  *           schema:
  *             $ref: '#/components/schemas/InterpretInput'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Interpretation completed
  *         content:
@@ -84,6 +114,7 @@ layoutPlansRouter.post(
         );
       }
 
+      await assertSourceAccessible(req, parsed.data, "read");
       const payload = await LayoutPlanDraftService.interpretDraft(
         organizationId,
         userId,
@@ -145,6 +176,8 @@ layoutPlansRouter.post(
  *           schema:
  *             $ref: '#/components/schemas/LayoutPlanCommitDraftRequestBody'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       202:
  *         description: Job enqueued; client tracks completion via SSE.
  *       400:
@@ -172,6 +205,7 @@ layoutPlansRouter.post(
         );
       }
 
+      await assertSourceAccessible(req, parsed.data, "write");
       const prepared = await LayoutPlanDraftService.prepareDraftCommit(
         organizationId,
         userId,

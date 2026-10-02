@@ -14,6 +14,7 @@ import type {
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
 import { ConnectorInstanceLayoutPlansService } from "../services/connector-instance-layout-plans.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { JobsService } from "../services/jobs.service.js";
@@ -52,6 +53,8 @@ export const connectorInstanceLayoutPlansRouter = Router();
  *           schema:
  *             $ref: '#/components/schemas/InterpretInput'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Interpretation completed and persisted
  *         content:
@@ -95,6 +98,15 @@ connectorInstanceLayoutPlansRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorInstanceId } = req.params;
+      // #685: the caller must be able to write this instance (404 if
+      // unreadable, 403 if not writeable). Org scope alone let a member
+      // read, re-interpret or recommit another member's plan.
+      await ConnectorInstanceAccessService.load(
+        req.application!.metadata,
+        connectorInstanceId,
+        "write",
+        ApiCode.LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND
+      );
       const { organizationId, userId } = req.application!.metadata;
 
       const parsed = InterpretRequestBodySchema.safeParse(req.body);
@@ -207,6 +219,15 @@ connectorInstanceLayoutPlansRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorInstanceId } = req.params;
+      // #685: the caller must be able to read this instance (404 if
+      // unreadable, 403 if not readable). Org scope alone let a member
+      // read, re-interpret or recommit another member's plan.
+      await ConnectorInstanceAccessService.load(
+        req.application!.metadata,
+        connectorInstanceId,
+        "read",
+        ApiCode.LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND
+      );
       const { organizationId } = req.application!.metadata;
 
       const includeList =
@@ -315,6 +336,15 @@ connectorInstanceLayoutPlansRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorInstanceId } = req.params;
+      // #685: the caller must be able to read this instance (404 if
+      // unreadable, 403 if not readable). Org scope alone let a member
+      // read, re-interpret or recommit another member's plan.
+      await ConnectorInstanceAccessService.load(
+        req.application!.metadata,
+        connectorInstanceId,
+        "read",
+        ApiCode.LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND
+      );
       const { organizationId } = req.application!.metadata;
 
       const payload = await ConnectorInstanceLayoutPlansService.getEditContext(
@@ -381,6 +411,8 @@ connectorInstanceLayoutPlansRouter.get(
  *             type: object
  *             additionalProperties: true
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Plan patched
  *         content:
@@ -416,6 +448,15 @@ connectorInstanceLayoutPlansRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorInstanceId, planId } = req.params;
+      // #685: the caller must be able to write this instance (404 if
+      // unreadable, 403 if not writeable). Org scope alone let a member
+      // read, re-interpret or recommit another member's plan.
+      await ConnectorInstanceAccessService.load(
+        req.application!.metadata,
+        connectorInstanceId,
+        "write",
+        ApiCode.LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND
+      );
       const { organizationId, userId } = req.application!.metadata;
 
       const parsed = PatchLayoutPlanBodySchema.safeParse(req.body);
@@ -509,6 +550,8 @@ connectorInstanceLayoutPlansRouter.patch(
  *                 type: object
  *                 additionalProperties: true
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Commit completed
  *         content:
@@ -563,6 +606,15 @@ connectorInstanceLayoutPlansRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorInstanceId, planId } = req.params;
+      // #685: the caller must be able to write this instance (404 if
+      // unreadable, 403 if not writeable). Org scope alone let a member
+      // read, re-interpret or recommit another member's plan.
+      await ConnectorInstanceAccessService.load(
+        req.application!.metadata,
+        connectorInstanceId,
+        "write",
+        ApiCode.LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND
+      );
       const { organizationId, userId } = req.application!.metadata;
 
       const parsed = CommitLayoutPlanRequestBodySchema.safeParse(req.body);

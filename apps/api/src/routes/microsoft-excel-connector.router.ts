@@ -17,8 +17,8 @@ import {
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
-import { DbService } from "../services/db.service.js";
 import {
   MicrosoftAuthError,
   MicrosoftAuthService,
@@ -42,6 +42,8 @@ export const microsoftExcelConnectorPublicRouter = Router();
  *     security:
  *       - bearerAuth: []
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Consent URL minted
  *       500:
@@ -50,7 +52,7 @@ export const microsoftExcelConnectorPublicRouter = Router();
 microsoftExcelConnectorRouter.post(
   "/authorize",
   getApplicationMetadata,
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.application?.metadata.userId as string;
       const organizationId = req.application?.metadata.organizationId as string;
@@ -60,6 +62,16 @@ microsoftExcelConnectorRouter.post(
         body.connectorInstanceId.length > 0
           ? body.connectorInstanceId
           : undefined;
+
+      // #685: reconnecting replaces the instance's credentials with the
+      // caller's account, so it needs write on that instance.
+      if (connectorInstanceId) {
+        await ConnectorInstanceAccessService.load(
+          req.application!.metadata,
+          connectorInstanceId,
+          "write"
+        );
+      }
 
       const url = MicrosoftAuthService.buildConsentUrl({
         userId,
@@ -77,6 +89,8 @@ microsoftExcelConnectorRouter.post(
       );
       return HttpService.success(res, { url });
     } catch (err) {
+      // #685: a refused or missing instance keeps its own status.
+      if (err instanceof ApiError) return next(err);
       const message = err instanceof Error ? err.message : "Unknown error";
       if (
         message.includes("MICROSOFT_OAUTH_CLIENT_ID") ||
@@ -217,25 +231,18 @@ function mapMicrosoftAuthError(err: unknown): ApiError {
  *   - 403 when the row exists but belongs to a different organization.
  */
 async function resolveOwnedInstance(
+  req: Request,
   connectorInstanceId: string,
-  organizationId: string
+  verb: "read" | "write"
 ) {
-  const instance =
-    await DbService.repository.connectorInstances.findById(connectorInstanceId);
-  if (!instance) {
-    throw new ApiError(
-      404,
-      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-      "Connector instance not found"
-    );
-  }
-  if (instance.organizationId !== organizationId) {
-    throw new ApiError(
-      403,
-      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-      "Connector instance not accessible to this organization"
-    );
-  }
+  // #685: the caller must be able to read the instance (404) and, for a
+  // change, write it (403). Org scope alone let a member use another
+  // member's stored OAuth token to fetch any file, and rewrite their config.
+  const { instance } = await ConnectorInstanceAccessService.load(
+    req.application!.metadata,
+    connectorInstanceId,
+    verb
+  );
   return instance;
 }
 
@@ -309,7 +316,6 @@ microsoftExcelConnectorRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata.organizationId as string;
       const connectorInstanceId =
         typeof req.query.connectorInstanceId === "string"
           ? req.query.connectorInstanceId
@@ -326,7 +332,7 @@ microsoftExcelConnectorRouter.get(
       const search =
         typeof req.query.search === "string" ? req.query.search : "";
 
-      await resolveOwnedInstance(connectorInstanceId, organizationId);
+      await resolveOwnedInstance(req, connectorInstanceId, "read");
 
       const result = await MicrosoftExcelConnectorService.searchWorkbooks({
         connectorInstanceId,
@@ -391,7 +397,7 @@ microsoftExcelConnectorRouter.post(
         );
       }
 
-      await resolveOwnedInstance(connectorInstanceId, organizationId);
+      await resolveOwnedInstance(req, connectorInstanceId, "write");
 
       const result = await MicrosoftExcelConnectorService.selectWorkbook({
         connectorInstanceId,
@@ -468,7 +474,6 @@ microsoftExcelConnectorRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata.organizationId as string;
       const connectorInstanceId = req.params.id ?? "";
 
       const sheetIdParam =
@@ -494,7 +499,7 @@ microsoftExcelConnectorRouter.get(
         );
       }
 
-      await resolveOwnedInstance(connectorInstanceId, organizationId);
+      await resolveOwnedInstance(req, connectorInstanceId, "read");
 
       const out = await MicrosoftExcelConnectorService.sheetSlice({
         connectorInstanceId,
