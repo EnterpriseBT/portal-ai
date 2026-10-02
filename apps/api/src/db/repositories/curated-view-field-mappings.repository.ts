@@ -3,7 +3,7 @@
  * curated view's column projection.
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { curatedViewFieldMappings } from "../schema/index.js";
 import { db } from "../client.js";
@@ -32,6 +32,25 @@ export class CuratedViewFieldMappingsRepository extends Repository<
       {},
       client
     );
+  }
+
+  /** Which of `curatedViewIds` have an explicit projection (#680): one batched
+   *  read for a list page, rather than a projection fetch per view. */
+  async findProjectedViewIds(
+    curatedViewIds: string[],
+    client: DbClient = db
+  ): Promise<Set<string>> {
+    if (curatedViewIds.length === 0) return new Set();
+    const rows = await (client as typeof db)
+      .selectDistinct({ id: curatedViewFieldMappings.curatedViewId })
+      .from(curatedViewFieldMappings)
+      .where(
+        and(
+          inArray(curatedViewFieldMappings.curatedViewId, curatedViewIds),
+          isNull(curatedViewFieldMappings.deleted)
+        )
+      );
+    return new Set(rows.map((r) => r.id));
   }
 }
 

@@ -30,6 +30,8 @@ const view = {
   description: "North-east accounts",
   filter: null,
   fieldMappingIds: ["fm-1"],
+  filtered: false,
+  projected: true,
   created: Date.now(),
   createdBy: "u1",
   updated: null,
