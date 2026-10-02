@@ -295,7 +295,7 @@ toolpacksRouter.get(
  *     responses:
  *       201: { description: Registered. }
  *       400: { description: Invalid payload. }
- *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685), or the organization's tier does not include custom toolpacks (TOOLPACK_NOT_ENTITLED, #214). }
+ *       403: { description: "The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685), or the organization's tier does not include custom toolpacks (TOOLPACK_NOT_ENTITLED, #214)." }
  *       409: { description: Pack name or tool-name conflict. }
  *       502: { description: Schema or metadata fetch / validation failure. }
  */
@@ -455,7 +455,7 @@ toolpacksRouter.post(
  *         schema: { type: string }
  *     responses:
  *       200: { description: Updated. }
- *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
+ *       403: { description: "The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685)." }
  *       404: { description: Not found. }
  *       409: { description: Name conflict. }
  *       502: { description: Schema fetch / validation failure. }
@@ -595,7 +595,7 @@ toolpacksRouter.patch(
  *         schema: { type: string }
  *     responses:
  *       200: { description: Soft-deleted. }
- *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
+ *       403: { description: "The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685)." }
  *       404: { description: Not found. }
  */
 toolpacksRouter.delete(
@@ -697,7 +697,7 @@ toolpacksRouter.delete(
  *         description: Organization toolpack id
  *     responses:
  *       200: { description: Refreshed. }
- *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
+ *       403: { description: "The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685)." }
  *       404: { description: Not found. }
  *       502: { description: Schema fetch failed (cached values preserved). }
  */
@@ -799,7 +799,7 @@ toolpacksRouter.post(
  *         schema: { type: string }
  *     responses:
  *       200: { description: Rotated. Returns the new signingSecret once. }
- *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
+ *       403: { description: "The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685)." }
  *       404: { description: Not found. }
  */
 toolpacksRouter.post(
