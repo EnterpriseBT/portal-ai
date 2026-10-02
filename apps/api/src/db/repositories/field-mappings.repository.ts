@@ -90,15 +90,25 @@ export class FieldMappingsRepository extends Repository<
     connectorEntityId: string,
     client: DbClient = db
   ): Promise<FieldMappingSelect[]> {
-    return (await (client as typeof db)
-      .select()
-      .from(this.table)
-      .where(
-        and(
-          eq(fieldMappings.connectorEntityId, connectorEntityId),
-          this.notDeleted()
+    return (
+      (await (client as typeof db)
+        .select()
+        .from(this.table)
+        .where(
+          and(
+            eq(fieldMappings.connectorEntityId, connectorEntityId),
+            this.notDeleted()
+          )
         )
-      )) as FieldMappingSelect[];
+        // #678: a stable order (creation, then the unique id tiebreaker, #433).
+        // Without it Postgres returned an arbitrary order, so an entity's columns
+        // (resolveColumns) and a curated view's columns could reorder between
+        // requests.
+        .orderBy(
+          asc(fieldMappings.created),
+          asc(fieldMappings.id)
+        )) as FieldMappingSelect[]
+    );
   }
 
   /** Find all field mappings across entities for a given column definition. */
