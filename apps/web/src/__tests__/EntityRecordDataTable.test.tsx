@@ -360,4 +360,79 @@ describe("EntityRecordDataTableUI", () => {
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThanOrEqual(2);
   });
+
+  // ── #678: options for the curated view page ─────────────────────
+
+  it("#678: shows the validity column by default and drops it with showValidity={false}", () => {
+    const { unmount } = render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("Valid")).toBeInTheDocument();
+    unmount();
+
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+        showValidity={false}
+      />
+    );
+    expect(screen.queryByText("Valid")).not.toBeInTheDocument();
+  });
+
+  it("#678: renders no Cached/Live chip when source is omitted", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+      />
+    );
+    expect(screen.queryByText("Cached")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live")).not.toBeInTheDocument();
+  });
+
+  it("#678: reads column config from columnConfigKey instead of the entity key", () => {
+    const hideEmail = JSON.stringify([
+      { key: "first_name", visible: true },
+      { key: "email", visible: false },
+      { key: "active", visible: true },
+    ]);
+    // The entity key hides email; the custom key doesn't exist, so a table
+    // reading the custom key shows email.
+    localStorage.setItem(
+      `column-config:entity-records:${connectorEntityId}`,
+      hideEmail
+    );
+    const { unmount } = render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+        showValidity={false}
+        columnConfigKey="column-config:curated-view:v-1"
+      />
+    );
+    expect(screen.getByText("email")).toBeInTheDocument();
+    unmount();
+
+    localStorage.setItem("column-config:curated-view:v-1", hideEmail);
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+        showValidity={false}
+        columnConfigKey="column-config:curated-view:v-1"
+      />
+    );
+    expect(screen.queryByText("email")).not.toBeInTheDocument();
+    localStorage.clear();
+  });
 });
