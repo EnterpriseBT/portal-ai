@@ -1,22 +1,22 @@
 /**
  * PortalSqlHandleService (#85 Phase 3 slice 0).
  *
- * Producer for the query-handle read path: runs an LLM-issued SELECT,
- * stages the result rows in Redis under a fresh `queryHandle`, and
- * broadcasts the rows to a per-handle Pub/Sub channel so the SSE route
- * (slice 1) can forward them to the UI.
+ * Producer for the query-handle read path: runs an LLM-issued SELECT and
+ * stages the result rows in Redis under a fresh `queryHandle`.
  *
  * The agent's tool result carries the QueryHandleEnvelope from
  * `@portalai/core/contracts` (rowCount, schema, sampled, samplePeek).
- * The rows themselves never enter the agent's context window — the
- * UI fetches them via the SSE stream (live) or the snapshot endpoint
- * (re-open).
+ * The rows themselves never enter the agent's context window: the UI reads
+ * them through the snapshot endpoint, scoped to the handle's org and user.
+ * (#685 removed the per-handle SSE stream: it had no caller, and a batch
+ * published while staging could never reach a subscriber who learned the
+ * handle id only from the tool result.)
  *
  * Phase 3 slice 0 implementation: runs the SQL once via
  * `PortalSqlService.runSqlQuery` with the row cap lifted, then chunks
  * the result in memory. Cursor-driven streaming is a follow-up; this
- * shape exercises the surrounding pipeline (SSE + snapshot + cache
- * eviction) end-to-end.
+ * shape exercises the surrounding pipeline (snapshot + cache eviction)
+ * end-to-end.
  */
 
 import { randomUUID } from "crypto";
@@ -45,7 +45,6 @@ import { fenceSql } from "./portal-sql-validation.util.js";
 const logger = createLogger({ module: "portal-sql-handle" });
 
 const HANDLE_PREFIX = "portal-sql:handle:";
-const STREAM_CHANNEL_PREFIX = "portal-sql:stream:";
 const BATCH_SIZE = 1_000;
 const SAMPLE_PEEK_SIZE = 10;
 
@@ -84,13 +83,6 @@ export interface StoredHandleMeta extends QueryHandleEnvelope {
   _transform?: TransformDescriptor;
 }
 
-/**
- * Channel + key derivation. Exposed so the route layer (slice 1) can
- * subscribe to the same channel the producer publishes to.
- */
-export function streamChannelKey(handleId: string): string {
-  return `${STREAM_CHANNEL_PREFIX}${handleId}`;
-}
 function metaKey(handleId: string): string {
   return `${HANDLE_PREFIX}${handleId}:meta`;
 }
@@ -117,8 +109,7 @@ function requireHandleUser(meta: StoredHandleMeta): string {
 export class PortalSqlHandleService {
   /**
    * Run a SELECT and stage its rows in Redis under a fresh handle.
-   * Returns the envelope synchronously; the broadcast loop fires
-   * batches on the per-handle stream channel as it walks.
+   * Returns the envelope once the batches are staged.
    *
    * Errors from the underlying SQL surface via the existing
    * PortalSqlService.runSqlQuery error envelope; this service
@@ -304,7 +295,7 @@ export class PortalSqlHandleService {
    * returned inline and can't fold to a scalar.
    *
    * Symmetric with `produce`: one ordered pass over the source stages the
-   * first ≤ `HANDLE_ROW_CAP` output rows as the snapshot (+ SSE) and counts
+   * first ≤ `HANDLE_ROW_CAP` output rows as the snapshot and counts
    * the full output for the envelope. Past the snapshot the cursor tier
    * (`streamHandle`) re-folds the source — so the full series is preserved
    * with **bounded memory** (the fold holds O(period) state; we never
@@ -444,7 +435,6 @@ export class PortalSqlHandleService {
     transform?: TransformDescriptor
   ): Promise<{ envelope: QueryHandleEnvelope }> {
     const redis = getRedisClient();
-    const channel = streamChannelKey(handleId);
     const ttlSeconds = Math.ceil(READ_HANDLE_TTL_MS / 1000);
     const storedMeta: StoredHandleMeta = {
       ...envelope,
@@ -471,17 +461,7 @@ export class PortalSqlHandleService {
         "EX",
         ttlSeconds
       );
-      await redis.publish(
-        channel,
-        JSON.stringify({
-          type: "data",
-          batchIndex,
-          rows: batch,
-        })
-      );
     }
-
-    await redis.publish(channel, JSON.stringify({ type: "complete" }));
 
     logger.info(
       {

@@ -1940,29 +1940,6 @@ const options: swaggerJsdoc.Options = {
             limit: { type: "integer" },
           },
         },
-        QueryHandleStreamEvent: {
-          oneOf: [
-            {
-              type: "object",
-              required: ["type", "batchIndex", "rows"],
-              properties: {
-                type: { type: "string", enum: ["data"] },
-                batchIndex: { type: "integer" },
-                rows: {
-                  type: "array",
-                  items: { type: "object", additionalProperties: true },
-                },
-              },
-            },
-            {
-              type: "object",
-              required: ["type"],
-              properties: {
-                type: { type: "string", enum: ["complete"] },
-              },
-            },
-          ],
-        },
         WidgetRefreshRequest: {
           type: "object",
           required: ["messageId", "blockIndex"],

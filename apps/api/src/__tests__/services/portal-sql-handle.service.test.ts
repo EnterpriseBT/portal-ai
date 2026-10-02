@@ -24,7 +24,7 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   },
 }));
 
-const { PortalSqlHandleService, streamChannelKey } =
+const { PortalSqlHandleService } =
   await import("../../services/portal-sql-handle.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 const { validatePortalSql } =
@@ -174,19 +174,11 @@ describe("PortalSqlHandleService.produce", () => {
 
     // 1 meta + 3 batches (2500 / 1000 → ceil(2.5) = 3)
     expect(mockRedisSet).toHaveBeenCalledTimes(4);
-    // 3 data events + 1 complete event
-    expect(mockRedisPublish).toHaveBeenCalledTimes(4);
-
-    const channel = streamChannelKey(envelope.queryHandle);
-    const publishCalls = mockRedisPublish.mock.calls as unknown as [
-      string,
-      string,
-    ][];
-    expect(publishCalls.every(([c]) => c === channel)).toBe(true);
-
-    const events = publishCalls.map((c) => JSON.parse(c[1]));
-    expect(events.filter((e) => e.type === "data")).toHaveLength(3);
-    expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
+    // #685: nothing is published. The SSE stream that subscribed was removed
+    // (no caller, and it could never receive batches published before the UI
+    // knew the handle id); the snapshot endpoint reads the staged batches.
+    expect(mockRedisPublish).not.toHaveBeenCalled();
+    expect(envelope.queryHandle).toMatch(/^qh-/);
   });
 
   it("derives schema entries with detected types", async () => {
