@@ -88,7 +88,10 @@ const VALID_COLUMN: DataTableColumn = {
     ),
 };
 
-function toDataTableColumns(columns: ResolvedColumn[]): DataTableColumn[] {
+function toDataTableColumns(
+  columns: ResolvedColumn[],
+  opts: { showValidity: boolean }
+): DataTableColumn[] {
   const cols: DataTableColumn[] = columns.map((col) => {
     // Use normalizedKey as the header label since it's the field-mapping-level
     // identifier; show the column definition label as a caption alongside type.
@@ -134,7 +137,8 @@ function toDataTableColumns(columns: ResolvedColumn[]): DataTableColumn[] {
     };
   });
 
-  cols.push(VALID_COLUMN);
+  // #678: a curated view's rows carry no is_valid, so it can opt out.
+  if (opts.showValidity) cols.push(VALID_COLUMN);
   return cols;
 }
 
@@ -144,7 +148,13 @@ export interface EntityRecordDataTableUIProps {
   connectorEntityId: string;
   rows: Record<string, unknown>[];
   columns: ResolvedColumn[];
-  source: "cache" | "live";
+  /** The Cached/Live chip. Omitted → no chip (#678: a curated view has none). */
+  source?: "cache" | "live";
+  /** #678: include the `isValid` column (default true; views have no is_valid). */
+  showValidity?: boolean;
+  /** #678: column-config storage key
+   *  (default `column-config:entity-records:<connectorEntityId>`). */
+  columnConfigKey?: string;
   sortColumn?: string;
   sortDirection?: "asc" | "desc";
   onSort?: (column: string) => void;
@@ -158,6 +168,8 @@ export const EntityRecordDataTableUI: React.FC<
   rows,
   columns,
   source,
+  showValidity = true,
+  columnConfigKey,
   sortColumn,
   sortDirection,
   onSort,
@@ -167,14 +179,14 @@ export const EntityRecordDataTableUI: React.FC<
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
 
   const dataTableColumns = React.useMemo(
-    () => toDataTableColumns(columns),
-    [columns]
+    () => toDataTableColumns(columns, { showValidity }),
+    [columns, showValidity]
   );
 
   const { value: storedConfig, setValue: persistConfig } = useStorage<
     ColumnConfig[]
   >({
-    key: `column-config:entity-records:${connectorEntityId}`,
+    key: columnConfigKey ?? `column-config:entity-records:${connectorEntityId}`,
     defaultValue: [],
   });
 
@@ -188,12 +200,14 @@ export const EntityRecordDataTableUI: React.FC<
     <Stack spacing={1}>
       <DataTable
         header={
-          <Chip
-            label={source === "cache" ? "Cached" : "Live"}
-            size="small"
-            variant="outlined"
-            color={source === "live" ? "success" : "default"}
-          />
+          source ? (
+            <Chip
+              label={source === "cache" ? "Cached" : "Live"}
+              size="small"
+              variant="outlined"
+              color={source === "live" ? "success" : "default"}
+            />
+          ) : undefined
         }
         columns={dataTableColumns}
         rows={rows}

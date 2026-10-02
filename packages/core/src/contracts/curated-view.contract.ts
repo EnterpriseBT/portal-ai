@@ -6,6 +6,7 @@ import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
+import { ResolvedColumnSchema } from "./entity-record.contract.js";
 
 // ── Enriched ──────────────────────────────────────────────────────────
 
@@ -169,30 +170,32 @@ export type CuratedViewAttachResponsePayload = z.infer<
 // ── Records ───────────────────────────────────────────────────────────
 
 export const CuratedViewRecordsRequestQuerySchema =
-  PaginationRequestQuerySchema.extend({});
+  PaginationRequestQuerySchema.extend({
+    /**
+     * #678: a base64-encoded JSON FilterExpression (the entity records list's
+     * format), ANDed after the view's own filter, so it can only narrow. Its
+     * fields must be the caller's readable projected columns (normalizedKey);
+     * anything else is a 400.
+     */
+    filters: z.string().optional(),
+  });
 
 export type CuratedViewRecordsRequestQuery = z.infer<
   typeof CuratedViewRecordsRequestQuerySchema
 >;
 
-/** A projected column of a curated view's record set — the header the detail
- *  table renders and the key a `sortBy` may reference. `key` is the wide-table
- *  column name; `label` is its display header. */
-export const CuratedViewRecordColumnSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-});
-
-export type CuratedViewRecordColumn = z.infer<
-  typeof CuratedViewRecordColumnSchema
->;
-
 export const CuratedViewRecordsResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    /** The view's projected columns, in projection order — the sortable headers
-     *  the detail table renders (a `sortBy` outside this set falls back to the
-     *  stable record-id order server-side). */
-    columns: z.array(CuratedViewRecordColumnSchema),
+    /**
+     * #678: the caller's readable projected columns, in the entity's field-mapping order (as the entity table), in
+     * the entity records list's `ResolvedColumn` shape. This is the whole set
+     * the detail table can show, sort, filter, reorder or hide. Headers are
+     * `normalizedKey`, with `label · type` as the caption. A `sortBy` naming
+     * none of them falls back to the stable record-id order; one naming an
+     * unsortable type (json, arrays) is refused.
+     */
+    columns: z.array(ResolvedColumnSchema),
+    /** Keyed by `normalizedKey`, plus `_record_id` and `_source_id`. */
     records: z.array(z.record(z.string(), z.unknown())),
   });
 

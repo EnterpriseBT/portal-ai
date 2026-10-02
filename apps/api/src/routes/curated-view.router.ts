@@ -838,9 +838,11 @@ curatedViewRouter.delete(
  *     summary: List the rows of a curated view (projection + filter applied)
  *     description: >
  *       Returns the view's rows scoped to the caller's readable columns and the view's filter, plus the
- *       projected `columns` (the sortable headers). `sortBy` may name a projected column (anything else,
- *       e.g. the default `created`, falls back to the stable record-id order); `search` is a
- *       case-insensitive substring match across the projected columns. Unreadable == 404.
+ *       caller's readable projected `columns` as ResolvedColumns (#678). Rows are keyed by `normalizedKey`,
+ *       plus `_record_id` and `_source_id`. `sortBy` names a projected column's normalizedKey (anything else,
+ *       e.g. the default `created`, falls back to the stable record-id order; an unsortable type such as json
+ *       or an array is a 400). `search` is a case-insensitive substring match across the projected columns.
+ *       Unreadable == 404.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
@@ -849,6 +851,7 @@ curatedViewRouter.delete(
  *       - $ref: '#/components/parameters/sortByParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
  *       - { in: query, name: search, required: false, schema: { type: string }, description: Case-insensitive substring match across projected columns }
+ *       - { in: query, name: filters, required: false, schema: { type: string }, description: "#678: base64 JSON FilterExpression (the entity records list's format) over the caller's readable projected columns, ANDed after the view's own filter (narrow-only)" }
  *     responses:
  *       200:
  *         description: Paginated records with the projected columns
@@ -859,11 +862,12 @@ curatedViewRouter.delete(
  *               properties:
  *                 columns:
  *                   type: array
- *                   items: { type: object, properties: { key: { type: string }, label: { type: string } } }
+ *                   items: { $ref: '#/components/schemas/ResolvedColumn' }
  *                 records: { type: array, items: { type: object } }
  *                 total: { type: number }
  *                 limit: { type: number }
  *                 offset: { type: number }
+ *       400: { description: "Invalid query parameters, e.g. sortOrder or limit (CURATED_VIEW_INVALID_QUERY); invalid filters, or one naming a column outside the caller's readable projection (CURATED_VIEW_INVALID_FILTER); sortBy names an unsortable column (CURATED_VIEW_INVALID_SORT)" }
  *       404: { description: Not found or not readable }
  */
 curatedViewRouter.get(
@@ -871,15 +875,26 @@ curatedViewRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search } =
-        CuratedViewRecordsRequestQuerySchema.parse(req.query);
+      // safeParse: a bad sortOrder / limit is the caller's error (400), not a
+      // thrown ZodError (500).
+      const query = CuratedViewRecordsRequestQuerySchema.safeParse(req.query);
+      if (!query.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.CURATED_VIEW_INVALID_QUERY,
+            "Invalid query parameters"
+          )
+        );
+      }
+      const { limit, offset, sortBy, sortOrder, search, filters } = query.data;
       const { organizationId, userId } = req.application!.metadata;
 
       const result = await PortalSqlService.queryCuratedViewRecords(
         req.params.id,
         organizationId,
         userId,
-        { limit, offset, sortBy, sortOrder, search }
+        { limit, offset, sortBy, sortOrder, search, filters }
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(

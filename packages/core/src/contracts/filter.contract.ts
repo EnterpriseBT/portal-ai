@@ -203,7 +203,15 @@ export function validateOperatorTypeCompat(
       if ("combinator" in item) {
         walk(item);
       } else {
-        const colType = columnTypes[item.field];
+        // Own keys only: a plain-object lookup also finds inherited members
+        // (`constructor`, `__proto__`, `toString`), which then threw instead of
+        // being refused as an unknown field (#678).
+        const colType = Object.prototype.hasOwnProperty.call(
+          columnTypes,
+          item.field
+        )
+          ? columnTypes[item.field]
+          : undefined;
         if (!colType) {
           errors.push(`Unknown field: "${item.field}"`);
           continue;

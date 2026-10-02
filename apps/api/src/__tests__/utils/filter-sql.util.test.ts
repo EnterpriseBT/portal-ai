@@ -32,6 +32,25 @@ function render(expr: FilterGroup): string {
 }
 
 describe("renderFilterGroupToSql", () => {
+  it("escapes LIKE wildcards so contains / starts_with / ends_with match literally (#678)", () => {
+    // `%` and `_` in a user's value were LIKE wildcards: `contains "%"`
+    // matched every row.
+    const value = String.raw`50%_off\x`;
+    const escaped = String.raw`50\%\_off\\x`;
+    for (const [operator, pattern] of [
+      ["contains", `%${escaped}%`],
+      ["not_contains", `%${escaped}%`],
+      ["starts_with", `${escaped}%`],
+      ["ends_with", `%${escaped}`],
+    ] as const) {
+      const sql = render({
+        combinator: "and",
+        conditions: [{ field: "region", operator, value }],
+      });
+      expect(sql).toContain(`ILIKE '${pattern}' ESCAPE '\\'`);
+    }
+  });
+
   it("renders a string equality with the value inlined + quoted", () => {
     const sql = render({
       combinator: "and",

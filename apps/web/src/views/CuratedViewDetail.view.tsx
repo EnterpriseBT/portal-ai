@@ -1,14 +1,13 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 
 import type {
   CuratedViewGetResponsePayload,
-  CuratedViewRecordColumn,
   CuratedViewRecordsResponsePayload,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import {
   Box,
   Button,
-  DataTable,
   Icon,
   IconName,
   MetadataList,
@@ -16,17 +15,19 @@ import {
   PageHeader,
   PageSection,
   Stack,
-  type DataTableColumn,
 } from "@portalai/core/ui";
+import CircularProgress from "@mui/material/CircularProgress";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
+import { EntityRecordDataTableUI } from "../components/EntityRecordDataTable.component";
+import { PaginationToolbar } from "../components/PaginationToolbar.component";
 import {
-  usePagination,
-  PaginationToolbar,
-} from "../components/PaginationToolbar.component";
+  useCuratedViewTablePagination,
+  type CuratedViewTableRecovery,
+} from "../utils/curated-view-table.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
 import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
 import { sdk } from "../api/sdk";
@@ -43,8 +44,10 @@ type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
 
 export interface CuratedViewDetailUIProps {
   view: CuratedView;
-  /** The view's projected columns (server-resolved) — the sortable headers. */
-  columns: CuratedViewRecordColumn[];
+  /** #678: the caller's readable projected columns (server-resolved), in the
+   *  entity table's ResolvedColumn shape. The whole set the table can show,
+   *  sort, reorder or hide. */
+  columns: ResolvedColumn[];
   records: RecordRow[];
   recordsLoading: boolean;
   recordsError: boolean;
@@ -75,18 +78,6 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   onDelete,
   onNavigate,
 }) => {
-  const tableColumns: DataTableColumn[] = useMemo(
-    () =>
-      columns.map((c) => ({
-        key: c.key,
-        label: c.label,
-        sortable: true,
-        render: (value) =>
-          value === null || value === undefined ? "" : String(value),
-      })),
-    [columns]
-  );
-
   let recordsBody: React.ReactNode;
   if (recordsError) {
     recordsBody = <EmptyResults />;
@@ -98,15 +89,26 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
         description="This view currently returns no rows for you."
       />
     );
+  } else if (columns.length === 0) {
+    // The columns arrive with the first records response. Mounting the table
+    // before then would reconcile the saved column config against no columns
+    // and drop it, so a hidden or reordered column came back on every reload.
+    recordsBody = <CircularProgress size={20} />;
   } else {
+    // #678: the same table as the entity records page (normalizedKey headers
+    // with a label · type caption, type-aware cells, sortable types only, the
+    // column picker), minus what a view doesn't have: no validity column and
+    // no Cached/Live chip. Column config is remembered per view.
     recordsBody = (
-      <DataTable
-        columns={tableColumns}
+      <EntityRecordDataTableUI
+        connectorEntityId={view.connectorEntityId}
+        columns={columns}
         rows={records as unknown as Record<string, unknown>[]}
+        showValidity={false}
+        columnConfigKey={`column-config:curated-view:${view.id}`}
         sortColumn={sortColumn}
         sortDirection={sortDirection}
         onSort={onSort}
-        emptyMessage="No rows"
       />
     );
   }
@@ -192,15 +194,36 @@ export const CuratedViewDetail: React.FC = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const viewResult = sdk.curatedViews.get(viewId);
-  const pagination = usePagination({
-    sortFields: [],
-    defaultSortBy: "created",
-    defaultSortOrder: "asc",
+  // #678: the caller's readable projected columns, captured from the records
+  // response. They drive the table, its column picker and the advanced filter
+  // builder; paging and filters are remembered per view.
+  const [columns, setColumns] = useState<ResolvedColumn[]>([]);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  // The hook resets a filter or sort the server refused; say why it changed.
+  const onRecovered = React.useCallback(
+    (what: CuratedViewTableRecovery) =>
+      toast.info(
+        what === "filter"
+          ? "Your filter referenced a column you can't use in this view, so it was cleared."
+          : "That column can't be sorted any more, so the table's sort was reset."
+      ),
+    [toast]
+  );
+  const pagination = useCuratedViewTablePagination(viewId, columns, {
+    errorCode,
+    onRecovered,
   });
   const recordsResult = sdk.curatedViews.records(
     viewId,
     pagination.queryParams as Parameters<typeof sdk.curatedViews.records>[1]
   );
+
+  React.useEffect(() => {
+    if (recordsResult.data?.columns) setColumns(recordsResult.data.columns);
+  }, [recordsResult.data?.columns]);
+  React.useEffect(() => {
+    setErrorCode(toServerError(recordsResult.error)?.code ?? null);
+  }, [recordsResult.error]);
 
   React.useEffect(() => {
     if (recordsResult.data?.total !== undefined) {
@@ -256,7 +279,7 @@ export const CuratedViewDetail: React.FC = () => {
     <Stack spacing={4}>
       <CuratedViewDetailUI
         view={view}
-        columns={recordsResult.data?.columns ?? []}
+        columns={recordsResult.data?.columns ?? columns}
         records={recordsResult.data?.records ?? []}
         recordsLoading={recordsResult.isLoading}
         recordsError={recordsResult.isError}

@@ -97,6 +97,7 @@ import {
   StationGetResponsePayloadSchema,
   StationInstanceWithConnectorInstanceSchema,
   StationViewWithCuratedViewSchema,
+  ResolvedColumnSchema,
 } from "@portalai/core/contracts";
 import {
   EntityRecordListItemSchema,
@@ -513,6 +514,8 @@ const stationSchemas: Record<string, unknown> = {
     StationGetResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
+  // #678: the curated-view records' column shape (the entity list's too).
+  ResolvedColumn: z.toJSONSchema(ResolvedColumnSchema, JSON_SCHEMA_OPTS),
 };
 
 /**
