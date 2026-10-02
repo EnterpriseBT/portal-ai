@@ -247,6 +247,62 @@ describe("/api/roles (#622 slice 4)", () => {
     expect(live.map((a) => a.policyId)).toEqual([p2]);
   });
 
+  it("#681: create and update refuse unknown and other-org policy ids with a 400", async () => {
+    const { orgId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    const own = await makeCustomPolicy(orgId, "Own");
+    const otherOwner = createUser(`auth0|other-${generateId()}`);
+    await db.insert(users).values(otherOwner as never);
+    const other = createOrganization(otherOwner.id);
+    await db.insert(organizations).values(other as never);
+    await seedRbacForOrg(db as never, other.id);
+    const foreignCustom = await makeCustomPolicy(other.id, "Foreign");
+    const foreignSystem = await systemPolicyId(other.id, "MemberAccess");
+
+    for (const bad of [
+      "",
+      "00000000-0000-0000-0000-000000000000",
+      foreignCustom,
+      foreignSystem,
+    ]) {
+      const name = `R-${generateId().slice(0, 6)}`;
+      const res = await auth(request(app).post("/api/roles")).send({
+        name,
+        policyIds: [own, bad],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.RBAC_POLICY_UNKNOWN);
+      expect(res.body.message).toBe(`Unknown policy id(s): "${bad}"`);
+      const rows = await db
+        .select()
+        .from(roles)
+        .where(and(eq(roles.organizationId, orgId), eq(roles.name, name)));
+      expect(rows).toHaveLength(0);
+    }
+
+    const created = await auth(request(app).post("/api/roles")).send({
+      name: "Keep",
+      policyIds: [own],
+    });
+    const roleId = created.body.payload.role.id;
+    const put = await auth(request(app).put(`/api/roles/${roleId}`)).send({
+      name: "Keep",
+      policyIds: [foreignCustom],
+    });
+    expect(put.status).toBe(400);
+    expect(put.body.code).toBe(ApiCode.RBAC_POLICY_UNKNOWN);
+    const live = await db
+      .select()
+      .from(policyAttachments)
+      .where(
+        and(
+          eq(policyAttachments.principalId, roleId),
+          isNull(policyAttachments.deleted)
+        )
+      );
+    expect(live.map((a) => a.policyId)).toEqual([own]);
+  });
+
   it("a system role cannot be edited or deleted", async () => {
     const { orgId } = await seedOrg("owner");
     await entitleOrg(orgId);

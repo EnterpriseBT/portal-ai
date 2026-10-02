@@ -251,6 +251,106 @@ describe("/api/groups (#622 slice 5)", () => {
     expect(res.body.payload.group.policyIds).toEqual([adminAccess.id]);
   });
 
+  // ── #681: policyIds must name live policies in the caller's org ────────
+
+  /** Another org with its system policies and one custom policy. */
+  async function otherOrgPolicies() {
+    const owner = createUser(`auth0|other-${generateId()}`);
+    await db.insert(users).values(owner as never);
+    const other = createOrganization(owner.id);
+    await db.insert(organizations).values(other as never);
+    await seedRbacForOrg(db as never, other.id);
+    return {
+      customId: await auditReadPolicy(other.id),
+      systemId: `syspol:${other.id}:MemberAccess`,
+    };
+  }
+
+  async function deletedPolicy(orgId: string) {
+    const id = await auditReadPolicy(orgId);
+    await db
+      .update(permissionPolicies)
+      .set({ deleted: Date.now(), deletedBy: "RBAC_TEST" } as never)
+      .where(eq(permissionPolicies.id, id));
+    return id;
+  }
+
+  it("#681: create refuses unknown, deleted and other-org policy ids with a 400, writing nothing", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+    const foreign = await otherOrgPolicies();
+    const deletedId = await deletedPolicy(orgId);
+    for (const bad of [
+      "",
+      "00000000-0000-0000-0000-000000000000",
+      foreign.customId,
+      foreign.systemId,
+      deletedId,
+    ]) {
+      const name = `G-${generateId().slice(0, 6)}`;
+      const res = await auth(request(app).post("/api/groups")).send({
+        name,
+        policyIds: [bad],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.RBAC_POLICY_UNKNOWN);
+      // The same message whether the id is absent, deleted or another org's.
+      expect(res.body.message).toBe(`Unknown policy id(s): "${bad}"`);
+      const rows = await db
+        .select()
+        .from(groups)
+        .where(and(eq(groups.organizationId, orgId), eq(groups.name, name)));
+      expect(rows).toHaveLength(0);
+    }
+    // Nothing anywhere points at the other org's policies.
+    const stray = await db
+      .select()
+      .from(policyAttachments)
+      .where(eq(policyAttachments.policyId, foreign.customId));
+    expect(stray).toHaveLength(0);
+  });
+
+  it("#681: update with a bad policy id is a 400 and leaves the group's policies unchanged", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+    const policyId = await auditReadPolicy(orgId);
+    const foreign = await otherOrgPolicies();
+    const created = await auth(request(app).post("/api/groups")).send({
+      name: "Keep",
+      policyIds: [policyId],
+    });
+    const groupId = created.body.payload.group.id;
+
+    const res = await auth(request(app).put(`/api/groups/${groupId}`)).send({
+      name: "Keep",
+      policyIds: [policyId, foreign.customId],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.RBAC_POLICY_UNKNOWN);
+    const live = await db
+      .select()
+      .from(policyAttachments)
+      .where(
+        and(
+          eq(policyAttachments.principalId, groupId),
+          isNull(policyAttachments.deleted)
+        )
+      );
+    expect(live.map((a) => a.policyId)).toEqual([policyId]);
+  });
+
+  it("#681: a repeated policy id is attached once", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+    const policyId = await auditReadPolicy(orgId);
+    const res = await auth(request(app).post("/api/groups")).send({
+      name: "Twice",
+      policyIds: [policyId, policyId],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.group.policyIds).toEqual([policyId]);
+  });
+
   it("delete cascade-soft-deletes memberships + attachments", async () => {
     const { orgId } = await seedOrg();
     await entitleOrg(orgId);

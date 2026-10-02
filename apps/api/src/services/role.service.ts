@@ -21,7 +21,7 @@ import {
   type PermissionContext,
 } from "./permission.service.js";
 import { EntitlementService } from "./entitlement.service.js";
-import { RbacObjectResolver } from "./rbac-object-resolver.js";
+import { RbacPolicyRefsService } from "./rbac-policy-refs.service.js";
 import { AuditService } from "./audit.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -39,24 +39,6 @@ export class RoleService {
       );
     }
     await PermissionService.check(caller, "member.role.assign");
-  }
-
-  /** The attacher must hold everything the bundled policies grant (boundary
-   *  on the union of their statements — prevents escalation via bundling). */
-  private static async assertPoliciesWithinBoundary(
-    caller: PermissionContext,
-    policyIds: string[]
-  ): Promise<void> {
-    if (policyIds.length === 0) return;
-    const statements =
-      await DbService.repository.permissionStatements.findByPolicyIds(
-        caller.organizationId,
-        policyIds
-      );
-    const set = await PermissionService.loadSet(caller);
-    await set.assertStatementsWithinBoundary(statements, (rt, rid) =>
-      RbacObjectResolver.resolveCreatedBy(caller.organizationId, rt, rid)
-    );
   }
 
   private static async load(
@@ -252,7 +234,11 @@ export class RoleService {
     audit: RbacAuditContext
   ): Promise<RoleView> {
     await RoleService.gate(caller);
-    await RoleService.assertPoliciesWithinBoundary(caller, req.policyIds);
+    // #681: live, in-org, within the caller's boundary; deduped.
+    const policyIds = await RbacPolicyRefsService.assertAttachable(
+      caller,
+      req.policyIds
+    );
     await RoleService.assertNameFree(caller, req.name);
     const slug = await RoleService.freeSlug(caller, req.name);
 
@@ -268,7 +254,7 @@ export class RoleService {
 
     const diff = await DbService.transaction(async (tx) => {
       await DbService.repository.roles.create(role as never, tx);
-      return RoleService.syncPolicies(caller, role.id, req.policyIds, tx);
+      return RoleService.syncPolicies(caller, role.id, policyIds, tx);
     });
 
     void AuditService.record({
@@ -279,7 +265,7 @@ export class RoleService {
       targetId: role.id,
       sourceIp: audit.sourceIp,
       userAgent: audit.userAgent,
-      metadata: { name: role.name, policyCount: req.policyIds.length },
+      metadata: { name: role.name, policyCount: policyIds.length },
     });
     RoleService.auditDiff(caller, role.id, diff, audit);
 
@@ -288,7 +274,7 @@ export class RoleService {
       name: role.name,
       slug: role.slug,
       kind: role.kind,
-      policyIds: req.policyIds,
+      policyIds,
     };
   }
 
@@ -301,7 +287,11 @@ export class RoleService {
     await RoleService.gate(caller);
     const role = await RoleService.load(caller, id);
     RoleService.assertMutable(role);
-    await RoleService.assertPoliciesWithinBoundary(caller, req.policyIds);
+    // #681: live, in-org, within the caller's boundary; deduped.
+    const policyIds = await RbacPolicyRefsService.assertAttachable(
+      caller,
+      req.policyIds
+    );
     await RoleService.assertNameFree(caller, req.name, id);
 
     const diff = await DbService.transaction(async (tx) => {
@@ -310,7 +300,7 @@ export class RoleService {
         { name: req.name, updatedBy: caller.userId } as never,
         tx
       );
-      return RoleService.syncPolicies(caller, id, req.policyIds, tx);
+      return RoleService.syncPolicies(caller, id, policyIds, tx);
     });
 
     void AuditService.record({
@@ -321,7 +311,7 @@ export class RoleService {
       targetId: id,
       sourceIp: audit.sourceIp,
       userAgent: audit.userAgent,
-      metadata: { name: req.name, policyCount: req.policyIds.length },
+      metadata: { name: req.name, policyCount: policyIds.length },
     });
     RoleService.auditDiff(caller, id, diff, audit);
 
@@ -331,7 +321,7 @@ export class RoleService {
       // Slug is stable across renames (#622) — the loaded role keeps its slug.
       slug: role.slug,
       kind: role.kind,
-      policyIds: req.policyIds,
+      policyIds,
     };
   }
 

@@ -2,7 +2,7 @@
  * Repository for the `permission_policies` table (#598).
  */
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { permissionPolicies } from "../schema/index.js";
 import { db } from "../client.js";
@@ -36,6 +36,24 @@ export class PermissionPoliciesRepository extends Repository<
       )
       .limit(1);
     return row as PolicySelect | undefined;
+  }
+
+  /** The live policies among `ids` that belong to `organizationId` (#681):
+   *  resolves a group/role payload's policy ids before anything is attached. */
+  async findByIdsInOrg(
+    organizationId: string,
+    ids: string[],
+    client: DbClient = db
+  ): Promise<PolicySelect[]> {
+    if (ids.length === 0) return [];
+    return this.findMany(
+      and(
+        eq(permissionPolicies.organizationId, organizationId),
+        inArray(permissionPolicies.id, ids)
+      ),
+      {},
+      client
+    );
   }
 
   /** Every live policy in an org (the Access-tab list, #622). */

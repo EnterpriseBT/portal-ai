@@ -59,6 +59,12 @@ export const groupRouter = Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/GroupResponse'
+ *       400:
+ *         description: Invalid payload (ORGANIZATION_INVALID_PAYLOAD), or a policy id that isn't a live policy in this org (RBAC_POLICY_UNKNOWN)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: Not entitled / not owner-admin / bundle exceeds boundary
  *         content:
@@ -163,6 +169,12 @@ groupRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/GroupResponse'
+ *       400:
+ *         description: Invalid payload (ORGANIZATION_INVALID_PAYLOAD), or a policy id that isn't a live policy in this org (RBAC_POLICY_UNKNOWN)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Group not found
  *         content:
