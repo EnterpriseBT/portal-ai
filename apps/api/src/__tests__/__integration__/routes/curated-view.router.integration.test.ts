@@ -520,6 +520,130 @@ describe("curated-view.router integration", () => {
     expect(cols.map((c) => c.label)).toEqual(["Email", "Email"]);
   });
 
+  // ── #680: GET / list scoped to the reader ──────────────────────────
+
+  /** The member may read `viewId` and only the email field mapping. */
+  async function grantMemberViewAndEmail(viewId: string) {
+    const base = {
+      organizationId: orgId,
+      principalType: "user",
+      principalId: memberId,
+      effect: "allow",
+      verb: "read",
+      condition: null,
+      conditionParam: null,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.permissionGrants)
+      .values([
+        {
+          ...base,
+          id: generateId(),
+          resourceType: "curated_view",
+          resourceId: viewId,
+        },
+        {
+          ...base,
+          id: generateId(),
+          resourceType: "field_mapping",
+          resourceId: emailFmId,
+        },
+      ] as never);
+  }
+
+  const AGE_FILTER = {
+    combinator: "and",
+    conditions: [{ field: "age", operator: "gt", value: 30 }],
+  };
+
+  it("#680: a reader without write gets no filter and only the projection ids they can read", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "redacted",
+      label: "Redacted",
+      filter: AGE_FILTER,
+      fieldMappingIds: [emailFmId, ageFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    await grantMemberViewAndEmail(id);
+
+    currentSub = MEMBER_SUB;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.status).toBe(200);
+    const view = got.body.payload.curatedView;
+    expect(view.filter).toBeNull();
+    expect(view.filtered).toBe(true);
+    expect(view.projected).toBe(true);
+    expect(view.fieldMappingIds).toEqual([emailFmId]);
+    // Nothing about the hidden column survives anywhere in the payload.
+    expect(JSON.stringify(got.body)).not.toContain(ageFmId);
+    expect(JSON.stringify(got.body)).not.toContain('"age"');
+
+    const list = await request(app).get(`/api/curated-views`);
+    expect(list.status).toBe(200);
+    const row = (
+      list.body.payload.curatedViews as Array<Record<string, unknown>>
+    ).find((v) => v.id === id)!;
+    expect(row.filter).toBeNull();
+    expect(row.filtered).toBe(true);
+    expect(row.projected).toBe(true);
+    expect(JSON.stringify(list.body)).not.toContain('"age"');
+  });
+
+  it("#680: a caller with write on the view gets the full definition", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "full_def",
+      label: "Full",
+      filter: AGE_FILTER,
+      fieldMappingIds: [emailFmId, ageFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    const view = got.body.payload.curatedView;
+    expect(view.filter).toEqual(AGE_FILTER);
+    expect(view.filtered).toBe(true);
+    expect(view.projected).toBe(true);
+    expect([...view.fieldMappingIds].sort()).toEqual(
+      [emailFmId, ageFmId].sort()
+    );
+    const list = await request(app).get(`/api/curated-views`);
+    const row = (
+      list.body.payload.curatedViews as Array<Record<string, unknown>>
+    ).find((v) => v.id === id)!;
+    expect(row.filter).toEqual(AGE_FILTER);
+    expect(row.filtered).toBe(true);
+    expect(row.projected).toBe(true);
+  });
+
+  it("#680: an unfiltered, unprojected view reads filtered: false, projected: false", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "plain",
+      label: "Plain",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    await grantMemberViewAndEmail(id);
+    for (const sub of [OWNER_SUB, MEMBER_SUB]) {
+      currentSub = sub;
+      const got = await request(app).get(`/api/curated-views/${id}`);
+      expect(got.body.payload.curatedView.filtered).toBe(false);
+      expect(got.body.payload.curatedView.projected).toBe(false);
+      const list = await request(app).get(`/api/curated-views`);
+      const row = (
+        list.body.payload.curatedViews as Array<Record<string, unknown>>
+      ).find((v) => v.id === id)!;
+      expect(row.filtered).toBe(false);
+      expect(row.projected).toBe(false);
+    }
+  });
+
   it("#678: sorting a json column is refused (400 CURATED_VIEW_INVALID_SORT)", async () => {
     const created = await createView({
       connectorEntityId: entityId,

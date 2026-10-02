@@ -15,6 +15,8 @@ const view = {
   description: "North-east accounts",
   filter: null,
   fieldMappingIds: ["fm-1", "fm-2"],
+  filtered: false,
+  projected: true,
   created: 1710000000000,
   createdBy: "user-1",
   updated: null,

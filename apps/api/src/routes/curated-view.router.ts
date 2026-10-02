@@ -36,6 +36,7 @@ import { StationAttachmentService } from "../services/station-attachment.service
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
+import { CuratedViewPayloadService } from "../services/curated-view-payload.service.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 
 const logger = createLogger({ module: "curated-view" });
@@ -115,7 +116,7 @@ async function assertFieldsReadable(
  *   get:
  *     tags: [Curated Views]
  *     summary: List curated views
- *     description: Paginated list of curated views the caller may read, scoped to their organization.
+ *     description: Paginated list of curated views the caller may read, scoped to their organization. Each row's `filter` is null for a caller without write on that view; `filtered` / `projected` say whether it filters rows or selects columns (#680).
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - $ref: '#/components/parameters/limitParam'
@@ -183,9 +184,8 @@ curatedViewRouter.get(
         filters.push(ilike(curatedViews.label, `%${search}%`));
       }
       // Row-level read scoping: only the views the caller may read.
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("curated_view", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("curated_view", {
         createdByCol: curatedViews.createdBy,
         idCol: curatedViews.id,
       });
@@ -211,9 +211,19 @@ curatedViewRouter.get(
         );
       });
 
+      // #680: each row as this caller may see it (no filter contents without
+      // write on the view), plus whether it's filtered / projected.
+      const projectedIds =
+        await DbService.repository.curatedViewFieldMappings.findProjectedViewIds(
+          data.map((v) => v.id)
+        );
+      const scoped = data.map((v) =>
+        CuratedViewPayloadService.scopeRow(set, v, projectedIds.has(v.id))
+      );
+
       return HttpService.success<CuratedViewListResponsePayload>(res, {
         curatedViews:
-          data as unknown as CuratedViewListResponsePayload["curatedViews"],
+          scoped as unknown as CuratedViewListResponsePayload["curatedViews"],
         total,
         limit,
         offset,
@@ -238,11 +248,20 @@ curatedViewRouter.get(
  *   get:
  *     tags: [Curated Views]
  *     summary: Get a curated view (with its projection)
+ *     description: >
+ *       A caller with write on the view gets its full definition. Any other
+ *       reader gets `filter: null`, only the projection's field mappings they
+ *       can read in `fieldMappingIds`, and `filtered` / `projected` (#680).
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
  *     responses:
- *       200: { description: The curated view }
+ *       200:
+ *         description: The curated view, as the caller may see it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CuratedViewGetResponsePayload'
  *       404: { description: Not found or not readable }
  */
 curatedViewRouter.get(
@@ -263,9 +282,8 @@ curatedViewRouter.get(
         );
       }
       // Unreadable == absent.
-      const canRead = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).can("resource.read", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const canRead = set.can("resource.read", {
         type: "curated_view",
         id: view.id,
         createdBy: view.createdBy,
@@ -283,10 +301,22 @@ curatedViewRouter.get(
         await DbService.repository.curatedViewFieldMappings.findByCuratedViewId(
           view.id
         );
+      // #680: the definition only for a caller with write on the view; any
+      // other reader gets no filter contents and only the projection ids they
+      // can read.
+      const scoped = CuratedViewPayloadService.scopeRow(
+        set,
+        view,
+        projection.length > 0
+      );
       return HttpService.success<CuratedViewGetResponsePayload>(res, {
         curatedView: {
-          ...(view as unknown as CuratedViewGetResponsePayload["curatedView"]),
-          fieldMappingIds: projection.map((p) => p.fieldMappingId),
+          ...(scoped as unknown as CuratedViewGetResponsePayload["curatedView"]),
+          fieldMappingIds: CuratedViewPayloadService.scopeFieldMappingIds(
+            set,
+            view,
+            projection.map((p) => p.fieldMappingId)
+          ),
         },
       });
     } catch (error) {

@@ -1439,7 +1439,7 @@ const options: swaggerJsdoc.Options = {
             filter: {
               type: ["object", "null"],
               description:
-                "A structured FilterGroup (row filter); null = all rows",
+                "A structured FilterGroup (row filter); null = all rows. On GET and list, null for a caller without write on the view (#680): read `filtered` instead",
             },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
@@ -1455,6 +1455,15 @@ const options: swaggerJsdoc.Options = {
             {
               type: "object",
               properties: {
+                filtered: {
+                  type: "boolean",
+                  description: "Whether the view has a row filter (#680)",
+                },
+                projected: {
+                  type: "boolean",
+                  description:
+                    "Whether the view selects columns, as opposed to all of them (#680)",
+                },
                 entity: {
                   type: ["object", "null"],
                   description:
@@ -1467,6 +1476,44 @@ const options: swaggerJsdoc.Options = {
               },
             },
           ],
+        },
+        // #680: GET /api/curated-views/:id, as the caller may see it. The
+        // filter schema is recursive, so this is spelled from CuratedView
+        // rather than generated (z.toJSONSchema would emit a local $defs ref).
+        CuratedViewWithProjection: {
+          allOf: [
+            { $ref: "#/components/schemas/CuratedView" },
+            {
+              type: "object",
+              required: ["fieldMappingIds", "filtered", "projected"],
+              properties: {
+                fieldMappingIds: {
+                  type: "array",
+                  items: { type: "string" },
+                  description:
+                    "The projection's field mappings (empty = all columns); for a caller without write, only those they can read",
+                },
+                filtered: {
+                  type: "boolean",
+                  description: "Whether the view has a row filter",
+                },
+                projected: {
+                  type: "boolean",
+                  description:
+                    "Whether the view selects columns, as opposed to all of them",
+                },
+              },
+            },
+          ],
+        },
+        CuratedViewGetResponsePayload: {
+          type: "object",
+          required: ["curatedView"],
+          properties: {
+            curatedView: {
+              $ref: "#/components/schemas/CuratedViewWithProjection",
+            },
+          },
         },
         EntityGroupMember: {
           type: "object",

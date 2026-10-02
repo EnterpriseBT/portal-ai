@@ -10,10 +10,24 @@ import { ResolvedColumnSchema } from "./entity-record.contract.js";
 
 // ── Enriched ──────────────────────────────────────────────────────────
 
+/**
+ * What every reader of a view may know about its definition (#680): whether
+ * it has a row filter and whether it selects columns. A caller without write
+ * on the view gets `filter: null` and only the projection ids they can read,
+ * so these booleans are how the UI says "Filtered" / "N selected".
+ */
+const CuratedViewReaderFlags = {
+  filtered: z.boolean(),
+  projected: z.boolean(),
+};
+
 /** A curated view plus the ids of the field mappings in its projection
- *  (empty = unrestricted / all the entity's columns). */
+ *  (empty = unrestricted / all the entity's columns). For a caller without
+ *  write on the view, `filter` is null and `fieldMappingIds` lists only the
+ *  projection's field mappings they can read (#680). */
 export const CuratedViewWithProjectionSchema = CuratedViewSchema.extend({
   fieldMappingIds: z.array(z.string()),
+  ...CuratedViewReaderFlags,
 });
 
 export type CuratedViewWithProjection = z.infer<
@@ -37,9 +51,11 @@ export type CuratedViewListRequestQuery = z.infer<
 >;
 
 /** A curated view enriched with its connector entity's display identifiers
- *  (#646) — `entity` is null when the entity is unresolvable (e.g. deleted). */
+ *  (#646) — `entity` is null when the entity is unresolvable (e.g. deleted).
+ *  For a caller without write on the view, `filter` is null (#680). */
 export const CuratedViewListItemSchema = CuratedViewSchema.extend({
   entity: z.object({ key: z.string(), label: z.string() }).nullable(),
+  ...CuratedViewReaderFlags,
 });
 
 export type CuratedViewListItem = z.infer<typeof CuratedViewListItemSchema>;

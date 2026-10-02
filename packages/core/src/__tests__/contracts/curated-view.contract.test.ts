@@ -1,6 +1,8 @@
 import { describe, it, expect } from "@jest/globals";
 
 import {
+  CuratedViewGetResponsePayloadSchema,
+  CuratedViewListItemSchema,
   CuratedViewRecordsRequestQuerySchema,
   CuratedViewRecordsResponsePayloadSchema,
 } from "../../contracts/curated-view.contract.js";
@@ -54,6 +56,58 @@ describe("curated-view records contract (#678)", () => {
       CuratedViewRecordsResponsePayloadSchema.safeParse(
         page([{ key: "c_email", label: "Email" }])
       ).success
+    ).toBe(false);
+  });
+});
+
+// #680: a reader gets `filter: null` and whether the view is filtered or
+// projected, not the definition.
+const viewRow = {
+  id: "v1",
+  organizationId: "o1",
+  connectorEntityId: "e1",
+  key: "v",
+  label: "V",
+  description: null,
+  filter: null,
+  created: 1,
+  createdBy: "u1",
+  updated: null,
+  updatedBy: null,
+  deleted: null,
+  deletedBy: null,
+};
+
+describe("curated-view get / list contract (#680)", () => {
+  it("a view carries `filtered` and `projected` booleans", () => {
+    expect(
+      CuratedViewGetResponsePayloadSchema.safeParse({
+        curatedView: {
+          ...viewRow,
+          fieldMappingIds: [],
+          filtered: true,
+          projected: false,
+        },
+      }).success
+    ).toBe(true);
+    expect(
+      CuratedViewListItemSchema.safeParse({
+        ...viewRow,
+        entity: null,
+        filtered: true,
+        projected: true,
+      }).success
+    ).toBe(true);
+  });
+
+  it("requires them", () => {
+    expect(
+      CuratedViewGetResponsePayloadSchema.safeParse({
+        curatedView: { ...viewRow, fieldMappingIds: [] },
+      }).success
+    ).toBe(false);
+    expect(
+      CuratedViewListItemSchema.safeParse({ ...viewRow, entity: null }).success
     ).toBe(false);
   });
 });
