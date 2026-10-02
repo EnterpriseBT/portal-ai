@@ -16,6 +16,7 @@ import {
   PageSection,
   Stack,
 } from "@portalai/core/ui";
+import CircularProgress from "@mui/material/CircularProgress";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "@tanstack/react-router";
@@ -88,6 +89,11 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
         description="This view currently returns no rows for you."
       />
     );
+  } else if (columns.length === 0) {
+    // The columns arrive with the first records response. Mounting the table
+    // before then would reconcile the saved column config against no columns
+    // and drop it, so a hidden or reordered column came back on every reload.
+    recordsBody = <CircularProgress size={20} />;
   } else {
     // #678: the same table as the entity records page (normalizedKey headers
     // with a label · type caption, type-aware cells, sortable types only, the

@@ -144,6 +144,34 @@ describe("CuratedViewDetailUI", () => {
     expect(screen.queryByText("Cached")).not.toBeInTheDocument();
   });
 
+  it("#678: a saved hidden column stays hidden when the columns arrive after the first render", () => {
+    // The container's columns come with the first records response, so the
+    // page first renders loading with no columns. That render must not reset
+    // the saved column config.
+    const key = "column-config:curated-view:cv-1";
+    const saved = [
+      { key: "name", visible: true },
+      { key: "region", visible: false },
+      { key: "tags", visible: true },
+      { key: "alias", visible: true },
+    ];
+    localStorage.setItem(key, JSON.stringify(saved));
+    const { rerender } = render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        columns={[]}
+        records={[]}
+        recordsLoading
+      />
+    );
+    rerender(<CuratedViewDetailUI {...baseProps} />);
+
+    expect(screen.getByText("name")).toBeInTheDocument();
+    expect(screen.queryByText("region")).not.toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(key) ?? "[]")).toEqual(saved);
+    localStorage.removeItem(key);
+  });
+
   it("#678: the Row filter metadata still reads Filtered / All rows", () => {
     const { unmount } = render(<CuratedViewDetailUI {...baseProps} />);
     expect(screen.getByText("All rows")).toBeInTheDocument();
