@@ -211,6 +211,29 @@ Org checks, plus the child-belongs-to-parent check, before any write.
 
 ---
 
+## Slice 6b — Cross-tenant gaps found by the inventory (amended)
+
+**Files**
+- **Delete** `routes/admin.router.ts`, its mount and its tests, the `MaintenanceStatusResponse` swagger component and the core `maintenance.contract`. Update the `CLAUDE.md`, copilot mirror and `apps/api/README.md` lines that cite `GET /api/admin/maintenance`.
+- `routes/connector-entity.router.ts`: PATCH/DELETE get the org check (404 `CONNECTOR_ENTITY_NOT_FOUND`).
+- `routes/api-endpoints.router.ts`: PATCH/DELETE require the endpoint's entity to be in the caller's org and on `:instanceId` (404).
+
+**Tests:** connector-entity PATCH/DELETE of another org's entity by an owner gives 404 and it's unchanged; api-endpoint PATCH/DELETE with another org's entity id gives 404; `/api/admin/*` is no longer registered.
+
+## Slice 6c — Same-org gaps: a member acting on another member's objects (amended)
+
+**Files**
+- A shared "the caller may write this connector instance" check (org + read → 404, write → 403), applied to:
+  - API-endpoint create and discover-columns;
+  - layout-plan interpret, PATCH and commit (per-instance router) and draft commit with an existing instance (`layout-plans.router.ts`);
+  - Sheets/Excel authorize and select-sheet/workbook.
+- File-upload confirm and parse: the upload must be the caller's.
+- `PATCH /api/organization/:id`: `defaultStationId` needs an org-level permission, plus read on the station.
+- Widget refresh: the message's portal must be accessible (`PortalAccessService`).
+- Pin create: the source portal must be accessible.
+
+**Tests:** for each route, a member acting on another member's object gets 404/403 and nothing is written; the owner and the member's own object succeed.
+
 ## Slice 7 — The route-authorization guard
 
 **Files**
