@@ -35,6 +35,7 @@ import { ToolpackRegistrationService } from "../services/toolpack-registration.s
 import { BUILTIN_TOOL_NAMES } from "../services/tools.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { requirePermission } from "../middleware/require-permission.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { eq, and, isNull } from "drizzle-orm";
@@ -294,7 +295,7 @@ toolpacksRouter.get(
  *     responses:
  *       201: { description: Registered. }
  *       400: { description: Invalid payload. }
- *       403: { description: The organization's tier does not include custom toolpacks (#214). }
+ *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685), or the organization's tier does not include custom toolpacks (TOOLPACK_NOT_ENTITLED, #214). }
  *       409: { description: Pack name or tool-name conflict. }
  *       502: { description: Schema or metadata fetch / validation failure. }
  */
@@ -316,11 +317,23 @@ toolpacksRouter.post(
       const { organizationId, userId } = req.application!.metadata;
       const { name, description, endpoints, authHeaders } = parsed.data;
 
+      // #685: registering is owner/admin (class write on toolpack). Checked
+      // before the entitlement so a member is told the real reason (403),
+      // not offered an upgrade.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "toolpack",
+        }
+      );
+
       // #214 entitlement gate — register is the only gated toolpack
       // mutation (OQ3): it CREATES entitlement-bearing capability, and it
-      // triggers outbound schema fetches. Management of existing packs
-      // (PATCH/refresh/DELETE) stays open; their tools are already
-      // excluded from the agent build while unentitled.
+      // triggers outbound schema fetches. Managing an existing pack
+      // (PATCH/refresh/DELETE) isn't entitlement-gated (its tools are already
+      // excluded from the agent build while unentitled), but since #685 it
+      // checks the caller's write/delete permission on the pack.
       const org =
         await DbService.repository.organizations.findById(organizationId);
       const policy = await TierService.resolveTier(org ?? { tier: "" });
@@ -442,6 +455,7 @@ toolpacksRouter.post(
  *         schema: { type: string }
  *     responses:
  *       200: { description: Updated. }
+ *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
  *       404: { description: Not found. }
  *       409: { description: Name conflict. }
  *       502: { description: Schema fetch / validation failure. }
@@ -475,6 +489,12 @@ toolpacksRouter.patch(
           new ApiError(404, ApiCode.TOOLPACK_NOT_FOUND, "Toolpack not found")
         );
       }
+      // #685: changing a custom toolpack needs write on it (owner/admin).
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        { type: "toolpack", id: existing.id, createdBy: existing.createdBy }
+      );
 
       const { name, description, endpoints, authHeaders } = parsed.data;
 
@@ -575,6 +595,7 @@ toolpacksRouter.patch(
  *         schema: { type: string }
  *     responses:
  *       200: { description: Soft-deleted. }
+ *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
  *       404: { description: Not found. }
  */
 toolpacksRouter.delete(
@@ -595,6 +616,12 @@ toolpacksRouter.delete(
           new ApiError(404, ApiCode.TOOLPACK_NOT_FOUND, "Toolpack not found")
         );
       }
+      // #685: changing a custom toolpack needs delete on it (owner/admin).
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        { type: "toolpack", id: existing.id, createdBy: existing.createdBy }
+      );
 
       // Find affected station_toolpack rows BEFORE the soft-delete so we
       // can return their stationIds.
@@ -670,6 +697,7 @@ toolpacksRouter.delete(
  *         description: Organization toolpack id
  *     responses:
  *       200: { description: Refreshed. }
+ *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
  *       404: { description: Not found. }
  *       502: { description: Schema fetch failed (cached values preserved). }
  */
@@ -691,6 +719,12 @@ toolpacksRouter.post(
           new ApiError(404, ApiCode.TOOLPACK_NOT_FOUND, "Toolpack not found")
         );
       }
+      // #685: changing a custom toolpack needs write on it (owner/admin).
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        { type: "toolpack", id: existing.id, createdBy: existing.createdBy }
+      );
 
       const auth = (existing.authHeaders ?? undefined) as
         | Record<string, string>
@@ -765,6 +799,7 @@ toolpacksRouter.post(
  *         schema: { type: string }
  *     responses:
  *       200: { description: Rotated. Returns the new signingSecret once. }
+ *       403: { description: The caller can't manage toolpacks (INSUFFICIENT_ROLE, #685). }
  *       404: { description: Not found. }
  */
 toolpacksRouter.post(
@@ -785,6 +820,12 @@ toolpacksRouter.post(
           new ApiError(404, ApiCode.TOOLPACK_NOT_FOUND, "Toolpack not found")
         );
       }
+      // #685: changing a custom toolpack needs write on it (owner/admin).
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        { type: "toolpack", id: existing.id, createdBy: existing.createdBy }
+      );
 
       const newSecret = generateSigningSecret();
       const now = Date.now();
