@@ -23,7 +23,10 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { EmptyResults } from "../components/EmptyResults.component";
 import { EntityRecordDataTableUI } from "../components/EntityRecordDataTable.component";
 import { PaginationToolbar } from "../components/PaginationToolbar.component";
-import { useCuratedViewTablePagination } from "../utils/curated-view-table.util";
+import {
+  useCuratedViewTablePagination,
+  type CuratedViewTableRecovery,
+} from "../utils/curated-view-table.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
 import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
 import { sdk } from "../api/sdk";
@@ -189,9 +192,20 @@ export const CuratedViewDetail: React.FC = () => {
   // response. They drive the table, its column picker and the advanced filter
   // builder; paging and filters are remembered per view.
   const [columns, setColumns] = useState<ResolvedColumn[]>([]);
-  const [invalidFilter, setInvalidFilter] = useState(false);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  // The hook resets a filter or sort the server refused; say why it changed.
+  const onRecovered = React.useCallback(
+    (what: CuratedViewTableRecovery) =>
+      toast.info(
+        what === "filter"
+          ? "Your filter referenced a column you can't use in this view, so it was cleared."
+          : "That column can't be sorted any more, so the table's sort was reset."
+      ),
+    [toast]
+  );
   const pagination = useCuratedViewTablePagination(viewId, columns, {
-    invalidFilter,
+    errorCode,
+    onRecovered,
   });
   const recordsResult = sdk.curatedViews.records(
     viewId,
@@ -202,17 +216,8 @@ export const CuratedViewDetail: React.FC = () => {
     if (recordsResult.data?.columns) setColumns(recordsResult.data.columns);
   }, [recordsResult.data?.columns]);
   React.useEffect(() => {
-    const refused =
-      toServerError(recordsResult.error)?.code ===
-      "CURATED_VIEW_INVALID_FILTER";
-    setInvalidFilter(refused);
-    // The hook clears the refused filter; say why it disappeared.
-    if (refused) {
-      toast.info(
-        "Your filter referenced a column you can't use in this view, so it was cleared."
-      );
-    }
-  }, [recordsResult.error, toast]);
+    setErrorCode(toServerError(recordsResult.error)?.code ?? null);
+  }, [recordsResult.error]);
 
   React.useEffect(() => {
     if (recordsResult.data?.total !== undefined) {
