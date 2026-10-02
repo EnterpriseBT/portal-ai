@@ -33,7 +33,10 @@ import type { DbClient } from "../db/repositories/base.repository.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import { renderFilterGroupToSql } from "../utils/filter-sql.util.js";
+import {
+  parseFilterPayload,
+  renderFilterGroupToSql,
+} from "../utils/filter-sql.util.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 import { memoizeForRequest } from "../utils/request-context.util.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
@@ -572,6 +575,8 @@ export class PortalSqlServiceImpl {
       sortOrder?: "asc" | "desc";
       /** Case-insensitive substring match across the projected columns. */
       search?: string;
+      /** #678: base64 FilterExpression over the readable projected columns. */
+      filters?: string;
     },
     client: DbClient = db
   ): Promise<{
@@ -627,6 +632,29 @@ export class PortalSqlServiceImpl {
       Object.fromEntries(resolvedCols.map((c) => [c.normalizedKey, c.type]))
     );
     if (filterWhere) whereParts.push(`(${filterWhere})`);
+    // #678: the reader's ad-hoc filter, ANDed after the view's own filter so it
+    // can only narrow. It's validated against ONLY the readable projected
+    // columns: `buildFilterSqlForEntity` resolves any column of the entity, so
+    // this validation set is what keeps a filter off hidden columns (no value
+    // oracle, the same rule as queryViewRowsByColumn). Fail-closed: anything
+    // invalid is a 400 before a query runs.
+    if (opts.filters) {
+      const invalid = (message: string) =>
+        new ApiError(400, ApiCode.CURATED_VIEW_INVALID_FILTER, message);
+      const parsedFilter = parseFilterPayload(opts.filters, readable);
+      if ("message" in parsedFilter) throw invalid(parsedFilter.message);
+      const stmt = await this.deps.statementCache.get(
+        view.connectorEntityId,
+        client
+      );
+      const rendered = renderFilterGroupToSql(
+        parsedFilter.expression,
+        stmt,
+        parsedFilter.columnTypes
+      );
+      if (typeof rendered !== "string") throw invalid(rendered.message);
+      whereParts.push(`(${rendered})`);
+    }
     // Search: case-insensitive **literal** substring across the projected
     // columns only (never an un-projected column). The LIKE metacharacters
     // (\ % _) are escaped so the term matches literally (ILIKE's default escape

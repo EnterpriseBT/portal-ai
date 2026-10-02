@@ -563,6 +563,203 @@ describe("curated-view.router integration", () => {
     expect(rows[0]).not.toHaveProperty("age");
   });
 
+  // ── #678 slice 3: the view-scoped ad-hoc filter ──────────────────
+
+  const b64 = (group: unknown) =>
+    Buffer.from(JSON.stringify(group)).toString("base64");
+  const where = (...conditions: unknown[]) =>
+    b64({ combinator: "and", conditions });
+  const ages = (res: request.Response) =>
+    (res.body.payload.records as Array<{ age: number }>)
+      .map((r) => Number(r.age))
+      .sort((a, b) => a - b);
+
+  it("#678: `filters` narrows the rows and the total", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "f_narrow",
+      label: "Narrow",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({ filters: where({ field: "age", operator: "gt", value: 30 }) });
+    expect(res.status).toBe(200);
+    expect(ages(res)).toEqual([42]);
+    expect(res.body.payload.total).toBe(1);
+  });
+
+  it("#678: `filters` only narrows: it can't bring back a row the view's own filter excludes", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "f_adults",
+      label: "Adults",
+      filter: {
+        combinator: "and",
+        conditions: [{ field: "age", operator: "gt", value: 30 }],
+      },
+    });
+    const id = created.body.payload.curatedView.id as string;
+    // An OR that matches every row, including the excluded 25-year-old.
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({
+        filters: b64({
+          combinator: "or",
+          conditions: [
+            { field: "age", operator: "lt", value: 30 },
+            { field: "age", operator: "gte", value: 30 },
+          ],
+        }),
+      });
+    expect(res.status).toBe(200);
+    expect(ages(res)).toEqual([42]);
+    expect(res.body.payload.total).toBe(1);
+  });
+
+  it("#678: a filter on a column outside the view's projection is refused (400), before any query", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "f_email_only",
+      label: "Email only",
+      fieldMappingIds: [emailFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({ filters: where({ field: "age", operator: "gt", value: 30 }) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER);
+    expect(res.body.message).toMatch(/Unknown field/);
+  });
+
+  it("#678: a filter on a projected column the caller can't read is refused (400)", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "f_partial",
+      label: "Partial",
+      fieldMappingIds: [emailFmId, ageFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const base = {
+      organizationId: orgId,
+      principalType: "user",
+      principalId: memberId,
+      effect: "allow",
+      verb: "read",
+      condition: null,
+      conditionParam: null,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.permissionGrants)
+      .values([
+        {
+          ...base,
+          id: generateId(),
+          resourceType: "curated_view",
+          resourceId: id,
+        },
+        {
+          ...base,
+          id: generateId(),
+          resourceType: "field_mapping",
+          resourceId: emailFmId,
+        },
+      ] as never);
+
+    currentSub = MEMBER_SUB;
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({ filters: where({ field: "age", operator: "gt", value: 30 }) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER);
+    // The readable column still filters fine.
+    const ok = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({
+        filters: where({ field: "email", operator: "eq", value: "a@b.co" }),
+      });
+    expect(ok.status).toBe(200);
+    expect((ok.body.payload.records as unknown[]).length).toBe(1);
+  });
+
+  it.each([
+    ["malformed base64", "%%%not-base64%%%"],
+    ["base64 of malformed JSON", Buffer.from("{nope").toString("base64")],
+    [
+      "an operator invalid for the type",
+      Buffer.from(
+        JSON.stringify({
+          combinator: "and",
+          conditions: [{ field: "email", operator: "gt", value: "z" }],
+        })
+      ).toString("base64"),
+    ],
+  ])("#678: %s is a 400", async (_label, filters) => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: `f_bad_${generateId().slice(0, 6)}`,
+      label: "Bad",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({ filters });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER);
+  });
+
+  it("#678: an injection-shaped filter literal is escaped (the shared render), matching nothing", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "f_inj",
+      label: "Inj",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    for (const value of [
+      "'; DROP TABLE x; --",
+      "a@b.co' OR '1'='1",
+      "a\\' OR 1=1 --",
+    ]) {
+      const res = await request(app)
+        .get(`/api/curated-views/${id}/records`)
+        .query({ filters: where({ field: "email", operator: "eq", value }) });
+      expect(res.status).toBe(200);
+      expect((res.body.payload.records as unknown[]).length).toBe(0);
+    }
+    const still = await request(app).get(`/api/curated-views/${id}/records`);
+    expect(still.body.payload.total).toBe(2);
+  });
+
+  it("#678: filters, search and sort compose", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "f_compose",
+      label: "Compose",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({
+        filters: where({ field: "age", operator: "gte", value: 20 }),
+        search: ".co",
+        sortBy: "age",
+        sortOrder: "desc",
+      });
+    expect(res.status).toBe(200);
+    expect(
+      (res.body.payload.records as Array<{ age: number }>).map((r) =>
+        Number(r.age)
+      )
+    ).toEqual([42, 25]);
+  });
+
   it("rejects a duplicate key (409) and an invalid filter (400)", async () => {
     const first = await createView({
       connectorEntityId: entityId,

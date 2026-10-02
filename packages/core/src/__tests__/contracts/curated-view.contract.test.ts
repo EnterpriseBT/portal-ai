@@ -33,6 +33,16 @@ describe("curated-view records contract (#678)", () => {
     ).toBe(true);
   });
 
+  it("accepts an optional base64 `filters` string (the entity list's format)", () => {
+    const parsed = CuratedViewRecordsRequestQuerySchema.safeParse({
+      limit: "10",
+      filters: "eyJjb21iaW5hdG9yIjoiYW5kIiwiY29uZGl0aW9ucyI6W119",
+    });
+    expect(parsed.success && parsed.data.filters).toBe(
+      "eyJjb21iaW5hdG9yIjoiYW5kIiwiY29uZGl0aW9ucyI6W119"
+    );
+  });
+
   it("returns the projected columns as ResolvedColumns", () => {
     expect(
       CuratedViewRecordsResponsePayloadSchema.safeParse(page([column])).success

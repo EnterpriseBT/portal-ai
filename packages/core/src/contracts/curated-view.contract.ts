@@ -170,7 +170,15 @@ export type CuratedViewAttachResponsePayload = z.infer<
 // ── Records ───────────────────────────────────────────────────────────
 
 export const CuratedViewRecordsRequestQuerySchema =
-  PaginationRequestQuerySchema.extend({});
+  PaginationRequestQuerySchema.extend({
+    /**
+     * #678: a base64-encoded JSON FilterExpression (the entity records list's
+     * format), ANDed after the view's own filter, so it can only narrow. Its
+     * fields must be the caller's readable projected columns (normalizedKey);
+     * anything else is a 400.
+     */
+    filters: z.string().optional(),
+  });
 
 export type CuratedViewRecordsRequestQuery = z.infer<
   typeof CuratedViewRecordsRequestQuerySchema
