@@ -175,14 +175,17 @@ Org checks, plus the child-belongs-to-parent check, before any write.
 
 ---
 
-## Slice 6 — Child-row parent permissions and the creates
+## Slice 6 — Child-row parent permissions, the creates, and the two body-org routes
+
+(Amended during implementation: two routes trusted an `organizationId` from the request body. `POST /api/connector-instances` is fixed here, and `POST /api/jobs` is deleted here. See the spec.)
 
 **Files**
 
 - Edit: `apps/api/src/routes/entity-group-member.router.ts`: all three routes check read on the group (404), then `write entity_group`.
 - Edit: `apps/api/src/routes/entity-tag-assignment.router.ts`: both check read on the entity (404), then `write entity`; POST also checks read on the tag (404 `ENTITY_TAG_NOT_FOUND`).
 - Edit, the creates per the spec's Creates table:
-  - `connector-instance.router.ts`: POST plus the three draft helpers, owned create;
+  - `connector-instance.router.ts`: POST gets `getApplicationMetadata`, the caller's org (a differing body org is 403) and the owned create; the three draft helpers get the owned create;
+  - `jobs.router.ts`: **delete** `POST /` and its `@openapi`; `apps/web/src/api/jobs.api.ts`: delete the unused `create`;
   - `connector-entity.router.ts`: POST checks read on the instance, then the owned create;
   - `entity-record.router.ts`: POST checks read on the entity, then the owned create;
   - `column-definition.router.ts`, `entity-group.router.ts`, `entity-tag.router.ts`: POST class create.

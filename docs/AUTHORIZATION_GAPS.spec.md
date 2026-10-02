@@ -112,7 +112,7 @@ The existing connector-capability 422 (`utils/resolve-capabilities.util.ts:49-79
 
 ### Entity-group members (`routes/entity-group-member.router.ts`, mounted under `/api/entity-groups/:entityGroupId/members`)
 
-- **All three routes:** the group in org and `can("resource.read", group)` (404 `ENTITY_GROUP_NOT_FOUND`), then `check("resource.write", {type:"entity_group", id: group.id, createdBy: group.createdBy})`.
+- **All three routes:** the group in org and `can("resource.read", group)` (404 `ENTITY_GROUP_NOT_FOUND`), then `check("resource.write", {type:"entity_group", id: group.id, createdBy: group.createdBy})`. (POST didn't org-check the group.) MemberAccess holds nothing on `entity_group`, so for a member the read fails first: **404**, not 403.
 - **`PATCH /:memberId` (`:419`) and `DELETE /:memberId` (`:575`)** also require `member.organizationId === organizationId && member.entityGroupId === req.params.entityGroupId`, else 404 `ENTITY_GROUP_MEMBER_NOT_FOUND`. This runs **before** any write.
 - `POST` (`:197`) keeps its existing org checks on the linked connector entity.
 
@@ -126,13 +126,20 @@ The existing connector-capability 422 (`utils/resolve-capabilities.util.ts:49-79
 
 | Route | Parent read (404) | Create check |
 |---|---|---|
-| `POST /api/connector-instances` (`connector-instance.router.ts:713`) | n/a | owned: `{type:"connector_instance", createdBy: userId}` |
+| `POST /api/connector-instances` (`connector-instance.router.ts:713`) | n/a. **Adds `getApplicationMetadata`.** The instance is created in the caller's org; a body `organizationId` that differs is **403 `INSUFFICIENT_ROLE`** (the handler used to write to the body's org) | owned: `{type:"connector_instance", createdBy: userId}` |
 | `POST /api/connector-instances/probe-endpoint-draft` (`:916`), `/preview-endpoint-page` (`:1000`), `/suggest-transform` (`:1096`) | n/a | the same owned `connector_instance` create |
-| `POST /api/connector-entities` (`connector-entity.router.ts:508`) | connector instance (`CONNECTOR_INSTANCE_NOT_FOUND`) | owned: `{type:"entity", createdBy: userId}` |
+| `POST /api/connector-entities` (`connector-entity.router.ts:508`) | connector instance in org and readable (`CONNECTOR_INSTANCE_NOT_FOUND`; it wasn't org-checked) | owned: `{type:"entity", createdBy: userId}` |
 | `POST /api/connector-entities/:connectorEntityId/records` (`entity-record.router.ts:725`) | connector entity (`CONNECTOR_ENTITY_NOT_FOUND`) | owned: `{type:"entity_record", createdBy: userId}` |
 | `POST /api/column-definitions` (`column-definition.router.ts:387`) | n/a | class: `{type:"column_definition"}` |
 | `POST /api/entity-groups` (`entity-group.router.ts:407`) | n/a | class: `{type:"entity_group"}` |
 | `POST /api/entity-tags` (`entity-tag.router.ts:343`) | n/a | class: `{type:"tag"}` |
+
+### Generic job create (deleted)
+
+`POST /api/jobs` (`routes/jobs.router.ts:82-108`) is **deleted**, with its `@openapi` block and the unused web `sdk.jobs.create`.
+- It enqueued any `JobTypeEnum` type with arbitrary `metadata`, in the body's `organizationId`, with no permission check.
+- Every real job is enqueued by its own authorized route.
+- `JobCreateRequestBodySchema` and `JobCreateResponsePayload` are removed from core if nothing else references them.
 
 ### Guard (new)
 
@@ -217,20 +224,21 @@ Update `__tests__/routes/portal-events.router.test.ts`: mock `getApplicationMeta
 
 25. PATCH/DELETE with a `memberId` from another group (same org): 404 `ENTITY_GROUP_MEMBER_NOT_FOUND`, and nothing changed.
 26. PATCH/DELETE with a `memberId` from another org: 404, nothing changed.
-27. Member POST, PATCH and DELETE (no write on the group): 403.
+27. Member POST, PATCH and DELETE on the owner's group: 404 `ENTITY_GROUP_NOT_FOUND` (members can't read groups, so unreadable == absent).
 28. Owner: success.
 
 ### Tag assignments: `__integration__/routes/entity-tag-assignment.router.integration.test.ts`
 
 29. DELETE with an `assignmentId` from another entity, or from another org: 404, and the row is still present.
-30. Member POST/DELETE without write on the entity: 403.
+30. Member POST/DELETE on an entity they can't read: 404. On their own entity, a tag they can't read: 404 `ENTITY_TAG_NOT_FOUND`.
 31. POST with a tag from another org: 404 `ENTITY_TAG_NOT_FOUND`.
 32. Owner: success.
 
 ### Creates: in each router's integration suite
 
 33. Member POST column-definition, entity-group and tag: 403. Owner: 200.
-34. Member POST connector-instance (and the three draft helpers): allowed (owned create). A role with no `write connector_instance` (a custom zero-grant role): 403.
+34. Member POST connector-instance (and the three draft helpers): allowed (owned create). A body `organizationId` of another org: 403, and no instance is written there.
+34a. `POST /api/jobs` is no longer registered.
 35. Member POST connector-entity under an unreadable instance: 404. Entity-record under an unreadable entity: 404.
 
 ### Guard: `__tests__/config/route-authorization.test.ts`
