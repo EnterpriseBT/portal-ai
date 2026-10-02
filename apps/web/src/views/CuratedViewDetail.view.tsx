@@ -22,10 +22,8 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
 import { EntityRecordDataTableUI } from "../components/EntityRecordDataTable.component";
-import {
-  usePagination,
-  PaginationToolbar,
-} from "../components/PaginationToolbar.component";
+import { PaginationToolbar } from "../components/PaginationToolbar.component";
+import { useCuratedViewTablePagination } from "../utils/curated-view-table.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
 import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
 import { sdk } from "../api/sdk";
@@ -187,15 +185,34 @@ export const CuratedViewDetail: React.FC = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const viewResult = sdk.curatedViews.get(viewId);
-  const pagination = usePagination({
-    sortFields: [],
-    defaultSortBy: "created",
-    defaultSortOrder: "asc",
+  // #678: the caller's readable projected columns, captured from the records
+  // response. They drive the table, its column picker and the advanced filter
+  // builder; paging and filters are remembered per view.
+  const [columns, setColumns] = useState<ResolvedColumn[]>([]);
+  const [invalidFilter, setInvalidFilter] = useState(false);
+  const pagination = useCuratedViewTablePagination(viewId, columns, {
+    invalidFilter,
   });
   const recordsResult = sdk.curatedViews.records(
     viewId,
     pagination.queryParams as Parameters<typeof sdk.curatedViews.records>[1]
   );
+
+  React.useEffect(() => {
+    if (recordsResult.data?.columns) setColumns(recordsResult.data.columns);
+  }, [recordsResult.data?.columns]);
+  React.useEffect(() => {
+    const refused =
+      toServerError(recordsResult.error)?.code ===
+      "CURATED_VIEW_INVALID_FILTER";
+    setInvalidFilter(refused);
+    // The hook clears the refused filter; say why it disappeared.
+    if (refused) {
+      toast.info(
+        "Your filter referenced a column you can't use in this view, so it was cleared."
+      );
+    }
+  }, [recordsResult.error, toast]);
 
   React.useEffect(() => {
     if (recordsResult.data?.total !== undefined) {
@@ -251,7 +268,7 @@ export const CuratedViewDetail: React.FC = () => {
     <Stack spacing={4}>
       <CuratedViewDetailUI
         view={view}
-        columns={recordsResult.data?.columns ?? []}
+        columns={recordsResult.data?.columns ?? columns}
         records={recordsResult.data?.records ?? []}
         recordsLoading={recordsResult.isLoading}
         recordsError={recordsResult.isError}
