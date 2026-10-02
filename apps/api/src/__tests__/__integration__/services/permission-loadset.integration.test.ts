@@ -383,4 +383,77 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
       (await PermissionService.loadSet(ctx, db)).can("org.audit.read")
     ).toBe(true);
   });
+
+  it("ignores another org's policy attached to a group in this org (#681)", async () => {
+    // A row that predates #681's write-path check: org A's group carries an
+    // org-A attachment pointing at org B's custom policy. B's statements must
+    // never be evaluated in A, or B's later edits would reach A's members.
+    const ctx = {
+      userId: memberId,
+      organizationId: orgId,
+      roles: ["member"] as OrgRole[],
+    };
+    const drizzleDb = db as ReturnType<typeof drizzle>;
+    const otherOwner = createUser(`auth0|${generateId()}`);
+    await drizzleDb.insert(schema.users).values(otherOwner as never);
+    const otherOrg = createOrganization(otherOwner.id);
+    await drizzleDb.insert(schema.organizations).values(otherOrg as never);
+
+    const foreignPolicy = new PolicyModelFactory()
+      .create("system")
+      .update({
+        organizationId: otherOrg.id,
+        name: "ForeignAuditRead",
+        kind: "custom",
+        description: null,
+      })
+      .parse();
+    const foreignStatement = new PermissionStatementModelFactory()
+      .create("system")
+      .update({
+        organizationId: otherOrg.id,
+        policyId: foreignPolicy.id,
+        effect: "allow",
+        verb: "read",
+        resourceType: "audit",
+        resourceId: null,
+        condition: null,
+      })
+      .parse();
+    const group = new GroupModelFactory()
+      .create("system")
+      .update({ organizationId: orgId, name: "Borrowed", description: null })
+      .parse();
+    const attachment = new PolicyAttachmentModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        policyId: foreignPolicy.id,
+        principalType: "group",
+        principalId: group.id,
+      })
+      .parse();
+    const membership = new UserGroupModelFactory()
+      .create("system")
+      .update({ organizationId: orgId, userId: memberId, groupId: group.id })
+      .parse();
+    await drizzleDb
+      .insert(schema.permissionPolicies)
+      .values(foreignPolicy as never);
+    await drizzleDb
+      .insert(schema.permissionStatements)
+      .values(foreignStatement as never);
+    await drizzleDb.insert(schema.groups).values(group as never);
+    await drizzleDb
+      .insert(schema.policyAttachments)
+      .values(attachment as never);
+    await drizzleDb.insert(schema.userGroup).values(membership as never);
+
+    const set = await PermissionService.loadSet(ctx, db);
+    expect(set.can("org.audit.read")).toBe(false);
+    // The member's own (in-org) policies still apply.
+    expect(
+      set.can("resource.read", { type: "station", createdBy: memberId })
+    ).toBe(true);
+  });
 });

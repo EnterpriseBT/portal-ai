@@ -2,7 +2,7 @@
  * Repository for the `permission_statements` table (#598).
  */
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { permissionStatements } from "../schema/index.js";
 import { db } from "../client.js";
@@ -24,12 +24,18 @@ export class PermissionStatementsRepository extends Repository<
   /** All live statements belonging to any of the given policies (the engine's
    *  effective-set gather). */
   async findByPolicyIds(
+    organizationId: string,
     policyIds: string[],
     client: DbClient = db
   ): Promise<PermissionStatementSelect[]> {
     if (policyIds.length === 0) return [];
+    // #681: scoped to the org. A policy id alone could name another org's
+    // policy, whose statements must never be evaluated (or bounded) here.
     return this.findMany(
-      inArray(permissionStatements.policyId, policyIds),
+      and(
+        eq(permissionStatements.organizationId, organizationId),
+        inArray(permissionStatements.policyId, policyIds)
+      ),
       {},
       client
     );

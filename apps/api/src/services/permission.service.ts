@@ -116,6 +116,7 @@ export class PermissionService {
     ).filter((a) => a.organizationId === ctx.organizationId);
     const policyIds = [...new Set(attachments.map((a) => a.policyId))];
     const statements = await repo.permissionStatements.findByPolicyIds(
+      ctx.organizationId,
       policyIds,
       client
     );

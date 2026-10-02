@@ -170,6 +170,7 @@ export class PolicyService {
       );
     const statements =
       await DbService.repository.permissionStatements.findByPolicyIds(
+        caller.organizationId,
         policies.map((p) => p.id)
       );
     const byPolicy = new Map<string, PermissionStatementSelect[]>();

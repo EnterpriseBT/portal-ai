@@ -50,6 +50,7 @@ export class RoleService {
     if (policyIds.length === 0) return;
     const statements =
       await DbService.repository.permissionStatements.findByPolicyIds(
+        caller.organizationId,
         policyIds
       );
     const set = await PermissionService.loadSet(caller);
