@@ -18,7 +18,7 @@ import {
   type PermissionContext,
 } from "./permission.service.js";
 import { EntitlementService } from "./entitlement.service.js";
-import { RbacObjectResolver } from "./rbac-object-resolver.js";
+import { RbacPolicyRefsService } from "./rbac-policy-refs.service.js";
 import { AuditService } from "./audit.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -36,21 +36,6 @@ export class GroupService {
       );
     }
     await PermissionService.check(caller, "member.role.assign");
-  }
-
-  private static async assertPoliciesWithinBoundary(
-    caller: PermissionContext,
-    policyIds: string[]
-  ): Promise<void> {
-    if (policyIds.length === 0) return;
-    const statements =
-      await DbService.repository.permissionStatements.findByPolicyIds(
-        policyIds
-      );
-    const set = await PermissionService.loadSet(caller);
-    await set.assertStatementsWithinBoundary(statements, (rt, rid) =>
-      RbacObjectResolver.resolveCreatedBy(caller.organizationId, rt, rid)
-    );
   }
 
   private static async load(
@@ -181,7 +166,11 @@ export class GroupService {
     audit: RbacAuditContext
   ): Promise<GroupView> {
     await GroupService.gate(caller);
-    await GroupService.assertPoliciesWithinBoundary(caller, req.policyIds);
+    // #681: live, in-org, within the caller's boundary; deduped.
+    const policyIds = await RbacPolicyRefsService.assertAttachable(
+      caller,
+      req.policyIds
+    );
     await GroupService.assertNameFree(caller, req.name);
 
     const group = new GroupModelFactory()
@@ -199,7 +188,7 @@ export class GroupService {
         caller.organizationId,
         "group",
         group.id,
-        req.policyIds,
+        policyIds,
         caller.userId,
         tx
       );
@@ -213,7 +202,7 @@ export class GroupService {
       targetId: group.id,
       sourceIp: audit.sourceIp,
       userAgent: audit.userAgent,
-      metadata: { name: group.name, policyCount: req.policyIds.length },
+      metadata: { name: group.name, policyCount: policyIds.length },
     });
     for (const policyId of diff.attached) {
       void AuditService.record({
@@ -238,7 +227,11 @@ export class GroupService {
   ): Promise<GroupView> {
     await GroupService.gate(caller);
     const group = await GroupService.load(caller, id);
-    await GroupService.assertPoliciesWithinBoundary(caller, req.policyIds);
+    // #681: live, in-org, within the caller's boundary; deduped.
+    const policyIds = await RbacPolicyRefsService.assertAttachable(
+      caller,
+      req.policyIds
+    );
     await GroupService.assertNameFree(caller, req.name, id);
 
     const diff = await DbService.transaction(async (tx) => {
@@ -255,7 +248,7 @@ export class GroupService {
         caller.organizationId,
         "group",
         id,
-        req.policyIds,
+        policyIds,
         caller.userId,
         tx
       );
@@ -269,7 +262,7 @@ export class GroupService {
       targetId: id,
       sourceIp: audit.sourceIp,
       userAgent: audit.userAgent,
-      metadata: { name: req.name, policyCount: req.policyIds.length },
+      metadata: { name: req.name, policyCount: policyIds.length },
     });
     for (const policyId of diff.attached) {
       void AuditService.record({

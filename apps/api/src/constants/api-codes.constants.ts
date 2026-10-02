@@ -75,6 +75,9 @@ export enum ApiCode {
   RBAC_NAME_CONFLICT = "RBAC_NAME_CONFLICT",
   /** No custom policy with the given id in the caller's org (#622). 404. */
   POLICY_NOT_FOUND = "POLICY_NOT_FOUND",
+  /** A group/role payload names a policy id that is not a live policy in the
+   *  caller's org: absent, deleted or another org's, indistinguishably (#681). 400. */
+  RBAC_POLICY_UNKNOWN = "RBAC_POLICY_UNKNOWN",
   /** No custom role with the given id in the caller's org (#622). 404. */
   ROLE_NOT_FOUND = "ROLE_NOT_FOUND",
   /** No group with the given id in the caller's org (#622). 404. */

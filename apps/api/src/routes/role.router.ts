@@ -63,7 +63,7 @@ export const roleRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/RoleResponse'
  *       400:
- *         description: Invalid payload
+ *         description: Invalid payload (ORGANIZATION_INVALID_PAYLOAD), or a policy id that isn't a live policy in this org (RBAC_POLICY_UNKNOWN)
  *         content:
  *           application/json:
  *             schema:
@@ -172,6 +172,12 @@ roleRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/RoleResponse'
+ *       400:
+ *         description: Invalid payload (ORGANIZATION_INVALID_PAYLOAD), or a policy id that isn't a live policy in this org (RBAC_POLICY_UNKNOWN)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: System role is immutable / not entitled / exceeds boundary
  *         content:

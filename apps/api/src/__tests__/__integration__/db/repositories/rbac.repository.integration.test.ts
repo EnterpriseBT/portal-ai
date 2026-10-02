@@ -131,10 +131,14 @@ describe("RBAC repositories Integration Tests (#598 slice 1)", () => {
         db
       );
     }
-    const rows = await statements.findByPolicyIds([policyId], db);
+    const rows = await statements.findByPolicyIds(orgId, [policyId], db);
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.verb).sort()).toEqual(["read", "write"]);
-    expect(await statements.findByPolicyIds([], db)).toEqual([]);
+    expect(await statements.findByPolicyIds(orgId, [], db)).toEqual([]);
+    // #681: scoped to the org: the same policy id under another org is empty.
+    expect(
+      await statements.findByPolicyIds(generateId(), [policyId], db)
+    ).toEqual([]);
   });
 
   it("gathers attachments by principal (user + role) and enforces uniqueness", async () => {
