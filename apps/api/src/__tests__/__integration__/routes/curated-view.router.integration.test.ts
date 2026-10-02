@@ -737,6 +737,61 @@ describe("curated-view.router integration", () => {
     expect(still.body.payload.total).toBe(2);
   });
 
+  it("#678: LIKE wildcards in a value match literally, not every row", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "f_like",
+      label: "Like",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    for (const [operator, value] of [
+      ["contains", "%"],
+      ["starts_with", "_"],
+      ["ends_with", "%"],
+    ]) {
+      const res = await request(app)
+        .get(`/api/curated-views/${id}/records`)
+        .query({ filters: where({ field: "email", operator, value }) });
+      expect(res.status).toBe(200);
+      expect(res.body.payload.total).toBe(0);
+    }
+  });
+
+  it.each(["__proto__", "constructor", "toString"])(
+    "#678: a filter on the field %s is a 400 Unknown field, not a 500",
+    async (field) => {
+      const created = await createView({
+        connectorEntityId: entityId,
+        key: `f_proto_${generateId().slice(0, 6)}`,
+        label: "Proto",
+      });
+      const id = created.body.payload.curatedView.id as string;
+      const res = await request(app)
+        .get(`/api/curated-views/${id}/records`)
+        .query({ filters: where({ field, operator: "eq", value: "x" }) });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER);
+      expect(res.body.message).toBe(`Unknown field: "${field}"`);
+    }
+  );
+
+  it.each([
+    ["sortOrder", "sideways"],
+    ["limit", "lots"],
+  ])("#678: an invalid %s is a 400, not a 500", async (param, value) => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: `q_bad_${generateId().slice(0, 6)}`,
+      label: "Bad query",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query({ [param]: value });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_QUERY);
+  });
+
   it("#678: filters, search and sort compose", async () => {
     const created = await createView({
       connectorEntityId: entityId,

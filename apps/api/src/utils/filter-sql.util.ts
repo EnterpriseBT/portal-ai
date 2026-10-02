@@ -256,13 +256,13 @@ function buildTypedStringCondition(
     case "neq":
       return sql`(${colRef} IS NULL OR ${colRef} <> ${val})`;
     case "contains":
-      return sql`${colRef}::text ILIKE ${"%" + val + "%"}`;
+      return sql`${colRef}::text ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\'`;
     case "not_contains":
-      return sql`(${colRef} IS NULL OR ${colRef}::text NOT ILIKE ${"%" + val + "%"})`;
+      return sql`(${colRef} IS NULL OR ${colRef}::text NOT ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\')`;
     case "starts_with":
-      return sql`${colRef}::text ILIKE ${val + "%"}`;
+      return sql`${colRef}::text ILIKE ${escapeLike(val) + "%"} ESCAPE '\\'`;
     case "ends_with":
-      return sql`${colRef}::text ILIKE ${"%" + val}`;
+      return sql`${colRef}::text ILIKE ${"%" + escapeLike(val)} ESCAPE '\\'`;
     default:
       return sql`TRUE`;
   }
@@ -367,6 +367,15 @@ function buildTypedEnumCondition(
     default:
       return sql`TRUE`;
   }
+}
+
+/**
+ * Escapes LIKE's wildcards (`%`, `_`) and its escape character, so a
+ * contains / starts_with / ends_with value matches literally (#678). Paired
+ * with an explicit `ESCAPE '\'`.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 function buildTypedArrayCondition(

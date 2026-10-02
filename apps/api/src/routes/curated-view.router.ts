@@ -867,7 +867,7 @@ curatedViewRouter.delete(
  *                 total: { type: number }
  *                 limit: { type: number }
  *                 offset: { type: number }
- *       400: { description: "Invalid filters, or one naming a column outside the caller's readable projection (CURATED_VIEW_INVALID_FILTER); sortBy names an unsortable column (CURATED_VIEW_INVALID_SORT)" }
+ *       400: { description: "Invalid query parameters, e.g. sortOrder or limit (CURATED_VIEW_INVALID_QUERY); invalid filters, or one naming a column outside the caller's readable projection (CURATED_VIEW_INVALID_FILTER); sortBy names an unsortable column (CURATED_VIEW_INVALID_SORT)" }
  *       404: { description: Not found or not readable }
  */
 curatedViewRouter.get(
@@ -875,8 +875,19 @@ curatedViewRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, filters } =
-        CuratedViewRecordsRequestQuerySchema.parse(req.query);
+      // safeParse: a bad sortOrder / limit is the caller's error (400), not a
+      // thrown ZodError (500).
+      const query = CuratedViewRecordsRequestQuerySchema.safeParse(req.query);
+      if (!query.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.CURATED_VIEW_INVALID_QUERY,
+            "Invalid query parameters"
+          )
+        );
+      }
+      const { limit, offset, sortBy, sortOrder, search, filters } = query.data;
       const { organizationId, userId } = req.application!.metadata;
 
       const result = await PortalSqlService.queryCuratedViewRecords(

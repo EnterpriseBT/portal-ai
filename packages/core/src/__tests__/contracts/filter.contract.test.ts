@@ -455,4 +455,22 @@ describe("validateOperatorTypeCompat", () => {
     ]);
     expect(validateOperatorTypeCompat(expr, columnTypes)).toEqual([]);
   });
+
+  it("treats a field named after an Object.prototype key as unknown (#678)", () => {
+    // A plain-object lookup found inherited members like `constructor` and
+    // threw past validation (a 500 on the records endpoints).
+    for (const field of [
+      "__proto__",
+      "constructor",
+      "toString",
+      "hasOwnProperty",
+    ]) {
+      expect(
+        validateOperatorTypeCompat(
+          group("and", [cond(field, "eq", "x")]),
+          columnTypes
+        )
+      ).toEqual([`Unknown field: "${field}"`]);
+    }
+  });
 });

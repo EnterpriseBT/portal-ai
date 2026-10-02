@@ -184,7 +184,7 @@ async function resolveEntityOrThrow(
  *             schema:
  *               $ref: '#/components/schemas/EntityRecordListResponse'
  *       400:
- *         description: Invalid filter expression (ENTITY_RECORD_INVALID_FILTER)
+ *         description: Invalid query parameters, e.g. sortOrder or limit (ENTITY_RECORD_INVALID_QUERY), or an invalid filter expression (ENTITY_RECORD_INVALID_FILTER)
  *       404:
  *         description: Connector entity not found (CONNECTOR_ENTITY_NOT_FOUND)
  *       500:
@@ -203,6 +203,18 @@ entityRecordRouter.get(
       );
       if (!entity) return;
 
+      // safeParse: a bad sortOrder / limit is the caller's error (400), not a
+      // thrown ZodError (500, #678).
+      const query = EntityRecordListRequestQuerySchema.safeParse(req.query);
+      if (!query.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_RECORD_INVALID_QUERY,
+            "Invalid query parameters"
+          )
+        );
+      }
       const {
         limit,
         offset,
@@ -213,7 +225,7 @@ entityRecordRouter.get(
         filters,
         isValid,
         cursor,
-      } = EntityRecordListRequestQuerySchema.parse(req.query);
+      } = query.data;
 
       // Resolve column definitions and the wide-table statement cache up
       // front — needed for filter / sort / search SQL all of which now

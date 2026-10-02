@@ -455,6 +455,24 @@ describe("Entity Record Router — Sorting", () => {
       },
     ];
 
+    it.each([
+      ["sortOrder", "sideways"],
+      ["limit", "lots"],
+    ])(
+      "#678: an invalid %s is a 400 ENTITY_RECORD_INVALID_QUERY, not a 500",
+      async (param, value) => {
+        const { connectorEntityId } = await seedFullStack(
+          db as ReturnType<typeof drizzle>
+        );
+        const res = await request(app)
+          .get(recordsUrl(connectorEntityId))
+          .query({ [param]: value })
+          .set("Authorization", "Bearer test-token");
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe("ENTITY_RECORD_INVALID_QUERY");
+      }
+    );
+
     it("should sort by numeric column ascending (user_id)", async () => {
       await seedRecordsAndSort({
         sortBy: "user_id",
