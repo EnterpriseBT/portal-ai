@@ -88,7 +88,9 @@ export function useCuratedViewTablePagination(
   );
 
   const pagination = usePagination({
-    sortFields: [],
+    // The entity records table's sort (the record's creation time). Column
+    // sorts come from the table headers.
+    sortFields: [{ field: "created", label: "Created" }],
     defaultSortBy: DEFAULT_SORT_BY,
     defaultSortOrder: DEFAULT_SORT_ORDER,
     initialValue,

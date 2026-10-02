@@ -567,10 +567,11 @@ export class PortalSqlServiceImpl {
     opts: {
       limit: number;
       offset: number;
-      /** A projected column's normalizedKey to order by (#678). Anything
-       *  outside the view's projection (e.g. the default `created`) falls back
-       *  to the stable record-id order: sort can never reach an un-projected
-       *  column. An unsortable type (json, arrays) is refused. */
+      /** `created` (the record's creation time, the default, as on the
+       *  entity records table) or a projected column's normalizedKey (#678).
+       *  Anything else falls back to the stable record-id order: sort can never
+       *  reach an un-projected column. An unsortable type (json, arrays) is
+       *  refused. */
       sortBy?: string;
       sortOrder?: "asc" | "desc";
       /** Case-insensitive substring match across the projected columns. */
@@ -673,12 +674,20 @@ export class PortalSqlServiceImpl {
     const limit = Math.max(1, Math.min(opts.limit, 500));
     const offset = Math.max(0, opts.offset);
 
-    // ORDER BY the requested projected column (by normalizedKey, #678),
-    // always ending in the unique `entity_record_id` tiebreaker (#433: a
-    // paginated order must be total). A `sortBy` that names no projected column
-    // falls back to record-id order; one naming an unsortable type is refused.
+    // ORDER BY `created` or the requested projected column (by normalizedKey,
+    // #678), always ending in the unique `entity_record_id` tiebreaker (#433:
+    // a paginated order must be total). `created` is the record's creation
+    // time; it lives on `entity_records`, not the wide table, so that sort
+    // joins it (scoped to the entity, so the (connector_entity_id, created, id)
+    // index applies). As on the entity records endpoint, the system field
+    // wins over a column that happens to share the name. A `sortBy` that names
+    // neither falls back to record-id order; one naming an unsortable type is
+    // refused.
     const dir = opts.sortOrder === "desc" ? "DESC" : "ASC";
-    const sortCol = readable.find((c) => c.normalizedKey === opts.sortBy);
+    const byCreated = opts.sortBy === "created";
+    const sortCol = byCreated
+      ? undefined
+      : readable.find((c) => c.normalizedKey === opts.sortBy);
     if (sortCol && !SORTABLE_COLUMN_TYPES.has(sortCol.type)) {
       throw new ApiError(
         400,
@@ -686,13 +695,20 @@ export class PortalSqlServiceImpl {
         `Column "${sortCol.normalizedKey}" can't be sorted`
       );
     }
-    const orderBySql = sortCol
-      ? `w.${quoteIdent(sortCol.columnName)} ${dir}, w."entity_record_id" ASC`
-      : `w."entity_record_id" ${dir}`;
+    const orderBySql = byCreated
+      ? `r."created" ${dir}, w."entity_record_id" ASC`
+      : sortCol
+        ? `w.${quoteIdent(sortCol.columnName)} ${dir}, w."entity_record_id" ASC`
+        : `w."entity_record_id" ${dir}`;
+    const createdJoin = byCreated
+      ? `  JOIN "entity_records" r ON r."id" = w."entity_record_id"` +
+        ` AND r."connector_entity_id" = ${quoteLiteral(view.connectorEntityId)}\n`
+      : "";
 
     const rowsSql =
       `SELECT ${selectList}\n` +
       `  FROM ${quoteIdent(tableName)} w\n` +
+      createdJoin +
       `  WHERE ${whereSql}\n` +
       `  ORDER BY ${orderBySql}\n` +
       `  LIMIT ${limit} OFFSET ${offset}`;

@@ -10,7 +10,8 @@ import { jest } from "@jest/globals";
  * own.
  */
 
-const { renderHook, render, screen, act } = await import("./test-utils");
+const { renderHook, render, screen, act, fireEvent } =
+  await import("./test-utils");
 const { useCuratedViewTablePagination } =
   await import("../utils/curated-view-table.util");
 const { PaginationToolbar } =
@@ -118,6 +119,14 @@ describe("useCuratedViewTablePagination (#678)", () => {
     rerender({ columns: COLUMNS });
     render(<PaginationToolbar {...result.current.toolbarProps} />);
     expect(screen.getByText("Advanced Filters")).toBeInTheDocument();
+  });
+
+  it("offers a Created sort in the toolbar, like the entity records table", async () => {
+    const { result } = mount({ columns: COLUMNS });
+    render(<PaginationToolbar {...result.current.toolbarProps} />);
+    fireEvent.click(screen.getByText("Sort"));
+    expect(screen.getByText("Created")).toBeInTheDocument();
+    expect(result.current.queryParams.sortBy).toBe("created");
   });
 
   it("clears an applied filter the server refuses, and reports it", () => {

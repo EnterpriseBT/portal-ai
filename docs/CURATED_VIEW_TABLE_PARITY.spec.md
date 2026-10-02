@@ -9,7 +9,7 @@ This pins the contract that makes the curated view detail table the same table a
 1. **One column shape.** The records response returns the caller's readable projected columns as `ResolvedColumn` (the entity list's shape), in the entity's field-mapping order. Rows, `sortBy`, filter fields and headers are all keyed by `normalizedKey`.
 2. **The picker's universe is the readable projection.** The columns that can be reordered or shown/hidden are exactly the readable projected field mappings the response returns. Nothing outside the projection or the caller's grants appears, not even hidden. The table has no validity column and no Cached/Live chip.
 3. **Ad-hoc filter = the entity list's `filters`** (base64 `FilterExpression`). It's validated against **only** the readable projected columns: a field outside them is "Unknown field", 400. It's then rendered with `renderFilterGroupToSql` and ANDed **after** the view's own filter. It narrows by construction and is never an oracle on a hidden column (the `queryViewRowsByColumn` rule).
-4. **Sorting json/array columns is refused.** `sortBy` naming a projected column whose type isn't in `SORTABLE_COLUMN_TYPES` gives 400 `CURATED_VIEW_INVALID_SORT`; the UI never offers it. A `sortBy` naming no projected column (e.g. the default `created`) still falls back to the stable record-id order, unchanged.
+4. **Sorting json/array columns is refused.** `sortBy` naming a projected column whose type isn't in `SORTABLE_COLUMN_TYPES` gives 400 `CURATED_VIEW_INVALID_SORT`; the UI never offers it. `sortBy=created` (the default) orders by the record's creation time, joining `entity_records`, the same sort the entity records table offers; as there, the system field wins over a column of the same name. Any other `sortBy` naming no projected column falls back to the stable record-id order.
 5. **Failure is fail-closed.** A malformed, unknown-field or wrong-operator filter gives 400 before any query. A missing `filters` behaves exactly as today. The view's stored filter keeps its own 500 path (`CURATED_VIEW_INVALID_FILTER`) when it fails to render.
 6. **The view's own filter isn't displayed.** The details keep "Row filter: Filtered / All rows"; the builder holds only the reader's narrowing. (The pre-existing payload exposure of the raw filter is #680, out of scope.)
 7. **Offset paging stays.** Keyset and indexes for view records are #649.
@@ -127,7 +127,7 @@ export interface EntityRecordDataTableUIProps {
 
 - **`CuratedViewDetailUIProps.columns`** becomes `ResolvedColumn[]`. The records table renders `<EntityRecordDataTableUI connectorEntityId={view.connectorEntityId} columns={columns} rows={records} showValidity={false} columnConfigKey={`column-config:curated-view:${view.id}`} … />` in place of the bare `DataTable`.
 - **Container:**
-  - `usePagination({ sortFields: [], defaultSortBy: "created", defaultSortOrder: "asc", initialValue: cleaned, onPersist, columnDefinitions: columns })`, offset mode;
+  - `usePagination({ sortFields: [{ field: "created", label: "Created" }], defaultSortBy: "created", defaultSortOrder: "asc", initialValue: cleaned, onPersist, columnDefinitions: columns })`, offset mode;
   - persisted under `pagination:curated-view:${viewId}` (`useStorage<PaginationPersistedState>`);
   - `advancedFilters` cleaned on load with `stripInvalidColumns` against the response's `columns`, as on `EntityDetail.view.tsx:273-294`;
   - `columns` captured from the first successful response.
@@ -153,7 +153,7 @@ Run from each package: `npm run test:unit`, and `npm run test:integration -- --t
 5. A caller without read on one projected field mapping gets `columns` and rows without it.
 6. `sortBy=<normalizedKey>` sorts asc and desc.
 7. `sortBy` naming a json column gives 400 `CURATED_VIEW_INVALID_SORT`.
-8. `sortBy=created` (not projected) falls back without an error.
+8. `sortBy=created` orders by record creation, asc and desc; any other unprojected `sortBy` falls back without an error.
 9. `filters` (eq on a projected number column) narrows the rows and the `total`.
 10. **Narrow-only:** the view's own filter excludes row X. An ad-hoc OR group that would match X still returns no X.
 11. **Scope:** a filter on a column **outside the projection** gives 400 `CURATED_VIEW_INVALID_FILTER` ("Unknown field").

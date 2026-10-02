@@ -193,6 +193,10 @@ describe("curated-view.router integration", () => {
     // Two rows: one under 30, one over.
     const r1 = generateId();
     const r2 = generateId();
+    // #678: creation order runs opposite to record-id order, so a `created`
+    // sort is distinguishable from the record-id fallback.
+    const createdAt = (id: string) =>
+      id === [r1, r2].sort()[0] ? now + 1000 : now;
     for (const [id, src] of [
       [r1, "src-1"],
       [r2, "src-2"],
@@ -209,7 +213,7 @@ describe("curated-view.router integration", () => {
         data: {},
         checksum: `chk-${src}`,
         origin: "sync",
-        created: now,
+        created: createdAt(id),
         createdBy: "SYSTEM_TEST",
         updated: null,
         updatedBy: null,
@@ -452,13 +456,34 @@ describe("curated-view.router integration", () => {
     expect(wildcard.status).toBe(200);
     expect((wildcard.body.payload.records as unknown[]).length).toBe(0);
 
-    // The default sortBy (`created`, not a projected column) must not error —
-    // it falls back to the stable record-id order.
+    // A sortBy that names no projected column falls back to the stable
+    // record-id order, and never errors.
     const fallback = await request(app).get(
-      `/api/curated-views/${id}/records?sortBy=created`
+      `/api/curated-views/${id}/records?sortBy=nonexistent_column`
     );
     expect(fallback.status).toBe(200);
     expect((fallback.body.payload.records as unknown[]).length).toBe(2);
+  });
+
+  it("#678: sortBy=created orders by record creation (the entity table's sort), both directions", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "by_created",
+      label: "By created",
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const ids = async (sortOrder: string) =>
+      (
+        (
+          await request(app)
+            .get(`/api/curated-views/${id}/records`)
+            .query({ sortBy: "created", sortOrder })
+        ).body.payload.records as Array<{ _record_id: string }>
+      ).map((r) => r._record_id);
+    // The fixture's lower record id was created later.
+    const [lowId, highId] = (await ids("asc")).slice().sort();
+    expect(await ids("asc")).toEqual([highId, lowId]);
+    expect(await ids("desc")).toEqual([lowId, highId]);
   });
 
   it("records search term is escaped (no injection)", async () => {

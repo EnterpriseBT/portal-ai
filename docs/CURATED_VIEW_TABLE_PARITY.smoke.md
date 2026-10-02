@@ -62,6 +62,7 @@ The seeded `Contacts` entity has only two string columns. These steps need a num
 - [ ] On `Parity view`, click the `age` header. Rows order 29, 34, 41, 52 (Dan, Alice, Eve, Cara). Click again: they reverse.
 - [ ] Click `full_name`. Rows order alphabetically (Alice, Cara, Dan, Eve).
 - [ ] The `tags` (json) header has **no** sort affordance. Clicking it doesn't change the order or send a request with `sortBy=tags`.
+- [ ] The toolbar's **Sort** menu offers **Created**. Choosing it orders rows by creation (Alice, Cara, Dan, Eve, the CSV order), and switching the direction reverses them.
 - [ ] Reload. The last sort (`full_name` asc) is remembered.
 
 ## §3 — Advanced filters
