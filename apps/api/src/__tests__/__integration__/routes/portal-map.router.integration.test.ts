@@ -38,6 +38,10 @@ import {
   attachCuratedView,
 } from "../utils/application.util.js";
 
+/** These cases exercise rendering, not authorization (#692 pins that in the
+ *  read-access suite and the service unit tests): every source is allowed. */
+const allowAllSources = async () => true;
+
 describe("Portal map tile route (#316)", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: DbClient;
@@ -312,6 +316,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect(res.body).toBeInstanceOf(Buffer);
@@ -339,6 +344,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId: stranger.id,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
@@ -382,6 +388,7 @@ describe("Portal map tile route (#316)", () => {
       y: 2047,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
@@ -423,6 +430,7 @@ describe("Portal map tile route (#316)", () => {
         y: 2047,
         organizationId: orgId,
         userId,
+        authorizeSource: allowAllSources,
       });
     const plain = await tile(pinId);
 
@@ -484,6 +492,7 @@ describe("Portal map tile route (#316)", () => {
         y: 2047,
         organizationId: orgId,
         userId,
+        authorizeSource: allowAllSources,
       });
       expect(res.status).toBe(200); // still renders…
     } finally {
@@ -517,6 +526,7 @@ describe("Portal map tile route (#316)", () => {
         y: 2047,
         organizationId: orgId,
         userId,
+        authorizeSource: allowAllSources,
       });
       expect(res.status).toBe(200);
     } finally {
@@ -537,6 +547,7 @@ describe("Portal map tile route (#316)", () => {
         y: 2047,
         organizationId: orgId,
         userId,
+        authorizeSource: allowAllSources,
       });
     await expect(tile()).resolves.toMatchObject({ status: 200 }); // cached
     environment.PORTAL_SQL_READER_ROLE = "portalai_sql_reader_gone";
@@ -563,6 +574,7 @@ describe("Portal map tile route (#316)", () => {
           y: 2047,
           organizationId: orgId,
           userId,
+          authorizeSource: allowAllSources,
         })
       ).rejects.toMatchObject({ status: 503, code: "PORTAL_SQL_UNAVAILABLE" });
     } finally {
@@ -581,6 +593,7 @@ describe("Portal map tile route (#316)", () => {
       y: 7,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
@@ -595,6 +608,7 @@ describe("Portal map tile route (#316)", () => {
         y: 0,
         organizationId: generateId(),
         userId,
+        authorizeSource: allowAllSources,
       })
     ).rejects.toMatchObject({ status: 404, code: "MAP_TILE_NOT_FOUND" });
   });
@@ -743,6 +757,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -767,6 +782,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
@@ -785,6 +801,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -806,6 +823,7 @@ describe("Portal map tile route (#316)", () => {
       y: 7964,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect(res.aggregated).toBe(false);
@@ -826,6 +844,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -881,6 +900,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -922,6 +942,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -966,6 +987,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -1067,6 +1089,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -1086,6 +1109,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -1199,6 +1223,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -1221,6 +1246,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -1241,6 +1267,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);
@@ -1262,6 +1289,7 @@ describe("Portal map tile route (#316)", () => {
       y: 0,
       organizationId: orgId,
       userId,
+      authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(200);
     expect((res.body as Buffer).length).toBeGreaterThan(0);

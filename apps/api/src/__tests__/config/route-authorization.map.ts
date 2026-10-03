@@ -1,6 +1,7 @@
 /**
  * #685: how every mutation route (POST/PATCH/PUT/DELETE) and every SSE route
- * is authorized. `route-authorization.test.ts` fails CI when a registered
+ * is authorized. #692 added every GET route: reads were never inventoried, and
+ * the first inventory found by-id reads that crossed orgs. `route-authorization.test.ts` fails CI when a registered
  * route is missing here, or an entry names a route that no longer exists.
  *
  * This is a classification, not proof: each `authorized` entry names its
@@ -111,9 +112,322 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     kind: "authorized",
     by: "org scope + per-object resource.write/delete toolpack (#685)",
   },
+  "GET /api/billing/tiers": {
+    kind: "authorized",
+    by: "caller's current org (resolveCallerOrg membership); tiers selectable for that org only, no tenant data",
+  },
+  "GET /api/column-definitions": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate column_definition",
+  },
+  "GET /api/column-definitions/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read column_definition (404)",
+  },
+  "GET /api/column-definitions/{id}/impact": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read column_definition (404); counts only",
+  },
+  "GET /api/connector-config": {
+    kind: "authorized",
+    by: "login only; static non-tenant config, re-validated against a no-secrets schema",
+  },
+  "GET /api/connector-definitions": {
+    kind: "authorized",
+    by: "global catalog + visibilityPredicate connector_definition (#630)",
+  },
+  "GET /api/connector-definitions/{id}": {
+    kind: "authorized",
+    by: "per-object resource.read connector_definition, the list's rule (404) (#692)",
+  },
+  "GET /api/connector-entities": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate entity (#599)",
+  },
+  "GET /api/connector-entities/{connectorEntityId}/records": {
+    kind: "authorized",
+    by: "entity in org + readable (404) (#692) + entity_record visibilityPredicate",
+  },
+  "GET /api/connector-entities/{connectorEntityId}/records/count": {
+    kind: "authorized",
+    by: "entity in org + readable (404) (#692) + entity_record visibilityPredicate",
+  },
+  "GET /api/connector-entities/{connectorEntityId}/records/{recordId}": {
+    kind: "authorized",
+    by: "entity in org + readable (404) (#692) + record on it + per-object resource.read entity_record",
+  },
+  "GET /api/connector-entities/{connectorEntityId}/tags": {
+    kind: "authorized",
+    by: "entity in org + readable (404); only tags the caller may read (#692)",
+  },
+  "GET /api/connector-entities/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read entity (404) (#599, #692)",
+  },
+  "GET /api/connector-entities/{id}/impact": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read entity (404); counts org-scoped (#692)",
+  },
+  "GET /api/connector-entities/{id}/running-jobs": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read entity (404); jobs queried by org",
+  },
+  "GET /api/connector-instances": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate connector_instance (#630)",
+  },
+  "GET /api/connector-instances/{connectorInstanceId}/layout-plan": {
+    kind: "authorized",
+    by: "ConnectorInstanceAccessService.load read (org + resource.read, 404) (#685)",
+  },
+  "GET /api/connector-instances/{connectorInstanceId}/layout-plan/edit-context":
+    {
+      kind: "authorized",
+      by: "ConnectorInstanceAccessService.load read (org + resource.read, 404) (#685)",
+    },
+  "GET /api/connector-instances/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read connector_instance (404); credentials redacted",
+  },
+  "GET /api/connector-instances/{id}/impact": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read connector_instance (404)",
+  },
+  "GET /api/connector-instances/{id}/running-jobs": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read connector_instance (404)",
+  },
+  "GET /api/connector-instances/{instanceId}/api-endpoints": {
+    kind: "authorized",
+    by: "ConnectorInstanceAccessService.load read + rest-api slug; endpoints of that instance (#685)",
+  },
+  "GET /api/connector-instances/{instanceId}/api-endpoints/{entityId}": {
+    kind: "authorized",
+    by: "ConnectorInstanceAccessService.load read + endpoint entity in org and on the instance (#685)",
+  },
+  "GET /api/connectors/google-sheets/callback": {
+    kind: "exempt",
+    reason:
+      "OAuth redirect, no JWT; HMAC-signed state (timing-safe, 5-min TTL) names user+org; reconnect target re-checked in that org",
+  },
+  "GET /api/connectors/google-sheets/instances/{id}/sheet-slice": {
+    kind: "authorized",
+    by: "ConnectorInstanceAccessService.load read (org + resource.read, 404) (#685)",
+  },
+  "GET /api/connectors/microsoft-excel/callback": {
+    kind: "exempt",
+    reason:
+      "OAuth redirect, no JWT; HMAC-signed state (timing-safe, 5-min TTL) names user+org; reconnect target re-checked in that org",
+  },
+  "GET /api/connectors/microsoft-excel/instances/{id}/sheet-slice": {
+    kind: "authorized",
+    by: "ConnectorInstanceAccessService.load read (org + resource.read, 404) (#685)",
+  },
+  "GET /api/connectors/microsoft-excel/workbooks": {
+    kind: "authorized",
+    by: "ConnectorInstanceAccessService.load read on ?connectorInstanceId (org + resource.read, 404)",
+  },
+  "GET /api/curated-views": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate curated_view; ?stationId in org + readable (404) (#692)",
+  },
+  "GET /api/curated-views/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read curated_view (404); payload scoped by CuratedViewPayloadService (#680)",
+  },
+  "GET /api/curated-views/{id}/records": {
+    kind: "authorized",
+    by: "PortalSqlService.resolveViewColumnsById: org + read curated_view + field grants",
+  },
+  "GET /api/docs": {
+    kind: "exempt",
+    reason:
+      "public Swagger UI (static API documentation), mounted before jwtCheck; no tenant data",
+  },
+  "GET /api/docs/spec": {
+    kind: "exempt",
+    reason:
+      "public OpenAPI JSON (static spec), mounted before jwtCheck; no tenant data",
+  },
+  "GET /api/entity-groups": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate entity_group (#630)",
+  },
+  "GET /api/entity-groups/{entityGroupId}/members": {
+    kind: "authorized",
+    by: "group in org + readable (404) (#692)",
+  },
+  "GET /api/entity-groups/{entityGroupId}/members/overlap": {
+    kind: "authorized",
+    by: "group in org + readable; target entity in org + readable (404); target mapping in org + on it (400) (#692)",
+  },
+  "GET /api/entity-groups/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read entity_group (404)",
+  },
+  "GET /api/entity-groups/{id}/impact": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read entity_group (404)",
+  },
+  "GET /api/entity-groups/{id}/resolve": {
+    kind: "authorized",
+    by: "org scope + per-object read entity_group (404) + entity_record visibilityPredicate per member",
+  },
+  "GET /api/entity-tags": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate tag (#630)",
+  },
+  "GET /api/entity-tags/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read tag (404)",
+  },
+  "GET /api/field-mappings": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate field_mapping (#692)",
+  },
+  "GET /api/field-mappings/{id}": {
+    kind: "authorized",
+    by: "loadReadableMapping: org scope + per-object resource.read field_mapping (404) (#692)",
+  },
+  "GET /api/field-mappings/{id}/impact": {
+    kind: "authorized",
+    by: "loadReadableMapping (404); counterpart only when readable (#692)",
+  },
+  "GET /api/field-mappings/{id}/validate-bidirectional": {
+    kind: "authorized",
+    by: "loadReadableMapping (org + read field_mapping, 404) (#692)",
+  },
+  "GET /api/file-uploads/sheet-slice": {
+    kind: "authorized",
+    by: "FileUploadAccessService.assertOwnUploadSession: uploader-only, in org (404) (#692)",
+  },
+  "GET /api/grants": {
+    kind: "authorized",
+    by: "GrantService.list: object in org + readable (404) + resource.share (#621, #692)",
+  },
+  "GET /api/groups": {
+    kind: "authorized",
+    by: "GroupService gate (customRbac entitlement + member.role.assign) + org-scoped list",
+  },
+  "GET /api/groups/{id}": {
+    kind: "authorized",
+    by: "GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load (404)",
+  },
+  "GET /api/groups/{id}/members": {
+    kind: "authorized",
+    by: "org membership + org-scoped group load (404); roster read by design (#637)",
+  },
+  "GET /api/health": {
+    kind: "exempt",
+    reason:
+      "unauthenticated liveness probe; returns only timestamp/build version/sha",
+  },
+  "GET /api/health/ready": {
+    kind: "exempt",
+    reason: "unauthenticated readiness probe; returns only db/redis booleans",
+  },
+  "GET /api/jobs": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate job; metadata/result redacted unless creator or job control (#692)",
+  },
+  "GET /api/jobs/{id}": {
+    kind: "authorized",
+    by: "org + resource.read job (404); metadata/result redacted unless creator or job control (#692)",
+  },
+  "GET /api/organization/audit-log": {
+    kind: "authorized",
+    by: "org-scoped findPage + org.audit.read capability",
+  },
+  "GET /api/organization/current": {
+    kind: "authorized",
+    by: "caller resolved from JWT sub -> own active org membership only",
+  },
+  "GET /api/organization/invitations": {
+    kind: "authorized",
+    by: "SeatService.listInvitations: member.invite capability + org-scoped",
+  },
+  "GET /api/organization/members": {
+    kind: "authorized",
+    by: "org membership + org-scoped roster; roster read by design (#621)",
+  },
+  "GET /api/organization/memberships": {
+    kind: "exempt",
+    reason:
+      "the caller's own memberships, resolved from the JWT sub; no id input",
+  },
+  "GET /api/organization/usage": {
+    kind: "authorized",
+    by: "caller resolved from JWT sub -> own active org's tier/balance (member-visible by design)",
+  },
+  "GET /api/organization/usage/ledger": {
+    kind: "authorized",
+    by: "org-scoped findPage; member-visible Settings usage by design",
+  },
+  "GET /api/policies": {
+    kind: "authorized",
+    by: "PolicyService gate (customRbac entitlement + member.role.assign) + org-scoped list",
+  },
+  "GET /api/policies/{id}": {
+    kind: "authorized",
+    by: "PolicyService gate (customRbac entitlement + member.role.assign) + org-scoped load (404)",
+  },
+  "GET /api/portal-map/tiles/message/{messageId}/{blockIndex}/{z}/{x}/{y}": {
+    kind: "authorized",
+    by: "message in org + PortalAccessService read on its portal via authorizeSource (404) (#692)",
+  },
+  "GET /api/portal-map/tiles/pin/{portalResultId}/{z}/{x}/{y}": {
+    kind: "authorized",
+    by: "pin in org + resource.read pin via authorizeSource (404) (#692); rows caller-view-scoped (#643)",
+  },
+  "GET /api/portal-results": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate pin (#621)",
+  },
+  "GET /api/portal-results/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read pin (404) (#621)",
+  },
+  "GET /api/portal-sql/handle/{handleId}": {
+    kind: "authorized",
+    by: "handle meta org === caller org, and _userId === caller when present (404) (#685)",
+  },
+  "GET /api/portals": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate portal (per-user, #685)",
+  },
+  "GET /api/portals/{id}": {
+    kind: "authorized",
+    by: "PortalAccessService.load (org + resource.read portal, 404) (#685)",
+  },
+  "GET /api/portals/{id}/running-jobs": {
+    kind: "authorized",
+    by: "PortalAccessService.load (org + read portal) + org-scoped running jobs (id/type/status)",
+  },
+  "GET /api/profile": {
+    kind: "exempt",
+    reason:
+      "the caller's own Auth0 profile + user row, resolved from the caller's own bearer token",
+  },
+  "GET /api/public/site-config": {
+    kind: "exempt",
+    reason:
+      "public marketing config (public tiers, prices, contacts); no tenant data, mounted before jwtCheck",
+  },
+  "GET /api/rbac/objects": {
+    kind: "authorized",
+    by: "customRbac entitlement + member.role.assign + org filter + visibilityPredicate per type",
+  },
+  "GET /api/roles": {
+    kind: "authorized",
+    by: "RoleService gate (customRbac entitlement + member.role.assign) + org-scoped list",
+  },
+  "GET /api/roles/{id}": {
+    kind: "authorized",
+    by: "RoleService gate (customRbac entitlement + member.role.assign) + org-scoped load (404)",
+  },
   "GET /api/sse/jobs/{id}/events": {
     kind: "authorized",
-    by: "getApplicationMetadata + same org + resource.read job (#685)",
+    by: "getApplicationMetadata + same org + resource.read job (#685); result/custom events redacted unless creator or job control (#692)",
   },
   "GET /api/sse/portals/{portalId}/events": {
     kind: "authorized",
@@ -122,6 +436,27 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "GET /api/sse/portals/{portalId}/stream": {
     kind: "authorized",
     by: "getApplicationMetadata + PortalAccessService.load (read; a turn also needs write); the turn runs as the caller (#685)",
+  },
+  "GET /api/stations": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate station (#621)",
+  },
+  "GET /api/stations/{id}": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read station (404); unreadable attachments reduced to id/name (#674)",
+  },
+  "GET /api/toolpacks": {
+    kind: "authorized",
+    by: "requirePermission class resource.read toolpack + org-scoped custom rows; secrets never returned",
+  },
+  "GET /api/toolpacks/{id}": {
+    kind: "authorized",
+    by: "requirePermission class resource.read toolpack + findByIdScoped(id, org)",
+  },
+  "GET /api/webhook/handle/{handleId}": {
+    kind: "exempt",
+    reason:
+      "no user JWT; Redis bearer token scoped to this handle, mode read, unexpired, and its org must own the handle",
   },
   "PATCH /api/column-definitions/{id}": {
     kind: "authorized",

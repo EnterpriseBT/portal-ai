@@ -23,6 +23,33 @@ const logger = createLogger({ module: "entity-tag-assignment" });
 export const entityTagAssignmentRouter = Router({ mergeParams: true });
 
 /**
+ * #692: an entity's tags are read through the entity. It must be in the
+ * caller's org and readable by them (404 otherwise, unreadable == absent).
+ * Returns the permission set so the caller can filter the tags.
+ */
+async function assertEntityReadable(req: Request, connectorEntityId: string) {
+  const caller = req.application!.metadata;
+  const set = await PermissionService.loadSet(caller);
+  const entity =
+    await DbService.repository.connectorEntities.findById(connectorEntityId);
+  if (
+    !ObjectAccessService.readableInOrg(
+      set,
+      caller.organizationId,
+      "entity",
+      entity
+    )
+  ) {
+    throw new ApiError(
+      404,
+      ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+      "Connector entity not found"
+    );
+  }
+  return set;
+}
+
+/**
  * #685: tagging changes the connector entity being labelled, so it's
  * authorized through that entity. The entity must be in the caller's org and
  * readable by them (404 otherwise, unreadable == absent), and the caller needs
@@ -102,6 +129,8 @@ entityTagAssignmentRouter.get(
         { connectorEntityId },
         "GET /connector-entities/:connectorEntityId/tags called"
       );
+      // #692: the list had no org or entity check.
+      const set = await assertEntityReadable(req, connectorEntityId);
 
       const enrichedAssignments =
         await DbService.repository.entityTagAssignments
@@ -119,10 +148,22 @@ entityTagAssignmentRouter.get(
             );
           });
 
-      const tags = enrichedAssignments.map((a) => ({
-        ...a.tag!,
-        assignmentId: a.id,
-      }));
+      // Only the tags the caller may read (#630 tag visibility; the same rule
+      // POST applies when assigning one, #685).
+      const tags = enrichedAssignments
+        .filter(
+          (a) =>
+            a.tag &&
+            set.can("resource.read", {
+              type: "tag",
+              id: a.tag.id,
+              createdBy: a.tag.createdBy,
+            })
+        )
+        .map((a) => ({
+          ...a.tag!,
+          assignmentId: a.id,
+        }));
 
       return HttpService.success<EntityTagAssignmentListResponsePayload>(res, {
         tags: tags as unknown as EntityTagAssignmentListResponsePayload["tags"],

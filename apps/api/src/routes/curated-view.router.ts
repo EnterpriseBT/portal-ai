@@ -31,6 +31,7 @@ import { DbService } from "../services/db.service.js";
 import { curatedViews, stationViews } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import type { PermissionSet } from "../services/permission-set.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { AuditService } from "../services/audit.service.js";
@@ -167,6 +168,22 @@ curatedViewRouter.get(
       // the attachment ids first; none → empty result (the caller sees no views
       // attached to this station).
       if (stationId) {
+        // #692: the station must be in the org and readable (404). Before,
+        // the result showed which of the caller's views sat on a station they
+        // can't see, in any org.
+        const station = await DbService.repository.stations.findById(stationId);
+        if (
+          !ObjectAccessService.readableInOrg(
+            await PermissionService.loadSet(req.application!.metadata),
+            organizationId,
+            "station",
+            station
+          )
+        ) {
+          return next(
+            new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+          );
+        }
         const attachments =
           await DbService.repository.stationViews.findByStationId(stationId);
         const attachedIds = attachments.map((a) => a.curatedViewId);

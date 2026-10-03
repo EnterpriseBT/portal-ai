@@ -46,12 +46,14 @@ const deriveAccess = (rows: PermissionGrantSelect[]): GrantAccess =>
 
 export class GrantService {
   /** Resolve the shareable object + its `createdBy` (for the ownership
-   *  condition), 404 if absent or cross-org. */
+   *  condition), 404 if absent, cross-org or unreadable by the caller
+   *  (#692: unreadable == absent; a 403 here told the caller it existed). */
   private static async resolveObject(
-    organizationId: string,
+    caller: PermissionContext,
     resourceType: ShareResourceType,
     resourceId: string
   ): Promise<{ createdBy: string }> {
+    const organizationId = caller.organizationId;
     const notFoundCode =
       resourceType === "station"
         ? ApiCode.STATION_NOT_FOUND
@@ -64,7 +66,15 @@ export class GrantService {
         : resourceType === "curated_view"
           ? await DbService.repository.curatedViews.findById(resourceId)
           : await DbService.repository.portalResults.findById(resourceId);
-    if (!row || row.organizationId !== organizationId) {
+    if (
+      !row ||
+      row.organizationId !== organizationId ||
+      !(await PermissionService.loadSet(caller)).can("resource.read", {
+        type: resourceType,
+        id: resourceId,
+        createdBy: row.createdBy,
+      })
+    ) {
       throw new ApiError(404, notFoundCode, `${resourceType} not found`);
     }
     return { createdBy: row.createdBy };
@@ -112,7 +122,7 @@ export class GrantService {
   ): Promise<GrantView> {
     const { resourceType, resourceId, grantee, access } = req;
     const object = await GrantService.resolveObject(
-      caller.organizationId,
+      caller,
       resourceType,
       resourceId
     );
@@ -229,7 +239,7 @@ export class GrantService {
     resourceId: string
   ): Promise<GrantView[]> {
     const object = await GrantService.resolveObject(
-      caller.organizationId,
+      caller,
       resourceType,
       resourceId
     );
@@ -280,7 +290,7 @@ export class GrantService {
     }
     const resourceType = row.resourceType as ShareResourceType;
     const object = await GrantService.resolveObject(
-      caller.organizationId,
+      caller,
       resourceType,
       row.resourceId as string
     );
