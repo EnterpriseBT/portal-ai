@@ -79,7 +79,7 @@ export const WithDisabled: Story = {
       {
         label: "Archive",
         onClick: () => console.log("Archive"),
-        disabled: true,
+        gate: { kind: "disable", reason: "An import is running" },
       },
       { label: "Delete", onClick: () => console.log("Delete"), color: "error" },
     ],

@@ -233,4 +233,39 @@ describe("PageSection Component", () => {
       expect(ref.current?.classList.contains("MuiPaper-outlined")).toBe(true);
     });
   });
+
+  // #688: an all-hidden secondary menu isn't rendered at all.
+  describe("Gates (#688)", () => {
+    it("omits the secondary actions menu when every action is hidden", () => {
+      render(
+        <PageSection
+          title="Members"
+          secondaryActions={[
+            { label: "Share", onClick: jest.fn(), gate: { kind: "hide" } },
+            { label: "Delete", onClick: jest.fn(), gate: { kind: "hide" } },
+          ]}
+        >
+          <p>body</p>
+        </PageSection>
+      );
+      expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    });
+
+    it("keeps the menu when at least one action is visible", () => {
+      render(
+        <PageSection
+          title="Members"
+          secondaryActions={[
+            { label: "Share", onClick: jest.fn(), gate: { kind: "hide" } },
+            { label: "Delete", onClick: jest.fn() },
+          ]}
+        >
+          <p>body</p>
+        </PageSection>
+      );
+      expect(
+        screen.getByRole("button", { name: "More actions" })
+      ).toBeInTheDocument();
+    });
+  });
 });
