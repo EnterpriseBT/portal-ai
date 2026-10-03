@@ -46,7 +46,9 @@ Sections are independent after Preflight.
 - [ ] **Member** (browser): navigate directly to `/portals/$OWNER_PORTAL`. You get the not-found state, and the owner's prompt and answer are not rendered.
 - [ ] **Owner** (browser): the same station's portal list shows **both** portals, and the owner can open the member's portal and read its history.
 - [ ] **Owner** (browser): in `OWNER_PORTAL`, pin the answer block (**Pin** → name it "Smoke 685 pin").
-- [ ] **Member** (browser): the pin "Smoke 685 pin" is visible on the station's pinned results and renders its content. Pins are still the sharing path.
+- [ ] `— backend` Before sharing: `GET /api/portal-results/<pin id>` as `$MEMBER` gets `404 PORTAL_RESULT_NOT_FOUND`. A new pin is its creator's until shared (#630 rules; this branch doesn't change pin reads).
+- [ ] **Owner** (browser): open the pin (`/portal-results/<pin id>`) → **More actions → Share** → Share with **The team**, Access **Read** → **Share**.
+- [ ] **Member** (browser): open `/portal-results/<pin id>`. The pin renders its content (the `contacts | 6` table). Shared pins are how portal output reaches other users.
 - [ ] `— backend` `curl -s -X PATCH -H "Authorization: Bearer $MEMBER" -H 'content-type: application/json' -d '{"name":"hijack"}' localhost:3001/api/portals/$OWNER_PORTAL` gets `404 PORTAL_NOT_FOUND`. In the owner's browser the portal name is unchanged.
 - [ ] `— backend` The same with `-X DELETE …/$OWNER_PORTAL/messages` gets `404`. The owner's history is still intact on reload.
 
@@ -62,15 +64,15 @@ Sections are independent after Preflight.
 
 ## §5 — Toolpacks (slice 5)
 
-- [ ] **Owner** (browser): Settings → Toolpacks → register a custom toolpack (any webhook URL, e.g. `https://example.com/hook`), then rename it to "Smoke 685". Both succeed. Record `OWNER_TOOLPACK`.
-- [ ] **Member** (browser): the same page. Editing, deleting, refreshing or rotating the secret of "Smoke 685" (wherever the UI offers it) fails with an error naming insufficient permission (`INSUFFICIENT_ROLE`). Registering a new one also fails with `INSUFFICIENT_ROLE`, not an upgrade prompt. The toolpack's name is still "Smoke 685" on reload. (Hiding these affordances is #684, not this ticket.)
+- [ ] **Owner** (browser): Settings → Toolpacks → register a custom toolpack named `smoke_685` against the running demo toolpack Lambda (#510). Its base URL is the `portalai-demo-toolpack` stack output: `aws cloudformation describe-stacks --stack-name portalai-demo-toolpack --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" --output text`. Schema = `<base>schema`, runtime = `<base>runtime`, metadata = `<base>metadata`. Registration succeeds and lists the demo's tools. Then edit its description to "Smoke 685" and rotate its signing secret. Both succeed. Record `OWNER_TOOLPACK`.
+- [ ] `— backend` `$MEMBER` sending `PATCH /api/toolpacks/$OWNER_TOOLPACK`, `POST …/refresh`, `POST …/rotate-signing-secret` and `DELETE …` each gets `403 INSUFFICIENT_ROLE`. Registering one (`POST /api/toolpacks` with the same endpoints, name `member_685`) also gets `403 INSUFFICIENT_ROLE`, not an upgrade error. The description and signing secret are unchanged afterwards. (Members can't open the Toolpacks settings at all since #630, so this half is an API check. Hiding affordances is #684.)
 - [ ] `— backend` `$OTHER` sending `PATCH /api/toolpacks/$OWNER_TOOLPACK` gets `404`.
 
 ## §6 — Creates, children and same-org objects (slices 4, 6, 6c)
 
 - [ ] **Owner** (browser): create a tag and an entity group, add an entity to the group, and tag an entity. All succeed. Record `OWNER_GROUP`.
 - [ ] **Member** (browser): creating a tag, an entity group or a column definition fails with a permission error (403). No new row appears in the list on reload.
-- [ ] **Member** (browser): create a connector via file upload. Upload a sample CSV from the workflow's sample files, map the columns and commit. The import completes and the member's new connector and entity appear. This is the over-refusal risk path: confirm/parse/interpret/commit all run on the member's own upload.
+- [ ] `— backend` The member's upload path still works (the over-refusal risk). Members can't open `/connectors` since #630, so drive it by API as `$MEMBER`: `POST /api/file-uploads/presign` (a small CSV) → `PUT` the file to the returned `putUrl` → `POST /api/file-uploads/confirm` gets `200` → `POST /api/file-uploads/parse` gets `202` and its job completes → `POST /api/layout-plans/interpret` with the returned `uploadSessionId` passes authorization (any failure is about the plan content, never `404 FILE_UPLOAD_NOT_FOUND`). The same confirm and interpret calls as `$OWNER` on the member's upload get `404 FILE_UPLOAD_NOT_FOUND`: uploads are the uploader's own.
 - [ ] **Member** (browser): on the member's own entity, edit a field mapping, then tag it with a tag the member can read. Both succeed (or the tag picker just doesn't offer unreadable tags).
 - [ ] `— backend` `$MEMBER` sending `POST /api/entity-groups/$OWNER_GROUP/members` with `{"connectorEntityId":"<member's entity>","linkFieldMappingId":"<any>"}` gets `404 ENTITY_GROUP_NOT_FOUND`. The group's member list in the owner's browser is unchanged.
 - [ ] `— backend` `$MEMBER` sending `GET /api/connector-instances/$OWNER_INSTANCE/api-endpoints` gets `404 CONNECTOR_INSTANCE_NOT_FOUND`. If `OWNER_INSTANCE` isn't a REST connector, run the layout-plan GET instead: `GET /api/connector-instances/$OWNER_INSTANCE/layout-plan` gets `404 LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND`.
