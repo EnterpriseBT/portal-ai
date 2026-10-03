@@ -297,8 +297,28 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
   });
 
   it("a member can't share a station they don't own (403 share-authority)", async () => {
-    const { orgId, ownerId } = await seedOrg("member");
+    const { orgId, ownerId, callerId } = await seedOrg("member");
     const station = await addStation(orgId, ownerId); // owner's station
+    // The member can read it (it's been shared with them), but read isn't
+    // share-authority.
+    await db.insert(permissionGrants).values({
+      id: generateId(),
+      organizationId: orgId,
+      principalType: "user",
+      principalId: callerId,
+      effect: "allow",
+      verb: "read",
+      resourceType: "station",
+      resourceId: station,
+      condition: null,
+      conditionParam: null,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
     const member = await addMember(orgId);
     const res = await share({
       resourceType: "station",
@@ -307,6 +327,20 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
       access: "read",
     });
     expect(res.status).toBe(403);
+  });
+
+  it("a member gets 404 sharing a station they can't read (#692: unreadable == absent)", async () => {
+    const { orgId, ownerId } = await seedOrg("member");
+    const station = await addStation(orgId, ownerId); // owner's, unshared
+    const member = await addMember(orgId);
+    const res = await share({
+      resourceType: "station",
+      resourceId: station,
+      grantee: { type: "user", userId: member },
+      access: "read",
+    });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
   });
 
   it("rejects a grant beyond the granter's boundary (403)", async () => {

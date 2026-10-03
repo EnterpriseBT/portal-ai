@@ -319,6 +319,13 @@ fileUploadsRouter.get(
           )
         );
       }
+      // #692: an upload is its uploader's own (#685), as parse/confirm and
+      // the layout-plan routes already enforce. Org scope alone let any
+      // member, or the session's cache surviving its rows, read the cells.
+      await FileUploadAccessService.assertOwnUploadSession(
+        req.application!.metadata,
+        parsed.data.uploadSessionId
+      );
       const payload = await FileUploadSessionService.sheetSlice(
         organizationId,
         parsed.data

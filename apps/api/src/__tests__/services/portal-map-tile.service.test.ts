@@ -30,6 +30,7 @@ const PIPELINE = {
 const messageWithPipeline = {
   id: "msg-1",
   organizationId: ORG,
+  portalId: "portal-1",
   blocks: [{ type: "d3", content: { pipeline: PIPELINE } }],
 };
 
@@ -476,7 +477,14 @@ describe("buildRawTileSql — importance ranking (#337)", () => {
 });
 
 describe("PortalMapTileService.renderTile (#316)", () => {
-  const base = { z: 8, x: 40, y: 98, organizationId: ORG, userId: "u-test" };
+  const base = {
+    z: 8,
+    x: 40,
+    y: 98,
+    organizationId: ORG,
+    userId: "u-test",
+    authorizeSource: async () => true,
+  };
   const msgRef = {
     ref: { kind: "message" as const, messageId: "msg-1", blockIndex: 0 },
     ...base,
@@ -540,6 +548,64 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     // share an ETag — otherwise the client's If-None-Match returns 304 forever
     // and never receives the dissolved rendering.
     expect(raw.etag).not.toBe(dissolved.etag);
+  });
+
+  // #692: the tile source is authorized for the caller, not just org-scoped.
+  // A message's portal is per-user (#685) and a pin is read-checked, so the
+  // router passes an authorizer; refusal is the same 404 as a missing tile.
+  it("#692: 404s a message tile whose portal the caller can't read, before running anything", async () => {
+    const seen: unknown[] = [];
+    let ran = false;
+    await expectNotFound(
+      PortalMapTileService.renderTile(
+        {
+          ...base,
+          ref: { kind: "message", messageId: "msg-1", blockIndex: 0 },
+          authorizeSource: async (source) => {
+            seen.push(source);
+            return false;
+          },
+        },
+        deps({
+          runTileQuery: async () => {
+            ran = true;
+            return {
+              mvt: Buffer.from([1]),
+              featureCount: 1,
+              truncated: false,
+              aggregated: false,
+            };
+          },
+        })
+      )
+    );
+    expect(seen).toEqual([{ kind: "message", portalId: "portal-1" }]);
+    expect(ran).toBe(false);
+  });
+
+  it("#692: 404s a pin tile the caller can't read", async () => {
+    const seen: unknown[] = [];
+    await expectNotFound(
+      PortalMapTileService.renderTile(
+        {
+          ...base,
+          ref: { kind: "pin", portalResultId: "p-1" },
+          authorizeSource: async (source) => {
+            seen.push(source);
+            return false;
+          },
+        },
+        deps({
+          findPortalResultById: async () => ({
+            id: "p-1",
+            organizationId: ORG,
+            createdBy: "u-owner",
+            content: { pipeline: PIPELINE },
+          }),
+        })
+      )
+    );
+    expect(seen).toEqual([{ kind: "pin", id: "p-1", createdBy: "u-owner" }]);
   });
 
   it("404s for an unknown message", async () => {

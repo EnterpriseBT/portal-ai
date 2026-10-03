@@ -26,6 +26,32 @@ const logger = createLogger({ module: "entity-group-member" });
 export const entityGroupMemberRouter = Router({ mergeParams: true });
 
 /**
+ * #692: a group's membership is read through the group. The group must be in
+ * the caller's org and readable by them (404 otherwise, unreadable == absent).
+ * The member list and overlap used to load by group id alone, across orgs.
+ */
+async function assertGroupReadable(req: Request, entityGroupId: string) {
+  const caller = req.application!.metadata;
+  const set = await PermissionService.loadSet(caller);
+  const group = await DbService.repository.entityGroups.findById(entityGroupId);
+  if (
+    !ObjectAccessService.readableInOrg(
+      set,
+      caller.organizationId,
+      "entity_group",
+      group
+    )
+  ) {
+    throw new ApiError(
+      404,
+      ApiCode.ENTITY_GROUP_NOT_FOUND,
+      "Entity group not found"
+    );
+  }
+  return set;
+}
+
+/**
  * #685: a group's membership is changed through the group. The group must be
  * in the caller's org and readable by them (404 otherwise, unreadable ==
  * absent), and the caller needs write on it (403). The group lookup used to
@@ -110,6 +136,7 @@ entityGroupMemberRouter.get(
         { entityGroupId },
         "GET /entity-groups/:entityGroupId/members called"
       );
+      await assertGroupReadable(req, entityGroupId);
 
       const enrichedMembers = await DbService.repository.entityGroupMembers
         .findByEntityGroupId(entityGroupId, {
@@ -750,11 +777,43 @@ entityGroupMemberRouter.get(
       const { targetConnectorEntityId, targetLinkFieldMappingId } =
         queryParsed.data;
 
+      // #692: the group, the target entity and the target mapping were all
+      // loaded by id with no org or read check, so any caller could compare
+      // their values against another org's. The group and the target entity
+      // must be in the org and readable (404); the mapping must be in the org
+      // and on the target entity (400, as a missing one always was).
+      const set = await assertGroupReadable(req, entityGroupId);
+      const targetEntity =
+        await DbService.repository.connectorEntities.findById(
+          targetConnectorEntityId
+        );
+      if (
+        !ObjectAccessService.readableInOrg(
+          set,
+          req.application!.metadata.organizationId,
+          "entity",
+          targetEntity
+        )
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
+      }
+
       // Look up target field mapping and its column definition to get the normalizedData key
       const targetMapping = await DbService.repository.fieldMappings.findById(
         targetLinkFieldMappingId
       );
-      if (!targetMapping) {
+      if (
+        !targetMapping ||
+        targetMapping.organizationId !==
+          req.application!.metadata.organizationId ||
+        targetMapping.connectorEntityId !== targetConnectorEntityId
+      ) {
         return next(
           new ApiError(
             400,
