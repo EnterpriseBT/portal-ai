@@ -2287,5 +2287,156 @@ describe("Field Mapping Router", () => {
       expect(ok.status).toBe(201);
       expect(ok.body.payload.fieldMapping.createdBy).toBe(memberId);
     });
+
+    // ── #692: reads were never authorized ─────────────────────────────
+
+    /** An owner-created entity + mapping (unreadable to a member), and the
+     *  member's own entity + mapping. */
+    async function ownerAndMemberMappings() {
+      const mine = await seedFullChain(drz());
+      const memberId = await addMember(mine.organizationId);
+      const ownersEntity = createConnEntity(
+        mine.organizationId,
+        mine.connectorInstanceId,
+        { createdBy: mine.userId }
+      );
+      const membersEntity = createConnEntity(
+        mine.organizationId,
+        mine.connectorInstanceId,
+        { createdBy: memberId }
+      );
+      await drz()
+        .insert(connectorEntities)
+        .values([ownersEntity, membersEntity] as never);
+      const ownersMapping = createFieldMap(
+        mine.organizationId,
+        ownersEntity.id,
+        mine.columnDefinitionId,
+        { createdBy: mine.userId, sourceField: "owners_secret_field" }
+      );
+      const membersMapping = createFieldMap(
+        mine.organizationId,
+        membersEntity.id,
+        mine.columnDefinitionId,
+        { createdBy: memberId, sourceField: "members_field" }
+      );
+      await drz()
+        .insert(fieldMappings)
+        .values([ownersMapping, membersMapping] as never);
+      return { mine, memberId, ownersEntity, ownersMapping, membersMapping };
+    }
+
+    const BY_ID_READS = [
+      (id: string) => `/api/field-mappings/${id}`,
+      (id: string) => `/api/field-mappings/${id}/impact`,
+      (id: string) => `/api/field-mappings/${id}/validate-bidirectional`,
+    ];
+
+    it("GET by id, impact and validate on another org's mapping are 404 (#692)", async () => {
+      await seedFullChain(drz());
+      const theirs = await otherOrgChain();
+      for (const path of BY_ID_READS) {
+        const res = await request(app)
+          .get(path(theirs.mappingId))
+          .set("Authorization", "Bearer test-token");
+        expect(res.status).toBe(404);
+        expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+        expect(JSON.stringify(res.body)).not.toContain(theirs.sourceField);
+      }
+    });
+
+    it("a member's list holds only the mappings they can read (#692)", async () => {
+      const { ownersMapping, membersMapping } = await ownerAndMemberMappings();
+      currentSub = MEMBER_AUTH0_ID;
+      const res = await request(app)
+        .get("/api/field-mappings?limit=100")
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+      const ids = res.body.payload.fieldMappings.map(
+        (m: { id: string }) => m.id
+      );
+      expect(ids).toContain(membersMapping.id);
+      expect(ids).not.toContain(ownersMapping.id);
+      expect(res.body.payload.total).toBe(ids.length);
+    });
+
+    it("a member gets 404 on the owner's mapping by id, impact and validate, and 200 on their own (#692)", async () => {
+      const { ownersMapping, membersMapping } = await ownerAndMemberMappings();
+      currentSub = MEMBER_AUTH0_ID;
+      for (const path of BY_ID_READS) {
+        const refused = await request(app)
+          .get(path(ownersMapping.id))
+          .set("Authorization", "Bearer test-token");
+        expect(refused.status).toBe(404);
+        expect(refused.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+      }
+      const own = await request(app)
+        .get(`/api/field-mappings/${membersMapping.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(own.status).toBe(200);
+      expect(own.body.payload.fieldMapping.id).toBe(membersMapping.id);
+    });
+
+    it("the owner still reads every mapping in the org (#692)", async () => {
+      const { ownersMapping, membersMapping } = await ownerAndMemberMappings();
+      const res = await request(app)
+        .get("/api/field-mappings?limit=100")
+        .set("Authorization", "Bearer test-token");
+      const ids = res.body.payload.fieldMappings.map(
+        (m: { id: string }) => m.id
+      );
+      expect(ids).toEqual(
+        expect.arrayContaining([ownersMapping.id, membersMapping.id])
+      );
+      for (const path of BY_ID_READS.slice(0, 2)) {
+        const res2 = await request(app)
+          .get(path(ownersMapping.id))
+          .set("Authorization", "Bearer test-token");
+        expect(res2.status).toBe(200);
+      }
+      // validate-bidirectional 400s a non-reference mapping; the point here
+      // is only that the read check lets the owner through.
+      const validate = await request(app)
+        .get(BY_ID_READS[2](ownersMapping.id))
+        .set("Authorization", "Bearer test-token");
+      expect(validate.status).not.toBe(404);
+    });
+
+    it("a mapping in a curated view shared with the member becomes readable (in_curated_view, #692)", async () => {
+      const { ownersEntity, ownersMapping, memberId } =
+        await ownerAndMemberMappings();
+      const view = await request(app)
+        .post("/api/curated-views")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: ownersEntity.id,
+          key: `v_${generateId().replace(/-/g, "").slice(0, 8)}`,
+          label: "Shared view",
+          fieldMappingIds: [ownersMapping.id],
+        });
+      expect(view.status).toBe(201);
+      const share = await request(app)
+        .post("/api/grants")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          resourceType: "curated_view",
+          resourceId: view.body.payload.curatedView.id,
+          grantee: { type: "user", userId: memberId },
+          access: "read",
+        });
+      expect(share.status).toBe(200);
+
+      currentSub = MEMBER_AUTH0_ID;
+      const res = await request(app)
+        .get(`/api/field-mappings/${ownersMapping.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+      const list = await request(app)
+        .get("/api/field-mappings?limit=100")
+        .set("Authorization", "Bearer test-token");
+      expect(
+        list.body.payload.fieldMappings.map((m: { id: string }) => m.id)
+      ).toContain(ownersMapping.id);
+    });
   });
 });
