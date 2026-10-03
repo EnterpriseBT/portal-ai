@@ -331,6 +331,19 @@ describe("Modal Component", () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
+    // The dialog validates in its own onSubmit (Zod + field errors), as the
+    // visible submit does, so Enter must skip the browser's native `required`
+    // check (which shows a different message). That's `formnovalidate` on the
+    // default button. jsdom ignores a submitter's formnovalidate (it only
+    // reads the form's own novalidate), so this pins the attribute; the
+    // behaviour is verified in a real browser.
+    it("the default button skips native validation (formnovalidate)", () => {
+      render(<FormModal onSubmit={jest.fn()} />);
+      expect(document.querySelector('button[type="submit"]')).toHaveAttribute(
+        "formnovalidate"
+      );
+    });
+
     it("clicking the visible action still fires once", async () => {
       const user = userEvent.setup();
       const onSubmit = jest.fn();

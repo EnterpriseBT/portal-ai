@@ -14,6 +14,10 @@ import React from "react";
  * order and the accessibility tree. `Modal` renders it automatically when its
  * paper is a form; a raw MUI `Dialog` + `<form>` renders it inside the form.
  *
+ * It carries `formNoValidate`: the dialog validates in its own `onSubmit`
+ * (Zod + field errors), as a click on the visible submit does, so Enter must
+ * reach it rather than stop at the browser's native `required` check.
+ *
  * Pass `disabled` whenever the dialog's visible submit is disabled (a request
  * in flight, an incomplete form): a disabled default button blocks implicit
  * submission, so Enter can't do what the button can't.
@@ -27,6 +31,7 @@ export const FormDefaultButton: React.FC<FormDefaultButtonProps> = ({
 }) => (
   <button
     type="submit"
+    formNoValidate
     disabled={disabled}
     aria-hidden="true"
     tabIndex={-1}
