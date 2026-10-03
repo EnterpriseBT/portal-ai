@@ -49,7 +49,7 @@ jest.unstable_mockModule("../utils/api.util", () => ({
 
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { EntityGroupDetailViewUI, OverlapPreview } =
+const { EntityGroupDetailViewUI, OverlapPreview, AddMemberDialog } =
   await import("../views/EntityGroupDetail.view");
 
 // ── Fixtures ────────────────────────────────────────────────────────
@@ -403,5 +403,51 @@ describe("OverlapPreview", () => {
     expect(screen.getByTestId("overlap-percentage")).toHaveTextContent(
       "73% overlap"
     );
+  });
+});
+
+describe("AddMemberDialog", () => {
+  const dialogProps = {
+    open: true,
+    onClose: jest.fn(),
+    onSearchEntities: jest.fn(async () => [] as SelectOption[]),
+    onSearchFieldMappings: jest.fn(async () => [] as SelectOption[]),
+    selectedEntityId: "ce-1",
+    onEntityChange: jest.fn(),
+    selectedFieldMappingId: "fm-1",
+    onFieldMappingChange: jest.fn(),
+    isPrimary: false,
+    onPrimaryChange: jest.fn(),
+    overlap: null,
+    overlapLoading: false,
+    isAdding: false,
+    serverError: null,
+  };
+
+  // Its actions are type="button" and it has two inputs, so Enter only
+  // submits because the form carries a default button.
+  it("submits on Enter", async () => {
+    const user = userEvent.setup();
+    const onAddMember = jest.fn();
+    render(<AddMemberDialog {...dialogProps} onAddMember={onAddMember} />);
+    const input = screen.getByLabelText("Connector Entity");
+    input.focus();
+    await user.keyboard("{Escape}{Enter}");
+    expect(onAddMember).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't submit on Enter while it can't add", async () => {
+    const user = userEvent.setup();
+    const onAddMember = jest.fn();
+    render(
+      <AddMemberDialog
+        {...dialogProps}
+        selectedFieldMappingId={null}
+        onAddMember={onAddMember}
+      />
+    );
+    screen.getByLabelText("Connector Entity").focus();
+    await user.keyboard("{Escape}{Enter}");
+    expect(onAddMember).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import OpenInFullIcon from "@mui/icons-material/OpenInFull";
 import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
 
+import { FormDefaultButton } from "./FormDefaultButton.js";
+
 export interface ModalProps extends Omit<
   DialogProps,
   "title" | "onClose" | "open"
@@ -45,6 +47,12 @@ export const Modal: React.FC<ModalProps> = ({
   const [maximized, setMaximized] = useState(maximizable && defaultMaximized);
   const showHeader = !!title || showCloseButton;
   const showMaximizeButton = maximizable && showHeader;
+  // A form dialog gets a default button so Enter submits it however many
+  // fields it has (see FormDefaultButton).
+  const paperComponent = (
+    props.slotProps?.paper as { component?: unknown } | undefined
+  )?.component;
+  const isForm = paperComponent === "form";
   return (
     <Dialog
       open={open}
@@ -91,6 +99,7 @@ export const Modal: React.FC<ModalProps> = ({
       )}
       <DialogContent>{children}</DialogContent>
       {actions && <DialogActions>{actions}</DialogActions>}
+      {isForm && <FormDefaultButton />}
     </Dialog>
   );
 };

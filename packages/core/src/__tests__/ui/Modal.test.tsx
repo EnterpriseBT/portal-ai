@@ -270,4 +270,73 @@ describe("Modal Component", () => {
       expect(screen.queryByLabelText("restore")).not.toBeInTheDocument();
     });
   });
+
+  // A form dialog's actions are type="button" (they'd double-fire as submit
+  // buttons), and a form with no submit button and more than one text field
+  // doesn't submit on Enter. The Modal supplies the default button.
+  describe("Enter submits a form dialog", () => {
+    const FormModal = ({ onSubmit }: { onSubmit: () => void }) => (
+      <Modal
+        {...defaultProps}
+        title="Form"
+        slotProps={{
+          paper: {
+            component: "form",
+            onSubmit: (e: React.FormEvent) => {
+              e.preventDefault();
+              onSubmit();
+            },
+          } as object,
+        }}
+        actions={
+          <button type="button" onClick={onSubmit}>
+            Save
+          </button>
+        }
+      >
+        <label>
+          Name
+          <input name="name" />
+        </label>
+        <label>
+          Description
+          <input name="description" />
+        </label>
+      </Modal>
+    );
+
+    it("submits once when Enter is pressed in one of several text fields", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} />);
+      await user.type(screen.getByLabelText("Name"), "x{Enter}");
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it("clicking the visible action still fires once", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} />);
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it("adds no submit control to a dialog that isn't a form", () => {
+      render(
+        <Modal {...defaultProps} title="Plain">
+          <input aria-label="field" />
+        </Modal>
+      );
+      expect(document.querySelector('button[type="submit"]')).toBeNull();
+    });
+
+    it("keeps the default button out of the accessibility tree and tab order", () => {
+      render(<FormModal onSubmit={jest.fn()} />);
+      const submit = document.querySelector('button[type="submit"]');
+      expect(submit).not.toBeNull();
+      expect(submit).toHaveAttribute("aria-hidden", "true");
+      expect(submit).toHaveAttribute("tabindex", "-1");
+      expect(screen.getAllByRole("button")).not.toContain(submit);
+    });
+  });
 });

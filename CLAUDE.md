@@ -164,8 +164,9 @@ Every data-submission dialog must follow this structure:
 
 - Every dialog that submits data **must** be wrapped in a `<form onSubmit>` element
 - For `Modal`-based dialogs: use `slotProps.paper.component="form"` with `onSubmit` handler on `slotProps.paper`
-- For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`
+- For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`, and render `<FormDefaultButton />` (from `@portalai/core/ui`) inside it
 - Action buttons must use `type="button"` to prevent double-firing with form submission
+- **Enter always submits.** A form with no submit button and more than one text field doesn't submit on Enter (HTML implicit submission), and the `type="button"` rule leaves dialogs without one. `Modal` therefore renders a hidden `FormDefaultButton` whenever its paper is a form; a raw `Dialog` form adds it by hand. Never call `onSubmit` from a key handler instead
 - The first interactive field must receive auto-focus via `useDialogAutoFocus(open)` from `utils/use-dialog-autofocus.util.ts` (or `autoFocus` prop for simple text fields outside Modal)
 
 ### Server Error Display
@@ -541,7 +542,7 @@ Every new dialog must have tests covering:
 - Renders title and content when `open={true}`
 - Does not render when `open={false}`
 - Calls `onSubmit`/`onConfirm` on button click
-- Supports Enter key submission (form submit event)
+- Supports Enter key submission — a real key press (`user.type(field, "x{Enter}")`), not `fireEvent.submit`, which passes even when Enter does nothing
 - Calls `onClose` on Cancel click
 - Shows loading state when `isPending={true}`
 - Renders `<FormAlert>` when `serverError` is provided
