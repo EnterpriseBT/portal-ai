@@ -54,6 +54,42 @@ Tokens as in the #685 smoke: `$OWNER`, `$MEMBER` (in `e2e-fixture`), `$OTHER` (a
 8. `$MEMBER` → `GET /api/jobs/<owner's job>` returns the row **without** `metadata`/`result`; for their own job, with both. `$OWNER` sees both on every job. The browser Jobs list and job detail still load for both.
 9. `$MEMBER` → `GET /api/grants?resourceType=station&resourceId=<unreadable station>` → `404`.
 
+## Adversarial
+
+All probes are `— backend` (API with real `$OWNER` / `$MEMBER` / `$OTHER` tokens, as in Smoke) unless marked. "Safe" means: refused with the route's 404 (unreadable == absent), nothing from the hidden row in the body, and nothing written.
+
+**§1 Boundary.**
+- [ ] `$MEMBER` `GET /api/field-mappings?limit=100000&offset=0` and `?offset=999999`. Safe: the limit is capped, and both pages hold only readable mappings, with `total` counting readable rows only.
+
+**§2 Malformed input.**
+- [ ] A NUL byte or junk id on the fixed by-id reads (`/field-mappings/%00`, `/connector-entities/%00/tags`, `/entity-groups/%00/members`). Safe: no row from any org. A 5xx whose message carries SQL text is #687, recorded but not this ticket's.
+- [ ] Overlap with a missing or garbage `targetLinkFieldMappingId`. Safe: 400, no record counts.
+
+**§4 Permission boundaries.**
+- [ ] **A share grants mapping read; revoking removes it.** The owner shares a curated view over their entity (with the mapping projected) Read with the member. The member's GET of that mapping is 200 and it's in their list. The owner revokes the share. Safe: the member's GET is 404 again and it leaves the list.
+- [ ] `$MEMBER` `GET /api/jobs?search=<text in the owner's job error or metadata>`. Safe: no payload is reachable through filtering; matched rows are still redacted.
+- [ ] `$MEMBER` `GET /api/field-mappings?include=connectorEntity`. Safe: only readable mappings, so no unreadable entity rides along in the include.
+
+**§5 Multi-tenant.**
+- [ ] Another org's ids in **query params**: `$OWNER` `GET /api/field-mappings?connectorEntityId=<other org entity>` and `?columnDefinitionId=<other org column>`, `GET /api/curated-views?connectorEntityId=<other org entity>`. Safe: empty results, nothing from the other org.
+- [ ] `$OWNER` `GET /api/portal-map/tiles/pin/<other org pin>/0/0/0` and `GET /api/grants?resourceType=pin&resourceId=<other org pin>`. Safe: 404.
+- [ ] **Org switch:** the member switches to their personal org, then GETs their own `e2e-fixture` mapping and job by id. Safe: 404 (access follows the current org). Switching back restores access.
+
+**§6 Lifecycle.**
+- [ ] A soft-deleted mapping, entity and group: by-id reads, records and members all 404 for the owner too.
+- [ ] **Removed member:** the owner removes the member from the org, and the member's still-valid JWT GETs their own mapping, job and entity. Safe: refused, nothing returned. Restore with `e2e:seed`.
+- [ ] **Demoted admin:** the admin reads a member's job (payload visible), is demoted to member, and re-reads with the same token. Safe: payload redacted at once (permissions load per request).
+
+**§7 Misuse.**
+- [ ] **Id harvesting through jobs:** the member lists `GET /api/jobs?type=dissolve_precompute,file_upload_parse` to find the owner's message, pin and upload-session ids. Safe: the metadata is redacted, so no ids leak to feed the tile or sheet-slice routes.
+
+**§3 Concurrency:** N/A. These are reads with no write path; staleness is covered by §4 and §6.
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk)_ | | | |
+
 ## Out of scope
 
 - #687 (5xx messages leak SQL text): a separate fix to the error path.
