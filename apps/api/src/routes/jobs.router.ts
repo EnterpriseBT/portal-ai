@@ -15,6 +15,7 @@ import { and, Column, eq, ilike, inArray, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { JobPayloadRedactionService } from "../services/job-payload-redaction.service.js";
 
 const logger = createLogger({ module: "jobs" });
 
@@ -164,8 +165,13 @@ jobsRouter.get(
         );
       });
 
+      // #692: payloads are the creator's (and owner/admin's).
+      const ctx = req.application!.metadata;
+      const set = await PermissionService.loadSet(ctx);
       const result: JobListResponsePayload = {
-        jobs: data,
+        jobs: data.map((job) =>
+          JobPayloadRedactionService.redact(ctx, set, job)
+        ),
         total,
         limit: query.limit,
         offset: query.offset,
@@ -265,7 +271,14 @@ jobsRouter.get(
         return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
       }
 
-      return HttpService.success<JobGetResponsePayload>(res, { job });
+      // #692: payloads are the creator's (and owner/admin's).
+      return HttpService.success<JobGetResponsePayload>(res, {
+        job: JobPayloadRedactionService.redact(
+          ctx,
+          await PermissionService.loadSet(ctx),
+          job
+        ),
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

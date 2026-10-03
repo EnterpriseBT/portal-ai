@@ -521,4 +521,76 @@ describe("Read access (#692)", () => {
     expect(await member(pinSource(ownersPin, fx.ownerId))).toBe(false);
     expect(await member(pinSource(membersPin, fx.memberId))).toBe(true);
   });
+
+  // ── Jobs: payloads are the creator's (and owner/admin's) ────────────
+
+  async function jobWithPayload(createdBy: string) {
+    const id = generateId();
+    await db.insert(schema.jobs).values({
+      id,
+      organizationId: fx.orgId,
+      type: "file_upload_parse",
+      status: "completed",
+      progress: 100,
+      metadata: { uploadSessionId: "secret-session", uploadIds: ["u1"] },
+      result: { sheets: [{ name: "secret-sheet", cells: [["secret-cell"]] }] },
+      error: null,
+      startedAt: null,
+      completedAt: now,
+      bullJobId: null,
+      attempts: 1,
+      maxAttempts: 3,
+      ...base(createdBy),
+    } as never);
+    return id;
+  }
+
+  it("jobs: a member sees another member's job without its metadata or result, in the list, by id and on the SSE snapshot", async () => {
+    const ownersJob = await jobWithPayload(fx.ownerId);
+    as(MEMBER_SUB);
+
+    const list = await get("/api/jobs?limit=100");
+    expect(list.status).toBe(200);
+    const row = list.body.payload.jobs.find(
+      (j: { id: string }) => j.id === ownersJob
+    );
+    expect(row).toBeDefined();
+    expect(row.status).toBe("completed");
+    expect(row.metadata).toEqual({});
+    expect(row.result).toBeNull();
+
+    const one = await get(`/api/jobs/${ownersJob}`);
+    expect(one.status).toBe(200);
+    expect(one.body.payload.job.metadata).toEqual({});
+    expect(one.body.payload.job.result).toBeNull();
+
+    const sse = await get(`/api/sse/jobs/${ownersJob}/events?token=x`);
+    expect(sse.status).toBe(200);
+    expect(sse.text).toContain("event: snapshot");
+    expect(sse.text).not.toMatch(/secret/);
+
+    expect(JSON.stringify([list.body, one.body])).not.toMatch(/secret/);
+  });
+
+  it("jobs: the creator and the owner see the full payload", async () => {
+    const membersJob = await jobWithPayload(fx.memberId);
+    as(MEMBER_SUB);
+    const own = await get(`/api/jobs/${membersJob}`);
+    expect(own.body.payload.job.metadata.uploadSessionId).toBe(
+      "secret-session"
+    );
+    expect(
+      (await get(`/api/sse/jobs/${membersJob}/events?token=x`)).text
+    ).toContain("secret-sheet");
+
+    as(OWNER_SUB);
+    const asOwner = await get(`/api/jobs/${membersJob}`);
+    expect(asOwner.body.payload.job.result.sheets[0].name).toBe("secret-sheet");
+    const ownerList = await get("/api/jobs?limit=100");
+    expect(
+      ownerList.body.payload.jobs.find(
+        (j: { id: string }) => j.id === membersJob
+      ).metadata.uploadSessionId
+    ).toBe("secret-session");
+  });
 });
