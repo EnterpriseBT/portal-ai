@@ -9,6 +9,7 @@ import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { JobPayloadRedactionService } from "../services/job-payload-redaction.service.js";
 import { JobModel } from "@portalai/core/models";
 import type { JobSnapshotEvent } from "@portalai/core/contracts";
 
@@ -87,6 +88,15 @@ jobEventsRouter.get(
         return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
       }
 
+      // #692: payloads are the creator's (and owner/admin's). Others get
+      // the job's state: no result on the snapshot or updates, and no custom
+      // payload events (e.g. bulk "batch" progress).
+      const seePayload = JobPayloadRedactionService.canSeePayload(
+        caller,
+        await PermissionService.loadSet(caller),
+        job
+      );
+
       const sse = new SseUtil(res);
 
       // 1. Send current state snapshot (recovery on reconnect)
@@ -96,7 +106,9 @@ jobEventsRouter.get(
         progress: job.progress,
         progressDetail: job.progressDetail,
         error: job.error,
-        result: job.result as Record<string, unknown> | null,
+        result: seePayload
+          ? (job.result as Record<string, unknown> | null)
+          : null,
         startedAt: job.startedAt,
         completedAt: job.completedAt,
       };
@@ -116,7 +128,11 @@ jobEventsRouter.get(
           | string
           | undefined;
         const sseEventName = customType ? `job:${customType}` : "update";
-        sse.send(sseEventName, event);
+        if (seePayload) {
+          sse.send(sseEventName, event);
+        } else if (!customType) {
+          sse.send(sseEventName, { ...event, result: null });
+        }
 
         // Close stream when job reaches terminal state
         if (JobModel.isTerminalStatus(event.status) && !cleaned) {

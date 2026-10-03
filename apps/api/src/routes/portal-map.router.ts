@@ -19,9 +19,15 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import {
   PortalMapTileService,
+  type RenderTileParams,
   type TileRef,
   type TileRenderResult,
 } from "../services/portal-map-tile.service.js";
+import {
+  PermissionService,
+  type PermissionContext,
+} from "../services/permission.service.js";
+import { PortalAccessService } from "../services/portal-access.service.js";
 
 export const portalMapRouter = Router();
 
@@ -89,6 +95,38 @@ function sendTile(res: Response, result: TileRenderResult): void {
   res.status(200).send(result.body);
 }
 
+/**
+ * #692: who may serve a tile's source. A message tile belongs to a portal,
+ * which is per-user (#685): it goes through `PortalAccessService` (org + read
+ * portal). A pin needs `resource.read pin`, as `GET /api/portal-results/:id`
+ * does. Any refusal is `false`, which the tile service turns into the same 404
+ * as a missing tile.
+ */
+export function tileSourceAuthorizer(
+  ctx: PermissionContext
+): RenderTileParams["authorizeSource"] {
+  return async (source) => {
+    if (source.kind === "message") {
+      try {
+        await PortalAccessService.load(ctx, source.portalId, "read");
+        return true;
+      } catch (err) {
+        if (
+          err instanceof ApiError &&
+          (err.status === 404 || err.status === 403)
+        )
+          return false;
+        throw err;
+      }
+    }
+    return (await PermissionService.loadSet(ctx)).can("resource.read", {
+      type: "pin",
+      id: source.id,
+      createdBy: source.createdBy,
+    });
+  };
+}
+
 async function handle(
   ref: TileRef,
   req: Request,
@@ -109,6 +147,7 @@ async function handle(
       organizationId: req.application!.metadata.organizationId,
       userId: req.application!.metadata.userId,
       ifNoneMatch: req.headers["if-none-match"] as string | undefined,
+      authorizeSource: tileSourceAuthorizer(req.application!.metadata),
     });
     sendTile(res, result);
   } catch (err) {

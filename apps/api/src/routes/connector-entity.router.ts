@@ -307,7 +307,13 @@ connectorEntityRouter.get(
           );
         });
 
-      if (!connectorEntity) {
+      // #692: another org's entity is absent too. The permission engine
+      // doesn't see orgs, so without this an owner/admin of any org passed.
+      if (
+        !connectorEntity ||
+        connectorEntity.organizationId !==
+          req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -865,7 +871,11 @@ connectorEntityRouter.get(
 
       const existing =
         await DbService.repository.connectorEntities.findById(id);
-      if (!existing) {
+      // #692: another org's entity is absent too (the engine doesn't see orgs).
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -908,6 +918,7 @@ connectorEntityRouter.get(
           entityIds
         ),
         DbService.repository.fieldMappings.countByRefEntityKey(
+          existing.organizationId,
           existing.key,
           id
         ),

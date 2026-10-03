@@ -20,8 +20,12 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { fieldMappings } from "../db/schema/index.js";
+import type { FieldMappingSelect } from "../db/schema/zod.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
-import { PermissionService } from "../services/permission.service.js";
+import {
+  PermissionService,
+  type PermissionContext,
+} from "../services/permission.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
@@ -31,6 +35,34 @@ import { JobLockService } from "../services/job-lock.service.js";
 const logger = createLogger({ module: "field-mapping" });
 
 export const fieldMappingRouter = Router();
+
+/**
+ * #692: load a field mapping the caller may read. Another org's mapping, a
+ * missing one and one the caller can't read are the same 404 (unreadable ==
+ * absent), so an id reveals nothing. Shared by every by-id read route.
+ */
+async function loadReadableMapping(
+  ctx: PermissionContext,
+  id: string
+): Promise<FieldMappingSelect> {
+  const mapping = await DbService.repository.fieldMappings.findById(id);
+  if (
+    !mapping ||
+    mapping.organizationId !== ctx.organizationId ||
+    !(await PermissionService.loadSet(ctx)).can("resource.read", {
+      type: "field_mapping",
+      id: mapping.id,
+      createdBy: mapping.createdBy,
+    })
+  ) {
+    throw new ApiError(
+      404,
+      ApiCode.FIELD_MAPPING_NOT_FOUND,
+      "Field mapping not found"
+    );
+  }
+  return mapping;
+}
 
 /** Map of sortable field names to their Drizzle columns. */
 const SORTABLE_COLUMNS: Record<string, Column> = {
@@ -117,6 +149,15 @@ fieldMappingRouter.get(
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(fieldMappings.organizationId, organizationId)];
+      // #692: only the mappings the caller may read (own, system-created, or
+      // in a curated view shared with them).
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("field_mapping", {
+        createdByCol: fieldMappings.createdBy,
+        idCol: fieldMappings.id,
+      });
+      if (visibility) filters.push(visibility);
 
       if (search) {
         filters.push(ilike(fieldMappings.sourceField, `%${search}%`));
@@ -237,28 +278,19 @@ fieldMappingRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/field-mappings/:id called");
 
-      const fieldMapping = await DbService.repository.fieldMappings
-        .findById(id)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.FIELD_MAPPING_FETCH_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to fetch field mapping"
-          );
-        });
-
-      if (!fieldMapping) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.FIELD_MAPPING_NOT_FOUND,
-            "Field mapping not found"
-          )
+      const fieldMapping = await loadReadableMapping(
+        req.application!.metadata,
+        id
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.FIELD_MAPPING_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch field mapping"
         );
-      }
+      });
 
       return HttpService.success<FieldMappingGetResponsePayload>(res, {
         fieldMapping:
@@ -889,16 +921,7 @@ fieldMappingRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/field-mappings/:id/impact called");
 
-      const existing = await DbService.repository.fieldMappings.findById(id);
-      if (!existing) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.FIELD_MAPPING_NOT_FOUND,
-            "Field mapping not found"
-          )
-        );
-      }
+      const existing = await loadReadableMapping(req.application!.metadata, id);
 
       const [dependentMembers, entityRecordCount] = await Promise.all([
         DbService.repository.entityGroupMembers.findByLinkFieldMappingId(id),
@@ -924,7 +947,18 @@ fieldMappingRouter.get(
               existing.refEntityKey,
               existing.refNormalizedKey
             );
-          if (counterpart) {
+          // #692: only a counterpart the caller may read.
+          if (
+            counterpart &&
+            (await PermissionService.loadSet(req.application!.metadata)).can(
+              "resource.read",
+              {
+                type: "field_mapping",
+                id: counterpart.id,
+                createdBy: counterpart.createdBy,
+              }
+            )
+          ) {
             counterpartResult = {
               id: counterpart.id,
               sourceField: counterpart.sourceField,
@@ -1172,16 +1206,7 @@ fieldMappingRouter.get(
       const { id } = req.params;
 
       // 1. Load mapping
-      const mapping = await DbService.repository.fieldMappings.findById(id);
-      if (!mapping) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.FIELD_MAPPING_NOT_FOUND,
-            "Field mapping not found"
-          )
-        );
-      }
+      const mapping = await loadReadableMapping(req.application!.metadata, id);
 
       // 2. Load column definition to verify type
       const columnDef = await DbService.repository.columnDefinitions.findById(

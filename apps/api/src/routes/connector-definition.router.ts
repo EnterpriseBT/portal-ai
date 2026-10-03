@@ -229,6 +229,7 @@ connectorDefinitionRouter.get(
  */
 connectorDefinitionRouter.get(
   "/:id",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
@@ -248,7 +249,19 @@ connectorDefinitionRouter.get(
             );
           });
 
-      if (!connectorDefinition) {
+      // #692: the same read rule as the list (#630 catalog visibility); a
+      // definition the caller can't read is absent (404).
+      if (
+        !connectorDefinition ||
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          {
+            type: "connector_definition",
+            id: connectorDefinition.id,
+            createdBy: connectorDefinition.createdBy,
+          }
+        )
+      ) {
         return next(
           new ApiError(
             404,
