@@ -460,7 +460,9 @@ export class PortalService {
    */
   static async addMessage(
     portalId: string,
-    { role, content }: { role: "user" | "assistant"; content: string }
+    { role, content }: { role: "user" | "assistant"; content: string },
+    /** #685: the caller who sent it; the message is theirs. */
+    userId: string
   ): Promise<PortalMessageSelect> {
     const repo = DbService.repository;
 
@@ -479,7 +481,7 @@ export class PortalService {
       role,
       blocks,
       created: now,
-      createdBy: portal.createdBy,
+      createdBy: userId,
       updated: null,
       updatedBy: null,
       deleted: null,
@@ -533,6 +535,11 @@ export class PortalService {
       return;
     }
 
+    // #685: the message (and its precompute) belongs to the member who started
+    // the job, read from the job row rather than inferred from the portal.
+    const job = await repo.jobs.findById(jobId);
+    const authorId = job?.createdBy ?? portal.createdBy;
+
     const blocks: Record<string, unknown>[] = [];
 
     if (terminal.status === "completed") {
@@ -576,7 +583,7 @@ export class PortalService {
       role: "assistant",
       blocks,
       created: now,
-      createdBy: portal.createdBy,
+      createdBy: authorId,
       updated: null,
       updatedBy: null,
       deleted: null,
@@ -590,7 +597,7 @@ export class PortalService {
           messageId: bulkMessageId,
           blockIndex,
           organizationId: portal.organizationId,
-          userId: portal.createdBy,
+          userId: authorId,
           block,
         })
       )
@@ -803,7 +810,8 @@ export class PortalService {
       role: "assistant",
       blocks: assistantBlocks,
       created: now,
-      createdBy: portal.createdBy,
+      // #685: the turn runs as the caller; its reply is theirs.
+      createdBy: userId,
       updated: null,
       updatedBy: null,
       deleted: null,
@@ -817,7 +825,7 @@ export class PortalService {
           messageId: savedMessage.id,
           blockIndex,
           organizationId: portal.organizationId,
-          userId: portal.createdBy,
+          userId,
           block,
         })
       )

@@ -167,6 +167,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="New Station"

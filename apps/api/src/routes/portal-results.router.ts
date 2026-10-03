@@ -14,6 +14,7 @@ import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PortalAccessService } from "../services/portal-access.service.js";
 import { PortalResultPinService } from "../services/portal-result-pin.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
 import { DissolvePrecomputeService } from "../services/dissolve-precompute.service.js";
@@ -58,6 +59,8 @@ export const portalResultsRouter = Router();
  *                 description: Display name for the pinned result
  *                 example: Q1 Revenue Chart
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       201:
  *         description: Result pinned successfully
  *         content:
@@ -132,13 +135,10 @@ portalResultsRouter.post(
       });
       const { portalId, messageId, blockIndex, name } = parsed.data;
 
-      // Load portal to get stationId + verify org
-      const portal = await DbService.repository.portals.findById(portalId);
-      if (!portal || portal.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
-        );
-      }
+      // #685: pin only from a portal the caller can read (portals are
+      // per-user); org scope alone let a member copy a block out of another
+      // member's portal.
+      const { portal } = await PortalAccessService.load(ctx, portalId);
 
       // Find the target assistant message
       const messages =

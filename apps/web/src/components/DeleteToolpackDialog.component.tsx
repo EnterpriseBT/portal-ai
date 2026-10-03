@@ -31,6 +31,7 @@ export const DeleteToolpackDialogUI: React.FC<DeleteToolpackDialogUIProps> = ({
 }) => {
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Delete toolpack"

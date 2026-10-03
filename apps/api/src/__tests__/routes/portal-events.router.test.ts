@@ -64,6 +64,33 @@ jest.unstable_mockModule("../../middleware/sse-auth.middleware.js", () => ({
   sseAuth: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
+// #685: the caller is resolved like REST, and the portal must be accessible.
+const CALLER = { userId: "caller-1", organizationId: "org-1", roles: [] };
+jest.unstable_mockModule("../../middleware/metadata.middleware.js", () => ({
+  getApplicationMetadata: (
+    req: Request,
+    _res: Response,
+    next: NextFunction
+  ) => {
+    (req as unknown as { application: unknown }).application = {
+      metadata: CALLER,
+    };
+    next();
+  },
+}));
+const mockWriteCheck = jest.fn<(action: string, object: unknown) => void>();
+const mockAccessLoad = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule("../../services/portal-access.service.js", () => ({
+  PortalAccessService: {
+    load: mockAccessLoad,
+    object: (p: { id: string; createdBy: string }) => ({
+      type: "portal",
+      id: p.id,
+      createdBy: p.createdBy,
+    }),
+  },
+}));
+
 jest.unstable_mockModule("../../utils/logger.util.js", () => ({
   createLogger: () => ({
     warn: jest.fn(),
@@ -75,6 +102,7 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
 
 const { portalEventsRouter } =
   await import("../../routes/portal-events.router.js");
+const { ApiError } = await import("../../services/http.service.js");
 
 // ── App setup ────────────────────────────────────────────────────────
 
@@ -100,7 +128,8 @@ const PORTAL = {
   organizationId: "org-1",
   createdBy: "user-1",
 };
-const USER_ROW = { id: "u1", role: "user", blocks: [] };
+// The pending user message's author (who posted it via POST /messages).
+const USER_ROW = { id: "u1", role: "user", blocks: [], createdBy: "author-1" };
 const ASSISTANT_ROW = {
   id: "a1",
   role: "assistant",
@@ -124,6 +153,10 @@ beforeEach(() => {
   mockBuildStationContext.mockResolvedValue({ stationId: "station-1" });
   mockStreamResponse.mockResolvedValue();
   mockRelease.mockResolvedValue();
+  mockAccessLoad.mockResolvedValue({
+    portal: PORTAL,
+    set: { check: mockWriteCheck },
+  });
 });
 
 // ── Already answered — replay, no model ──────────────────────────────
@@ -155,6 +188,60 @@ describe("fresh pending turn", () => {
     expect(mockAcquire).toHaveBeenCalledTimes(1);
     expect(mockStreamResponse).toHaveBeenCalledTimes(1);
     expect(mockReplayTurn).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── #685: identity + access ──────────────────────────────────────────
+
+describe("authorization (#685)", () => {
+  it("a fresh turn runs as the pending message's author, not the stream caller or the portal's creator", async () => {
+    mockGetPortal.mockResolvedValue(pendingTurn);
+    mockAcquire.mockResolvedValue(true);
+
+    await request(app).get(STREAM_URL);
+
+    expect(mockAccessLoad).toHaveBeenCalledWith(CALLER, PORTAL_ID);
+    expect(mockWriteCheck).toHaveBeenCalledWith("resource.write", {
+      type: "portal",
+      id: PORTAL_ID,
+      createdBy: "user-1",
+    });
+    // The caller (an owner/admin can open any portal's stream) only claims
+    // the turn; its data access is the author's, so a reply never carries
+    // rows the author can't see into the author's portal.
+    expect(mockBuildStationContext.mock.calls[0]).toEqual([
+      expect.objectContaining({ userId: "author-1" }),
+    ]);
+    expect(mockStreamResponse.mock.calls[0]).toEqual([
+      expect.objectContaining({ userId: "author-1" }),
+    ]);
+  });
+
+  it("an inaccessible portal is refused before anything is read or streamed", async () => {
+    mockAccessLoad.mockRejectedValue(
+      new ApiError(404, "PORTAL_NOT_FOUND" as never, "Portal not found")
+    );
+
+    const res = await request(app).get(STREAM_URL);
+
+    expect(res.status).toBe(404);
+    expect(mockGetPortal).not.toHaveBeenCalled();
+    expect(mockStreamResponse).not.toHaveBeenCalled();
+  });
+
+  it("a caller who can read but not write the portal can't run a turn (403)", async () => {
+    mockGetPortal.mockResolvedValue(pendingTurn);
+    mockAcquire.mockResolvedValue(true);
+    mockWriteCheck.mockImplementationOnce(() => {
+      throw new ApiError(403, "INSUFFICIENT_ROLE" as never, "Forbidden");
+    });
+
+    const res = await request(app).get(STREAM_URL);
+
+    expect(res.status).toBe(403);
+    expect(mockStreamResponse).not.toHaveBeenCalled();
+    // The turn lock is still released.
     expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 });

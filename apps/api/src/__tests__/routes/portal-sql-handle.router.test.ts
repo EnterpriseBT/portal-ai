@@ -5,11 +5,12 @@ import express, { Request, Response, NextFunction } from "express";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockGetSnapshot = jest.fn<() => Promise<unknown>>();
+const mockGetMeta = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   PortalSqlHandleService: {
     getSnapshot: mockGetSnapshot,
+    getMeta: mockGetMeta,
   },
-  streamChannelKey: (id: string) => `portal-sql:stream:${id}`,
 }));
 
 jest.unstable_mockModule("../../middleware/metadata.middleware.js", () => ({
@@ -44,6 +45,11 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // The caller's own handle (same org and user) unless a test says otherwise.
+  mockGetMeta.mockResolvedValue({
+    _organizationId: "org-001",
+    _userId: "user-001",
+  });
 });
 
 describe("GET /api/portal-sql/handle/:handleId — snapshot", () => {
@@ -108,5 +114,53 @@ describe("GET /api/portal-sql/handle/:handleId — snapshot", () => {
     // when an explicit numeric < 0 lands — which the regex prevents.
     // Asserting that we still respond cleanly is the win here.
     expect([200, 400]).toContain(res.status);
+  });
+});
+
+// #685: a handle is readable only by its own org, and by its own user when
+// the handle records one. Anything else is the same 404 as an expired
+// handle, so the check reveals nothing.
+describe("GET /api/portal-sql/handle/:handleId — authorization (#685)", () => {
+  const ok = { rows: [], total: 0, offset: 0, limit: 1_000 };
+
+  it("serves the caller's own handle", async () => {
+    mockGetSnapshot.mockResolvedValueOnce(ok);
+    const res = await request(app).get("/api/portal-sql/handle/qh-own");
+    expect(res.status).toBe(200);
+    expect(mockGetMeta).toHaveBeenCalledWith("qh-own");
+  });
+
+  it("refuses another org's handle as expired, without reading its rows", async () => {
+    mockGetMeta.mockResolvedValueOnce({
+      _organizationId: "org-other",
+      _userId: "user-001",
+    });
+    const res = await request(app).get("/api/portal-sql/handle/qh-other");
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.READ_HANDLE_EXPIRED);
+    expect(mockGetSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("refuses another user's handle in the same org", async () => {
+    mockGetMeta.mockResolvedValueOnce({
+      _organizationId: "org-001",
+      _userId: "user-other",
+    });
+    const res = await request(app).get("/api/portal-sql/handle/qh-theirs");
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.READ_HANDLE_EXPIRED);
+    expect(mockGetSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("serves a same-org handle that records no user", async () => {
+    mockGetMeta.mockResolvedValueOnce({ _organizationId: "org-001" });
+    mockGetSnapshot.mockResolvedValueOnce(ok);
+    const res = await request(app).get("/api/portal-sql/handle/qh-rows");
+    expect(res.status).toBe(200);
+  });
+
+  it("no longer exports an SSE stream router", async () => {
+    const mod = await import("../../routes/portal-sql-handle.router.js");
+    expect("portalSqlHandleSseRouter" in mod).toBe(false);
   });
 });

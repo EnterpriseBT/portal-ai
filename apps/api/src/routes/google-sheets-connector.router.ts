@@ -22,8 +22,8 @@ import {
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
-import { DbService } from "../services/db.service.js";
 import {
   GoogleAuthError,
   GoogleAuthService,
@@ -50,6 +50,8 @@ export const googleSheetsConnectorPublicRouter = Router();
  *     security:
  *       - bearerAuth: []
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Consent URL minted
  *         content:
@@ -68,7 +70,7 @@ export const googleSheetsConnectorPublicRouter = Router();
 googleSheetsConnectorRouter.post(
   "/authorize",
   getApplicationMetadata,
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.application?.metadata.userId as string;
       const organizationId = req.application?.metadata.organizationId as string;
@@ -82,6 +84,16 @@ googleSheetsConnectorRouter.post(
         body.connectorInstanceId.length > 0
           ? body.connectorInstanceId
           : undefined;
+
+      // #685: reconnecting replaces the instance's credentials with the
+      // caller's account, so it needs write on that instance.
+      if (connectorInstanceId) {
+        await ConnectorInstanceAccessService.load(
+          req.application!.metadata,
+          connectorInstanceId,
+          "write"
+        );
+      }
 
       const url = GoogleAuthService.buildConsentUrl({
         userId,
@@ -99,6 +111,8 @@ googleSheetsConnectorRouter.post(
       );
       return HttpService.success(res, { url });
     } catch (err) {
+      // #685: a refused or missing instance keeps its own status.
+      if (err instanceof ApiError) return next(err);
       const message = err instanceof Error ? err.message : "Unknown error";
       // `buildConsentUrl` throws plain Errors when env vars are empty —
       // surface those as a configuration error, not a generic 500.
@@ -200,25 +214,18 @@ googleSheetsConnectorPublicRouter.get(
  * - Returns the decrypted-credentials row otherwise.
  */
 async function resolveOwnedInstance(
+  req: Request,
   connectorInstanceId: string,
-  organizationId: string
+  verb: "read" | "write"
 ) {
-  const instance =
-    await DbService.repository.connectorInstances.findById(connectorInstanceId);
-  if (!instance) {
-    throw new ApiError(
-      404,
-      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-      "Connector instance not found"
-    );
-  }
-  if (instance.organizationId !== organizationId) {
-    throw new ApiError(
-      403,
-      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-      "Connector instance not accessible to this organization"
-    );
-  }
+  // #685: the caller must be able to read the instance (404) and, for a
+  // change, write it (403). Org scope alone let a member use another
+  // member's stored OAuth token to fetch any file, and rewrite their config.
+  const { instance } = await ConnectorInstanceAccessService.load(
+    req.application!.metadata,
+    connectorInstanceId,
+    verb
+  );
   return instance;
 }
 
@@ -274,6 +281,8 @@ function mapGoogleAuthError(err: unknown): ApiError {
  *             properties:
  *               spreadsheetId: { type: string }
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Sheet selected; preview returned
  *       400:
@@ -305,7 +314,7 @@ googleSheetsConnectorRouter.post(
         );
       }
 
-      await resolveOwnedInstance(connectorInstanceId, organizationId);
+      await resolveOwnedInstance(req, connectorInstanceId, "write");
 
       const result = await GoogleSheetsConnectorService.selectSheet({
         connectorInstanceId,
@@ -379,7 +388,6 @@ googleSheetsConnectorRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata.organizationId as string;
       const connectorInstanceId = req.params.id ?? "";
 
       const sheetIdParam =
@@ -405,7 +413,7 @@ googleSheetsConnectorRouter.get(
         );
       }
 
-      await resolveOwnedInstance(connectorInstanceId, organizationId);
+      await resolveOwnedInstance(req, connectorInstanceId, "read");
 
       const out = await GoogleSheetsConnectorService.sheetSlice({
         connectorInstanceId,

@@ -67,7 +67,6 @@ import {
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
   AuditLogListResponseSchema,
-  MaintenanceStatusResponseSchema,
   PublicSitePriceSchema,
   PublicSiteTierSchema,
   PublicSiteConfigResponseSchema,
@@ -480,10 +479,6 @@ const usageLedgerSchemas: Record<string, unknown> = {
   ),
   UsageLedgerListResponse: z.toJSONSchema(
     UsageLedgerListResponseSchema,
-    JSON_SCHEMA_OPTS
-  ),
-  MaintenanceStatusResponse: z.toJSONSchema(
-    MaintenanceStatusResponseSchema,
     JSON_SCHEMA_OPTS
   ),
   AuditLogEntry: z.toJSONSchema(AuditLogEntrySchema, JSON_SCHEMA_OPTS),
@@ -1939,29 +1934,6 @@ const options: swaggerJsdoc.Options = {
             offset: { type: "integer" },
             limit: { type: "integer" },
           },
-        },
-        QueryHandleStreamEvent: {
-          oneOf: [
-            {
-              type: "object",
-              required: ["type", "batchIndex", "rows"],
-              properties: {
-                type: { type: "string", enum: ["data"] },
-                batchIndex: { type: "integer" },
-                rows: {
-                  type: "array",
-                  items: { type: "object", additionalProperties: true },
-                },
-              },
-            },
-            {
-              type: "object",
-              required: ["type"],
-              properties: {
-                type: { type: "string", enum: ["complete"] },
-              },
-            },
-          ],
         },
         WidgetRefreshRequest: {
           type: "object",

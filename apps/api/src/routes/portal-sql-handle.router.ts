@@ -17,17 +17,14 @@ import { Router, Request, Response, NextFunction } from "express";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { HttpService } from "../services/http.service.js";
-import {
-  PortalSqlHandleService,
-  streamChannelKey,
-} from "../services/portal-sql-handle.service.js";
+import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
-import { getRedisClient } from "../utils/redis.util.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 import { createLogger } from "../utils/logger.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
-import { sseAuth } from "../middleware/sse-auth.middleware.js";
+import { PortalAccessService } from "../services/portal-access.service.js";
+import { DbService } from "../services/db.service.js";
 
 const logger = createLogger({ module: "portal-sql-handle-router" });
 
@@ -73,7 +70,7 @@ export const portalSqlHandleRouter = Router();
  *                 payload:
  *                   $ref: '#/components/schemas/QueryHandleSnapshotResponse'
  *       404:
- *         description: Handle expired or unknown
+ *         description: Handle expired or unknown, or belonging to another org or user (#685; the same response, so it reveals nothing)
  *         content:
  *           application/json:
  *             schema:
@@ -93,6 +90,22 @@ portalSqlHandleRouter.get(
           400,
           ApiCode.PORTAL_SQL_FORBIDDEN,
           "offset must be ≥ 0 and limit must be > 0"
+        );
+      }
+
+      // #685: a handle is readable only by its own org, and by its own user
+      // when it records one (the agent's query handles do). Anything else is
+      // the same 404 as an expired handle, so the check reveals nothing.
+      const { organizationId, userId } = req.application!.metadata;
+      const meta = await PortalSqlHandleService.getMeta(handleId);
+      if (
+        meta._organizationId !== organizationId ||
+        (meta._userId !== undefined && meta._userId !== userId)
+      ) {
+        throw new ApiError(
+          404,
+          ApiCode.READ_HANDLE_EXPIRED,
+          "Query handle not found or expired"
         );
       }
 
@@ -132,6 +145,8 @@ portalSqlHandleRouter.get(
  *           schema:
  *             $ref: '#/components/schemas/WidgetRefreshRequest'
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: A fresh delivery for the widget
  *         content:
@@ -204,6 +219,25 @@ portalSqlHandleRouter.post(
         );
       }
 
+      // #685: the widget's portal must be the caller's (portals are
+      // per-user). Anything else is the same 404 as a missing widget.
+      const message =
+        await DbService.repository.portalMessages.findById(messageId);
+      if (message) {
+        try {
+          await PortalAccessService.load(
+            req.application!.metadata,
+            message.portalId
+          );
+        } catch {
+          throw new ApiError(
+            404,
+            ApiCode.VIZ_WIDGET_NOT_FOUND,
+            "No refreshable visualization widget for this reference."
+          );
+        }
+      }
+
       const payload = await PortalVizRefreshService.refresh({
         messageId,
         blockIndex,
@@ -212,96 +246,6 @@ portalSqlHandleRouter.post(
       });
       return HttpService.success(res, payload);
     } catch (err) {
-      return next(err);
-    }
-  }
-);
-
-// ── SSE endpoint (lives under /api/sse/portal-sql/) ──────────────────
-
-export const portalSqlHandleSseRouter = Router();
-
-/**
- * @openapi
- * /api/sse/portal-sql/handle/{handleId}/stream:
- *   get:
- *     tags:
- *       - Portal SQL
- *     summary: SSE stream of staged batches for a query handle
- *     description: >
- *       Subscribes to the producer's `portal-sql:stream:<handleId>` Pub/Sub
- *       channel and forwards each event to the client. Emits named events
- *       `data` (a batch of rows) and `complete` (cursor exhausted). Heartbeat
- *       every 25s. Query-param auth via `token`.
- *     parameters:
- *       - in: path
- *         name: handleId
- *         required: true
- *         schema: { type: string }
- *       - in: query
- *         name: token
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: SSE stream
- *         content:
- *           text/event-stream:
- *             schema:
- *               $ref: '#/components/schemas/QueryHandleStreamEvent'
- */
-portalSqlHandleSseRouter.get(
-  "/handle/:handleId/stream",
-  sseAuth,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { handleId } = req.params;
-      const channel = streamChannelKey(handleId);
-      const subscriber = getRedisClient().duplicate();
-      // #391: an unhandled ioredis `error` event crashes the process.
-      subscriber.on("error", (err) => {
-        logger.warn({ err }, "SQL-handle SSE subscriber error (staying up)");
-      });
-
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache, no-transform");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders?.();
-
-      await subscriber.subscribe(channel);
-      subscriber.on("message", (_chan, message) => {
-        // Each Pub/Sub message is already a JSON envelope from the
-        // producer ({ type: "data" | "complete", ... }).
-        try {
-          const parsed = JSON.parse(message);
-          const eventName =
-            typeof parsed.type === "string" ? parsed.type : "data";
-          res.write(`event: ${eventName}\n`);
-          res.write(`data: ${message}\n\n`);
-        } catch {
-          res.write(`data: ${message}\n\n`);
-        }
-      });
-
-      // Heartbeat every 25s — keeps proxies from idling out.
-      const heartbeat = setInterval(() => {
-        res.write(`: heartbeat ${Date.now()}\n\n`);
-      }, 25_000);
-
-      req.on("close", async () => {
-        clearInterval(heartbeat);
-        try {
-          await subscriber.unsubscribe(channel);
-          await subscriber.quit();
-        } catch {
-          // ignore
-        }
-      });
-    } catch (err) {
-      logger.error(
-        { handleId: req.params.handleId, err },
-        "Failed to subscribe to portal-sql handle stream"
-      );
       return next(err);
     }
   }

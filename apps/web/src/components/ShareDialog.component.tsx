@@ -121,6 +121,7 @@ export const ShareDialogUI: React.FC<ShareDialogUIProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title={`Share “${resourceLabel}”`}

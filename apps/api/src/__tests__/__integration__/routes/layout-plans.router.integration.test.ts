@@ -277,7 +277,9 @@ function makeWorkbook(): WorkbookData {
 async function seedUploadSession(
   db: Db,
   organizationId: string,
-  workbook: WorkbookData
+  workbook: WorkbookData,
+  /** #685: uploads belong to their uploader; the caller must own the session. */
+  createdBy: string
 ): Promise<string> {
   const uploadSessionId = generateId();
   const uploadId = generateId();
@@ -291,7 +293,7 @@ async function seedUploadSession(
     status: "parsed",
     uploadSessionId,
     created: now,
-    createdBy: "SYSTEM_TEST",
+    createdBy,
     updated: null,
     updatedBy: null,
     deleted: null,
@@ -412,7 +414,8 @@ describe("Layout Plans Draft Router", () => {
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        userId
       );
 
       const res = await request(app)
@@ -495,7 +498,8 @@ describe("Layout Plans Draft Router", () => {
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        userId
       );
 
       const res = await request(app)
@@ -570,7 +574,8 @@ describe("Layout Plans Draft Router", () => {
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        userId
       );
 
       const result = await runDraftCommitInline({
@@ -677,7 +682,8 @@ describe("Layout Plans Draft Router", () => {
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
-        workbook
+        workbook,
+        userId
       );
 
       const result = await runDraftCommitInline({
@@ -743,7 +749,8 @@ describe("Layout Plans Draft Router", () => {
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        userId
       );
       await expect(
         runDraftCommitInline({
@@ -795,7 +802,8 @@ describe("Layout Plans Draft Router", () => {
         const uploadSessionId = await seedUploadSession(
           db as Db,
           organizationId,
-          makeWorkbook()
+          makeWorkbook(),
+          userId
         );
 
         const plan = makePlan(emailId, nameId);
@@ -846,7 +854,8 @@ describe("Layout Plans Draft Router", () => {
         const uploadSessionId = await seedUploadSession(
           db as Db,
           organizationId,
-          makeWorkbook()
+          makeWorkbook(),
+          userId
         );
 
         const result = await runDraftCommitInline({
@@ -968,7 +977,8 @@ describe("Layout Plans Draft Router", () => {
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        userId
       );
 
       const res = await request(app)

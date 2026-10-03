@@ -228,6 +228,7 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      submitDisabled={isPending}
       open
       onClose={onClose}
       title="Edit Field Mapping"

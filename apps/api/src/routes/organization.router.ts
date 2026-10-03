@@ -138,6 +138,8 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *               defaultStationId:
  *                 type: [string, "null"]
  *     responses:
+ *       403:
+ *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Organization updated
  *       404:
@@ -168,11 +170,25 @@ organizationRouter.patch(
         defaultStationId?: string | null;
       };
 
+      // #685: the org's default station is an org-wide setting, so changing
+      // it is owner/admin only (class write on station; there is no separate
+      // org-settings permission). It used to be open to any member.
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      set.check("resource.write", { type: "station" });
+
       if (defaultStationId !== undefined && defaultStationId !== null) {
-        // Validate the station belongs to this org
+        // The station must be in this org and readable by the caller.
         const station =
           await DbService.repository.stations.findById(defaultStationId);
-        if (!station || station.organizationId !== organizationId) {
+        if (
+          !station ||
+          station.organizationId !== organizationId ||
+          !set.can("resource.read", {
+            type: "station",
+            id: station.id,
+            createdBy: station.createdBy,
+          })
+        ) {
           return next(
             new ApiError(
               404,

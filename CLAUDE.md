@@ -164,8 +164,9 @@ Every data-submission dialog must follow this structure:
 
 - Every dialog that submits data **must** be wrapped in a `<form onSubmit>` element
 - For `Modal`-based dialogs: use `slotProps.paper.component="form"` with `onSubmit` handler on `slotProps.paper`
-- For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`
+- For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`, and render `<FormDefaultButton />` (from `@portalai/core/ui`) inside it
 - Action buttons must use `type="button"` to prevent double-firing with form submission
+- **Enter submits exactly when the submit button could.** A form with no submit button and more than one text field doesn't submit on Enter (HTML implicit submission), and the `type="button"` rule leaves dialogs without one. `Modal` therefore renders a hidden `FormDefaultButton` whenever its paper is a form, and every form `Modal` passes **`submitDisabled`** — the same expression as its visible submit's `disabled` — so Enter can't submit during a pending request or an incomplete form (a double Enter made duplicates). A raw `Dialog` form renders `<FormDefaultButton disabled={…} />` by hand. `dialog-enter-submit.guard.test.ts` fails CI on a form `Modal` without `submitDisabled`. Never call `onSubmit` from a key handler instead
 - The first interactive field must receive auto-focus via `useDialogAutoFocus(open)` from `utils/use-dialog-autofocus.util.ts` (or `autoFocus` prop for simple text fields outside Modal)
 
 ### Server Error Display
@@ -396,7 +397,7 @@ Related: `NULLS LAST` is emitted **only for nullable sort columns**. A plain btr
 
 Two rules follow for any table that soft-deletes at volume:
 
-- **Give it a purge.** `entity-record-retention-purge.processor.ts` is the pattern (and `ledger-retention-purge.processor.ts` before it): a repeatable job on the `maintenance` queue, a batch-drain loop that terminates on a zero rowcount, env-configured windows, and the run summary as the BullMQ return value so `GET /api/admin/maintenance` shows what it did. Delete by `IN (<subquery>)` rather than an id list marshalled through Node — the ids stay server-side, which sidesteps the `sql.join` overflow above by construction.
+- **Give it a purge.** `entity-record-retention-purge.processor.ts` is the pattern (and `ledger-retention-purge.processor.ts` before it): a repeatable job on the `maintenance` queue, a batch-drain loop that terminates on a zero rowcount, env-configured windows, and the run summary as the BullMQ return value, so the job's `returnvalue` records what it did. (`GET /api/admin/maintenance` used to surface it; #685 removed it as an unauthorized cross-tenant route. An operator view belongs in `portalops`.) Delete by `IN (<subquery>)` rather than an id list marshalled through Node — the ids stay server-side, which sidesteps the `sql.join` overflow above by construction.
 - **Index `deleted`, partial on `deleted IS NOT NULL`.** Every *other* index carries `WHERE deleted IS NULL`, so between them they exclude exactly the rows a purge reads. Without it a `LIMIT`-batched purge gets **slower as it drains** — surviving matches thin out, so each batch scans further for its rows. Measured 1,664 ms for a tail batch against 0.089 ms with the index. The dense head of the drain stays a sequential scan and the planner is right about that: when most rows qualify, finding the batch immediately beats an index scan plus that many heap fetches.
 
 **Classify the tombstone from data you already have.** Retention usually wants different windows for different reasons-for-deletion, and the reflex is a `deleted_reason` column — which cannot be backfilled, because nothing recorded why the existing rows died. Prefer a discriminator derivable from the schema: #442 splits on whether the row's parent is *also* soft-deleted, which separates "nothing can ever reference this again" from "a human might still want it back" for free, and applies correctly to rows already on disk. Check for one before adding a column.
@@ -424,6 +425,13 @@ Reference implementation: `packages/core/src/models/user.model.ts`
 - **Request validation**: Middleware with typed `Request` interfaces
 - **Response validation**: Validate payload structure before sending
 - **Error handling**: Use `ApiError` class with `next(error)` — never send error responses directly
+- **Authorization (#685)**: every mutation route and every SSE route authorizes **server-side** and is classified in `apps/api/src/__tests__/config/route-authorization.map.ts`. The guard test fails CI on an unclassified or stale route. The rules:
+  - **Resolve the caller from the request.** That means `getApplicationMetadata`, on SSE too (after `sseAuth`). Never trust an `organizationId` or user id from the body.
+  - **Load the object org-scoped first.** `PermissionSet` doesn't see orgs, so without the row's org check an owner or admin of *any* org passes.
+  - **Then check the verb on the object itself.** `PermissionService.check(ctx, "resource.<verb>", {type, id, createdBy})`. A create checks read on its parent plus the type's create rule: owned `{type, createdBy: userId}`, or class `{type}` for owner/admin-only types.
+  - **A child row** (group member, tag assignment) is authorized through its parent, and must belong to that parent.
+  - **Unreadable == absent (404).** Readable but not permitted is 403.
+  - **The shared loaders** are `PortalAccessService`, `ConnectorInstanceAccessService`, `FileUploadAccessService` and `ObjectAccessService`. Hiding a UI action is never a substitute (#684).
 - **Error codes**: Add to `ApiCode` enum in `src/constants/api-codes.constants.ts`, format: `<DOMAIN>_<FAILURE>`
 - **OpenAPI annotations**: Every route handler must carry a `@openapi` JSDoc block above it. The block declares the route path, method, tags, security scheme, parameters, request body schema, and per-status response schemas. SSE endpoints declare `text/event-stream` as the response content type and reference the event's payload schema.
 
@@ -534,7 +542,7 @@ Every new dialog must have tests covering:
 - Renders title and content when `open={true}`
 - Does not render when `open={false}`
 - Calls `onSubmit`/`onConfirm` on button click
-- Supports Enter key submission (form submit event)
+- Supports Enter key submission — a real key press (`user.type(field, "x{Enter}")`), not `fireEvent.submit`, which passes even when Enter does nothing
 - Calls `onClose` on Cancel click
 - Shows loading state when `isPending={true}`
 - Renders `<FormAlert>` when `serverError` is provided

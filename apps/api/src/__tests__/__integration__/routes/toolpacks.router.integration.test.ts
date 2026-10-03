@@ -15,9 +15,17 @@ import { eq, isNull, and } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
-import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
+import {
+  seedUserAndOrg,
+  teardownOrg,
+  createUser,
+  createOrganizationUser,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|toolpacks-router-test";
+const MEMBER_AUTH0_ID = "auth0|toolpacks-router-member";
+/** #685: the caller; tests flip it to the member. */
+let currentSub = AUTH0_ID;
 
 // Mock global fetch for the registration service's upstream calls.
 const mockFetch =
@@ -49,7 +57,7 @@ function fetchOk(body: unknown) {
 
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
-    req.auth = { payload: { sub: AUTH0_ID } } as never;
+    req.auth = { payload: { sub: currentSub } } as never;
     next();
   },
 }));
@@ -83,6 +91,7 @@ describe("Toolpacks Router", () => {
       AUTH0_ID
     );
     organizationId = seeded.organizationId;
+    currentSub = AUTH0_ID;
     mockFetch.mockReset();
   });
 
@@ -814,6 +823,93 @@ describe("Toolpacks Router", () => {
         .post("/api/toolpacks")
         .send(VALID_REGISTER_BODY);
       expect(allowed.status).toBe(201);
+    });
+  });
+
+  // ── #685: toolpack mutations are owner/admin only ───────────────────
+
+  describe("authorization (#685)", () => {
+    async function addMember() {
+      const member = createUser(MEMBER_AUTH0_ID);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(member as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.organizationUsers)
+        .values(
+          createOrganizationUser(organizationId, member.id, {
+            role: "member",
+          }) as never
+        );
+    }
+
+    async function registered(): Promise<string> {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      mockFetch.mockReset();
+      expect(res.status).toBe(201);
+      return res.body.payload.toolpack.id as string;
+    }
+
+    async function row(id: string) {
+      const [r] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.organizationToolpacks)
+        .where(eq(schema.organizationToolpacks.id, id));
+      return r;
+    }
+
+    it("a member can't edit, delete, refresh or rotate the org's toolpack (403); nothing changes", async () => {
+      const id = await registered();
+      const before = await row(id);
+      await addMember();
+      currentSub = MEMBER_AUTH0_ID;
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+
+      for (const send of [
+        () => request(app).patch(`/api/toolpacks/${id}`).send({ name: "x" }),
+        () => request(app).delete(`/api/toolpacks/${id}`),
+        () => request(app).post(`/api/toolpacks/${id}/refresh`),
+        () => request(app).post(`/api/toolpacks/${id}/rotate-signing-secret`),
+      ]) {
+        const res = await send();
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+      }
+
+      const after = await row(id);
+      expect(after.name).toBe(before.name);
+      expect(after.signingSecret).toBe(before.signingSecret);
+      expect(after.deleted).toBeNull();
+    });
+
+    it("a member can't register a toolpack: 403 for the permission, ahead of the entitlement", async () => {
+      await addMember();
+      currentSub = MEMBER_AUTH0_ID;
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    });
+
+    it("the owner still edits, rotates and deletes", async () => {
+      const id = await registered();
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      expect(
+        (await request(app).patch(`/api/toolpacks/${id}`).send({ name: "y" }))
+          .status
+      ).toBe(200);
+      expect(
+        (await request(app).post(`/api/toolpacks/${id}/rotate-signing-secret`))
+          .status
+      ).toBe(200);
+      expect((await request(app).delete(`/api/toolpacks/${id}`)).status).toBe(
+        200
+      );
     });
   });
 });

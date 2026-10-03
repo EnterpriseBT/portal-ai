@@ -3,6 +3,9 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockPortalsFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPortalMessagesCreate =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockJobsFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockEnqueueForMessageBlock =
+  jest.fn<(...args: unknown[]) => Promise<void>>();
 const mockRedisPublish = jest.fn<() => Promise<number>>().mockResolvedValue(1);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -10,9 +13,19 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: {
       portals: { findById: mockPortalsFindById },
       portalMessages: { create: mockPortalMessagesCreate },
+      jobs: { findById: mockJobsFindById },
     },
   },
 }));
+
+jest.unstable_mockModule(
+  "../../services/dissolve-precompute.service.js",
+  () => ({
+    DissolvePrecomputeService: {
+      enqueueForMessageBlock: mockEnqueueForMessageBlock,
+    },
+  })
+);
 
 jest.unstable_mockModule("../../utils/redis.util.js", () => ({
   getRedisClient: () => ({
@@ -42,9 +55,45 @@ beforeEach(() => {
     createdBy: "user-1",
   });
   mockPortalMessagesCreate.mockResolvedValue({ id: "msg-1" });
+  mockJobsFindById.mockResolvedValue({ id: "job-1", createdBy: "author-1" });
+  mockEnqueueForMessageBlock.mockResolvedValue(undefined);
 });
 
 describe("PortalService.notifyJobTerminal", () => {
+  // #685: the message and its dissolve precompute belong to the member who
+  // started the job, not the portal's creator.
+  it("records the job's author as the message's creator and the precompute's user", async () => {
+    await PortalService.notifyJobTerminal("portal-1", "job-1", {
+      status: "completed",
+      recordsProcessed: 1,
+      recordsFailed: 0,
+      durationMs: 1_000,
+    });
+    expect(mockJobsFindById).toHaveBeenCalledWith("job-1");
+    const persisted = mockPortalMessagesCreate.mock.calls[0][0] as {
+      createdBy: string;
+    };
+    expect(persisted.createdBy).toBe("author-1");
+    for (const [arg] of mockEnqueueForMessageBlock.mock.calls) {
+      expect((arg as { userId: string }).userId).toBe("author-1");
+    }
+    expect(mockEnqueueForMessageBlock).toHaveBeenCalled();
+  });
+
+  it("falls back to the portal's creator when the job row is gone", async () => {
+    mockJobsFindById.mockResolvedValue(null);
+    await PortalService.notifyJobTerminal("portal-1", "job-1", {
+      status: "completed",
+      recordsProcessed: 1,
+      recordsFailed: 0,
+      durationMs: 1_000,
+    });
+    const persisted = mockPortalMessagesCreate.mock.calls[0][0] as {
+      createdBy: string;
+    };
+    expect(persisted.createdBy).toBe("user-1");
+  });
+
   it("persists a template assistant message with text summary on completed", async () => {
     await PortalService.notifyJobTerminal("portal-1", "job-1", {
       status: "completed",

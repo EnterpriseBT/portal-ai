@@ -76,6 +76,7 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      submitDisabled={saveDisabled}
       open
       onClose={onClose}
       title="Edit Entity Group"

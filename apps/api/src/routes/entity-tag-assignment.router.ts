@@ -11,6 +11,8 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 
 const logger = createLogger({ module: "entity-tag-assignment" });
 
@@ -19,6 +21,35 @@ const logger = createLogger({ module: "entity-tag-assignment" });
  * Express mergeParams is required so `:connectorEntityId` is accessible here.
  */
 export const entityTagAssignmentRouter = Router({ mergeParams: true });
+
+/**
+ * #685: tagging changes the connector entity being labelled, so it's
+ * authorized through that entity. The entity must be in the caller's org and
+ * readable by them (404 otherwise, unreadable == absent), and the caller needs
+ * write on it (403). Returns the permission set for further checks.
+ */
+async function assertEntityWritable(req: Request, connectorEntityId: string) {
+  const caller = req.application!.metadata;
+  const set = await PermissionService.loadSet(caller);
+  const entity =
+    await DbService.repository.connectorEntities.findById(connectorEntityId);
+  if (
+    !ObjectAccessService.readableInOrg(
+      set,
+      caller.organizationId,
+      "entity",
+      entity
+    )
+  ) {
+    throw new ApiError(
+      404,
+      ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+      "Connector entity not found"
+    );
+  }
+  set.check("resource.write", ObjectAccessService.object("entity", entity));
+  return set;
+}
 
 /**
  * @openapi
@@ -144,6 +175,8 @@ entityTagAssignmentRouter.get(
  *               entityTagId:
  *                 type: string
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       201:
  *         description: Tag assigned successfully
  *         content:
@@ -205,29 +238,21 @@ entityTagAssignmentRouter.post(
 
       const { organizationId, userId } = req.application!.metadata;
 
-      // Verify connector entity exists and belongs to org
-      const connectorEntity =
-        await DbService.repository.connectorEntities.findById(
-          connectorEntityId
-        );
-      if (
-        !connectorEntity ||
-        connectorEntity.organizationId !== organizationId
-      ) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-            "Connector entity not found"
-          )
-        );
-      }
+      // #685: the entity must be writable by the caller.
+      const set = await assertEntityWritable(req, connectorEntityId);
 
-      // Verify tag exists and belongs to same org
+      // The tag must be in the caller's org and readable by them.
       const entityTag = await DbService.repository.entityTags.findById(
         parsed.data.entityTagId
       );
-      if (!entityTag || entityTag.organizationId !== organizationId) {
+      if (
+        !ObjectAccessService.readableInOrg(
+          set,
+          organizationId,
+          "tag",
+          entityTag
+        )
+      ) {
         return next(
           new ApiError(
             404,
@@ -335,6 +360,8 @@ entityTagAssignmentRouter.post(
  *           type: string
  *         description: Entity tag assignment ID
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       200:
  *         description: Tag assignment removed
  *         content:
@@ -368,11 +395,19 @@ entityTagAssignmentRouter.delete(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { assignmentId } = req.params;
+      const { connectorEntityId, assignmentId } = req.params;
 
+      // #685: the entity must be writable by the caller, and the assignment
+      // must belong to the caller's org and to that entity. It used to
+      // resolve any assignment by id.
+      await assertEntityWritable(req, connectorEntityId);
       const existing =
         await DbService.repository.entityTagAssignments.findById(assignmentId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId ||
+        existing.connectorEntityId !== connectorEntityId
+      ) {
         return next(
           new ApiError(
             404,

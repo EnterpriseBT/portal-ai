@@ -31,7 +31,6 @@ import { apiEndpointsRouter } from "./api-endpoints.router.js";
 import { layoutPlansRouter } from "./layout-plans.router.js";
 import { googleSheetsConnectorRouter } from "./google-sheets-connector.router.js";
 import { microsoftExcelConnectorRouter } from "./microsoft-excel-connector.router.js";
-import { adminRouter } from "./admin.router.js";
 import { portalSqlHandleRouter } from "./portal-sql-handle.router.js";
 import { portalMapRouter } from "./portal-map.router.js";
 
@@ -88,4 +87,3 @@ protectedRouter.use(
   "/connectors/microsoft-excel",
   microsoftExcelConnectorRouter
 );
-protectedRouter.use("/admin", adminRouter);

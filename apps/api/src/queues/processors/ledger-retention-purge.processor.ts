@@ -8,8 +8,7 @@ const logger = createLogger({ module: "ledger-retention-purge" });
  *  lock time; the loop drains the backlog batch by batch. */
 export const PURGE_BATCH_SIZE = 10_000;
 
-/** The run summary — the BullMQ return value surfaced verbatim by
- *  `GET /api/admin/maintenance` as `recentRuns[].returnvalue`. */
+/** The run summary — the BullMQ return value, kept on the completed job. */
 export interface LedgerRetentionPurgeSummary {
   purged: number;
   batches: number;

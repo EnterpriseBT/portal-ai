@@ -96,8 +96,8 @@ describe("entityRecordRetentionPurgeProcessor (#442)", () => {
 
     expect(orphanCall?.[0]).toBe(NOW - 7 * DAY);
     expect(liveCall?.[0]).toBe(NOW - 30 * DAY);
-    // The summary reports what it enforced, so an operator reading
-    // `GET /api/admin/maintenance` can tell which windows were in effect.
+    // The summary reports what it enforced, so the run's BullMQ
+    // returnvalue says which windows were in effect.
     expect(summary.orphanCutoff).toBe(new Date(NOW - 7 * DAY).toISOString());
     expect(summary.liveCutoff).toBe(new Date(NOW - 30 * DAY).toISOString());
   });

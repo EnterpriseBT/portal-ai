@@ -16,6 +16,8 @@ import { DbService } from "../services/db.service.js";
 import { AgentTurnCeilingService } from "../services/agent-turn-ceiling.service.js";
 import { portals, portalMessages, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PortalAccessService } from "../services/portal-access.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { PortalService } from "../services/portal.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 
@@ -74,7 +76,7 @@ export const portalRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: Station not found
+ *         description: Station not found, or not readable by the caller (#685)
  *         content:
  *           application/json:
  *             schema:
@@ -100,6 +102,25 @@ portalRouter.post(
 
       const { organizationId, userId } = req.application!.metadata;
       const { stationId } = parsed.data;
+
+      // #685: a portal opens only on a station the caller can read
+      // (unreadable == absent), and creating one is an owned write.
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const station = await DbService.repository.stations.findById(stationId);
+      if (
+        !station ||
+        station.organizationId !== organizationId ||
+        !set.can("resource.read", {
+          type: "station",
+          id: station.id,
+          createdBy: station.createdBy,
+        })
+      ) {
+        return next(
+          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+        );
+      }
+      set.check("resource.write", { type: "portal", createdBy: userId });
 
       const result = await PortalService.createPortal({
         stationId,
@@ -207,6 +228,15 @@ portalRouter.get(
       if (stationId) {
         filters.push(eq(portals.stationId, stationId));
       }
+      // #685: portals are per-user; a member sees their own, owners and
+      // admins see every portal in the org (their grants say so).
+      const visibility = (
+        await PermissionService.loadSet(req.application!.metadata)
+      ).visibilityPredicate("portal", {
+        createdByCol: portals.createdBy,
+        idCol: portals.id,
+      });
+      if (visibility) filters.push(visibility);
       const where = and(...filters);
 
       const sortColumn =
@@ -290,7 +320,7 @@ portalRouter.get(
  *                 payload:
  *                   $ref: '#/components/schemas/PortalWithMessages'
  *       404:
- *         description: Portal not found
+ *         description: Portal not found, or not readable by the caller (#685, portals are per-user)
  *         content:
  *           application/json:
  *             schema:
@@ -308,23 +338,19 @@ portalRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId } = req.application!.metadata;
       const include_ =
         (req.query.include as string | undefined)
           ?.split(",")
           .map((s) => s.trim())
           .filter(Boolean) ?? [];
 
+      // #685: readable by the caller (per-user), else 404.
+      await PortalAccessService.load(req.application!.metadata, id);
+
       const { portal, messages, pinnedBlocks } = await PortalService.getPortal(
         id,
         { include: include_ }
       );
-
-      if (portal.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
-        );
-      }
 
       return HttpService.success<PortalGetResponsePayload>(res, {
         portal: portal as unknown as PortalGetResponsePayload["portal"],
@@ -392,8 +418,10 @@ portalRouter.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller can read the portal but not change it (#685)
  *       404:
- *         description: Portal not found
+ *         description: Portal not found, or not readable by the caller (#685, portals are per-user)
  *         content:
  *           application/json:
  *             schema:
@@ -411,14 +439,9 @@ portalRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId } = req.application!.metadata;
 
-      const portal = await DbService.repository.portals.findById(id);
-      if (!portal || portal.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
-        );
-      }
+      // #685: resetting the conversation writes to the portal.
+      await PortalAccessService.load(req.application!.metadata, id, "write");
 
       const deletedMessages = await PortalService.resetPortal(id);
 
@@ -498,8 +521,10 @@ portalRouter.delete(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller can read the portal but not change it (#685)
  *       404:
- *         description: Portal not found
+ *         description: Portal not found, or not readable by the caller (#685, portals are per-user)
  *         content:
  *           application/json:
  *             schema:
@@ -549,8 +574,10 @@ portalRouter.delete(
  *         description: Portal updated successfully
  *       400:
  *         description: Invalid payload (neither name nor lastOpened provided)
+ *       403:
+ *         description: The caller can read the portal but not change it (#685)
  *       404:
- *         description: Portal not found
+ *         description: Portal not found, or not readable by the caller (#685, portals are per-user)
  *       500:
  *         description: Internal server error
  */
@@ -560,7 +587,7 @@ portalRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId, userId } = req.application!.metadata;
+      const { userId } = req.application!.metadata;
 
       const { name, lastOpened } = req.body as {
         name?: string;
@@ -580,12 +607,8 @@ portalRouter.patch(
         );
       }
 
-      const existing = await DbService.repository.portals.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
-        );
-      }
+      // #685: renaming or touching the portal writes to it.
+      await PortalAccessService.load(req.application!.metadata, id, "write");
 
       const now = SystemUtilities.utc.now().getTime();
       const updates: Record<string, unknown> = {
@@ -652,8 +675,10 @@ portalRouter.patch(
  *               type: object
  *               properties:
  *                 id: { type: string }
+ *       403:
+ *         description: The caller can read the portal but not change it (#685)
  *       404:
- *         description: No such portal (`PORTAL_NOT_FOUND`)
+ *         description: Portal not found, or not readable by the caller (#685, portals are per-user) (`PORTAL_NOT_FOUND`)
  */
 portalRouter.delete(
   "/:id",
@@ -661,14 +686,10 @@ portalRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { organizationId, userId } = req.application!.metadata;
+      const { userId } = req.application!.metadata;
 
-      const portal = await DbService.repository.portals.findById(id);
-      if (!portal || portal.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
-        );
-      }
+      // #685: readable by the caller (else 404) and deletable (else 403).
+      await PortalAccessService.load(req.application!.metadata, id, "delete");
 
       await DbService.transaction(async (tx) => {
         // Detach pinned results — keep them but remove the portal link
@@ -722,13 +743,8 @@ portalRouter.post(
         );
       }
 
-      // Verify portal belongs to org
-      const portal = await DbService.repository.portals.findById(id);
-      if (!portal || portal.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
-        );
-      }
+      // #685: posting a turn writes to the portal (per-user), else 404/403.
+      await PortalAccessService.load(req.application!.metadata, id, "write");
 
       // #498: the un-charged agent-turn ceiling gates HERE — before the
       // user row is written and before any stream/model call exists, so a
@@ -749,10 +765,11 @@ portalRouter.post(
         );
       }
 
-      await PortalService.addMessage(id, {
-        role: "user",
-        content: parsed.data.message,
-      });
+      await PortalService.addMessage(
+        id,
+        { role: "user", content: parsed.data.message },
+        req.application!.metadata.userId
+      );
 
       logger.info({ portalId: id }, "User message added");
 
@@ -810,7 +827,7 @@ portalRouter.post(
  *                 payload:
  *                   $ref: '#/components/schemas/PortalRunningJobsResponse'
  *       404:
- *         description: Portal not found
+ *         description: Portal not found, or not readable by the caller (#685, portals are per-user)
  *         content:
  *           application/json:
  *             schema:
@@ -824,11 +841,8 @@ portalRouter.get(
       const { id } = req.params;
       const { organizationId } = req.application!.metadata;
 
-      // Scope check — portal must belong to the requesting org.
-      const portal = await DbService.repository.portals.findById(id);
-      if (!portal || portal.organizationId !== organizationId) {
-        throw new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found");
-      }
+      // #685: readable by the caller (per-user), else 404.
+      await PortalAccessService.load(req.application!.metadata, id);
 
       const rows = await DbService.repository.jobs.findRunningByPortalId(
         id,

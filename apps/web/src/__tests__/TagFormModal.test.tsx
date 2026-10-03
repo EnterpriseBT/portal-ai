@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import userEvent from "@testing-library/user-event";
 import type { EntityTag } from "@portalai/core/models";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
@@ -138,15 +139,28 @@ describe("TagFormModal", () => {
   });
 
   it("should submit form on Enter key press in text field", async () => {
+    // A real key press, not fireEvent.submit: the dialog has several text
+    // fields and no visible submit button, so Enter only submits because
+    // the Modal supplies a default button.
+    const user = userEvent.setup();
     const onSubmit = jest.fn();
     render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
-    fireEvent.change(screen.getByLabelText(/Name/), {
-      target: { value: "Enter Tag" },
-    });
-    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await user.type(screen.getByLabelText(/Name/), "Enter Tag{Enter}");
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith({ name: "Enter Tag" });
+      expect(onSubmit).toHaveBeenCalledTimes(1);
     });
+    expect(onSubmit).toHaveBeenCalledWith({ name: "Enter Tag" });
+  });
+
+  it("does not submit on Enter while a save is pending", async () => {
+    // The Create button is disabled while pending; Enter must not get past it.
+    const user = userEvent.setup();
+    const onSubmit = jest.fn();
+    render(
+      <TagFormModal {...defaultProps} onSubmit={onSubmit} isPending={true} />
+    );
+    await user.type(screen.getByLabelText(/Name/), "Dup{Enter}{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("should show field error on blur", async () => {

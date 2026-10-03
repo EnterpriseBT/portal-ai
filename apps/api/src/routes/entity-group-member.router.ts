@@ -14,6 +14,8 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 
 const logger = createLogger({ module: "entity-group-member" });
 
@@ -22,6 +24,39 @@ const logger = createLogger({ module: "entity-group-member" });
  * Express mergeParams is required so `:entityGroupId` is accessible here.
  */
 export const entityGroupMemberRouter = Router({ mergeParams: true });
+
+/**
+ * #685: a group's membership is changed through the group. The group must be
+ * in the caller's org and readable by them (404 otherwise, unreadable ==
+ * absent), and the caller needs write on it (403). The group lookup used to
+ * skip the org check.
+ */
+async function assertGroupWritable(
+  req: Request,
+  entityGroupId: string
+): Promise<void> {
+  const caller = req.application!.metadata;
+  const set = await PermissionService.loadSet(caller);
+  const group = await DbService.repository.entityGroups.findById(entityGroupId);
+  if (
+    !ObjectAccessService.readableInOrg(
+      set,
+      caller.organizationId,
+      "entity_group",
+      group
+    )
+  ) {
+    throw new ApiError(
+      404,
+      ApiCode.ENTITY_GROUP_NOT_FOUND,
+      "Entity group not found"
+    );
+  }
+  set.check(
+    "resource.write",
+    ObjectAccessService.object("entity_group", group)
+  );
+}
 
 /**
  * @openapi
@@ -154,6 +189,8 @@ entityGroupMemberRouter.get(
  *                 type: boolean
  *                 default: false
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       201:
  *         description: Member added
  *         content:
@@ -215,18 +252,8 @@ entityGroupMemberRouter.post(
 
       const { organizationId, userId } = req.application!.metadata;
 
-      // Verify entity group exists
-      const group =
-        await DbService.repository.entityGroups.findById(entityGroupId);
-      if (!group) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.ENTITY_GROUP_NOT_FOUND,
-            "Entity group not found"
-          )
-        );
-      }
+      // #685: in the caller's org, readable, and writable by them
+      await assertGroupWritable(req, entityGroupId);
 
       // Verify connector entity exists and belongs to same org
       const connectorEntity =
@@ -382,6 +409,8 @@ entityGroupMemberRouter.post(
  *               isPrimary:
  *                 type: boolean
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       200:
  *         description: Member updated
  *         content:
@@ -435,9 +464,17 @@ entityGroupMemberRouter.patch(
         );
       }
 
+      // #685: the group must be writable by the caller, and the member must
+      // belong to the caller's org and to that group. It used to resolve any
+      // member by id.
+      await assertGroupWritable(req, entityGroupId);
       const existing =
         await DbService.repository.entityGroupMembers.findById(memberId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId ||
+        existing.entityGroupId !== entityGroupId
+      ) {
         return next(
           new ApiError(
             404,
@@ -544,6 +581,8 @@ entityGroupMemberRouter.patch(
  *         schema:
  *           type: string
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       200:
  *         description: Member removed
  *         content:
@@ -577,11 +616,19 @@ entityGroupMemberRouter.delete(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { memberId } = req.params;
+      const { entityGroupId, memberId } = req.params;
 
+      // #685: the group must be writable by the caller, and the member must
+      // belong to the caller's org and to that group. It used to resolve any
+      // member by id.
+      await assertGroupWritable(req, entityGroupId);
       const existing =
         await DbService.repository.entityGroupMembers.findById(memberId);
-      if (!existing) {
+      if (
+        !existing ||
+        existing.organizationId !== req.application!.metadata.organizationId ||
+        existing.entityGroupId !== entityGroupId
+      ) {
         return next(
           new ApiError(
             404,

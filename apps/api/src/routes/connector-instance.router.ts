@@ -679,6 +679,8 @@ connectorInstanceRouter.get(
  *               credentials:
  *                 type: [object, "null"]
  *     responses:
+ *       403:
+ *         description: The caller can't create connector instances, or the body names an organization other than the caller's (#685)
  *       201:
  *         description: Connector instance created
  *         content:
@@ -712,6 +714,7 @@ connectorInstanceRouter.get(
  */
 connectorInstanceRouter.post(
   "/",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = ConnectorInstanceCreateRequestBodySchema.safeParse(
@@ -736,6 +739,26 @@ connectorInstanceRouter.post(
         config,
         credentials,
       } = parsed.data;
+
+      // #685: the instance is created in the caller's org. This handler used
+      // to write to whatever organizationId the body named, so any
+      // authenticated user could plant an instance (credentials included) in
+      // another org. A body org that isn't the caller's is refused, and
+      // creating is an owned write.
+      const caller = req.application!.metadata;
+      if (organizationId !== caller.organizationId) {
+        return next(
+          new ApiError(
+            403,
+            ApiCode.INSUFFICIENT_ROLE,
+            "You can only create connector instances in your current organization"
+          )
+        );
+      }
+      await PermissionService.check(caller, "resource.write", {
+        type: "connector_instance",
+        createdBy: caller.userId,
+      });
 
       // Verify the connector definition exists
       const definition = await DbService.repository.connectorDefinitions
@@ -895,6 +918,8 @@ connectorInstanceRouter.post(
  *           schema:
  *             $ref: '#/components/schemas/ProbeEndpointDraftRequestBody'
  *     responses:
+ *       403:
+ *         description: The caller can't create connector instances, or the body names an organization other than the caller's (#685)
  *       200:
  *         description: Probe completed (possibly with degradation)
  *         content:
@@ -918,6 +943,16 @@ connectorInstanceRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // #685: drafting an endpoint is part of creating a connector
+      // instance, so it needs the same owned create.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "connector_instance",
+          createdBy: req.application!.metadata.userId,
+        }
+      );
       const { organizationId } = req.application!.metadata;
 
       const parsed = ProbeEndpointDraftRequestBodySchema.safeParse(
@@ -979,6 +1014,8 @@ connectorInstanceRouter.post(
  *           schema:
  *             $ref: '#/components/schemas/PreviewEndpointPageRequestBody'
  *     responses:
+ *       403:
+ *         description: The caller can't create connector instances, or the body names an organization other than the caller's (#685)
  *       200:
  *         description: Page 1 fetched
  *         content:
@@ -1002,6 +1039,16 @@ connectorInstanceRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // #685: drafting an endpoint is part of creating a connector
+      // instance, so it needs the same owned create.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "connector_instance",
+          createdBy: req.application!.metadata.userId,
+        }
+      );
       const { organizationId } = req.application!.metadata;
 
       const parsed = PreviewEndpointPageRequestBodySchema.safeParse(
@@ -1071,6 +1118,8 @@ connectorInstanceRouter.post(
  *           schema:
  *             $ref: '#/components/schemas/SuggestTransformRequestBody'
  *     responses:
+ *       403:
+ *         description: The caller can't create connector instances, or the body names an organization other than the caller's (#685)
  *       200:
  *         description: Suggestion returned (with or without a warning).
  *         content:
@@ -1098,6 +1147,16 @@ connectorInstanceRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // #685: drafting an endpoint is part of creating a connector
+      // instance, so it needs the same owned create.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "connector_instance",
+          createdBy: req.application!.metadata.userId,
+        }
+      );
       const parsed = SuggestTransformRequestBodySchema.safeParse(
         req.body ?? {}
       );

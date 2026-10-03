@@ -17,6 +17,7 @@ import {
   Stack,
   Typography,
   AsyncSearchableSelect,
+  FormDefaultButton,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type { DataTableColumn } from "@portalai/core/ui";
@@ -196,6 +197,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
             Submit
           </Button>
         </DialogActions>
+        <FormDefaultButton disabled={addDisabled} />
       </form>
     </Dialog>
   );

@@ -32,10 +32,13 @@ Props interface → `React.FC` component → hooks → handlers → JSX return.
 
 User feedback (apps/web): failures **inside a dialog** render `<FormAlert serverError={…} />` and keep the dialog open; failures **anywhere else** raise `useToast().error(…)`. Never a local `Snackbar` or per-component toast state — `UpdateBanner` and `ConnectorInstanceSyncFeedback` are recorded exceptions (polling and progress are not toast surfaces), not precedents.
 
+Dialog forms (apps/web): actions are `type="button"`, so **Enter must still submit** — `Modal` renders a hidden `FormDefaultButton` (`@portalai/core/ui`) when its paper is a form, and every form `Modal` passes `submitDisabled` (the visible submit's `disabled` expression) so Enter can't submit while the button can't — guarded by `dialog-enter-submit.guard.test.ts`. A raw `Dialog` + `<form>` renders `<FormDefaultButton disabled={…} />` by hand. Test Enter with a real key press (`user.type(field, "x{Enter}")`), never `fireEvent.submit`.
+
 ## API Pattern
 
 - Services: classes with static methods (not loose functions)
 - Errors: `ApiError` class + `next(error)` — never `res.status().json()` directly
+- Authorization (#685): every mutation and SSE route authorizes server-side and is classified in `apps/api/src/__tests__/config/route-authorization.map.ts` (CI guard). Resolve the caller with `getApplicationMetadata` (never an org/user id from the body); load the object **org-scoped** first (the permission engine doesn't see orgs); then `resource.<verb>` on `{type, id, createdBy}`; creates check the parent's read plus owned or class create; unreadable == 404, forbidden == 403.
 - Error codes: `ApiCode` enum in `src/constants/api-codes.constants.ts`
 - Validation: middleware with typed `Request` interfaces
 - Logging: Pino logger at route, service, and DB layers

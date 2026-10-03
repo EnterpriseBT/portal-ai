@@ -2,8 +2,6 @@ import type {
   JobListRequestQuery,
   JobListResponsePayload,
   JobGetResponsePayload,
-  JobCreateRequestBody,
-  JobCreateResponsePayload,
   JobCancelResponsePayload,
 } from "@portalai/core/contracts";
 
@@ -34,11 +32,6 @@ export const jobs = {
       undefined,
       options
     ),
-
-  create: () =>
-    useAuthMutation<JobCreateResponsePayload, JobCreateRequestBody>({
-      url: "/api/jobs",
-    }),
 
   cancel: (id: string) =>
     useAuthMutation<JobCancelResponsePayload, void>({

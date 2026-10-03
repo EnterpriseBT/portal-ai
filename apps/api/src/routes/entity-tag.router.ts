@@ -306,6 +306,8 @@ entityTagRouter.get(
  *               description:
  *                 type: [string, "null"]
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       201:
  *         description: Entity tag created
  *         content:
@@ -357,6 +359,17 @@ entityTagRouter.post(
       }
 
       const { organizationId, userId } = req.application!.metadata;
+
+      // #685: creating one is owner/admin only (class write on tag).
+      // MemberAccess holds nothing on this type, so members can't create
+      // what they couldn't then edit or delete.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "tag",
+        }
+      );
 
       const duplicate = await DbService.repository.entityTags.findByName(
         organizationId,

@@ -137,6 +137,7 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
 
   return (
     <Modal
+      submitDisabled={false}
       open={open}
       onClose={onClose}
       title="Create new entity"

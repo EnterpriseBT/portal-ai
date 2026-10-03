@@ -185,6 +185,42 @@ export async function seedUserAndOrg(
   };
 }
 
+export interface TenancyFixture {
+  orgId: string;
+  ownerId: string;
+  memberId: string;
+  otherOrgId: string;
+  otherOwnerId: string;
+}
+
+/**
+ * #685: the three identities every authorization test needs: an org owner,
+ * a plain member of the same org (role `member`), and the owner of a second,
+ * unrelated org. Both orgs get the RBAC system policies. Pair it with a mocked
+ * `jwtCheck` whose `sub` the test flips between the three auth0 ids.
+ */
+export async function seedTenancyFixture(
+  db: Db,
+  subs: { owner: string; member: string; otherOwner: string }
+): Promise<TenancyFixture> {
+  const owner = await seedUserAndOrg(db, subs.owner);
+  const member = createUser(subs.member);
+  await db.insert(users).values(member as never);
+  await db.insert(organizationUsers).values(
+    createOrganizationUser(owner.organizationId, member.id, {
+      role: "member",
+    }) as never
+  );
+  const other = await seedUserAndOrg(db, subs.otherOwner);
+  return {
+    orgId: owner.organizationId,
+    ownerId: owner.userId,
+    memberId: member.id,
+    otherOrgId: other.organizationId,
+    otherOwnerId: other.userId,
+  };
+}
+
 /**
  * Tear down all user/organization data in FK-safe order.
  *

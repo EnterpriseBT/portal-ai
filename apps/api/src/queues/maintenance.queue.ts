@@ -9,8 +9,8 @@ const logger = createLogger({ module: "maintenance-queue" });
  * Maintenance queue (#179 D5) — internal repeatable housekeeping jobs.
  *
  * Deliberately OFF the user-facing `jobs` table machinery: no jobs row,
- * no SSE, no entity locks. Operator visibility comes from
- * `GET /api/admin/maintenance` (BullMQ state) + structured pino logs.
+ * no SSE, no entity locks. Operator visibility comes from the BullMQ
+ * job state (each run's return value) + structured pino logs.
  */
 export const MAINTENANCE_QUEUE_NAME = "maintenance";
 

@@ -10,6 +10,8 @@ import {
 import { PortalTurnGuardService } from "../services/portal-turn-guard.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
+import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PortalAccessService } from "../services/portal-access.service.js";
 
 const logger = createLogger({ module: "portal-events" });
 
@@ -61,8 +63,14 @@ export const portalEventsRouter = Router();
  *           text/event-stream:
  *             schema:
  *               $ref: '#/components/schemas/PortalStreamEvent'
+ *       403:
+ *         description: The caller can read the portal but not run a turn on it (#685)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: Portal or station not found
+ *         description: Portal or station not found, or the portal isn't readable by the caller (#685)
  *         content:
  *           application/json:
  *             schema:
@@ -77,11 +85,17 @@ export const portalEventsRouter = Router();
 portalEventsRouter.get(
   "/:portalId/stream",
   sseAuth,
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     let sse: SseUtil | null = null;
 
     try {
       const { portalId } = req.params;
+      // #685: the caller must be able to read the portal (unreadable or
+      // another org's == absent, 404), and the turn runs as the caller.
+      const caller = req.application!.metadata;
+      const { set: callerSet, portal: accessible } =
+        await PortalAccessService.load(caller, portalId);
 
       // Load portal + message history in one pass. The newest row tells us the
       // turn's state (#504): an `assistant` row means the turn is already
@@ -126,7 +140,18 @@ portalEventsRouter.get(
       }
 
       try {
-        // Fresh turn — this connection owns it.
+        // Fresh turn — this connection owns it. Running a turn writes to
+        // the portal, so it needs write as well as read (403 otherwise).
+        callerSet.check(
+          "resource.write",
+          PortalAccessService.object(accessible)
+        );
+        // #685: the turn answers the pending message, so it runs with its
+        // author's data access (who posted it via POST /messages). The
+        // stream caller only claims the turn. An owner/admin who can open any
+        // portal must not answer a member's question with rows the member
+        // can't see, saved into the member's portal.
+        const turnUserId = last?.createdBy ?? caller.userId;
 
         // Load station data (re-populates in-memory AlaSQL tables)
         const station = await DbService.repository.stations.findById(
@@ -145,9 +170,9 @@ portalEventsRouter.get(
         const stationContext = await buildStationContext({
           station: { id: station.id, name: station.name },
           organizationId: portal.organizationId,
-          // #599: scope the roster to the same identity the session runs as
-          // (below, `userId: portal.createdBy`), so it matches the SQL session.
-          userId: portal.createdBy,
+          // #599 / #685: scope the roster to the identity the session runs
+          // as: the pending message's author, never the portal's creator.
+          userId: turnUserId,
         });
 
         sse = new SseUtil(res);
@@ -157,7 +182,7 @@ portalEventsRouter.get(
           messages: coreMessages,
           stationContext,
           organizationId: portal.organizationId,
-          userId: portal.createdBy,
+          userId: turnUserId,
           sse,
         });
 
@@ -241,7 +266,7 @@ portalEventsRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/BulkJobTerminalEvent'
  *       404:
- *         description: Portal not found
+ *         description: Portal not found, or not readable by the caller (#685)
  *         content:
  *           application/json:
  *             schema:
@@ -250,16 +275,13 @@ portalEventsRouter.get(
 portalEventsRouter.get(
   "/:portalId/events",
   sseAuth,
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { portalId } = req.params;
 
-      const portal = await DbService.repository.portals.findById(portalId);
-      if (!portal) {
-        return next(
-          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
-        );
-      }
+      // #685: readable by the caller, else 404.
+      await PortalAccessService.load(req.application!.metadata, portalId);
 
       const { PORTAL_EVENTS_CHANNEL_PREFIX } =
         await import("../services/portal.service.js");

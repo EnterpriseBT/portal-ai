@@ -7,6 +7,8 @@ import { JobsService } from "../services/jobs.service.js";
 import { JobEventsService } from "../services/job-events.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
+import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 import { JobModel } from "@portalai/core/models";
 import type { JobSnapshotEvent } from "@portalai/core/contracts";
 
@@ -49,11 +51,12 @@ export const jobEventsRouter = Router();
  *       401:
  *         description: Missing or invalid token
  *       404:
- *         description: Job not found
+ *         description: Job not found, in another org, or not readable by the caller (#685)
  */
 jobEventsRouter.get(
   "/:id/events",
   sseAuth,
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const jobId = req.params.id;
@@ -69,6 +72,20 @@ jobEventsRouter.get(
             : "Failed to fetch job for event stream"
         );
       });
+
+      // #685: the same rule as GET /api/jobs/:id. Another org's job, or one
+      // the caller can't read, is absent (404).
+      const caller = req.application!.metadata;
+      const readable =
+        job.organizationId === caller.organizationId &&
+        (await PermissionService.loadSet(caller)).can("resource.read", {
+          type: "job",
+          id: job.id,
+          createdBy: job.createdBy,
+        });
+      if (!readable) {
+        return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
+      }
 
       const sse = new SseUtil(res);
 

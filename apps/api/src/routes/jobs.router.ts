@@ -6,9 +6,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import {
-  JobCreateRequestBodySchema,
   JobListRequestQuerySchema,
-  type JobCreateResponsePayload,
   type JobGetResponsePayload,
   type JobListResponsePayload,
   type JobCancelResponsePayload,
@@ -28,101 +26,10 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
   type: jobs.type,
 };
 
-/**
- * @openapi
- * /api/jobs:
- *   post:
- *     tags:
- *       - Jobs
- *     summary: Create and enqueue a new job
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - type
- *               - organizationId
- *             properties:
- *               type:
- *                 type: string
- *               organizationId:
- *                 type: string
- *               metadata:
- *                 type: object
- *     responses:
- *       201:
- *         description: Job created and enqueued
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 payload:
- *                   $ref: '#/components/schemas/JobGetResponse'
- *       400:
- *         description: Invalid request body
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiErrorResponse'
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiErrorResponse'
- */
-jobsRouter.post(
-  "/",
-  getApplicationMetadata,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const parsed = JobCreateRequestBodySchema.safeParse(req.body);
-      if (!parsed.success) {
-        return next(
-          new ApiError(400, ApiCode.JOB_INVALID_PAYLOAD, "Invalid job payload")
-        );
-      }
-
-      const job = await JobsService.create(
-        req.application?.metadata.userId as string,
-        parsed.data
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(
-          500,
-          ApiCode.JOB_ENQUEUE_FAILED,
-          error instanceof Error ? error.message : "Failed to create job"
-        );
-      });
-
-      logger.info({ jobId: job.id, type: parsed.data.type }, "Job created");
-
-      return HttpService.success<JobCreateResponsePayload>(res, { job }, 201);
-    } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create job"
-      );
-      return next(
-        error instanceof ApiError
-          ? error
-          : new ApiError(
-              500,
-              ApiCode.JOB_ENQUEUE_FAILED,
-              error instanceof Error ? error.message : "Failed to create job"
-            )
-      );
-    }
-  }
-);
+// #685: the generic POST /api/jobs was removed. It enqueued any job type,
+// with arbitrary metadata, in the org named in the body and with no
+// permission check. Every real job is enqueued by its own authorized route
+// (sync, import, revalidate, commit, ...).
 
 /**
  * @openapi

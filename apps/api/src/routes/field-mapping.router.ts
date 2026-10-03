@@ -21,6 +21,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { fieldMappings } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PermissionService } from "../services/permission.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
@@ -337,6 +338,8 @@ fieldMappingRouter.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller lacks permission for this field mapping change (#685)
  *       404:
  *         description: Connector entity or column definition not found
  *         content:
@@ -366,12 +369,24 @@ fieldMappingRouter.post(
         );
       }
 
-      // Verify connector entity exists
+      // #685: the connector entity must be in the caller's org and readable
+      // by them (unreadable == absent), and creating a mapping is an owned
+      // write. It used to accept any entity id, across orgs.
+      const caller = req.application!.metadata;
+      const set = await PermissionService.loadSet(caller);
       const connectorEntity =
         await DbService.repository.connectorEntities.findById(
           parsed.data.connectorEntityId
         );
-      if (!connectorEntity) {
+      if (
+        !connectorEntity ||
+        connectorEntity.organizationId !== caller.organizationId ||
+        !set.can("resource.read", {
+          type: "entity",
+          id: connectorEntity.id,
+          createdBy: connectorEntity.createdBy,
+        })
+      ) {
         return next(
           new ApiError(
             404,
@@ -381,6 +396,11 @@ fieldMappingRouter.post(
         );
       }
 
+      set.check("resource.write", {
+        type: "field_mapping",
+        createdBy: caller.userId,
+      });
+
       // Assert write capability on the parent connector instance
       await assertWriteCapability(parsed.data.connectorEntityId);
 
@@ -389,12 +409,15 @@ fieldMappingRouter.post(
         req.application!.metadata.organizationId
       );
 
-      // Verify column definition exists
+      // Verify column definition exists, in the caller's org (#685)
       const columnDefinition =
         await DbService.repository.columnDefinitions.findById(
           parsed.data.columnDefinitionId
         );
-      if (!columnDefinition) {
+      if (
+        !columnDefinition ||
+        columnDefinition.organizationId !== caller.organizationId
+      ) {
         return next(
           new ApiError(
             404,
@@ -580,6 +603,8 @@ fieldMappingRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller lacks permission for this field mapping change (#685)
  *       404:
  *         description: Field mapping not found
  *         content:
@@ -610,8 +635,11 @@ fieldMappingRouter.patch(
         );
       }
 
+      // #685: the mapping must be in the caller's org (it used to resolve
+      // any mapping by id), and changing it needs write on it.
+      const caller = req.application!.metadata;
       const existing = await DbService.repository.fieldMappings.findById(id);
-      if (!existing) {
+      if (!existing || existing.organizationId !== caller.organizationId) {
         return next(
           new ApiError(
             404,
@@ -620,6 +648,11 @@ fieldMappingRouter.patch(
           )
         );
       }
+      await PermissionService.check(caller, "resource.write", {
+        type: "field_mapping",
+        id: existing.id,
+        createdBy: existing.createdBy,
+      });
 
       // Assert write capability on the parent connector instance
       await assertWriteCapability(existing.connectorEntityId);
@@ -651,7 +684,7 @@ fieldMappingRouter.patch(
         const colDef = await DbService.repository.columnDefinitions.findById(
           parsed.data.columnDefinitionId
         );
-        if (!colDef) {
+        if (!colDef || colDef.organizationId !== caller.organizationId) {
           return next(
             new ApiError(
               404,
@@ -965,6 +998,8 @@ fieldMappingRouter.get(
  *                         entityGroupMembers:
  *                           type: integer
  *                           description: Number of entity group members that were cascade-deleted
+ *       403:
+ *         description: The caller lacks permission for this field mapping change (#685)
  *       404:
  *         description: Field mapping not found
  *         content:
@@ -986,22 +1021,44 @@ fieldMappingRouter.delete(
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
 
-      // Block if a revalidation job is active for this mapping's entity
+      // #685: resolve the mapping within the caller's org first. This used
+      // to find any mapping by id, across orgs, before anything else.
       const mappingToDelete =
         await DbService.repository.fieldMappings.findById(id);
-      if (mappingToDelete) {
-        // Assert write capability on the parent connector instance
-        await assertWriteCapability(mappingToDelete.connectorEntityId);
-
-        await JobLockService.assertConnectorEntityUnlocked(
-          [mappingToDelete.connectorEntityId],
-          organizationId
-        );
-
-        await RevalidationService.assertNoActiveJob(
-          mappingToDelete.connectorEntityId
+      if (
+        !mappingToDelete ||
+        mappingToDelete.organizationId !== organizationId
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.FIELD_MAPPING_NOT_FOUND,
+            "Field mapping not found"
+          )
         );
       }
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.delete",
+        {
+          type: "field_mapping",
+          id: mappingToDelete.id,
+          createdBy: mappingToDelete.createdBy,
+        }
+      );
+
+      // Assert write capability on the parent connector instance, then block
+      // if a job holds the entity or a revalidation is active for it.
+      await assertWriteCapability(mappingToDelete.connectorEntityId);
+
+      await JobLockService.assertConnectorEntityUnlocked(
+        [mappingToDelete.connectorEntityId],
+        organizationId
+      );
+
+      await RevalidationService.assertNoActiveJob(
+        mappingToDelete.connectorEntityId
+      );
 
       await FieldMappingValidationService.validateDelete(id);
 

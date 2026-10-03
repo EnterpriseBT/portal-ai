@@ -359,6 +359,8 @@ columnDefinitionRouter.get(
  *               canonicalFormat:
  *                 type: [string, "null"]
  *     responses:
+ *       403:
+ *         description: The caller lacks permission for this change (#685)
  *       201:
  *         description: Column definition created
  *         content:
@@ -408,6 +410,17 @@ columnDefinitionRouter.post(
       );
 
       const { organizationId, userId } = req.application!.metadata;
+
+      // #685: creating one is owner/admin only (class write on column_definition).
+      // MemberAccess holds nothing on this type, so members can't create
+      // what they couldn't then edit or delete.
+      await PermissionService.check(
+        req.application!.metadata,
+        "resource.write",
+        {
+          type: "column_definition",
+        }
+      );
 
       const factory = new ColumnDefinitionModelFactory();
       const model = factory.create(userId);

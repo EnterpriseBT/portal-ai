@@ -18,14 +18,20 @@ import {
   generateId,
   seedUserAndOrg,
   teardownOrg,
+  createUser,
+  createOrganization,
+  createOrganizationUser,
 } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
+const MEMBER_AUTH0_ID = "auth0|ci-test-member";
+/** #685: the caller; tests flip it to the member. */
+let currentSub = AUTH0_ID;
 
 // Mock the auth middleware to populate req.auth with our test sub
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
-    req.auth = { payload: { sub: AUTH0_ID } } as never;
+    req.auth = { payload: { sub: currentSub } } as never;
     next();
   },
 }));
@@ -312,6 +318,7 @@ describe("Field Mapping Router", () => {
     db = drizzle(connection, { schema });
 
     await teardownOrg(db as ReturnType<typeof drizzle>);
+    currentSub = AUTH0_ID;
   });
 
   afterEach(async () => {
@@ -2042,6 +2049,243 @@ describe("Field Mapping Router", () => {
         expect(res.status).toBe(422);
         expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
       });
+    });
+  });
+
+  // ── #685: DELETE resolved any mapping by id, across orgs ───────────
+
+  describe("cross-tenant DELETE (#685)", () => {
+    it("DELETE another org's field mapping is a 404, and the mapping stays", async () => {
+      const drz = db as ReturnType<typeof drizzle>;
+      await seedFullChain(drz); // the caller's own org
+      const owner = createUser(`auth0|other-${generateId()}`);
+      await drz.insert(schema.users).values(owner as never);
+      const org = createOrganization(owner.id);
+      await drz.insert(schema.organizations).values(org as never);
+      const def = createConnectorDefinition();
+      await drz.insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, org.id);
+      await drz.insert(connectorInstances).values(instance as never);
+      const entity = createConnEntity(org.id, instance.id);
+      await drz.insert(connectorEntities).values(entity as never);
+      const colDef = createColDef(org.id);
+      await drz.insert(columnDefinitions).values(colDef as never);
+      const mapping = createFieldMap(org.id, entity.id, colDef.id);
+      await drz.insert(fieldMappings).values(mapping as never);
+
+      const res = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+
+      const [row] = await drz
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, mapping.id));
+      expect(row?.deleted).toBeNull();
+    });
+  });
+
+  // ── #685: org scope on PATCH/POST, and the caller's permission ──────
+
+  describe("authorization (#685)", () => {
+    const drz = () => db as ReturnType<typeof drizzle>;
+
+    /** Another org with a full chain and one mapping. */
+    async function otherOrgChain() {
+      const owner = createUser(`auth0|other-${generateId()}`);
+      await drz()
+        .insert(schema.users)
+        .values(owner as never);
+      const org = createOrganization(owner.id);
+      await drz()
+        .insert(schema.organizations)
+        .values(org as never);
+      const def = createConnectorDefinition();
+      await drz()
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const instance = createConnectorInstance(def.id, org.id);
+      await drz()
+        .insert(connectorInstances)
+        .values(instance as never);
+      const entity = createConnEntity(org.id, instance.id);
+      await drz()
+        .insert(connectorEntities)
+        .values(entity as never);
+      const colDef = createColDef(org.id);
+      await drz()
+        .insert(columnDefinitions)
+        .values(colDef as never);
+      const mapping = createFieldMap(org.id, entity.id, colDef.id);
+      await drz()
+        .insert(fieldMappings)
+        .values(mapping as never);
+      return {
+        entityId: entity.id,
+        columnDefinitionId: colDef.id,
+        mappingId: mapping.id,
+        sourceField: mapping.sourceField,
+      };
+    }
+
+    async function addMember(organizationId: string) {
+      const member = createUser(MEMBER_AUTH0_ID);
+      await drz()
+        .insert(schema.users)
+        .values(member as never);
+      await drz()
+        .insert(schema.organizationUsers)
+        .values(
+          createOrganizationUser(organizationId, member.id, {
+            role: "member",
+          }) as never
+        );
+      return member.id;
+    }
+
+    async function mappingRow(id: string) {
+      const [row] = await drz()
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, id));
+      return row;
+    }
+
+    it("PATCH another org's mapping is a 404, and it's unchanged", async () => {
+      await seedFullChain(drz());
+      const theirs = await otherOrgChain();
+      const res = await request(app)
+        .patch(`/api/field-mappings/${theirs.mappingId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: "hijacked",
+          columnDefinitionId: theirs.columnDefinitionId,
+        });
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+      expect((await mappingRow(theirs.mappingId)).sourceField).toBe(
+        theirs.sourceField
+      );
+    });
+
+    it("POST under another org's connector entity, or with its column definition, is a 404", async () => {
+      const mine = await seedFullChain(drz());
+      const theirs = await otherOrgChain();
+      const onTheirEntity = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: theirs.entityId,
+          columnDefinitionId: mine.columnDefinitionId,
+          sourceField: "x",
+          normalizedKey: "x_one",
+        });
+      expect(onTheirEntity.status).toBe(404);
+      expect(onTheirEntity.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+
+      const withTheirColumn = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: mine.connectorEntityId,
+          columnDefinitionId: theirs.columnDefinitionId,
+          sourceField: "y",
+          normalizedKey: "y_one",
+        });
+      expect(withTheirColumn.status).toBe(404);
+      expect(withTheirColumn.body.code).toBe(
+        ApiCode.COLUMN_DEFINITION_NOT_FOUND
+      );
+    });
+
+    it("a member can't change or delete a mapping someone else made (403)", async () => {
+      const mine = await seedFullChain(drz());
+      const mapping = createFieldMap(
+        mine.organizationId,
+        mine.connectorEntityId,
+        mine.columnDefinitionId
+      );
+      await drz()
+        .insert(fieldMappings)
+        .values(mapping as never);
+      await addMember(mine.organizationId);
+      currentSub = MEMBER_AUTH0_ID;
+
+      const patch = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: "theirs_now",
+          columnDefinitionId: mine.columnDefinitionId,
+        });
+      expect(patch.status).toBe(403);
+      const del = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(del.status).toBe(403);
+      const row = await mappingRow(mapping.id);
+      expect(row.sourceField).toBe(mapping.sourceField);
+      expect(row.deleted).toBeNull();
+    });
+
+    it("a member can't map onto an entity they can't read (404), and can onto their own (201)", async () => {
+      const mine = await seedFullChain(drz());
+      const memberId = await addMember(mine.organizationId);
+      // An entity the owner made. (Fixture rows are created by SYSTEM_TEST,
+      // which is the integration SYSTEM_ID, and members may read system
+      // rows; so the unreadable entity has to be the owner's.)
+      const ownersEntity = createConnEntity(
+        mine.organizationId,
+        mine.connectorInstanceId,
+        { createdBy: mine.userId }
+      );
+      await drz()
+        .insert(connectorEntities)
+        .values(ownersEntity as never);
+      // The member's own entity, on the same connector instance.
+      const own = createConnEntity(
+        mine.organizationId,
+        mine.connectorInstanceId,
+        {
+          createdBy: memberId,
+        }
+      );
+      await drz()
+        .insert(connectorEntities)
+        .values(own as never);
+      const { wideTableReconcilerService } =
+        await import("../../../services/wide-table-reconciler.service.js");
+      await wideTableReconcilerService.ensureTable(
+        own.id,
+        db as unknown as DbClient
+      );
+      currentSub = MEMBER_AUTH0_ID;
+
+      const refused = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: ownersEntity.id,
+          columnDefinitionId: mine.columnDefinitionId,
+          sourceField: "a",
+          normalizedKey: "a_one",
+        });
+      expect(refused.status).toBe(404);
+      expect(refused.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+
+      const ok = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: own.id,
+          columnDefinitionId: mine.columnDefinitionId,
+          sourceField: "b",
+          normalizedKey: "b_one",
+        });
+      expect(ok.status).toBe(201);
+      expect(ok.body.payload.fieldMapping.createdBy).toBe(memberId);
     });
   });
 });

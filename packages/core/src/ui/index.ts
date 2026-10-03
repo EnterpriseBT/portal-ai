@@ -9,6 +9,7 @@ export * from "./StatusMessage.js";
 export * from "./Progress.js";
 export * from "./StatusBadge.js";
 export * from "./Modal.js";
+export * from "./FormDefaultButton.js";
 export * from "./TextInput.js";
 export * from "./DeferredTextInput.js";
 export * from "./Checkbox.js";
