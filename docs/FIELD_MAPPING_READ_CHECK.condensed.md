@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#692](https://github.com/EnterpriseBT/portal-ai/issues/692) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** The four field-mapping GET routes don't authorize reads:
+**Why.** The four field-mapping GET routes don't authorize reads (and the GET inventory found ~15 more; see Plan):
 - `GET /:id` (and `/impact`, `/validate-bidirectional`) loads the mapping by id with **no org check**. A user in another org reads it (verified live: 200 with the full row).
 - `GET /` filters by org only, so a member sees every mapping in the org, including ones on entities that 404 for them.
 
@@ -27,21 +27,18 @@
 
 **Gaps the inventory finds.** If another GET route lacks its org or read check, it's the same class of bug as this one: fix it in this PR with an owner-vs-member / cross-org integration test, as #685's slices 6b/6c did. A gap that needs a product decision (what *should* be readable) is filed instead, and its map entry says so.
 
-## Plan — 2 slices
+## Plan — 8 slices (amended: the GET inventory found ~15 more unchecked reads)
 
-**Slice 1: the four field-mapping routes.**
-- Files: `routes/field-mapping.router.ts`; `__tests__/__integration__/routes/field-mapping.router.integration.test.ts`.
-- Tests, written first, in the integration suite (via `seedTenancyFixture`):
-  - a member's list excludes the owner's mappings and includes their own;
-  - a member GET/impact/validate on the owner's mapping → 404;
-  - another org's caller → 404 on all three;
-  - the owner and the member's own mappings → 200;
-  - a mapping in a curated view shared with the member is readable (`in_curated_view`).
-- Run with `npm run test:integration -- --testPathPattern field-mapping.router`.
+Each slice is an owner / member / other-org integration test first (via `seedTenancyFixture` or the suite's helpers), then the fix, then one commit. Runs use `npm run test:integration -- --testPathPattern <suite>`.
 
-**Slice 2: classify every GET route.**
-- Files: `__tests__/config/route-authorization.map.ts` (+81 entries) and `route-authorization.test.ts` (filter + floor); a fix + integration test per gap found; `CLAUDE.md` API Style Guide authorization bullet ("every mutation, SSE **and GET** route") and its copilot mirror.
-- Tests: the guard (an unclassified GET fails; the self-test probes a GET), run with `npm run test:unit -- --testPathPattern route-authorization`.
+1. **Field mappings (done, 8969089d).** List visibility; by-id/impact/validate via `loadReadableMapping`.
+2. **Connector entities** (`connector-entity.router.ts`, `entity-tag-assignment.router.ts`, `field-mappings.repository.ts`). `GET /:id` and `/:id/impact` gain the org check. `countByRefEntityKey` is filtered to the caller's org. `GET /:id/tags` requires the entity in-org and readable, and lists only readable tags.
+3. **Entity-group members** (`entity-group-member.router.ts`). The list and overlap require the group in-org and readable. Overlap also requires the target entity in-org and readable, and the target mapping in-org and on that entity.
+4. **Records, definitions, views.** The records list/count/by-id add `can read entity` on the parent. `GET /connector-definitions/:id` checks `resource.read connector_definition` (404). `GET /curated-views?stationId=` requires the station in-org and readable (404).
+5. **Uploads + map tiles.** `sheet-slice` calls `FileUploadAccessService.assertOwnUploadSession`. The message tile loads its portal through `PortalAccessService.load`. The pin tile checks `resource.read pin`. All return 404.
+6. **Jobs.** A `JobPayloadRedaction` shared by `GET /api/jobs`, `GET /api/jobs/:id` and the job-events SSE: non-creators without `* *` receive the row with `metadata` and `result` removed (id/type/status/progress/timestamps/error kept).
+7. **Small ones.** `GET /api/grants` on an unreadable object returns 404, not 403. `/field-mappings/:id/impact` omits a counterpart the caller can't read.
+8. **Guard.** `ROUTE_AUTHORIZATION` gains all 80 GET entries; the test filter covers every route (floor > 180, GETs > 80; the self-test probes a read). Plus the CLAUDE.md authorization bullet ("every route, reads included") and its mirror.
 
 ## Smoke (manual, against your dev stack)
 
@@ -52,7 +49,10 @@ Tokens as in the #685 smoke: `$OWNER`, `$MEMBER` (in `e2e-fixture`), `$OTHER` (a
 3. `GET /api/field-mappings/$FM/impact` and `/validate-bidirectional` as `$MEMBER` and `$OTHER` → `404`; as `$OWNER` → `200`.
 4. **Browser, member:** the member's own entity's detail page still lists its field mappings and the mapping edit dialog opens; no new console 404s on their own pages.
 5. **Browser, owner:** the entity detail and column-definition pages still list mappings; the impact preview before deleting a mapping still loads.
-6. Each GET gap slice 2 fixes gets its own `curl` line here once found (cross-org / member → 404, owner → 200).
+6. `$OTHER` → `404` on `GET /api/connector-entities/<owner entity>`, `/impact`, `/tags`, and `GET /api/entity-groups/<owner group>/members` (and `/members/overlap?…`). `$OWNER` → `200`.
+7. `$MEMBER` → `404` on `/api/connector-entities/<owner entity>/records`, `/api/connector-definitions/<unreadable def>`, `/api/curated-views?stationId=<unreadable station>`, `/api/file-uploads/sheet-slice?uploadSessionId=<owner's session>…`, a map tile from the owner's portal message and from an unshared pin.
+8. `$MEMBER` → `GET /api/jobs/<owner's job>` returns the row **without** `metadata`/`result`; for their own job, with both. `$OWNER` sees both on every job. The browser Jobs list and job detail still load for both.
+9. `$MEMBER` → `GET /api/grants?resourceType=station&resourceId=<unreadable station>` → `404`.
 
 ## Out of scope
 
