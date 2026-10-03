@@ -168,7 +168,21 @@ export interface RenderTileParams {
   userId: string;
   /** `If-None-Match` request header, if any. */
   ifNoneMatch?: string;
+  /**
+   * #692: may the caller read the tile's source? A message tile belongs to a
+   * portal, which is per-user (#685); a pin is read-checked like
+   * `GET /api/portal-results/:id`. Org scope alone let any member serve
+   * another member's private map. The router supplies it (it holds the
+   * caller's permission context); a `false` is the same 404 as a missing
+   * tile. Required, so no caller can skip it.
+   */
+  authorizeSource: (source: TileSource) => Promise<boolean>;
 }
+
+/** What `authorizeSource` is asked about. */
+export type TileSource =
+  | { kind: "message"; portalId: string }
+  | { kind: "pin"; id: string; createdBy: string };
 
 export interface TileRenderResult {
   status: 200 | 204 | 304;
@@ -480,6 +494,7 @@ export class PortalMapTileService {
   private static async resolvePipeline(
     ref: TileRef,
     organizationId: string,
+    authorizeSource: RenderTileParams["authorizeSource"],
     deps: RenderTileDeps
   ): Promise<{
     pipeline: VizPipeline;
@@ -507,6 +522,14 @@ export class PortalMapTileService {
       // Missing OR cross-org → the same 404, no existence leak.
       if (!message || message.organizationId !== organizationId)
         throw notFound();
+      // #692: the message's portal must be readable by the caller.
+      if (
+        !(await authorizeSource({
+          kind: "message",
+          portalId: String(message.portalId),
+        }))
+      )
+        throw notFound();
       const blocks = (message.blocks ?? []) as Array<Record<string, unknown>>;
       const block = blocks[ref.blockIndex];
       if (!block) throw notFound();
@@ -527,6 +550,15 @@ export class PortalMapTileService {
       unknown
     > | null;
     if (!row || row.organizationId !== organizationId) throw notFound();
+    // #692: the pin must be readable by the caller.
+    if (
+      !(await authorizeSource({
+        kind: "pin",
+        id: String(row.id),
+        createdBy: String(row.createdBy),
+      }))
+    )
+      throw notFound();
     const content = (row.content ?? {}) as Record<string, unknown>;
     const parsed = VizPipelineSchema.safeParse(content.pipeline);
     if (!parsed.success) throw notFound();
@@ -1261,7 +1293,16 @@ export class PortalMapTileService {
     params: RenderTileParams,
     deps: RenderTileDeps = {}
   ): Promise<TileRenderResult> {
-    const { ref, z, x, y, organizationId, userId, ifNoneMatch } = params;
+    const {
+      ref,
+      z,
+      x,
+      y,
+      organizationId,
+      userId,
+      ifNoneMatch,
+      authorizeSource,
+    } = params;
     const {
       pipeline,
       snapshotUpdatedAt,
@@ -1269,7 +1310,7 @@ export class PortalMapTileService {
       aggregation,
       layerTotal,
       layerTotalExact,
-    } = await this.resolvePipeline(ref, organizationId, deps);
+    } = await this.resolvePipeline(ref, organizationId, authorizeSource, deps);
 
     // #643: the caller's resolved curated-view scope. The tile serve runs
     // against these per-user views, and the scope hash keys both the ETag and

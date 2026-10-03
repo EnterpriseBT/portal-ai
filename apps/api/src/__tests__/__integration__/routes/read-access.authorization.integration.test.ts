@@ -51,6 +51,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { tileSourceAuthorizer } =
+  await import("../../../routes/portal-map.router.js");
 
 const now = Date.now();
 const base = (createdBy: string) => ({
@@ -428,5 +430,95 @@ describe("Read access (#692)", () => {
     expect(
       (await get(`/api/curated-views?stationId=${ownersStation}`)).status
     ).toBe(200);
+  });
+
+  // ── Uploads and map tiles ───────────────────────────────────────────
+
+  it("sheet-slice: a member gets 404 on another member's upload session", async () => {
+    const uploadSessionId = generateId();
+    await db.insert(schema.fileUploads).values({
+      id: generateId(),
+      organizationId: fx.orgId,
+      filename: "secret.csv",
+      contentType: "text/csv",
+      sizeBytes: 10,
+      s3Key: `uploads/${generateId()}`,
+      status: "uploaded",
+      uploadSessionId,
+      ...base(fx.ownerId),
+    } as never);
+    const path = `/api/file-uploads/sheet-slice?uploadSessionId=${uploadSessionId}&sheetId=s1&rowStart=0&rowEnd=1&colStart=0&colEnd=1`;
+    as(MEMBER_SUB);
+    const res = await get(path);
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_NOT_FOUND);
+    as(OTHER_SUB);
+    expect((await get(path)).body.code).toBe(ApiCode.FILE_UPLOAD_NOT_FOUND);
+  });
+
+  it("map tiles: the source authorizer allows a portal's own reader and refuses a member and another org", async () => {
+    const stationId = generateId();
+    await db.insert(schema.stations).values({
+      id: stationId,
+      organizationId: fx.orgId,
+      name: `Station ${suffix()}`,
+      description: null,
+      ...base(fx.ownerId),
+    } as never);
+    const portalId = generateId();
+    await db.insert(schema.portals).values({
+      id: portalId,
+      organizationId: fx.orgId,
+      stationId,
+      name: "Owner portal",
+      lastOpened: null,
+      ...base(fx.ownerId),
+    } as never);
+    const pin = async (createdBy: string) => {
+      const id = generateId();
+      await db.insert(schema.portalResults).values({
+        id,
+        organizationId: fx.orgId,
+        stationId,
+        portalId,
+        name: `pin ${suffix()}`,
+        type: "text",
+        content: {},
+        ...base(createdBy),
+      } as never);
+      return id;
+    };
+    const ownersPin = await pin(fx.ownerId);
+    const membersPin = await pin(fx.memberId);
+
+    const owner = tileSourceAuthorizer({
+      userId: fx.ownerId,
+      organizationId: fx.orgId,
+      roles: ["owner"],
+    });
+    const member = tileSourceAuthorizer({
+      userId: fx.memberId,
+      organizationId: fx.orgId,
+      roles: ["member"],
+    });
+    const otherOrg = tileSourceAuthorizer({
+      userId: fx.otherOwnerId,
+      organizationId: fx.otherOrgId,
+      roles: ["owner"],
+    });
+
+    const message = { kind: "message" as const, portalId };
+    expect(await owner(message)).toBe(true);
+    expect(await member(message)).toBe(false);
+    expect(await otherOrg(message)).toBe(false);
+
+    const pinSource = (id: string, createdBy: string) => ({
+      kind: "pin" as const,
+      id,
+      createdBy,
+    });
+    expect(await owner(pinSource(ownersPin, fx.ownerId))).toBe(true);
+    expect(await member(pinSource(ownersPin, fx.ownerId))).toBe(false);
+    expect(await member(pinSource(membersPin, fx.memberId))).toBe(true);
   });
 });
