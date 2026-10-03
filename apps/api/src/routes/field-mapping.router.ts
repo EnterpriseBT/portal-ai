@@ -947,7 +947,18 @@ fieldMappingRouter.get(
               existing.refEntityKey,
               existing.refNormalizedKey
             );
-          if (counterpart) {
+          // #692: only a counterpart the caller may read.
+          if (
+            counterpart &&
+            (await PermissionService.loadSet(req.application!.metadata)).can(
+              "resource.read",
+              {
+                type: "field_mapping",
+                id: counterpart.id,
+                createdBy: counterpart.createdBy,
+              }
+            )
+          ) {
             counterpartResult = {
               id: counterpart.id,
               sourceField: counterpart.sourceField,

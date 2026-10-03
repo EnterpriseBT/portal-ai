@@ -593,4 +593,81 @@ describe("Read access (#692)", () => {
       ).metadata.uploadSessionId
     ).toBe("secret-session");
   });
+
+  // ── Small ones: grants on an unreadable object, impact's counterpart ──
+
+  it("grants: listing shares on an object the caller can't read is 404, not 403", async () => {
+    const stationId = generateId();
+    await db.insert(schema.stations).values({
+      id: stationId,
+      organizationId: fx.orgId,
+      name: `Station ${suffix()}`,
+      description: null,
+      ...base(fx.ownerId),
+    } as never);
+    as(MEMBER_SUB);
+    const res = await get(
+      `/api/grants?resourceType=station&resourceId=${stationId}`
+    );
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+    as(OWNER_SUB);
+    expect(
+      (await get(`/api/grants?resourceType=station&resourceId=${stationId}`))
+        .status
+    ).toBe(200);
+  });
+
+  it("field-mapping impact omits a counterpart mapping the caller can't read", async () => {
+    // A member's entity whose mapping references the owner's entity, and the
+    // owner's counterpart mapping pointing back.
+    const ownersChain = await entityChain(fx.orgId, fx.ownerId);
+    const membersChain = await entityChain(fx.orgId, fx.memberId);
+    const counterpartKey = `nk_counter_${suffix()}`;
+    const membersMappingId = generateId();
+    await db.insert(schema.fieldMappings).values({
+      id: membersMappingId,
+      organizationId: fx.orgId,
+      connectorEntityId: membersChain.entityId,
+      columnDefinitionId: membersChain.columnDefinitionId,
+      sourceField: "ref_field",
+      isPrimaryKey: false,
+      normalizedKey: `nk_${suffix()}`,
+      required: false,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refEntityKey: ownersChain.entityKey,
+      refNormalizedKey: counterpartKey,
+      ...base(fx.memberId),
+    } as never);
+    const counterpartId = generateId();
+    await db.insert(schema.fieldMappings).values({
+      id: counterpartId,
+      organizationId: fx.orgId,
+      connectorEntityId: ownersChain.entityId,
+      columnDefinitionId: ownersChain.columnDefinitionId,
+      sourceField: "owners_secret_counterpart",
+      isPrimaryKey: false,
+      normalizedKey: counterpartKey,
+      required: false,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refEntityKey: membersChain.entityKey,
+      ...base(fx.ownerId),
+    } as never);
+
+    as(MEMBER_SUB);
+    const asMember = await get(
+      `/api/field-mappings/${membersMappingId}/impact`
+    );
+    expect(asMember.status).toBe(200);
+    expect(asMember.body.payload.counterpart).toBeNull();
+    expect(JSON.stringify(asMember.body)).not.toMatch(/secret/);
+
+    as(OWNER_SUB);
+    const asOwner = await get(`/api/field-mappings/${membersMappingId}/impact`);
+    expect(asOwner.body.payload.counterpart.id).toBe(counterpartId);
+  });
 });
