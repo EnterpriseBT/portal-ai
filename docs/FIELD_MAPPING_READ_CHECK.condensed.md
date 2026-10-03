@@ -88,7 +88,10 @@ All probes are `— backend` (API with real `$OWNER` / `$MEMBER` / `$OTHER` toke
 ### Findings
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
-| _(filled during the walk)_ | | | |
+| §2 NUL-byte ids on the fixed by-id reads | 500 whose message is the raw SQL text + params (`/field-mappings/%00`, `/connector-entities/%00/tags`, `/entity-groups/%00/members`). No row from any org; the query fails before returning. | low | waived: pre-existing app-wide (≈151 handlers echo `error.message`), filed as #687 |
+| §4 `include=connectorEntity` as a member | `rows=0` (the member owns no mapping: members can't read any column definition, a #630 rule), so the include couldn't carry anything. While the view was shared, the member's list held exactly the shared mapping (`rows=1`). | none | expectation holds (only readable rows); a richer include probe needs a member-owned mapping |
+| Smoke §7 (observed): owner map tile on a **non-map** block | 500 "column src.geom does not exist": past authorization, the renderer runs a data-table pipeline. Members are refused before rendering. | low | pre-existing robustness bug (should 404/400), not authorization; to file |
+| _All other probes_ | Held. §1 limit/offset stay filtered. §2 overlap with missing or garbage params → 400. §4 share → 200 + listed, revoke → 404 + unlisted; job search/type filters return others' rows redacted. §5 other-org ids in query params → empty; other-org pin → 404 on tiles and grants; org switch → 404, switching back restores. §6 deleted mapping/entity/group → 404 for the owner; demoted admin redacted on the next request; removed member's token → 404 / empty. §7 job lists leak no message/pin/upload ids. | — | — |
 
 ## Out of scope
 
