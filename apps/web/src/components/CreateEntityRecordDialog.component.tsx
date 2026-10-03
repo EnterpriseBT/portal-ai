@@ -80,6 +80,7 @@ const CreateForm: React.FC<{
 
   return (
     <Modal
+      submitDisabled={isPending}
       open
       onClose={onClose}
       title="New Record"

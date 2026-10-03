@@ -212,6 +212,7 @@ export const RegisterToolpackDialogUI: React.FC<
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title={

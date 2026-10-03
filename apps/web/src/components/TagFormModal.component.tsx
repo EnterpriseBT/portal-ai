@@ -133,6 +133,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title={isEdit ? "Edit Tag" : "Create Tag"}

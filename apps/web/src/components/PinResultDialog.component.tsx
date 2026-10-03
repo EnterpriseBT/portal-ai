@@ -74,6 +74,7 @@ export const PinResultDialog: React.FC<PinResultDialogProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Name this result"

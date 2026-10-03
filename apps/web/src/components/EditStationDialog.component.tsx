@@ -251,6 +251,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Edit Station"

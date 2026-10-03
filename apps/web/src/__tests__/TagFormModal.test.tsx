@@ -152,6 +152,17 @@ describe("TagFormModal", () => {
     expect(onSubmit).toHaveBeenCalledWith({ name: "Enter Tag" });
   });
 
+  it("does not submit on Enter while a save is pending", async () => {
+    // The Create button is disabled while pending; Enter must not get past it.
+    const user = userEvent.setup();
+    const onSubmit = jest.fn();
+    render(
+      <TagFormModal {...defaultProps} onSubmit={onSubmit} isPending={true} />
+    );
+    await user.type(screen.getByLabelText(/Name/), "Dup{Enter}{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("should show field error on blur", async () => {
     render(<TagFormModal {...defaultProps} />);
     const nameField = screen.getByLabelText(/Name/);

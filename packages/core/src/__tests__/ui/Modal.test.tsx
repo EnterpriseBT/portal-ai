@@ -275,10 +275,17 @@ describe("Modal Component", () => {
   // buttons), and a form with no submit button and more than one text field
   // doesn't submit on Enter. The Modal supplies the default button.
   describe("Enter submits a form dialog", () => {
-    const FormModal = ({ onSubmit }: { onSubmit: () => void }) => (
+    const FormModal = ({
+      onSubmit,
+      submitDisabled,
+    }: {
+      onSubmit: () => void;
+      submitDisabled?: boolean;
+    }) => (
       <Modal
         {...defaultProps}
         title="Form"
+        submitDisabled={submitDisabled}
         slotProps={{
           paper: {
             component: "form",
@@ -311,6 +318,17 @@ describe("Modal Component", () => {
       render(<FormModal onSubmit={onSubmit} />);
       await user.type(screen.getByLabelText("Name"), "x{Enter}");
       expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    // While the visible submit is disabled (a request in flight, an invalid
+    // form), Enter must not submit either: a disabled default button blocks
+    // implicit submission.
+    it("does not submit on Enter while submitDisabled", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} submitDisabled />);
+      await user.type(screen.getByLabelText("Name"), "x{Enter}{Enter}");
+      expect(onSubmit).not.toHaveBeenCalled();
     });
 
     it("clicking the visible action still fires once", async () => {

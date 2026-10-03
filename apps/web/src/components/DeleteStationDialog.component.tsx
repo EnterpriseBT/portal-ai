@@ -24,6 +24,7 @@ export const DeleteStationDialog: React.FC<DeleteStationDialogProps> = ({
   serverError,
 }) => (
   <Modal
+    submitDisabled={isPending}
     open={open}
     onClose={onClose}
     title="Delete Station"

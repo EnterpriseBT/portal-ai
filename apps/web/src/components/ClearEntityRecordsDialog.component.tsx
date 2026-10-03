@@ -91,6 +91,7 @@ export const ClearEntityRecordsDialog: React.FC<
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Delete All Records"

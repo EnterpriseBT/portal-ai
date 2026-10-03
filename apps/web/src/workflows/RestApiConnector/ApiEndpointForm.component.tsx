@@ -175,6 +175,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
 
   return (
     <Modal
+      submitDisabled={false}
       open={open}
       onClose={onClose}
       title={isEditing ? "Edit endpoint" : "Add endpoint"}

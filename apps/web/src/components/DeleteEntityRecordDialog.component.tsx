@@ -20,6 +20,7 @@ export const DeleteEntityRecordDialog: React.FC<
 > = ({ open, onClose, recordSourceId, onConfirm, isPending, serverError }) => {
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Delete Entity Record"

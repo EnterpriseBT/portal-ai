@@ -201,6 +201,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Edit toolpack"

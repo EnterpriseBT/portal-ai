@@ -30,6 +30,12 @@ export interface ModalProps extends Omit<
   maximizable?: boolean;
   /** Initial maximized state when `maximizable` is true. */
   defaultMaximized?: boolean;
+  /**
+   * For a form dialog: true whenever its visible submit button is disabled
+   * (a request in flight, an incomplete form). Enter then submits nothing,
+   * matching the button. Pass the same expression as that button's `disabled`.
+   */
+  submitDisabled?: boolean;
   children?: React.ReactNode;
 }
 
@@ -41,6 +47,7 @@ export const Modal: React.FC<ModalProps> = ({
   showCloseButton = true,
   maximizable = false,
   defaultMaximized = false,
+  submitDisabled = false,
   children,
   ...props
 }) => {
@@ -99,7 +106,7 @@ export const Modal: React.FC<ModalProps> = ({
       )}
       <DialogContent>{children}</DialogContent>
       {actions && <DialogActions>{actions}</DialogActions>}
-      {isForm && <FormDefaultButton />}
+      {isForm && <FormDefaultButton disabled={submitDisabled} />}
     </Dialog>
   );
 };

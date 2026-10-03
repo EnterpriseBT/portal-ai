@@ -109,6 +109,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending || !columnsReady}
       open
       onClose={onClose}
       title={mode === "create" ? "Create View" : "Edit View"}

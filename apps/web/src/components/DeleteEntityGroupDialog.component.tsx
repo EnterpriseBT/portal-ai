@@ -80,6 +80,7 @@ export const DeleteEntityGroupDialog: React.FC<
 
   return (
     <Modal
+      submitDisabled={deleteDisabled}
       open={open}
       onClose={onClose}
       title="Delete Entity Group"

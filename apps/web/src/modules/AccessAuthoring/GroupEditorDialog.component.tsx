@@ -66,6 +66,7 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
   serverError,
 }) => (
   <Modal
+    submitDisabled={isPending || !name.trim() || membersLoading}
     open={open}
     onClose={onClose}
     title={group ? `Edit “${group.name}”` : "New group"}

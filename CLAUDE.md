@@ -166,7 +166,7 @@ Every data-submission dialog must follow this structure:
 - For `Modal`-based dialogs: use `slotProps.paper.component="form"` with `onSubmit` handler on `slotProps.paper`
 - For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`, and render `<FormDefaultButton />` (from `@portalai/core/ui`) inside it
 - Action buttons must use `type="button"` to prevent double-firing with form submission
-- **Enter always submits.** A form with no submit button and more than one text field doesn't submit on Enter (HTML implicit submission), and the `type="button"` rule leaves dialogs without one. `Modal` therefore renders a hidden `FormDefaultButton` whenever its paper is a form; a raw `Dialog` form adds it by hand. Never call `onSubmit` from a key handler instead
+- **Enter submits exactly when the submit button could.** A form with no submit button and more than one text field doesn't submit on Enter (HTML implicit submission), and the `type="button"` rule leaves dialogs without one. `Modal` therefore renders a hidden `FormDefaultButton` whenever its paper is a form, and every form `Modal` passes **`submitDisabled`** — the same expression as its visible submit's `disabled` — so Enter can't submit during a pending request or an incomplete form (a double Enter made duplicates). A raw `Dialog` form renders `<FormDefaultButton disabled={…} />` by hand. `dialog-enter-submit.guard.test.ts` fails CI on a form `Modal` without `submitDisabled`. Never call `onSubmit` from a key handler instead
 - The first interactive field must receive auto-focus via `useDialogAutoFocus(open)` from `utils/use-dialog-autofocus.util.ts` (or `autoFocus` prop for simple text fields outside Modal)
 
 ### Server Error Display

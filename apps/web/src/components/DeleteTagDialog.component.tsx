@@ -24,6 +24,7 @@ export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
   serverError,
 }) => (
   <Modal
+    submitDisabled={isPending}
     open={open}
     onClose={onClose}
     title="Delete Tag"

@@ -53,6 +53,7 @@ export const DeleteOrganizationDialog: React.FC<
 
   return (
     <Modal
+      submitDisabled={!matches || isPending}
       open={open}
       onClose={onClose}
       title="Delete Organization"

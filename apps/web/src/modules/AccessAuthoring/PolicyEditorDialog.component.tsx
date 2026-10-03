@@ -60,6 +60,7 @@ export const PolicyEditorDialogUI: React.FC<PolicyEditorDialogUIProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending || !name.trim()}
       open={open}
       onClose={onClose}
       title={title}

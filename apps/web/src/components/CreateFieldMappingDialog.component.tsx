@@ -196,6 +196,7 @@ export const CreateFieldMappingDialog: React.FC<
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="New Field Mapping"

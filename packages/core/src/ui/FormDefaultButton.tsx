@@ -13,10 +13,21 @@ import React from "react";
  * for a button implicit submission has to find), and kept out of the tab
  * order and the accessibility tree. `Modal` renders it automatically when its
  * paper is a form; a raw MUI `Dialog` + `<form>` renders it inside the form.
+ *
+ * Pass `disabled` whenever the dialog's visible submit is disabled (a request
+ * in flight, an incomplete form): a disabled default button blocks implicit
+ * submission, so Enter can't do what the button can't.
  */
-export const FormDefaultButton: React.FC = () => (
+export interface FormDefaultButtonProps {
+  disabled?: boolean;
+}
+
+export const FormDefaultButton: React.FC<FormDefaultButtonProps> = ({
+  disabled = false,
+}) => (
   <button
     type="submit"
+    disabled={disabled}
     aria-hidden="true"
     tabIndex={-1}
     style={{

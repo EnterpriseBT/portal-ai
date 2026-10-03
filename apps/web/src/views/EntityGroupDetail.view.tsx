@@ -197,7 +197,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
             Submit
           </Button>
         </DialogActions>
-        <FormDefaultButton />
+        <FormDefaultButton disabled={addDisabled} />
       </form>
     </Dialog>
   );

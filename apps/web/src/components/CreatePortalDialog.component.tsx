@@ -136,6 +136,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
 
   return (
     <Modal
+      submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="New Portal"
