@@ -10,6 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -551,12 +552,18 @@ describe("Entity Group Router", () => {
         .set("Authorization", "Bearer test-token");
       expect(getRes.status).toBe(404);
 
-      // Members should also be soft-deleted
+      // Members should also be soft-deleted. (Their list route now 404s a
+      // deleted group, since it's read through the group (#692), so check the
+      // rows directly.)
+      const [memberRow] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(entityGroupMembers)
+        .where(eq(entityGroupMembers.id, memberId));
+      expect(memberRow.deleted).not.toBeNull();
       const membersRes = await request(app)
         .get(`/api/entity-groups/${group.id}/members`)
         .set("Authorization", "Bearer test-token");
-      expect(membersRes.status).toBe(200);
-      expect(membersRes.body.payload.members).toHaveLength(0);
+      expect(membersRes.status).toBe(404);
     });
 
     it("should return 404 for unknown ID", async () => {

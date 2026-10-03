@@ -146,6 +146,10 @@ describe("Read access (#692)", () => {
       refEntityKey: opts.refEntityKey ?? null,
       ...base(createdBy),
     } as never);
+    // Reconcile the wide table so record reads find `er__<id>`.
+    const { wideTableReconcilerService } =
+      await import("../../../services/wide-table-reconciler.service.js");
+    await wideTableReconcilerService.ensureTable(entityId, db as never);
     return {
       instanceId,
       entityId,
@@ -247,5 +251,105 @@ describe("Read access (#692)", () => {
     const res = await get(`/api/connector-entities/${chain.entityId}/impact`);
     expect(res.status).toBe(200);
     expect(res.body.payload.refFieldMappings).toBe(0);
+  });
+
+  // ── Entity-group members ────────────────────────────────────────────
+
+  /** An owner-created group with one member (the chain's entity). */
+  async function groupWithMember(organizationId: string, createdBy: string) {
+    const chain = await entityChain(organizationId, createdBy);
+    const groupId = generateId();
+    await db.insert(schema.entityGroups).values({
+      id: groupId,
+      organizationId,
+      name: `secret-group-${suffix()}`,
+      description: null,
+      ...base(createdBy),
+    } as never);
+    await db.insert(schema.entityGroupMembers).values({
+      id: generateId(),
+      organizationId,
+      entityGroupId: groupId,
+      connectorEntityId: chain.entityId,
+      linkFieldMappingId: chain.fieldMappingId,
+      isPrimary: false,
+      ...base(createdBy),
+    } as never);
+    return { ...chain, groupId };
+  }
+
+  const overlapPath = (
+    groupId: string,
+    targetEntityId: string,
+    targetMappingId: string
+  ) =>
+    `/api/entity-groups/${groupId}/members/overlap?targetConnectorEntityId=${targetEntityId}&targetLinkFieldMappingId=${targetMappingId}`;
+
+  it("group members and overlap: another org's owner gets 404 and nothing leaks", async () => {
+    const g = await groupWithMember(fx.orgId, fx.ownerId);
+    as(OTHER_SUB);
+    for (const path of [
+      `/api/entity-groups/${g.groupId}/members`,
+      overlapPath(g.groupId, g.entityId, g.fieldMappingId),
+    ]) {
+      const res = await get(path);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_NOT_FOUND);
+      expect(JSON.stringify(res.body)).not.toMatch(/secret/i);
+    }
+  });
+
+  it("group members and overlap: a member who can't read the group gets 404", async () => {
+    const g = await groupWithMember(fx.orgId, fx.ownerId);
+    as(MEMBER_SUB);
+    for (const path of [
+      `/api/entity-groups/${g.groupId}/members`,
+      overlapPath(g.groupId, g.entityId, g.fieldMappingId),
+    ]) {
+      const res = await get(path);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_NOT_FOUND);
+    }
+  });
+
+  it("overlap: a target entity in another org is 404, and a target mapping not on the target entity is refused", async () => {
+    const g = await groupWithMember(fx.orgId, fx.ownerId);
+    const theirs = await entityChain(fx.otherOrgId, fx.otherOwnerId);
+    const crossOrg = await get(
+      overlapPath(g.groupId, theirs.entityId, theirs.fieldMappingId)
+    );
+    expect(crossOrg.status).toBe(404);
+    expect(crossOrg.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+
+    // Our own target entity, but another org's mapping.
+    const ours = await entityChain(fx.orgId, fx.ownerId);
+    const foreignMapping = await get(
+      overlapPath(g.groupId, ours.entityId, theirs.fieldMappingId)
+    );
+    expect(foreignMapping.status).toBe(400);
+    expect(foreignMapping.body.code).toBe(
+      ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID
+    );
+
+    // Both ours, but the mapping belongs to a different entity.
+    const mismatched = await get(
+      overlapPath(g.groupId, ours.entityId, g.fieldMappingId)
+    );
+    expect(mismatched.status).toBe(400);
+    expect(mismatched.body.code).toBe(
+      ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID
+    );
+  });
+
+  it("group members and overlap still serve the owner", async () => {
+    const g = await groupWithMember(fx.orgId, fx.ownerId);
+    const target = await entityChain(fx.orgId, fx.ownerId);
+    const members = await get(`/api/entity-groups/${g.groupId}/members`);
+    expect(members.status).toBe(200);
+    expect(members.body.payload.members).toHaveLength(1);
+    const overlap = await get(
+      overlapPath(g.groupId, target.entityId, target.fieldMappingId)
+    );
+    expect(overlap.status).toBe(200);
   });
 });
