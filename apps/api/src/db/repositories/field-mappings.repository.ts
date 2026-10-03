@@ -368,12 +368,15 @@ export class FieldMappingsRepository extends Repository<
 
   /** Count field mappings from *other* entities where `refEntityKey` matches a given entity key. */
   async countByRefEntityKey(
+    /** #692: entity keys are unique per org, not globally. */
+    organizationId: string,
     refEntityKey: string,
     excludeConnectorEntityId: string,
     client: DbClient = db
   ): Promise<number> {
     return this.count(
       and(
+        eq(fieldMappings.organizationId, organizationId),
         eq(fieldMappings.refEntityKey, refEntityKey),
         not(eq(fieldMappings.connectorEntityId, excludeConnectorEntityId))
       ),
