@@ -10,6 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -351,5 +352,81 @@ describe("Read access (#692)", () => {
       overlapPath(g.groupId, target.entityId, target.fieldMappingId)
     );
     expect(overlap.status).toBe(200);
+  });
+
+  // ── Records, connector definitions, views by station ────────────────
+
+  it("records list, count and by-id: a member gets 404 under an entity they can't read; the owner reads", async () => {
+    const chain = await entityChain(fx.orgId, fx.ownerId);
+    const paths = [
+      `/api/connector-entities/${chain.entityId}/records`,
+      `/api/connector-entities/${chain.entityId}/records/count`,
+      `/api/connector-entities/${chain.entityId}/records/${generateId()}`,
+    ];
+    as(MEMBER_SUB);
+    for (const path of paths) {
+      const res = await get(path);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+      expect(JSON.stringify(res.body)).not.toMatch(/secret/);
+    }
+    as(OWNER_SUB);
+    expect((await get(paths[0])).status).toBe(200);
+    expect((await get(paths[1])).status).toBe(200);
+  });
+
+  it("connector definition by id: a member without catalog read gets 404, like the list; the owner reads", async () => {
+    const chain = await entityChain(fx.orgId, fx.ownerId);
+    const [instance] = await db
+      .select()
+      .from(schema.connectorInstances)
+      .where(eq(schema.connectorInstances.id, chain.instanceId));
+    const defId = instance.connectorDefinitionId;
+    as(MEMBER_SUB);
+    const list = await get("/api/connector-definitions");
+    const listed = list.body.payload.connectorDefinitions.map(
+      (d: { id: string }) => d.id
+    );
+    expect(listed).not.toContain(defId);
+    const res = await get(`/api/connector-definitions/${defId}`);
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.CONNECTOR_DEFINITION_NOT_FOUND);
+    as(OWNER_SUB);
+    expect((await get(`/api/connector-definitions/${defId}`)).status).toBe(200);
+  });
+
+  it("curated views by station: an unreadable or another org's station is 404; the caller's own station lists", async () => {
+    const station = async (organizationId: string, createdBy: string) => {
+      const id = generateId();
+      await db.insert(schema.stations).values({
+        id,
+        organizationId,
+        name: `Station ${suffix()}`,
+        description: null,
+        ...base(createdBy),
+      } as never);
+      return id;
+    };
+    const ownersStation = await station(fx.orgId, fx.ownerId);
+    const membersStation = await station(fx.orgId, fx.memberId);
+    const otherOrgStation = await station(fx.otherOrgId, fx.otherOwnerId);
+
+    as(MEMBER_SUB);
+    const refused = await get(`/api/curated-views?stationId=${ownersStation}`);
+    expect(refused.status).toBe(404);
+    expect(refused.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+    expect(
+      (await get(`/api/curated-views?stationId=${membersStation}`)).status
+    ).toBe(200);
+
+    as(OWNER_SUB);
+    const crossOrg = await get(
+      `/api/curated-views?stationId=${otherOrgStation}`
+    );
+    expect(crossOrg.status).toBe(404);
+    expect(crossOrg.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+    expect(
+      (await get(`/api/curated-views?stationId=${ownersStation}`)).status
+    ).toBe(200);
   });
 });

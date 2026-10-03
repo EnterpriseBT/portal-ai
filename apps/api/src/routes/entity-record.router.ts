@@ -37,7 +37,10 @@ import {
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { PermissionService } from "../services/permission.service.js";
+import {
+  PermissionService,
+  type PermissionContext,
+} from "../services/permission.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
@@ -103,7 +106,7 @@ function readSortValue(
 
 async function resolveEntityOrThrow(
   connectorEntityId: string,
-  organizationId: string,
+  caller: PermissionContext,
   next: NextFunction
 ) {
   const entity =
@@ -111,7 +114,17 @@ async function resolveEntityOrThrow(
   // #599: org-scope the entity — an id from another org must 404, not read
   // across tenants (the record filter alone doesn't scope an admin, whose
   // visibilityPredicate is unfiltered). Closes a latent cross-tenant IDOR.
-  if (!entity || entity.organizationId !== organizationId) {
+  // #692: records are reached through their entity, so it must also be
+  // readable. Before, a member read the column schema (and any readable
+  // record) of an entity that 404s for them.
+  if (
+    !ObjectAccessService.readableInOrg(
+      await PermissionService.loadSet(caller),
+      caller.organizationId,
+      "entity",
+      entity
+    )
+  ) {
     next(
       new ApiError(
         404,
@@ -199,7 +212,7 @@ entityRecordRouter.get(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -498,7 +511,7 @@ entityRecordRouter.get(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -585,7 +598,7 @@ entityRecordRouter.get(
       const { connectorEntityId, recordId } = req.params;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -733,7 +746,7 @@ entityRecordRouter.post(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -909,7 +922,7 @@ entityRecordRouter.post(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -1089,7 +1102,7 @@ entityRecordRouter.post(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -1229,7 +1242,7 @@ entityRecordRouter.patch(
       const { connectorEntityId, recordId } = req.params;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -1419,7 +1432,7 @@ entityRecordRouter.delete(
       const { connectorEntityId, recordId } = req.params;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
@@ -1562,7 +1575,7 @@ entityRecordRouter.delete(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(
         connectorEntityId,
-        req.application!.metadata.organizationId,
+        req.application!.metadata,
         next
       );
       if (!entity) return;
