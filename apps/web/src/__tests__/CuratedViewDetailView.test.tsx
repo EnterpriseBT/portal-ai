@@ -93,7 +93,6 @@ const baseProps = {
   records,
   recordsLoading: false,
   recordsError: false,
-  canManage: true,
   paginationToolbar: <div data-testid="pagination-toolbar" />,
   sortColumn: "name",
   sortDirection: "asc" as const,
@@ -217,17 +216,51 @@ describe("CuratedViewDetailUI", () => {
     expect(screen.getByText("All columns")).toBeInTheDocument();
   });
 
-  it("shows Edit/Delete when canManage is true", () => {
-    render(<CuratedViewDetailUI {...baseProps} canManage />);
+  it("#688: shows Edit and Delete with write and delete", () => {
+    render(<CuratedViewDetailUI {...baseProps} />);
     expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
   });
 
-  it("hides Edit/Delete when canManage is false", () => {
-    render(<CuratedViewDetailUI {...baseProps} canManage={false} />);
+  it("#688: a read-only view shows neither Edit nor Delete, so the editor is unreachable", () => {
+    render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        view={{
+          ...view,
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        }}
+      />
+    );
     expect(
       screen.queryByRole("button", { name: /edit/i })
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /delete/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("#688: write without delete shows Edit only", () => {
+    render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        view={{
+          ...view,
+          capabilities: {
+            read: true,
+            write: true,
+            delete: false,
+            share: false,
+          },
+        }}
+      />
+    );
+    expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /delete/i })
     ).not.toBeInTheDocument();
