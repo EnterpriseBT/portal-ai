@@ -94,7 +94,8 @@ export const columnDefinitions = {
     >({
       queryKey: queryKeys.columnDefinitions.listAll(),
       queryFn: async () => {
-        const collected: ColumnDefinition[] = [];
+        const collected: ColumnDefinitionListResponsePayload["columnDefinitions"] =
+          [];
         let total = 0;
         let limit = CATALOG_PAGE_SIZE;
         let offset = 0;

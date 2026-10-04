@@ -778,6 +778,22 @@ describe("swagger spec — per-object capabilities (#688)", () => {
     ["PortalResultGetResponsePayload", ["portalResult"], true],
     ["CuratedViewListResponse", ["curatedViews[]"], true],
     ["CuratedViewGetResponsePayload", ["curatedView"], true],
+    ["PortalListResponse", ["portals[]"], false],
+    ["PortalWithMessages", ["portal"], false],
+    ["ConnectorInstanceListResponse", ["connectorInstances[]"], false],
+    ["ConnectorInstanceGetResponse", ["connectorInstance"], false],
+    ["ConnectorEntityListResponse", ["connectorEntities[]"], false],
+    ["ConnectorEntityGetResponse", ["connectorEntity"], false],
+    ["EntityRecordListResponse", ["records[]"], false],
+    ["EntityRecordGetResponsePayload", ["record"], false],
+    ["FieldMappingListResponse", ["fieldMappings[]"], false],
+    ["FieldMappingGetResponse", ["fieldMapping"], false],
+    ["ColumnDefinitionListResponse", ["columnDefinitions[]"], false],
+    ["ColumnDefinitionGetResponse", ["columnDefinition"], false],
+    ["EntityTagListResponse", ["entityTags[]"], false],
+    ["EntityTagGetResponsePayload", ["entityTag"], false],
+    ["EntityGroupListResponse", ["entityGroups[]"], false],
+    ["EntityGroupGetResponsePayload", ["entityGroup"], false],
   ];
 
   it.each(ROWS)(
@@ -791,6 +807,27 @@ describe("swagger spec — per-object capabilities (#688)", () => {
         expect.arrayContaining(["read", "write", "delete"])
       );
       if (shareable) expect(fields).toContain("share");
+    }
+  );
+
+  // Toolpack rows are a builtin | custom union; each arm carries capabilities.
+  it.each([
+    ["ToolpackListResponse", ["toolpacks[]"]],
+    ["ToolpackGetResponsePayload", ["toolpack"]],
+  ] as Array<[string, string[]]>)(
+    "%s union arms declare capabilities",
+    (component, path) => {
+      const row = deref(rowAt(component, path)) as Node & {
+        oneOf?: Node[];
+        anyOf?: Node[];
+      };
+      const arms = row.oneOf ?? row.anyOf ?? [];
+      expect(arms).toHaveLength(2);
+      for (const arm of arms) {
+        expect(Object.keys(props(props(arm).capabilities))).toEqual(
+          expect.arrayContaining(["read", "write", "delete"])
+        );
+      }
     }
   );
 

@@ -6,6 +6,9 @@ import {
   ConnectorEntityCreateResponsePayloadSchema,
 } from "../../contracts/connector-entity.contract.js";
 
+// #688: list and get rows carry the caller's capabilities.
+const CAPS = { read: true, write: true, delete: false };
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const validConnectorEntity = {
@@ -75,7 +78,7 @@ describe("ConnectorEntityListResponsePayloadSchema", () => {
       total: 1,
       limit: 20,
       offset: 0,
-      connectorEntities: [validConnectorEntity],
+      connectorEntities: [{ ...validConnectorEntity, capabilities: CAPS }],
     });
     expect(result.success).toBe(true);
   });
@@ -103,7 +106,7 @@ describe("ConnectorEntityListResponsePayloadSchema", () => {
 describe("ConnectorEntityGetResponsePayloadSchema", () => {
   it("should accept a valid get response", () => {
     const result = ConnectorEntityGetResponsePayloadSchema.safeParse({
-      connectorEntity: validConnectorEntity,
+      connectorEntity: { ...validConnectorEntity, capabilities: CAPS },
     });
     expect(result.success).toBe(true);
   });
@@ -169,5 +172,15 @@ describe("ConnectorEntityCreateResponsePayloadSchema", () => {
       connectorEntity: validConnectorEntity,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("ConnectorEntityGetResponsePayloadSchema capabilities (#688)", () => {
+  it("rejects a row without capabilities", () => {
+    expect(
+      ConnectorEntityGetResponsePayloadSchema.safeParse({
+        connectorEntity: validConnectorEntity,
+      }).success
+    ).toBe(false);
   });
 });

@@ -9,6 +9,9 @@ import {
 } from "../../contracts/column-definition.contract.js";
 import { ColumnDefinitionSchema } from "../../models/column-definition.model.js";
 
+// #688: list and get rows carry the caller's capabilities.
+const CAPS = { read: true, write: true, delete: false };
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const validColumnDefinition = {
@@ -112,7 +115,7 @@ describe("ColumnDefinitionListResponsePayloadSchema", () => {
       total: 1,
       limit: 20,
       offset: 0,
-      columnDefinitions: [validColumnDefinition],
+      columnDefinitions: [{ ...validColumnDefinition, capabilities: CAPS }],
     });
     expect(result.success).toBe(true);
   });
@@ -140,7 +143,7 @@ describe("ColumnDefinitionListResponsePayloadSchema", () => {
 describe("ColumnDefinitionGetResponsePayloadSchema", () => {
   it("should accept a valid get response", () => {
     const result = ColumnDefinitionGetResponsePayloadSchema.safeParse({
-      columnDefinition: validColumnDefinition,
+      columnDefinition: { ...validColumnDefinition, capabilities: CAPS },
     });
     expect(result.success).toBe(true);
   });
@@ -312,5 +315,15 @@ describe("ColumnDefinition write contracts reject client-supplied `system`", () 
   it("ColumnDefinitionSchema exposes system on reads", () => {
     const shape = ColumnDefinitionSchema.shape;
     expect(shape.system).toBeDefined();
+  });
+});
+
+describe("ColumnDefinitionGetResponsePayloadSchema capabilities (#688)", () => {
+  it("rejects a row without capabilities", () => {
+    expect(
+      ColumnDefinitionGetResponsePayloadSchema.safeParse({
+        columnDefinition: validColumnDefinition,
+      }).success
+    ).toBe(false);
   });
 });

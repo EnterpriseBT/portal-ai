@@ -18,6 +18,7 @@ import { portals, portalMessages, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { PortalService } from "../services/portal.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 
@@ -230,9 +231,8 @@ portalRouter.get(
       }
       // #685: portals are per-user; a member sees their own, owners and
       // admins see every portal in the org (their grants say so).
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("portal", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("portal", {
         createdByCol: portals.createdBy,
         idCol: portals.id,
       });
@@ -259,7 +259,12 @@ portalRouter.get(
       ]);
 
       return HttpService.success<PortalListResponsePayload>(res, {
-        portals: data as unknown as PortalListResponsePayload["portals"],
+        // #688: each row with the caller's capabilities.
+        portals: ObjectCapabilitiesService.attach(
+          set,
+          "portal",
+          data
+        ) as unknown as PortalListResponsePayload["portals"],
         total,
         limit,
         offset,
@@ -345,7 +350,10 @@ portalRouter.get(
           .filter(Boolean) ?? [];
 
       // #685: readable by the caller (per-user), else 404.
-      await PortalAccessService.load(req.application!.metadata, id);
+      const { set } = await PortalAccessService.load(
+        req.application!.metadata,
+        id
+      );
 
       const { portal, messages, pinnedBlocks } = await PortalService.getPortal(
         id,
@@ -353,7 +361,10 @@ portalRouter.get(
       );
 
       return HttpService.success<PortalGetResponsePayload>(res, {
-        portal: portal as unknown as PortalGetResponsePayload["portal"],
+        portal: {
+          ...portal,
+          capabilities: ObjectCapabilitiesService.for(set, "portal", portal),
+        } as unknown as PortalGetResponsePayload["portal"],
         messages: messages as unknown as PortalGetResponsePayload["messages"],
         ...(pinnedBlocks ? { pinnedBlocks } : {}),
       });

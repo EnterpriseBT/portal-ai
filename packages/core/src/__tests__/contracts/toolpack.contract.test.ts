@@ -7,6 +7,9 @@ import {
   UpdateToolpackBodySchema,
 } from "../../contracts/toolpack.contract.js";
 
+// #688: list and get rows carry the caller's capabilities.
+const CAPS = { read: true, write: true, delete: false };
+
 const VALID_BUILTIN = {
   id: "builtin:data_query",
   kind: "builtin" as const,
@@ -82,7 +85,7 @@ describe("ToolpackListResponsePayloadSchema", () => {
   // Case 14
   it("accepts an array of records and a numeric total", () => {
     const result = ToolpackListResponsePayloadSchema.safeParse({
-      toolpacks: [VALID_BUILTIN],
+      toolpacks: [{ ...VALID_BUILTIN, capabilities: CAPS }],
       total: 1,
     });
     expect(result.success).toBe(true);
@@ -108,7 +111,7 @@ describe("ToolpackListResponsePayloadSchema", () => {
 describe("ToolpackGetResponsePayloadSchema", () => {
   it("accepts a valid get response", () => {
     const result = ToolpackGetResponsePayloadSchema.safeParse({
-      toolpack: VALID_BUILTIN,
+      toolpack: { ...VALID_BUILTIN, capabilities: CAPS },
     });
     expect(result.success).toBe(true);
   });
@@ -282,5 +285,14 @@ describe("ToolpackEndpointsSchema URL refinement (phase 6)", () => {
         .filter(Boolean);
       expect(codes).toContain("TOOLPACK_URL_PRIVATE_HOST");
     }
+  });
+});
+
+describe("ToolpackGetResponsePayloadSchema capabilities (#688)", () => {
+  it("rejects a row without capabilities", () => {
+    expect(
+      ToolpackGetResponsePayloadSchema.safeParse({ toolpack: VALID_BUILTIN })
+        .success
+    ).toBe(false);
   });
 });

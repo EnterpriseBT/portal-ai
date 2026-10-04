@@ -96,6 +96,12 @@ import {
   StationGetResponsePayloadSchema,
   ObjectCapabilitiesSchema,
   ShareableObjectCapabilitiesSchema,
+  EntityTagListResponsePayloadSchema,
+  EntityTagGetResponsePayloadSchema,
+  EntityGroupListResponsePayloadSchema,
+  EntityGroupGetResponsePayloadSchema,
+  ToolpackListResponsePayloadSchema,
+  ToolpackGetResponsePayloadSchema,
   StationInstanceWithConnectorInstanceSchema,
   StationViewWithCuratedViewSchema,
   ResolvedColumnSchema,
@@ -505,6 +511,31 @@ const capabilitiesSchemas: Record<string, unknown> = {
   ),
   ShareableObjectCapabilities: z.toJSONSchema(
     ShareableObjectCapabilitiesSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  // Zod-derived list/get payloads whose rows carry capabilities.
+  EntityTagListResponse: z.toJSONSchema(
+    EntityTagListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityTagGetResponsePayload: z.toJSONSchema(
+    EntityTagGetResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityGroupListResponse: z.toJSONSchema(
+    EntityGroupListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityGroupGetResponsePayload: z.toJSONSchema(
+    EntityGroupGetResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ToolpackListResponse: z.toJSONSchema(
+    ToolpackListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ToolpackGetResponsePayload: z.toJSONSchema(
+    ToolpackGetResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1260,7 +1291,10 @@ const options: swaggerJsdoc.Options = {
                 columnDefinitions: {
                   type: "array",
                   items: {
-                    $ref: "#/components/schemas/ColumnDefinition",
+                    allOf: [
+                      { $ref: "#/components/schemas/ColumnDefinition" },
+                      withCapabilitiesRef(false),
+                    ],
                   },
                 },
               },
@@ -1272,7 +1306,10 @@ const options: swaggerJsdoc.Options = {
           required: ["columnDefinition"],
           properties: {
             columnDefinition: {
-              $ref: "#/components/schemas/ColumnDefinition",
+              allOf: [
+                { $ref: "#/components/schemas/ColumnDefinition" },
+                withCapabilitiesRef(false),
+              ],
             },
           },
         },
@@ -1311,7 +1348,10 @@ const options: swaggerJsdoc.Options = {
                 connectorEntities: {
                   type: "array",
                   items: {
-                    $ref: "#/components/schemas/ConnectorEntity",
+                    allOf: [
+                      { $ref: "#/components/schemas/ConnectorEntity" },
+                      withCapabilitiesRef(false),
+                    ],
                   },
                 },
               },
@@ -1323,7 +1363,10 @@ const options: swaggerJsdoc.Options = {
           required: ["connectorEntity"],
           properties: {
             connectorEntity: {
-              $ref: "#/components/schemas/ConnectorEntity",
+              allOf: [
+                { $ref: "#/components/schemas/ConnectorEntity" },
+                withCapabilitiesRef(false),
+              ],
             },
           },
         },
@@ -1392,7 +1435,10 @@ const options: swaggerJsdoc.Options = {
                 fieldMappings: {
                   type: "array",
                   items: {
-                    $ref: "#/components/schemas/FieldMapping",
+                    allOf: [
+                      { $ref: "#/components/schemas/FieldMapping" },
+                      withCapabilitiesRef(false),
+                    ],
                   },
                 },
               },
@@ -1404,7 +1450,10 @@ const options: swaggerJsdoc.Options = {
           required: ["fieldMapping"],
           properties: {
             fieldMapping: {
-              $ref: "#/components/schemas/FieldMapping",
+              allOf: [
+                { $ref: "#/components/schemas/FieldMapping" },
+                withCapabilitiesRef(false),
+              ],
             },
           },
         },
@@ -1853,7 +1902,12 @@ const options: swaggerJsdoc.Options = {
           type: "object",
           required: ["portal", "messages"],
           properties: {
-            portal: { $ref: "#/components/schemas/Portal" },
+            portal: {
+              allOf: [
+                { $ref: "#/components/schemas/Portal" },
+                withCapabilitiesRef(false),
+              ],
+            },
             messages: {
               type: "array",
               items: { $ref: "#/components/schemas/PortalMessage" },
@@ -1869,7 +1923,12 @@ const options: swaggerJsdoc.Options = {
               properties: {
                 portals: {
                   type: "array",
-                  items: { $ref: "#/components/schemas/Portal" },
+                  items: {
+                    allOf: [
+                      { $ref: "#/components/schemas/Portal" },
+                      withCapabilitiesRef(false),
+                    ],
+                  },
                 },
               },
             },

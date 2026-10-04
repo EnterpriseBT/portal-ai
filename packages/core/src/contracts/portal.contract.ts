@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import { withShareableCapabilities } from "./capabilities.contract.js";
 
 import { PortalSchema } from "../models/portal.model.js";
@@ -34,7 +36,8 @@ export type PortalWithIncludes = z.infer<typeof PortalWithIncludesSchema>;
 
 export const PortalListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    portals: z.array(PortalWithIncludesSchema),
+    /** #688: each row with the caller's capabilities. */
+    portals: z.array(withCapabilities(PortalWithIncludesSchema)),
   });
 
 export type PortalListResponsePayload = z.infer<
@@ -83,7 +86,7 @@ export const PinnedBlockEntrySchema = z.object({
 export type PinnedBlockEntry = z.infer<typeof PinnedBlockEntrySchema>;
 
 export const PortalGetResponsePayloadSchema = z.object({
-  portal: PortalSchema,
+  portal: withCapabilities(PortalSchema),
   messages: z.array(PortalMessageResponseSchema),
   pinnedBlocks: z.array(PinnedBlockEntrySchema).optional(),
 });

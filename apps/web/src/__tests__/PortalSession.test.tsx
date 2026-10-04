@@ -158,6 +158,7 @@ const makeQueryResult = (
       deleted: null,
       deletedBy: null,
       lastOpened: null,
+      capabilities: { read: true, write: true, delete: true },
     },
     messages,
   },

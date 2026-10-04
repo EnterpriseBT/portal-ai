@@ -26,6 +26,8 @@ import {
   PermissionService,
   type PermissionContext,
 } from "../services/permission.service.js";
+import type { PermissionSet } from "../services/permission-set.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
@@ -43,17 +45,21 @@ export const fieldMappingRouter = Router();
  */
 async function loadReadableMapping(
   ctx: PermissionContext,
-  id: string
+  id: string,
+  preloadedSet?: PermissionSet
 ): Promise<FieldMappingSelect> {
   const mapping = await DbService.repository.fieldMappings.findById(id);
   if (
     !mapping ||
     mapping.organizationId !== ctx.organizationId ||
-    !(await PermissionService.loadSet(ctx)).can("resource.read", {
-      type: "field_mapping",
-      id: mapping.id,
-      createdBy: mapping.createdBy,
-    })
+    !(preloadedSet ?? (await PermissionService.loadSet(ctx))).can(
+      "resource.read",
+      {
+        type: "field_mapping",
+        id: mapping.id,
+        createdBy: mapping.createdBy,
+      }
+    )
   ) {
     throw new ApiError(
       404,
@@ -151,9 +157,8 @@ fieldMappingRouter.get(
       const filters: SQL[] = [eq(fieldMappings.organizationId, organizationId)];
       // #692: only the mappings the caller may read (own, system-created, or
       // in a curated view shared with them).
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("field_mapping", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("field_mapping", {
         createdByCol: fieldMappings.createdBy,
         idCol: fieldMappings.id,
       });
@@ -202,8 +207,12 @@ fieldMappingRouter.get(
         | FieldMappingListResponsePayload
         | FieldMappingListWithConnectorEntityResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
-        fieldMappings:
-          data as unknown as FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"],
+        // #688: each row with the caller's capabilities.
+        fieldMappings: ObjectCapabilitiesService.attach(
+          set,
+          "field_mapping",
+          data as unknown as Array<{ id: string; createdBy: string }>
+        ) as unknown as FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"],
         total,
         limit,
         offset,
@@ -278,9 +287,11 @@ fieldMappingRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/field-mappings/:id called");
 
+      const set = await PermissionService.loadSet(req.application!.metadata);
       const fieldMapping = await loadReadableMapping(
         req.application!.metadata,
-        id
+        id,
+        set
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -293,8 +304,14 @@ fieldMappingRouter.get(
       });
 
       return HttpService.success<FieldMappingGetResponsePayload>(res, {
-        fieldMapping:
-          fieldMapping as unknown as FieldMappingGetResponsePayload["fieldMapping"],
+        fieldMapping: {
+          ...fieldMapping,
+          capabilities: ObjectCapabilitiesService.for(
+            set,
+            "field_mapping",
+            fieldMapping
+          ),
+        } as unknown as FieldMappingGetResponsePayload["fieldMapping"],
       });
     } catch (error) {
       logger.error(

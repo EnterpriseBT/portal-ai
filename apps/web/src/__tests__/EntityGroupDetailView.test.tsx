@@ -59,6 +59,7 @@ const stubGroup = {
   organizationId: "org-1",
   name: "Customer Identity",
   description: "Groups customer entities across connectors",
+  capabilities: { read: true, write: true, delete: true },
   created: Date.now(),
   createdBy: "system",
   updated: null,
