@@ -1,4 +1,6 @@
 import { z } from "zod";
+
+import { withCapabilities } from "./capabilities.contract.js";
 import { ConnectorDefinitionSchema } from "../models/connector-definition.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import {
@@ -89,7 +91,8 @@ export type ConnectorInstanceWithDefinitionApi = z.infer<
 
 export const ConnectorInstanceListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    connectorInstances: z.array(ConnectorInstanceApiSchema),
+    /** #688: each row with the caller's capabilities. */
+    connectorInstances: z.array(withCapabilities(ConnectorInstanceApiSchema)),
   });
 
 export type ConnectorInstanceListResponsePayload = z.infer<
@@ -98,7 +101,9 @@ export type ConnectorInstanceListResponsePayload = z.infer<
 
 export const ConnectorInstanceListWithDefinitionResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    connectorInstances: z.array(ConnectorInstanceWithDefinitionApiSchema),
+    connectorInstances: z.array(
+      withCapabilities(ConnectorInstanceWithDefinitionApiSchema)
+    ),
   });
 
 export type ConnectorInstanceListWithDefinitionResponsePayload = z.infer<
@@ -106,7 +111,7 @@ export type ConnectorInstanceListWithDefinitionResponsePayload = z.infer<
 >;
 
 export const ConnectorInstanceGetResponseSchema = z.object({
-  connectorInstance: ConnectorInstanceWithDefinitionApiSchema,
+  connectorInstance: withCapabilities(ConnectorInstanceWithDefinitionApiSchema),
 });
 
 export type ConnectorInstanceGetResponsePayload = z.infer<

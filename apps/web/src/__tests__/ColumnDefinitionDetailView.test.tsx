@@ -411,6 +411,7 @@ describe("ColumnDefinitionDetailView", () => {
     ) => {
       const cd = makeColumnDefinition();
       const fm = {
+        capabilities: { read: true, write: true, delete: true },
         ...makeFieldMapping({
           id: "fm-1",
           sourceField: "email",

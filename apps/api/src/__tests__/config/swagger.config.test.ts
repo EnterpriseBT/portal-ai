@@ -735,3 +735,103 @@ describe("swagger spec — document completeness (#420)", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// #688: every per-object response row documents the caller's `capabilities`.
+// Some components are hand-written (CuratedView's filter is recursive, which
+// z.toJSONSchema can't emit as a component), so this follows $ref/allOf to the
+// row and checks the property is there: the doc can't silently drift.
+describe("swagger spec — per-object capabilities (#688)", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const schemas = (spec.components?.schemas ?? {}) as Record<string, unknown>;
+
+  type Node = {
+    $ref?: string;
+    allOf?: Node[];
+    properties?: Record<string, Node>;
+    items?: Node;
+  };
+  const deref = (node: Node): Node =>
+    node.$ref
+      ? deref(schemas[node.$ref.replace("#/components/schemas/", "")] as Node)
+      : node;
+  /** Merged properties of a node (following $ref and allOf). */
+  const props = (node: Node): Record<string, Node> => {
+    const n = deref(node);
+    return Object.assign({}, ...(n.allOf ?? []).map(props), n.properties ?? {});
+  };
+  /** Walk "a.b[]" from a component to the row node. */
+  const rowAt = (component: string, path: string[]): Node => {
+    let node: Node = { $ref: `#/components/schemas/${component}` };
+    for (const step of path) {
+      const isArray = step.endsWith("[]");
+      node = props(node)[step.replace("[]", "")];
+      expect(node).toBeDefined();
+      if (isArray) node = deref(node).items as Node;
+    }
+    return node;
+  };
+
+  const ROWS: Array<[string, string[], boolean]> = [
+    ["StationListResponse", ["stations[]"], true],
+    ["StationGetResponsePayload", ["station"], true],
+    ["PortalResultListResponse", ["portalResults[]"], true],
+    ["PortalResultGetResponsePayload", ["portalResult"], true],
+    ["CuratedViewListResponse", ["curatedViews[]"], true],
+    ["CuratedViewGetResponsePayload", ["curatedView"], true],
+    ["PortalListResponse", ["portals[]"], false],
+    ["PortalWithMessages", ["portal"], false],
+    ["ConnectorInstanceListResponse", ["connectorInstances[]"], false],
+    ["ConnectorInstanceGetResponse", ["connectorInstance"], false],
+    ["ConnectorEntityListResponse", ["connectorEntities[]"], false],
+    ["ConnectorEntityGetResponse", ["connectorEntity"], false],
+    ["EntityRecordListResponse", ["records[]"], false],
+    ["EntityRecordGetResponsePayload", ["record"], false],
+    ["FieldMappingListResponse", ["fieldMappings[]"], false],
+    ["FieldMappingGetResponse", ["fieldMapping"], false],
+    ["ColumnDefinitionListResponse", ["columnDefinitions[]"], false],
+    ["ColumnDefinitionGetResponse", ["columnDefinition"], false],
+    ["EntityTagListResponse", ["entityTags[]"], false],
+    ["EntityTagGetResponsePayload", ["entityTag"], false],
+    ["EntityGroupListResponse", ["entityGroups[]"], false],
+    ["EntityGroupGetResponsePayload", ["entityGroup"], false],
+  ];
+
+  it.each(ROWS)(
+    "%s rows declare capabilities",
+    (component, path, shareable) => {
+      const row = rowAt(component, path);
+      const capabilities = props(row).capabilities;
+      expect(capabilities).toBeDefined();
+      const fields = Object.keys(props(capabilities));
+      expect(fields).toEqual(
+        expect.arrayContaining(["read", "write", "delete"])
+      );
+      if (shareable) expect(fields).toContain("share");
+    }
+  );
+
+  // Toolpack rows are a builtin | custom union; each arm carries capabilities.
+  it.each([
+    ["ToolpackListResponse", ["toolpacks[]"]],
+    ["ToolpackGetResponsePayload", ["toolpack"]],
+  ] as Array<[string, string[]]>)(
+    "%s union arms declare capabilities",
+    (component, path) => {
+      const row = deref(rowAt(component, path)) as Node & {
+        oneOf?: Node[];
+        anyOf?: Node[];
+      };
+      const arms = row.oneOf ?? row.anyOf ?? [];
+      expect(arms).toHaveLength(2);
+      for (const arm of arms) {
+        expect(Object.keys(props(props(arm).capabilities))).toEqual(
+          expect.arrayContaining(["read", "write", "delete"])
+        );
+      }
+    }
+  );
+
+  it("no response still documents the #621 canShare/canWrite/canDelete flags", () => {
+    expect(JSON.stringify(spec)).not.toMatch(/"can(Share|Write|Delete)"/);
+  });
+});

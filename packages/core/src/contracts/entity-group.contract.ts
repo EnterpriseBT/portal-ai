@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import { EntityGroupSchema } from "../models/entity-group.model.js";
 import { EntityGroupMemberSchema } from "../models/entity-group-member.model.js";
 import {
@@ -49,7 +51,8 @@ export type EntityGroupListItem = z.infer<typeof EntityGroupListItemSchema>;
 
 export const EntityGroupListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    entityGroups: z.array(EntityGroupListItemSchema),
+    /** #688: each row with the caller's capabilities. */
+    entityGroups: z.array(withCapabilities(EntityGroupListItemSchema)),
   });
 
 export type EntityGroupListResponsePayload = z.infer<
@@ -59,7 +62,7 @@ export type EntityGroupListResponsePayload = z.infer<
 // ── Get ───────────────────────────────────────────────────────────────
 
 export const EntityGroupGetResponsePayloadSchema = z.object({
-  entityGroup: EntityGroupWithMembersSchema,
+  entityGroup: withCapabilities(EntityGroupWithMembersSchema),
 });
 
 export type EntityGroupGetResponsePayload = z.infer<

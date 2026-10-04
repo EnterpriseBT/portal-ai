@@ -9,6 +9,8 @@
 
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import {
   ToolpackEndpointsSchema,
   TOOLPACK_SLUG_REGEX,
@@ -87,6 +89,16 @@ export const ToolpackSchema = z.discriminatedUnion("kind", [
 ]);
 export type Toolpack = z.infer<typeof ToolpackSchema>;
 
+/** #688: a toolpack with the caller's capabilities on it. Builtins are
+ *  read-only (platform-defined); a custom pack follows its creator. */
+export const ToolpackWithCapabilitiesSchema = z.discriminatedUnion("kind", [
+  withCapabilities(BuiltinToolpackRecordSchema),
+  withCapabilities(CustomToolpackRecordSchema),
+]);
+export type ToolpackWithCapabilities = z.infer<
+  typeof ToolpackWithCapabilitiesSchema
+>;
+
 // ── List ─────────────────────────────────────────────────────────────
 
 export const ToolpackListRequestQuerySchema = z.object({
@@ -98,7 +110,7 @@ export type ToolpackListRequestQuery = z.infer<
 >;
 
 export const ToolpackListResponsePayloadSchema = z.object({
-  toolpacks: z.array(ToolpackSchema),
+  toolpacks: z.array(ToolpackWithCapabilitiesSchema),
   total: z.number().int().nonnegative(),
 });
 export type ToolpackListResponsePayload = z.infer<
@@ -108,7 +120,7 @@ export type ToolpackListResponsePayload = z.infer<
 // ── Get ──────────────────────────────────────────────────────────────
 
 export const ToolpackGetResponsePayloadSchema = z.object({
-  toolpack: ToolpackSchema,
+  toolpack: ToolpackWithCapabilitiesSchema,
 });
 export type ToolpackGetResponsePayload = z.infer<
   typeof ToolpackGetResponsePayloadSchema

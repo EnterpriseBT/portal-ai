@@ -18,6 +18,7 @@ import { DbService } from "../services/db.service.js";
 import { entityTags } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 
 const logger = createLogger({ module: "entity-tag" });
 
@@ -67,18 +68,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   type: boolean
  *                   example: true
  *                 payload:
- *                   type: object
- *                   properties:
- *                     entityTags:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/EntityTag'
- *                     total:
- *                       type: integer
- *                     limit:
- *                       type: integer
- *                     offset:
- *                       type: integer
+ *                   $ref: '#/components/schemas/EntityTagListResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -107,9 +97,8 @@ entityTagRouter.get(
       }
 
       // #630: filter to the tags the caller may `read`.
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("tag", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("tag", {
         createdByCol: entityTags.createdBy,
         idCol: entityTags.id,
       });
@@ -136,8 +125,12 @@ entityTagRouter.get(
       });
 
       return HttpService.success<EntityTagListResponsePayload>(res, {
-        entityTags:
-          data as unknown as EntityTagListResponsePayload["entityTags"],
+        // #688: each row with the caller's capabilities.
+        entityTags: ObjectCapabilitiesService.attach(
+          set,
+          "tag",
+          data
+        ) as unknown as EntityTagListResponsePayload["entityTags"],
         total,
         limit,
         offset,
@@ -190,10 +183,7 @@ entityTagRouter.get(
  *                   type: boolean
  *                   example: true
  *                 payload:
- *                   type: object
- *                   properties:
- *                     entityTag:
- *                       $ref: '#/components/schemas/EntityTag'
+ *                   $ref: '#/components/schemas/EntityTagGetResponsePayload'
  *       404:
  *         description: Entity tag not found
  *         content:
@@ -239,8 +229,9 @@ entityTagRouter.get(
         );
       }
       // #630: an unreadable tag is indistinguishable from absent (404).
+      const set = await PermissionService.loadSet(ctx);
       if (
-        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+        !set.can("resource.read", {
           type: "tag",
           id,
           createdBy: entityTag.createdBy,
@@ -256,8 +247,10 @@ entityTagRouter.get(
       }
 
       return HttpService.success<EntityTagGetResponsePayload>(res, {
-        entityTag:
-          entityTag as unknown as EntityTagGetResponsePayload["entityTag"],
+        entityTag: {
+          ...entityTag,
+          capabilities: ObjectCapabilitiesService.for(set, "tag", entityTag),
+        } as unknown as EntityTagGetResponsePayload["entityTag"],
       });
     } catch (error) {
       logger.error(

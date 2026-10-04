@@ -204,11 +204,11 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         </Button>
                       }
                       secondaryActions={[
-                        // #621: each action is gated on its server-computed
+                        // #621/#688: each action is gated on its server-computed
                         // capability (owner/admin/creator, or a grant) — never a
                         // client role check. A read-only grantee sees none of
                         // Share/Edit/Delete rather than an action that 403s.
-                        ...(item.canShare
+                        ...(item.station.capabilities.share
                           ? [
                               {
                                 label: "Share",
@@ -217,7 +217,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                               },
                             ]
                           : []),
-                        ...(item.canWrite
+                        ...(item.station.capabilities.write
                           ? [
                               {
                                 label: "Edit",
@@ -226,7 +226,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                               },
                             ]
                           : []),
-                        ...(item.canDelete
+                        ...(item.station.capabilities.delete
                           ? [
                               {
                                 label: "Delete",

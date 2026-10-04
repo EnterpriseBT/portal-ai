@@ -30,6 +30,7 @@ import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
@@ -145,9 +146,8 @@ columnDefinitionRouter.get(
       // #630: filter to the column definitions the caller may `read` (system
       // rows surface via a `created_by_system` grant; members hold neither and
       // see an empty catalog — the catalog is an admin page, Decision A).
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("column_definition", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("column_definition", {
         createdByCol: columnDefinitions.createdBy,
         idCol: columnDefinitions.id,
       });
@@ -175,8 +175,12 @@ columnDefinitionRouter.get(
       });
 
       return HttpService.success<ColumnDefinitionListResponsePayload>(res, {
-        columnDefinitions:
-          data as unknown as ColumnDefinitionListResponsePayload["columnDefinitions"],
+        // #688: each row with the caller's capabilities.
+        columnDefinitions: ObjectCapabilitiesService.attach(
+          set,
+          "column_definition",
+          data
+        ) as unknown as ColumnDefinitionListResponsePayload["columnDefinitions"],
         total,
         limit,
         offset,
@@ -278,8 +282,9 @@ columnDefinitionRouter.get(
         );
       }
       // #630: an unreadable definition is indistinguishable from absent (404).
+      const set = await PermissionService.loadSet(ctx);
       if (
-        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+        !set.can("resource.read", {
           type: "column_definition",
           id,
           createdBy: columnDefinition.createdBy,
@@ -295,8 +300,14 @@ columnDefinitionRouter.get(
       }
 
       return HttpService.success<ColumnDefinitionGetResponsePayload>(res, {
-        columnDefinition:
-          columnDefinition as unknown as ColumnDefinitionGetResponsePayload["columnDefinition"],
+        columnDefinition: {
+          ...columnDefinition,
+          capabilities: ObjectCapabilitiesService.for(
+            set,
+            "column_definition",
+            columnDefinition
+          ),
+        } as unknown as ColumnDefinitionGetResponsePayload["columnDefinition"],
       });
     } catch (error) {
       logger.error(

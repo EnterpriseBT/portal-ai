@@ -378,7 +378,9 @@ export const EntityGroupDetailViewUI: React.FC<
               icon: <DeleteIcon />,
               onClick: openDeleteDialog,
               color: "error",
-              disabled: isDeletingGroup,
+              gate: isDeletingGroup
+                ? { kind: "disable" as const, reason: "Deleting…" }
+                : undefined,
             },
           ]}
         >

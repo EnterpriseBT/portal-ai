@@ -16,6 +16,7 @@ const view = {
   filter: null,
   fieldMappingIds: ["fm-1", "fm-2"],
   filtered: false,
+  capabilities: { read: true, write: true, delete: true, share: true },
   projected: true,
   created: 1710000000000,
   createdBy: "user-1",
@@ -73,7 +74,6 @@ const meta = {
     records,
     recordsLoading: false,
     recordsError: false,
-    canManage: true,
     paginationToolbar: null,
     sortColumn: "name",
     sortDirection: "asc",
@@ -87,6 +87,14 @@ const meta = {
 export default meta;
 type Story = StoryObj<CuratedViewDetailUIProps>;
 
-export const Admin: Story = { args: {} };
-export const Member: Story = { args: { canManage: false } };
+export const Owner: Story = { args: {} };
+// #688: shared Read with the caller — no Edit or Delete.
+export const ReadOnly: Story = {
+  args: {
+    view: {
+      ...view,
+      capabilities: { read: true, write: false, delete: false, share: false },
+    },
+  },
+};
 export const Empty: Story = { args: { records: [] } };

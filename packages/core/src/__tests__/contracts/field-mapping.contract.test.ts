@@ -10,6 +10,9 @@ import {
   FieldMappingImpactResponsePayloadSchema,
 } from "../../contracts/field-mapping.contract.js";
 
+// #688: list and get rows carry the caller's capabilities.
+const CAPS = { read: true, write: true, delete: false };
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const validFieldMapping = {
@@ -92,7 +95,7 @@ describe("FieldMappingListResponsePayloadSchema", () => {
       total: 1,
       limit: 20,
       offset: 0,
-      fieldMappings: [validFieldMapping],
+      fieldMappings: [{ ...validFieldMapping, capabilities: CAPS }],
     });
     expect(result.success).toBe(true);
   });
@@ -120,7 +123,7 @@ describe("FieldMappingListResponsePayloadSchema", () => {
 describe("FieldMappingGetResponsePayloadSchema", () => {
   it("should accept a valid get response", () => {
     const result = FieldMappingGetResponsePayloadSchema.safeParse({
-      fieldMapping: validFieldMapping,
+      fieldMapping: { ...validFieldMapping, capabilities: CAPS },
     });
     expect(result.success).toBe(true);
   });
@@ -415,5 +418,15 @@ describe("FieldMappingImpactResponsePayloadSchema", () => {
   it("should reject missing entityGroupMembers", () => {
     const result = FieldMappingImpactResponsePayloadSchema.safeParse({});
     expect(result.success).toBe(false);
+  });
+});
+
+describe("FieldMappingGetResponsePayloadSchema capabilities (#688)", () => {
+  it("rejects a row without capabilities", () => {
+    expect(
+      FieldMappingGetResponsePayloadSchema.safeParse({
+        fieldMapping: validFieldMapping,
+      }).success
+    ).toBe(false);
   });
 });

@@ -5,7 +5,7 @@ import Stack from "@mui/material/Stack";
 import Paper from "@mui/material/Paper";
 import Divider from "@mui/material/Divider";
 
-import { ActionsMenu } from "./ActionsMenu.js";
+import { ActionsMenu, visibleActionItems } from "./ActionsMenu.js";
 import type { ActionMenuItem } from "./ActionsMenu.js";
 
 export interface PageSectionProps {
@@ -46,7 +46,8 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
     ref
   ) => {
     const hasTitle = title !== undefined;
-    const hasSecondaryActions = secondaryActions && secondaryActions.length > 0;
+    // #688: hidden actions don't count; an all-hidden menu isn't rendered.
+    const hasSecondaryActions = visibleActionItems(secondaryActions).length > 0;
     const hasActions = primaryAction || hasSecondaryActions;
     const hasHeader = hasTitle || hasActions;
 
@@ -95,7 +96,9 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
             }}
           >
             {primaryAction}
-            {hasSecondaryActions && <ActionsMenu items={secondaryActions} />}
+            {hasSecondaryActions && (
+              <ActionsMenu items={secondaryActions ?? []} />
+            )}
           </Stack>
         )}
       </Stack>

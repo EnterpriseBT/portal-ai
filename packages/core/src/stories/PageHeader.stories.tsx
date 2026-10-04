@@ -166,7 +166,7 @@ export const SecondaryActionsOnly: Story = {
         label: "Reset to Defaults",
         onClick: () => console.log("Reset clicked"),
         color: "error" as const,
-        disabled: true,
+        gate: { kind: "disable" as const, reason: "A sync is running" },
       },
     ],
   },

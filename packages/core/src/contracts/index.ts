@@ -1,5 +1,6 @@
 /** Pagination contracts — schemas & types */
 export * from "./pagination.contract.js";
+export * from "./capabilities.contract.js";
 
 /** Auth contracts — schemas & types */
 export * from "./auth.contract.js";

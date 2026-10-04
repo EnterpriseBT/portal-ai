@@ -414,7 +414,12 @@ export const ConnectorInstanceView = ({
                         label: "Edit",
                         icon: <EditIcon />,
                         onClick: () => setEditDialogOpen(true),
-                        disabled: isLocked,
+                        gate: isLocked
+                          ? {
+                              kind: "disable" as const,
+                              reason: "Paused until the running job finishes",
+                            }
+                          : undefined,
                       },
                     ]
                   : []),
@@ -428,7 +433,12 @@ export const ConnectorInstanceView = ({
                             to: "/connectors/$connectorInstanceId/layout-plan/edit",
                             params: { connectorInstanceId },
                           }),
-                        disabled: isLocked,
+                        gate: isLocked
+                          ? {
+                              kind: "disable" as const,
+                              reason: "Paused until the running job finishes",
+                            }
+                          : undefined,
                       },
                     ]
                   : []),
@@ -437,7 +447,12 @@ export const ConnectorInstanceView = ({
                   icon: <DeleteIcon />,
                   onClick: () => setDeleteDialogOpen(true),
                   color: "error" as const,
-                  disabled: isLocked,
+                  gate: isLocked
+                    ? {
+                        kind: "disable" as const,
+                        reason: "Paused until the running job finishes",
+                      }
+                    : undefined,
                 },
               ];
               return (

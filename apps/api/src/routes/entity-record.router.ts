@@ -41,6 +41,7 @@ import {
   PermissionService,
   type PermissionContext,
 } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
@@ -296,9 +297,8 @@ entityRecordRouter.get(
       // #599: RBAC-gate raw record reads — members read only records they
       // created (`entity_record.createdBy` is the syncing actor, so ≈none for
       // synced data); admins (`*`) see all. Closes the curated-views bypass.
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("entity_record", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("entity_record", {
         createdByCol: entityRecords.createdBy,
         idCol: entityRecords.id,
       });
@@ -449,8 +449,12 @@ entityRecordRouter.get(
           : null;
 
       return HttpService.success<EntityRecordListResponsePayload>(res, {
-        records:
-          records as unknown as EntityRecordListResponsePayload["records"],
+        // #688: each record with the caller's capabilities.
+        records: ObjectCapabilitiesService.attach(
+          set,
+          "entity_record",
+          records as unknown as Array<{ id: string; createdBy: string }>
+        ) as unknown as EntityRecordListResponsePayload["records"],
         columns: filteredColumns,
         source: "cache",
         total,
@@ -617,11 +621,13 @@ entityRecordRouter.get(
         );
       }
       // #599: an unreadable record is indistinguishable from absent (404).
+      const set = await PermissionService.loadSet(req.application!.metadata);
       if (
-        !(await PermissionService.loadSet(req.application!.metadata)).can(
-          "resource.read",
-          { type: "entity_record", id: recordId, createdBy: record.createdBy }
-        )
+        !set.can("resource.read", {
+          type: "entity_record",
+          id: recordId,
+          createdBy: record.createdBy,
+        })
       ) {
         return next(
           new ApiError(
@@ -635,7 +641,14 @@ entityRecordRouter.get(
       const columns = await resolveColumns(connectorEntityId);
 
       return HttpService.success<EntityRecordGetResponsePayload>(res, {
-        record: record as unknown as EntityRecordGetResponsePayload["record"],
+        record: {
+          ...record,
+          capabilities: ObjectCapabilitiesService.for(
+            set,
+            "entity_record",
+            record
+          ),
+        } as unknown as EntityRecordGetResponsePayload["record"],
         columns,
       });
     } catch (error) {

@@ -172,10 +172,10 @@ describe("pin object enforcement — member perspective (#621 slice 3b)", () => 
   it("GET own → 200 canShare true; another's → 404; shared → 200 canShare false", async () => {
     const own = await auth(request(app).get(`/api/portal-results/${ownPin}`));
     expect(own.status).toBe(200);
-    expect(own.body.payload.canShare).toBe(true);
+    expect(own.body.payload.portalResult.capabilities.share).toBe(true);
     // #621: the creator also fully controls their own pin.
-    expect(own.body.payload.canWrite).toBe(true);
-    expect(own.body.payload.canDelete).toBe(true);
+    expect(own.body.payload.portalResult.capabilities.write).toBe(true);
+    expect(own.body.payload.portalResult.capabilities.delete).toBe(true);
 
     expect(
       (await auth(request(app).get(`/api/portal-results/${otherPin}`))).status
@@ -186,10 +186,10 @@ describe("pin object enforcement — member perspective (#621 slice 3b)", () => 
       request(app).get(`/api/portal-results/${otherPin}`)
     );
     expect(shared.status).toBe(200);
-    expect(shared.body.payload.canShare).toBe(false);
+    expect(shared.body.payload.portalResult.capabilities.share).toBe(false);
     // #621: a read grantee gets neither write nor delete on the shared pin.
-    expect(shared.body.payload.canWrite).toBe(false);
-    expect(shared.body.payload.canDelete).toBe(false);
+    expect(shared.body.payload.portalResult.capabilities.write).toBe(false);
+    expect(shared.body.payload.portalResult.capabilities.delete).toBe(false);
   });
 
   it("PATCH: read grantee 403, read-write grantee 200; DELETE shared 403", async () => {

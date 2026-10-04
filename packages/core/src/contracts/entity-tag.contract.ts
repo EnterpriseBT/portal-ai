@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import { EntityTagSchema } from "../models/entity-tag.model.js";
 import {
   PaginatedResponsePayloadSchema,
@@ -19,7 +21,8 @@ export type EntityTagListRequestQuery = z.infer<
 
 export const EntityTagListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    entityTags: z.array(EntityTagSchema),
+    /** #688: each row with the caller's capabilities. */
+    entityTags: z.array(withCapabilities(EntityTagSchema)),
   });
 
 export type EntityTagListResponsePayload = z.infer<
@@ -39,7 +42,7 @@ export type EntityTagWithAssignmentCount = z.infer<
 // ── Get ───────────────────────────────────────────────────────────────
 
 export const EntityTagGetResponsePayloadSchema = z.object({
-  entityTag: EntityTagSchema,
+  entityTag: withCapabilities(EntityTagSchema),
 });
 
 export type EntityTagGetResponsePayload = z.infer<
