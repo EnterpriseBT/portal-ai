@@ -58,13 +58,16 @@ describe("StationListRequestQuerySchema", () => {
 
 // ── List response ────────────────────────────────────────────────────
 
+const CAPS = { read: true, write: true, delete: false, share: false };
+
 describe("StationListResponsePayloadSchema", () => {
   it("should accept a valid response payload", () => {
     const result = StationListResponsePayloadSchema.safeParse({
       total: 1,
       limit: 20,
       offset: 0,
-      stations: [validStation],
+      // #688: each row carries the caller's capabilities.
+      stations: [{ ...validStation, capabilities: CAPS }],
     });
     expect(result.success).toBe(true);
   });
@@ -251,10 +254,7 @@ describe("StationGetResponsePayloadSchema (#674)", () => {
     },
   };
   const payload = (instances: unknown[], views: unknown[]) => ({
-    station: { ...validStation, instances, views },
-    canShare: false,
-    canWrite: true,
-    canDelete: false,
+    station: { ...validStation, instances, views, capabilities: CAPS },
   });
 
   it("accepts instances and views carrying canRead", () => {
@@ -288,6 +288,19 @@ describe("StationGetResponsePayloadSchema (#674)", () => {
     ).toBe(false);
     expect(
       StationGetResponsePayloadSchema.safeParse(payload([], [view])).success
+    ).toBe(false);
+  });
+});
+
+describe("station payloads carry capabilities (#688)", () => {
+  it("a list row without capabilities is rejected", () => {
+    expect(
+      StationListResponsePayloadSchema.safeParse({
+        total: 1,
+        limit: 20,
+        offset: 0,
+        stations: [validStation],
+      }).success
     ).toBe(false);
   });
 });

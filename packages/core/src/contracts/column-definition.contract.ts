@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import {
   ColumnDataTypeEnum,
   ColumnDefinitionSchema,
@@ -24,7 +26,8 @@ export type ColumnDefinitionListRequestQuery = z.infer<
 
 export const ColumnDefinitionListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    columnDefinitions: z.array(ColumnDefinitionSchema),
+    /** #688: each row with the caller's capabilities. */
+    columnDefinitions: z.array(withCapabilities(ColumnDefinitionSchema)),
   });
 
 export type ColumnDefinitionListResponsePayload = z.infer<
@@ -34,7 +37,7 @@ export type ColumnDefinitionListResponsePayload = z.infer<
 // ── Get ───────────────────────────────────────────────────────────────
 
 export const ColumnDefinitionGetResponsePayloadSchema = z.object({
-  columnDefinition: ColumnDefinitionSchema,
+  columnDefinition: withCapabilities(ColumnDefinitionSchema),
 });
 
 export type ColumnDefinitionGetResponsePayload = z.infer<

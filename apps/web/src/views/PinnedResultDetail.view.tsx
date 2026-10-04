@@ -371,10 +371,10 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   // threaded down below. Keeping a page-level control duplicated the chrome
   // AND double-fired the mount auto-refresh against the per-org rate cap.
   const resultQuery = sdk.portalResults.get(portalResultId);
-  const payload = resultQuery.data as unknown as
-    | PortalResultPayload
-    | undefined;
+  const payload = resultQuery.data as PortalResultPayload | undefined;
   const portalResult = payload?.portalResult as PortalResult | undefined;
+  // #688: the caller's capabilities on this pin (missing → fail closed).
+  const capabilities = payload?.portalResult.capabilities;
   const [shareOpen, setShareOpen] = useState(false);
 
   return (
@@ -385,9 +385,9 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
           <>
             <PinnedResultDetailUI
               result={portalResult}
-              canShare={payload?.canShare ?? false}
-              canWrite={payload?.canWrite ?? false}
-              canDelete={payload?.canDelete ?? false}
+              canShare={capabilities?.share ?? false}
+              canWrite={capabilities?.write ?? false}
+              canDelete={capabilities?.delete ?? false}
               onShareClick={() => setShareOpen(true)}
               onRename={handleRename}
               onDelete={handleRemove}

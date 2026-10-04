@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import { ColumnDataTypeEnum } from "../models/column-definition.model.js";
 import {
   EntityRecordSchema,
@@ -64,7 +66,8 @@ export const EntityRecordListResponsePayloadSchema =
      * `normalizedData`, and shipping `data` cost ~2KB/row on the wire and a
      * disk-spilling hash join in the query. Fetch a single record for it.
      */
-    records: z.array(EntityRecordListItemSchema),
+    /** #688: each row with the caller's capabilities. */
+    records: z.array(withCapabilities(EntityRecordListItemSchema)),
     columns: z.array(ResolvedColumnSchema),
     source: z.enum(["cache", "live"]),
   });
@@ -113,7 +116,7 @@ export type EntityRecordImportResponsePayload = z.infer<
 // ── Get single record ────────────────────────────────────────────────
 
 export const EntityRecordGetResponsePayloadSchema = z.object({
-  record: EntityRecordSchema,
+  record: withCapabilities(EntityRecordSchema),
   columns: z.array(ResolvedColumnSchema),
 });
 

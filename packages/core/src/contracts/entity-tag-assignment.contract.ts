@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
 import { EntityTagSchema } from "../models/entity-tag.model.js";
 import { EntityTagAssignmentSchema } from "../models/entity-tag-assignment.model.js";
@@ -51,7 +53,8 @@ export type ConnectorEntityWithTags = z.infer<
 
 export const ConnectorEntityListWithTagsResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    connectorEntities: z.array(ConnectorEntityWithTagsSchema),
+    /** #688: each row with the caller's capabilities. */
+    connectorEntities: z.array(withCapabilities(ConnectorEntityWithTagsSchema)),
   });
 
 export type ConnectorEntityListWithTagsResponsePayload = z.infer<

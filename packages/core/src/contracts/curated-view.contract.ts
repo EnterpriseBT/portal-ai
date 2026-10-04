@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withShareableCapabilities } from "./capabilities.contract.js";
+
 import { CuratedViewSchema } from "../models/curated-view.model.js";
 import { FilterExpressionSchema } from "./filter.contract.js";
 import {
@@ -62,7 +64,8 @@ export type CuratedViewListItem = z.infer<typeof CuratedViewListItemSchema>;
 
 export const CuratedViewListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    curatedViews: z.array(CuratedViewListItemSchema),
+    /** #688: each row carries the caller's capabilities on it. */
+    curatedViews: z.array(withShareableCapabilities(CuratedViewListItemSchema)),
   });
 
 export type CuratedViewListResponsePayload = z.infer<
@@ -72,7 +75,8 @@ export type CuratedViewListResponsePayload = z.infer<
 // ── Get ───────────────────────────────────────────────────────────────
 
 export const CuratedViewGetResponsePayloadSchema = z.object({
-  curatedView: CuratedViewWithProjectionSchema,
+  /** #688: with the caller's capabilities on the view. */
+  curatedView: withShareableCapabilities(CuratedViewWithProjectionSchema),
 });
 
 export type CuratedViewGetResponsePayload = z.infer<

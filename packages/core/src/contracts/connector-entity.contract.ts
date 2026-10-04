@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import { ColumnDefinitionSchema } from "../models/column-definition.model.js";
 import { RunningJobSummarySchema } from "./connector-instance.contract.js";
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
@@ -55,7 +57,8 @@ export type ConnectorEntityListRequestQuery = z.infer<
 
 export const ConnectorEntityListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    connectorEntities: z.array(ConnectorEntitySchema),
+    /** #688: each row with the caller's capabilities. */
+    connectorEntities: z.array(withCapabilities(ConnectorEntitySchema)),
   });
 
 export type ConnectorEntityListResponsePayload = z.infer<
@@ -64,7 +67,9 @@ export type ConnectorEntityListResponsePayload = z.infer<
 
 export const ConnectorEntityListWithMappingsResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    connectorEntities: z.array(ConnectorEntityWithMappingsSchema),
+    connectorEntities: z.array(
+      withCapabilities(ConnectorEntityWithMappingsSchema)
+    ),
   });
 
 export type ConnectorEntityListWithMappingsResponsePayload = z.infer<
@@ -73,7 +78,9 @@ export type ConnectorEntityListWithMappingsResponsePayload = z.infer<
 
 export const ConnectorEntityListWithInstanceResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    connectorEntities: z.array(ConnectorEntityWithInstanceSchema),
+    connectorEntities: z.array(
+      withCapabilities(ConnectorEntityWithInstanceSchema)
+    ),
   });
 
 export type ConnectorEntityListWithInstanceResponsePayload = z.infer<
@@ -83,7 +90,7 @@ export type ConnectorEntityListWithInstanceResponsePayload = z.infer<
 // ── Get ───────────────────────────────────────────────────────────────
 
 export const ConnectorEntityGetResponsePayloadSchema = z.object({
-  connectorEntity: ConnectorEntitySchema,
+  connectorEntity: withCapabilities(ConnectorEntitySchema),
 });
 
 export type ConnectorEntityGetResponsePayload = z.infer<

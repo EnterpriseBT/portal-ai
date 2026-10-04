@@ -19,6 +19,9 @@ import {
   isBulkMutationResult,
 } from "../../contracts/portal.contract.js";
 
+// #688: list and get rows carry the caller's capabilities.
+const CAPS = { read: true, write: true, delete: false };
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const validPortal = {
@@ -508,7 +511,7 @@ describe("PortalListResponsePayloadSchema", () => {
       total: 1,
       limit: 20,
       offset: 0,
-      portals: [validPortal],
+      portals: [{ ...validPortal, capabilities: CAPS }],
     });
     expect(result.success).toBe(true);
   });
@@ -528,5 +531,18 @@ describe("PortalListResponsePayloadSchema", () => {
       portals: [],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("PortalListResponsePayloadSchema capabilities (#688)", () => {
+  it("rejects a row without capabilities", () => {
+    expect(
+      PortalListResponsePayloadSchema.safeParse({
+        total: 1,
+        limit: 20,
+        offset: 0,
+        portals: [validPortal],
+      }).success
+    ).toBe(false);
   });
 });

@@ -72,10 +72,13 @@ const base = {
 
 const payload = (instances: unknown[], views: unknown[]) =>
   result({
-    station: { ...base, instances, views },
-    canShare: false,
-    canWrite: false,
-    canDelete: false,
+    station: {
+      ...base,
+      instances,
+      views,
+      // #688: the caller's capabilities ride on the row.
+      capabilities: { read: true, write: false, delete: false, share: false },
+    },
   });
 
 const instance = (id: string, name: string, canRead: boolean) => ({

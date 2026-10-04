@@ -6,6 +6,7 @@ import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import MuiTypography from "@mui/material/Typography";
 
+import { visibleActionItems } from "./ActionsMenu.js";
 import { ActionsSuite } from "./ActionsSuite.js";
 import type { ActionSuiteItem } from "./ActionsSuite.js";
 
@@ -40,7 +41,8 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
     },
     ref
   ) => {
-    const hasActions = actions && actions.length > 0;
+    // #688: hidden actions don't count.
+    const hasActions = visibleActionItems(actions).length > 0;
 
     const titleRow = (
       <Stack
@@ -104,7 +106,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
                   pb: { xs: 1.5, sm: 1 },
                 }}
               >
-                <ActionsSuite items={actions} />
+                <ActionsSuite items={actions ?? []} />
               </Box>
             )}
           </Stack>
@@ -128,7 +130,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
 
             {hasActions && (
               <Box sx={{ flexShrink: 0 }}>
-                <ActionsSuite items={actions} />
+                <ActionsSuite items={actions ?? []} />
               </Box>
             )}
           </Stack>

@@ -1,7 +1,10 @@
 import React from "react";
 import Stack from "@mui/material/Stack";
-import MuiButton from "@mui/material/Button";
 import type { ButtonProps as MuiButtonProps } from "@mui/material/Button";
+
+import { GatedButton } from "./GatedButton.js";
+import { visibleActionItems } from "./ActionsMenu.js";
+import type { ActionGate } from "./ActionGate.js";
 
 export interface ActionSuiteItem {
   /** Display label for the button. */
@@ -10,8 +13,9 @@ export interface ActionSuiteItem {
   icon?: React.ReactNode;
   /** Called when the button is clicked. */
   onClick: () => void;
-  /** Whether the button is disabled. */
-  disabled?: boolean;
+  /** How the button renders for this caller (#688); omitted = allow. A
+   *  disabled button must say why, so there is no `disabled` flag. */
+  gate?: ActionGate;
   /** MUI button color. Defaults to "primary". */
   color?: MuiButtonProps["color"];
   /** MUI button variant. Defaults to "outlined". */
@@ -29,7 +33,8 @@ export interface ActionsSuiteProps {
 
 export const ActionsSuite = React.forwardRef<HTMLDivElement, ActionsSuiteProps>(
   ({ items, size = "small", className, ...rest }, ref) => {
-    if (items.length === 0) return null;
+    const visible = visibleActionItems(items);
+    if (visible.length === 0) return null;
 
     return (
       <Stack
@@ -42,18 +47,18 @@ export const ActionsSuite = React.forwardRef<HTMLDivElement, ActionsSuiteProps>(
         className={className}
         {...rest}
       >
-        {items.map((item) => (
-          <MuiButton
+        {visible.map((item) => (
+          <GatedButton
             key={item.label}
             size={size}
             variant={item.variant ?? "outlined"}
             color={item.color ?? "primary"}
-            disabled={item.disabled}
+            gate={item.gate}
             startIcon={item.icon}
             onClick={item.onClick}
           >
             {item.label}
-          </MuiButton>
+          </GatedButton>
         ))}
       </Stack>
     );

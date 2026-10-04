@@ -17,6 +17,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import type { StationAttachmentChange } from "../services/station-attachment.service.js";
 import { AuditService } from "../services/audit.service.js";
@@ -191,9 +192,8 @@ stationRouter.get(
       }
       // #621: object-level visibility — AND the caller's read predicate (own +
       // system + shared) into the list. `undefined` = see-all (owner/admin).
-      const visibility = (
-        await PermissionService.loadSet(ctx)
-      ).visibilityPredicate("station", {
+      const set = await PermissionService.loadSet(ctx);
+      const visibility = set.visibilityPredicate("station", {
         createdByCol: stations.createdBy,
         idCol: stations.id,
       });
@@ -237,8 +237,12 @@ stationRouter.get(
       }));
 
       return HttpService.success<StationListResponsePayload>(res, {
-        stations:
-          stationsWithToolpacks as unknown as StationListResponsePayload["stations"],
+        // #688: each row with the caller's capabilities on it.
+        stations: ObjectCapabilitiesService.attach(
+          set,
+          "station",
+          stationsWithToolpacks
+        ) as unknown as StationListResponsePayload["stations"],
         total,
         limit,
         offset,
@@ -348,9 +352,6 @@ stationRouter.get(
           new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
         );
       }
-      const canShare = set.can("resource.share", object);
-      const canWrite = set.can("resource.write", object);
-      const canDelete = set.can("resource.delete", object);
 
       // #674: every attachment, readable or not, each with canRead.
       const { instances, views } =
@@ -374,10 +375,9 @@ stationRouter.get(
           instances,
           ...(views ? { views } : {}),
           enabledToolpacks,
+          // #688: replaces the #621 canShare/canWrite/canDelete flags.
+          capabilities: ObjectCapabilitiesService.for(set, "station", station),
         } as unknown as StationGetResponsePayload["station"],
-        canShare,
-        canWrite,
-        canDelete,
       });
     } catch (error) {
       logger.error(

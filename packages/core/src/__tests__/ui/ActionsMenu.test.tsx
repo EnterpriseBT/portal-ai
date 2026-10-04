@@ -99,20 +99,97 @@ describe("ActionsMenu Component", () => {
       expect(items[1].onClick).not.toHaveBeenCalled();
       expect(items[2].onClick).not.toHaveBeenCalled();
     });
+  });
 
-    it("should not call onClick for a disabled item", async () => {
-      const disabledItems = [
-        { label: "Disabled Action", onClick: jest.fn(), disabled: true },
-      ];
-      render(<ActionsMenu items={disabledItems} />);
-      await userEvent.click(
-        screen.getByRole("button", { name: "More actions" })
+  // #688: items render an ActionGate decided by the app.
+  describe("Gates (#688)", () => {
+    const open = async () =>
+      userEvent.click(screen.getByRole("button", { name: "More actions" }));
+
+    it("drops hidden items", async () => {
+      render(
+        <ActionsMenu
+          items={[
+            { label: "Edit", onClick: jest.fn() },
+            { label: "Delete", onClick: jest.fn(), gate: { kind: "hide" } },
+          ]}
+        />
       );
+      await open();
+      expect(
+        screen.getByRole("menuitem", { name: "Edit" })
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+    });
 
-      const menuItem = screen.getByRole("menuitem", {
-        name: "Disabled Action",
-      });
-      expect(menuItem).toHaveAttribute("aria-disabled", "true");
+    it("renders no trigger when every item is hidden", () => {
+      render(
+        <ActionsMenu
+          items={[
+            { label: "Edit", onClick: jest.fn(), gate: { kind: "hide" } },
+            { label: "Delete", onClick: jest.fn(), gate: { kind: "hide" } },
+          ]}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    });
+
+    it("a disabled item is aria-disabled, focusable, shows its reason, and does nothing on click", async () => {
+      const onClick = jest.fn();
+      render(
+        <ActionsMenu
+          items={[
+            {
+              label: "Sync",
+              onClick,
+              gate: { kind: "disable", reason: "A sync is already running" },
+            },
+          ]}
+        />
+      );
+      await open();
+      const item = screen.getByRole("menuitem", { name: "Sync" });
+      expect(item).toHaveAttribute("aria-disabled", "true");
+      await userEvent.hover(item);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(
+        "A sync is already running"
+      );
+      await userEvent.click(item);
+      expect(onClick).not.toHaveBeenCalled();
+      // The menu stays open on a refused click.
+      expect(
+        screen.getByRole("menuitem", { name: "Sync" })
+      ).toBeInTheDocument();
+    });
+
+    it("an upsell item calls onUpgrade instead of onClick", async () => {
+      const onClick = jest.fn();
+      const onUpgrade = jest.fn();
+      render(
+        <ActionsMenu
+          items={[
+            {
+              label: "Register toolpack",
+              onClick,
+              gate: { kind: "upsell", reason: "On a higher plan", onUpgrade },
+            },
+          ]}
+        />
+      );
+      await open();
+      await userEvent.click(
+        screen.getByRole("menuitem", { name: /Register toolpack/ })
+      );
+      expect(onUpgrade).toHaveBeenCalledTimes(1);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("an omitted gate behaves as allow", async () => {
+      const onClick = jest.fn();
+      render(<ActionsMenu items={[{ label: "Edit", onClick }]} />);
+      await open();
+      await userEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+      expect(onClick).toHaveBeenCalledTimes(1);
     });
   });
 

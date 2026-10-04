@@ -44,12 +44,63 @@ describe("ActionsSuite Component", () => {
       expect(screen.getByTestId("settings-icon")).toBeInTheDocument();
     });
 
-    it("should render disabled buttons", () => {
-      const disabledItems = [
-        { label: "Archive", onClick: jest.fn(), disabled: true },
-      ];
-      render(<ActionsSuite items={disabledItems} />);
-      expect(screen.getByRole("button", { name: "Archive" })).toBeDisabled();
+    it("#688: renders a disable gate aria-disabled with its reason, and swallows the click", async () => {
+      const onClick = jest.fn();
+      render(
+        <ActionsSuite
+          items={[
+            {
+              label: "Archive",
+              onClick,
+              gate: { kind: "disable", reason: "An import is running" },
+            },
+          ]}
+        />
+      );
+      const button = screen.getByRole("button", { name: "Archive" });
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      await userEvent.click(button);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("#688: drops hidden items, and renders nothing when all are hidden", () => {
+      const { container, rerender } = render(
+        <ActionsSuite
+          items={[
+            { label: "Share", onClick: jest.fn(), gate: { kind: "hide" } },
+            { label: "Delete", onClick: jest.fn() },
+          ]}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Delete" })
+      ).toBeInTheDocument();
+      rerender(
+        <ActionsSuite
+          items={[
+            { label: "Share", onClick: jest.fn(), gate: { kind: "hide" } },
+          ]}
+        />
+      );
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it("#688: an upsell item calls onUpgrade", async () => {
+      const onUpgrade = jest.fn();
+      render(
+        <ActionsSuite
+          items={[
+            {
+              label: "Register",
+              onClick: jest.fn(),
+              gate: { kind: "upsell", reason: "On a higher plan", onUpgrade },
+            },
+          ]}
+        />
+      );
+      await userEvent.click(screen.getByRole("button", { name: /Register/ }));
+      expect(onUpgrade).toHaveBeenCalledTimes(1);
     });
 
     it("should default to outlined variant", () => {
@@ -100,15 +151,6 @@ describe("ActionsSuite Component", () => {
       expect(items[0].onClick).toHaveBeenCalledTimes(1);
       expect(items[1].onClick).not.toHaveBeenCalled();
       expect(items[2].onClick).not.toHaveBeenCalled();
-    });
-
-    it("should not allow interaction on a disabled button", () => {
-      const disabledItems = [
-        { label: "Archive", onClick: jest.fn(), disabled: true },
-      ];
-      render(<ActionsSuite items={disabledItems} />);
-
-      expect(screen.getByRole("button", { name: "Archive" })).toBeDisabled();
     });
   });
 

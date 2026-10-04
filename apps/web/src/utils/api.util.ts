@@ -1,6 +1,7 @@
 import {
   useMutation,
   useQuery,
+  useQueryClient,
   type UseMutationOptions,
   type UseQueryOptions,
   type QueryKey,
@@ -12,6 +13,7 @@ import type {
 } from "@portalai/core/contracts";
 import { useAuth } from "../providers/Auth.provider";
 import { handleAuthError } from "./auth-error.util";
+import { isPermissionDenied } from "./permission-denied.util";
 
 export interface ServerError {
   message: string;
@@ -161,6 +163,13 @@ interface AuthMutationConfig<TData, TVariables> {
     UseMutationOptions<TData, ApiError, TVariables>,
     "mutationFn"
   >;
+  /**
+   * #688: on a permission-denied error (`isPermissionDenied`), invalidate
+   * these keys so affordances re-render from fresh capabilities. Feedback
+   * stays with the caller (FormAlert in a dialog, a toast elsewhere): the
+   * caller's `onError` still runs, after the invalidation.
+   */
+  onPermissionDenied?: { invalidate: (variables: TVariables) => QueryKey[] };
 }
 
 /**
@@ -191,8 +200,10 @@ export const useAuthMutation = <TData, TVariables>({
   method = "POST",
   options,
   mutationOptions,
+  onPermissionDenied,
 }: AuthMutationConfig<TData, TVariables>) => {
   const { fetchWithAuth } = useAuthFetch();
+  const queryClient = useQueryClient();
 
   return useMutation<TData, ApiError, TVariables>({
     mutationFn: async (variables) => {
@@ -217,5 +228,17 @@ export const useAuthMutation = <TData, TVariables>({
       return response.payload;
     },
     ...mutationOptions,
+    ...(onPermissionDenied
+      ? {
+          onError: (error, variables, ...rest) => {
+            if (isPermissionDenied(error.code)) {
+              for (const queryKey of onPermissionDenied.invalidate(variables)) {
+                void queryClient.invalidateQueries({ queryKey });
+              }
+            }
+            return mutationOptions?.onError?.(error, variables, ...rest);
+          },
+        }
+      : {}),
   });
 };

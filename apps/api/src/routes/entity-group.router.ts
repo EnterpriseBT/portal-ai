@@ -33,6 +33,7 @@ import { DbService } from "../services/db.service.js";
 import { entityGroups } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { entityGroupMemberRouter } from "./entity-group-member.router.js";
 
 const logger = createLogger({ module: "entity-group" });
@@ -91,18 +92,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   type: boolean
  *                   example: true
  *                 payload:
- *                   type: object
- *                   properties:
- *                     entityGroups:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/EntityGroup'
- *                     total:
- *                       type: integer
- *                     limit:
- *                       type: integer
- *                     offset:
- *                       type: integer
+ *                   $ref: '#/components/schemas/EntityGroupListResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -150,9 +140,8 @@ entityGroupRouter.get(
       }
 
       // #630: filter to the entity groups the caller may `read`.
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("entity_group", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("entity_group", {
         createdByCol: entityGroups.createdBy,
         idCol: entityGroups.id,
       });
@@ -186,8 +175,12 @@ entityGroupRouter.get(
       });
 
       return HttpService.success<EntityGroupListResponsePayload>(res, {
-        entityGroups:
-          data as unknown as EntityGroupListResponsePayload["entityGroups"],
+        // #688: each row with the caller's capabilities.
+        entityGroups: ObjectCapabilitiesService.attach(
+          set,
+          "entity_group",
+          data
+        ) as unknown as EntityGroupListResponsePayload["entityGroups"],
         total,
         limit,
         offset,
@@ -241,10 +234,7 @@ entityGroupRouter.get(
  *                   type: boolean
  *                   example: true
  *                 payload:
- *                   type: object
- *                   properties:
- *                     entityGroup:
- *                       $ref: '#/components/schemas/EntityGroupWithMembers'
+ *                   $ref: '#/components/schemas/EntityGroupGetResponsePayload'
  *       404:
  *         description: Entity group not found
  *         content:
@@ -290,8 +280,9 @@ entityGroupRouter.get(
         );
       }
       // #630: an unreadable group is indistinguishable from absent (404).
+      const set = await PermissionService.loadSet(ctx);
       if (
-        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+        !set.can("resource.read", {
           type: "entity_group",
           id,
           createdBy: entityGroup.createdBy,
@@ -323,6 +314,11 @@ entityGroupRouter.get(
         entityGroup: {
           ...entityGroup,
           members,
+          capabilities: ObjectCapabilitiesService.for(
+            set,
+            "entity_group",
+            entityGroup
+          ),
         } as unknown as EntityGroupGetResponsePayload["entityGroup"],
       });
     } catch (error) {

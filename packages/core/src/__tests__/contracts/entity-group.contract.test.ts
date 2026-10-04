@@ -8,6 +8,9 @@ import {
   EntityGroupUpdateResponsePayloadSchema,
 } from "../../contracts/entity-group.contract.js";
 
+// #688: list and get rows carry the caller's capabilities.
+const CAPS = { read: true, write: true, delete: false };
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const validEntityGroup = {
@@ -85,7 +88,9 @@ describe("EntityGroupListResponsePayloadSchema", () => {
       total: 1,
       limit: 20,
       offset: 0,
-      entityGroups: [{ ...validEntityGroup, memberCount: 3 }],
+      entityGroups: [
+        { ...validEntityGroup, memberCount: 3, capabilities: CAPS },
+      ],
     });
     expect(result.success).toBe(true);
   });
@@ -115,6 +120,7 @@ describe("EntityGroupGetResponsePayloadSchema", () => {
     const result = EntityGroupGetResponsePayloadSchema.safeParse({
       entityGroup: {
         ...validEntityGroup,
+        capabilities: CAPS,
         members: [validMemberWithDetails],
       },
     });
@@ -125,6 +131,7 @@ describe("EntityGroupGetResponsePayloadSchema", () => {
     const result = EntityGroupGetResponsePayloadSchema.safeParse({
       entityGroup: {
         ...validEntityGroup,
+        capabilities: CAPS,
         members: [],
       },
     });
@@ -219,5 +226,15 @@ describe("EntityGroupUpdateResponsePayloadSchema", () => {
       entityGroup: validEntityGroup,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("EntityGroupGetResponsePayloadSchema capabilities (#688)", () => {
+  it("rejects a row without capabilities", () => {
+    expect(
+      EntityGroupGetResponsePayloadSchema.safeParse({
+        entityGroup: { ...validEntityGroup, members: [] },
+      }).success
+    ).toBe(false);
   });
 });

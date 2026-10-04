@@ -87,6 +87,12 @@ describe("curated-view get / list contract (#680)", () => {
           fieldMappingIds: [],
           filtered: true,
           projected: false,
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
         },
       }).success
     ).toBe(true);

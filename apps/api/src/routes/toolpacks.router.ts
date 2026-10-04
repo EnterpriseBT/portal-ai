@@ -16,6 +16,7 @@ import {
   RegisterToolpackBodySchema,
   UpdateToolpackBodySchema,
   type Toolpack,
+  type BuiltinToolpackRecord,
   type CustomToolpackRecord,
   type ToolpackListResponsePayload,
   type ToolpackGetResponsePayload,
@@ -36,6 +37,7 @@ import { BUILTIN_TOOL_NAMES } from "../services/tools.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { requirePermission } from "../middleware/require-permission.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { eq, and, isNull } from "drizzle-orm";
@@ -48,7 +50,7 @@ export const toolpacksRouter = Router();
 
 // ── Conversion helpers ──────────────────────────────────────────────
 
-function toBuiltinApiRecord(pack: BuiltinToolpack): Toolpack {
+function toBuiltinApiRecord(pack: BuiltinToolpack): BuiltinToolpackRecord {
   return {
     id: `builtin:${pack.slug}`,
     kind: "builtin",
@@ -141,7 +143,18 @@ function matchesCustomSearch(
  *         name: kind
  *         schema: { type: string, enum: [builtin, custom] }
  *     responses:
- *       200: { description: Toolpacks retrieved successfully. }
+ *       200:
+ *         description: Toolpacks retrieved successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ToolpackListResponse'
  */
 toolpacksRouter.get(
   "/",
@@ -186,8 +199,19 @@ toolpacksRouter.get(
           })()
         : all;
 
+      // #688: builtins are read-only; a custom pack follows its creator.
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const createdByOf = new Map(customRows.map((r) => [r.id, r.createdBy]));
       return HttpService.success<ToolpackListResponsePayload>(res, {
-        toolpacks: filtered,
+        toolpacks: filtered.map((t) => ({
+          ...t,
+          capabilities: ObjectCapabilitiesService.forToolpack(
+            set,
+            t.kind === "builtin"
+              ? { id: t.id, kind: "builtin" }
+              : { id: t.id, kind: "custom", createdBy: createdByOf.get(t.id)! }
+          ),
+        })),
         total: filtered.length,
       });
     } catch (error) {
@@ -225,7 +249,18 @@ toolpacksRouter.get(
  *         required: true
  *         schema: { type: string }
  *     responses:
- *       200: { description: Toolpack found. }
+ *       200:
+ *         description: Toolpack found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ToolpackGetResponsePayload'
  *       404: { description: Toolpack not found. }
  */
 toolpacksRouter.get(
@@ -244,8 +279,16 @@ toolpacksRouter.get(
             new ApiError(404, ApiCode.TOOLPACK_NOT_FOUND, "Toolpack not found")
           );
         }
+        const builtin = toBuiltinApiRecord(BUILTIN_TOOLPACK_BY_SLUG[slug]);
         return HttpService.success<ToolpackGetResponsePayload>(res, {
-          toolpack: toBuiltinApiRecord(BUILTIN_TOOLPACK_BY_SLUG[slug]),
+          toolpack: {
+            ...builtin,
+            // #688: builtins are platform-defined, so read-only.
+            capabilities: ObjectCapabilitiesService.forToolpack(
+              await PermissionService.loadSet(req.application!.metadata),
+              { id: builtin.id, kind: "builtin" }
+            ),
+          },
         });
       }
 
@@ -261,7 +304,14 @@ toolpacksRouter.get(
         );
       }
       return HttpService.success<ToolpackGetResponsePayload>(res, {
-        toolpack: toCustomApiRecord(row as unknown as OrganizationToolpack),
+        toolpack: {
+          ...toCustomApiRecord(row as unknown as OrganizationToolpack),
+          // #688: the caller's capabilities on the pack.
+          capabilities: ObjectCapabilitiesService.forToolpack(
+            await PermissionService.loadSet(req.application!.metadata),
+            { id: row.id, kind: "custom", createdBy: row.createdBy }
+          ),
+        },
       });
     } catch (error) {
       logger.error(

@@ -285,7 +285,9 @@ export const EntityRecordDetailViewUI: React.FC<
                     label: "Re-validate",
                     icon: <RefreshIcon />,
                     onClick: onRevalidate,
-                    disabled: isRevalidating,
+                    gate: isRevalidating
+                      ? { kind: "disable" as const, reason: "Re-validating…" }
+                      : undefined,
                   },
                 ]
               : []),
@@ -295,7 +297,9 @@ export const EntityRecordDetailViewUI: React.FC<
                     label: "Edit",
                     icon: <EditIcon />,
                     onClick: () => onOpenEditDialog?.(),
-                    disabled: isUpdating,
+                    gate: isUpdating
+                      ? { kind: "disable" as const, reason: "Saving changes…" }
+                      : undefined,
                   },
                 ]
               : []),
@@ -306,7 +310,9 @@ export const EntityRecordDetailViewUI: React.FC<
                     icon: <DeleteIcon />,
                     onClick: () => onOpenDeleteDialog?.(),
                     color: "error" as const,
-                    disabled: isDeleting,
+                    gate: isDeleting
+                      ? { kind: "disable" as const, reason: "Deleting…" }
+                      : undefined,
                   },
                 ]
               : []),

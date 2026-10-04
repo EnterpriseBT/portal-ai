@@ -126,6 +126,7 @@ const stubEntity = {
   updatedBy: null,
   deleted: null,
   deletedBy: null,
+  capabilities: { read: true, write: true, delete: true },
 };
 
 // ── Tests ───────────────────────────────────────────────────────────
