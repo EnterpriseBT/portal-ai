@@ -31,6 +31,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
     portals: {
       list: () => result({ portals: [], total: 0, limit: 10, offset: 0 }),
       create: mutation,
+      remove: mutation,
     },
     organizations: {
       current: () => result({ organization: { defaultStationId: null } }),
