@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { fn } from "@storybook/test";
 
 import { GatedButton } from "../ui/GatedButton";
 import { GatedIconButton } from "../ui/GatedIconButton";
@@ -10,7 +11,9 @@ const meta = {
   component: GatedButton,
   parameters: { layout: "centered" },
   tags: ["autodocs"],
-  args: { children: "Edit view", onClick: () => {} },
+  // fn() spies, so the Actions panel shows that a disabled click never
+  // reaches onClick and an upsell calls onUpgrade instead.
+  args: { children: "Edit view", onClick: fn() },
 } satisfies Meta<typeof GatedButton>;
 
 export default meta;
@@ -34,7 +37,7 @@ export const Upsell: Story = {
     gate: {
       kind: "upsell",
       reason: "Custom toolpacks are on a higher plan",
-      onUpgrade: () => {},
+      onUpgrade: fn(),
     },
   },
 };
