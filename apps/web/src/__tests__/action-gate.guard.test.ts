@@ -67,11 +67,25 @@ function braceExpression(source: string, open: number): string {
   return source.slice(open + 1);
 }
 
-/** The JSX tag a prop at `index` belongs to: the nearest `<Name` before it. */
+/**
+ * The JSX tag a prop at `index` belongs to. Walks back to the `<Name` that
+ * opens the element, skipping anything inside `{…}`, so JSX in an earlier prop
+ * (`startIcon={<DeleteIcon />}`) isn't mistaken for the owner.
+ */
 function tagAt(source: string, index: number): string | null {
-  const before = source.slice(0, index);
-  const tags = [...before.matchAll(/<([A-Z][\w.]*)\b/g)];
-  return tags.length ? tags[tags.length - 1][1] : null;
+  let depth = 0;
+  for (let i = index - 1; i >= 0; i--) {
+    const ch = source[i];
+    if (ch === "}") depth++;
+    else if (ch === "{") {
+      if (depth === 0) return null; // the prop isn't on a JSX element
+      depth--;
+    } else if (ch === "<" && depth === 0) {
+      const name = /^<([A-Z][\w.]*)\b/.exec(source.slice(i));
+      if (name) return name[1];
+    }
+  }
+  return null;
 }
 
 /** Every permission-reading `disabled={…}` on a Button/IconButton. */
@@ -141,6 +155,12 @@ describe("permission-gated actions render through an ActionGate (#688)", () => {
     ).toHaveLength(1);
     expect(
       violationsIn(`<Button disabled={!customToolpacksEntitled}>Add</Button>`)
+    ).toHaveLength(1);
+    // JSX inside an earlier prop (startIcon) is not the tag that owns disabled.
+    expect(
+      violationsIn(
+        `<Button startIcon={<DeleteIcon />} onClick={() => go(<X />)} disabled={!canDelete}>Delete</Button>`
+      )
     ).toHaveLength(1);
   });
 

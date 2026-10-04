@@ -297,8 +297,10 @@ export const CuratedViewDetail: React.FC = () => {
         onNavigate={(href) => navigate({ to: href })}
       />
       <CuratedViewEditorDialog
-        // #688: the editor never opens without write on the view.
-        open={editOpen && view.capabilities.write}
+        // #688: only the write-gated Edit button opens it. `open` isn't gated on
+        // capabilities itself: a save refused with a 403 refetches the view
+        // (onPermissionDenied), and the dialog must stay open to show why.
+        open={editOpen}
         mode="edit"
         view={view}
         onClose={() => setEditOpen(false)}
