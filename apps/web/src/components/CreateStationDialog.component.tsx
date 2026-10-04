@@ -23,12 +23,14 @@ import {
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import {
   ALL_BUILTIN_SLUGS,
+  someBuiltinUnentitled,
   isBuiltinPackEntitled,
   ToolPackUtil,
   UNENTITLED_PACK_REASON,
 } from "../utils/tool-packs.util";
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
+import { ToolPackUpgradeNoteUI } from "./ToolPackUpgradeNote.component";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -301,6 +303,9 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
               }}
             />
           )}
+        />
+        <ToolPackUpgradeNoteUI
+          show={someBuiltinUnentitled(entitledBuiltinSlugs)}
         />
         {collisions.length > 0 && (
           <Alert severity="warning" data-testid="toolpack-collision-warning">

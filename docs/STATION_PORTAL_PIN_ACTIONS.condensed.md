@@ -39,7 +39,7 @@ The pin `blockRef` gains `canRefresh` (from `capabilities.write`). `useWidgetRef
 - **Portal touch** (`lastOpened` PATCH): only with `write`, so an admin viewing someone else's portal doesn't write.
 - **Unpin inside a portal** stays ungated: portals are per-user, so every pin in `pinnedBlocks` is the caller's own (or the caller is owner/admin).
 - **Pin result** gates on `canOnResource("pin","write")`, as a create rule.
-- **Tier options:** the disabled option's caption gains the shared `UpgradeLink` (Settings → Billing). That's the `upsell` treatment for a select option, which has no button to gate.
+- **Tier options:** a one-line note under the pack picker ("Some tool packs aren't included in your plan." plus the shared `UpgradeLink` to Settings → Billing), shown when the plan leaves any built-in out. That's the `upsell` treatment for select options. *Amended in slice 4:* the link was meant for the disabled option's caption, but a disabled MUI option can't be clicked, so a link there is dead.
 - **Chat lock:** `disable` with the lock's `reason`, shown as helper text under the input and as the Send tooltip. Cancel is enabled only while streaming.
 
 ## Plan — 4 slices (tests first in each)
@@ -61,7 +61,7 @@ The pin `blockRef` gains `canRefresh` (from `capabilities.write`). `useWidgetRef
    - Pin result gated.
    - Tests: `PinnedResultsList.test.tsx`, `PinnedResultsListView.test.tsx`, `PinnedResultDetail.test.tsx`, `use-widget-refresh.util.test.ts`, `PortalMessage.test.tsx`.
 4. **Tier + chat lock.**
-   - The upgrade link on the unentitled option caption.
+   - The upgrade note under the pack picker (see Decision 3).
    - The lock reason reaches `ChatWindowUI`, and Cancel follows streaming only.
    - Tests: `CreateStationDialog.test.tsx`, `EditStationDialog.test.tsx`, `ChatWindowUI.test.tsx`, `PortalSession.test.tsx`.
 
@@ -74,7 +74,7 @@ Run via `npm run test:unit` in `apps/web` (and `apps/api` for slice 1). Lint, ty
 3. As **member**, on the Dashboard and the station's portal cards: Delete shows on the member's own portals. Deleting one removes it, and its pins vanish from Pinned results (the invalidation).
 4. As **owner**, share a pin with the member at Read. As **member**, open it: no Rename, Share, Delete or Unpin, no refresh button, no 403 in the network panel, and the stale badge is still shown. On `/pinned` the card has no Unpin.
 5. As **member** in their own portal: Rename/Delete show, and Pin result shows on a chart block.
-6. As a caller on a tier without a pack, Create Station: the unentitled pack shows "Not included in your plan" with an upgrade link, and the link lands on Settings → Billing — manual (needs a tier without a builtin pack)
+6. As a caller on a tier without a pack, Create Station: the unentitled pack shows "Not included in your plan", the picker has the note "Some tool packs aren't included in your plan. View plans", and the link lands on Settings → Billing — manual (needs a tier without a builtin pack)
 7. With a bulk job running against a portal's station, the chat input is disabled with the job reason shown, Send's tooltip names it, and Cancel is disabled — manual (needs a long job)
 
 ## Out of scope

@@ -50,6 +50,11 @@ export const ALL_BUILTIN_SLUGS: ReadonlySet<string> = new Set(
   BuiltinToolpackSlugSchema.options
 );
 
+/** #690: some built-in pack is outside the org's plan (drives the upgrade
+ *  note under the station dialogs' pack picker). */
+export const someBuiltinUnentitled = (entitled: ReadonlySet<string>): boolean =>
+  [...ALL_BUILTIN_SLUGS].some((slug) => !entitled.has(slug));
+
 /**
  * Is this toolpack reference available on the organization's plan?
  *
