@@ -41,6 +41,7 @@ import {
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useAuthFetch, toServerError } from "../utils/api.util";
+import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
 
@@ -208,34 +209,31 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         // capability (owner/admin/creator, or a grant) — never a
                         // client role check. A read-only grantee sees none of
                         // Share/Edit/Delete rather than an action that 403s.
-                        ...(item.station.capabilities.share
-                          ? [
-                              {
-                                label: "Share",
-                                icon: <ShareIcon />,
-                                onClick: () => setShareOpen(true),
-                              },
-                            ]
-                          : []),
-                        ...(item.station.capabilities.write
-                          ? [
-                              {
-                                label: "Edit",
-                                icon: <EditIcon />,
-                                onClick: () => setEditOpen(true),
-                              },
-                            ]
-                          : []),
-                        ...(item.station.capabilities.delete
-                          ? [
-                              {
-                                label: "Delete",
-                                icon: <DeleteIcon />,
-                                onClick: () => setDeleteStationOpen(true),
-                                color: "error" as const,
-                              },
-                            ]
-                          : []),
+                        {
+                          label: "Share",
+                          icon: <ShareIcon />,
+                          onClick: () => setShareOpen(true),
+                          gate: decideActionGate({
+                            allowed: item.station.capabilities.share,
+                          }),
+                        },
+                        {
+                          label: "Edit",
+                          icon: <EditIcon />,
+                          onClick: () => setEditOpen(true),
+                          gate: decideActionGate({
+                            allowed: item.station.capabilities.write,
+                          }),
+                        },
+                        {
+                          label: "Delete",
+                          icon: <DeleteIcon />,
+                          onClick: () => setDeleteStationOpen(true),
+                          color: "error" as const,
+                          gate: decideActionGate({
+                            allowed: item.station.capabilities.delete,
+                          }),
+                        },
                       ]}
                     >
                       {station.description && (

@@ -376,4 +376,23 @@ describe("Same-org object access (#685)", () => {
       .where(eq(schema.organizations.id, fx.orgId));
     expect(org.defaultStationId).toBe(stationId);
   });
+
+  it("#690: the caller's station.default.set capability agrees with the default-station PATCH", async () => {
+    const { stationId } = await portalWithMessage(fx.ownerId);
+    for (const [sub, expected] of [
+      [MEMBER_SUB, false],
+      [OWNER_SUB, true],
+    ] as const) {
+      currentSub = sub;
+      const current = await request(app).get("/api/organization/current");
+      expect(current.status).toBe(200);
+      expect(current.body.payload.capabilities["station.default.set"]).toBe(
+        expected
+      );
+      const patch = await request(app)
+        .patch(`/api/organization/${fx.orgId}`)
+        .send({ defaultStationId: stationId });
+      expect(patch.status).toBe(expected ? 200 : 403);
+    }
+  });
 });

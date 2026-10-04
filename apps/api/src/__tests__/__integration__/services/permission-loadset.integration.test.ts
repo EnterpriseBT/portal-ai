@@ -208,6 +208,7 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
       "member.role.assign": true,
       "member.invite": true,
       "member.remove": true,
+      "station.default.set": true,
     });
 
     const memberCaps = await PermissionService.capabilities(
@@ -221,6 +222,9 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
       "member.role.assign": false,
       "member.invite": false,
       "member.remove": false,
+      // #690: a member writes their own stations, but the org default is an
+      // org-wide setting (class write on station), so this stays false.
+      "station.default.set": false,
     });
 
     const adminCaps = await PermissionService.capabilities(
@@ -231,6 +235,7 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
     expect(adminCaps["org.delete"]).toBe(false);
     expect(adminCaps["org.audit.read"]).toBe(true);
     expect(adminCaps["member.invite"]).toBe(true);
+    expect(adminCaps["station.default.set"]).toBe(true);
   });
 
   // ── #621 grant union ────────────────────────────────────────────────
