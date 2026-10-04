@@ -151,6 +151,8 @@ describe("Organization Router", () => {
         "member.role.assign": true,
         "member.invite": true,
         "member.remove": true,
+        // #690: derived from class write on station (the default-station PATCH).
+        "station.default.set": true,
       });
     });
 
