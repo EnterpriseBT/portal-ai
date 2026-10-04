@@ -31,6 +31,7 @@ import { DbService } from "../services/db.service.js";
 import { curatedViews, stationViews } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import type { PermissionSet } from "../services/permission-set.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
@@ -239,8 +240,12 @@ curatedViewRouter.get(
       );
 
       return HttpService.success<CuratedViewListResponsePayload>(res, {
-        curatedViews:
-          scoped as unknown as CuratedViewListResponsePayload["curatedViews"],
+        // #688: each row with the caller's capabilities on it.
+        curatedViews: ObjectCapabilitiesService.attach(
+          set,
+          "curated_view",
+          scoped as unknown as Array<{ id: string; createdBy: string }>
+        ) as unknown as CuratedViewListResponsePayload["curatedViews"],
         total,
         limit,
         offset,
@@ -329,6 +334,11 @@ curatedViewRouter.get(
       return HttpService.success<CuratedViewGetResponsePayload>(res, {
         curatedView: {
           ...(scoped as unknown as CuratedViewGetResponsePayload["curatedView"]),
+          capabilities: ObjectCapabilitiesService.for(
+            set,
+            "curated_view",
+            view
+          ),
           fieldMappingIds: CuratedViewPayloadService.scopeFieldMappingIds(
             set,
             view,

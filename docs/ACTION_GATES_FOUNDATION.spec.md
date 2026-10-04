@@ -119,7 +119,7 @@ export class ObjectCapabilitiesService {
 - `read` is `set.can("resource.read", obj)`. Returned rows are already readable, so it's true, but it's computed rather than assumed.
 - Every list and GET route of the 12 types holds **one** `set` per request (most already do) and returns rows through `attach`/`for`.
 - **`PortalAccessService.load`** now returns `Promise<{ portal: PortalSelect; set: PermissionSet }>`. Its callers destructure.
-- **Swagger:** the touched response components become `z.toJSONSchema(<ResponseSchema>, JSON_SCHEMA_OPTS)` registrations, following the `stationSchemas` pattern in `swagger.config.ts` and keeping the existing component names. That covers ColumnDefinition, ConnectorEntity, FieldMapping, EntityTag, EntityGroup, CuratedView, Portal and PortalResult (list + get). The existing round-trip test then covers them.
+- **Swagger** (amended at slice 4): the shape gets one source. `ObjectCapabilities` and `ShareableObjectCapabilities` are registered as Zod-derived components, and every per-object row component references them, through `allOf` for the hand-written ones, so no shape is spelled out twice. The hand-written row components aren't converted wholesale: CuratedView's filter schema is recursive, and `z.toJSONSchema` can't emit it as a standalone component. A `swagger.config.test.ts` case follows `$ref`/`allOf` from each list and GET response to its row and asserts `capabilities` is declared, so the docs can't silently drift. It also asserts that no response still documents `canShare/canWrite/canDelete`.
 
 ### Core UI — `packages/core/src/ui/ActionGate.ts` (new; exported from `ui/index.ts`)
 

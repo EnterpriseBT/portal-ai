@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withShareableCapabilities } from "./capabilities.contract.js";
+
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { CuratedViewSchema } from "../models/curated-view.model.js";
 import { StationInstanceSchema } from "../models/station-instance.model.js";
@@ -31,7 +33,8 @@ export type StationWithToolpacks = z.infer<typeof StationWithToolpacksSchema>;
 
 export const StationListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    stations: z.array(StationWithToolpacksSchema),
+    /** #688: each row carries the caller's capabilities on it. */
+    stations: z.array(withShareableCapabilities(StationWithToolpacksSchema)),
   });
 
 export type StationListResponsePayload = z.infer<
@@ -93,21 +96,16 @@ export type StationViewWithCuratedView = z.infer<
 >;
 
 export const StationGetResponsePayloadSchema = z.object({
-  station: StationWithToolpacksSchema.extend({
-    instances: z.array(StationInstanceWithConnectorInstanceSchema).optional(),
-    /** #674: present when include=curatedView. */
-    views: z.array(StationViewWithCuratedViewSchema).optional(),
-  }),
-  /** #621: whether the caller may share this station (`resource.share`) — gates
-   *  the Share entry point. Server-computed per-object, never a client role
-   *  heuristic. */
-  canShare: z.boolean(),
-  /** #621: whether the caller may edit (`resource.write`) — gates the Edit
-   *  entry point, so a read-only grantee isn't shown an action that 403s. */
-  canWrite: z.boolean(),
-  /** #621: whether the caller may delete (`resource.delete`) — gates the Delete
-   *  entry point (a shared object's grantee never gets delete). */
-  canDelete: z.boolean(),
+  /** #688: `capabilities` (read/write/delete/share) replaces the #621
+   *  canShare/canWrite/canDelete flags: the same server-computed per-object
+   *  decision, in the shape every per-object payload now carries. */
+  station: withShareableCapabilities(
+    StationWithToolpacksSchema.extend({
+      instances: z.array(StationInstanceWithConnectorInstanceSchema).optional(),
+      /** #674: present when include=curatedView. */
+      views: z.array(StationViewWithCuratedViewSchema).optional(),
+    })
+  ),
 });
 
 export type StationGetResponsePayload = z.infer<

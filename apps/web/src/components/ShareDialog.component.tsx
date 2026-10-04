@@ -288,7 +288,7 @@ export interface ShareDialogProps {
  * Object-sharing dialog (#621) — wires `sdk.grants` + the member picker and
  * delegates rendering to {@link ShareDialogUI}. Share failures surface in the
  * dialog's `FormAlert` (it stays open to retry); a success toasts and
- * invalidates the object's grant list + the object's own query (so `canShare`
+ * invalidates the object's grant list + the object's own query (so its `capabilities.share`
  * / visibility refresh).
  */
 export const ShareDialog: React.FC<ShareDialogProps> = ({

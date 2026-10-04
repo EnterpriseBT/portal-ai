@@ -94,6 +94,8 @@ import {
   CreateStationBodySchema,
   UpdateStationBodySchema,
   StationGetResponsePayloadSchema,
+  ObjectCapabilitiesSchema,
+  ShareableObjectCapabilitiesSchema,
   StationInstanceWithConnectorInstanceSchema,
   StationViewWithCuratedViewSchema,
   ResolvedColumnSchema,
@@ -494,6 +496,32 @@ const usageLedgerSchemas: Record<string, unknown> = {
  * routes validate and return: `curatedViewIds` beside `connectorInstanceIds`,
  * and every attachment with `canRead`.
  */
+/** #688: the caller's capabilities on a per-object payload row. Hand-written
+ *  row components (below) reference these, so the shape has one source. */
+const capabilitiesSchemas: Record<string, unknown> = {
+  ObjectCapabilities: z.toJSONSchema(
+    ObjectCapabilitiesSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ShareableObjectCapabilities: z.toJSONSchema(
+    ShareableObjectCapabilitiesSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/** `allOf` member adding a required `capabilities` to a hand-written row. */
+const withCapabilitiesRef = (shareable: boolean) => ({
+  type: "object",
+  required: ["capabilities"],
+  properties: {
+    capabilities: {
+      $ref: shareable
+        ? "#/components/schemas/ShareableObjectCapabilities"
+        : "#/components/schemas/ObjectCapabilities",
+    },
+  },
+});
+
 const stationSchemas: Record<string, unknown> = {
   CreateStationBody: z.toJSONSchema(CreateStationBodySchema, JSON_SCHEMA_OPTS),
   UpdateStationBody: z.toJSONSchema(UpdateStationBodySchema, JSON_SCHEMA_OPTS),
@@ -1447,6 +1475,7 @@ const options: swaggerJsdoc.Options = {
         CuratedViewListItem: {
           allOf: [
             { $ref: "#/components/schemas/CuratedView" },
+            withCapabilitiesRef(true),
             {
               type: "object",
               properties: {
@@ -1478,6 +1507,7 @@ const options: swaggerJsdoc.Options = {
         CuratedViewWithProjection: {
           allOf: [
             { $ref: "#/components/schemas/CuratedView" },
+            withCapabilitiesRef(true),
             {
               type: "object",
               required: ["fieldMappingIds", "filtered", "projected"],
@@ -1496,6 +1526,22 @@ const options: swaggerJsdoc.Options = {
                   type: "boolean",
                   description:
                     "Whether the view selects columns, as opposed to all of them",
+                },
+              },
+            },
+          ],
+        },
+        // #688: GET /api/curated-views, each row with the caller's capabilities.
+        CuratedViewListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["curatedViews"],
+              properties: {
+                curatedViews: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/CuratedViewListItem" },
                 },
               },
             },
@@ -1729,7 +1775,13 @@ const options: swaggerJsdoc.Options = {
               properties: {
                 stations: {
                   type: "array",
-                  items: { $ref: "#/components/schemas/Station" },
+                  // #688: each row with the caller's capabilities.
+                  items: {
+                    allOf: [
+                      { $ref: "#/components/schemas/Station" },
+                      withCapabilitiesRef(true),
+                    ],
+                  },
                 },
               },
             },
@@ -1861,6 +1913,27 @@ const options: swaggerJsdoc.Options = {
             deletedBy: { type: ["string", "null"] },
           },
         },
+        // #688: a pin with the caller's capabilities (share/write/delete);
+        // `portalName` is present on the list with include=portal.
+        PortalResultWithCapabilities: {
+          allOf: [
+            { $ref: "#/components/schemas/PortalResult" },
+            {
+              type: "object",
+              properties: { portalName: { type: ["string", "null"] } },
+            },
+            withCapabilitiesRef(true),
+          ],
+        },
+        PortalResultGetResponsePayload: {
+          type: "object",
+          required: ["portalResult"],
+          properties: {
+            portalResult: {
+              $ref: "#/components/schemas/PortalResultWithCapabilities",
+            },
+          },
+        },
         PortalResultListResponse: {
           allOf: [
             { $ref: "#/components/schemas/PaginatedResponse" },
@@ -1870,7 +1943,10 @@ const options: swaggerJsdoc.Options = {
               properties: {
                 portalResults: {
                   type: "array",
-                  items: { $ref: "#/components/schemas/PortalResult" },
+                  // #688: each pin with the caller's capabilities.
+                  items: {
+                    $ref: "#/components/schemas/PortalResultWithCapabilities",
+                  },
                 },
               },
             },
@@ -2014,6 +2090,7 @@ const options: swaggerJsdoc.Options = {
         ...usageLedgerSchemas,
         ...publicSiteSchemas,
         ...stationSchemas,
+        ...capabilitiesSchemas,
         ...portalStreamEventSchemas,
       },
     },

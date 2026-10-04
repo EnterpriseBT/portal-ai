@@ -16,6 +16,7 @@ const view = {
   filter: null,
   fieldMappingIds: ["fm-1", "fm-2"],
   filtered: false,
+  capabilities: { read: true, write: true, delete: true, share: true },
   projected: true,
   created: 1710000000000,
   createdBy: "user-1",

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withShareableCapabilities } from "./capabilities.contract.js";
+
 import { PortalSchema } from "../models/portal.model.js";
 import {
   PortalResultSchema,
@@ -115,6 +117,32 @@ export const SendMessageBodySchema = z.object({
 export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 
 // ── Portal Result List ────────────────────────────────────────────────
+
+/** A pin as the list returns it: `portalName` is present with include=portal. */
+export const PortalResultListItemSchema = PortalResultSchema.extend({
+  portalName: z.string().nullable().optional(),
+});
+export type PortalResultListItem = z.infer<typeof PortalResultListItemSchema>;
+
+/** #688: the pin list, each row with the caller's capabilities on it. */
+export const PortalResultListResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    portalResults: z.array(
+      withShareableCapabilities(PortalResultListItemSchema)
+    ),
+  });
+export type PortalResultListResponsePayload = z.infer<
+  typeof PortalResultListResponsePayloadSchema
+>;
+
+/** #688: one pin with the caller's capabilities on it (replaces the #621
+ *  canShare/canWrite/canDelete flags). */
+export const PortalResultGetResponsePayloadSchema = z.object({
+  portalResult: withShareableCapabilities(PortalResultSchema),
+});
+export type PortalResultGetResponsePayload = z.infer<
+  typeof PortalResultGetResponsePayloadSchema
+>;
 
 export const PortalResultListRequestQuerySchema =
   PortalListRequestQuerySchema.extend({

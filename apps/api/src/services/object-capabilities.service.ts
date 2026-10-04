@@ -25,11 +25,22 @@ interface OwnedRow {
 }
 
 type Capabilities = ObjectCapabilities | ShareableObjectCapabilities;
+type ShareableType = (typeof SHAREABLE_RESOURCE_TYPES)[number];
 
 const SHAREABLE = new Set<string>(SHAREABLE_RESOURCE_TYPES);
 
 export class ObjectCapabilitiesService {
   /** The caller's capabilities on one row; `share` iff the type is shareable. */
+  static for(
+    set: PermissionSet,
+    type: ShareableType,
+    row: OwnedRow
+  ): ShareableObjectCapabilities;
+  static for(
+    set: PermissionSet,
+    type: PermissionResourceType,
+    row: OwnedRow
+  ): Capabilities;
   static for(
     set: PermissionSet,
     type: PermissionResourceType,

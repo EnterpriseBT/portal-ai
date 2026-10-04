@@ -5,6 +5,8 @@ import {
   PinResultBodySchema,
   PortalResultListRequestQuerySchema,
   PINNABLE_BLOCK_TYPES,
+  type PortalResultListResponsePayload,
+  type PortalResultGetResponsePayload,
 } from "@portalai/core/contracts";
 import type { PortalResultType } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
@@ -12,6 +14,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
@@ -461,9 +464,8 @@ portalResultsRouter.get(
       }
       // #621: object-level visibility — own + system + shared pins; undefined =
       // see-all (owner/admin).
-      const visibility = (
-        await PermissionService.loadSet(ctx)
-      ).visibilityPredicate("pin", {
+      const set = await PermissionService.loadSet(ctx);
+      const visibility = set.visibilityPredicate("pin", {
         createdByCol: portalResults.createdBy,
         idCol: portalResults.id,
       });
@@ -486,8 +488,13 @@ portalResultsRouter.get(
         DbService.repository.portalResults.count(where),
       ]);
 
-      return HttpService.success(res, {
-        portalResults: data,
+      return HttpService.success<PortalResultListResponsePayload>(res, {
+        // #688: each pin with the caller's capabilities on it.
+        portalResults: ObjectCapabilitiesService.attach(
+          set,
+          "pin",
+          data
+        ) as unknown as PortalResultListResponsePayload["portalResults"],
         total,
         limit,
         offset,
@@ -533,7 +540,7 @@ portalResultsRouter.get(
  *             schema:
  *               type: object
  *               properties:
- *                 portalResult: { $ref: '#/components/schemas/PortalResult' }
+ *                 portalResult: { $ref: '#/components/schemas/PortalResultWithCapabilities' }
  *       404:
  *         description: No such portal result (`PORTAL_RESULT_NOT_FOUND`)
  */
@@ -571,15 +578,12 @@ portalResultsRouter.get(
           )
         );
       }
-      const canShare = set.can("resource.share", object);
-      const canWrite = set.can("resource.write", object);
-      const canDelete = set.can("resource.delete", object);
-
-      return HttpService.success(res, {
-        portalResult,
-        canShare,
-        canWrite,
-        canDelete,
+      // #688: capabilities replace the #621 canShare/canWrite/canDelete flags.
+      return HttpService.success<PortalResultGetResponsePayload>(res, {
+        portalResult: {
+          ...portalResult,
+          capabilities: ObjectCapabilitiesService.for(set, "pin", portalResult),
+        } as unknown as PortalResultGetResponsePayload["portalResult"],
       });
     } catch (error) {
       logger.error(
