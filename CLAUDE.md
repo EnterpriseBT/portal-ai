@@ -245,6 +245,23 @@ All API calls route through the SDK. No component — view, workflow, module, or
   - Portal delete → `portals.root`, `portalResults.root`
 - Never manually remove or update cache entries — always use `invalidateQueries`
 - Query keys are defined in `api/keys.ts` and re-exported from `api/sdk.ts`
+- A mutation on a per-object resource declares `onPermissionDenied: { invalidate: (vars) => [queryKeys.<entity>.root] }` on its `useAuthMutation` (#688). A 403 means the caller's capabilities changed under them, so the payloads refetch and the affordances re-render. It only invalidates: feedback stays the caller's (`FormAlert` in a dialog, a toast elsewhere), and the caller's `onError` still runs.
+
+## Action Affordances & Permissions (apps/web)
+
+The server is the boundary (#685/#692); the UI's job is to **be honest about it**. A button that 403s, or a dead button with no reason, is a bug (#684). Every action affordance is decided **per object** and rendered through an `ActionGate` (#688):
+
+- **Decide from the object's `capabilities`.** Every list and GET row of the 12 per-object types (station, pin, curated view, portal, connector instance, entity, record, field mapping, column definition, tag, group, toolpack) carries the caller's `capabilities: { read, write, delete }`, plus `share` on station, pin and curated view. They're computed server-side by `ObjectCapabilitiesService` with the same `PermissionSet.can` the mutation routes check, and an agreement integration test holds the two together. A class-level `canOnResource(...)` is right only for a **create**, where there's no object yet. It never decides an action on an object: it's true for a member who may write *their own* rows, so it showed Edit on rows shared Read with them.
+- **`decideActionGate` / `useActionGate`** (`utils/action-gate.util.ts`, `utils/use-action-gate.util.ts`) turn that into an `ActionGate` (`allow | hide | disable{reason} | upsell{reason, onUpgrade}`), with precedence **permission → tier → state**, so the caller hears the most durable reason:
+  - not permitted → **`hide`**, except a page's primary action the caller could plausibly be granted (Create on an index page they can read), which is **`disable`** with the grant hint;
+  - the plan excludes it → **`upsell`**, which `useActionGate` sends to Settings → Billing (`entitled(key)` fails closed);
+  - transient state blocks it (a running job, a pending save) → **`disable`**, naming the state.
+- **A read-only caller gets a read-only view.** No Edit/Share/Delete on what they can't change, and an editor dialog never opens without `write`.
+- **Render through the gated core components**: `GatedButton`, `GatedIconButton`, and the `gate` on `ActionMenuItem` / `ActionSuiteItem` (`DetailCard`, `PageHeader`, `PageSection`). `disable` renders `aria-disabled` with a tooltip and stays focusable; there's no `disabled` on menu or suite items.
+- **A raw `disabled={!canX}` on a `Button`/`IconButton` is a bug.** `action-gate.guard.test.ts` fails CI on a `disabled` expression that reads a permission (`can(`, `canOnResource`, `capabilities.`, a `can<Name>` or `…Entitled` flag). Its `KNOWN_VIOLATIONS` list holds the four #691 files and only shrinks.
+- **Mutations declare `onPermissionDenied`** (see Mutation Cache Invalidation).
+
+The Views list and page (`CuratedViews.view.tsx`, `CuratedViewDetail.view.tsx`) are the reference adoption.
 
 ## Async Job State & Data Locking
 
@@ -266,7 +283,7 @@ Long-running work runs on the shared `jobs` queue (`apps/api/src/queues/`) — f
 ### Frontend rules (apps/web)
 
 - Every entity-detail view that has running-job exposure must surface the lock state inline. The connector-instance view is the canonical example: render an MUI `<Alert severity="info">` (or a `<Chip>` in tight headers) listing each running job's type + a "started X ago" timestamp, with copy that names the blocked actions ("Sync, edit fields, and delete are paused until the import finishes.").
-- Mutations that target a locked entity must be disabled at the UI layer — the button stays visible (so the affordance doesn't disappear) but is `disabled` with a tooltip pointing at the running job. The disabled state is driven from the same `useAuthQuery` that powers the alert, not from the mutation's own state.
+- Mutations that target a locked entity must be disabled at the UI layer — the action stays visible (so the affordance doesn't disappear) with a **`disable` gate whose reason points at the running job** (see Action Affordances & Permissions). The gate is driven from the same `useAuthQuery` that powers the alert, not from the mutation's own state.
 - The alert auto-dismisses on the SSE terminal event for the job (or via an automatic refetch when the entity's `.root` query invalidates after job completion). Don't poll; the existing `/api/sse/jobs/:id/events` channel is the source of truth.
 - Workflows that enqueue a long-running job (commit, sync, parse) own the user's expectations *before* the job starts: the action button should already say "Importing…" / "Syncing…" while the SSE stream is open, and the post-202 navigation should land on a view that shows the lock alert so the user immediately understands what they can't do yet.
 
