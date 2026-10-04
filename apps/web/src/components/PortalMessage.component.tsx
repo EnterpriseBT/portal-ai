@@ -53,6 +53,7 @@ import type { PortalResultType } from "@portalai/core/models";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { toServerError } from "../utils/api.util";
 import { useToast } from "../utils/toast.context";
 import type { ServerError } from "../utils/api.util";
@@ -104,6 +105,10 @@ export function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
 export interface PortalMessageUIProps {
   message: PortalMessageResponse;
   pinnedBlocks: Map<string, string>;
+  /** #690: the caller may create pins (`canOnResource("pin","write")`, the
+   *  server's own-create rule). Without it no Pin result is offered; Unpin on
+   *  the caller's own pins stays. */
+  canPin: boolean;
   /**
    * Resolves when the pin is saved and rejects when it fails (#285). The
    * outcome drives the dialog: it closes only on resolve, so a failure keeps
@@ -119,6 +124,7 @@ export interface PortalMessageUIProps {
 export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
   message,
   pinnedBlocks,
+  canPin,
   onPin,
   onUnpin,
   isPinPending,
@@ -236,7 +242,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
                   <PushPinIcon fontSize="small" color="primary" />
                 </IconButton>
               </Tooltip>
-            ) : (
+            ) : !canPin ? null : (
               <Tooltip title="Pin result">
                 <IconButton
                   size="small"
@@ -290,6 +296,7 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
   const pin = sdk.portalResults.pin();
   const unpin = sdk.portalResults.remove();
   const toast = useToast();
+  const { canOnResource } = useCapabilities();
 
   /**
    * `mutateAsync` rather than `mutate` (#285): the dialog closes on the
@@ -331,6 +338,7 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
     <PortalMessageUI
       message={message}
       pinnedBlocks={pinnedBlocks}
+      canPin={canOnResource("pin", "write")}
       onPin={handlePin}
       onUnpin={handleUnpin}
       isPinPending={pin.isPending}

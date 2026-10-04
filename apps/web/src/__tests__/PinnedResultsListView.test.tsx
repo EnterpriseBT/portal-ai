@@ -1,10 +1,10 @@
 import { jest } from "@jest/globals";
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { PortalResult } from "@portalai/core/models";
 import type { PortalResultsListPayload } from "../api/portal-results.api";
 import type { ApiError } from "../utils";
 
 type ListQuery = UseQueryResult<PortalResultsListPayload, ApiError>;
+type PortalResult = PortalResultsListPayload["portalResults"][number];
 
 let currentListQuery: Partial<ListQuery> = {};
 const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
@@ -67,6 +67,7 @@ const makePinnedResult = (
   updatedBy: null,
   deleted: null,
   deletedBy: null,
+  capabilities: { read: true, write: true, delete: true, share: true },
   ...overrides,
 });
 

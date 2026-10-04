@@ -26,7 +26,14 @@ import { MutationResultBlock } from "./MutationResultBlock.js";
  */
 export type BlockRef =
   | { kind: "message"; messageId: string; blockIndex: number }
-  | { kind: "pin"; portalResultId: string };
+  | {
+      kind: "pin";
+      portalResultId: string;
+      /** #690: `false` when the caller may not write the pin (a read-only
+       *  sharee). Refreshing a pin rewrites its snapshot, so the renderer
+       *  neither auto-refreshes nor offers the button; absent means allowed. */
+      canRefresh?: boolean;
+    };
 
 /**
  * Optional per-render context threaded to a renderer (#270). `blockRef`

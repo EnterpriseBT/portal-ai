@@ -21,6 +21,10 @@ const keyOf = (ref: BlockRef): string =>
     : `pin:${ref.portalResultId}`;
 
 export interface UseWidgetRefreshResult {
+  /** Whether this caller may refresh the block at all: a persisted block, and
+   *  not a pin they can't write (#690). Gates both the mount refresh and the
+   *  manual button. */
+  allowed: boolean;
   /** Fresh delivery from the last successful refresh, or null. */
   fresh: WidgetRefreshResponse | null;
   isRefreshing: boolean;
@@ -50,6 +54,14 @@ export function useWidgetRefresh(
   dataUpdatedAt: number | undefined
 ): UseWidgetRefreshResult {
   const key = blockRef ? keyOf(blockRef) : undefined;
+  // #690: a read-only pin can't be refreshed (the server 403s a sharee's
+  // refresh), so it neither auto-refreshes nor offers the button. The data's
+  // age still shows through lastUpdatedAt.
+  const allowed =
+    blockRef != null &&
+    !(blockRef.kind === "pin" && blockRef.canRefresh === false);
+  const allowedRef = useRef(allowed);
+  allowedRef.current = allowed;
 
   const { mutateAsync: refreshMessageBlock } = sdk.portalSql.widgetRefresh();
   const { mutateAsync: refreshPin } = sdk.portalResults.refresh();
@@ -71,7 +83,7 @@ export function useWidgetRefresh(
 
   const refresh = useCallback(async () => {
     const ref = refRef.current;
-    if (ref == null) return;
+    if (ref == null || !allowedRef.current) return;
     setIsRefreshing(true);
     try {
       const res =
@@ -102,7 +114,7 @@ export function useWidgetRefresh(
   // trigger that fans this across many widgets on a dashboard.
   const autoFired = useRef(false);
   useEffect(() => {
-    if (key == null || autoFired.current) return;
+    if (key == null || !allowed || autoFired.current) return;
     const seededAt = lastHydratedAt.get(key) ?? dataUpdatedAt ?? 0;
     if (Date.now() - seededAt > VIZ_REFRESH_FRESHNESS_MS) {
       autoFired.current = true;
@@ -110,9 +122,10 @@ export function useWidgetRefresh(
       // viewport-driven trigger for many widgets.
       void refresh();
     }
-  }, [key, dataUpdatedAt, refresh]);
+  }, [key, allowed, dataUpdatedAt, refresh]);
 
   return {
+    allowed,
     fresh,
     isRefreshing,
     error,
