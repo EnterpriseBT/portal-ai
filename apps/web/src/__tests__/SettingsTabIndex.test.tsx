@@ -83,4 +83,14 @@ describe("Settings › tab index with hidden tabs (#656)", () => {
       expect.stringContaining("/settings")
     );
   });
+
+  it("#691: clicking that link inside Settings opens the Billing tab", () => {
+    withCapabilities(["member.role.assign"]);
+    render(<SettingsView />);
+    fireEvent.click(screen.getByRole("tab", { name: "Access" }));
+    fireEvent.click(screen.getByRole("link", { name: "View plans" }));
+    expect(
+      screen.getByRole("tab", { name: "Subscription & Billing" })
+    ).toHaveAttribute("aria-selected", "true");
+  });
 });

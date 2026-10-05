@@ -34,7 +34,9 @@ export const DeleteAccessItemDialogUI: React.FC<
   <Modal
     submitDisabled={isPending}
     open={open}
-    onClose={onClose}
+    // Not dismissible mid-request: an Escape would hide the outcome (a
+    // failure renders here) and a reopened delete would reset this one.
+    onClose={isPending ? () => undefined : onClose}
     title={`Delete ${kind}`}
     maxWidth="xs"
     fullWidth

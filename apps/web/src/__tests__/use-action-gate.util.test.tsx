@@ -14,6 +14,9 @@ jest.unstable_mockModule("@tanstack/react-router", () => ({
 }));
 
 const { renderHook } = await import("@testing-library/react");
+const { createElement } = await import("react");
+const { SettingsTabSwitchContext } =
+  await import("../utils/settings-tab.context");
 const { useActionGate } = await import("../utils/use-action-gate.util");
 const { SettingsTab } = await import("../utils/routes.util");
 
@@ -61,5 +64,22 @@ describe("useActionGate (#688)", () => {
       to: "/settings",
       search: { tab: SettingsTab.Billing },
     });
+  });
+
+  it("#691: inside Settings, an upsell switches to the Billing tab instead of navigating", () => {
+    mockUsage.mockReturnValue({ data: undefined });
+    const switchTab = jest.fn();
+    const wrapper = ({ children }: { children: import("react").ReactNode }) =>
+      createElement(
+        SettingsTabSwitchContext.Provider,
+        { value: switchTab },
+        children
+      );
+    const { result } = renderHook(() => useActionGate(), { wrapper });
+    const gate = result.current.gate({ allowed: true, entitled: false });
+    if (gate.kind !== "upsell") throw new Error("expected upsell");
+    gate.onUpgrade();
+    expect(switchTab).toHaveBeenCalledWith(SettingsTab.Billing);
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

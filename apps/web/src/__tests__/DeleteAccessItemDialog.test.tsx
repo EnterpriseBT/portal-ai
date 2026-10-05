@@ -49,6 +49,18 @@ describe("DeleteAccessItemDialogUI (#691)", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
+  it("can't be dismissed (Escape) while the delete is in flight", () => {
+    render(<DeleteAccessItemDialogUI {...props} isPending />);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it("can be dismissed with Escape when idle", () => {
+    render(<DeleteAccessItemDialogUI {...props} />);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the server error in the dialog", () => {
     render(
       <DeleteAccessItemDialogUI
