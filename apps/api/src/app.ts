@@ -17,6 +17,7 @@ import { httpLogger } from "./middleware/logger.middleware.js";
 import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import { ApiError, HttpService } from "./services/http.service.js";
 import { toDbCancellationApiError } from "./db/request-cancellation.util.js";
+import { isExpectedBackpressure } from "./utils/log-level.util.js";
 import { createLogger } from "./utils/logger.util.js";
 
 import { registerAdapters } from "./adapters/register.js";
@@ -117,6 +118,17 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       "Request abandoned by client; pending DB work cancelled"
     );
     if (res.destroyed || res.headersSent) return;
+    return HttpService.error(res, err);
+  }
+
+  // #698: expected load-shedding (503 MAP_TILE_BUSY) is the gate doing its
+  // job — warn, and flag the response so pino-http's own line is warn too.
+  if (isExpectedBackpressure(err)) {
+    log.warn(
+      { code: err.code, status: err.status, route: req.originalUrl },
+      "Request shed by backpressure"
+    );
+    res.locals.logAsWarn = true;
     return HttpService.error(res, err);
   }
 
