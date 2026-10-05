@@ -1231,6 +1231,37 @@ describe("Portal map tile route (#316)", () => {
     expect(res.aggregated).toBe(false);
   });
 
+  it("#698: a lines layer on the fast path renders raw with ST_Simplify", async () => {
+    await bulkInsertLines(3);
+    const pin = await createCountedPin(
+      'SELECT "c_geom" AS geom FROM parcels',
+      { matchedCount: 4, matchedCountExact: true },
+      "lines"
+    );
+    const build = jest.spyOn(PortalMapTileService, "buildRawTileSql");
+    try {
+      const res = await PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: pin },
+        // z10 tile over the bulk lines near (1°, 1°) — each line spans a few
+        // pixels here, so it survives ST_AsMVTGeom's quantisation.
+        z: 10,
+        x: 514,
+        y: 509,
+        organizationId: orgId,
+        userId,
+        authorizeSource: allowAllSources,
+      });
+      expect(res.status).toBe(200);
+      expect(res.aggregated).toBe(false);
+      expect(build).toHaveBeenCalled();
+      const sqlText = build.mock.results[0].value as string;
+      expect(sqlText).toContain("ST_Simplify(src.geom,");
+      expect(sqlText).not.toContain("ST_SimplifyPreserveTopology");
+    } finally {
+      build.mockRestore();
+    }
+  });
+
   it("no persisted count but a tile that fits → the probe serves raw, not bins (#532 slice 3)", async () => {
     // Only the single setup polygon is in view (1 feature ≤ cap). With no
     // persisted count the tile is probed; because it fits, it serves raw — the

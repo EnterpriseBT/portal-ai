@@ -477,6 +477,26 @@ export function tileSimplifyTolerance(z: number): number {
 }
 
 /**
+ * Simplify expression for one geometry kind (#698). Polygons keep
+ * `ST_SimplifyPreserveTopology` so rings stay valid; lines and points use plain
+ * Douglas-Peucker `ST_Simplify` — a line can't become invalid, and on a
+ * high-vertex contour layer SPT was ~90% of the tile cost (z3: 2,731 ms vs
+ * 363 ms), the trigger for every tile timing out. The only features plain
+ * simplify loses are sub-pixel, which `ST_AsMVTGeom` collapses anyway. An
+ * unknown kind keeps the topology-preserving (pre-#698) form.
+ */
+export function tileSimplifyExpr(
+  geomExpr: string,
+  tolerance: number,
+  kind: MapLayerKind | null
+): string {
+  if (tolerance <= 0) return geomExpr;
+  return kind === "lines" || kind === "points"
+    ? `ST_Simplify(${geomExpr}, ${tolerance})`
+    : `ST_SimplifyPreserveTopology(${geomExpr}, ${tolerance})`;
+}
+
+/**
  * Snap tolerance (degrees) for the polygon merged-coverage union at a band's
  * representative zoom (#541): `COVERAGE_SNAP_FACTOR ×` a tile pixel, so it is
  * always ≥ `tileSimplifyTolerance(representativeZoom)` and coarser at a coarser
@@ -587,12 +607,10 @@ export class PortalMapTileService {
     propertyColumns: string[],
     tolerance: number,
     cap: number,
-    rankByLength = false
+    rankByLength = false,
+    kind: MapLayerKind | null = null
   ): string {
-    const geomExpr =
-      tolerance > 0
-        ? `ST_SimplifyPreserveTopology(src.geom, ${tolerance})`
-        : "src.geom";
+    const geomExpr = tileSimplifyExpr("src.geom", tolerance, kind);
     // Carry the spec's property columns onto each MVT feature so the widget can
     // colour + fill popups. Names come from the validated spec and are quoted.
     const propSelect = propertyColumns
@@ -683,8 +701,7 @@ export class PortalMapTileService {
   ): string {
     const cellSize = aggregateCellSize(z);
     const half = cellSize / 2;
-    const geomExpr =
-      tolerance > 0 ? `ST_SimplifyPreserveTopology(r.g, ${tolerance})` : "r.g";
+    const geomExpr = tileSimplifyExpr("r.g", tolerance, "lines");
     return (
       `WITH ranked AS (` +
       `SELECT src.geom AS g, ` +
@@ -865,7 +882,8 @@ export class PortalMapTileService {
         propertyColumns,
         tolerance,
         cap + 1,
-        aggregation.rankByLength
+        aggregation.rankByLength,
+        aggregation.kind
       );
       probeResult = await this.runSessionViewTile(
         pipelineSql,
@@ -901,7 +919,8 @@ export class PortalMapTileService {
           propertyColumns,
           tolerance,
           cap,
-          aggregation.rankByLength
+          aggregation.rankByLength,
+          aggregation.kind
         ),
         pipeline.stationId,
         organizationId,

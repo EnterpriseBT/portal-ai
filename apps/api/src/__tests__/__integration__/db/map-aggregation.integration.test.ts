@@ -204,6 +204,31 @@ describe("Importance-ranked raw lines (#337)", () => {
     expect(Number(rows[0].n_limited)).toBe(2); // clipped to the cap
   });
 
+  it("#698: ST_Simplify for lines keeps the same visible features as the topology-preserving simplify", async () => {
+    const tol = 360 / (2 ** LZ * 4096); // tileSimplifyTolerance(LZ)
+    const count = async (kind: "lines" | null) => {
+      const q = PortalMapTileService.buildRawTileSql(
+        pipeline,
+        LENV,
+        ["id"],
+        tol,
+        10_000,
+        true,
+        kind
+      );
+      expect(q).toContain(
+        kind === "lines" ? "ST_Simplify(" : "ST_SimplifyPreserveTopology("
+      );
+      const rows = (await db.execute(sql.raw(q))) as unknown as Array<{
+        n: number;
+      }>;
+      return Number(rows[0].n);
+    };
+    const preserved = await count(null);
+    expect(preserved).toBeGreaterThan(0);
+    expect(await count("lines")).toBe(preserved);
+  });
+
   it("ranking keeps the longest features when capped", async () => {
     // Mirror the ORDER BY the raw SQL applies, to assert WHICH survive the cap.
     const rows = (await db.execute(

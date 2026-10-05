@@ -11,6 +11,7 @@ import {
   aggregateCellSize,
   layerCountFromContent,
   mapTileError,
+  tileSimplifyExpr,
   type RenderTileDeps,
   type TileQueryResult,
   type TileAggregation,
@@ -439,8 +440,66 @@ describe("buildLineHybridTileSql — skeleton + remainder bins (#532 slice 4)", 
     expect(sql).toContain("0 AS n_limited");
   });
 
-  it("applies the simplify tolerance to the skeleton geometry", () => {
-    expect(q()).toContain("ST_SimplifyPreserveTopology(r.g, 0.01)");
+  it("simplifies the skeleton lines with ST_Simplify, not the topology-preserving variant (#698)", () => {
+    const sql = q();
+    expect(sql).toContain("ST_Simplify(r.g, 0.01)");
+    expect(sql).not.toContain("ST_SimplifyPreserveTopology");
+  });
+});
+
+describe("tileSimplifyExpr — per-kind simplify (#698)", () => {
+  it("keeps topology for polygons (ring validity)", () => {
+    expect(tileSimplifyExpr("g", 0.5, "polygons")).toBe(
+      "ST_SimplifyPreserveTopology(g, 0.5)"
+    );
+  });
+
+  it("uses plain ST_Simplify for lines and points", () => {
+    expect(tileSimplifyExpr("g", 0.5, "lines")).toBe("ST_Simplify(g, 0.5)");
+    expect(tileSimplifyExpr("g", 0.5, "points")).toBe("ST_Simplify(g, 0.5)");
+  });
+
+  it("falls back to the topology-preserving simplify for an unknown kind", () => {
+    expect(tileSimplifyExpr("g", 0.5, null)).toBe(
+      "ST_SimplifyPreserveTopology(g, 0.5)"
+    );
+  });
+
+  it("returns the bare expression at tolerance 0", () => {
+    expect(tileSimplifyExpr("src.geom", 0, "lines")).toBe("src.geom");
+    expect(tileSimplifyExpr("src.geom", 0, "polygons")).toBe("src.geom");
+  });
+});
+
+describe("buildRawTileSql — per-kind simplify (#698)", () => {
+  const build = (kind: "lines" | "polygons" | "points" | null) =>
+    PortalMapTileService.buildRawTileSql(
+      "SELECT geom FROM contours",
+      "ST_TileEnvelope(3, 1, 3)",
+      [],
+      0.01,
+      MAP_TILE_FEATURE_CAP,
+      kind === "lines",
+      kind
+    );
+
+  it("simplifies a lines layer with ST_Simplify", () => {
+    const sql = build("lines");
+    expect(sql).toContain("ST_Simplify(src.geom, 0.01)");
+    expect(sql).not.toContain("ST_SimplifyPreserveTopology");
+  });
+
+  it("simplifies a points layer with ST_Simplify", () => {
+    expect(build("points")).toContain("ST_Simplify(src.geom, 0.01)");
+  });
+
+  it("keeps ST_SimplifyPreserveTopology for polygons and an unknown kind", () => {
+    expect(build("polygons")).toContain(
+      "ST_SimplifyPreserveTopology(src.geom, 0.01)"
+    );
+    expect(build(null)).toContain(
+      "ST_SimplifyPreserveTopology(src.geom, 0.01)"
+    );
   });
 });
 
