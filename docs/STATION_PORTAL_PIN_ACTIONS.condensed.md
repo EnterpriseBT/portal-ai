@@ -69,6 +69,16 @@ Run via `npm run test:unit` in `apps/web` (and `apps/api` for slice 1). Lint, ty
 
 ## Smoke (manual, against your dev stack)
 
+**Preflight:**
+- **Stack:** `npm run dev` on this branch, with core rebuilt. If `GET /api/organization/current` lacks `station.default.set`, the API is stale: touch `apps/api/src/index.ts`.
+- **Sessions:** `e2e:auth:all`.
+- **Fixtures (e2e-fixture org):**
+  - **Member Station** is the member's own station; **My Station** is readable but not writable by the member.
+  - **Member portals** with text blocks, e.g. `5070f8f0`.
+  - **"smoke690 table pin"** is a data-table pin the owner made on an admin portal. It's shared Read with the member, and its `snapshot_updated_at` is backdated two days so it's stale.
+- **Reset:** delete the pin, which also removes its share.
+
+
 1. As **member**, `/stations`: Delete shows only on the member's own stations; **Set as default** shows on none. As **owner**: both show on every card, and Set default works.
 2. As **owner**, share a station with the member at Read. As **member**, open it: no Share, Edit or Delete in its menu.
 3. As **member**, on the Dashboard and the station's portal cards: Delete shows on the member's own portals. Deleting one removes it, and its pins vanish from Pinned results (the invalidation).
