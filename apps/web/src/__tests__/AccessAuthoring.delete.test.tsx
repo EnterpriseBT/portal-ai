@@ -92,6 +92,17 @@ describe("AccessAuthoring delete (#691)", () => {
     expect(mockRemoveGroup.mock.calls[0][0]).toEqual({ id: "g-1" });
   });
 
+  it("a double-click on the confirm sends one delete (before React re-renders)", () => {
+    openGroups();
+    fireEvent.click(screen.getByRole("button", { name: "delete Analysts" }));
+    const confirm = screen.getByRole("button", { name: "Delete" });
+    // Two clicks in one tick: no render (so no isPending) in between, which is
+    // what a real double-click produced in the smoke walk.
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(mockRemoveGroup).toHaveBeenCalledTimes(1);
+  });
+
   it("Cancel closes without deleting", () => {
     openGroups();
     fireEvent.click(screen.getByRole("button", { name: "delete Analysts" }));

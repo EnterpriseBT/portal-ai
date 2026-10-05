@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
@@ -270,8 +270,13 @@ export const AccessAuthoring: React.FC = () => {
     ? removeMutationFor(deleteTarget.kind)
     : null;
 
+  // A double-click's two clicks land before React re-renders with isPending,
+  // so the guard must be synchronous (the smoke walk saw two DELETEs).
+  const deleteInFlight = useRef(false);
   const confirmDelete = () => {
-    if (!deleteTarget || deleteMutation?.isPending) return;
+    if (!deleteTarget || deleteMutation?.isPending || deleteInFlight.current)
+      return;
+    deleteInFlight.current = true;
     const target = deleteTarget;
     const key =
       target.kind === "policy"
@@ -289,6 +294,9 @@ export const AccessAuthoring: React.FC = () => {
             `${target.kind[0].toUpperCase()}${target.kind.slice(1)} deleted`
           );
           setDeleteTarget(null);
+        },
+        onSettled: () => {
+          deleteInFlight.current = false;
         },
       }
     );

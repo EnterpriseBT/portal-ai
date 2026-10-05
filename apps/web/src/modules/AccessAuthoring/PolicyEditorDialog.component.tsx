@@ -17,6 +17,7 @@ import { useToast } from "../../utils/toast.context";
 import { FormAlert } from "../../components/FormAlert.component";
 import { toServerError, type ServerError } from "../../utils/api.util";
 import { StatementEditorUI } from "./StatementEditor.component";
+import { PolicyStatementListUI } from "./PolicyStatementList.component";
 
 // ── UI (pure) ────────────────────────────────────────────────────────────
 
@@ -127,13 +128,16 @@ export const PolicyEditorDialogUI: React.FC<PolicyEditorDialogUIProps> = ({
           </>
         )}
         <FormAlert serverError={serverError} />
-        <StatementEditorUI
-          key={policy?.id ?? "new"}
-          initialStatements={policy?.statements}
-          onChange={onStatementsChange}
-          onSearch={onSearch}
-          readOnly={readOnly}
-        />
+        {readOnly ? (
+          <PolicyStatementListUI statements={policy?.statements ?? []} />
+        ) : (
+          <StatementEditorUI
+            key={policy?.id ?? "new"}
+            initialStatements={policy?.statements}
+            onChange={onStatementsChange}
+            onSearch={onSearch}
+          />
+        )}
       </Stack>
     </Modal>
   );

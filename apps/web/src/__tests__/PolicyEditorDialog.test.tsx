@@ -42,6 +42,18 @@ describe("PolicyEditorDialogUI (#691)", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
+  it("#691: a system policy's statements read as text, not disabled controls", () => {
+    render(<PolicyEditorDialogUI {...props} policy={policy("system")} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /remove statement/ })
+    ).toBeNull();
+    const list = screen.getByTestId("policy-statement-list");
+    expect(list).toHaveTextContent("allow");
+    expect(list).toHaveTextContent("read");
+    expect(list).toHaveTextContent("station");
+  });
+
   it("a custom policy opens as an editable form", () => {
     render(<PolicyEditorDialogUI {...props} policy={policy("custom")} />);
     expect(screen.getByRole("textbox", { name: /Name/ })).toBeEnabled();

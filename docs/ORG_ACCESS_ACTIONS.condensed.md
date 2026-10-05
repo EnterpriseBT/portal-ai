@@ -84,15 +84,17 @@
   - **Prerequisite:** `tier apply` must converge `customRbac` and `maxSeats` (see the bug filed from this design). Until it does, `enterprise` lands without custom RBAC.
 - **Org tier:** `npx portalai org set-tier <e2e org id> enterprise --env local --yes`, then wait ≤60s for the tier cache.
 - **Fixtures (as owner, via the API):**
-  - a custom policy "smoke691 invite-only" (`allow invite member`) on a group "smoke691 inviters" containing the **member**, so the member reaches Members without `member.remove`;
-  - a custom toolpack registered by the **owner** (`npm run mock-toolpack-server` or any reachable endpoint).
+  - a group "smoke691 inviters" containing the **member**, with two custom policies:
+    - "smoke691 invite-only" (`allow invite member`), so the member reaches Members without `member.remove`;
+    - "smoke691 toolpack reader" (`allow read toolpack`, `allow view page:toolpacks`), so they see Toolpacks without write;
+  - a custom toolpack registered by the **owner** (`PORT=4100 npm run webhook:toolpack` in `apps/api`; endpoints `http://localhost:4100/schema` and `/runtime`).
 - **Reset:** delete the group, policy, toolpack and invites; `set-tier … enterprise`.
 
-1. As **admin** on Toolpacks: the owner's custom pack shows no Edit/Refresh/Delete; one the admin registered shows them. Builtins show none.
+1. As the **member** (toolpack reader) on Toolpacks: the owner's custom pack shows no Refresh/Edit/Delete, and there's no Register (no class write). As **owner**: the pack shows all three, and Register is a normal button. The admin has class toolpack write, so the admin sees them too.
 2. `set-tier … standard` (no `customToolpacks`) and wait for the cache. As **owner**: Register shows a lock, its tooltip reads "Your plan does not include custom toolpacks", and clicking it lands on Settings → Billing.
 3. As the **member** (via the invite-only group), Settings → Members: no Remove on any row. As **owner**: Remove shows, with "You can't remove yourself" on their own row.
 4. Still on `standard` (5 seats; 3 used): as owner, `POST /api/organization/invitations` twice (`smoke691-a@example.com`, `-b`; no email is sent). Invite then shows the seat-limit reason with an upgrade affordance that lands on Billing. Revoke one, and Invite is enabled again.
-5. As **admin** (no `billing.manage`), Settings → Billing: no Change plan or Manage subscription buttons. As **owner**: both are present.
+5. As **admin** (no `billing.manage`), Settings → Billing: no plan or portal buttons, plus the "You don't have permission to manage billing." note. As **owner** on `standard`: Subscribe on the paid cards, and no note. On `enterprise` without a Stripe subscription the billing state is "managed", which has no buttons for anyone.
 6. As **admin** (no `org.delete`), Settings → Organization: no danger zone. As **owner**: Delete organization shows.
 7. Still on `standard` (no `customRbac`): Settings → Access shows the enterprise copy with a "View plans" link that lands on Billing. Then `set-tier … enterprise` back.
 8. As **owner** (enterprise), Access: a system policy opens as plain text with only Close. Delete "smoke691 inviters": a confirm dialog appears; confirming deletes it once, and a double-click doesn't double-delete.
