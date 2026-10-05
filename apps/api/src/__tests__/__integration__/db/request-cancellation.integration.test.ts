@@ -182,6 +182,41 @@ describe("request-scoped DB cancellation (#698)", () => {
     await sql.end();
   });
 
+  it('"always" aborting mid-statement inside a transaction rolls back and returns the connection to the pool', async () => {
+    pool();
+    const ctx = ctxWith("always");
+    const tx = requestContext.run(ctx, () =>
+      outcome(
+        sql.begin(async (t) => {
+          await t.unsafe(`SELECT pg_sleep(5) AS marker_698_tx`);
+        })
+      )
+    );
+    await sleep(200);
+    ctx.controller.abort("client_gone");
+    const res = await tx;
+    expect(res.ok).toBe(false);
+    expect(
+      requestContext.run(ctx, () => toDbCancellationApiError(res.err))?.code
+    ).toBe(ApiCode.REQUEST_ABANDONED);
+
+    // The pool's only connection must be usable again: the ROLLBACK reached
+    // Postgres instead of being cut, so the connection left its transaction.
+    const started = Date.now();
+    const after = await Promise.race([
+      sql`SELECT 1 AS ok`.then((r) => Number(r[0].ok)),
+      sleep(2_000).then(() => "stuck"),
+    ]);
+    expect(after).toBe(1);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    const stranded = await admin.unsafe(
+      `SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE state LIKE 'idle in transaction%' AND query LIKE '%marker_698_tx%'`
+    );
+    expect(Number(stranded[0].n)).toBe(0);
+    await sql.end();
+  });
+
   it("outside a request context nothing is cancelled", async () => {
     await clear();
     pool();

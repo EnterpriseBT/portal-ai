@@ -163,9 +163,13 @@ export async function fetchTile(
   // #350: gate the network fetch behind the concurrency cap. Token resolution
   // stays outside so a slow first token doesn't hold a connection. Throws
   // AbortError if this tile was superseded while queued.
-  await waitForTilePause(signal);
   await acquireFetchSlot(signal);
   try {
+    // #698: honour a busy pause *after* taking the slot — a tile already
+    // queued for a slot when the 503 arrived must wait it out too, not fire
+    // into the busy gate the moment a slot frees. Inside the try so an abort
+    // during the pause still releases the slot.
+    await waitForTilePause(signal);
     const res = await deps.fetch(deps.resolveUrl(apiPath), {
       signal,
       headers: token ? { Authorization: `Bearer ${token}` } : {},

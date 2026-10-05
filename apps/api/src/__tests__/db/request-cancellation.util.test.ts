@@ -15,54 +15,8 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 import {
   requestContext,
   type DbCancelPolicy,
-  type DbCancelReason,
   type RequestContext,
 } from "../../utils/request-context.util.js";
-
-/** A 57014 as Drizzle surfaces it: the pg error on `.cause`. */
-const cancelled = Object.assign(new Error("Failed query: select 1"), {
-  cause: Object.assign(new Error("canceling statement due to user request"), {
-    code: "57014",
-  }),
-});
-
-const inRequest = <T>(reason: DbCancelReason | undefined, fn: () => T): T =>
-  requestContext.run(
-    {
-      log: undefined as never,
-      dbCancelPolicy: "before-start",
-      dbCancelReason: reason,
-      dbStarted: false,
-    },
-    fn
-  );
-
-describe("toDbCancellationApiError (#698)", () => {
-  it("maps a 57014 the request instrumentation caused to its typed error", () => {
-    const timeout = inRequest("admission_timeout", () =>
-      toDbCancellationApiError(cancelled)
-    );
-    expect(timeout?.status).toBe(503);
-    expect(timeout?.code).toBe(ApiCode.DB_ADMISSION_TIMEOUT);
-
-    const gone = inRequest("client_gone", () =>
-      toDbCancellationApiError(cancelled)
-    );
-    expect(gone?.status).toBe(499);
-    expect(gone?.code).toBe(ApiCode.REQUEST_ABANDONED);
-  });
-
-  it("ignores a 57014 with no request cancel reason (a real statement_timeout) and non-57014 errors", () => {
-    expect(
-      inRequest(undefined, () => toDbCancellationApiError(cancelled))
-    ).toBeUndefined();
-    expect(toDbCancellationApiError(cancelled)).toBeUndefined();
-    const other = Object.assign(new Error("dup"), { code: "23505" });
-    expect(
-      inRequest("client_gone", () => toDbCancellationApiError(other))
-    ).toBeUndefined();
-  });
-});
 
 /**
  * A stand-in for postgres.js's `Query`: a Promise subclass whose `handle()` is
@@ -223,5 +177,76 @@ describe("instrumented Query.handle — request cancellation (#698)", () => {
       await Promise.resolve();
       expect(jest.getTimerCount()).toBe(0);
     });
+  });
+});
+
+describe("instrumented Query.handle — transaction safety (#698)", () => {
+  it("always: a query issued after the request started, once the client is gone, still runs (the ROLLBACK/COMMIT that returns the connection)", () => {
+    const ctx = ctxWith("always");
+    const running = issue(ctx);
+    running.acquire(); // the tile statement holds the tx connection
+    ctx.controller.abort("client_gone");
+    expect(running.cancelled).toBe(true); // in-flight statement is cut
+    const rollback = issue(ctx); // postgres.js's scope() issues ROLLBACK next
+    expect(rollback.cancelled).toBe(false);
+    expect(rollback.executed).toBe(true);
+  });
+});
+
+/** Settle a query and hand back what it rejected with. */
+const rejectionOf = (q: FakeQuery) =>
+  q.then(
+    () => undefined,
+    (e: unknown) => e
+  );
+const drizzleWrapped = (err: unknown) =>
+  Object.assign(new Error("Failed query: select 1"), { cause: err });
+
+describe("toDbCancellationApiError (#698)", () => {
+  it("maps a client-gone cancel (raw or Drizzle-wrapped) to 499 REQUEST_ABANDONED", async () => {
+    const ctx = ctxWith();
+    const q = issue(ctx);
+    ctx.controller.abort("client_gone");
+    const err = await rejectionOf(q);
+    for (const e of [err, drizzleWrapped(err)]) {
+      const mapped = toDbCancellationApiError(e);
+      expect(mapped?.status).toBe(499);
+      expect(mapped?.code).toBe(ApiCode.REQUEST_ABANDONED);
+    }
+  });
+
+  it("maps an admission-deadline cancel to 503 DB_ADMISSION_TIMEOUT", async () => {
+    jest.useFakeTimers();
+    try {
+      const ctx = ctxWith("before-start", { dbAdmissionMaxWaitMs: 100 });
+      const q = issue(ctx);
+      jest.advanceTimersByTime(100);
+      const mapped = toDbCancellationApiError(await rejectionOf(q));
+      expect(mapped?.status).toBe(503);
+      expect(mapped?.code).toBe(ApiCode.DB_ADMISSION_TIMEOUT);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("leaves a genuine 57014 alone — even later in a request that had a query cancelled", async () => {
+    const ctx = ctxWith("always");
+    const cut = issue(ctx);
+    cut.acquire();
+    ctx.controller.abort("client_gone");
+    await rejectionOf(cut);
+    // A real statement_timeout surfacing in the same request afterwards.
+    const timeout = Object.assign(
+      new Error("canceling statement due to statement timeout"),
+      {
+        code: "57014",
+      }
+    );
+    expect(
+      requestContext.run(ctx, () => toDbCancellationApiError(timeout))
+    ).toBeUndefined();
+    expect(toDbCancellationApiError(drizzleWrapped(timeout))).toBeUndefined();
+    const other = Object.assign(new Error("dup"), { code: "23505" });
+    expect(toDbCancellationApiError(other)).toBeUndefined();
   });
 });

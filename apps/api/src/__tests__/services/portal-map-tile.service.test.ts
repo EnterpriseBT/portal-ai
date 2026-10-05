@@ -22,6 +22,7 @@ import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { GateRejectedError } from "../../utils/admission-gate.util.js";
 import { requestContext } from "../../utils/request-context.util.js";
+import { instrumentQueryPrototype } from "../../db/request-cancellation.util.js";
 
 const ORG = "org-1";
 const PIPELINE = {
@@ -995,16 +996,58 @@ describe("renderTile — tile admission gate (#698)", () => {
     ).rejects.toMatchObject({ status: 499, code: ApiCode.REQUEST_ABANDONED });
   });
 
-  it("mapTileError reports a request-cancelled 57014 as the cancellation, not MAP_TILE_TIMEOUT", () => {
-    const cancelled = Object.assign(new Error("Failed query"), {
-      cause: Object.assign(new Error("canceling statement"), { code: "57014" }),
-    });
-    const mapped = requestContext.run(
-      { log: undefined as never, dbCancelReason: "client_gone" },
-      () => mapTileError(cancelled)
+  it("mapTileError reports a request-cancelled 57014 as the cancellation, not MAP_TILE_TIMEOUT", async () => {
+    // A minimal stand-in for postgres.js's Query, cancelled for real by the
+    // instrumentation (queued, client already gone) — so the error is the one
+    // the instrumentation attributed, not a hand-built lookalike.
+    class StubQuery extends Promise<unknown> {
+      static get [Symbol.species]() {
+        return Promise;
+      }
+      state: object | null = null;
+      executed = false;
+      private rejectFn!: (e: unknown) => void;
+      constructor() {
+        let rej!: (e: unknown) => void;
+        super((_res, r) => {
+          rej = r;
+        });
+        this.rejectFn = rej;
+      }
+      handle(): void {
+        this.executed = true;
+      }
+      cancel(): void {
+        this.rejectFn(
+          Object.assign(new Error("canceling statement"), { code: "57014" })
+        );
+      }
+    }
+    instrumentQueryPrototype(StubQuery.prototype);
+    const controller = new AbortController();
+    controller.abort("client_gone");
+    const q = new StubQuery();
+    requestContext.run(
+      {
+        log: undefined as never,
+        signal: controller.signal,
+        dbCancelPolicy: "always",
+      },
+      () => q.handle()
     );
-    expect(mapped?.code).toBe(ApiCode.REQUEST_ABANDONED);
-    // Without a cancel reason it is still a real statement timeout.
-    expect(mapTileError(cancelled)?.code).toBe(ApiCode.MAP_TILE_TIMEOUT);
+    const cancelled = await q.then(
+      () => undefined,
+      (e: unknown) => e
+    );
+    const wrapped = Object.assign(new Error("Failed query"), {
+      cause: cancelled,
+    });
+    expect(mapTileError(wrapped)?.code).toBe(ApiCode.REQUEST_ABANDONED);
+
+    // A 57014 the instrumentation didn't cause is still a real tile timeout.
+    const timeout = Object.assign(new Error("Failed query"), {
+      cause: Object.assign(new Error("statement timeout"), { code: "57014" }),
+    });
+    expect(mapTileError(timeout)?.code).toBe(ApiCode.MAP_TILE_TIMEOUT);
   });
 });

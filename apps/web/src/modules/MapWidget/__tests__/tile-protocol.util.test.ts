@@ -200,12 +200,17 @@ describe("parseRetryAfter (#698)", () => {
 });
 
 describe("fetchTile — busy backoff (#698)", () => {
-  // Fake clock from 0 so a pause never outlives this block in real time.
+  // The pause is module state keyed to Date.now(), so each case starts its
+  // fake clock past wherever the previous case left it: a pause set by one
+  // case has always expired before the next begins. Starting near 0 also keeps
+  // any pause from outliving this block in real time.
+  let clock = 0;
   beforeEach(() => {
-    jest.useFakeTimers({ now: 0 });
+    jest.useFakeTimers({ now: clock });
   });
   afterEach(() => {
     jest.advanceTimersByTime(60_000);
+    clock = Date.now() + 60_000;
     jest.useRealTimers();
   });
   const settle = async () => {
@@ -234,6 +239,38 @@ describe("fetchTile — busy backoff (#698)", () => {
     await settle();
     expect(fetchMock).toHaveBeenCalledTimes(2); // released after 3s
     await next;
+  });
+
+  it("a tile already queued for a fetch slot also waits out the pause", async () => {
+    const settlers: Array<(r: Response) => void> = [];
+    const registry = new Map<string, TileContext>();
+    registry.set("ctx1", { getToken: async () => "tok", onStatus: () => {} });
+    const fetchMock = jest.fn(
+      () => new Promise<Response>((resolve) => settlers.push(resolve))
+    ) as unknown as typeof globalThis.fetch;
+    const deps = { fetch: fetchMock, registry, resolveUrl: (p: string) => p };
+
+    // Fill the 6 slots, then queue a 7th behind them.
+    const inFlight = Array.from({ length: 6 }, (_, i) =>
+      fetchTile(url(10 + i), undefined, deps).catch(() => undefined)
+    );
+    const queued = fetchTile(url(20), undefined, deps).catch(() => undefined);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    // The first in-flight tile comes back busy: its slot frees, but the
+    // queued tile must not fire into the busy gate during Retry-After.
+    settlers[0](mkRes(503, { "Retry-After": "3" }));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    jest.advanceTimersByTime(3_000);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+
+    settlers.slice(1).forEach((r) => r(mkRes(200)));
+    await settle();
+    settlers[6]?.(mkRes(200));
+    await Promise.all([...inFlight, queued]);
   });
 
   it("a longer pause extends the window; a shorter one never shortens it", async () => {

@@ -147,8 +147,8 @@ Behaviour, per `Query` the request issues:
 
 | Event | `"before-start"` (default) | `"always"` (tiles) |
 |---|---|---|
-| Request signal already aborted when the query is issued | cancel before it reaches the driver if not started | same, unconditionally |
-| Signal aborts while the query is queued (no `state`) | cancel if the request hasn't started → reason `client_gone` | cancel → `client_gone` |
+| Request signal already aborted when the query is issued | cancel before it reaches the driver if the request hasn't started | **same** — after the request started this is the transaction's `ROLLBACK`/`COMMIT`, which must reach Postgres or the connection is stranded in an open transaction (code-review fix) |
+| Signal aborts while the query is queued (no `state`) | cancel if the request hasn't started → reason `client_gone` | same |
 | Signal aborts while the query is active (`state` set) | **not cancelled** | cancel → `client_gone` |
 | Query still queued `dbAdmissionMaxWaitMs ?? DB_ADMISSION_MAX_WAIT_MS` after it was issued, request has not started | cancel → `admission_timeout` | cancel → `admission_timeout` |
 | Query settles having held a connection | `dbStarted = true`; deadline timer and listener cleared | same |
@@ -156,7 +156,8 @@ Behaviour, per `Query` the request issues:
 - Timers and listeners are removed when the query settles.
 - `client.ts` hands `drizzle()` `instrumentSqlForRequests(connection)`. The patch is per `Query` class, so `reserveConnection` (worker-only, no request context) is unaffected.
 - A query cancelled before it reaches the driver is marked `executed` and never handed to the pool: postgres.js would otherwise mis-file the connection as full.
-- `toDbCancellationApiError`: `unwrapPgError(err).code === "57014"` with `getDbCancelReason()` set gives `admission_timeout` → `ApiError(503, DB_ADMISSION_TIMEOUT, "The database is busy — retry shortly")`, and `client_gone` → `ApiError(499, REQUEST_ABANDONED, "Client disconnected")`.
+- A statement cut while holding a connection marks the request started, so its follow-up `ROLLBACK` is never cut.
+- `toDbCancellationApiError`: the reason is recorded **per rejection object** (a `WeakMap` filled when the instrumentation cancels a query, looked up on the error or its Drizzle `.cause`), not per request, so a later genuine `statement_timeout` in the same request is still a timeout (code-review fix). A `57014` the instrumentation caused gives `admission_timeout` → `ApiError(503, DB_ADMISSION_TIMEOUT, "The database is busy — retry shortly")`, and `client_gone` → `ApiError(499, REQUEST_ABANDONED, "Client disconnected")`.
 - Each cancel logs `{ dbCancel: reason, policy, queued: !state }`: `warn` for `admission_timeout`, `info` for `client_gone`.
 
 ### 7. Error mapping
@@ -172,6 +173,7 @@ Behaviour, per `Query` the request issues:
   - `export function parseRetryAfter(value: string | null): number` gives milliseconds: integer seconds clamped to **[1, 30]**, defaulting to 2 when missing or invalid.
   - `export function pauseTileFetches(ms: number): void` holds new slot grants until `now + ms`. A longer pause extends it; a shorter one never shortens it.
   - `fetchTile` calls `pauseTileFetches(parseRetryAfter(res.headers.get("Retry-After")))` on a 503 before throwing.
+  - The pause is awaited **after** a tile takes its fetch slot (inside the slot's `try`), so tiles already queued for a slot when the 503 lands wait it out too (code-review fix).
   - Tiles waiting during a pause still drop on abort (the #350 behaviour).
 - `MapWidget.component.tsx`: a busy notice `data-testid="map-widget-tile-busy"` reading "Map server is busy — tiles will load when you pan or zoom." It sits alongside the existing timeout/failed notices.
 
