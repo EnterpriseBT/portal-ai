@@ -7,6 +7,7 @@ import type {
   ConnectorInstanceListResponsePayload,
   ConnectorInstanceListWithDefinitionResponsePayload,
   ConnectorInstanceGetResponsePayload,
+  ObjectCapabilities,
 } from "@portalai/core/contracts";
 import type { ConnectorDefinition } from "@portalai/core/models";
 import { Avatar, DetailCard, MetadataList } from "@portalai/core/ui";
@@ -74,7 +75,10 @@ const STATUS_COLOR: Record<
 };
 
 export interface ConnectorInstanceCardUIProps {
-  connectorInstance: ConnectorInstanceApi;
+  /** A list row, with the caller's `capabilities` on it (#689). */
+  connectorInstance: ConnectorInstanceApi & {
+    capabilities: ObjectCapabilities;
+  };
   connectorDefinition?: ConnectorDefinition;
   onClick?: (connectorInstance: ConnectorInstanceApi) => void;
   onDelete?: (connectorInstance: ConnectorInstanceApi) => void;
@@ -87,7 +91,7 @@ export const ConnectorInstanceCardUI = ({
   onDelete,
 }: ConnectorInstanceCardUIProps) => {
   const actions: ActionSuiteItem[] = [];
-  if (onDelete) {
+  if (onDelete && ci.capabilities.delete) {
     actions.push({
       label: "Delete",
       icon: <DeleteIcon />,

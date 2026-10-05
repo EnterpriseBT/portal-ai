@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 
 import type {
   ConnectorEntityCreateRequestBody,
@@ -15,7 +9,7 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
@@ -24,10 +18,7 @@ import {
   PageSection,
   Stack,
 } from "@portalai/core/ui";
-import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import Tooltip from "@mui/material/Tooltip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ViewQuiltIcon from "@mui/icons-material/ViewQuilt";
@@ -40,11 +31,14 @@ import { sse } from "../api/sse.api";
 import { awaitJobCompletion } from "../utils/job-stream.util";
 import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
+import { ConnectorInstanceCapabilityFlagsUI } from "../components/ConnectorInstanceCapabilityFlags.component";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
 import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
-import { joinRunningJobLabels } from "../utils/running-job-label.util";
+import { connectorLockReason } from "../utils/running-job-label.util";
+import { connectorInstanceActionGates } from "../utils/connector-instance-actions.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
 import { useReconnectConnectorInstance } from "../utils/use-reconnect-connector-instance.util";
@@ -111,6 +105,7 @@ export const ConnectorInstanceView = ({
 }: ConnectorInstanceViewProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { canOnResource } = useCapabilities();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -223,10 +218,7 @@ export const ConnectorInstanceView = ({
       subs.clear();
     };
   }, [connectorInstanceId]);
-  const isLocked = runningJobs.length > 0;
-  const lockedReason = isLocked
-    ? `${joinRunningJobLabels(runningJobs)} is running on this connector — try again when it finishes.`
-    : null;
+  const lockedReason = connectorLockReason(runningJobs);
   const syncState = useConnectorInstanceSync(connectorInstanceId);
   // When the user kicks off a sync from inside this view, refetch
   // the runningJobs list so the lock alert appears immediately
@@ -357,23 +349,23 @@ export const ConnectorInstanceView = ({
               // see another auth error.
               const isInError = ci.status === "error";
               const isSyncConfigured = ci.enabledCapabilityFlags?.sync === true;
-              const editAction = (
-                <Tooltip
-                  title={lockedReason ?? ""}
-                  disableHoverListener={!isLocked}
-                >
-                  <span>
-                    <Button
-                      variant="contained"
-                      startIcon={<EditIcon />}
-                      onClick={() => setEditDialogOpen(true)}
-                      disabled={isLocked}
-                    >
-                      Edit
-                    </Button>
-                  </span>
-                </Tooltip>
-              );
+              const gates = connectorInstanceActionGates({
+                capabilities: ci.capabilities,
+                canCreateEntity: canOnResource("entity", "write"),
+                isWriteEnabled,
+                lockedReason,
+              });
+              const editAction =
+                gates.edit.kind === "hide" ? null : (
+                  <GatedButton
+                    variant="contained"
+                    startIcon={<EditIcon />}
+                    onClick={() => setEditDialogOpen(true)}
+                    gate={gates.edit}
+                  >
+                    Edit
+                  </GatedButton>
+                );
               const syncAction = (
                 <ConnectorInstanceSyncButtonUI
                   syncEligible={ci.syncEligible ?? false}
@@ -382,19 +374,20 @@ export const ConnectorInstanceView = ({
                   jobStatus={syncState.jobStatus}
                   onSync={syncState.onSync}
                   variant="contained"
-                  lockedReason={lockedReason}
+                  gate={gates.sync}
                 />
               );
-              const reconnectAction = (
-                <ConnectorInstanceReconnectButtonUI
-                  status={ci.status}
-                  isReconnecting={reconnectState.isReconnecting}
-                  errorMessage={reconnectState.errorMessage}
-                  onReconnect={reconnectState.onReconnect}
-                  onDismissError={reconnectState.onDismissError}
-                  variant="contained"
-                />
-              );
+              const reconnectAction =
+                gates.reconnect.kind === "hide" ? null : (
+                  <ConnectorInstanceReconnectButtonUI
+                    status={ci.status}
+                    isReconnecting={reconnectState.isReconnecting}
+                    errorMessage={reconnectState.errorMessage}
+                    onReconnect={reconnectState.onReconnect}
+                    onDismissError={reconnectState.onDismissError}
+                    variant="contained"
+                  />
+                );
               const primaryAction = isInError
                 ? reconnectAction
                 : isSyncConfigured
@@ -414,12 +407,7 @@ export const ConnectorInstanceView = ({
                         label: "Edit",
                         icon: <EditIcon />,
                         onClick: () => setEditDialogOpen(true),
-                        gate: isLocked
-                          ? {
-                              kind: "disable" as const,
-                              reason: "Paused until the running job finishes",
-                            }
-                          : undefined,
+                        gate: gates.edit,
                       },
                     ]
                   : []),
@@ -433,12 +421,7 @@ export const ConnectorInstanceView = ({
                             to: "/connectors/$connectorInstanceId/layout-plan/edit",
                             params: { connectorInstanceId },
                           }),
-                        gate: isLocked
-                          ? {
-                              kind: "disable" as const,
-                              reason: "Paused until the running job finishes",
-                            }
-                          : undefined,
+                        gate: gates.editLayoutPlan,
                       },
                     ]
                   : []),
@@ -447,12 +430,7 @@ export const ConnectorInstanceView = ({
                   icon: <DeleteIcon />,
                   onClick: () => setDeleteDialogOpen(true),
                   color: "error" as const,
-                  gate: isLocked
-                    ? {
-                        kind: "disable" as const,
-                        reason: "Paused until the running job finishes",
-                      }
-                    : undefined,
+                  gate: gates.delete,
                 },
               ];
               return (
@@ -523,113 +501,27 @@ export const ConnectorInstanceView = ({
                         },
                         {
                           label: "Capabilities",
-                          value: (() => {
-                            const defFlags =
-                              ci.connectorDefinition?.capabilityFlags;
-                            const flags = ci.enabledCapabilityFlags;
-                            const writeSupported = !!defFlags?.write;
-                            const syncSupported = !!defFlags?.sync;
-                            const pushSupported = !!defFlags?.push;
-
-                            const makeHandler =
-                              (flag: "write" | "sync" | "push") =>
-                              (
-                                _e: React.ChangeEvent<HTMLInputElement>,
-                                checked: boolean
-                              ) => {
+                          value: (
+                            <ConnectorInstanceCapabilityFlagsUI
+                              supported={
+                                ci.connectorDefinition?.capabilityFlags
+                              }
+                              flags={ci.enabledCapabilityFlags}
+                              canEdit={gates.canEditFlags}
+                              lockedReason={lockedReason}
+                              isPending={updateMutation.isPending}
+                              onChange={(flag, checked) =>
                                 handleCapabilityChange({
                                   name: ci.name,
                                   enabledCapabilityFlags: {
-                                    ...flags,
+                                    ...ci.enabledCapabilityFlags,
                                     read: true,
                                     [flag]: checked,
                                   },
-                                });
-                              };
-
-                            return (
-                              <Stack
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                              >
-                                <Tooltip title="Allow reading data from this connector">
-                                  <FormControlLabel
-                                    control={
-                                      <Checkbox checked disabled size="small" />
-                                    }
-                                    label="Read"
-                                  />
-                                </Tooltip>
-                                <Tooltip
-                                  title={
-                                    writeSupported
-                                      ? "Allow creating, editing, and deleting entities, records, and field mappings"
-                                      : "This connector type does not support writes"
-                                  }
-                                >
-                                  <FormControlLabel
-                                    control={
-                                      <Checkbox
-                                        checked={!!flags?.write}
-                                        onChange={makeHandler("write")}
-                                        disabled={
-                                          !writeSupported ||
-                                          updateMutation.isPending
-                                        }
-                                        size="small"
-                                      />
-                                    }
-                                    label="Write"
-                                  />
-                                </Tooltip>
-                                <Tooltip
-                                  title={
-                                    syncSupported
-                                      ? "Allow data synchronization with the source"
-                                      : "This connector type does not support sync"
-                                  }
-                                >
-                                  <FormControlLabel
-                                    control={
-                                      <Checkbox
-                                        checked={!!flags?.sync}
-                                        onChange={makeHandler("sync")}
-                                        disabled={
-                                          !syncSupported ||
-                                          updateMutation.isPending
-                                        }
-                                        size="small"
-                                      />
-                                    }
-                                    label="Sync"
-                                  />
-                                </Tooltip>
-                                <Tooltip
-                                  title={
-                                    pushSupported
-                                      ? "Allow pushing normalized data to external destinations"
-                                      : "This connector type does not support push"
-                                  }
-                                >
-                                  <FormControlLabel
-                                    control={
-                                      <Checkbox
-                                        checked={!!flags?.push}
-                                        onChange={makeHandler("push")}
-                                        disabled={
-                                          !pushSupported ||
-                                          updateMutation.isPending
-                                        }
-                                        size="small"
-                                      />
-                                    }
-                                    label="Push"
-                                  />
-                                </Tooltip>
-                              </Stack>
-                            );
-                          })(),
+                                })
+                              }
+                            />
+                          ),
                           variant: "chip",
                         },
                       ]}
@@ -641,23 +533,16 @@ export const ConnectorInstanceView = ({
                     title="Entities"
                     icon={<Icon name={IconName.DataObject} />}
                     primaryAction={
-                      isWriteEnabled ? (
-                        <Tooltip
-                          title={lockedReason ?? ""}
-                          disableHoverListener={!isLocked}
+                      gates.createEntity.kind === "hide" ? null : (
+                        <GatedButton
+                          variant="contained"
+                          size="small"
+                          onClick={() => setCreateEntityOpen(true)}
+                          gate={gates.createEntity}
                         >
-                          <span>
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={() => setCreateEntityOpen(true)}
-                              disabled={isLocked}
-                            >
-                              Create Entity
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : null
+                          Create Entity
+                        </GatedButton>
+                      )
                     }
                   >
                     <PaginationToolbar {...pagination.toolbarProps} />

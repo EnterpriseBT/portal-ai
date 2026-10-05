@@ -97,6 +97,33 @@ describe("ConnectorInstanceSyncButtonUI", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders nothing for a hide gate (no write on the instance)", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncButtonUI {...baseProps} gate={{ kind: "hide" }} />
+    );
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("renders a disable gate as aria-disabled, focusable, naming the reason", async () => {
+    const onSync = jest.fn();
+    const reason =
+      "Import is running on this connector — try again when it finishes.";
+    render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        onSync={onSync}
+        gate={{ kind: "disable", reason }}
+      />
+    );
+    const btn = screen.getByRole("button", { name: /sync now/i });
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    expect(onSync).not.toHaveBeenCalled();
+    fireEvent.mouseOver(btn);
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+  });
+
   it("does not render the advisory tooltip when identityWarnings is empty", () => {
     render(
       <ConnectorInstanceSyncButtonUI {...baseProps} identityWarnings={[]} />

@@ -94,6 +94,8 @@ const baseProps = {
   loadError: null as ServerError | null,
   commitError: null as ServerError | null,
   isCommitting: false,
+  canWrite: true,
+  commitBlockedReason: null as string | null,
   connectorInstanceId: "ci_1",
   connectorInstanceName: "Test Connector",
   entityOptions: [],
@@ -183,9 +185,58 @@ describe("EditLayoutPlanViewUI", () => {
     expect(
       screen.getByText(/Source files have been cleaned up/i)
     ).toBeInTheDocument();
-    expect(screen.getByTestId("reupload-link")).toBeInTheDocument();
+    expect(screen.getByTestId("reupload-link")).toHaveAttribute(
+      "href",
+      "/connectors"
+    );
     // No stepper from RegionEditorUI.
     expect(screen.queryByText(/Draw regions/i)).not.toBeInTheDocument();
+  });
+
+  // ── #689: no write on the instance → no editor ─────────────────────────
+  it("renders a no-write-access notice instead of the editor without write", () => {
+    const editContext = makeEditableContext();
+    const regions = makeEditableDraftsFromContext(editContext);
+
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={regions}
+        canWrite={false}
+      />
+    );
+
+    expect(
+      screen.getByText(/You don.t have write access to this connector/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Draw regions/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reupload-link")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /back/i })).toBeInTheDocument();
+  });
+
+  // ── #689: a running job blocks Commit, naming the job ───────────────────
+  it("blocks Commit with the lock reason while a job holds the connector", () => {
+    const onCommit = jest.fn();
+    const editContext = makeEditableContext();
+    const regions = makeEditableDraftsFromContext(editContext);
+    const reason =
+      "Sync is running on this connector — try again when it finishes.";
+
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={regions}
+        step={1}
+        onCommit={onCommit}
+        commitBlockedReason={reason}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /commit/i }));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByText(reason)).toBeInTheDocument();
   });
 
   // ── Case 14 ────────────────────────────────────────────────────────────
