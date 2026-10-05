@@ -51,6 +51,10 @@ export const tiers = pgTable("tiers", {
   selectable: boolean("selectable").notNull(),
   builtinToolpacks: jsonb("builtin_toolpacks").$type<string[]>().notNull(),
   customToolpacks: boolean("custom_toolpacks").notNull(),
+  // #701: the custom-RBAC entitlement (#622) and seat cap (#584) are
+  // catalog-owned and converged like the rest.
+  customRbac: boolean("custom_rbac").notNull(),
+  maxSeats: integer("max_seats"),
   // #241: cta is converged from the catalog; description + visibility are
   // operator/per-client state the tier create/update commands write directly.
   cta: text("cta").notNull(),

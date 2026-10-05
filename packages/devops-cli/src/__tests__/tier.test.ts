@@ -55,7 +55,7 @@ const {
   TierAlreadyExistsError,
   TierNotFoundError,
 } = await import("../commands/tier.js");
-const { TIER_CATALOG, TIER_CATALOG_BY_SLUG } =
+const { TIER_CATALOG, TIER_CATALOG_BY_SLUG, TierCatalogEntrySchema } =
   await import("@portalai/core/registries");
 
 const local = BUILTIN_ENVIRONMENTS["local"];
@@ -86,6 +86,9 @@ const standardRow = (over: Record<string, unknown> = {}) => ({
   selectable: CATALOG_STANDARD.selectable,
   builtinToolpacks: [...CATALOG_STANDARD.builtinToolpacks],
   customToolpacks: CATALOG_STANDARD.customToolpacks,
+  // #701: the seat cap and custom-RBAC entitlement are catalog-owned too.
+  customRbac: CATALOG_STANDARD.customRbac,
+  maxSeats: CATALOG_STANDARD.maxSeats,
   cta: CATALOG_STANDARD.cta,
   // #311: marketing-site fields (catalog-owned).
   public: CATALOG_STANDARD.public,
@@ -339,6 +342,73 @@ describe("tierApply convergence (#218 case 5)", () => {
     });
     expect(standard.fields.selectable).toEqual({ from: null, to: true });
     expect(standard.stripePriceId).toBeNull();
+  });
+});
+
+describe("tierApply converges seats and custom RBAC (#701)", () => {
+  it("an insert carries the catalog's maxSeats and customRbac", async () => {
+    const { factory } = fakeStore([]);
+    const result = await tierApply(
+      local as never,
+      { dryRun: true },
+      {
+        store: factory as never,
+        catalog: [
+          { ...CATALOG_STANDARD, maxSeats: 25, customRbac: true },
+        ] as never,
+      }
+    );
+    const change = result.changes.find((c) => c.slug === "standard")!;
+    expect(change.action).toBe("insert");
+    expect(change.fields.maxSeats).toEqual({ from: null, to: 25 });
+    expect(change.fields.customRbac).toEqual({ from: null, to: true });
+  });
+
+  it("a drifted row is updated back to the catalog (was a permanent noop)", async () => {
+    const { factory } = fakeStore([
+      standardRow({ maxSeats: null, customRbac: !CATALOG_STANDARD.customRbac }),
+    ]);
+    const result = await tierApply(
+      local as never,
+      { dryRun: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+    const change = result.changes.find((c) => c.slug === "standard")!;
+    expect(change.action).toBe("update");
+    expect(change.fields.maxSeats).toEqual({
+      from: null,
+      to: CATALOG_STANDARD.maxSeats,
+    });
+    expect(change.fields.customRbac).toEqual({
+      from: !CATALOG_STANDARD.customRbac,
+      to: CATALOG_STANDARD.customRbac,
+    });
+  });
+});
+
+describe("every catalog field is converged or deliberately excluded (#701)", () => {
+  // A new TierCatalogEntry field must either join CONVERGED_POLICY_FIELDS or
+  // be named here with why; #584 (maxSeats) and #622 (customRbac) were added
+  // to the catalog and silently never reached the DB.
+  const NOT_CONVERGED: Record<string, string> = {
+    slug: "the row's identity, not a policy field",
+    stripeLookupKey: "resolved to stripePriceId, which apply converges",
+  };
+
+  it("leaves no catalog field unaccounted for", () => {
+    const catalogFields = Object.keys(TierCatalogEntrySchema.shape);
+    const converged = new Set<string>(CONVERGED_POLICY_FIELDS);
+    const missing = catalogFields.filter(
+      (f) => !converged.has(f) && !(f in NOT_CONVERGED)
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("every converged field is a real catalog field", () => {
+    const catalogFields = new Set(Object.keys(TierCatalogEntrySchema.shape));
+    expect(
+      CONVERGED_POLICY_FIELDS.filter((f) => !catalogFields.has(f))
+    ).toEqual([]);
   });
 });
 
