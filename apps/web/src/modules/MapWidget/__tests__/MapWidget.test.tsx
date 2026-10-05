@@ -198,6 +198,7 @@ describe("MapWidgetUI", () => {
           timedOut: false,
           aggregated: false,
           failed: false,
+          busy: false,
         }}
       />
     );
@@ -214,6 +215,7 @@ describe("MapWidgetUI", () => {
           timedOut: false,
           aggregated: false,
           failed: false,
+          busy: false,
         }}
       />
     );
@@ -228,10 +230,28 @@ describe("MapWidgetUI", () => {
           timedOut: true,
           aggregated: false,
           failed: false,
+          busy: false,
         }}
       />
     );
     expect(screen.getByTestId("map-widget-tile-timeout")).toBeInTheDocument();
+
+    // #698: a saturated tile gate reads as busy, not as a failure.
+    rerender(
+      <MapWidgetUI
+        {...tileProps}
+        tileStatus={{
+          simplified: false,
+          truncated: false,
+          timedOut: false,
+          aggregated: false,
+          failed: false,
+          busy: true,
+        }}
+      />
+    );
+    expect(screen.getByTestId("map-widget-tile-busy")).toBeInTheDocument();
+    expect(screen.queryByTestId("map-widget-tile-failed")).toBeNull();
 
     rerender(
       <MapWidgetUI
@@ -242,6 +262,7 @@ describe("MapWidgetUI", () => {
           timedOut: false,
           aggregated: false,
           failed: true,
+          busy: false,
         }}
       />
     );
@@ -265,6 +286,7 @@ describe("MapWidgetUI", () => {
         timedOut: false,
         aggregated: false,
         failed: false,
+        busy: false,
       },
     };
     // Line layer → "most prominent" copy.
@@ -293,6 +315,7 @@ describe("MapWidgetUI", () => {
           timedOut: false,
           aggregated: true, // … the aggregate notice wins
           failed: false,
+          busy: false,
         }}
       />
     );

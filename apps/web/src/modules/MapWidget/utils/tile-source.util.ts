@@ -23,6 +23,9 @@ export interface TileStatus {
    *  empty (204/304) tile, so the widget can report it and MapLibre can
    *  retry rather than caching it empty (#449). */
   failed: boolean;
+  /** The server's tile gate is saturated (503 MAP_TILE_BUSY, #698) — tiles
+   *  will load after the `Retry-After` pause; not a failure of this layer. */
+  busy: boolean;
 }
 
 export const EMPTY_TILE_STATUS: TileStatus = {
@@ -31,6 +34,7 @@ export const EMPTY_TILE_STATUS: TileStatus = {
   timedOut: false,
   aggregated: false,
   failed: false,
+  busy: false,
 };
 
 /**
@@ -48,7 +52,8 @@ export function tilePath(ref: BlockRef | undefined): string | null {
 }
 
 /** Fold one tile response's status + headers into the notice state (#316 sets
- *  `X-Portal-Tile-Simplified` / `X-Portal-Tile-Truncated`; 504 on timeout). */
+ *  `X-Portal-Tile-Simplified` / `X-Portal-Tile-Truncated`; 504 on timeout;
+ *  503 when the server's tile gate is busy, #698). */
 export function readTileStatus(
   status: number,
   headers: { get(name: string): string | null }
@@ -60,7 +65,8 @@ export function readTileStatus(
     aggregated: headers.get("X-Portal-Tile-Aggregated") != null,
     // A 504 is the timeout case above; 204/304 are legitimately empty. Anything
     // else >= 400 is a genuine failure the widget should report (#449).
-    failed: status >= 400 && status !== 504,
+    failed: status >= 400 && status !== 504 && status !== 503,
+    busy: status === 503,
   };
 }
 

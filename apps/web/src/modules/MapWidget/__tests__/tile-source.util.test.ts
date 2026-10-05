@@ -38,6 +38,7 @@ describe("readTileStatus", () => {
       timedOut: false,
       aggregated: false,
       failed: false,
+      busy: false,
     });
     expect(
       readTileStatus(200, headers({ "X-Portal-Tile-Truncated": "1" }))
@@ -58,16 +59,33 @@ describe("readTileStatus", () => {
       timedOut: false,
       aggregated: false,
       failed: false,
+      busy: false,
+    });
+  });
+  it("flags a 503 as busy — neither failed nor timedOut (#698)", () => {
+    expect(readTileStatus(503, headers({}))).toMatchObject({
+      busy: true,
+      failed: false,
+      timedOut: false,
+    });
+  });
+  it("a 504 is a timeout only, never busy (#698)", () => {
+    expect(readTileStatus(504, headers({}))).toMatchObject({
+      timedOut: true,
+      busy: false,
+      failed: false,
     });
   });
   it("flags a non-timeout failure as failed, distinct from timedOut (#449)", () => {
     expect(readTileStatus(500, headers({}))).toMatchObject({
       failed: true,
+      busy: false,
       timedOut: false,
     });
     // A 504 is the timeout case, not the generic failed case.
     expect(readTileStatus(504, headers({}))).toMatchObject({
       failed: false,
+      busy: false,
       timedOut: true,
     });
     // 204/304 are legitimately-empty, not failures.

@@ -11,6 +11,8 @@ import {
   aggregateCellSize,
   layerCountFromContent,
   mapTileError,
+  tileSimplifyExpr,
+  TILE_BUSY_RETRY_AFTER_S,
   type RenderTileDeps,
   type TileQueryResult,
   type TileAggregation,
@@ -18,6 +20,9 @@ import {
 import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
+import { GateRejectedError } from "../../utils/admission-gate.util.js";
+import { requestContext } from "../../utils/request-context.util.js";
+import { instrumentQueryPrototype } from "../../db/request-cancellation.util.js";
 
 const ORG = "org-1";
 const PIPELINE = {
@@ -439,8 +444,66 @@ describe("buildLineHybridTileSql — skeleton + remainder bins (#532 slice 4)", 
     expect(sql).toContain("0 AS n_limited");
   });
 
-  it("applies the simplify tolerance to the skeleton geometry", () => {
-    expect(q()).toContain("ST_SimplifyPreserveTopology(r.g, 0.01)");
+  it("simplifies the skeleton lines with ST_Simplify, not the topology-preserving variant (#698)", () => {
+    const sql = q();
+    expect(sql).toContain("ST_Simplify(r.g, 0.01)");
+    expect(sql).not.toContain("ST_SimplifyPreserveTopology");
+  });
+});
+
+describe("tileSimplifyExpr — per-kind simplify (#698)", () => {
+  it("keeps topology for polygons (ring validity)", () => {
+    expect(tileSimplifyExpr("g", 0.5, "polygons")).toBe(
+      "ST_SimplifyPreserveTopology(g, 0.5)"
+    );
+  });
+
+  it("uses plain ST_Simplify for lines and points", () => {
+    expect(tileSimplifyExpr("g", 0.5, "lines")).toBe("ST_Simplify(g, 0.5)");
+    expect(tileSimplifyExpr("g", 0.5, "points")).toBe("ST_Simplify(g, 0.5)");
+  });
+
+  it("falls back to the topology-preserving simplify for an unknown kind", () => {
+    expect(tileSimplifyExpr("g", 0.5, null)).toBe(
+      "ST_SimplifyPreserveTopology(g, 0.5)"
+    );
+  });
+
+  it("returns the bare expression at tolerance 0", () => {
+    expect(tileSimplifyExpr("src.geom", 0, "lines")).toBe("src.geom");
+    expect(tileSimplifyExpr("src.geom", 0, "polygons")).toBe("src.geom");
+  });
+});
+
+describe("buildRawTileSql — per-kind simplify (#698)", () => {
+  const build = (kind: "lines" | "polygons" | "points" | null) =>
+    PortalMapTileService.buildRawTileSql(
+      "SELECT geom FROM contours",
+      "ST_TileEnvelope(3, 1, 3)",
+      [],
+      0.01,
+      MAP_TILE_FEATURE_CAP,
+      kind === "lines",
+      kind
+    );
+
+  it("simplifies a lines layer with ST_Simplify", () => {
+    const sql = build("lines");
+    expect(sql).toContain("ST_Simplify(src.geom, 0.01)");
+    expect(sql).not.toContain("ST_SimplifyPreserveTopology");
+  });
+
+  it("simplifies a points layer with ST_Simplify", () => {
+    expect(build("points")).toContain("ST_Simplify(src.geom, 0.01)");
+  });
+
+  it("keeps ST_SimplifyPreserveTopology for polygons and an unknown kind", () => {
+    expect(build("polygons")).toContain(
+      "ST_SimplifyPreserveTopology(src.geom, 0.01)"
+    );
+    expect(build(null)).toContain(
+      "ST_SimplifyPreserveTopology(src.geom, 0.01)"
+    );
   });
 });
 
@@ -854,5 +917,137 @@ describe("PortalMapTileService.renderTile (#316)", () => {
         })
       )
     ).rejects.toMatchObject({ status: 504, code: ApiCode.MAP_TILE_TIMEOUT });
+  });
+});
+
+describe("renderTile — tile admission gate (#698)", () => {
+  const ref = {
+    ref: { kind: "message" as const, messageId: "msg-1", blockIndex: 0 },
+    z: 8,
+    x: 40,
+    y: 98,
+    organizationId: ORG,
+    userId: "u-test",
+    authorizeSource: async () => true,
+  };
+  /** A gate that records each admission key and runs the work. */
+  const recordingGate = () => {
+    const keys: string[] = [];
+    return {
+      keys,
+      gate: {
+        run: async <T>(
+          key: string,
+          _s: AbortSignal | undefined,
+          fn: () => Promise<T>
+        ) => {
+          keys.push(key);
+          return fn();
+        },
+      },
+    };
+  };
+  const rejectingGate = (reason: "queue_full" | "timeout" | "aborted") => ({
+    run: async () => {
+      throw new GateRejectedError(reason);
+    },
+  });
+
+  it("runs the tile query through the gate, keyed by the caller's org", async () => {
+    const { keys, gate } = recordingGate();
+    const res = await PortalMapTileService.renderTile(ref, deps({ gate }));
+    expect(res.status).toBe(200);
+    expect(keys).toEqual([ORG]);
+  });
+
+  it("serves a 304 without taking a gate slot", async () => {
+    const first = await PortalMapTileService.renderTile(ref, deps());
+    const { keys, gate } = recordingGate();
+    const second = await PortalMapTileService.renderTile(
+      { ...ref, ifNoneMatch: first.etag },
+      deps({ gate })
+    );
+    expect(second.status).toBe(304);
+    expect(keys).toEqual([]);
+  });
+
+  it.each(["queue_full", "timeout"] as const)(
+    "maps a saturated gate (%s) to 503 MAP_TILE_BUSY with a retry hint",
+    async (reason) => {
+      await expect(
+        PortalMapTileService.renderTile(
+          ref,
+          deps({ gate: rejectingGate(reason) })
+        )
+      ).rejects.toMatchObject({
+        status: 503,
+        code: ApiCode.MAP_TILE_BUSY,
+        details: { retryAfterSeconds: TILE_BUSY_RETRY_AFTER_S },
+      });
+    }
+  );
+
+  it("maps a tile abandoned while waiting for a slot to REQUEST_ABANDONED", async () => {
+    await expect(
+      PortalMapTileService.renderTile(
+        ref,
+        deps({ gate: rejectingGate("aborted") })
+      )
+    ).rejects.toMatchObject({ status: 499, code: ApiCode.REQUEST_ABANDONED });
+  });
+
+  it("mapTileError reports a request-cancelled 57014 as the cancellation, not MAP_TILE_TIMEOUT", async () => {
+    // A minimal stand-in for postgres.js's Query, cancelled for real by the
+    // instrumentation (queued, client already gone) — so the error is the one
+    // the instrumentation attributed, not a hand-built lookalike.
+    class StubQuery extends Promise<unknown> {
+      static get [Symbol.species]() {
+        return Promise;
+      }
+      state: object | null = null;
+      executed = false;
+      private rejectFn!: (e: unknown) => void;
+      constructor() {
+        let rej!: (e: unknown) => void;
+        super((_res, r) => {
+          rej = r;
+        });
+        this.rejectFn = rej;
+      }
+      handle(): void {
+        this.executed = true;
+      }
+      cancel(): void {
+        this.rejectFn(
+          Object.assign(new Error("canceling statement"), { code: "57014" })
+        );
+      }
+    }
+    instrumentQueryPrototype(StubQuery.prototype);
+    const controller = new AbortController();
+    controller.abort("client_gone");
+    const q = new StubQuery();
+    requestContext.run(
+      {
+        log: undefined as never,
+        signal: controller.signal,
+        dbCancelPolicy: "always",
+      },
+      () => q.handle()
+    );
+    const cancelled = await q.then(
+      () => undefined,
+      (e: unknown) => e
+    );
+    const wrapped = Object.assign(new Error("Failed query"), {
+      cause: cancelled,
+    });
+    expect(mapTileError(wrapped)?.code).toBe(ApiCode.REQUEST_ABANDONED);
+
+    // A 57014 the instrumentation didn't cause is still a real tile timeout.
+    const timeout = Object.assign(new Error("Failed query"), {
+      cause: Object.assign(new Error("statement timeout"), { code: "57014" }),
+    });
+    expect(mapTileError(timeout)?.code).toBe(ApiCode.MAP_TILE_TIMEOUT);
   });
 });

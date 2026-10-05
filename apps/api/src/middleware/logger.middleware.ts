@@ -15,6 +15,32 @@ const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 
 /**
+ * Response log level. 5xx and errored responses log at `error`, 4xx at `warn`,
+ * the rest at `info` — except a response the error handler flagged as expected
+ * backpressure (`res.locals.logAsWarn`, e.g. `503 MAP_TILE_BUSY`, #698), which
+ * logs at `warn` so routine load-shedding stays out of the error stream.
+ * pino-http synthesises an `err` for any 5xx, so the flag is checked first.
+ */
+export function httpLogLevel(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  err?: Error
+): pino.LevelWithSilent {
+  const locals = (res as ServerResponse & { locals?: { logAsWarn?: boolean } })
+    .locals;
+  if (locals?.logAsWarn) {
+    return "warn";
+  }
+  if (res.statusCode >= 500 || err) {
+    return "error";
+  }
+  if (res.statusCode >= 400) {
+    return "warn";
+  }
+  return "info";
+}
+
+/**
  * HTTP request/response logging middleware using pino-http.
  *
  * Each request is assigned a request ID (reused from inbound
@@ -33,22 +59,7 @@ export const httpLogger = pinoHttp({
     res.setHeader(REQUEST_ID_HEADER, id);
     return id;
   },
-  customLogLevel: (
-    _req: IncomingMessage,
-    res: ServerResponse,
-    err?: Error
-  ): pino.LevelWithSilent => {
-    if (res.statusCode >= 500 || err) {
-      return "error";
-    }
-    if (res.statusCode >= 400) {
-      return "warn";
-    }
-    if (res.statusCode >= 300) {
-      return "info";
-    }
-    return "info";
-  },
+  customLogLevel: httpLogLevel,
   customSuccessMessage: (req: IncomingMessage, res: ServerResponse): string => {
     return `${req.method} ${req.url} ${res.statusCode}`;
   },

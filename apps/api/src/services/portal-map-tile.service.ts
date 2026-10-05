@@ -51,6 +51,12 @@ import {
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
 import { createLogger } from "../utils/logger.util.js";
+import {
+  AdmissionGate,
+  GateRejectedError,
+} from "../utils/admission-gate.util.js";
+import { getRequestSignal } from "../utils/request-context.util.js";
+import { toDbCancellationApiError } from "../db/request-cancellation.util.js";
 
 const logger = createLogger({ module: "portal-map-tile" });
 
@@ -85,6 +91,10 @@ const TILE_STATEMENT_TIMEOUT_MS = 10_000;
  * as `500 UNKNOWN`, leaving the map blank with no explanation (#449).
  */
 export function mapTileError(err: unknown): ApiError | undefined {
+  // #698: a 57014 the request instrumentation caused (client gone, admission
+  // deadline) is that cancellation, not a slow tile.
+  const cancellation = toDbCancellationApiError(err);
+  if (cancellation) return cancellation;
   if (unwrapPgError(err).code === "57014") {
     return new ApiError(
       504,
@@ -94,6 +104,42 @@ export function mapTileError(err: unknown): ApiError | undefined {
   }
   return undefined;
 }
+/**
+ * #698: per-process admission control for tile query work. A map fans out
+ * ~6–10 tiles at once and each holds a pool connection for its whole query; an
+ * expensive layer used to take all 10 of the API's connections and stall every
+ * other route. The gate keeps tile work to a fixed share of the pool (leaving
+ * room for request traffic and the in-process workers), lets no one org hold
+ * more than half of it, and turns overload into a fast `503 MAP_TILE_BUSY`
+ * instead of an unbounded wait.
+ */
+export const TILE_GATE_CONCURRENCY = 4;
+export const TILE_GATE_MAX_QUEUE = 8;
+export const TILE_GATE_MAX_WAIT_MS = 5_000;
+export const TILE_GATE_PER_ORG = 2;
+/** `Retry-After` (seconds) sent with `MAP_TILE_BUSY`. */
+export const TILE_BUSY_RETRY_AFTER_S = 2;
+
+export const tileAdmissionGate = new AdmissionGate({
+  concurrency: TILE_GATE_CONCURRENCY,
+  maxQueue: TILE_GATE_MAX_QUEUE,
+  maxWaitMs: TILE_GATE_MAX_WAIT_MS,
+  perKeyLimit: TILE_GATE_PER_ORG,
+});
+
+/** Map a gate rejection to the tile route's typed error. */
+function tileGateError(err: GateRejectedError): ApiError {
+  if (err.reason === "aborted") {
+    return new ApiError(499, ApiCode.REQUEST_ABANDONED, "Client disconnected");
+  }
+  return new ApiError(
+    503,
+    ApiCode.MAP_TILE_BUSY,
+    "Map tiles are busy — retry shortly",
+    { retryAfterSeconds: TILE_BUSY_RETRY_AFTER_S }
+  );
+}
+
 /** MVT tile extent (standard 4096-unit grid). */
 const TILE_EXTENT = 4096;
 /** Full Web-Mercator (EPSG:3857) world width in metres; a tile's world width at
@@ -250,6 +296,9 @@ export interface RenderTileDeps {
     layerTotal: number | null;
     layerTotalExact: boolean;
   }) => Promise<TileQueryResult>;
+  /** #698: the admission gate tile query work runs behind. Injectable for
+   *  tests; defaults to the process-wide {@link tileAdmissionGate}. */
+  gate?: Pick<AdmissionGate, "run">;
 }
 
 const quoteIdentTile = (s: string) => `"${s.replace(/"/g, '""')}"`;
@@ -477,6 +526,26 @@ export function tileSimplifyTolerance(z: number): number {
 }
 
 /**
+ * Simplify expression for one geometry kind (#698). Polygons keep
+ * `ST_SimplifyPreserveTopology` so rings stay valid; lines and points use plain
+ * Douglas-Peucker `ST_Simplify` — a line can't become invalid, and on a
+ * high-vertex contour layer SPT was ~90% of the tile cost (z3: 2,731 ms vs
+ * 363 ms), the trigger for every tile timing out. The only features plain
+ * simplify loses are sub-pixel, which `ST_AsMVTGeom` collapses anyway. An
+ * unknown kind keeps the topology-preserving (pre-#698) form.
+ */
+export function tileSimplifyExpr(
+  geomExpr: string,
+  tolerance: number,
+  kind: MapLayerKind | null
+): string {
+  if (tolerance <= 0) return geomExpr;
+  return kind === "lines" || kind === "points"
+    ? `ST_Simplify(${geomExpr}, ${tolerance})`
+    : `ST_SimplifyPreserveTopology(${geomExpr}, ${tolerance})`;
+}
+
+/**
  * Snap tolerance (degrees) for the polygon merged-coverage union at a band's
  * representative zoom (#541): `COVERAGE_SNAP_FACTOR ×` a tile pixel, so it is
  * always ≥ `tileSimplifyTolerance(representativeZoom)` and coarser at a coarser
@@ -587,12 +656,10 @@ export class PortalMapTileService {
     propertyColumns: string[],
     tolerance: number,
     cap: number,
-    rankByLength = false
+    rankByLength = false,
+    kind: MapLayerKind | null = null
   ): string {
-    const geomExpr =
-      tolerance > 0
-        ? `ST_SimplifyPreserveTopology(src.geom, ${tolerance})`
-        : "src.geom";
+    const geomExpr = tileSimplifyExpr("src.geom", tolerance, kind);
     // Carry the spec's property columns onto each MVT feature so the widget can
     // colour + fill popups. Names come from the validated spec and are quoted.
     const propSelect = propertyColumns
@@ -683,8 +750,7 @@ export class PortalMapTileService {
   ): string {
     const cellSize = aggregateCellSize(z);
     const half = cellSize / 2;
-    const geomExpr =
-      tolerance > 0 ? `ST_SimplifyPreserveTopology(r.g, ${tolerance})` : "r.g";
+    const geomExpr = tileSimplifyExpr("r.g", tolerance, "lines");
     return (
       `WITH ranked AS (` +
       `SELECT src.geom AS g, ` +
@@ -865,7 +931,8 @@ export class PortalMapTileService {
         propertyColumns,
         tolerance,
         cap + 1,
-        aggregation.rankByLength
+        aggregation.rankByLength,
+        aggregation.kind
       );
       probeResult = await this.runSessionViewTile(
         pipelineSql,
@@ -901,7 +968,8 @@ export class PortalMapTileService {
           propertyColumns,
           tolerance,
           cap,
-          aggregation.rankByLength
+          aggregation.rankByLength,
+          aggregation.kind
         ),
         pipeline.stationId,
         organizationId,
@@ -1392,7 +1460,28 @@ export class PortalMapTileService {
 
     const runTileQuery =
       deps.runTileQuery ?? this.defaultRunTileQuery.bind(this);
-    const { mvt, featureCount, truncated, aggregated } = await runTileQuery({
+    const gate = deps.gate ?? tileAdmissionGate;
+    // #698: only the query work is gated — the pipeline/auth reads and the 304
+    // short-circuit above stay outside, so a cached tile never waits for a slot.
+    // One slot covers the probe and its follow-up txn (sequential, one
+    // connection at a time).
+    const runGated = (args: Parameters<typeof runTileQuery>[0]) =>
+      gate
+        .run(organizationId, getRequestSignal(), () => runTileQuery(args))
+        .catch((err: unknown) => {
+          if (!(err instanceof GateRejectedError)) throw err;
+          logger.warn(
+            {
+              gate: "map-tile",
+              reason: err.reason,
+              organizationId,
+              ...(gate instanceof AdmissionGate ? gate.stats() : {}),
+            },
+            "Map tile rejected by the admission gate"
+          );
+          throw tileGateError(err);
+        });
+    const { mvt, featureCount, truncated, aggregated } = await runGated({
       pipeline,
       propertyColumns,
       organizationId,

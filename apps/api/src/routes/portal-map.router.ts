@@ -28,6 +28,7 @@ import {
   type PermissionContext,
 } from "../services/permission.service.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
+import { setDbCancelPolicy } from "../utils/request-context.util.js";
 
 export const portalMapRouter = Router();
 
@@ -68,6 +69,17 @@ export function parseTileCoords(
 
 /** Apply the render result to the response: 200 bytes / 204 / 304, with the
  *  degradation + caching headers on every outcome. */
+/** #698: headers an error response carries — `Retry-After` on a busy tile, so
+ *  the widget pauses its tile queue instead of hammering a saturated gate. */
+export function applyTileErrorHeaders(res: Response, err: unknown): void {
+  if (err instanceof ApiError && err.code === ApiCode.MAP_TILE_BUSY) {
+    const retryAfter = err.details?.retryAfterSeconds;
+    if (typeof retryAfter === "number") {
+      res.setHeader("Retry-After", String(retryAfter));
+    }
+  }
+}
+
 function sendTile(res: Response, result: TileRenderResult): void {
   res.setHeader("ETag", result.etag);
   res.setHeader("Cache-Control", "private, max-age=60");
@@ -134,6 +146,9 @@ async function handle(
   next: NextFunction
 ): Promise<void> {
   try {
+    // #698: tile work is read-only and always rolled back, so it is safe to
+    // cancel mid-statement when the client goes away (a superseded tile).
+    setDbCancelPolicy("always");
     const { z, x, y } = parseTileCoords(
       req.params.z,
       req.params.x,
@@ -151,6 +166,7 @@ async function handle(
     });
     sendTile(res, result);
   } catch (err) {
+    applyTileErrorHeaders(res, err);
     next(err);
   }
 }
@@ -186,6 +202,11 @@ async function handle(
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
+ *       503:
+ *         description: Tile admission gate saturated (MAP_TILE_BUSY) — retry after the Retry-After window
+ *         headers:
+ *           Retry-After: { description: Seconds to wait before retrying, schema: { type: integer } }
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       504:
  *         description: Tile query timed out
@@ -242,6 +263,11 @@ portalMapRouter.get(
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
+ *       503:
+ *         description: Tile admission gate saturated (MAP_TILE_BUSY) — retry after the Retry-After window
+ *         headers:
+ *           Retry-After: { description: Seconds to wait before retrying, schema: { type: integer } }
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       504:
  *         description: Tile query timed out

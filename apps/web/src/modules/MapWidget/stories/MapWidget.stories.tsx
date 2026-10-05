@@ -160,6 +160,7 @@ export const LargeResultVectorTiles: Story = {
       timedOut: false,
       aggregated: false,
       failed: false,
+      busy: false,
     },
   },
 };
