@@ -17,7 +17,7 @@ This spec pins the contract for [#698](https://github.com/EnterpriseBT/portal-ai
 - Per-kind simplify in `buildRawTileSql` and `buildLineHybridTileSql`.
 - `AdmissionGate` utility; the tile gate instance; `MAP_TILE_BUSY` + `Retry-After` (exposed via CORS).
 - A per-request `AbortSignal` and DB cancel state in `RequestContext`, set by `requestContextMiddleware`.
-- `instrumentSqlForRequests()` wrapping the pool handed to drizzle: request-scoped cancel + admission deadline.
+- `instrumentSqlForRequests()` on the pool handed to drizzle (a one-time patch of postgres.js's `Query.prototype.handle`): request-scoped cancel + admission deadline.
 - Typed errors `DB_ADMISSION_TIMEOUT` (503) and `REQUEST_ABANDONED` (499); `mapTileError` and the app error handler both understand them.
 - Web: `TileStatus.busy`, the `Retry-After` pause, and the busy notice.
 - Structured log fields for gate rejections and cancellations.
@@ -127,26 +127,35 @@ export function getDbCancelReason(): DbCancelReason | undefined;
 
 ```ts
 export const DB_ADMISSION_MAX_WAIT_MS = 30_000;
-/** Wrap a postgres.js `Sql` so every Query created inside a request context is
- *  tracked for cancellation. Outside a request context (workers, scripts, tests
- *  without the middleware) it is a pure passthrough. */
-export function instrumentSqlForRequests<T extends postgres.Sql>(sql: T, opts?: { maxWaitMs?: number }): T;
+/** Enable request-scoped cancellation for every query of this postgres.js
+ *  instance: patches the (non-exported) Query class's `handle()` once,
+ *  reaching it through an unexecuted `sql.unsafe()`. Returns `sql`. Outside a
+ *  request context (workers, scripts) the patch is a pure passthrough. */
+export function instrumentSqlForRequests<T extends postgres.Sql>(sql: T): T;
+/** The patch itself, idempotent per prototype; exported so unit tests can
+ *  instrument a stand-in Query class. */
+export function instrumentQueryPrototype(proto: object): void;
 /** Map a 57014 caused by request cancellation to its typed ApiError; undefined otherwise. */
 export function toDbCancellationApiError(err: unknown): ApiError | undefined;
 ```
 
-Behaviour, per `Query` created via `unsafe()` on the root sql or on a `begin`/`savepoint` scope (the wrapper wraps the scoped `sql` handed to the transaction callback):
+Implementation note (changed during slice 4): a wrapper around `unsafe()` would miss a transaction's `BEGIN`, which postgres.js sends through its own internal `sql` reference. Every execution path — await, `.execute()`, `.values()`, a transaction's `BEGIN`, cursors — instead runs `Query#handle()` exactly once, just before the query joins the pool queue, so the patch hooks there. The deadline override is the request-context field `dbAdmissionMaxWaitMs` (tests set it to 200 ms), not an option to `instrumentSqlForRequests`.
+
+"Started" is per request: `dbStarted` **or any live tracked query of the request holds a connection** (`state` set). So a query queued behind a sibling that is already writing is never cancelled under `"before-start"`.
+
+Behaviour, per `Query` the request issues:
 
 | Event | `"before-start"` (default) | `"always"` (tiles) |
 |---|---|---|
-| Request signal already aborted at creation | cancel if `!dbStarted` | cancel |
-| Signal aborts while the query is queued (no `state`) | cancel if `!dbStarted` → reason `client_gone` | cancel → `client_gone` |
+| Request signal already aborted when the query is issued | cancel before it reaches the driver if not started | same, unconditionally |
+| Signal aborts while the query is queued (no `state`) | cancel if the request hasn't started → reason `client_gone` | cancel → `client_gone` |
 | Signal aborts while the query is active (`state` set) | **not cancelled** | cancel → `client_gone` |
-| Query still queued `maxWaitMs` after creation, request has not started | cancel → `admission_timeout` | cancel → `admission_timeout` |
-| Query acquires a connection or settles successfully | `dbStarted = true`; deadline timer cleared | same |
+| Query still queued `dbAdmissionMaxWaitMs ?? DB_ADMISSION_MAX_WAIT_MS` after it was issued, request has not started | cancel → `admission_timeout` | cancel → `admission_timeout` |
+| Query settles having held a connection | `dbStarted = true`; deadline timer and listener cleared | same |
 
 - Timers and listeners are removed when the query settles.
-- `client.ts` hands `drizzle()` `instrumentSqlForRequests(connection)`. `reserveConnection` and `closeDatabase` keep using the raw `connection`.
+- `client.ts` hands `drizzle()` `instrumentSqlForRequests(connection)`. The patch is per `Query` class, so `reserveConnection` (worker-only, no request context) is unaffected.
+- A query cancelled before it reaches the driver is marked `executed` and never handed to the pool: postgres.js would otherwise mis-file the connection as full.
 - `toDbCancellationApiError`: `unwrapPgError(err).code === "57014"` with `getDbCancelReason()` set gives `admission_timeout` → `ApiError(503, DB_ADMISSION_TIMEOUT, "The database is busy — retry shortly")`, and `client_gone` → `ApiError(499, REQUEST_ABANDONED, "Client disconnected")`.
 - Each cancel logs `{ dbCancel: reason, policy, queued: !state }`: `warn` for `admission_timeout`, `info` for `client_gone`.
 
@@ -200,7 +209,7 @@ Run each package's own scripts: `npm run test:unit` / `npm run test:integration`
   - deadline fires on a queued query → `admission_timeout`
   - deadline doesn't fire once the query acquired a connection
   - listeners and timers are cleared on settle
-  - `begin` scope wraps the inner sql
+  - a queued query is never cancelled while a sibling of the same request holds a connection
   - `toDbCancellationApiError` maps both reasons
   - `toDbCancellationApiError` ignores a plain 57014 with no reason
 - **`__tests__/services/portal-map-tile.service.test.ts` (extend)**, 9 cases:
@@ -216,9 +225,9 @@ Run each package's own scripts: `npm run test:unit` / `npm run test:integration`
 - **`__tests__/middleware/request-context.middleware.test.ts` (new or extend)**, 3 cases: the signal aborts on `close` before finish; it doesn't abort after a normal finish; the default policy is `"before-start"`.
 
 ### `apps/api` — integration (real Postgres)
-- **`__tests__/__integration__/db/request-cancellation.integration.test.ts` (new)**, 6 cases. Each uses its own `postgres(url, { max: 1 })` wrapped by `instrumentSqlForRequests` and run inside `requestContext.run`, with one connection held by `pg_sleep`:
+- **`__tests__/__integration__/db/request-cancellation.integration.test.ts` (new)**, 6 cases. Each uses its own instrumented `postgres(url, { max: 1 })`, with one connection held by `pg_sleep`, and awaits the query under test **inside** `requestContext.run` (postgres.js reads the context at the first await):
   - a queued `INSERT` cancelled by abort never executes (the row is absent)
-  - a queued `INSERT` past `maxWaitMs` (set to 200 ms) never executes and maps to `DB_ADMISSION_TIMEOUT`
+  - a queued `INSERT` past the deadline (`dbAdmissionMaxWaitMs: 200`) never executes and maps to `DB_ADMISSION_TIMEOUT`
   - an active `pg_sleep(5)` under `"always"` returns `57014` within ~1 s, and `pg_stat_activity` shows it gone
   - an active statement under `"before-start"` runs to completion after abort
   - a transaction's `begin` queued past the deadline rejects, with no partial writes

@@ -30,6 +30,9 @@ export interface RequestContext {
   dbCancelReason?: DbCancelReason;
   /** #698: true once any of this request's queries acquired a connection. */
   dbStarted?: boolean;
+  /** #698: override for the DB admission deadline (ms). Unset uses
+   *  `DB_ADMISSION_MAX_WAIT_MS`; tests set it to exercise the deadline. */
+  dbAdmissionMaxWaitMs?: number;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();

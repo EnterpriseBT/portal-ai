@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
+import { instrumentSqlForRequests } from "./request-cancellation.util.js";
 import {
   createDbPasswordResolver,
   fallbackPasswordFromUrl,
@@ -37,8 +38,13 @@ const connection = postgres(environment.DATABASE_URL, {
 
 /**
  * Drizzle ORM instance with full schema for relational queries.
+ *
+ * #698: request-scoped cancellation is enabled on the pool, so a request whose
+ * client disconnected — or whose first query can't get a connection within
+ * `DB_ADMISSION_MAX_WAIT_MS` — never starts its DB work late. Outside a request
+ * (workers, scripts) queries are untouched. See `request-cancellation.util.ts`.
  */
-export const db = drizzle(connection, { schema });
+export const db = drizzle(instrumentSqlForRequests(connection), { schema });
 
 /**
  * Reserve a dedicated connection from the pool. **The caller must release
