@@ -41,6 +41,8 @@ import {
   SettingsTab,
   settingsTabIndexFromSearch,
 } from "../utils/routes.util";
+import { UpgradeLink } from "../components/UpgradeLink.component";
+import { SettingsTabSwitchContext } from "../utils/settings-tab.context";
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierName = (slug: string): string =>
@@ -154,163 +156,74 @@ export const SettingsView = () => {
   const handleDeleteConfirm = (confirmationName: string) =>
     deleteMutation.mutate({ confirmationName }, { onSuccess: () => logout() });
 
-  return (
-    <Box>
-      <PageHeader title="Settings" icon={<Icon name={IconName.Settings} />} />
+  // #691: lets the upgrade affordances inside a tab switch to Billing
+  // (a navigation to ?tab=billing wouldn't move this read-once tab).
+  const switchTab = (tab: SettingsTab) => setValue(SETTINGS_TAB_INDEX[tab]);
 
-      <Tabs {...tabsProps} value={activeTabValue} variant="scrollable">
-        <Tab label="Profile" {...getTabProps(0)} />
-        <Tab label="Organization" {...getTabProps(1)} />
-        <Tab label="Subscription & Billing" {...getTabProps(2)} />
-        {canManageMembers && <Tab label="Members" {...getTabProps(3)} />}
-        {canViewActivity && <Tab label="Activity" {...getTabProps(4)} />}
-        {canAuthorAccess && <Tab label="Access" {...getTabProps(5)} />}
-      </Tabs>
-      <TabPanel {...getTabPanelProps(0)}>
-        <PageSection title="Profile" variant="outlined">
-          <DataResult results={{ profileResult }}>
-            {({ profileResult }) => {
-              const { profile } = profileResult;
-              return (
-                <Stack spacing={2}>
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={{ xs: 2, sm: 3 }}
-                    alignItems={{ xs: "center", sm: "center" }}
-                  >
-                    <Avatar
-                      src={profile.picture}
-                      alt={profile.name}
-                      sx={{
-                        width: { xs: 56, sm: 72 },
-                        height: { xs: 56, sm: 72 },
-                        flexShrink: 0,
-                      }}
-                    >
-                      {!profile.picture && (
-                        <Icon name={IconName.Person} fontSize="large" />
-                      )}
-                    </Avatar>
-                    <Stack
-                      spacing={0.5}
-                      sx={{
-                        minWidth: 0,
-                        flex: 1,
-                        textAlign: { xs: "center", sm: "left" },
-                      }}
-                    >
-                      <Typography
-                        variant="h2"
-                        sx={{ fontSize: { xs: "1.25rem", sm: "1.5rem" } }}
-                      >
-                        {profile.name}
-                      </Typography>
-                      {profile.nickname && (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{
-                            fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                          }}
-                        >
-                          @{profile.nickname}
-                        </Typography>
-                      )}
-                    </Stack>
-                  </Stack>
-                  <Divider />
-                  <MetadataList
-                    size="medium"
-                    layout={metadataLayout}
-                    direction="vertical"
-                    items={[
-                      { label: "Email", value: profile.email },
-                      {
-                        label: "Last login",
-                        value: profileResult.lastLogin
-                          ? new Date(profileResult.lastLogin).toLocaleString()
-                          : "",
-                        hidden: !profileResult.lastLogin,
-                      },
-                    ]}
-                  />
-                  <Divider />
-                  {/* #620: the caller's roles + groups in the current org,
-                      shown by name (never a role-name heuristic). Groups are
-                      populated by #622. */}
-                  <Stack spacing={0.5}>
-                    <Typography variant="subtitle2">Your roles</Typography>
-                    <Stack
-                      direction="row"
-                      spacing={0.5}
-                      flexWrap="wrap"
-                      useFlexGap
-                    >
-                      {roles.length > 0 ? (
-                        roles.map((r) => (
-                          <Chip key={r} size="small" label={r} />
-                        ))
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          No roles assigned
-                        </Typography>
-                      )}
-                    </Stack>
-                  </Stack>
-                  <Stack spacing={0.5}>
-                    <Typography variant="subtitle2">Your groups</Typography>
-                    {groups.length > 0 ? (
-                      <Stack
-                        direction="row"
-                        spacing={0.5}
-                        flexWrap="wrap"
-                        useFlexGap
-                      >
-                        {groups.map((g) => (
-                          <Chip key={g} size="small" label={g} />
-                        ))}
-                      </Stack>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        You don&apos;t belong to any groups yet.
-                      </Typography>
-                    )}
-                  </Stack>
-                </Stack>
-              );
-            }}
-          </DataResult>
-        </PageSection>
-      </TabPanel>
-      <TabPanel {...getTabPanelProps(1)}>
-        <DataResult results={{ organizationResult, usageResult }}>
-          {({ organizationResult, usageResult }) => {
-            const { organization } = organizationResult;
-            const { tier, usage } = usageResult;
-            return (
-              <Stack spacing={3}>
-                <PageSection title="Organization" variant="outlined">
+  return (
+    <SettingsTabSwitchContext.Provider value={switchTab}>
+      <Box>
+        <PageHeader title="Settings" icon={<Icon name={IconName.Settings} />} />
+
+        <Tabs {...tabsProps} value={activeTabValue} variant="scrollable">
+          <Tab label="Profile" {...getTabProps(0)} />
+          <Tab label="Organization" {...getTabProps(1)} />
+          <Tab label="Subscription & Billing" {...getTabProps(2)} />
+          {canManageMembers && <Tab label="Members" {...getTabProps(3)} />}
+          {canViewActivity && <Tab label="Activity" {...getTabProps(4)} />}
+          {canAuthorAccess && <Tab label="Access" {...getTabProps(5)} />}
+        </Tabs>
+        <TabPanel {...getTabPanelProps(0)}>
+          <PageSection title="Profile" variant="outlined">
+            <DataResult results={{ profileResult }}>
+              {({ profileResult }) => {
+                const { profile } = profileResult;
+                return (
                   <Stack spacing={2}>
                     <Stack
                       direction={{ xs: "column", sm: "row" }}
                       spacing={{ xs: 2, sm: 3 }}
-                      alignItems="center"
+                      alignItems={{ xs: "center", sm: "center" }}
                     >
                       <Avatar
+                        src={profile.picture}
+                        alt={profile.name}
                         sx={{
                           width: { xs: 56, sm: 72 },
                           height: { xs: 56, sm: 72 },
                           flexShrink: 0,
                         }}
                       >
-                        <Icon name={IconName.Home} fontSize="large" />
+                        {!profile.picture && (
+                          <Icon name={IconName.Person} fontSize="large" />
+                        )}
                       </Avatar>
-                      <Typography
-                        variant="h2"
-                        sx={{ fontSize: { xs: "1.25rem", sm: "1.5rem" } }}
+                      <Stack
+                        spacing={0.5}
+                        sx={{
+                          minWidth: 0,
+                          flex: 1,
+                          textAlign: { xs: "center", sm: "left" },
+                        }}
                       >
-                        {organization.name}
-                      </Typography>
+                        <Typography
+                          variant="h2"
+                          sx={{ fontSize: { xs: "1.25rem", sm: "1.5rem" } }}
+                        >
+                          {profile.name}
+                        </Typography>
+                        {profile.nickname && (
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{
+                              fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                            }}
+                          >
+                            @{profile.nickname}
+                          </Typography>
+                        )}
+                      </Stack>
                     </Stack>
                     <Divider />
                     <MetadataList
@@ -318,168 +231,274 @@ export const SettingsView = () => {
                       layout={metadataLayout}
                       direction="vertical"
                       items={[
-                        { label: "Timezone", value: organization.timezone },
+                        { label: "Email", value: profile.email },
                         {
-                          label: "Created",
-                          value: new Date(
-                            organization.created
-                          ).toLocaleString(),
-                        },
-                        {
-                          label: "Updated",
-                          value: organization.updated
-                            ? new Date(organization.updated).toLocaleString()
+                          label: "Last login",
+                          value: profileResult.lastLogin
+                            ? new Date(profileResult.lastLogin).toLocaleString()
                             : "",
-                          hidden: !organization.updated,
+                          hidden: !profileResult.lastLogin,
                         },
                       ]}
                     />
+                    <Divider />
+                    {/* #620: the caller's roles + groups in the current org,
+                      shown by name (never a role-name heuristic). Groups are
+                      populated by #622. */}
+                    <Stack spacing={0.5}>
+                      <Typography variant="subtitle2">Your roles</Typography>
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        flexWrap="wrap"
+                        useFlexGap
+                      >
+                        {roles.length > 0 ? (
+                          roles.map((r) => (
+                            <Chip key={r} size="small" label={r} />
+                          ))
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            No roles assigned
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Stack>
+                    <Stack spacing={0.5}>
+                      <Typography variant="subtitle2">Your groups</Typography>
+                      {groups.length > 0 ? (
+                        <Stack
+                          direction="row"
+                          spacing={0.5}
+                          flexWrap="wrap"
+                          useFlexGap
+                        >
+                          {groups.map((g) => (
+                            <Chip key={g} size="small" label={g} />
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          You don&apos;t belong to any groups yet.
+                        </Typography>
+                      )}
+                    </Stack>
                   </Stack>
-                </PageSection>
+                );
+              }}
+            </DataResult>
+          </PageSection>
+        </TabPanel>
+        <TabPanel {...getTabPanelProps(1)}>
+          <DataResult results={{ organizationResult, usageResult }}>
+            {({ organizationResult, usageResult }) => {
+              const { organization } = organizationResult;
+              const { tier, usage } = usageResult;
+              return (
+                <Stack spacing={3}>
+                  <PageSection title="Organization" variant="outlined">
+                    <Stack spacing={2}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={{ xs: 2, sm: 3 }}
+                        alignItems="center"
+                      >
+                        <Avatar
+                          sx={{
+                            width: { xs: 56, sm: 72 },
+                            height: { xs: 56, sm: 72 },
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Icon name={IconName.Home} fontSize="large" />
+                        </Avatar>
+                        <Typography
+                          variant="h2"
+                          sx={{ fontSize: { xs: "1.25rem", sm: "1.5rem" } }}
+                        >
+                          {organization.name}
+                        </Typography>
+                      </Stack>
+                      <Divider />
+                      <MetadataList
+                        size="medium"
+                        layout={metadataLayout}
+                        direction="vertical"
+                        items={[
+                          { label: "Timezone", value: organization.timezone },
+                          {
+                            label: "Created",
+                            value: new Date(
+                              organization.created
+                            ).toLocaleString(),
+                          },
+                          {
+                            label: "Updated",
+                            value: organization.updated
+                              ? new Date(organization.updated).toLocaleString()
+                              : "",
+                            hidden: !organization.updated,
+                          },
+                        ]}
+                      />
+                    </Stack>
+                  </PageSection>
 
-                <PageSection title="Subscription & Usage" variant="outlined">
-                  <Stack spacing={2} alignItems="flex-start">
-                    <MetadataList
-                      size="medium"
-                      layout={metadataLayout}
-                      direction="vertical"
-                      items={[
-                        {
-                          label: "Subscription Tier",
-                          value: formatTierName(tier.tier),
-                          icon: <Icon name={IconName.Star} fontSize="small" />,
-                        },
-                        {
-                          label: "Seats",
-                          value: formatSeats(tier.maxSeats),
-                          icon: (
-                            <Icon name={IconName.Person} fontSize="small" />
-                          ),
-                        },
-                        {
-                          label: "Metered usage",
-                          value: formatUsageValue(usage.byClass.metered),
-                          icon: (
-                            <Icon name={IconName.Search} fontSize="small" />
-                          ),
-                        },
-                        {
-                          label: "Expensive usage",
-                          value: formatUsageValue(usage.byClass.expensive),
-                          icon: (
-                            <Icon name={IconName.MemoryChip} fontSize="small" />
-                          ),
-                        },
-                        {
-                          label: "Free usage",
-                          value: formatUsageValue(usage.byClass.free),
-                          icon: (
-                            <Icon
-                              name={IconName.CheckCircle}
-                              fontSize="small"
-                            />
-                          ),
-                        },
-                      ]}
-                    />
-                    {/* #179: per-call drill-down behind the aggregate balance. */}
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      onClick={() => setLedgerDialogOpen(true)}
-                    >
-                      Itemized usage
-                    </Button>
-                  </Stack>
-                </PageSection>
+                  <PageSection title="Subscription & Usage" variant="outlined">
+                    <Stack spacing={2} alignItems="flex-start">
+                      <MetadataList
+                        size="medium"
+                        layout={metadataLayout}
+                        direction="vertical"
+                        items={[
+                          {
+                            label: "Subscription Tier",
+                            value: formatTierName(tier.tier),
+                            icon: (
+                              <Icon name={IconName.Star} fontSize="small" />
+                            ),
+                          },
+                          {
+                            label: "Seats",
+                            value: formatSeats(tier.maxSeats),
+                            icon: (
+                              <Icon name={IconName.Person} fontSize="small" />
+                            ),
+                          },
+                          {
+                            label: "Metered usage",
+                            value: formatUsageValue(usage.byClass.metered),
+                            icon: (
+                              <Icon name={IconName.Search} fontSize="small" />
+                            ),
+                          },
+                          {
+                            label: "Expensive usage",
+                            value: formatUsageValue(usage.byClass.expensive),
+                            icon: (
+                              <Icon
+                                name={IconName.MemoryChip}
+                                fontSize="small"
+                              />
+                            ),
+                          },
+                          {
+                            label: "Free usage",
+                            value: formatUsageValue(usage.byClass.free),
+                            icon: (
+                              <Icon
+                                name={IconName.CheckCircle}
+                                fontSize="small"
+                              />
+                            ),
+                          },
+                        ]}
+                      />
+                      {/* #179: per-call drill-down behind the aggregate balance. */}
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        onClick={() => setLedgerDialogOpen(true)}
+                      >
+                        Itemized usage
+                      </Button>
+                    </Stack>
+                  </PageSection>
 
-                <UsageLedgerDialog
-                  open={ledgerDialogOpen}
-                  onClose={() => setLedgerDialogOpen(false)}
-                  defaultPeriodId={usage.periodId}
-                />
+                  <UsageLedgerDialog
+                    open={ledgerDialogOpen}
+                    onClose={() => setLedgerDialogOpen(false)}
+                    defaultPeriodId={usage.periodId}
+                  />
 
-                <PageSection title="Danger zone" variant="outlined">
-                  <Stack spacing={2} alignItems="flex-start">
-                    <Typography variant="body2" color="text.secondary">
-                      Permanently delete this organization and all of its data.
-                      Only the organization owner can do this, and it cannot be
-                      undone.
-                    </Typography>
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      color="error"
-                      disabled={!canDeleteOrg}
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      Delete organization
-                    </Button>
-                  </Stack>
-                </PageSection>
+                  {/* #691: only a caller with org.delete gets the danger
+                    zone. A disabled button under "only the owner can do this"
+                    told everyone else nothing they could act on. */}
+                  {canDeleteOrg && (
+                    <PageSection title="Danger zone" variant="outlined">
+                      <Stack spacing={2} alignItems="flex-start">
+                        <Typography variant="body2" color="text.secondary">
+                          Permanently delete this organization and all of its
+                          data. This cannot be undone.
+                        </Typography>
+                        <Button
+                          type="button"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => setDeleteDialogOpen(true)}
+                        >
+                          Delete organization
+                        </Button>
+                      </Stack>
+                    </PageSection>
+                  )}
 
-                <DeleteOrganizationDialog
-                  open={deleteDialogOpen}
-                  onClose={() => setDeleteDialogOpen(false)}
-                  organizationName={organization.name}
-                  onConfirm={handleDeleteConfirm}
-                  isPending={deleteMutation.isPending}
-                  serverError={toServerError(deleteMutation.error)}
-                />
-              </Stack>
-            );
-          }}
-        </DataResult>
-      </TabPanel>
-      <TabPanel {...getTabPanelProps(2)}>
-        <PageSection title="Subscription & Billing" variant="outlined">
-          {/* Mounted only while active so the billing queries don't fire
+                  <DeleteOrganizationDialog
+                    open={deleteDialogOpen}
+                    onClose={() => setDeleteDialogOpen(false)}
+                    organizationName={organization.name}
+                    onConfirm={handleDeleteConfirm}
+                    isPending={deleteMutation.isPending}
+                    serverError={toServerError(deleteMutation.error)}
+                  />
+                </Stack>
+              );
+            }}
+          </DataResult>
+        </TabPanel>
+        <TabPanel {...getTabPanelProps(2)}>
+          <PageSection title="Subscription & Billing" variant="outlined">
+            {/* Mounted only while active so the billing queries don't fire
               behind the other tabs. */}
-          {tabsProps.value === 2 && <SubscriptionBilling />}
-        </PageSection>
-      </TabPanel>
-      {canManageMembers && (
-        <TabPanel {...getTabPanelProps(3)}>
-          <PageSection title="Members" variant="outlined">
-            {/* Mounted only while active so the members/invitations queries
+            {tabsProps.value === 2 && <SubscriptionBilling />}
+          </PageSection>
+        </TabPanel>
+        {canManageMembers && (
+          <TabPanel {...getTabPanelProps(3)}>
+            <PageSection title="Members" variant="outlined">
+              {/* Mounted only while active so the members/invitations queries
                 fire only on this tab (#585). */}
-            {tabsProps.value === 3 && <MembersTab />}
-          </PageSection>
-        </TabPanel>
-      )}
-      {canViewActivity && (
-        <TabPanel {...getTabPanelProps(4)}>
-          <PageSection title="Activity" variant="outlined">
-            {/* Mounted only while active so the audit-log query fires only
+              {tabsProps.value === 3 && <MembersTab />}
+            </PageSection>
+          </TabPanel>
+        )}
+        {canViewActivity && (
+          <TabPanel {...getTabPanelProps(4)}>
+            <PageSection title="Activity" variant="outlined">
+              {/* Mounted only while active so the audit-log query fires only
                 on this tab (#596). */}
-            {tabsProps.value === 4 && <AuditLogActivity />}
-          </PageSection>
-        </TabPanel>
-      )}
-      {canAuthorAccess && (
-        <TabPanel {...getTabPanelProps(5)}>
-          <PageSection title="Access" variant="outlined">
-            {/* #622: the module renders only when the org's tier grants custom
+              {tabsProps.value === 4 && <AuditLogActivity />}
+            </PageSection>
+          </TabPanel>
+        )}
+        {canAuthorAccess && (
+          <TabPanel {...getTabPanelProps(5)}>
+            <PageSection title="Access" variant="outlined">
+              {/* #622: the module renders only when the org's tier grants custom
                 RBAC; otherwise a locked upgrade state (the server is the real
                 gate). Mounted only while active so its queries fire on-tab. */}
-            {tabsProps.value === 5 &&
-              (rbacEntitled ? (
-                <AccessAuthoring />
-              ) : (
-                <Stack spacing={1}>
-                  <Typography variant="body1">
-                    Custom roles, policies, and groups are an enterprise
-                    feature.
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Your current plan includes the built-in owner, admin, and
-                    member roles. Upgrade to author custom access.
-                  </Typography>
-                </Stack>
-              ))}
-          </PageSection>
-        </TabPanel>
-      )}
-    </Box>
+              {tabsProps.value === 5 &&
+                (rbacEntitled ? (
+                  <AccessAuthoring />
+                ) : (
+                  <Stack spacing={1}>
+                    <Typography variant="body1">
+                      Custom roles, policies, and groups are an enterprise
+                      feature.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Your current plan includes the built-in owner, admin, and
+                      member roles. Upgrade to author custom access.
+                    </Typography>
+                    {/* #691: the upsell — the one place to upgrade for custom
+                      RBAC (the Members groups column stays hidden). */}
+                    <UpgradeLink />
+                  </Stack>
+                ))}
+            </PageSection>
+          </TabPanel>
+        )}
+      </Box>
+    </SettingsTabSwitchContext.Provider>
   );
 };

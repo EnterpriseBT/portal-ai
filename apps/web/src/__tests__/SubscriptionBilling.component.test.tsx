@@ -334,21 +334,15 @@ describe("SubscriptionBillingUI — managed", () => {
 // ── case 31: non-owner ───────────────────────────────────────────────
 
 describe("SubscriptionBillingUI — non-owner", () => {
-  it("disables Subscribe with the owner-only tooltip", async () => {
+  it("#691: shows no Subscribe, and says why, without billing.manage", () => {
     render(<SubscriptionBillingUI {...baseUIProps} canManageBilling={false} />);
-
-    const subscribe = screen.getByRole("button", { name: /subscribe/i });
-    expect(subscribe).toBeDisabled();
-
-    await userEvent.hover(subscribe.parentElement as HTMLElement);
-    await waitFor(() =>
-      expect(
-        screen.getByText(/you don't have permission to manage billing/i)
-      ).toBeInTheDocument()
-    );
+    expect(screen.queryByRole("button", { name: /subscribe/i })).toBeNull();
+    expect(
+      screen.getByText(/you don't have permission to manage billing/i)
+    ).toBeInTheDocument();
   });
 
-  it("disables Manage subscription for a subscribed org", () => {
+  it("#691: hides Manage subscription for a subscribed org", () => {
     render(
       <SubscriptionBillingUI
         {...baseUIProps}
@@ -357,8 +351,8 @@ describe("SubscriptionBillingUI — non-owner", () => {
       />
     );
     expect(
-      screen.getByRole("button", { name: /manage subscription/i })
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: /manage subscription/i })
+    ).toBeNull();
   });
 });
 

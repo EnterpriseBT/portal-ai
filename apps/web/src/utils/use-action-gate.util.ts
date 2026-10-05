@@ -8,6 +8,7 @@ import type { ActionGate } from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { decideActionGate, type ActionGateInput } from "./action-gate.util";
 import { SettingsTab } from "./routes.util";
+import { useSettingsTabSwitch } from "./settings-tab.context";
 
 /** The tier entitlements that gate an action (the boolean ones). */
 export type EntitlementKey = {
@@ -36,9 +37,16 @@ export function useActionGate(): UseActionGateResult {
   const navigate = useNavigate();
   const entitlements = usage.data?.tier?.entitlements;
 
+  // #691: inside Settings a navigation to ?tab=billing wouldn't move the
+  // (read-once) tab, so switch it directly there.
+  const switchSettingsTab = useSettingsTabSwitch();
   const onUpgrade = useCallback(() => {
+    if (switchSettingsTab) {
+      switchSettingsTab(SettingsTab.Billing);
+      return;
+    }
     void navigate({ to: "/settings", search: { tab: SettingsTab.Billing } });
-  }, [navigate]);
+  }, [navigate, switchSettingsTab]);
 
   const entitled = useCallback(
     (key: EntitlementKey) => entitlements?.[key] ?? false,

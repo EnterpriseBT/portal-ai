@@ -6,7 +6,7 @@
 import { jest } from "@jest/globals";
 import type { BillingTier } from "@portalai/core/contracts";
 
-const { render, screen, waitFor } = await import("./test-utils");
+const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { TierCardUI } = await import("../components/TierCard.component");
 import { SUPPORT_MAILTO } from "../utils/contact.util";
@@ -92,20 +92,11 @@ describe("TierCardUI — subscribe", () => {
     expect(subscribe).toBeEnabled();
   });
 
-  it("disables Subscribe with the owner-only tooltip for a non-owner", async () => {
+  it("#691: hides Subscribe without billing.manage", () => {
     render(
       <TierCardUI {...base} tier={subscribeTier} canManageBilling={false} />
     );
-
-    const subscribe = screen.getByRole("button", { name: /subscribe/i });
-    expect(subscribe).toBeDisabled();
-
-    await userEvent.hover(subscribe.parentElement as HTMLElement);
-    await waitFor(() =>
-      expect(
-        screen.getByText(/you don't have permission to manage billing/i)
-      ).toBeInTheDocument()
-    );
+    expect(screen.queryByRole("button", { name: /subscribe/i })).toBeNull();
   });
 
   it("invokes onSubscribe with the slug", async () => {
@@ -149,7 +140,7 @@ describe("TierCardUI — subscribe", () => {
     expect(onSubscribe).not.toHaveBeenCalled();
   });
 
-  it("disables Switch for a non-owner with the owner-only tooltip", async () => {
+  it("#691: hides Switch without billing.manage", () => {
     render(
       <TierCardUI
         {...base}
@@ -159,14 +150,9 @@ describe("TierCardUI — subscribe", () => {
         onSwitch={jest.fn()}
       />
     );
-    const sw = screen.getByRole("button", { name: /switch to this plan/i });
-    expect(sw).toBeDisabled();
-    await userEvent.hover(sw.parentElement as HTMLElement);
-    await waitFor(() =>
-      expect(
-        screen.getByText(/you don't have permission to manage billing/i)
-      ).toBeInTheDocument()
-    );
+    expect(
+      screen.queryByRole("button", { name: /switch to this plan/i })
+    ).toBeNull();
   });
 });
 

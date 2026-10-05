@@ -30,6 +30,9 @@ export interface MemberListUIProps {
    *  multi-select editor is shown only then. The server enforces the finer
    *  owner/admin gating (owner-only), surfacing a 403 the container toasts. */
   canManageRoles: boolean;
+  /** #691: the caller may remove members (`can("member.remove")`). Without
+   *  it there is no Remove column. */
+  canRemove: boolean;
   /** The caller's own user id — removing yourself is disabled. */
   callerUserId: string;
   /** The roles assignable here (#622) — the multiselect options (system +
@@ -59,6 +62,7 @@ export interface MemberListUIProps {
 export const MemberListUI: React.FC<MemberListUIProps> = ({
   members,
   canManageRoles,
+  canRemove,
   callerUserId,
   assignableRoles,
   onSetRoles,
@@ -221,10 +225,15 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
   // #622: the member-centric group column sits after Roles, only when the org is
   // entitled and the caller can manage groups.
   if (canManageGroups) columns.splice(3, 0, groupColumn);
+  // #691: Remove needs member.remove (server: SeatService.removeMember), so a
+  // caller without it gets no column of dead buttons.
+  const visibleColumns = canRemove
+    ? columns
+    : columns.filter((c) => c.key !== "actions");
 
   return (
     <DataTable
-      columns={columns}
+      columns={visibleColumns}
       rows={members as unknown as Record<string, unknown>[]}
       emptyMessage="No members yet."
     />
