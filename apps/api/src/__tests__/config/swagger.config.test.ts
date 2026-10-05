@@ -735,3 +735,20 @@ describe("swagger spec — document completeness (#420)", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("swagger spec — map tile routes document the busy 503 (#698)", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  it.each([
+    "/api/portal-map/tiles/message/{messageId}/{blockIndex}/{z}/{x}/{y}",
+    "/api/portal-map/tiles/pin/{portalResultId}/{z}/{x}/{y}",
+  ])("%s declares a 503 with a Retry-After header", (path) => {
+    const op = (
+      spec.paths?.[path] as { get?: { responses?: Record<string, unknown> } }
+    )?.get;
+    const busy = op?.responses?.["503"] as
+      | { headers?: Record<string, unknown> }
+      | undefined;
+    expect(busy).toBeDefined();
+    expect(busy?.headers?.["Retry-After"]).toBeDefined();
+  });
+});

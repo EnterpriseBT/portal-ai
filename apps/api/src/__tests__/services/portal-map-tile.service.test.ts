@@ -12,6 +12,7 @@ import {
   layerCountFromContent,
   mapTileError,
   tileSimplifyExpr,
+  TILE_BUSY_RETRY_AFTER_S,
   type RenderTileDeps,
   type TileQueryResult,
   type TileAggregation,
@@ -19,6 +20,8 @@ import {
 import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
+import { GateRejectedError } from "../../utils/admission-gate.util.js";
+import { requestContext } from "../../utils/request-context.util.js";
 
 const ORG = "org-1";
 const PIPELINE = {
@@ -913,5 +916,95 @@ describe("PortalMapTileService.renderTile (#316)", () => {
         })
       )
     ).rejects.toMatchObject({ status: 504, code: ApiCode.MAP_TILE_TIMEOUT });
+  });
+});
+
+describe("renderTile — tile admission gate (#698)", () => {
+  const ref = {
+    ref: { kind: "message" as const, messageId: "msg-1", blockIndex: 0 },
+    z: 8,
+    x: 40,
+    y: 98,
+    organizationId: ORG,
+    userId: "u-test",
+    authorizeSource: async () => true,
+  };
+  /** A gate that records each admission key and runs the work. */
+  const recordingGate = () => {
+    const keys: string[] = [];
+    return {
+      keys,
+      gate: {
+        run: async <T>(
+          key: string,
+          _s: AbortSignal | undefined,
+          fn: () => Promise<T>
+        ) => {
+          keys.push(key);
+          return fn();
+        },
+      },
+    };
+  };
+  const rejectingGate = (reason: "queue_full" | "timeout" | "aborted") => ({
+    run: async () => {
+      throw new GateRejectedError(reason);
+    },
+  });
+
+  it("runs the tile query through the gate, keyed by the caller's org", async () => {
+    const { keys, gate } = recordingGate();
+    const res = await PortalMapTileService.renderTile(ref, deps({ gate }));
+    expect(res.status).toBe(200);
+    expect(keys).toEqual([ORG]);
+  });
+
+  it("serves a 304 without taking a gate slot", async () => {
+    const first = await PortalMapTileService.renderTile(ref, deps());
+    const { keys, gate } = recordingGate();
+    const second = await PortalMapTileService.renderTile(
+      { ...ref, ifNoneMatch: first.etag },
+      deps({ gate })
+    );
+    expect(second.status).toBe(304);
+    expect(keys).toEqual([]);
+  });
+
+  it.each(["queue_full", "timeout"] as const)(
+    "maps a saturated gate (%s) to 503 MAP_TILE_BUSY with a retry hint",
+    async (reason) => {
+      await expect(
+        PortalMapTileService.renderTile(
+          ref,
+          deps({ gate: rejectingGate(reason) })
+        )
+      ).rejects.toMatchObject({
+        status: 503,
+        code: ApiCode.MAP_TILE_BUSY,
+        details: { retryAfterSeconds: TILE_BUSY_RETRY_AFTER_S },
+      });
+    }
+  );
+
+  it("maps a tile abandoned while waiting for a slot to REQUEST_ABANDONED", async () => {
+    await expect(
+      PortalMapTileService.renderTile(
+        ref,
+        deps({ gate: rejectingGate("aborted") })
+      )
+    ).rejects.toMatchObject({ status: 499, code: ApiCode.REQUEST_ABANDONED });
+  });
+
+  it("mapTileError reports a request-cancelled 57014 as the cancellation, not MAP_TILE_TIMEOUT", () => {
+    const cancelled = Object.assign(new Error("Failed query"), {
+      cause: Object.assign(new Error("canceling statement"), { code: "57014" }),
+    });
+    const mapped = requestContext.run(
+      { log: undefined as never, dbCancelReason: "client_gone" },
+      () => mapTileError(cancelled)
+    );
+    expect(mapped?.code).toBe(ApiCode.REQUEST_ABANDONED);
+    // Without a cancel reason it is still a real statement timeout.
+    expect(mapTileError(cancelled)?.code).toBe(ApiCode.MAP_TILE_TIMEOUT);
   });
 });

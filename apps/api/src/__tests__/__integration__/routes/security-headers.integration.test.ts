@@ -46,6 +46,10 @@ describe("Security response headers (helmet)", () => {
       // The security headers and CORS coexist on the same response.
       expect(res.headers["x-content-type-options"]).toBe("nosniff");
       expect(res.headers["access-control-expose-headers"]).toMatch(/ETag/);
+      // #698: the tile busy 503's backoff hint must be readable cross-origin.
+      expect(res.headers["access-control-expose-headers"]).toMatch(
+        /Retry-After/
+      );
     });
   });
 

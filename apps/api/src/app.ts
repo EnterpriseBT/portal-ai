@@ -72,6 +72,9 @@ app.use(
       "X-Portal-Tile-Truncated",
       "X-Portal-Tile-Aggregated",
       "ETag",
+      // #698: the tile busy 503's backoff window. Not a CORS-safelisted
+      // response header, so cross-origin `fetch` can't read it unless exposed.
+      "Retry-After",
     ],
   })
 );
