@@ -1,14 +1,54 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type pino from "pino";
 
+/**
+ * How this request's DB queries are cancelled when its client goes away or a
+ * first query can't get a connection in time (#698):
+ *
+ *  - `"before-start"` (default): only queries issued before the request has
+ *    started DB work are cancelled, so a handler is never interrupted between
+ *    two writes.
+ *  - `"always"`: running statements are cancelled too. Only for routes whose
+ *    DB work is read-only and safe to cut mid-flight (map tiles).
+ */
+export type DbCancelPolicy = "before-start" | "always";
+/** Why the SQL instrumentation cancelled one of this request's queries. */
+export type DbCancelReason = "client_gone" | "admission_timeout";
+
 export interface RequestContext {
   log: pino.Logger;
   /** Per-request memo for correctness-neutral dedup of work that can't change
    *  within a single request (#647). Lazily created by {@link memoizeForRequest}. */
   memo?: Map<string, unknown>;
+  /** #698: fires once when the client disconnects before the response
+   *  finished (reason `"client_gone"`). */
+  signal?: AbortSignal;
+  /** #698: see {@link DbCancelPolicy}. Unset reads as `"before-start"`. */
+  dbCancelPolicy?: DbCancelPolicy;
+  /** #698: set by the SQL instrumentation when it cancels one of this
+   *  request's queries, so the resulting `57014` maps to a typed error. */
+  dbCancelReason?: DbCancelReason;
+  /** #698: true once any of this request's queries acquired a connection. */
+  dbStarted?: boolean;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();
+
+/** The current request's disconnect signal; undefined outside a request. */
+export function getRequestSignal(): AbortSignal | undefined {
+  return requestContext.getStore()?.signal;
+}
+
+/** Opt the current request into a DB cancel policy. No-op outside a request. */
+export function setDbCancelPolicy(policy: DbCancelPolicy): void {
+  const ctx = requestContext.getStore();
+  if (ctx) ctx.dbCancelPolicy = policy;
+}
+
+/** Why the instrumentation cancelled a query of this request, if it did. */
+export function getDbCancelReason(): DbCancelReason | undefined {
+  return requestContext.getStore()?.dbCancelReason;
+}
 
 /**
  * Memoize `factory` for the lifetime of the current request (i.e. one agent

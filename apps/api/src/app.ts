@@ -16,6 +16,7 @@ import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
 import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import { ApiError, HttpService } from "./services/http.service.js";
+import { toDbCancellationApiError } from "./db/request-cancellation.util.js";
 import { createLogger } from "./utils/logger.util.js";
 
 import { registerAdapters } from "./adapters/register.js";
@@ -99,6 +100,22 @@ app.use("/api", protectedRouter);
 // Catch-all error handler — all ApiErrors passed to next() are handled here
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   const log = req.log ?? logger;
+
+  // #698: a query the request instrumentation cancelled surfaces as a raw
+  // `57014`; map it to its typed error first. An abandoned request (the client
+  // already disconnected) is expected, not an error — log it quietly and skip
+  // the write when the socket is gone.
+  const cancellation =
+    err instanceof ApiError ? undefined : toDbCancellationApiError(err);
+  if (cancellation) err = cancellation;
+  if (err instanceof ApiError && err.code === ApiCode.REQUEST_ABANDONED) {
+    log.info(
+      { code: err.code, route: req.originalUrl },
+      "Request abandoned by client; pending DB work cancelled"
+    );
+    if (res.destroyed || res.headersSent) return;
+    return HttpService.error(res, err);
+  }
 
   if (err instanceof ApiError) {
     log.error(

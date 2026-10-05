@@ -477,6 +477,24 @@ export enum ApiCode {
    */
   MAP_TILE_TIMEOUT = "MAP_TILE_TIMEOUT",
   /**
+   * #698: the per-process tile admission gate is saturated (queue full, or the
+   * wait for a slot timed out). Sent as `503` with `Retry-After`; the widget
+   * shows a busy notice and pauses tile fetches for that window.
+   */
+  MAP_TILE_BUSY = "MAP_TILE_BUSY",
+  /**
+   * #698: the request's first DB query waited longer than the admission
+   * deadline for a pool connection, so it was cancelled before it ran — the
+   * request applied no write. `503`; safe to retry.
+   */
+  DB_ADMISSION_TIMEOUT = "DB_ADMISSION_TIMEOUT",
+  /**
+   * #698: the client disconnected and the request's pending DB work was
+   * cancelled. `499` (client closed request) — nobody receives it; it keeps
+   * these out of the 5xx stream.
+   */
+  REQUEST_ABANDONED = "REQUEST_ABANDONED",
+  /**
    * #314: `visualize_map` received a spec that failed `MapSpecSchema`
    * (e.g. 0 or >8 layers, a polygons/lines layer bound to a lat/lng source, a
    * malformed style expression, or a missing required field). Returned as a
@@ -826,6 +844,10 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
   [ApiCode.VIZ_REFRESH_RATE_LIMITED]:
     "Too many refreshes in a short window. Wait a moment and try again.",
   [ApiCode.API_RATE_LIMITED]: "Too many requests. Wait a moment and try again.",
+  [ApiCode.MAP_TILE_BUSY]:
+    "The map server is busy. Tiles retry automatically after a short pause.",
+  [ApiCode.DB_ADMISSION_TIMEOUT]:
+    "The service is busy and your request was not applied. Wait a moment and try again.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:
     "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
   [ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED]:
