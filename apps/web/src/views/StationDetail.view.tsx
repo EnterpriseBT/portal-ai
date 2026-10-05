@@ -106,6 +106,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
     mutate: deletePortal,
     isPending: deletePortalPending,
     error: deletePortalError,
+    reset: resetDeletePortal,
   } = sdk.portals.remove(deleteTarget?.id ?? "");
 
   const deleteStationMutation = sdk.stations.delete(stationId);
@@ -363,12 +364,15 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                           onClick={(id) =>
                                             navigate({ to: `/portals/${id}` })
                                           }
-                                          onDelete={(id) =>
+                                          onDelete={(id) => {
+                                            // A previous portal's failed delete
+                                            // mustn't show in this one's dialog.
+                                            resetDeletePortal();
                                             setDeleteTarget({
                                               id,
                                               name: portal.name,
-                                            })
-                                          }
+                                            });
+                                          }}
                                         />
                                       ))}
                                     </Stack>
@@ -416,7 +420,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
       <DeletePortalDialog
         open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => {
+          setDeleteTarget(null);
+          resetDeletePortal();
+        }}
         portalName={deleteTarget?.name ?? ""}
         onConfirm={handleConfirmDelete}
         isPending={deletePortalPending}
