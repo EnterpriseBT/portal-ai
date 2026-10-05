@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import TextField from "@mui/material/TextField";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { Button, MetadataList, Modal, Stack } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type {
   PolicyView,
@@ -94,22 +94,38 @@ export const PolicyEditorDialogUI: React.FC<PolicyEditorDialogUIProps> = ({
       }
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
-        <TextField
-          label="Name"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          required
-          disabled={readOnly}
-          fullWidth
-          autoFocus
-        />
-        <TextField
-          label="Description"
-          value={description}
-          onChange={(e) => onDescriptionChange(e.target.value)}
-          disabled={readOnly}
-          fullWidth
-        />
+        {readOnly ? (
+          // #691: a system policy is immutable, so it reads as a view (its
+          // values as text), not as a form of disabled inputs.
+          <MetadataList
+            direction="vertical"
+            items={[
+              { label: "Name", value: name },
+              {
+                label: "Description",
+                value: description,
+                hidden: !description,
+              },
+            ]}
+          />
+        ) : (
+          <>
+            <TextField
+              label="Name"
+              value={name}
+              onChange={(e) => onNameChange(e.target.value)}
+              required
+              fullWidth
+              autoFocus
+            />
+            <TextField
+              label="Description"
+              value={description}
+              onChange={(e) => onDescriptionChange(e.target.value)}
+              fullWidth
+            />
+          </>
+        )}
         <FormAlert serverError={serverError} />
         <StatementEditorUI
           key={policy?.id ?? "new"}
