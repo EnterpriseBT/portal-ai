@@ -45,6 +45,7 @@ describe("MemberListUI (#620)", () => {
   it("canManageRoles: every row shows a roles multi-select", () => {
     render(
       <MemberListUI
+        canRemove
         members={[owner, admin]}
         canManageRoles
         callerUserId="u-owner"
@@ -62,6 +63,7 @@ describe("MemberListUI (#620)", () => {
   it("#622: shows the Groups column only when canManageGroups", () => {
     const { rerender } = render(
       <MemberListUI
+        canRemove
         members={[owner]}
         canManageRoles
         callerUserId="u-owner"
@@ -75,6 +77,7 @@ describe("MemberListUI (#620)", () => {
 
     rerender(
       <MemberListUI
+        canRemove
         members={[owner]}
         canManageRoles
         callerUserId="u-owner"
@@ -92,6 +95,7 @@ describe("MemberListUI (#620)", () => {
   it("#622: the Groups column renders a member's current groups by name", () => {
     render(
       <MemberListUI
+        canRemove
         members={[member({ email: "m@x.com", groupIds: ["g-1"] })]}
         canManageRoles
         callerUserId="u-owner"
@@ -113,6 +117,7 @@ describe("MemberListUI (#620)", () => {
   it("without canManageRoles: roles render as chips, no selects", () => {
     render(
       <MemberListUI
+        canRemove
         members={[owner, admin, plain]}
         canManageRoles={false}
         callerUserId="u-admin"
@@ -130,6 +135,7 @@ describe("MemberListUI (#620)", () => {
   it("remove is disabled for self and for the last owner", () => {
     render(
       <MemberListUI
+        canRemove
         members={[owner, plain]}
         canManageRoles
         callerUserId="u-plain" // caller is the plain member (self)
@@ -148,6 +154,7 @@ describe("MemberListUI (#620)", () => {
     const onRemove = jest.fn();
     render(
       <MemberListUI
+        canRemove
         members={[owner, admin]} // caller is owner; admin is removable
         canManageRoles
         callerUserId="u-owner"
@@ -164,6 +171,7 @@ describe("MemberListUI (#620)", () => {
     const onSetRoles = jest.fn();
     render(
       <MemberListUI
+        canRemove
         members={[
           member({ userId: "u-1", email: "m@x.com", roles: ["member"] }),
         ]}
@@ -188,6 +196,7 @@ describe("MemberListUI (#620)", () => {
     const onSetRoles = jest.fn();
     render(
       <MemberListUI
+        canRemove
         members={[member({ userId: "u-1", email: "m@x.com" })]}
         canManageRoles
         callerUserId="u-owner"
@@ -207,5 +216,40 @@ describe("MemberListUI (#620)", () => {
       "u-1",
       expect.arrayContaining(["member", "analyst"])
     );
+  });
+
+  it("#691: without member.remove there is no Remove control on any row", () => {
+    render(
+      <MemberListUI
+        members={[owner, admin]}
+        canManageRoles
+        canRemove={false}
+        callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
+        onSetRoles={jest.fn()}
+        onRemove={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
+  });
+
+  it("#691: with member.remove, Remove shows, and your own row says why it's disabled", () => {
+    render(
+      <MemberListUI
+        members={[owner, admin]}
+        canManageRoles
+        canRemove
+        callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
+        onSetRoles={jest.fn()}
+        onRemove={jest.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Remove admin@x.com" })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Remove owner@x.com" })
+    ).toBeDisabled();
   });
 });

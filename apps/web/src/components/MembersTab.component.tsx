@@ -1,20 +1,16 @@
 import React, { useState } from "react";
 
-import {
-  CircularProgress,
-  Divider,
-  Alert,
-  TextField,
-  Tooltip,
-} from "@mui/material";
+import { CircularProgress, Divider, Alert, TextField } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Box,
   Button,
+  GatedButton,
   Stack,
   Typography,
   StatusMessage,
+  type ActionGate,
 } from "@portalai/core/ui";
 import type {
   Member,
@@ -27,6 +23,7 @@ import type {
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { useActionGate } from "../utils/use-action-gate.util";
 import { useCustomRbacEntitled } from "../utils/use-custom-rbac-entitled.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
@@ -57,10 +54,11 @@ export interface MembersTabUIProps {
   onInviteClick: () => void;
   onResend: (invitation: InvitationResponse) => void;
   onRevoke: (invitation: InvitationResponse) => void;
-  /** false when the seat cap is reached — the invite button is disabled. */
-  canInvite: boolean;
-  /** Tooltip shown on the disabled invite button. */
-  inviteDisabledReason?: string;
+  /** #691: how Invite renders. At the seat cap it's an upsell naming the
+   *  limit (the plan, not a permission, is what stops it). */
+  inviteGate: ActionGate;
+  /** #691: the caller may remove members (`can("member.remove")`). */
+  canRemove: boolean;
   /** The one-time invite link from the latest invite/resend; null when none. */
   lastInviteUrl: string | null;
   onCopyLink: (url: string) => void;
@@ -92,8 +90,8 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
   onInviteClick,
   onResend,
   onRevoke,
-  canInvite,
-  inviteDisabledReason,
+  inviteGate,
+  canRemove,
   lastInviteUrl,
   onCopyLink,
   onDismissLink,
@@ -112,17 +110,13 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
       <Typography variant="body2" color="text.secondary">
         {seatUsageLabel(seatUsage)}
       </Typography>
-      <Tooltip title={canInvite ? "" : (inviteDisabledReason ?? "")}>
-        <span>
-          <Button
-            variant="contained"
-            onClick={onInviteClick}
-            disabled={!canInvite}
-          >
-            Invite member
-          </Button>
-        </span>
-      </Tooltip>
+      <GatedButton
+        variant="contained"
+        onClick={onInviteClick}
+        gate={inviteGate}
+      >
+        Invite member
+      </GatedButton>
     </Stack>
 
     {lastInviteUrl && (
@@ -162,6 +156,7 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
       <MemberListUI
         members={members}
         canManageRoles={canManageRoles}
+        canRemove={canRemove}
         callerUserId={callerUserId}
         assignableRoles={assignableRoles}
         onSetRoles={onSetRoles}
@@ -196,6 +191,7 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
  */
 export const MembersTab: React.FC = () => {
   const { can } = useCapabilities();
+  const { gate } = useActionGate();
   // #622: member-centric group assignment shows only for an entitled org whose
   // caller can manage roles (the same owner/admin capability gates both). Both
   // hooks are called unconditionally (Rules of Hooks) before combining.
@@ -235,6 +231,13 @@ export const MembersTab: React.FC = () => {
   const inviteDisabledReason = capReached
     ? `Seat limit reached (${seatUsage.used} / ${seatUsage.max}). Remove a member or upgrade to invite more.`
     : undefined;
+  // #691: the seat cap is a plan limit, so Invite is an upsell to Billing
+  // (the tab itself already requires member.invite).
+  const inviteGate = gate({
+    allowed: true,
+    entitled: !capReached,
+    upgradeReason: inviteDisabledReason,
+  });
 
   // Identify the caller among the members (by verified email) so the UI can
   // disable removing yourself. Falls back to "" (no self-match) if unknown.
@@ -370,8 +373,8 @@ export const MembersTab: React.FC = () => {
         onInviteClick={() => setInviteOpen(true)}
         onResend={handleResend}
         onRevoke={handleRevoke}
-        canInvite={!capReached}
-        inviteDisabledReason={inviteDisabledReason}
+        inviteGate={inviteGate}
+        canRemove={can("member.remove")}
         lastInviteUrl={lastInviteUrl}
         onCopyLink={handleCopyLink}
         onDismissLink={() => setLastInviteUrl(null)}

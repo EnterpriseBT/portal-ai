@@ -30,9 +30,6 @@ const webSrc = join(here, "..");
  */
 const KNOWN_VIOLATIONS: Record<string, string> = {
   "views/Settings.view.tsx": "#691",
-  "components/TierCard.component.tsx": "#691",
-  "components/SubscriptionBilling.component.tsx": "#691",
-  "components/MembersTab.component.tsx": "#691",
 };
 
 /** `can*` names that aren't permissions (a form or wizard's readiness). */
