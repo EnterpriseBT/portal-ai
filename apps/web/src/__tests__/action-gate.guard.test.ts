@@ -24,13 +24,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const webSrc = join(here, "..");
 
 /**
- * Known violations, owned by #691 (org & access), which empties this list.
- * Shrink-only: each file here must still violate, so a fixed file has to
- * leave the list.
+ * Known violations. #691 (org & access) emptied it. Shrink-only: each file
+ * here must still violate, so a fixed file has to leave the list, and a new
+ * entry needs a ticket that removes it again.
  */
-const KNOWN_VIOLATIONS: Record<string, string> = {
-  "views/Settings.view.tsx": "#691",
-};
+const KNOWN_VIOLATIONS: Record<string, string> = {};
 
 /** `can*` names that aren't permissions (a form or wizard's readiness). */
 const NON_PERMISSION_NAMES = [
@@ -132,12 +130,13 @@ describe("permission-gated actions render through an ActionGate (#688)", () => {
     expect(unlisted).toEqual([]);
   });
 
-  it.each(Object.keys(KNOWN_VIOLATIONS))(
-    "%s still violates (the known list only shrinks)",
-    (path) => {
-      expect(violating.map((f) => f.path)).toContain(path);
+  it("every file on the known list still violates (the list only shrinks)", () => {
+    // #691 emptied the list; a new entry needs a ticket that removes it.
+    const violatingPaths = violating.map((f) => f.path);
+    for (const path of Object.keys(KNOWN_VIOLATIONS)) {
+      expect(violatingPaths).toContain(path);
     }
-  );
+  });
 
   it("reports a probe that disables a button on a permission", () => {
     expect(

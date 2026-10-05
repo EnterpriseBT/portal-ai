@@ -41,6 +41,7 @@ import {
   SettingsTab,
   settingsTabIndexFromSearch,
 } from "../utils/routes.util";
+import { UpgradeLink } from "../components/UpgradeLink.component";
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierName = (slug: string): string =>
@@ -399,24 +400,27 @@ export const SettingsView = () => {
                   defaultPeriodId={usage.periodId}
                 />
 
-                <PageSection title="Danger zone" variant="outlined">
-                  <Stack spacing={2} alignItems="flex-start">
-                    <Typography variant="body2" color="text.secondary">
-                      Permanently delete this organization and all of its data.
-                      Only the organization owner can do this, and it cannot be
-                      undone.
-                    </Typography>
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      color="error"
-                      disabled={!canDeleteOrg}
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      Delete organization
-                    </Button>
-                  </Stack>
-                </PageSection>
+                {/* #691: only a caller with org.delete gets the danger
+                    zone. A disabled button under "only the owner can do this"
+                    told everyone else nothing they could act on. */}
+                {canDeleteOrg && (
+                  <PageSection title="Danger zone" variant="outlined">
+                    <Stack spacing={2} alignItems="flex-start">
+                      <Typography variant="body2" color="text.secondary">
+                        Permanently delete this organization and all of its
+                        data. This cannot be undone.
+                      </Typography>
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        color="error"
+                        onClick={() => setDeleteDialogOpen(true)}
+                      >
+                        Delete organization
+                      </Button>
+                    </Stack>
+                  </PageSection>
+                )}
 
                 <DeleteOrganizationDialog
                   open={deleteDialogOpen}
@@ -475,6 +479,9 @@ export const SettingsView = () => {
                     Your current plan includes the built-in owner, admin, and
                     member roles. Upgrade to author custom access.
                   </Typography>
+                  {/* #691: the upsell — the one place to upgrade for custom
+                      RBAC (the Members groups column stays hidden). */}
+                  <UpgradeLink />
                 </Stack>
               ))}
           </PageSection>

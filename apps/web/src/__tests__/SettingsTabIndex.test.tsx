@@ -70,4 +70,17 @@ describe("Settings › tab index with hidden tabs (#656)", () => {
     );
     expect(document.getElementById("tabpanel-5")).toBeVisible();
   });
+
+  it("#691: on a plan without custom RBAC, Access offers a link to plans", () => {
+    withCapabilities(["member.role.assign"]);
+    render(<SettingsView />);
+    fireEvent.click(screen.getByRole("tab", { name: "Access" }));
+    expect(
+      screen.getByText(/Custom roles, policies, and groups are an enterprise/)
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View plans" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/settings")
+    );
+  });
 });

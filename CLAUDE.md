@@ -258,7 +258,7 @@ The server is the boundary (#685/#692); the UI's job is to **be honest about it*
   - transient state blocks it (a running job, a pending save) → **`disable`**, naming the state.
 - **A read-only caller gets a read-only view.** No Edit/Share/Delete on what they can't change, and an editor dialog never opens without `write`.
 - **Render through the gated core components**: `GatedButton`, `GatedIconButton`, and the `gate` on `ActionMenuItem` / `ActionSuiteItem` (`DetailCard`, `PageHeader`, `PageSection`). `disable` renders `aria-disabled` with a tooltip and stays focusable; there's no `disabled` on menu or suite items.
-- **A raw `disabled={!canX}` on a `Button`/`IconButton` is a bug.** `action-gate.guard.test.ts` fails CI on a `disabled` expression that reads a permission (`can(`, `canOnResource`, `capabilities.`, a `can<Name>` or `…Entitled` flag). Its `KNOWN_VIOLATIONS` list holds the four #691 files and only shrinks.
+- **A raw `disabled={!canX}` on a `Button`/`IconButton` is a bug.** `action-gate.guard.test.ts` fails CI on a `disabled` expression that reads a permission (`can(`, `canOnResource`, `capabilities.`, a `can<Name>` or `…Entitled` flag). Its `KNOWN_VIOLATIONS` list is empty since #691 and only shrinks, so there are no exceptions: fix the button.
 - **Mutations declare `onPermissionDenied`** (see Mutation Cache Invalidation).
 
 The Views list and page (`CuratedViews.view.tsx`, `CuratedViewDetail.view.tsx`) are the reference adoption.
