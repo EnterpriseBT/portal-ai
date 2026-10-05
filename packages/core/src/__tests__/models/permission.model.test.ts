@@ -518,6 +518,8 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
       "member.role.assign": { verb: "manage", resourceType: "member" },
       "member.invite": { verb: "invite", resourceType: "member" },
       "member.remove": { verb: "delete", resourceType: "member" },
+      // #690: derived; granted by class `write station` (the org PATCH's rule).
+      "station.default.set": { verb: "write", resourceType: "station" },
     };
     for (const action of CALLER_CAPABILITY_ACTIONS) {
       const { verb, resourceType } = CAPABILITY_PAIRS[action];

@@ -513,6 +513,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     isRefreshing,
     error: refreshError,
     notRefreshable,
+    allowed: refreshAllowed,
     refresh,
     lastUpdatedAt,
   } = useWidgetRefresh(blockRef, dataUpdatedAt);
@@ -573,7 +574,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       largeUnpersisted={isHandle && tileTemplate == null}
       getTileToken={getTileToken}
       resolveTileUrl={resolveApiUrl}
-      canRefresh={blockRef != null && !notRefreshable}
+      canRefresh={refreshAllowed && !notRefreshable}
       isRefreshing={isRefreshing}
       onRefresh={refresh}
       notRefreshable={notRefreshable}

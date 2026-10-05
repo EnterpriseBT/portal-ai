@@ -225,9 +225,25 @@ export class PermissionService {
     ctx: PermissionContext,
     client: DbClient = db
   ): Promise<CapabilityMap> {
-    const set = await PermissionService.loadSet(ctx, client);
+    return PermissionService.capabilityMap(
+      await PermissionService.loadSet(ctx, client)
+    );
+  }
+
+  /**
+   * `can(a)` for every caller-capability action. Most are policy verbs; a
+   * derived one is computed with the exact check its route runs, so the
+   * button and the server agree (#690: `station.default.set` is the org
+   * PATCH's class write on station).
+   */
+  static capabilityMap(set: PermissionSet): CapabilityMap {
     return Object.fromEntries(
-      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
+      CALLER_CAPABILITY_ACTIONS.map((action) => [
+        action,
+        action === "station.default.set"
+          ? set.can("resource.write", { type: "station" })
+          : set.can(action),
+      ])
     ) as CapabilityMap;
   }
 
@@ -252,9 +268,7 @@ export class PermissionService {
     resourcePermissions: ResourcePermissionMap;
   }> {
     const set = await PermissionService.loadSet(ctx, client);
-    const capabilities = Object.fromEntries(
-      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
-    ) as CapabilityMap;
+    const capabilities = PermissionService.capabilityMap(set);
     const pagePermissions = Object.fromEntries(
       NAV_PAGE_IDS.map((id) => [
         id,

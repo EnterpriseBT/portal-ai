@@ -52,6 +52,8 @@ export const portals = {
       {
         url: `/api/portals/${encodeURIComponent(id)}`,
         method: "PATCH",
+        // #690: a 403 means the caller's capabilities changed; refetch them.
+        onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
       }
     ),
 
@@ -59,6 +61,7 @@ export const portals = {
     useAuthMutation<{ id: string }, void>({
       url: `/api/portals/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   resetMessages: (portalId: string) =>

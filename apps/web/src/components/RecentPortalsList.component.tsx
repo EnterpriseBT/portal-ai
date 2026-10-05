@@ -1,9 +1,6 @@
 import React from "react";
 
-import type {
-  PortalListResponsePayload,
-  PortalWithIncludes,
-} from "@portalai/core/contracts";
+import type { PortalListResponsePayload } from "@portalai/core/contracts";
 import {
   DetailCard,
   Icon,
@@ -17,11 +14,13 @@ import DeleteIcon from "@mui/icons-material/Delete";
 
 import DataResult from "./DataResult.component";
 import { sdk } from "../api/sdk";
+import { decideActionGate } from "../utils/action-gate.util";
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface RecentPortalsListUIProps {
-  portals: PortalWithIncludes[];
+  /** List rows, each with the caller's `capabilities` (#688). */
+  portals: PortalListResponsePayload["portals"];
   onPortalClick: (portalId: string) => void;
   onDeletePortal: (portalId: string, portalName: string) => void;
 }
@@ -53,6 +52,8 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
             icon: <DeleteIcon />,
             color: "error",
             onClick: () => onDeletePortal(portal.id, portal.name),
+            // #690: only on portals the caller may delete.
+            gate: decideActionGate({ allowed: portal.capabilities.delete }),
           },
         ];
 

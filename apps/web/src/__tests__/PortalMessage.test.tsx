@@ -9,6 +9,16 @@ const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // #690: PortalMessage gates Pin result on the caller's class pin write.
+    organizations: {
+      current: () => ({
+        data: {
+          resourcePermissions: {
+            pin: { read: true, write: true, delete: true },
+          },
+        },
+      }),
+    },
     portalResults: {
       pin: () =>
         ({
@@ -107,6 +117,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -120,6 +131,7 @@ describe("PortalMessageUI", () => {
       const message = makeMessage({ role: "user" });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -136,6 +148,7 @@ describe("PortalMessageUI", () => {
       const message = makeMessage({ role: "user", created });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -160,6 +173,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -167,6 +181,29 @@ describe("PortalMessageUI", () => {
         />
       );
       expect(screen.getByText("Here is your answer")).toBeInTheDocument();
+    });
+
+    it("#690: offers no Pin result to a caller who can't create pins, but keeps Unpin on their pins", () => {
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [
+          { type: "text", content: "Block 1" },
+          { type: "text", content: "Block 2" },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          canPin={false}
+          message={message}
+          pinnedBlocks={new Map([[`${message.id}:1`, "pr-1"]])}
+          onPin={jest.fn(async () => {})}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: /^pin result/i })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /unpin result/i })
+      ).toBeInTheDocument();
     });
 
     it("shows a pin icon button for each assistant block", () => {
@@ -179,6 +216,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -203,6 +241,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -224,6 +263,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -244,6 +284,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -262,6 +303,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -280,6 +322,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -301,6 +344,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -327,6 +371,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -359,6 +404,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -395,6 +441,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -419,6 +466,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -450,6 +498,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -470,6 +519,7 @@ describe("PortalMessageUI", () => {
       });
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -485,6 +535,7 @@ describe("PortalMessageUI", () => {
       const message = makeMessage();
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={jest.fn(async () => {})}
@@ -500,6 +551,7 @@ describe("PortalMessageUI", () => {
       const message = makeMessage();
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={onPin}
@@ -523,6 +575,7 @@ describe("PortalMessageUI", () => {
       const message = makeMessage();
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={onPin}
@@ -545,6 +598,7 @@ describe("PortalMessageUI", () => {
       const message = makeMessage();
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={onPin}
@@ -567,6 +621,7 @@ describe("PortalMessageUI", () => {
       const message = makeMessage();
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={new Map()}
           onPin={onPin}
@@ -593,6 +648,7 @@ describe("PortalMessageUI", () => {
       const pinnedBlocks = new Map([["msg-1:0", "result-1"]]);
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={pinnedBlocks}
           onPin={jest.fn(async () => {})}
@@ -615,6 +671,7 @@ describe("PortalMessageUI", () => {
       const pinnedBlocks = new Map([["msg-1:0", "result-1"]]);
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={pinnedBlocks}
           onPin={jest.fn(async () => {})}
@@ -635,6 +692,7 @@ describe("PortalMessageUI", () => {
       const pinnedBlocks = new Map([["msg-1:1", "result-2"]]);
       render(
         <PortalMessageUI
+          canPin
           message={message}
           pinnedBlocks={pinnedBlocks}
           onPin={jest.fn(async () => {})}

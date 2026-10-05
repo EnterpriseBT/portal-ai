@@ -186,6 +186,26 @@ describe("EditStationDialog", () => {
       ).toBeGreaterThanOrEqual(1);
     });
 
+    it("#690: says which packs the plan leaves out, with a link to plans", () => {
+      render(
+        <EditStationDialog {...defaultProps} entitledBuiltinSlugs={entitled} />
+      );
+      expect(
+        screen.getByText(/Some tool packs aren't included in your plan/)
+      ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "View plans" })).toHaveAttribute(
+        "href",
+        expect.stringContaining("/settings")
+      );
+    });
+
+    it("#690: shows no upgrade note when every built-in is included", () => {
+      render(<EditStationDialog {...defaultProps} />);
+      expect(
+        screen.queryByText(/Some tool packs aren't included in your plan/)
+      ).toBeNull();
+    });
+
     it("leaves entitled built-ins selectable", async () => {
       render(
         <EditStationDialog {...defaultProps} entitledBuiltinSlugs={entitled} />

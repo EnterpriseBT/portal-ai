@@ -224,6 +224,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
     isRefreshing,
     error: refreshError,
     notRefreshable,
+    allowed: refreshAllowed,
     lastUpdatedAt,
     refresh,
   } = useWidgetRefresh(blockRef, dataUpdatedAt);
@@ -344,7 +345,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       error={error}
       onFrameError={(event) => setFrameError(event.message)}
       onHeight={onHeight}
-      canRefresh={blockRef != null && !notRefreshable}
+      canRefresh={refreshAllowed && !notRefreshable}
       isRefreshing={isRefreshing}
       onRefresh={refresh}
       lastUpdatedAt={lastUpdatedAt}

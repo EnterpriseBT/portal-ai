@@ -1,6 +1,6 @@
 import React from "react";
 
-import type { PortalResultWithIncludes } from "@portalai/core/contracts";
+import type { PortalResultListResponsePayload } from "@portalai/core/contracts";
 import { Box, DetailCard, Stack, Typography } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
@@ -13,6 +13,10 @@ import PushPinIcon from "@mui/icons-material/PushPin";
 import DataResult from "./DataResult.component";
 import { sdk } from "../api/sdk";
 import type { PortalResultsListPayload } from "../api/portal-results.api";
+import { decideActionGate } from "../utils/action-gate.util";
+
+/** A pin list row, with the caller's capabilities on it (#688). */
+type PinnedResultRow = PortalResultListResponsePayload["portalResults"][number];
 
 // ── Result type icon ────────────────────────────────────────────────
 
@@ -32,7 +36,7 @@ function ResultTypeIcon({ type }: { type: string }) {
 // ── Card UI (pure) ──────────────────────────────────────────────────
 
 export interface PinnedResultCardUIProps {
-  result: PortalResultWithIncludes;
+  result: PinnedResultRow;
   onResultClick: (id: string) => void;
   onUnpin: (id: string) => void;
 }
@@ -47,6 +51,8 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
       label: "Unpin",
       icon: <PushPinIcon />,
       onClick: () => onUnpin(result.id),
+      // #690: only on pins the caller may delete.
+      gate: decideActionGate({ allowed: result.capabilities.delete }),
     },
   ];
 
@@ -75,7 +81,7 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
 // ── List UI (pure) ──────────────────────────────────────────────────
 
 export interface PinnedResultsListUIProps {
-  results: PortalResultWithIncludes[];
+  results: PinnedResultRow[];
   onResultClick: (id: string) => void;
   onUnpin: (id: string) => void;
   onViewAll: () => void;
@@ -161,9 +167,7 @@ export const PinnedResultsListConnected: React.FC<
           const payload = data.pinned as unknown as PortalResultsListPayload;
           return (
             <PinnedResultsListUI
-              results={
-                payload.portalResults as unknown as PortalResultWithIncludes[]
-              }
+              results={payload.portalResults as unknown as PinnedResultRow[]}
               onResultClick={onResultClick}
               onUnpin={onUnpin}
               onViewAll={onViewAll}

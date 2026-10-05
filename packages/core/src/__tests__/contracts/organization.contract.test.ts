@@ -21,6 +21,7 @@ describe("OrganizationGetResponseSchema (#620)", () => {
     "member.role.assign": true,
     "member.invite": true,
     "member.remove": true,
+    "station.default.set": true,
   };
   const base = {
     organization,

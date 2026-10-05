@@ -41,6 +41,13 @@ export interface ChatWindowUIProps {
   onCancel: () => void;
   onExit: () => void;
   disabled?: boolean;
+  /** A response is streaming: the only time Cancel has something to cancel.
+   *  Defaults to `disabled` (#690 split it from a job lock, which also
+   *  disables input but leaves nothing to cancel). */
+  isStreaming?: boolean;
+  /** #690: why input is locked (a running bulk job). Shown under the input
+   *  and as Submit's tooltip, so the disabled composer says why. */
+  lockedReason?: string | null;
   children?: React.ReactNode;
   /**
    * Transient status pinned just above the composer (#279 — the tool activity
@@ -54,7 +61,17 @@ export interface ChatWindowUIProps {
 
 export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
   (
-    { onSubmit, onReset, onCancel, onExit, disabled, children, statusStrip },
+    {
+      onSubmit,
+      onReset,
+      onCancel,
+      onExit,
+      disabled,
+      isStreaming = disabled,
+      lockedReason = null,
+      children,
+      statusStrip,
+    },
     ref
   ) => {
     const { isMobile } = useLayout();
@@ -278,6 +295,7 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled}
+            helperText={lockedReason ?? undefined}
             sx={{ mb: 1 }}
           />
           <Stack direction="row" spacing={1} justifyContent="flex-end">
@@ -297,7 +315,7 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
                       icon={IconName.Close}
                       color="secondary"
                       onClick={onCancel}
-                      disabled={!disabled}
+                      disabled={!isStreaming}
                       aria-label="Cancel"
                     />
                   </span>
@@ -309,7 +327,7 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
                     aria-label="Reset"
                   />
                 </Tooltip>
-                <Tooltip title="Submit">
+                <Tooltip title={lockedReason ?? "Submit"}>
                   <span>
                     <IconButton
                       icon={IconName.Send}
@@ -335,7 +353,7 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
                   variant="outlined"
                   color="secondary"
                   onClick={onCancel}
-                  disabled={!disabled}
+                  disabled={!isStreaming}
                   startIcon={<Icon name={IconName.Close} />}
                 >
                   Cancel
@@ -343,14 +361,18 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
                 <Button variant="outlined" onClick={onReset}>
                   Reset
                 </Button>
-                <Button
-                  variant="contained"
-                  onClick={handleSubmit}
-                  disabled={disabled || !value.trim()}
-                  startIcon={<Icon name={IconName.Send} />}
-                >
-                  Submit
-                </Button>
+                <Tooltip title={lockedReason ?? ""}>
+                  <span>
+                    <Button
+                      variant="contained"
+                      onClick={handleSubmit}
+                      disabled={disabled || !value.trim()}
+                      startIcon={<Icon name={IconName.Send} />}
+                    >
+                      Submit
+                    </Button>
+                  </span>
+                </Tooltip>
               </>
             )}
           </Stack>

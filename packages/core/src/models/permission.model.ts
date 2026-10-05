@@ -134,6 +134,11 @@ export const CALLER_CAPABILITY_ACTIONS = [
   "member.role.assign",
   "member.invite",
   "member.remove",
+  /** #690: change the org's default station. Derived, not a policy verb: the
+   *  server computes it with the same class `resource.write {type:"station"}`
+   *  check the org PATCH runs (owner/admin), which a member's own-station
+   *  write doesn't satisfy. */
+  "station.default.set",
 ] as const;
 export const CallerCapabilityActionSchema = z.enum(CALLER_CAPABILITY_ACTIONS);
 export type CallerCapabilityAction = z.infer<

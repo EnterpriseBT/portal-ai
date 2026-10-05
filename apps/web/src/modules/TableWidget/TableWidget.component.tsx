@@ -215,6 +215,7 @@ export const TableWidget: React.FC<TableWidgetProps> = ({
     isRefreshing,
     error: refreshError,
     notRefreshable,
+    allowed: refreshAllowed,
     lastUpdatedAt,
     refresh,
   } = useWidgetRefresh(blockRef, dataUpdatedAt);
@@ -277,7 +278,7 @@ export const TableWidget: React.FC<TableWidgetProps> = ({
       // not by replacing the table (#349).
       error={hasData ? null : error}
       lastUpdatedAt={lastUpdatedAt}
-      canRefresh={blockRef != null && !notRefreshable}
+      canRefresh={refreshAllowed && !notRefreshable}
       isRefreshing={isRefreshing}
       notRefreshable={notRefreshable}
       degraded={refreshError != null && hasData}

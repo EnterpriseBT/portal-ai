@@ -40,7 +40,8 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
-import { useAuthFetch, toServerError } from "../utils/api.util";
+import { toServerError } from "../utils/api.util";
+import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
 
@@ -83,7 +84,6 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const { fetchWithAuth } = useAuthFetch();
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
   const orgResult = sdk.organizations.current();
@@ -101,6 +101,13 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
     id: string;
     name: string;
   } | null>(null);
+  // #690: through the SDK, bound to the current target (was a raw fetch).
+  const {
+    mutate: deletePortal,
+    isPending: deletePortalPending,
+    error: deletePortalError,
+    reset: resetDeletePortal,
+  } = sdk.portals.remove(deleteTarget?.id ?? "");
 
   const deleteStationMutation = sdk.stations.delete(stationId);
 
@@ -151,16 +158,19 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
     );
   }, [createPortalMutation, stationId, queryClient, navigate]);
 
-  const handleConfirmDelete = useCallback(async () => {
+  const handleConfirmDelete = () => {
     if (!deleteTarget) return;
-    await fetchWithAuth(`/api/portals/${encodeURIComponent(deleteTarget.id)}`, {
-      method: "DELETE",
+    deletePortal(undefined, {
+      onSuccess: () => {
+        // A portal's pins go with it (cascade), so pins refetch too.
+        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.portalResults.root,
+        });
+        setDeleteTarget(null);
+      },
     });
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.portals.root,
-    });
-    setDeleteTarget(null);
-  }, [deleteTarget, fetchWithAuth, queryClient]);
+  };
 
   const portalsPagination = usePagination({
     sortFields: [
@@ -208,34 +218,31 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         // capability (owner/admin/creator, or a grant) — never a
                         // client role check. A read-only grantee sees none of
                         // Share/Edit/Delete rather than an action that 403s.
-                        ...(item.station.capabilities.share
-                          ? [
-                              {
-                                label: "Share",
-                                icon: <ShareIcon />,
-                                onClick: () => setShareOpen(true),
-                              },
-                            ]
-                          : []),
-                        ...(item.station.capabilities.write
-                          ? [
-                              {
-                                label: "Edit",
-                                icon: <EditIcon />,
-                                onClick: () => setEditOpen(true),
-                              },
-                            ]
-                          : []),
-                        ...(item.station.capabilities.delete
-                          ? [
-                              {
-                                label: "Delete",
-                                icon: <DeleteIcon />,
-                                onClick: () => setDeleteStationOpen(true),
-                                color: "error" as const,
-                              },
-                            ]
-                          : []),
+                        {
+                          label: "Share",
+                          icon: <ShareIcon />,
+                          onClick: () => setShareOpen(true),
+                          gate: decideActionGate({
+                            allowed: item.station.capabilities.share,
+                          }),
+                        },
+                        {
+                          label: "Edit",
+                          icon: <EditIcon />,
+                          onClick: () => setEditOpen(true),
+                          gate: decideActionGate({
+                            allowed: item.station.capabilities.write,
+                          }),
+                        },
+                        {
+                          label: "Delete",
+                          icon: <DeleteIcon />,
+                          onClick: () => setDeleteStationOpen(true),
+                          color: "error" as const,
+                          gate: decideActionGate({
+                            allowed: item.station.capabilities.delete,
+                          }),
+                        },
                       ]}
                     >
                       {station.description && (
@@ -353,15 +360,19 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                           name={portal.name}
                                           created={portal.created}
                                           lastOpened={portal.lastOpened}
+                                          canDelete={portal.capabilities.delete}
                                           onClick={(id) =>
                                             navigate({ to: `/portals/${id}` })
                                           }
-                                          onDelete={(id) =>
+                                          onDelete={(id) => {
+                                            // A previous portal's failed delete
+                                            // mustn't show in this one's dialog.
+                                            resetDeletePortal();
                                             setDeleteTarget({
                                               id,
                                               name: portal.name,
-                                            })
-                                          }
+                                            });
+                                          }}
                                         />
                                       ))}
                                     </Stack>
@@ -409,9 +420,14 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
       <DeletePortalDialog
         open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => {
+          setDeleteTarget(null);
+          resetDeletePortal();
+        }}
         portalName={deleteTarget?.name ?? ""}
         onConfirm={handleConfirmDelete}
+        isPending={deletePortalPending}
+        serverError={toServerError(deletePortalError)}
       />
     </Box>
   );

@@ -28,6 +28,7 @@ import {
   ALL_BUILTIN_SLUGS,
   isBuiltinPackEntitled,
 } from "../utils/tool-packs.util";
+import { decideActionGate } from "../utils/action-gate.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { sdk } from "../api/sdk";
 
@@ -61,9 +62,15 @@ export const OrgData: React.FC<OrgDataProps> = ({ children }) => {
 
 // ── Station card (pure UI) ──────────────────────────────────────────
 
+/** A station list row: the station plus the caller's capabilities on it. */
+export type StationRow = StationListResponsePayload["stations"][number];
+
 export interface StationCardUIProps {
-  station: Station & { enabledToolpacks?: string[] };
+  station: StationRow;
   isDefault: boolean;
+  /** #690: the caller may change the org's default station
+   *  (`station.default.set`, owner/admin). */
+  canSetDefault: boolean;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
   onDelete: (station: Station) => void;
@@ -79,11 +86,13 @@ export interface StationCardUIProps {
 export const StationCardUI: React.FC<StationCardUIProps> = ({
   station,
   isDefault,
+  canSetDefault,
   onSetDefault,
   onOpen,
   onDelete,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
+  // #690: what this caller may do to this station.
   const actions: ActionSuiteItem[] = [
     ...(!isDefault
       ? [
@@ -91,6 +100,7 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
             label: "Set as default",
             icon: <StarOutlineIcon />,
             onClick: () => onSetDefault(station),
+            gate: decideActionGate({ allowed: canSetDefault }),
           },
         ]
       : []),
@@ -99,6 +109,7 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
       icon: <DeleteIcon />,
       onClick: () => onDelete(station),
       color: "error" as const,
+      gate: decideActionGate({ allowed: station.capabilities.delete }),
     },
   ];
 
@@ -155,8 +166,10 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
 // ── Station list (pure UI) ──────────────────────────────────────────
 
 export interface StationListUIProps {
-  stations: Station[];
+  stations: StationRow[];
   defaultStationId: string | null;
+  /** #690: see {@link StationCardUIProps.canSetDefault}. */
+  canSetDefault: boolean;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
   onDelete: (station: Station) => void;
@@ -174,6 +187,7 @@ export interface StationListUIProps {
 export const StationListUI: React.FC<StationListUIProps> = ({
   stations,
   defaultStationId,
+  canSetDefault,
   onSetDefault,
   onOpen,
   onDelete,
@@ -199,6 +213,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
           key={station.id}
           station={station}
           isDefault={station.id === defaultStationId}
+          canSetDefault={canSetDefault}
           onSetDefault={onSetDefault}
           onOpen={onOpen}
           onDelete={onDelete}
@@ -245,6 +260,10 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
                     <StationListUI
                       stations={list.stations}
                       defaultStationId={org.organization.defaultStationId}
+                      // #690: fails closed while unknown.
+                      canSetDefault={
+                        org.capabilities?.["station.default.set"] ?? false
+                      }
                       onSetDefault={onSetDefault}
                       onOpen={onOpen}
                       onDelete={onDelete}

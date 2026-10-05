@@ -215,6 +215,8 @@ export interface PortalSessionUIProps {
   streamStartedAt?: number | null;
   /** Locked when a non-terminal bulk job is bound to this portal (#85). */
   chatLocked?: boolean;
+  /** #690: why the chat is locked (the running jobs), shown in the composer. */
+  chatLockReason?: string | null;
   /** Phase of the tool running right now, or null when none is (#279). */
   activeToolLabel?: string | null;
   /** Whole seconds on that tool's step (#279). */
@@ -237,6 +239,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   isStreaming,
   streamStartedAt,
   chatLocked,
+  chatLockReason = null,
   activeToolLabel = null,
   activeToolElapsedSeconds,
 }) => (
@@ -248,6 +251,8 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       onCancel={onCancel}
       onExit={onExit}
       disabled={isStreaming || chatLocked}
+      isStreaming={isStreaming}
+      lockedReason={chatLocked ? chatLockReason : null}
       statusStrip={
         activeToolLabel ? (
           <ToolActivityStrip
@@ -496,6 +501,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       isStreaming={streamState.isStreaming}
       streamStartedAt={streamStartedAt}
       chatLocked={chatLock.locked}
+      chatLockReason={chatLock.reason}
       activeToolLabel={activeStep ? toolPhaseLabel(activeStep.toolName) : null}
       activeToolElapsedSeconds={activeToolElapsedSeconds}
     />

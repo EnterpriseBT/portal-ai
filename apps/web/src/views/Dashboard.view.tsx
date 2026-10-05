@@ -22,9 +22,8 @@ import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch, toServerError } from "../utils/api.util";
+import { toServerError } from "../utils/api.util";
 import { useToast } from "../utils/toast.context";
-import type { ServerError } from "../utils/api.util";
 
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
 
@@ -101,9 +100,6 @@ export const DashboardView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
-  // Portal delete still goes through fetchWithAuth (portals endpoint);
-  // portal-result unpin routes through the SDK (#312).
-  const { fetchWithAuth } = useAuthFetch();
   const removeMutation = sdk.portalResults.remove();
 
   // ── Create portal ───────────────────────────────────────────
@@ -136,39 +132,39 @@ export const DashboardView: React.FC = () => {
     id: string;
     name: string;
   } | null>(null);
-  const [deletePending, setDeletePending] = useState(false);
-  const [deleteError, setDeleteError] = useState<ServerError | null>(null);
+  // #690: through the SDK, bound to the current target (was a raw fetch).
+  const {
+    mutate: deletePortal,
+    isPending: deletePending,
+    error: deleteError,
+    reset: resetDelete,
+  } = sdk.portals.remove(deleteTarget?.id ?? "");
 
   const handleDeletePortal = useCallback(
     (portalId: string, portalName: string) => {
-      setDeleteError(null);
+      resetDelete();
       setDeleteTarget({ id: portalId, name: portalName });
     },
-    []
+    [resetDelete]
   );
 
   const handleDeleteClose = useCallback(() => {
     setDeleteTarget(null);
-    setDeleteError(null);
-  }, []);
+    resetDelete();
+  }, [resetDelete]);
 
-  const handleDeleteConfirm = useCallback(async () => {
+  const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    setDeletePending(true);
-    try {
-      await fetchWithAuth(
-        `/api/portals/${encodeURIComponent(deleteTarget.id)}`,
-        { method: "DELETE" }
-      );
-      queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-      queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
-      setDeleteTarget(null);
-    } catch {
-      setDeleteError({ message: "Failed to delete portal", code: "UNKNOWN" });
-    } finally {
-      setDeletePending(false);
-    }
-  }, [deleteTarget, fetchWithAuth, queryClient]);
+    deletePortal(undefined, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.portalResults.root,
+        });
+        setDeleteTarget(null);
+      },
+    });
+  }, [deleteTarget, deletePortal, queryClient]);
 
   // ── Portal click ────────────────────────────────────────────
   const handlePortalClick = useCallback(
@@ -233,7 +229,7 @@ export const DashboardView: React.FC = () => {
         portalName={deleteTarget?.name ?? ""}
         onConfirm={handleDeleteConfirm}
         isPending={deletePending}
-        serverError={deleteError}
+        serverError={toServerError(deleteError)}
       />
     </>
   );

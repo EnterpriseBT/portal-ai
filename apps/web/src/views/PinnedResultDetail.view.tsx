@@ -4,6 +4,7 @@ import type { PortalResult } from "@portalai/core/models";
 import {
   Box,
   Button,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
@@ -29,6 +30,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { decideActionGate } from "../utils/action-gate.util";
 import { ShareDialog } from "../components/ShareDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
@@ -130,44 +132,37 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           title={result.name}
           icon={<Icon name={IconName.PushPin} />}
           primaryAction={
-            // #621: Unpin removes the pin (a delete) — gated on canDelete so a
-            // read-only grantee can view but not remove someone else's pin.
-            canDelete ? (
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<PushPinIcon />}
-                onClick={onUnpin}
-                data-testid="unpin-btn"
-              >
-                Unpin
-              </Button>
-            ) : undefined
+            // #621/#690: Unpin removes the pin (a delete), so a read-only
+            // grantee can view but not remove someone else's pin.
+            <GatedButton
+              variant="contained"
+              size="small"
+              startIcon={<PushPinIcon />}
+              onClick={onUnpin}
+              data-testid="unpin-btn"
+              gate={decideActionGate({ allowed: canDelete })}
+            >
+              Unpin
+            </GatedButton>
           }
           secondaryActions={[
-            // #621: Rename is a write — gated on canWrite.
-            ...(canWrite
-              ? [
-                  {
-                    label: "Rename",
-                    icon: <EditIcon />,
-                    onClick: () => {
-                      setRenameValue(result.name);
-                      setRenameOpen(true);
-                    },
-                  },
-                ]
-              : []),
-            // #621: Share gated on server-computed canShare (owner/admin/creator).
-            ...(canShare && onShareClick
-              ? [
-                  {
-                    label: "Share",
-                    icon: <ShareIcon />,
-                    onClick: onShareClick,
-                  },
-                ]
-              : []),
+            // #621/#690: each action gated on the pin's server-computed
+            // capabilities (owner/admin/creator, or a grant).
+            {
+              label: "Rename",
+              icon: <EditIcon />,
+              onClick: () => {
+                setRenameValue(result.name);
+                setRenameOpen(true);
+              },
+              gate: decideActionGate({ allowed: canWrite }),
+            },
+            {
+              label: "Share",
+              icon: <ShareIcon />,
+              onClick: () => onShareClick?.(),
+              gate: decideActionGate({ allowed: canShare && !!onShareClick }),
+            },
             ...(result.portalId
               ? [
                   {
@@ -178,17 +173,13 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
                   },
                 ]
               : []),
-            // #621: Delete gated on canDelete (a grantee never gets delete).
-            ...(canDelete
-              ? [
-                  {
-                    label: "Delete",
-                    icon: <DeleteIcon />,
-                    onClick: () => setDeleteOpen(true),
-                    color: "error" as const,
-                  },
-                ]
-              : []),
+            {
+              label: "Delete",
+              icon: <DeleteIcon />,
+              onClick: () => setDeleteOpen(true),
+              color: "error" as const,
+              gate: decideActionGate({ allowed: canDelete }),
+            },
           ]}
         >
           <MetadataList
@@ -223,7 +214,13 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             <Box sx={{ overflow: "auto" }}>
               <ContentBlockRenderer
                 block={contentBlock}
-                blockRef={{ kind: "pin", portalResultId: result.id }}
+                // #690: a pin the caller can't write isn't refreshed (the
+                // server would 403 the refresh).
+                blockRef={{
+                  kind: "pin",
+                  portalResultId: result.id,
+                  canRefresh: canWrite,
+                }}
                 dataUpdatedAt={result.snapshotUpdatedAt ?? result.created}
               />
             </Box>
