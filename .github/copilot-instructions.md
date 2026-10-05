@@ -39,6 +39,7 @@ Dialog forms (apps/web): actions are `type="button"`, so **Enter must still subm
 - Services: classes with static methods (not loose functions)
 - Errors: `ApiError` class + `next(error)` — never `res.status().json()` directly
 - Authorization (#685, #692): every route, reads included, authorizes server-side and is classified in `apps/api/src/__tests__/config/route-authorization.map.ts` (CI guard). Resolve the caller with `getApplicationMetadata` (never an org/user id from the body); load the object **org-scoped** first, on reads as well as writes (the permission engine doesn't see orgs; lists add `visibilityPredicate`); then `resource.<verb>` on `{type, id, createdBy}`; creates check the parent's read plus owned or class create; unreadable == 404, forbidden == 403.
+- Request DB work is cancellable (#698): the one 10-connection pool is shared with in-process workers. A request's queries are cancelled only before it has started DB work (client disconnect, or a first query waiting > 30s → `503 DB_ADMISSION_TIMEOUT`, no write applied). Read-only routes safe to cut mid-statement opt into `setDbCancelPolicy("always")` (map tiles). Expensive per-request DB work goes behind an `AdmissionGate` with a typed `503` + `Retry-After` on overload (the tile gate's `MAP_TILE_BUSY` is the reference).
 - Error codes: `ApiCode` enum in `src/constants/api-codes.constants.ts`
 - Validation: middleware with typed `Request` interfaces
 - Logging: Pino logger at route, service, and DB layers
