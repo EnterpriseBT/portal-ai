@@ -57,6 +57,10 @@ describe("CLI table defs subset-match apps/api's schema (#218)", () => {
       "selectable",
       "builtin_toolpacks",
       "custom_toolpacks",
+      // #701: seats (#584) and custom RBAC (#622) were missing here and so
+      // never reached the DB.
+      "custom_rbac",
+      "max_seats",
     ]) {
       expect(cols).toContain(required);
     }
