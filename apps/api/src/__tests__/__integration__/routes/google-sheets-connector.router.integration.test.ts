@@ -379,20 +379,14 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       verb: "write",
       resourceType: "connector_instance",
     });
-    exchangeCodeMock.mockResolvedValueOnce({
-      accessToken: "ya29.access",
-      refreshToken: "1//refresh-token-A",
-      expiresIn: 3599,
-      scope: "https://www.googleapis.com/auth/drive.file",
-    });
-    fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
-
     const res = await request(app)
       .get("/api/connectors/google-sheets/callback")
       .query({ code: "good-code", state });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    // Refused before the code exchange: the provider issued no tokens.
+    expect(exchangeCodeMock).not.toHaveBeenCalled();
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()
       .from(connectorInstances)

@@ -79,6 +79,15 @@ export class GoogleSheetsConnectorService {
       connectorInstanceId: reconnectTargetId,
     } = verifyStateOrApiError(input.state);
 
+    // #710: a new connection needs the owned create. Check before the code
+    // exchange, so a caller refused since authorize is never issued tokens.
+    if (!reconnectTargetId) {
+      await ConnectorInstanceAccessService.assertCanCreateFromState(
+        userId,
+        organizationId
+      );
+    }
+
     const tokens = await callExchangeOrApiError(input.code);
     const email = await callFetchEmailOrApiError(tokens.accessToken);
 
@@ -138,8 +147,8 @@ export class GoogleSheetsConnectorService {
       );
       connectorInstanceId = updated?.id ?? target.id;
     } else {
-      // #710: authorize checked the owned create, but the state lives
-      // minutes; re-check at the write so a grant revoked since is honored.
+      // #710: re-checked at the write too (the check above ran before the
+      // provider round-trip).
       await ConnectorInstanceAccessService.assertCanCreateFromState(
         userId,
         organizationId

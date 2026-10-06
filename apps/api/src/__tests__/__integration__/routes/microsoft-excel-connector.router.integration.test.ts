@@ -381,26 +381,14 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       verb: "write",
       resourceType: "connector_instance",
     });
-    exchangeCodeMock.mockResolvedValueOnce({
-      accessToken: "eyJ.access",
-      refreshToken: "0.AX-rt",
-      idToken: makeIdToken({ tid: "tenant-A", oid: "alice-oid" }),
-      expiresIn: 3599,
-      scope: "openid profile email offline_access User.Read Files.Read.All",
-    });
-    fetchUserProfileMock.mockResolvedValueOnce({
-      upn: "alice@contoso.com",
-      email: "alice@contoso.com",
-      displayName: "Alice Smith",
-      tenantId: "tenant-A",
-    });
-
     const res = await request(app)
       .get("/api/connectors/microsoft-excel/callback")
       .query({ code: "good-code", state });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    // Refused before the code exchange: the provider issued no tokens.
+    expect(exchangeCodeMock).not.toHaveBeenCalled();
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()
       .from(connectorInstances)
