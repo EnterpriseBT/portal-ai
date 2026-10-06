@@ -36,8 +36,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
-import { useActionGate } from "../utils/use-action-gate.util";
-import { useCapabilities } from "../utils/use-capabilities.util";
+import { useCreateGate } from "../utils/use-create-gate.util";
 
 const TYPE_OPTIONS = ColumnDataTypeEnum.options.map((t) => ({
   label: t,
@@ -175,17 +174,11 @@ export const ColumnDefinitionListViewUI: React.FC<
 
 export const ColumnDefinitionListView: React.FC = () => {
   const queryClient = useQueryClient();
-  const { canOnResource } = useCapabilities();
-  const { gate } = useActionGate();
-  // #689: creating a column definition is a type-level create; a caller who
-  // reads them but can't create one sees Create disabled with how to get it.
-  const createGate = gate({
-    allowed: canOnResource("column_definition", "write"),
-    primary: {
-      plausible: canOnResource("column_definition", "read"),
-      grantHint: "Ask for access to create column definitions",
-    },
-  });
+  // #708: Create decides from the create route's own check.
+  const createGate = useCreateGate(
+    "column_definition",
+    "Ask for access to create column definitions"
+  );
 
   // Create
   const [createOpen, setCreateOpen] = useState(false);

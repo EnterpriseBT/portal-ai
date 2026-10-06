@@ -410,7 +410,8 @@ export const Toolpacks: React.FC = () => {
   const { canOnResource } = useCapabilities();
   const { gate, entitled } = useActionGate();
   const registerGate = gate({
-    allowed: canOnResource("toolpack", "write"),
+    // #708: the create route's own check (owner/admin by default).
+    allowed: canOnResource("toolpack", "create"),
     entitled: entitled("customToolpacks"),
     upgradeReason: NOT_ENTITLED_TOOLTIP,
   });

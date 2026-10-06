@@ -76,7 +76,7 @@ describe("ColumnDefinitionListView", () => {
   beforeEach(() => {
     currentListQuery = {};
     currentResourcePermissions = {
-      column_definition: { read: true, write: true },
+      column_definition: { read: true, write: true, create: true },
     };
   });
 
@@ -241,8 +241,12 @@ describe("ColumnDefinitionListView", () => {
       } as Partial<ListQuery>;
     });
 
+    // #708 (spec case 18): an owned-only grant makes the any-grant `write`
+    // true, but the create route is owner/admin only.
     it("is disabled with a grant hint for a caller who reads but can't create", async () => {
-      currentResourcePermissions = { column_definition: { read: true } };
+      currentResourcePermissions = {
+        column_definition: { read: true, write: true, create: false },
+      };
       render(<ColumnDefinitionListView />);
       const create = screen.getByRole("button", {
         name: /Create Column Definition/,

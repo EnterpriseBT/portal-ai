@@ -125,7 +125,9 @@ describe("ColumnDefinitionDetailView", () => {
   beforeEach(() => {
     currentGetQuery = {};
     currentFieldMappingListQuery = {};
-    currentResourcePermissions = { field_mapping: { write: true } };
+    currentResourcePermissions = {
+      field_mapping: { write: true, create: true },
+    };
   });
 
   it("should display loading state when query is loading", () => {
@@ -530,8 +532,12 @@ describe("ColumnDefinitionDetailView", () => {
       ).not.toBeInTheDocument();
     });
 
+    // #708 (spec case 18): `write` alone (e.g. an instance-only grant) isn't
+    // `create`.
     it("hides the field mapping Create without field_mapping create (#689)", () => {
-      currentResourcePermissions = {};
+      currentResourcePermissions = {
+        field_mapping: { write: true, create: false },
+      };
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 

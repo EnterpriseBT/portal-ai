@@ -9,12 +9,12 @@ const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    // #690: PortalMessage gates Pin result on the caller's class pin write.
+    // #690: PortalMessage gates Pin result on the caller's pin create (#708).
     organizations: {
       current: () => ({
         data: {
           resourcePermissions: {
-            pin: { read: true, write: true, delete: true },
+            pin: { read: true, write: true, delete: true, create: true },
           },
         },
       }),

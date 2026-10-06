@@ -27,9 +27,8 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
-import { useCapabilities } from "../utils/use-capabilities.util";
 import { decideActionGate } from "../utils/action-gate.util";
-import { useActionGate } from "../utils/use-action-gate.util";
+import { useCreateGate } from "../utils/use-create-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
@@ -177,18 +176,11 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
 // ── Container (wires hooks + fetching) ───────────────────────────────
 
 export const CuratedViews: React.FC = () => {
-  const { canOnResource } = useCapabilities();
-  const { gate } = useActionGate();
-  // #688: Create is the page's primary action. A caller who reads views but
-  // can't create them sees it disabled with how to get access; one who can't
-  // read them doesn't see it.
-  const createGate = gate({
-    allowed: canOnResource("curated_view", "write"),
-    primary: {
-      plausible: canOnResource("curated_view", "read"),
-      grantHint: "Ask an owner or admin for access to create views",
-    },
-  });
+  // #708: Create decides from the create route's own check.
+  const createGate = useCreateGate(
+    "curated_view",
+    "Ask an owner or admin for access to create views"
+  );
 
   const pagination = usePagination({
     sortFields: [

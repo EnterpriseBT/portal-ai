@@ -68,7 +68,7 @@ export const ColumnDefinitionDetailView: React.FC<
   // #689: a field mapping create is an owned create; a section action, so
   // without it Create is hidden rather than explained.
   const createFieldMappingGate = decideActionGate({
-    allowed: canOnResource("field_mapping", "write"),
+    allowed: canOnResource("field_mapping", "create"),
   });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

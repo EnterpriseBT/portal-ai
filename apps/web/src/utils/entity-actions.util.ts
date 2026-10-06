@@ -6,7 +6,7 @@ import { WRITES_DISABLED_REASON } from "./connector-instance-actions.util";
 
 /** The caller's entity-wide record permissions. */
 export interface RecordPermissions {
-  /** An owned record create: `canOnResource("entity_record", "write")`. */
+  /** An owned record create: `canOnResource("entity_record", "create")`. */
   create: boolean;
   /** `can("entity_record.revalidate")`: the route's unconditional class
    *  write, which a member's write on their own records doesn't satisfy. */

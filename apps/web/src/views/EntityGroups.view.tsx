@@ -40,8 +40,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { decideActionGate } from "../utils/action-gate.util";
-import { useActionGate } from "../utils/use-action-gate.util";
-import { useCapabilities } from "../utils/use-capabilities.util";
+import { useCreateGate } from "../utils/use-create-gate.util";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
@@ -348,17 +347,11 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
 
 export const EntityGroupsView: React.FC = () => {
   const queryClient = useQueryClient();
-  const { canOnResource } = useCapabilities();
-  const { gate } = useActionGate();
-  // #689: entity group create is type-level; a caller who reads groups but
-  // can't create one sees Create disabled with how to get it.
-  const createGate = gate({
-    allowed: canOnResource("entity_group", "write"),
-    primary: {
-      plausible: canOnResource("entity_group", "read"),
-      grantHint: "Ask for access to create entity groups",
-    },
-  });
+  // #708: Create decides from the create route's own check.
+  const createGate = useCreateGate(
+    "entity_group",
+    "Ask for access to create entity groups"
+  );
 
   const [createOpen, setCreateOpen] = useState(false);
   const [deletingGroup, setDeletingGroup] = useState<

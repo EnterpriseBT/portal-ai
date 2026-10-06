@@ -9,8 +9,8 @@ export const WRITES_DISABLED_REASON = "Writes are disabled on this connector";
 export interface ConnectorInstanceActionGateInput {
   /** The instance's `capabilities` from its GET payload. */
   capabilities: ObjectCapabilities;
-  /** Class-level `canOnResource("entity", "write")`: entity create is an
-   *  owned create under a readable instance, not an instance write. */
+  /** `canOnResource("entity", "create")` (#708): entity create is an owned
+   *  create under a readable instance, not an instance write. */
   canCreateEntity: boolean;
   /** `enabledCapabilityFlags.write`: the connector-level write switch. */
   isWriteEnabled: boolean;
