@@ -33,6 +33,7 @@ import { DbService } from "../services/db.service.js";
 import { entityGroups } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { entityGroupMemberRouter } from "./entity-group-member.router.js";
 
@@ -585,28 +586,20 @@ entityGroupRouter.patch(
         );
       }
 
-      const existing = await DbService.repository.entityGroups.findById(id);
-      if (
-        !existing ||
-        existing.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #630: a member may edit only their own group; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "entity_group",
+        await DbService.repository.entityGroups.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.ENTITY_GROUP_NOT_FOUND,
             "Entity group not found"
           )
-        );
-      }
-      // #630: a member may edit only their own group; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "entity_group",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       if (parsed.data.name && parsed.data.name !== existing.name) {
@@ -828,28 +821,20 @@ entityGroupRouter.delete(
     try {
       const { id } = req.params;
 
-      const existing = await DbService.repository.entityGroups.findById(id);
-      if (
-        !existing ||
-        existing.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #630: a member may delete only their own group; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "entity_group",
+        await DbService.repository.entityGroups.findById(id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.ENTITY_GROUP_NOT_FOUND,
             "Entity group not found"
           )
-        );
-      }
-      // #630: a member may delete only their own group; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        {
-          type: "entity_group",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       const { userId } = req.application!.metadata;

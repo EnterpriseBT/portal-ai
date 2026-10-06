@@ -29,6 +29,28 @@ export class ObjectAccessService {
     );
   }
 
+  /**
+   * #713: authorize a by-id write, delete or share on a row the route has
+   * already loaded. A row that's missing, in another org or unreadable throws
+   * the route's own `notFound()` (404), so the answer matches its GET and an
+   * id the caller can't see reveals nothing. Only a readable row reaches the
+   * verb check, which throws 403 `PERMISSION_DENIED`. Returns the row.
+   */
+  static loadForVerb<T extends OwnedRow>(
+    set: PermissionSet,
+    organizationId: string,
+    type: PermissionResourceType,
+    row: T | null | undefined,
+    verb: "write" | "delete" | "share",
+    notFound: () => Error
+  ): T {
+    if (!ObjectAccessService.readableInOrg(set, organizationId, type, row)) {
+      throw notFound();
+    }
+    set.check(`resource.${verb}`, ObjectAccessService.object(type, row));
+    return row;
+  }
+
   /** The permission object for a row. */
   static object(type: PermissionResourceType, row: OwnedRow) {
     return { type, id: row.id, createdBy: row.createdBy };

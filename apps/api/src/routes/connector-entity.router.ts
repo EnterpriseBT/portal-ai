@@ -748,30 +748,21 @@ connectorEntityRouter.patch(
       // #685: org-scoped first. The permission engine doesn't see orgs, so
       // without this a holder of `* *` in any org could edit another org's
       // entity by id.
-      const existing =
-        await DbService.repository.connectorEntities.findById(id);
-      if (
-        !existing ||
-        existing.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #599: RBAC write gate (in addition to connector capability) — a member
+      // may edit only entities they created; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "entity",
+        await DbService.repository.connectorEntities.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
             "Connector entity not found"
           )
-        );
-      }
-      // #599: RBAC write gate (in addition to connector capability) — a member
-      // may edit only entities they created; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "entity",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       await assertWriteCapability(id);
@@ -1031,27 +1022,20 @@ connectorEntityRouter.delete(
       // created; owner/admin any.
       // #685: org-scoped first (an owner/admin of another org passed the
       // check below, which doesn't see orgs).
-      const toDelete =
-        await DbService.repository.connectorEntities.findById(id);
-      if (
-        toDelete &&
-        toDelete.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #713: missing or unreadable answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "entity",
+        await DbService.repository.connectorEntities.findById(id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
             "Connector entity not found"
           )
-        );
-      }
-      if (toDelete) {
-        await PermissionService.check(
-          req.application!.metadata,
-          "resource.delete",
-          { type: "entity", id, createdBy: toDelete.createdBy }
-        );
-      }
+      );
 
       await JobLockService.assertConnectorEntityUnlocked([id], organizationId);
       await ConnectorEntityValidationService.validateDelete(id);

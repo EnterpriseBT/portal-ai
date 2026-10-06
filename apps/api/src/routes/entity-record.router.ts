@@ -1288,23 +1288,23 @@ entityRecordRouter.patch(
         );
       }
 
-      const record =
-        await DbService.repository.entityRecords.findById(recordId);
-      if (!record || record.connectorEntityId !== connectorEntityId) {
-        return next(
+      // #599: RBAC write gate (in addition to connector capability above) —
+      // a member may edit only records they created; owner/admin any.
+      // #713: a record that isn't this entity's, or that the caller can't
+      // read, answers 404, like its GET.
+      const found = await DbService.repository.entityRecords.findById(recordId);
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "entity_record",
+        found?.connectorEntityId === connectorEntityId ? found : null,
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.ENTITY_RECORD_NOT_FOUND,
             "Entity record not found"
           )
-        );
-      }
-      // #599: RBAC write gate (in addition to connector capability above) —
-      // a member may edit only records they created; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        { type: "entity_record", id: recordId, createdBy: record.createdBy }
       );
 
       const { userId } = req.application!.metadata;
@@ -1457,23 +1457,23 @@ entityRecordRouter.delete(
       );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
-      const record =
-        await DbService.repository.entityRecords.findById(recordId);
-      if (!record || record.connectorEntityId !== connectorEntityId) {
-        return next(
+      // #599: RBAC delete gate — a member may delete only records they
+      // created; owner/admin any.
+      // #713: a record that isn't this entity's, or that the caller can't
+      // read, answers 404, like its GET.
+      const found = await DbService.repository.entityRecords.findById(recordId);
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "entity_record",
+        found?.connectorEntityId === connectorEntityId ? found : null,
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.ENTITY_RECORD_NOT_FOUND,
             "Entity record not found"
           )
-        );
-      }
-      // #599: RBAC delete gate — a member may delete only records they
-      // created; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        { type: "entity_record", id: recordId, createdBy: record.createdBy }
       );
 
       const { userId } = req.application!.metadata;

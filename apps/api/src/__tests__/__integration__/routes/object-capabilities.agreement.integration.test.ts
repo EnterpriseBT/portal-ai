@@ -13,6 +13,7 @@ import postgres from "postgres";
 import { eq } from "drizzle-orm";
 
 import * as schema from "../../../db/schema/index.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
   seedTenancyFixture,
@@ -447,6 +448,68 @@ const TYPES: TypeCase[] = [
   }),
 ];
 
+/**
+ * #713: every by-id route that changes an object, per type: PATCH and DELETE,
+ * plus the per-object actions (pin refresh, connector sync). Bodies are valid
+ * so the answer comes from the authorization check, not validation. Toolpacks
+ * are out: their GET is class-gated, so a member is refused read too.
+ */
+type WriteRoute = {
+  method: "patch" | "delete" | "post";
+  path: (s: Seeded) => string;
+  body?: Record<string, unknown>;
+};
+/** A supertest call for a route's method. */
+const send = (method: WriteRoute["method"]) => {
+  const agent = request(app);
+  return (path: string) => agent[method](path);
+};
+const writesFor = (t: TypeCase): WriteRoute[] => {
+  const one = (s: Seeded) => t.getPath(s);
+  const patch = (body: Record<string, unknown>): WriteRoute => ({
+    method: "patch",
+    path: one,
+    body,
+  });
+  const del: WriteRoute = { method: "delete", path: (s) => t.deletePath(s) };
+  switch (t.name) {
+    case "station":
+      return [patch({ name: "renamed" }), del];
+    case "pin":
+      return [
+        patch({ name: "renamed" }),
+        del,
+        { method: "post", path: (s) => `${one(s)}/refresh` },
+      ];
+    case "curated_view":
+      return [patch({ label: "renamed" }), del];
+    case "portal":
+      return [patch({ name: "renamed" }), del];
+    case "connector_instance":
+      return [
+        patch({ name: "renamed" }),
+        del,
+        { method: "post", path: (s) => `${one(s)}/sync` },
+      ];
+    case "entity":
+      return [patch({ label: "renamed" }), del];
+    case "field_mapping":
+      return [
+        patch({ sourceField: "renamed", columnDefinitionId: generateId() }),
+        del,
+      ];
+    case "entity_record":
+      return [patch({ data: { a: 1 } }), del];
+    case "tag":
+    case "entity_group":
+      return [patch({ name: "renamed" }), del];
+    case "column_definition":
+      return [patch({ label: "renamed" }), del];
+    default:
+      return [];
+  }
+};
+
 const ALL = (shareable: boolean): Caps =>
   shareable
     ? { read: true, write: true, delete: true, share: true }
@@ -523,6 +586,40 @@ describe("Object capabilities agree with the mutation routes (#688)", () => {
         expect(await listRow(t, systems)).toBeUndefined();
       }
     });
+
+    const writes = writesFor(t);
+    (writes.length ? it : it.skip)(
+      "#713: an unreadable row answers its GET's 404 on every write; a readable one, 403",
+      async () => {
+        const owners = await t.seed(db, fx, fx.ownerId);
+        currentSub = MEMBER_SUB;
+        const get = await request(app).get(t.getPath(owners));
+        expect(get.status).toBe(404);
+        for (const w of writes) {
+          const res = await send(w.method)(w.path(owners)).send(w.body ?? {});
+          expect([w.method, w.path(owners), res.status, res.body.code]).toEqual(
+            [w.method, w.path(owners), 404, get.body.code]
+          );
+        }
+        expect(await t.alive(db, owners.id)).toBe(true);
+
+        if (t.member === "data") {
+          // A system row the member can read but not change: still 403.
+          const systems = await t.seed(db, fx, SYSTEM);
+          for (const w of writes.filter((x) => x.method !== "post")) {
+            const res = await send(w.method)(w.path(systems)).send(
+              w.body ?? {}
+            );
+            expect([w.method, res.status, res.body.code]).toEqual([
+              w.method,
+              403,
+              ApiCode.PERMISSION_DENIED,
+            ]);
+          }
+          expect(await t.alive(db, systems.id)).toBe(true);
+        }
+      }
+    );
 
     it("agreement: delete=false is refused and the row survives; delete=true succeeds", async () => {
       const systems = await t.seed(db, fx, SYSTEM);

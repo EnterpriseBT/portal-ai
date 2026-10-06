@@ -35,6 +35,7 @@ import {
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
@@ -1417,26 +1418,20 @@ connectorInstanceRouter.delete(
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
 
-      const existing =
-        await DbService.repository.connectorInstances.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
+      // #630: a member may delete only their own instance; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "connector_instance",
+        await DbService.repository.connectorInstances.findById(id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
             "Connector instance not found"
           )
-        );
-      }
-      // #630: a member may delete only their own instance; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        {
-          type: "connector_instance",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
@@ -1598,26 +1593,20 @@ connectorInstanceRouter.patch(
         );
       }
 
-      const existing =
-        await DbService.repository.connectorInstances.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
+      // #630: a member may edit only their own instance; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "connector_instance",
+        await DbService.repository.connectorInstances.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
             "Connector instance not found"
           )
-        );
-      }
-      // #630: a member may edit only their own instance; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "connector_instance",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
@@ -1898,25 +1887,19 @@ connectorInstanceRouter.post(
 
       // #630: a sync mutates the instance's records — gate on object write (a
       // member may sync only an instance they created).
-      const existing =
-        await DbService.repository.connectorInstances.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "connector_instance",
+        await DbService.repository.connectorInstances.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
             "Connector instance not found"
           )
-        );
-      }
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "connector_instance",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       // Resolve adapter, run ownership + adapter eligibility checks in one

@@ -14,6 +14,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -350,23 +351,20 @@ portalResultsRouter.post(
       // #621: a viz refresh mutates the pin's stored result — a write. Guard it
       // (a read-only grantee can't refresh a shared pin); 404 when unreadable.
       // After the cheap rate-limit gate so a nonexistent id is still bounded.
-      const target = await DbService.repository.portalResults.findById(
-        req.params.id
-      );
-      if (!target || target.organizationId !== organizationId) {
-        return next(
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(ctx),
+        organizationId,
+        "pin",
+        await DbService.repository.portalResults.findById(req.params.id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.PORTAL_RESULT_NOT_FOUND,
             "Portal result not found"
           )
-        );
-      }
-      await PermissionService.check(ctx, "resource.write", {
-        type: "pin",
-        id: target.id,
-        createdBy: target.createdBy,
-      });
+      );
 
       const payload = await PortalVizRefreshService.refreshPinnedResult({
         portalResultId: req.params.id,
@@ -683,22 +681,21 @@ portalResultsRouter.patch(
         );
       }
 
-      const existing = await DbService.repository.portalResults.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
+      // #621: renaming a pin is a write — own, owner/admin, or a read-write grant.
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(ctx),
+        organizationId,
+        "pin",
+        await DbService.repository.portalResults.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.PORTAL_RESULT_NOT_FOUND,
             "Portal result not found"
           )
-        );
-      }
-      // #621: renaming a pin is a write — own, owner/admin, or a read-write grant.
-      await PermissionService.check(ctx, "resource.write", {
-        type: "pin",
-        id,
-        createdBy: existing.createdBy,
-      });
+      );
 
       const portalResult = await DbService.repository.portalResults.update(id, {
         name,
@@ -784,23 +781,22 @@ portalResultsRouter.delete(
       const ctx = req.application!.metadata;
       const { organizationId, userId } = ctx;
 
-      const existing = await DbService.repository.portalResults.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
+      // #621: deleting a pin requires resource.delete — creator or owner/admin;
+      // a read-write grantee cannot delete a shared pin.
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(ctx),
+        organizationId,
+        "pin",
+        await DbService.repository.portalResults.findById(id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.PORTAL_RESULT_NOT_FOUND,
             "Portal result not found"
           )
-        );
-      }
-      // #621: deleting a pin requires resource.delete — creator or owner/admin;
-      // a read-write grantee cannot delete a shared pin.
-      await PermissionService.check(ctx, "resource.delete", {
-        type: "pin",
-        id,
-        createdBy: existing.createdBy,
-      });
+      );
 
       await DbService.repository.portalResults.softDelete(id, userId);
       logger.info({ id }, "Portal result soft-deleted");

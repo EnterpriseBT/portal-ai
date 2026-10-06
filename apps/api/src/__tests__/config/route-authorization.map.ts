@@ -18,7 +18,7 @@ export type RouteAuthorization =
 export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "DELETE /api/column-definitions/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete column_definition",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete column_definition",
   },
   "DELETE /api/connector-entities/{connectorEntityId}/records": {
     kind: "authorized",
@@ -26,7 +26,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/connector-entities/{connectorEntityId}/records/{recordId}": {
     kind: "authorized",
-    by: "entity in org + record on it + per-object resource.write/delete entity_record",
+    by: "entity in org + record on it + read, else 404 (#713) + per-object resource.write/delete entity_record",
   },
   "DELETE /api/connector-entities/{connectorEntityId}/tags/{assignmentId}": {
     kind: "authorized",
@@ -34,11 +34,11 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/connector-entities/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete entity (#599, #685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685)",
   },
   "DELETE /api/connector-instances/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete connector_instance",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete connector_instance",
   },
   "DELETE /api/connector-instances/{instanceId}/api-endpoints/{entityId}": {
     kind: "authorized",
@@ -46,7 +46,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/curated-views/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete curated_view",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete curated_view",
   },
   "DELETE /api/curated-views/{id}/attach/{stationId}": {
     kind: "authorized",
@@ -58,15 +58,15 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/entity-groups/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete entity_group",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity_group",
   },
   "DELETE /api/entity-tags/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete tag",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete tag",
   },
   "DELETE /api/field-mappings/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete field_mapping (#685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685)",
   },
   "DELETE /api/grants/{id}": {
     kind: "authorized",
@@ -90,7 +90,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/portal-results/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete pin (#621)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
   },
   "DELETE /api/portals/{id}": {
     kind: "authorized",
@@ -106,7 +106,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/stations/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete station",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete station",
   },
   "DELETE /api/toolpacks/{id}": {
     kind: "authorized",
@@ -460,15 +460,15 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/column-definitions/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete column_definition",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete column_definition",
   },
   "PATCH /api/connector-entities/{connectorEntityId}/records/{recordId}": {
     kind: "authorized",
-    by: "entity in org + record on it + per-object resource.write/delete entity_record",
+    by: "entity in org + record on it + read, else 404 (#713) + per-object resource.write/delete entity_record",
   },
   "PATCH /api/connector-entities/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete entity (#599, #685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685)",
   },
   "PATCH /api/connector-instances/{connectorInstanceId}/layout-plan/{planId}": {
     kind: "authorized",
@@ -476,7 +476,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/connector-instances/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete connector_instance",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete connector_instance",
   },
   "PATCH /api/connector-instances/{instanceId}/api-endpoints/{entityId}": {
     kind: "authorized",
@@ -484,7 +484,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/curated-views/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete curated_view",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete curated_view",
   },
   "PATCH /api/entity-groups/{entityGroupId}/members/{memberId}": {
     kind: "authorized",
@@ -492,15 +492,15 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/entity-groups/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete entity_group",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity_group",
   },
   "PATCH /api/entity-tags/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete tag",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete tag",
   },
   "PATCH /api/field-mappings/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete field_mapping (#685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685)",
   },
   "PATCH /api/organization/{id}": {
     kind: "authorized",
@@ -508,7 +508,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/portal-results/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete pin (#621)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
   },
   "PATCH /api/portals/{id}": {
     kind: "authorized",
@@ -516,7 +516,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/stations/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete station",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete station",
   },
   "PATCH /api/toolpacks/{id}": {
     kind: "authorized",
@@ -585,7 +585,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     },
   "POST /api/connector-instances/{id}/sync": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete connector_instance",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete connector_instance",
   },
   "POST /api/connector-instances/{id}/test-connection": {
     kind: "authorized",
@@ -703,7 +703,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/portal-results/{id}/refresh": {
     kind: "authorized",
-    by: "org scope + per-object resource.write/delete pin (#621)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
   },
   "POST /api/portal-sql/widget-refresh": {
     kind: "authorized",

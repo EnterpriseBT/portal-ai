@@ -36,6 +36,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
+import { freshData } from "../utils/query-result.util";
 
 type CuratedView = CuratedViewGetResponsePayload["curatedView"];
 type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
@@ -242,7 +243,9 @@ export const CuratedViewDetail: React.FC = () => {
     error: deleteError,
   } = sdk.curatedViews.delete(viewId);
 
-  const view = viewResult.data?.curatedView;
+  // #713: a failed refetch (the view deleted, or access revoked under the
+  // open page) shows "View not found", not the cached view and its Edit.
+  const view = freshData(viewResult)?.curatedView;
   if (!view) {
     if (viewResult.isError) {
       return (
