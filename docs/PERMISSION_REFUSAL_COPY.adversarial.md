@@ -84,7 +84,8 @@ Untagged probes can be walked in the browser (`/smoke-walk`). `— backend` is a
 ## Findings
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
-| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+| §3.2 share revoked outright, then Edit | Station PATCH/DELETE answer **403** `PERMISSION_DENIED` for a same-org station the caller can't read, while GET answers 404. The routes check write/delete without checking read first (`station.router.ts`). Predates #711 (from #621); not in this PR's diff | low | filed: [#713](https://github.com/EnterpriseBT/portal-ai/issues/713) |
+| §6.1 admin demoted under an open Members page | Remove/Invite stay visible until reload; the server refuses with "You don't have permission to remove members. (PERMISSION_DENIED)" and nobody is removed | low | waived: UI-only staleness on an org-level surface; the server enforces the rule and the refusal names the permission. `members.api.ts` is outside the per-object invalidation guard by design |
 
 ## Sign-off
 - [ ] Every probe walked; findings resolved or waived with a reason
