@@ -48,6 +48,7 @@ export const stations = {
     useAuthMutation<StationUpdateResponsePayload, UpdateStationBody>({
       url: `/api/stations/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.stations.root] },
     }),
 
   setDefault: (orgId: string) =>
@@ -63,5 +64,6 @@ export const stations = {
     useAuthMutation<void, void>({
       url: `/api/stations/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.stations.root] },
     }),
 };
