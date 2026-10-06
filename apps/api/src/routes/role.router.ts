@@ -34,7 +34,7 @@ export const roleRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/RoleListResponse'
  *       403:
- *         description: Not entitled to custom RBAC, or not an owner/admin
+ *         description: Not entitled to custom RBAC, or lacks permission to manage roles and access
  *         content:
  *           application/json:
  *             schema:
@@ -43,7 +43,7 @@ export const roleRouter = Router();
  *     summary: Create a custom role bundling policies (#622)
  *     description: >
  *       Authors a `kind:custom` role + attaches the given policies. Requires the
- *       `customRbac` entitlement and the owner/admin capability; the union of
+ *       `customRbac` entitlement and the `member.role.assign` permission; the union of
  *       the bundled policies' statements is boundary-checked
  *       (`RBAC_POLICY_EXCEEDS_BOUNDARY`).
  *     tags: [RBAC Authoring]
@@ -69,7 +69,7 @@ export const roleRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: Not entitled / not owner-admin / bundle exceeds boundary
+ *         description: Not entitled / lacks permission to manage roles and access / bundle exceeds boundary
  *         content:
  *           application/json:
  *             schema:

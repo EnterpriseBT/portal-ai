@@ -184,6 +184,11 @@ describe("wrapWithPermissionGate (#629)", () => {
       {}
     );
     expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    // #711 (spec case 7): the same wording as the API's refusals.
+    expect(r).toHaveProperty(
+      "error.message",
+      "You don't have permission to write this field_mapping."
+    );
     expect(inner).not.toHaveBeenCalled();
   });
 

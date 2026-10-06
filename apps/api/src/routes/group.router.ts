@@ -36,7 +36,7 @@ export const groupRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/GroupListResponse'
  *       403:
- *         description: Not entitled to custom RBAC, or not an owner/admin
+ *         description: Not entitled to custom RBAC, or lacks permission to manage roles and access
  *         content:
  *           application/json:
  *             schema:
@@ -66,7 +66,7 @@ export const groupRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: Not entitled / not owner-admin / bundle exceeds boundary
+ *         description: Not entitled / lacks permission to manage roles and access / bundle exceeds boundary
  *         content:
  *           application/json:
  *             schema:

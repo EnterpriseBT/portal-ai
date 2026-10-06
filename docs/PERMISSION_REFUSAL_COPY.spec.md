@@ -87,7 +87,7 @@ export function permissionDenied(
 | `billing.manage` | — | `manage billing` |
 | `org.delete` | — | `delete the organization` |
 | `org.audit.read` | — | `view the audit log` |
-| `member.role.assign` | — | `change members' roles` |
+| `member.role.assign` | — | `manage roles and access` (it gates role assignment *and* role/group/policy authoring; revised in slice 3 from "change members' roles") |
 | `member.invite` | — | `invite members` |
 | `member.remove` | — | `remove members` |
 | `resource.read` | `id` set / unset | `view this {one}` / `view {many}` |

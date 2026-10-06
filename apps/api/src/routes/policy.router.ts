@@ -34,7 +34,7 @@ export const policyRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/PolicyListResponse'
  *       403:
- *         description: Not entitled to custom RBAC, or not an owner/admin
+ *         description: Not entitled to custom RBAC, or lacks permission to manage roles and access
  *         content:
  *           application/json:
  *             schema:
@@ -43,7 +43,7 @@ export const policyRouter = Router();
  *     summary: Create a custom policy (#622)
  *     description: >
  *       Authors a `kind:custom` policy + its statements. Requires the
- *       `customRbac` entitlement and the owner/admin capability; every `allow`
+ *       `customRbac` entitlement and the `member.role.assign` permission; every `allow`
  *       is boundary-checked (`RBAC_POLICY_EXCEEDS_BOUNDARY`).
  *     tags: [RBAC Authoring]
  *     security:
@@ -68,7 +68,7 @@ export const policyRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: Not entitled / not owner-admin / statement exceeds boundary
+ *         description: Not entitled / lacks permission to manage roles and access / statement exceeds boundary
  *         content:
  *           application/json:
  *             schema:

@@ -23,7 +23,7 @@ describe("permissionRefusalMessage (#711)", () => {
     ["billing.manage", "manage billing"],
     ["org.delete", "delete the organization"],
     ["org.audit.read", "view the audit log"],
-    ["member.role.assign", "change members' roles"],
+    ["member.role.assign", "manage roles and access"],
     ["member.invite", "invite members"],
     ["member.remove", "remove members"],
   ] as Array<[PermissionAction, string]>)("%s → %s", (action, phrase) => {

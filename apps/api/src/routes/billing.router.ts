@@ -147,7 +147,7 @@ billingRouter.get(
  *       401:
  *         description: Unauthenticated
  *       403:
- *         description: Caller is not the organization owner
+ *         description: The caller lacks permission to manage billing (PERMISSION_DENIED)
  *       404:
  *         description: User, organization, or tier not found
  *       409:
@@ -230,7 +230,7 @@ billingRouter.post(
  *       401:
  *         description: Unauthenticated
  *       403:
- *         description: Caller is not the organization owner
+ *         description: The caller lacks permission to manage billing (PERMISSION_DENIED)
  *       404:
  *         description: User, organization, or target tier not found
  *       409:

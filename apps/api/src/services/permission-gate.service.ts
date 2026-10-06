@@ -154,7 +154,7 @@ export function wrapWithPermissionGate(
         }
         if (!allowed) {
           return permissionDenied(
-            `You do not have permission to ${auth.verb} this ${auth.resourceType}.`
+            `You don't have permission to ${auth.verb} this ${auth.resourceType}.`
           );
         }
       }

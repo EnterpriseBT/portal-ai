@@ -2,7 +2,7 @@
  * The instance-object picker source (#622) — `GET /api/rbac/objects`. Returns
  * visibility-scoped `{ id, label }` candidates of a `resourceType` for the
  * policy editor, so an author picks by name (never a typed id). Gated like the
- * rest of the authoring surface (entitlement + owner/admin capability).
+ * rest of the authoring surface (entitlement + `member.role.assign`).
  */
 
 import { Router, Request, Response, NextFunction } from "express";
@@ -25,7 +25,7 @@ export const rbacObjectSearchRouter = Router();
  *       `{ id, label }` candidates of `resourceType` the caller can see
  *       (visibility-scoped) matching `search`. Powers the statement editor's
  *       instance multiselect — no hand-entered ids. Gated on the customRbac
- *       entitlement + owner/admin capability.
+ *       entitlement + `member.role.assign` permission.
  *     tags: [RBAC Authoring]
  *     security:
  *       - bearerAuth: []
@@ -53,7 +53,7 @@ export const rbacObjectSearchRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/RbacObjectSearchResponse'
  *       403:
- *         description: Not entitled to custom RBAC, or not an owner/admin
+ *         description: Not entitled to custom RBAC, or lacks permission to manage roles and access
  *         content:
  *           application/json:
  *             schema:
