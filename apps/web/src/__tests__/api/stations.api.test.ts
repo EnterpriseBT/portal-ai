@@ -168,6 +168,7 @@ describe("stations.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/organization/org-456",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });

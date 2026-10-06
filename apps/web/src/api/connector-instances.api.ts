@@ -241,6 +241,9 @@ export const connectorInstances = {
     useAuthMutation<TestConnectionResult, TestConnectionRequestBody>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/test-connection`,
       method: "POST",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   search: <TOption extends SelectOption = SelectOption>(

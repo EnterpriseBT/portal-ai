@@ -58,6 +58,7 @@ export const stations = {
     >({
       url: `/api/organization/${encodeURIComponent(orgId)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.organizations.root] },
     }),
 
   delete: (id: string) =>
