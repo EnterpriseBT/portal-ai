@@ -63,6 +63,7 @@ export const portalResults = {
     useAuthMutation<PortalResultMutationPayload, RenamePortalResultBody>({
       url: `/api/portal-results/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 
   /**
@@ -77,6 +78,7 @@ export const portalResults = {
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}`,
       method: "DELETE",
       body: () => undefined,
+      onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 
   /**
@@ -90,5 +92,6 @@ export const portalResults = {
     useAuthMutation<WidgetRefreshResponse, { id: string }>({
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}/refresh`,
       body: () => undefined,
+      onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 };
