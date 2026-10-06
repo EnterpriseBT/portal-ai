@@ -183,7 +183,7 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
 // ── Container ──────────────────────────────────────────────────────────
 
 /**
- * The owner/admin-only Members/Team tab (#585) — mounted lazily behind Settings
+ * The Members/Team tab, gated on `member.invite` (#585) — mounted lazily behind Settings
  * › Members, so its queries fire only while active. The server enforces the
  * gate (403) + all mutations; this shapes affordances and surfaces outcomes as
  * toasts. Members can be re-roled (owner-only) / removed; new members are

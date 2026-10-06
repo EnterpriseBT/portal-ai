@@ -48,7 +48,8 @@ export enum SettingsTab {
 }
 
 /** Tab order as rendered by `Settings.view.tsx`. Members + Activity are both
- *  owner/admin-only (#585/#596); a member deep-linking either lands on tab 0. */
+ *  permission-gated (`member.invite`, `org.audit.read`; #585/#596); a caller
+ *  without the permission deep-linking either lands on tab 0. */
 export const SETTINGS_TAB_INDEX: Record<SettingsTab, number> = {
   [SettingsTab.Profile]: 0,
   [SettingsTab.Organization]: 1,

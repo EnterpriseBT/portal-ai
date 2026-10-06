@@ -204,17 +204,17 @@ export function serverErrorMessage(
 
 ```ts
 const ROLE_FRAMED = [
-  /your role/i,
+  /\byour role (does not|doesn'?t|may not|can'?t|lacks)\b/i,
   /\bonly the (organization'?s? )?owner\b/i,
   /\bowner or admin\b/i,
-  /\bnot (an |the )?(organization'?s? )?owner\b/i,
+  /\b(is|are) not (an |the )?(organization'?s? )?owner\b/i,
   /\bask (an|your|their) admin\b/i,
   /\badmin-(only|curated)\b/i,
   /\b(INSUFFICIENT_ROLE|BILLING_NOT_OWNER|ORGANIZATION_NOT_OWNER|AUDIT_LOG_NOT_AUTHORIZED)\b/,
 ];
 ```
 
-- **Allowlist:** exact `{ file, text }` pairs, starting with `services/seat.service.ts` / "Only the owner can assign or remove the owner or admin role". A self-test checks the matcher catches each phrase and ignores an allowlisted one.
+- **Allowlist:** exact `{ file, text }` pairs, `services/seat.service.ts` / "Only the owner can assign or remove the owner or admin role" and the `MEMBER_ROLE_ASSIGNMENT_RESTRICTED` comment in `constants/api-codes.constants.ts`; each entry must still exist (the list only shrinks). A self-test checks the matcher catches each phrase and ignores ordinary role talk ("Your roles", the system prompt's "Your role: route to a tool", "not the owner alone"). The first and fourth patterns were narrowed from `/your role/` and `/not … owner/` during slice 4, which measured those false positives.
 
 **`apps/web/src/__tests__/permission-copy.guard.test.ts`** (new)
 - **Scans:** `.ts`/`.tsx` under `apps/web/src` (excluding `__tests__` and `stories`) and `packages/core/src/content`.

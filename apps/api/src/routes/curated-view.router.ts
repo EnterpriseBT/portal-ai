@@ -366,7 +366,7 @@ curatedViewRouter.get(
  *   post:
  *     tags: [Curated Views]
  *     summary: Create a curated view
- *     description: Admin-only (holds unconditional `write curated_view`). Validates the filter and enforces the self-exposure guard on the projection.
+ *     description: Needs an unconditional `write curated_view` (a create rule of `class`, #708). Validates the filter and enforces the self-exposure guard on the projection.
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       201: { description: Created }

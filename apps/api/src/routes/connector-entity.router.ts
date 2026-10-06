@@ -746,7 +746,7 @@ connectorEntityRouter.patch(
       }
 
       // #685: org-scoped first. The permission engine doesn't see orgs, so
-      // without this an owner or admin of any org could edit another org's
+      // without this a holder of `* *` in any org could edit another org's
       // entity by id.
       const existing =
         await DbService.repository.connectorEntities.findById(id);
