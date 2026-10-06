@@ -3,6 +3,10 @@ import type { Request, Response, NextFunction } from "express";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import {
+  PERMISSION_DENIED_FALLBACK,
+  permissionDenied,
+} from "../services/permission-refusal.js";
+import {
   PermissionService,
   type PermissionAction,
 } from "../services/permission.service.js";
@@ -36,24 +40,19 @@ export function requirePermission(
     try {
       const ctx = req.application?.metadata;
       if (!ctx) {
+        // No resolved caller: fail closed, with no permission to name.
         next(
           new ApiError(
             403,
-            ApiCode.INSUFFICIENT_ROLE,
-            "Your role does not permit this action"
+            ApiCode.PERMISSION_DENIED,
+            PERMISSION_DENIED_FALLBACK
           )
         );
         return;
       }
       const set = await PermissionService.loadSet(ctx);
       if (!set.can(action, { type: resourceType })) {
-        next(
-          new ApiError(
-            403,
-            ApiCode.INSUFFICIENT_ROLE,
-            "Your role does not permit this action"
-          )
-        );
+        next(permissionDenied(action, { type: resourceType }));
         return;
       }
       next();

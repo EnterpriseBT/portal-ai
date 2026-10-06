@@ -51,6 +51,7 @@ import {
   type ServerError,
 } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
 // ── Overlap preview ─────────────────────────────────────────────────
@@ -661,7 +662,10 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
         { memberId, isPrimary },
         {
           onSuccess: invalidate,
-          onError: (error) => toast.error(error.message),
+          onError: (error) =>
+            toast.error(
+              serverErrorMessage(error, "Couldn't update the member")
+            ),
         }
       );
     },
@@ -682,7 +686,10 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
         { memberId },
         {
           onSuccess: invalidate,
-          onError: (error) => toast.error(error.message),
+          onError: (error) =>
+            toast.error(
+              serverErrorMessage(error, "Couldn't update the member")
+            ),
         }
       );
     },

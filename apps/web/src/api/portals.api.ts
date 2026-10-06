@@ -45,6 +45,7 @@ export const portals = {
   sendMessage: (portalId: string) =>
     useAuthMutation<void, SendMessageBody>({
       url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   rename: (id: string) =>
@@ -68,12 +69,14 @@ export const portals = {
     useAuthMutation<void, void>({
       url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   touch: (id: string) =>
     useAuthMutation<{ portal: { id: string } }, { lastOpened: number }>({
       url: `/api/portals/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   /**

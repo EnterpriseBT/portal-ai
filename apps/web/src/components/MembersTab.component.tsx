@@ -27,6 +27,7 @@ import { useActionGate } from "../utils/use-action-gate.util";
 import { useCustomRbacEntitled } from "../utils/use-custom-rbac-entitled.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import { MemberListUI, type GroupOption } from "./MemberList.component";
 import { RemoveMemberDialog } from "./RemoveMemberDialog.component";
 import { InviteMemberDialog } from "./InviteMemberDialog.component";
@@ -182,7 +183,7 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
 // ── Container ──────────────────────────────────────────────────────────
 
 /**
- * The owner/admin-only Members/Team tab (#585) — mounted lazily behind Settings
+ * The Members/Team tab, gated on `member.invite` (#585) — mounted lazily behind Settings
  * › Members, so its queries fire only while active. The server enforces the
  * gate (403) + all mutations; this shapes affordances and surfaces outcomes as
  * toasts. Members can be re-roled (owner-only) / removed; new members are
@@ -265,7 +266,7 @@ export const MembersTab: React.FC = () => {
           toast.success("Roles updated");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to set roles"),
+          toast.error(serverErrorMessage(error, "Failed to set roles")),
       }
     );
   };
@@ -282,7 +283,7 @@ export const MembersTab: React.FC = () => {
           toast.success("Groups updated");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to set groups"),
+          toast.error(serverErrorMessage(error, "Failed to set groups")),
       }
     );
   };
@@ -329,7 +330,7 @@ export const MembersTab: React.FC = () => {
           toast.success("New invite link generated");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to resend"),
+          toast.error(serverErrorMessage(error, "Failed to resend")),
       }
     );
   };
@@ -344,7 +345,7 @@ export const MembersTab: React.FC = () => {
           toast.success("Invitation revoked");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to revoke"),
+          toast.error(serverErrorMessage(error, "Failed to revoke")),
       }
     );
   };

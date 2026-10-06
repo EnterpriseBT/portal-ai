@@ -80,7 +80,7 @@ describe("rbac_management tools (#629)", () => {
 
   it("a 403 from the service PROPAGATES (so the gate surfaces the denial)", async () => {
     policyCreate.mockRejectedValue(
-      new ApiError(403, ApiCode.INSUFFICIENT_ROLE, "not allowed")
+      new ApiError(403, ApiCode.PERMISSION_DENIED, "not allowed")
     );
     await expect(
       exec(new PolicyCreateTool().build(ctx), {

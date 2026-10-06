@@ -179,7 +179,7 @@ export const CuratedViews: React.FC = () => {
   // #708: Create decides from the create route's own check.
   const createGate = useCreateGate(
     "curated_view",
-    "Ask an owner or admin for access to create views"
+    "Ask for access to create views"
   );
 
   const pagination = usePagination({

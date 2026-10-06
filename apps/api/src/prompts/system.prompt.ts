@@ -454,7 +454,7 @@ export const PACK_PROMPT_SECTIONS: Record<
         );
         lines.push(
           '2. `SELECT * FROM "_meta_column_catalog"` to see what column ' +
-            "definitions the org has. The catalog is admin-curated; you " +
+            "definitions the org has. The catalog is curated; you " +
             "cannot create new column definitions."
         );
         lines.push(
@@ -466,8 +466,8 @@ export const PACK_PROMPT_SECTIONS: Record<
           "4. **If one or more requested fields have no match in the " +
             "catalog, STOP and tell the user.** Name the missing columns " +
             "specifically. Offer two paths: (a) proceed using only the " +
-            "fields that ARE in the catalog, or (b) ask their admin to add " +
-            'the missing column definitions. **Do NOT say "this would ' +
+            "fields that ARE in the catalog, or (b) ask someone with access " +
+            'to column definitions to add them. **Do NOT say "this would ' +
             'typically be done through the UI" without naming what is ' +
             "missing — that's an unhelpful punt.**"
         );
@@ -798,8 +798,8 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "- `_meta_column_catalog` — the organization's curated column-definition " +
         "catalog. Every `column_definition_id` available to bind to a new " +
         "entity via `field_mapping_create`. Columns: `column_definition_id`, " +
-        "`column_key`, `label`, `type`, `description`. **Column definitions " +
-        "are admin-only — you cannot create new ones.** When the user asks " +
+        "`column_key`, `label`, `type`, `description`. **You cannot create " +
+        "new column definitions.** When the user asks " +
         "for an entity whose columns aren't here, surface the gap clearly " +
         "(see the entity-creation guidance below)."
     );

@@ -23,6 +23,7 @@ describe("connectorInstanceLayoutPlans.api", () => {
       connectorInstanceLayoutPlans.interpret("ci_123");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci_123/layout-plan/interpret",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
 
@@ -30,6 +31,7 @@ describe("connectorInstanceLayoutPlans.api", () => {
       connectorInstanceLayoutPlans.interpret("ci with/slash");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci%20with%2Fslash/layout-plan/interpret",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });

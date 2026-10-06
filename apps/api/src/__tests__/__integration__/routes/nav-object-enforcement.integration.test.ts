@@ -295,7 +295,7 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
   it("a member is denied the toolpacks list (class-level read gate)", async () => {
     const res = await bearer(request(app).get("/api/toolpacks"), memberAAuth0);
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
   });
 
   it("the owner may read the toolpacks list", async () => {
@@ -384,6 +384,11 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
       memberAAuth0
     );
     expect(res.status).toBe(403);
+    // #711 (spec case 11): a permission refusal, named as one.
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(res.body.message).toBe(
+      "You don't have permission to cancel this job."
+    );
     // …the owner (its creator) passes the authz gate (the cancel outcome itself
     // depends on queue state, which isn't what this asserts).
     const ownerRes = await bearer(

@@ -49,7 +49,7 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 ## Verification
 
 - `POST /api/webhooks/auth0/sync` → **404** (the route is gone).
-- A login still writes an `auth.login` audit row (owner-only Settings → Activity) — for a returning user too, deduped per login session.
+- A login still writes an `auth.login` audit row (Settings → Activity, which needs permission to view the audit log) — for a returning user too, deduped per login session.
 - SaaS: an invited enterprise user lands in the inviting org; an uninvited one is denied (403 `SSO_PROVISIONING_NOT_INVITED`). Residency: the first user owns the org, later users join as members.
 
 ## Env reference

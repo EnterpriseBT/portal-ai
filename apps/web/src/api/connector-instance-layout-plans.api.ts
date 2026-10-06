@@ -20,6 +20,9 @@ export const connectorInstanceLayoutPlans = {
   interpret: (connectorInstanceId: string) =>
     useAuthMutation<InterpretResponsePayload, InterpretRequestBody>({
       url: `${base(connectorInstanceId)}/interpret`,
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   getCurrent: (

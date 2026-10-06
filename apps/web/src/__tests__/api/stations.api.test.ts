@@ -119,10 +119,46 @@ describe("stations.api", () => {
   describe("update", () => {
     it("sends PATCH to /api/stations/:id", () => {
       stations.update("station-123");
-      expect(mockUseAuthMutation).toHaveBeenCalledWith({
-        url: "/api/stations/station-123",
-        method: "PATCH",
-      });
+      expect(mockUseAuthMutation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "/api/stations/station-123",
+          method: "PATCH",
+        })
+      );
+    });
+  });
+
+  describe("delete", () => {
+    it("sends DELETE to /api/stations/:id", () => {
+      stations.delete("station-123");
+      expect(mockUseAuthMutation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "/api/stations/station-123",
+          method: "DELETE",
+        })
+      );
+    });
+  });
+
+  // #688/#711: a 403 on a station mutation means the caller's access changed
+  // under an open page (a share downgraded to Read), so the station re-fetches
+  // and Edit and Delete stop being offered. The smoke walk caught Edit still
+  // showing after the refusal.
+  describe("onPermissionDenied", () => {
+    type MutationConfig = {
+      onPermissionDenied?: { invalidate: (vars: unknown) => unknown[] };
+    };
+    const configOf = () =>
+      mockUseAuthMutation.mock.calls[0][0] as unknown as MutationConfig;
+
+    it.each([
+      ["update", () => stations.update("station-123")],
+      ["delete", () => stations.delete("station-123")],
+    ])("%s invalidates stations.root on a permission denial", (_, call) => {
+      call();
+      expect(configOf().onPermissionDenied?.invalidate(undefined)).toEqual([
+        queryKeys.stations.root,
+      ]);
     });
   });
 
@@ -132,6 +168,7 @@ describe("stations.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/organization/org-456",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });

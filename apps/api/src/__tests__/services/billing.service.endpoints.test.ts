@@ -64,8 +64,8 @@ jest.unstable_mockModule("../../services/permission.service.js", () => ({
             await import("../../constants/api-codes.constants.js");
           throw new ApiError(
             403,
-            ApiCode.BILLING_NOT_OWNER,
-            "Only the organization owner can manage billing"
+            ApiCode.PERMISSION_DENIED,
+            "You don't have permission to manage billing."
           );
         }
       }
@@ -189,14 +189,14 @@ describe("BillingService.createCheckout guards", () => {
     ).rejects.toMatchObject({ status: 503, code: "BILLING_NOT_CONFIGURED" });
   });
 
-  it("403 BILLING_NOT_OWNER before the subscribed check", async () => {
+  it("403 PERMISSION_DENIED before the subscribed check", async () => {
     await expect(
       BillingService.createCheckout(
         orgFixture({ stripeSubscriptionId: "sub_1" }),
         MEMBER,
         "pro"
       )
-    ).rejects.toMatchObject({ status: 403, code: "BILLING_NOT_OWNER" });
+    ).rejects.toMatchObject({ status: 403, code: "PERMISSION_DENIED" });
   });
 
   it("409 BILLING_ALREADY_SUBSCRIBED when a live subscription exists (Q1)", async () => {
@@ -330,7 +330,7 @@ describe("BillingService.createPortal", () => {
         orgFixture({ stripeCustomerId: "cus_1" }),
         MEMBER
       )
-    ).rejects.toMatchObject({ status: 403, code: "BILLING_NOT_OWNER" });
+    ).rejects.toMatchObject({ status: 403, code: "PERMISSION_DENIED" });
   });
 
   it("409 BILLING_NO_SUBSCRIPTION without a Stripe customer", async () => {

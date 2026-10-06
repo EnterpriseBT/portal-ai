@@ -45,12 +45,14 @@ export const toolpacks = {
     useAuthMutation<ToolpackUpdateResponsePayload, UpdateToolpackBody>({
       url: `/api/toolpacks/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.toolpacks.root] },
     }),
 
   remove: (id: string) =>
     useAuthMutation<ToolpackDeleteResponsePayload, void>({
       url: `/api/toolpacks/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.toolpacks.root] },
     }),
 
   /**
@@ -66,10 +68,12 @@ export const toolpacks = {
       method: "POST",
       url: ({ id }) => `/api/toolpacks/${encodeURIComponent(id)}/refresh`,
       body: () => undefined,
+      onPermissionDenied: { invalidate: () => [queryKeys.toolpacks.root] },
     }),
 
   rotateSigningSecret: (id: string) =>
     useAuthMutation<ToolpackRotateSigningSecretResponsePayload, void>({
       url: `/api/toolpacks/${encodeURIComponent(id)}/rotate-signing-secret`,
+      onPermissionDenied: { invalidate: () => [queryKeys.toolpacks.root] },
     }),
 };

@@ -412,8 +412,8 @@ export const SettingsView = () => {
                   />
 
                   {/* #691: only a caller with org.delete gets the danger
-                    zone. A disabled button under "only the owner can do this"
-                    told everyone else nothing they could act on. */}
+                    zone. A disabled button under an owner-only note told
+                    everyone else nothing they could act on. */}
                   {canDeleteOrg && (
                     <PageSection title="Danger zone" variant="outlined">
                       <Stack spacing={2} alignItems="flex-start">

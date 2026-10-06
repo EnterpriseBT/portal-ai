@@ -115,7 +115,7 @@ describe("CuratedViewsUI", () => {
   it("#688: Create is disabled with the grant hint for a caller who reads views but can't create them", async () => {
     const props = baseProps({
       kind: "disable",
-      reason: "Ask an owner or admin for access to create views",
+      reason: "Ask for access to create views",
     });
     render(<CuratedViewsUI {...props} />);
     const btn = screen.getAllByRole("button", { name: /create view/i })[0];

@@ -44,6 +44,7 @@ import { toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -140,7 +141,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
       onError: (error) => {
         setDeleteStationOpen(false);
         toast.error(
-          toServerError(error)?.message ?? "Could not delete this station."
+          serverErrorMessage(error, "Could not delete this station.")
         );
       },
     });

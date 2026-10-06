@@ -90,7 +90,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Who can manage billing?",
     answer:
-      "Only the organization owner. Every member can see the available plans on Settings → Subscription & Billing, but Subscribe and Manage subscription are enabled only for the owner — the server enforces this too, so it isn't just hidden buttons.",
+      "Anyone with permission to manage billing. Everyone can see the available plans on Settings → Subscription & Billing, but Subscribe and Manage subscription are enabled only for those with that permission — the server enforces this too, so it isn't just hidden buttons.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Subscription Plan", "Organization"],
   },
@@ -191,7 +191,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I delete my organization?",
     answer:
-      "Open Settings → Organization and scroll to the Danger zone. Only the organization's owner can delete it, and the action is permanent: all organization data — stations, portals, connectors, records, and uploads — is destroyed, and every member loses access. You'll be asked to type the organization's name exactly to confirm, and you'll be signed out once the deletion completes. If a background job is still running, wait for it to finish (or cancel it) first.",
+      "Open Settings → Organization and scroll to the Danger zone. Only someone with permission to delete the organization can delete it, and the action is permanent: all organization data — stations, portals, connectors, records, and uploads — is destroyed, and every member loses access. You'll be asked to type the organization's name exactly to confirm, and you'll be signed out once the deletion completes. If a background job is still running, wait for it to finish (or cancel it) first.",
     category: FAQCategory.Organization,
   },
 

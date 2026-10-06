@@ -72,6 +72,7 @@ describe("portals.api", () => {
       portals.sendMessage("portal-123");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/portals/portal-123/messages",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -120,6 +121,7 @@ describe("portals.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/portals/portal-123/messages",
         method: "DELETE",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -130,6 +132,7 @@ describe("portals.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/portals/portal-123",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });

@@ -110,11 +110,23 @@ export const curatedViews = {
     >({
       url: `${CURATED_VIEWS_URL}/${encodeURIComponent(id)}/attach`,
       method: "POST",
+      onPermissionDenied: {
+        invalidate: () => [
+          queryKeys.curatedViews.root,
+          queryKeys.stations.root,
+        ],
+      },
     }),
 
   detach: (id: string, stationId: string) =>
     useAuthMutation<void, void>({
       url: `${CURATED_VIEWS_URL}/${encodeURIComponent(id)}/attach/${encodeURIComponent(stationId)}`,
       method: "DELETE",
+      onPermissionDenied: {
+        invalidate: () => [
+          queryKeys.curatedViews.root,
+          queryKeys.stations.root,
+        ],
+      },
     }),
 };

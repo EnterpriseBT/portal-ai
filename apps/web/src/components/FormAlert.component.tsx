@@ -4,10 +4,7 @@ import Alert from "@mui/material/Alert";
 import Typography from "@mui/material/Typography";
 
 import type { ServerError } from "../utils/api.util";
-import {
-  isPermissionDenied,
-  PERMISSION_DENIED_MESSAGE,
-} from "../utils/permission-denied.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 
 export interface FormAlertProps {
   serverError: ServerError | null;
@@ -16,17 +13,14 @@ export interface FormAlertProps {
 export const FormAlert: React.FC<FormAlertProps> = ({ serverError }) => {
   if (!serverError) return null;
 
-  // #576: a role/permission denial reads consistently everywhere — a
-  // standardized lead, with the server's specific reason kept as detail.
-  const denied = isPermissionDenied(serverError);
-
+  // #711: a permission refusal's message names the permission, so it's the
+  // lead, shown once (`serverErrorMessage` supplies the standard lead only
+  // when it's empty). The code stays as a caption for support.
   return (
     <Alert severity="error">
-      {denied ? PERMISSION_DENIED_MESSAGE : serverError.message}{" "}
+      {serverErrorMessage(serverError)}{" "}
       <Typography component="span" variant="caption" color="text.secondary">
-        {denied
-          ? `${serverError.message} (${serverError.code})`
-          : `(${serverError.code})`}
+        {`(${serverError.code})`}
       </Typography>
     </Alert>
   );

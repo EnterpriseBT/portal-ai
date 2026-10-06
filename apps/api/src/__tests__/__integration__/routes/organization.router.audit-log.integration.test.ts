@@ -267,7 +267,7 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
     expect(badAction.body.code).toBe(ApiCode.AUDIT_LOG_INVALID_QUERY);
   });
 
-  it("denies a member with 403 AUDIT_LOG_NOT_AUTHORIZED (#576)", async () => {
+  it("denies a caller without audit read with 403 PERMISSION_DENIED (#576, #711)", async () => {
     const orgId = await seedOrgWhereCallerHasRole("member");
     await seedAuditRow(orgId, { action: "org.create" });
 
@@ -276,7 +276,10 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.AUDIT_LOG_NOT_AUTHORIZED);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(res.body.message).toBe(
+      "You don't have permission to view the audit log."
+    );
   });
 
   it("allows an admin to read the audit log (#576 widen)", async () => {

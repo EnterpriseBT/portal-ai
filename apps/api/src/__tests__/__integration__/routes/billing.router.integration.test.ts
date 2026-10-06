@@ -264,11 +264,15 @@ describe("Billing router", () => {
         .post("/api/billing/checkout")
         .send({ tier: PRO_SLUG });
       expect(checkout.status).toBe(403);
-      expect(checkout.body.code).toBe(ApiCode.BILLING_NOT_OWNER);
+      expect(checkout.body.code).toBe(ApiCode.PERMISSION_DENIED);
+      // #711: names the permission, not a role.
+      expect(checkout.body.message).toBe(
+        "You don't have permission to manage billing."
+      );
 
       const portal = await request(app).post("/api/billing/portal");
       expect(portal.status).toBe(403);
-      expect(portal.body.code).toBe(ApiCode.BILLING_NOT_OWNER);
+      expect(portal.body.code).toBe(ApiCode.PERMISSION_DENIED);
     });
 
     it("400s a malformed checkout body before resolving anything", async () => {

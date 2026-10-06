@@ -184,13 +184,18 @@ describe("wrapWithPermissionGate (#629)", () => {
       {}
     );
     expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    // #711 (spec case 7): the same wording as the API's refusals.
+    expect(r).toHaveProperty(
+      "error.message",
+      "You don't have permission to write this field_mapping."
+    );
     expect(inner).not.toHaveBeenCalled();
   });
 
   it("catches an ApiError(403) thrown in execute (an rbac tool's service gate)", async () => {
     const tools: Record<string, GateableTool> = {
       policy_create: tool(async () => {
-        throw new ApiError(403, ApiCode.INSUFFICIENT_ROLE, "not allowed");
+        throw new ApiError(403, ApiCode.PERMISSION_DENIED, "not allowed");
       }),
     };
     // rbac_management tools carry no descriptor — they rely on this catch.
