@@ -42,7 +42,7 @@ Untagged steps can be walked in the browser (`/smoke-walk`). `— backend` is an
 ## §1 — Per-object affordances (#688, #690)
 
 - [ ] As **member**, open **Views**. The **Smoke Contours** row shows no Edit, Share or Delete, and no row actions trigger at all if every item is hidden.
-- [ ] Same list: the **Smoke Polygons** row (read-write) offers **Edit**. It doesn't offer **Delete** (read-write never conveys delete) or **Share** (not granted).
+- [ ] Same list: the **Smoke Polygons** card (read-write) offers neither **Delete** (read-write never conveys delete) nor **Share** (not granted). List cards only ever carry Share and Delete; Edit lives on the view's page (§2.2).
 - [ ] Open **Smoke Contours**. The page header shows no Edit, Share or Delete, and no "More actions" trigger.
 - [ ] As **member**, open **Stations**. **epic684-own** offers Edit, Share and Delete; **epic684** (shared read-write) offers Edit only.
 - [ ] As **owner**, open **Views**. Both views offer Edit, Share and Delete.
