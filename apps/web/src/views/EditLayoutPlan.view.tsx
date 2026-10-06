@@ -25,6 +25,7 @@ import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { FormAlert } from "../components/FormAlert.component";
 import { connectorLockReason } from "../utils/running-job-label.util";
+import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { RegionEditorUI } from "../modules/RegionEditor";
 import type {
   CellBounds,
@@ -395,10 +396,23 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     instanceQuery.data?.connectorInstance.capabilities.write ?? false;
 
   // #689: the same lock the connector page shows. The server refuses the
-  // auto-PATCH while a job holds the instance, so Commit says why up front.
-  const runningJobs =
-    sdk.connectorInstances.runningJobs(connectorInstanceId).data?.runningJobs ??
-    [];
+  // auto-PATCH while a job holds the instance, so Commit says why up front,
+  // and the job's SSE stream lifts the lock when it ends.
+  const runningJobsQuery =
+    sdk.connectorInstances.runningJobs(connectorInstanceId);
+  const runningJobs = useMemo(
+    () => runningJobsQuery.data?.runningJobs ?? [],
+    [runningJobsQuery.data?.runningJobs]
+  );
+  useRunningJobSubscriptions(
+    runningJobs,
+    useCallback(() => {
+      // The root covers the running-jobs list and the instance row.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connectorInstances.root,
+      });
+    }, [queryClient])
+  );
   const commitBlockedReason = connectorLockReason(runningJobs);
 
   const {

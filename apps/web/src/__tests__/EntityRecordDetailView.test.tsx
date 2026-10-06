@@ -410,22 +410,43 @@ describe("EntityRecordDetailViewUI", () => {
     ).toBeInTheDocument();
   });
 
-  it("disables Edit and Delete with the lock reason while a job runs", async () => {
-    const reason =
-      "Sync is running on this connector — try again when it finishes.";
+  it("shows the lock alert and disables Edit and Delete while a job runs", async () => {
     render(
       <EntityRecordDetailViewUI
         entity={stubEntity}
         record={stubRecord}
         columns={stubColumns}
         isWriteEnabled
-        lockedReason={reason}
+        runningJobs={[
+          {
+            id: "job-1",
+            type: "connector_sync",
+            status: "active",
+            startedAt: Date.now(),
+            created: Date.now(),
+          },
+        ]}
       />
     );
+    // The alert says why the actions are paused (code review on #689).
+    expect(screen.getByRole("alert")).toBeInTheDocument();
     await openMenu();
     expect(
       await screen.findByRole("menuitem", { name: /delete/i })
     ).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("renders no lock alert when nothing is running", () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        isWriteEnabled
+        runningJobs={[]}
+      />
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("hides Re-validate without record write", async () => {

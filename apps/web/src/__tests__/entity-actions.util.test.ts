@@ -17,7 +17,7 @@ const LOCK = "Sync is running on this connector — try again when it finishes."
 
 const base: EntityDetailActionGateInput = {
   capabilities: { read: true, write: true, delete: true },
-  recordPermissions: { create: true, write: true, delete: true },
+  recordPermissions: { create: true, revalidate: true, clear: true },
   isWriteEnabled: true,
   lockedReason: null,
   isUpdating: false,
@@ -59,10 +59,10 @@ describe("entityDetailActionGates", () => {
     expect(g.delete).toEqual({ kind: "hide" });
   });
 
-  it("gates the record actions on the class-level record permissions", () => {
+  it("gates the record actions on the entity-wide record permissions", () => {
     const g = entityDetailActionGates({
       ...base,
-      recordPermissions: { create: false, write: false, delete: false },
+      recordPermissions: { create: false, revalidate: false, clear: false },
     });
     expect(g.createRecord).toEqual({ kind: "hide" });
     expect(g.clearRecords).toEqual({ kind: "hide" });
@@ -221,5 +221,19 @@ describe("fieldMappingRowGates", () => {
         isWriteEnabled: false,
       })
     ).toEqual({ edit: disabled, delete: disabled });
+  });
+});
+
+// #689 (code review): a member writes and deletes their own records, but
+// re-validate and clear are entity-wide. Create stays available to them.
+describe("entityDetailActionGates — a member's record permissions", () => {
+  it("offers Create but hides Re-validate and Delete records", () => {
+    const g = entityDetailActionGates({
+      ...base,
+      recordPermissions: { create: true, revalidate: false, clear: false },
+    });
+    expect(g.createRecord).toEqual({ kind: "allow" });
+    expect(g.revalidate).toEqual({ kind: "hide" });
+    expect(g.clearRecords).toEqual({ kind: "hide" });
   });
 });

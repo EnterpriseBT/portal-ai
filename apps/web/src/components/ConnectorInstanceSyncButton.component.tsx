@@ -75,7 +75,10 @@ export const ConnectorInstanceSyncButtonUI = ({
   const hasIdentityWarnings = (identityWarnings?.length ?? 0) > 0;
 
   if (gate?.kind === "hide") return null;
-  if (gate?.kind === "disable") {
+  // The caller's own sync is also the job that locks the connector, so while
+  // it runs, the pending state below (a disabled "Syncing…") wins over the
+  // lock's "Sync now".
+  if (gate?.kind === "disable" && !isPending) {
     return (
       <GatedButton variant={variant} startIcon={<SyncIcon />} gate={gate}>
         Sync now

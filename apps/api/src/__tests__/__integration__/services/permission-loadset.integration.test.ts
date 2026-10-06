@@ -209,6 +209,8 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
       "member.invite": true,
       "member.remove": true,
       "station.default.set": true,
+      "entity_record.revalidate": true,
+      "entity_record.clear": true,
     });
 
     const memberCaps = await PermissionService.capabilities(
@@ -225,6 +227,10 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
       // #690: a member writes their own stations, but the org default is an
       // org-wide setting (class write on station), so this stays false.
       "station.default.set": false,
+      // #689: a member writes/deletes their own records, but revalidate and
+      // clear are entity-wide (class write/delete on entity_record).
+      "entity_record.revalidate": false,
+      "entity_record.clear": false,
     });
 
     const adminCaps = await PermissionService.capabilities(
@@ -236,6 +242,8 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
     expect(adminCaps["org.audit.read"]).toBe(true);
     expect(adminCaps["member.invite"]).toBe(true);
     expect(adminCaps["station.default.set"]).toBe(true);
+    expect(adminCaps["entity_record.revalidate"]).toBe(true);
+    expect(adminCaps["entity_record.clear"]).toBe(true);
   });
 
   // ── #621 grant union ────────────────────────────────────────────────

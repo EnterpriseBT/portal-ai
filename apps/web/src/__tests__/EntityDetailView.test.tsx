@@ -131,7 +131,7 @@ const stubEntity = {
 
 // ── Tests ───────────────────────────────────────────────────────────
 
-const ALL_RECORD_PERMISSIONS = { create: true, write: true, delete: true };
+const ALL_RECORD_PERMISSIONS = { create: true, revalidate: true, clear: true };
 
 describe("EntityDetailViewUI", () => {
   beforeEach(() => {

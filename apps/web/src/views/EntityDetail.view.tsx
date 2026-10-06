@@ -125,8 +125,8 @@ const TagAssignSelect: React.FC<TagAssignSelectProps> = ({
 
 const NO_RECORD_PERMISSIONS: RecordPermissions = {
   create: false,
-  write: false,
-  delete: false,
+  revalidate: false,
+  clear: false,
 };
 
 export interface BidirectionalFieldMappingRef {
@@ -156,8 +156,7 @@ export interface EntityDetailViewUIProps {
   canReadTags?: boolean;
   /** Whether the connector instance has write capability. */
   isWriteEnabled?: boolean;
-  /** #689: class-level `entity_record` permissions (record create, clear
-   *  and re-validate check the type). Omitted = none. */
+  /** #689: the caller's entity-wide record permissions. Omitted = none. */
   recordPermissions?: RecordPermissions;
   /** Called when user confirms entity deletion. */
   onDelete?: () => void;
@@ -649,14 +648,16 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const { onSearch: handleSearchTags } = sdk.entityTags.search();
-  const { canOnResource, capabilitiesKnown } = useCapabilities();
+  const { can, canOnResource, capabilitiesKnown } = useCapabilities();
   // #630: optimistic while the current-org query loads.
   const canReadTags = !capabilitiesKnown || canOnResource("tag", "read");
-  // #689: actions fail closed — the record routes check these type-wide.
+  // #689: actions fail closed. Create is an owned create; re-validate and
+  // clear are entity-wide, so they take the derived capabilities that mirror
+  // their routes' unconditional class checks.
   const recordPermissions = {
     create: canOnResource("entity_record", "write"),
-    write: canOnResource("entity_record", "write"),
-    delete: canOnResource("entity_record", "delete"),
+    revalidate: can("entity_record.revalidate"),
+    clear: can("entity_record.clear"),
   };
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 
 import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
 import type {
@@ -7,6 +7,7 @@ import type {
   EntityRecordGetResponsePayload,
   EntityRecordPatchRequestBody,
   EntityGroupMemberWithDetails,
+  RunningJobSummary,
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
 import {
@@ -46,6 +47,8 @@ import { EntityRecordFieldValue } from "../components/EntityRecordFieldValue.com
 import { EntityRecordMetadata } from "../components/EntityRecordMetadata.component";
 import { entityRecordActionGates } from "../utils/entity-actions.util";
 import { connectorLockReason } from "../utils/running-job-label.util";
+import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
+import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { useCapabilities } from "../utils/use-capabilities.util";
 
 // ── Related Records panel (per group) ────────────────────────────────
@@ -221,6 +224,8 @@ export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
+const NO_RUNNING_JOBS: RunningJobSummary[] = [];
+
 export interface EntityRecordDetailViewUIProps {
   entity: ConnectorEntity;
   /** The record, with the caller's `capabilities` on it (#689). */
@@ -228,11 +233,12 @@ export interface EntityRecordDetailViewUIProps {
   columns: ResolvedColumn[];
   groups?: EntityGroup[];
   isWriteEnabled?: boolean;
-  /** #689: class-level `entity_record` write (re-validate covers the whole
+  /** #689: `can("entity_record.revalidate")` (re-validate covers the whole
    *  entity). Omitted = no. */
   canRevalidate?: boolean;
-  /** The running-job lock reason, or null when unlocked (#689). */
-  lockedReason?: string | null;
+  /** Jobs holding the connector (#689): an alert names them, and the record
+   *  writes they block are disabled with the same reason. */
+  runningJobs?: RunningJobSummary[];
   onDelete?: () => void;
   isDeleting?: boolean;
   deleteServerError?: ServerError | null;
@@ -258,7 +264,7 @@ export const EntityRecordDetailViewUI: React.FC<
   groups = [],
   isWriteEnabled,
   canRevalidate = false,
-  lockedReason = null,
+  runningJobs = NO_RUNNING_JOBS,
   onDelete,
   isDeleting,
   deleteServerError,
@@ -279,7 +285,7 @@ export const EntityRecordDetailViewUI: React.FC<
     capabilities: record.capabilities,
     canRevalidate,
     isWriteEnabled: isWriteEnabled === true,
-    lockedReason,
+    lockedReason: connectorLockReason(runningJobs),
     isUpdating: isUpdating === true,
     isDeleting: isDeleting === true,
     isRevalidating: isRevalidating === true,
@@ -324,6 +330,10 @@ export const EntityRecordDetailViewUI: React.FC<
             },
           ]}
         />
+
+        {runningJobs.length > 0 && (
+          <ConnectorInstanceLockAlertUI runningJobs={runningJobs} />
+        )}
 
         <PageGrid columns={{ xs: 1, md: 2 }}>
           {/* Metadata */}
@@ -436,14 +446,26 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { canOnResource } = useCapabilities();
+  const { can } = useCapabilities();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  // #689: record writes are refused while a job holds the connector.
-  const lockedReason = connectorLockReason(
-    sdk.connectorEntities.runningJobs(entityId).data?.runningJobs ?? []
+  // #689: record writes are refused while a job holds the connector. The
+  // job's SSE stream says when it ends, so the lock lifts without a reload.
+  const runningJobsQuery = sdk.connectorEntities.runningJobs(entityId);
+  const runningJobs = useMemo(
+    () => runningJobsQuery.data?.runningJobs ?? NO_RUNNING_JOBS,
+    [runningJobsQuery.data?.runningJobs]
+  );
+  useRunningJobSubscriptions(
+    runningJobs,
+    useCallback(() => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connectorEntities.runningJobs(entityId),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+    }, [queryClient, entityId])
   );
 
   const entityResult = sdk.connectorEntities.get(entityId);
@@ -517,8 +539,8 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
           columns={recordPayload.columns}
           groups={groupsResult.data?.entityGroups ?? []}
           isWriteEnabled={isWriteEnabled}
-          canRevalidate={canOnResource("entity_record", "write")}
-          lockedReason={lockedReason}
+          canRevalidate={can("entity_record.revalidate")}
+          runningJobs={runningJobs}
           onDelete={handleDelete}
           isDeleting={deleteMutation.isPending}
           deleteServerError={toServerError(deleteMutation.error)}

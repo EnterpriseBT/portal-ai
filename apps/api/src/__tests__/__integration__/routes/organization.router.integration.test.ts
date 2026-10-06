@@ -153,6 +153,9 @@ describe("Organization Router", () => {
         "member.remove": true,
         // #690: derived from class write on station (the default-station PATCH).
         "station.default.set": true,
+        // #689: derived from class write / delete on entity_record.
+        "entity_record.revalidate": true,
+        "entity_record.clear": true,
       });
     });
 

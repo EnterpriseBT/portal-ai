@@ -124,6 +124,36 @@ describe("ConnectorInstanceSyncButtonUI", () => {
     expect(await screen.findByText(reason)).toBeInTheDocument();
   });
 
+  // #689 (code review): the caller's own sync is also the job that locks the
+  // connector. The button keeps saying "Syncing…" rather than "Sync now".
+  it("keeps the Syncing… label while its own sync holds the lock", () => {
+    render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        jobStatus="active"
+        gate={{
+          kind: "disable",
+          reason:
+            "Sync is running on this connector — try again when it finishes.",
+        }}
+      />
+    );
+    const btn = screen.getByRole("button");
+    expect(btn).toHaveTextContent(/syncing/i);
+    expect(btn).toBeDisabled();
+  });
+
+  it("still hides for a hide gate while a sync runs", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        jobStatus="active"
+        gate={{ kind: "hide" }}
+      />
+    );
+    expect(container.querySelector("button")).toBeNull();
+  });
+
   it("does not render the advisory tooltip when identityWarnings is empty", () => {
     render(
       <ConnectorInstanceSyncButtonUI {...baseProps} identityWarnings={[]} />

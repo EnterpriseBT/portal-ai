@@ -4,12 +4,15 @@ import type { ActionGate } from "@portalai/core/ui";
 import { decideActionGate } from "./action-gate.util";
 import { WRITES_DISABLED_REASON } from "./connector-instance-actions.util";
 
-/** Class-level `entity_record` permissions: the record create, clear and
- *  re-validate routes check the type, not one record. */
+/** The caller's entity-wide record permissions. */
 export interface RecordPermissions {
+  /** An owned record create: `canOnResource("entity_record", "write")`. */
   create: boolean;
-  write: boolean;
-  delete: boolean;
+  /** `can("entity_record.revalidate")`: the route's unconditional class
+   *  write, which a member's write on their own records doesn't satisfy. */
+  revalidate: boolean;
+  /** `can("entity_record.clear")`: the route's unconditional class delete. */
+  clear: boolean;
 }
 
 export interface EntityDetailActionGateInput {
@@ -46,8 +49,9 @@ const firstReason = (...reasons: (string | false | null)[]): string | null =>
  * asserts it, then the job lock, then the action's own pending state.
  *
  * - Entity PATCH: entity write + flag + lock. DELETE: entity delete + lock.
- * - Record create / clear: class create / delete + flag + lock.
- * - Re-validate: class write + lock.
+ * - Record create: an owned create + flag + lock.
+ * - Clear: unconditional class delete + flag + lock.
+ * - Re-validate: unconditional class write + lock.
  */
 export function entityDetailActionGates({
   capabilities,
@@ -74,7 +78,7 @@ export function entityDetailActionGates({
       blocked: firstReason(flag, lockedReason),
     }),
     clearRecords: decideActionGate({
-      allowed: recordPermissions.delete,
+      allowed: recordPermissions.clear,
       blocked: firstReason(
         flag,
         lockedReason,
@@ -82,7 +86,7 @@ export function entityDetailActionGates({
       ),
     }),
     revalidate: decideActionGate({
-      allowed: recordPermissions.write,
+      allowed: recordPermissions.revalidate,
       blocked: firstReason(lockedReason, isRevalidating && "Re-validating…"),
     }),
     canEditTags: capabilities.write,
@@ -92,7 +96,8 @@ export function entityDetailActionGates({
 export interface EntityRecordActionGateInput {
   /** The record's `capabilities` from its GET payload. */
   capabilities: ObjectCapabilities;
-  /** Class-level `entity_record` write: re-validate covers the entity. */
+  /** `can("entity_record.revalidate")`: re-validate covers the whole entity
+   *  and needs the unconditional class write. */
   canRevalidate: boolean;
   isWriteEnabled: boolean;
   lockedReason: string | null;

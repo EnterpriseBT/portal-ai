@@ -520,6 +520,12 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
       "member.remove": { verb: "delete", resourceType: "member" },
       // #690: derived; granted by class `write station` (the org PATCH's rule).
       "station.default.set": { verb: "write", resourceType: "station" },
+      // #689: derived; the record revalidate / clear routes' class checks.
+      "entity_record.revalidate": {
+        verb: "write",
+        resourceType: "entity_record",
+      },
+      "entity_record.clear": { verb: "delete", resourceType: "entity_record" },
     };
     for (const action of CALLER_CAPABILITY_ACTIONS) {
       const { verb, resourceType } = CAPABILITY_PAIRS[action];
