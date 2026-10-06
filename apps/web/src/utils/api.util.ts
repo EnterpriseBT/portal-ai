@@ -164,10 +164,13 @@ interface AuthMutationConfig<TData, TVariables> {
     "mutationFn"
   >;
   /**
-   * #688: on a permission-denied error (`isPermissionDenied`), invalidate
-   * these keys so affordances re-render from fresh capabilities. Feedback
-   * stays with the caller (FormAlert in a dialog, a toast elsewhere): the
-   * caller's `onError` still runs, after the invalidation.
+   * #688: when the caller's access to the object changed, invalidate these
+   * keys so affordances re-render from fresh capabilities. That's a
+   * permission denial (`isPermissionDenied`, 403), or a 404 (#713): an
+   * object the caller can no longer read answers 404 on every verb, as does
+   * one deleted under them. Feedback stays with the caller (FormAlert in a
+   * dialog, a toast elsewhere): the caller's `onError` still runs, after the
+   * invalidation.
    */
   onPermissionDenied?: { invalidate: (variables: TVariables) => QueryKey[] };
 }
@@ -231,7 +234,7 @@ export const useAuthMutation = <TData, TVariables>({
     ...(onPermissionDenied
       ? {
           onError: (error, variables, ...rest) => {
-            if (isPermissionDenied(error.code)) {
+            if (isPermissionDenied(error.code) || error.status === 404) {
               for (const queryKey of onPermissionDenied.invalidate(variables)) {
                 void queryClient.invalidateQueries({ queryKey });
               }
