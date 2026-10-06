@@ -35,7 +35,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
       current: () => ({
         data: {
           resourcePermissions: {
-            pin: { read: true, write: true, delete: true },
+            pin: { read: true, write: true, delete: true, create: true },
           },
         },
       }),

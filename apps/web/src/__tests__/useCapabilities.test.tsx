@@ -108,4 +108,32 @@ describe("useCapabilities (#620)", () => {
     // absent type → fail-closed
     expect(canOnResource("tag", "read")).toBe(false);
   });
+
+  // #708 (spec case 16): `create` is its own answer, not `write`.
+  it('canOnResource(type, "create") reads `create`, fail-closed', () => {
+    mockCurrent.mockReturnValue({
+      data: {
+        roles: ["member"],
+        capabilities: CAPS,
+        organization: {},
+        resourcePermissions: {
+          curated_view: {
+            read: true,
+            write: true,
+            delete: true,
+            create: false,
+          },
+          station: { read: true, write: true, delete: true, create: true },
+          // A pre-#708 entry with no `create` → fail-closed.
+          tag: { read: true, write: true, delete: true },
+        },
+      },
+    });
+    const { canOnResource } = useCapabilities();
+    expect(canOnResource("curated_view", "write")).toBe(true);
+    expect(canOnResource("curated_view", "create")).toBe(false);
+    expect(canOnResource("station", "create")).toBe(true);
+    expect(canOnResource("tag", "create")).toBe(false);
+    expect(canOnResource("job", "create")).toBe(false);
+  });
 });

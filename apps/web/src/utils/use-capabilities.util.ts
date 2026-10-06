@@ -7,11 +7,17 @@ import type {
 
 import { sdk } from "../api/sdk";
 
-/** The class-level `{read,write,delete}` shape per object type (#630). */
+/** The per-type permission shape (#630, #708). */
 export interface ResourceVerbs {
+  /** Any grant reads one (a list will show something). */
   read: boolean;
+  /** Any grant writes one: a signal, never an action gate. */
   write: boolean;
+  /** Any grant deletes one: a signal, never an action gate. */
   delete: boolean;
+  /** #708: the caller may create one, by the create route's own check. The
+   *  only create gate. */
+  create: boolean;
 }
 
 export interface CapabilityState {

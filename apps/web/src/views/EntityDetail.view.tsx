@@ -655,7 +655,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   // clear are entity-wide, so they take the derived capabilities that mirror
   // their routes' unconditional class checks.
   const recordPermissions = {
-    create: canOnResource("entity_record", "write"),
+    create: canOnResource("entity_record", "create"),
     revalidate: can("entity_record.revalidate"),
     clear: can("entity_record.clear"),
   };

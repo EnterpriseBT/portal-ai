@@ -27,11 +27,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
     // the turn-limit notice (deduped with Portal.view's identical query).
     organizations: {
       usage: () => ({ data: mockUsageData(), isLoading: false, error: null }),
-      // #690: PortalMessage gates Pin result on the caller's class pin write.
+      // #690: PortalMessage gates Pin result on the caller's pin create (#708).
       current: () => ({
         data: {
           resourcePermissions: {
-            pin: { read: true, write: true, delete: true },
+            pin: { read: true, write: true, delete: true, create: true },
           },
         },
       }),

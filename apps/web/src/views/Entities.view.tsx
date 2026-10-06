@@ -36,7 +36,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
-import { useActionGate } from "../utils/use-action-gate.util";
+import { useCreateGate } from "../utils/use-create-gate.util";
 
 // ── Entity card ─────────────────────────────────────────────────────
 
@@ -254,16 +254,11 @@ export const EntitiesView: React.FC = () => {
   const { canOnResource, capabilitiesKnown } = useCapabilities();
   const canReadConnectors =
     !capabilitiesKnown || canOnResource("connector_instance", "read");
-  const { gate } = useActionGate();
-  // #689: Create is the page's primary action (an owned entity create); a
-  // caller who reads entities but can't create them is told how to get it.
-  const createGate = gate({
-    allowed: canOnResource("entity", "write"),
-    primary: {
-      plausible: canOnResource("entity", "read"),
-      grantHint: "Ask for access to create entities",
-    },
-  });
+  // #708: Create decides from the create route's own check.
+  const createGate = useCreateGate(
+    "entity",
+    "Ask for access to create entities"
+  );
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.connectorEntities.create();

@@ -351,7 +351,7 @@ export const ConnectorInstanceView = ({
               const isSyncConfigured = ci.enabledCapabilityFlags?.sync === true;
               const gates = connectorInstanceActionGates({
                 capabilities: ci.capabilities,
-                canCreateEntity: canOnResource("entity", "write"),
+                canCreateEntity: canOnResource("entity", "create"),
                 isWriteEnabled,
                 lockedReason,
               });

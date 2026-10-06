@@ -81,7 +81,7 @@ export const ConnectorView = () => {
     !capabilitiesKnown || canOnResource("connector_definition", "read");
   // #689: Connect starts a workflow that ends in an owned create of a
   // connector instance; unlike the read gates above, an action fails closed.
-  const canCreateInstances = canOnResource("connector_instance", "write");
+  const canCreateInstances = canOnResource("connector_instance", "create");
 
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [selectedConnectorDefinitionId, setSelectedConnectorDefinitionId] =

@@ -33,8 +33,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
-import { useActionGate } from "../utils/use-action-gate.util";
-import { useCapabilities } from "../utils/use-capabilities.util";
+import { useCreateGate } from "../utils/use-create-gate.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -160,17 +159,8 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
 
 export const TagsView: React.FC = () => {
   const queryClient = useQueryClient();
-  const { canOnResource } = useCapabilities();
-  const { gate } = useActionGate();
-  // #689: tag create is type-level; a caller who reads tags but can't create
-  // one sees Create disabled with how to get it.
-  const createGate = gate({
-    allowed: canOnResource("tag", "write"),
-    primary: {
-      plausible: canOnResource("tag", "read"),
-      grantHint: "Ask for access to create tags",
-    },
-  });
+  // #708: Create decides from the create route's own check.
+  const createGate = useCreateGate("tag", "Ask for access to create tags");
 
   // Modal state
   const [formOpen, setFormOpen] = useState(false);

@@ -105,8 +105,8 @@ export function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
 export interface PortalMessageUIProps {
   message: PortalMessageResponse;
   pinnedBlocks: Map<string, string>;
-  /** #690: the caller may create pins (`canOnResource("pin","write")`, the
-   *  server's own-create rule). Without it no Pin result is offered; Unpin on
+  /** #690: the caller may create pins (`canOnResource("pin", "create")`, the
+   *  create route's own check, #708). Without it no Pin result is offered; Unpin on
    *  the caller's own pins stays. */
   canPin: boolean;
   /**
@@ -338,7 +338,7 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
     <PortalMessageUI
       message={message}
       pinnedBlocks={pinnedBlocks}
-      canPin={canOnResource("pin", "write")}
+      canPin={canOnResource("pin", "create")}
       onPin={handlePin}
       onUnpin={handleUnpin}
       isPinPending={pin.isPending}

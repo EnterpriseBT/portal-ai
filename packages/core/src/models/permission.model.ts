@@ -245,6 +245,11 @@ export const ResourcePermissionMapSchema = z.record(
     read: z.boolean(),
     write: z.boolean(),
     delete: z.boolean(),
+    /** #708: the caller may create one, by the type's create route's own
+     *  check (the server's `CREATE_RULES`). The only create gate:
+     *  read/write/delete are any-grant (`canPerformAny`) signals, never action
+     *  gates. */
+    create: z.boolean(),
   })
 );
 export type ResourcePermissionMap = z.infer<typeof ResourcePermissionMapSchema>;
