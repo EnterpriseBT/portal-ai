@@ -16,6 +16,7 @@ import type { Workbook, WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
+import { ConnectorInstanceAccessService } from "./connector-instance-access.service.js";
 import { DbService } from "./db.service.js";
 import { GoogleAccessTokenCacheService } from "./google-access-token-cache.service.js";
 import { GoogleAuthError, GoogleAuthService } from "./google-auth.service.js";
@@ -137,6 +138,12 @@ export class GoogleSheetsConnectorService {
       );
       connectorInstanceId = updated?.id ?? target.id;
     } else {
+      // #710: authorize checked the owned create, but the state lives
+      // minutes; re-check at the write so a grant revoked since is honored.
+      await ConnectorInstanceAccessService.assertCanCreateFromState(
+        userId,
+        organizationId
+      );
       const created = await DbService.repository.connectorInstances.create({
         id: SystemUtilities.id.v4.generate(),
         organizationId,

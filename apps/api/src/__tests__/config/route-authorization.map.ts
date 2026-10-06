@@ -208,7 +208,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "GET /api/connectors/google-sheets/callback": {
     kind: "exempt",
     reason:
-      "OAuth redirect, no JWT; HMAC-signed state (timing-safe, 5-min TTL) names user+org; reconnect target re-checked in that org",
+      "OAuth redirect, no JWT; HMAC-signed state (timing-safe, 5-min TTL) names user+org; reconnect target re-checked in that org; a new instance re-checks the owned create (#710)",
   },
   "GET /api/connectors/google-sheets/instances/{id}/sheet-slice": {
     kind: "authorized",
@@ -217,7 +217,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "GET /api/connectors/microsoft-excel/callback": {
     kind: "exempt",
     reason:
-      "OAuth redirect, no JWT; HMAC-signed state (timing-safe, 5-min TTL) names user+org; reconnect target re-checked in that org",
+      "OAuth redirect, no JWT; HMAC-signed state (timing-safe, 5-min TTL) names user+org; reconnect target re-checked in that org; a new instance re-checks the owned create (#710)",
   },
   "GET /api/connectors/microsoft-excel/instances/{id}/sheet-slice": {
     kind: "authorized",
@@ -602,7 +602,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     },
   "POST /api/connectors/google-sheets/authorize": {
     kind: "authorized",
-    by: "reconnect needs ConnectorInstanceAccessService write; a new connection is the caller's own (#685)",
+    by: "reconnect needs ConnectorInstanceAccessService write (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710)",
   },
   "POST /api/connectors/google-sheets/instances/{id}/select-sheet": {
     kind: "authorized",
@@ -610,7 +610,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/connectors/microsoft-excel/authorize": {
     kind: "authorized",
-    by: "reconnect needs ConnectorInstanceAccessService write; a new connection is the caller's own (#685)",
+    by: "reconnect needs ConnectorInstanceAccessService write (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710)",
   },
   "POST /api/connectors/microsoft-excel/instances/{id}/select-workbook": {
     kind: "authorized",
@@ -666,7 +666,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/layout-plans/commit": {
     kind: "authorized",
-    by: "source readable/writable: own upload session (FileUploadAccessService) or ConnectorInstanceAccessService (#685)",
+    by: "source writable: own upload session (FileUploadAccessService) or ConnectorInstanceAccessService (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710)",
   },
   "POST /api/layout-plans/interpret": {
     kind: "authorized",

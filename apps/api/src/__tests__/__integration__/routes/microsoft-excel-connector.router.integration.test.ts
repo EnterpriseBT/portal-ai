@@ -24,7 +24,11 @@ import {
   verifyState,
 } from "../../../utils/oauth-state.util.js";
 import { decryptCredentials } from "../../../utils/crypto.util.js";
-import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
+import {
+  denyForUser,
+  seedUserAndOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const { connectorDefinitions, connectorInstances } = schema;
 
@@ -274,6 +278,27 @@ describe("Microsoft Excel Connector Router — POST /authorize", () => {
     expect(verifyState(state as string)).toEqual({ userId, organizationId });
   });
 
+  it("returns 403 PERMISSION_DENIED and no consent URL when the caller may not create connector instances (#710)", async () => {
+    const { userId, organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    await denyForUser(db as ReturnType<typeof drizzle>, {
+      organizationId,
+      userId,
+      verb: "write",
+      resourceType: "connector_instance",
+    });
+
+    const res = await request(app)
+      .post("/api/connectors/microsoft-excel/authorize")
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(res.body.payload).toBeUndefined();
+  });
+
   it("returns 500 MICROSOFT_OAUTH_NOT_CONFIGURED when client id is empty", async () => {
     await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
     const original = environment.MICROSOFT_OAUTH_CLIENT_ID;
@@ -340,6 +365,47 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.MICROSOFT_OAUTH_INVALID_STATE);
+  });
+
+  it("refuses a new connection whose caller lost the create permission after authorize, and creates no row (#710)", async () => {
+    const { userId, organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    await insertMicrosoftExcelDefinition(db as ReturnType<typeof drizzle>);
+    // State minted while permitted; the deny lands inside the 5-min window.
+    const state = signState({ userId, organizationId });
+    await denyForUser(db as ReturnType<typeof drizzle>, {
+      organizationId,
+      userId,
+      verb: "write",
+      resourceType: "connector_instance",
+    });
+    exchangeCodeMock.mockResolvedValueOnce({
+      accessToken: "eyJ.access",
+      refreshToken: "0.AX-rt",
+      idToken: makeIdToken({ tid: "tenant-A", oid: "alice-oid" }),
+      expiresIn: 3599,
+      scope: "openid profile email offline_access User.Read Files.Read.All",
+    });
+    fetchUserProfileMock.mockResolvedValueOnce({
+      upn: "alice@contoso.com",
+      email: "alice@contoso.com",
+      displayName: "Alice Smith",
+      tenantId: "tenant-A",
+    });
+
+    const res = await request(app)
+      .get("/api/connectors/microsoft-excel/callback")
+      .query({ code: "good-code", state });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.organizationId, organizationId));
+    expect(rows).toHaveLength(0);
   });
 
   it("creates a pending ConnectorInstance with encrypted credentials including tenantId on first auth", async () => {

@@ -177,7 +177,7 @@ layoutPlansRouter.post(
  *             $ref: '#/components/schemas/LayoutPlanCommitDraftRequestBody'
  *     responses:
  *       403:
- *         description: The caller lacks permission on this object or it isn't theirs (#685)
+ *         description: The caller can't use the source (upload session or instance), or (new connection) lacks permission to create connector instances (#685, #710)
  *       202:
  *         description: Job enqueued; client tracks completion via SSE.
  *       400:
@@ -206,6 +206,12 @@ layoutPlansRouter.post(
       }
 
       await assertSourceAccessible(req, parsed.data, "write");
+      // #710: without an instance id the commit creates one.
+      if (!parsed.data.connectorInstanceId) {
+        await ConnectorInstanceAccessService.assertCanCreate(
+          req.application!.metadata
+        );
+      }
       const prepared = await LayoutPlanDraftService.prepareDraftCommit(
         organizationId,
         userId,

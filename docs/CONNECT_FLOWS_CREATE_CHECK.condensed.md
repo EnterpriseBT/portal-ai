@@ -41,9 +41,10 @@
 - edit `__tests__/config/route-authorization.map.ts`: the three `by:` strings name the owned create check (#710).
 
 **Tests** (integration; run with `npm run test:integration -- --testPathPattern '<file>'` from `apps/api`)
-- `__integration__/routes/google-sheets-connector.router.integration.test.ts`, `…/microsoft-excel-connector.router.integration.test.ts`: a caller denied `write connector_instance` gets 403 from authorize (new-connect) and can still reconnect an instance they can write. A callback whose state carries a now-denied user creates no row. A seeded member still connects.
-- `__integration__/routes/layout-plans.router.integration.test.ts`: denied caller → 403 on a new-connection commit, no `connector_instances` row and no job enqueued. A seeded member → 202.
-- `__integration__/routes/create-capability.agreement.integration.test.ts`: extend the `connector_instance` case so Sheets authorize, Excel authorize and commit each agree with `canCreate`, holding all create flows to one rule.
+- `__integration__/routes/google-sheets-connector.router.integration.test.ts`, `…/microsoft-excel-connector.router.integration.test.ts`: a caller denied `write connector_instance` gets 403 from authorize (new-connect) with no consent URL. A callback whose state was minted before the deny landed returns 403 and creates no row. Existing happy-path and reconnect tests guard the permitted paths.
+- `__integration__/routes/layout-plans.router.integration.test.ts`: denied caller → 403 on a new-connection commit, no `connector_instances` row and no job.
+- `__integration__/routes/create-capability.agreement.integration.test.ts`: the generic route, Sheets authorize and Excel authorize each agree with `canCreate` for owner, seeded member, instance-only grant and an explicitly denied member. Commit is held in the layout-plans file because it needs a seeded upload session.
+- Shared helper `denyForUser` in `__integration__/utils/application.util.ts`.
 - The route-authorization guard test passes with the updated map.
 
 ## Smoke (manual, against your dev stack)

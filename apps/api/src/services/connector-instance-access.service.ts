@@ -24,6 +24,7 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import type { PermissionSet } from "./permission-set.js";
 import type { ConnectorInstanceSelect } from "../db/schema/zod.js";
+import type { OrgRole } from "@portalai/core/models";
 
 export type ConnectorInstanceVerb = "read" | "write" | "delete";
 
@@ -58,5 +59,38 @@ export class ConnectorInstanceAccessService {
     }
     if (verb !== "read") set.check(`resource.${verb}`, object);
     return { instance, set };
+  }
+
+  /**
+   * #710: creating a connector instance is an owned create
+   * (`CREATE_RULES.connector_instance`), whichever flow creates it: the
+   * generic route, a Sheets/Excel connect, or a file-upload commit. Throws
+   * 403 `PERMISSION_DENIED` when the caller may not.
+   */
+  static async assertCanCreate(ctx: PermissionContext): Promise<void> {
+    await PermissionService.check(ctx, "resource.write", {
+      type: "connector_instance",
+      createdBy: ctx.userId,
+    });
+  }
+
+  /**
+   * The same check for an OAuth callback, which has no JWT: the caller comes
+   * from the signed state, so their roles are re-read here, at the write,
+   * rather than trusted from when authorize ran.
+   */
+  static async assertCanCreateFromState(
+    userId: string,
+    organizationId: string
+  ): Promise<void> {
+    const roles = (await DbService.repository.userRole.findEffectiveRoleNames(
+      userId,
+      organizationId
+    )) as OrgRole[];
+    await ConnectorInstanceAccessService.assertCanCreate({
+      userId,
+      organizationId,
+      roles,
+    });
   }
 }

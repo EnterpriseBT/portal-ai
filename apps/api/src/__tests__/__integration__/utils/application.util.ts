@@ -9,6 +9,13 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import { UUIDv4Factory } from "@portalai/core/utils";
+import {
+  PermissionStatementModelFactory,
+  PolicyAttachmentModelFactory,
+  PolicyModelFactory,
+  type PermissionResourceType,
+  type PermissionVerb,
+} from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import { DbService } from "../../../services/db.service.js";
 import { ApplicationService } from "../../../services/application.service.js";
@@ -219,6 +226,57 @@ export async function seedTenancyFixture(
     otherOrgId: other.organizationId,
     otherOwnerId: other.userId,
   };
+}
+
+/**
+ * #710: attach a custom policy to `userId` that denies `verb resourceType`
+ * outright. A deny beats every allow in the caller's union, so the caller
+ * loses the permission whatever their role grants.
+ */
+export async function denyForUser(
+  db: Db,
+  args: {
+    organizationId: string;
+    userId: string;
+    verb: PermissionVerb;
+    resourceType: PermissionResourceType;
+  }
+): Promise<void> {
+  const policy = new PolicyModelFactory()
+    .create("system")
+    .update({
+      organizationId: args.organizationId,
+      name: `Deny ${args.verb} ${args.resourceType} ${generateId()}`,
+      kind: "custom",
+      description: null,
+    })
+    .parse();
+  await db.insert(permissionPolicies).values(policy as never);
+  await db.insert(permissionStatements).values(
+    new PermissionStatementModelFactory()
+      .create("system")
+      .update({
+        organizationId: args.organizationId,
+        policyId: policy.id,
+        effect: "deny",
+        verb: args.verb,
+        resourceType: args.resourceType,
+        resourceId: null,
+        condition: null,
+      })
+      .parse() as never
+  );
+  await db.insert(policyAttachments).values(
+    new PolicyAttachmentModelFactory()
+      .create("system")
+      .update({
+        organizationId: args.organizationId,
+        policyId: policy.id,
+        principalType: "user",
+        principalId: args.userId,
+      })
+      .parse() as never
+  );
 }
 
 /**
