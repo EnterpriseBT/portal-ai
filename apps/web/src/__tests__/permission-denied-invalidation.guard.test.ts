@@ -61,6 +61,34 @@ function objectAt(source: string, open: number): string {
   return source.slice(open);
 }
 
+/**
+ * The whole value of `key` in an object literal: up to the next comma at the
+ * value's own nesting depth, so a URL Prettier wraps onto the next line
+ * (`url: ({ id }) =>` then the template) is read in full.
+ */
+function propertyValue(objectSource: string, key: string): string {
+  const m = new RegExp(`\\b${key}\\s*:`).exec(objectSource);
+  if (!m) return "";
+  const start = m.index + m[0].length;
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = start; i < objectSource.length; i++) {
+    const c = objectSource[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+      // A `${…}` inside a template opens a nested expression; the braces
+      // balance, and the closing backtick ends the string.
+    } else if (c === '"' || c === "'" || c === "`") quote = c;
+    else if ("({[".includes(c)) depth++;
+    else if (")}]".includes(c)) {
+      if (depth === 0) return objectSource.slice(start, i);
+      depth--;
+    } else if (c === "," && depth === 0) return objectSource.slice(start, i);
+  }
+  return objectSource.slice(start);
+}
+
 export interface MutationSite {
   name: string;
   targetsObject: boolean;
@@ -82,7 +110,7 @@ export function mutationsIn(source: string): MutationSite[] {
     const names = [
       ...code.slice(0, at).matchAll(/(\w+)\s*:\s*(?:<[^>]*>)?\s*\(/g),
     ];
-    const url = /\burl\s*:\s*([^\n]+)/.exec(config)?.[1] ?? "";
+    const url = propertyValue(config, "url");
     sites.push({
       name: names.length ? names[names.length - 1][1] : "?",
       targetsObject: url.includes("${"),
@@ -148,6 +176,12 @@ describe("per-object mutations refresh on a permission denial (#688/#711)", () =
             method: "PATCH",
             onPermissionDenied: { invalidate: () => [k.root] },
           }),
+        refresh: () =>
+          useAuthMutation<A, { id: string }>({
+            url: ({ id }) =>
+              \`/api/things/\${encodeURIComponent(id)}/a-long-refresh-path\`,
+            body: () => undefined,
+          }),
         // remove: () => useAuthMutation({ url: \`/x/\${id}\` }),
         remove: () =>
           useAuthMutation<A, { id: string }>({
@@ -159,6 +193,7 @@ describe("per-object mutations refresh on a permission denial (#688/#711)", () =
     expect(sites).toEqual([
       { name: "create", targetsObject: false, declaresDenied: false },
       { name: "update", targetsObject: true, declaresDenied: true },
+      { name: "refresh", targetsObject: true, declaresDenied: false },
       { name: "remove", targetsObject: true, declaresDenied: false },
     ]);
   });
