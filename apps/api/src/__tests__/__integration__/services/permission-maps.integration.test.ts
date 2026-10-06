@@ -66,29 +66,40 @@ describe("PermissionService.permissionMaps (#630)", () => {
     );
     // connector_instance ∈ data types → read/write/delete own (#630 grants
     // members delete of the data objects they create).
+    // #708: `create` is the create route's own check: the member creates
+    // their own connector instances (an owned create).
     expect(resourcePermissions.connector_instance).toEqual({
       read: true,
       write: true,
       delete: true,
+      create: true,
     });
     // station ∈ shareable → read/write/delete own.
     expect(resourcePermissions.station).toEqual({
       read: true,
       write: true,
       delete: true,
+      create: true,
     });
     // job → unconditional read, no write/delete.
+    // Jobs are system-created: no user create route.
     expect(resourcePermissions.job).toEqual({
       read: true,
       write: false,
       delete: false,
+      create: false,
     });
     // entity_group is admin-managed → member has nothing.
     expect(resourcePermissions.entity_group).toEqual({
       read: false,
       write: false,
       delete: false,
+      create: false,
     });
+    // #708: the member's own-object write makes the any-grant `write` true on
+    // curated views, but their create route is owner/admin only.
+    expect(resourcePermissions.curated_view.write).toBe(true);
+    expect(resourcePermissions.curated_view.create).toBe(false);
   });
 
   it("an owner: every page and every object verb", async () => {
@@ -100,8 +111,15 @@ describe("PermissionService.permissionMaps (#630)", () => {
     for (const granted of Object.values(pagePermissions)) {
       expect(granted).toBe(true);
     }
-    for (const rwx of Object.values(resourcePermissions)) {
-      expect(rwx).toEqual({ read: true, write: true, delete: true });
+    for (const [type, rwx] of Object.entries(resourcePermissions)) {
+      // #708: every creatable type; system-created ones never.
+      const systemCreated = type === "job" || type === "connector_definition";
+      expect(rwx).toEqual({
+        read: true,
+        write: true,
+        delete: true,
+        create: !systemCreated,
+      });
     }
     expect(capabilities["billing.manage"]).toBe(true);
     expect(capabilities["org.delete"]).toBe(true);
