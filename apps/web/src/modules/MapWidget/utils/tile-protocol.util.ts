@@ -55,6 +55,53 @@ const MAX_CONCURRENT_TILE_FETCHES = 6;
 let activeTileFetches = 0;
 const tileFetchQueue: Array<() => void> = [];
 
+/**
+ * #698: when the server answers `503 MAP_TILE_BUSY` its tile gate is
+ * saturated. Every map in the tab shares that server, so the whole tab's tile
+ * queue pauses for the `Retry-After` window instead of re-firing into a busy
+ * gate — the client half of breaking the overload loop.
+ */
+let tileFetchesPausedUntil = 0;
+const DEFAULT_RETRY_AFTER_MS = 2_000;
+const MIN_RETRY_AFTER_MS = 1_000;
+const MAX_RETRY_AFTER_MS = 30_000;
+
+/** `Retry-After` (integer seconds) → milliseconds, clamped to [1s, 30s];
+ *  2s when missing or unparseable. */
+export function parseRetryAfter(value: string | null): number {
+  const seconds = value === null ? NaN : Number.parseInt(value, 10);
+  if (!Number.isFinite(seconds)) return DEFAULT_RETRY_AFTER_MS;
+  return Math.min(
+    MAX_RETRY_AFTER_MS,
+    Math.max(MIN_RETRY_AFTER_MS, seconds * 1_000)
+  );
+}
+
+/** Hold new tile fetches for `ms`. A longer pause extends the window; a
+ *  shorter one never shortens it. */
+export function pauseTileFetches(ms: number): void {
+  tileFetchesPausedUntil = Math.max(tileFetchesPausedUntil, Date.now() + ms);
+}
+
+/** Wait out any active pause (re-checking, since it may be extended).
+ *  Rejects with `AbortError` if `signal` fires first. */
+async function waitForTilePause(signal?: AbortSignal): Promise<void> {
+  while (Date.now() < tileFetchesPausedUntil) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, tileFetchesPausedUntil - Date.now());
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+}
+
 /** Acquire a fetch slot. Resolves immediately if under the cap, else waits in
  *  the queue. Rejects with `AbortError` if `signal` fires while still queued —
  *  a tile MapLibre no longer wants never starts a fetch. */
@@ -118,6 +165,11 @@ export async function fetchTile(
   // AbortError if this tile was superseded while queued.
   await acquireFetchSlot(signal);
   try {
+    // #698: honour a busy pause *after* taking the slot — a tile already
+    // queued for a slot when the 503 arrived must wait it out too, not fire
+    // into the busy gate the moment a slot frees. Inside the try so an abort
+    // during the pause still releases the slot.
+    await waitForTilePause(signal);
     const res = await deps.fetch(deps.resolveUrl(apiPath), {
       signal,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -126,6 +178,11 @@ export async function fetchTile(
 
     // 204/304 are legitimately empty — return empty bytes so MapLibre caches an
     // (correctly) empty tile.
+    // #698: the server's tile gate is saturated — pause the tab's tile queue
+    // for its Retry-After window before this tile errors (and is retried).
+    if (res.status === 503) {
+      pauseTileFetches(parseRetryAfter(res.headers.get("Retry-After")));
+    }
     if (res.status === 204 || res.status === 304) {
       return { data: new ArrayBuffer(0) };
     }

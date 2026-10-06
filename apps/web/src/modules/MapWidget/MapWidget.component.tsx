@@ -374,6 +374,15 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             A map tile failed to load — pan or zoom to retry.
           </Typography>
         ) : null}
+        {tiles.busy ? (
+          <Typography
+            variant="caption"
+            color="warning.main"
+            data-testid="map-widget-tile-busy"
+          >
+            Map server is busy — tiles will load when you pan or zoom.
+          </Typography>
+        ) : null}
         {tiles.simplified ? (
           <Typography
             variant="caption"
