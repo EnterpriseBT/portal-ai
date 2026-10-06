@@ -27,6 +27,7 @@ import { useActionGate } from "../utils/use-action-gate.util";
 import { useCustomRbacEntitled } from "../utils/use-custom-rbac-entitled.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import { MemberListUI, type GroupOption } from "./MemberList.component";
 import { RemoveMemberDialog } from "./RemoveMemberDialog.component";
 import { InviteMemberDialog } from "./InviteMemberDialog.component";
@@ -265,7 +266,7 @@ export const MembersTab: React.FC = () => {
           toast.success("Roles updated");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to set roles"),
+          toast.error(serverErrorMessage(error, "Failed to set roles")),
       }
     );
   };
@@ -282,7 +283,7 @@ export const MembersTab: React.FC = () => {
           toast.success("Groups updated");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to set groups"),
+          toast.error(serverErrorMessage(error, "Failed to set groups")),
       }
     );
   };
@@ -329,7 +330,7 @@ export const MembersTab: React.FC = () => {
           toast.success("New invite link generated");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to resend"),
+          toast.error(serverErrorMessage(error, "Failed to resend")),
       }
     );
   };
@@ -344,7 +345,7 @@ export const MembersTab: React.FC = () => {
           toast.success("Invitation revoked");
         },
         onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Failed to revoke"),
+          toast.error(serverErrorMessage(error, "Failed to revoke")),
       }
     );
   };

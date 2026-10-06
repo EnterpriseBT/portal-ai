@@ -27,6 +27,7 @@ import { FormAlert } from "../components/FormAlert.component";
 import { connectorLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { RegionEditorUI } from "../modules/RegionEditor";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import type {
   CellBounds,
   EntityOption,
@@ -663,8 +664,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     } catch (err) {
       // Surface as the same Save-Draft snackbar channel — it's the
       // only inline-error path the editor has today.
-      const apiErr = err as { message?: string } | null;
-      toast.error(apiErr?.message ?? "Interpret failed.");
+      toast.error(serverErrorMessage(err, "Interpret failed."));
     }
   }, [editContext, regions, connectorInstanceId, interpretMutate, toast]);
 
@@ -712,8 +712,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     try {
       await patchPlanMutate({ regions: nextRegions });
     } catch (err) {
-      const apiErr = err as { message?: string } | null;
-      toast.error(apiErr?.message ?? "Couldn't save plan before commit.");
+      toast.error(serverErrorMessage(err, "Couldn't save plan before commit."));
       return;
     }
     try {

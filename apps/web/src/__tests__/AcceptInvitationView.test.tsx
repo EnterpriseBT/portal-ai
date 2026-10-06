@@ -66,4 +66,21 @@ describe("AcceptInvitationViewUI", () => {
     screen.getByRole("button", { name: "Go to dashboard" }).click();
     expect(onGoHome).toHaveBeenCalled();
   });
+
+  // #711 (spec case 19): who to ask, without naming a role.
+  it.each([
+    ["expired", "Ask the person who invited you for a fresh invite link."],
+    [
+      "invalid",
+      "It may have already been used or been revoked. Ask the person who invited you to resend it.",
+    ],
+    [
+      "error",
+      "Something went wrong. Please try again, or ask the person who invited you to resend it.",
+    ],
+  ] as const)("%s: tells the invitee who to ask, by no role", (state, body) => {
+    renderState(state);
+    expect(screen.getByText(body)).toBeInTheDocument();
+    expect(screen.queryByText(/\badmin\b/i)).not.toBeInTheDocument();
+  });
 });

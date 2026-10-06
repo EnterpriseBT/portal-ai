@@ -68,6 +68,7 @@ import {
   type PaginationPersistedState,
 } from "../components/PaginationToolbar.component";
 import { useStorage } from "../utils/storage.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import {
   stripInvalidColumns,
   isFilterExpressionEmpty,
@@ -734,9 +735,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         .catch((err: unknown) => {
           if (err instanceof DOMException && err.name === "AbortError") return;
           if (job.type === "entity_record_clear") {
-            toast.error(
-              err instanceof Error ? err.message : "Deleting records failed"
-            );
+            toast.error(serverErrorMessage(err, "Deleting records failed"));
           }
         })
         .finally(() => {
@@ -790,9 +789,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             toast.success(`Deleted ${deleted} records`);
           })
           .catch((err: unknown) => {
-            toast.error(
-              err instanceof Error ? err.message : "Deleting records failed"
-            );
+            toast.error(serverErrorMessage(err, "Deleting records failed"));
           })
           .finally(() => {
             queryClient.invalidateQueries({

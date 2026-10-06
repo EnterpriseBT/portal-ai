@@ -75,7 +75,8 @@ export type SubscriptionBillingState =
 export interface SubscriptionBillingUIProps {
   /** Which of the tab's states to render (derived by the container). */
   state: SubscriptionBillingState;
-  /** Owner-only actions render disabled + tooltip for non-owners. */
+  /** The caller holds `billing.manage`; without it the plan and portal
+   *  actions are hidden (#691), and the note says the permission is missing. */
   canManageBilling: boolean;
   /** Human label of the org's current plan. */
   currentTierName: string;

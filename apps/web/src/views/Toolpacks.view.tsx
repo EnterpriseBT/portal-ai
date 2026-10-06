@@ -44,6 +44,7 @@ import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useToast } from "../utils/toast.context";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { useActionGate } from "../utils/use-action-gate.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -464,7 +465,7 @@ export const Toolpacks: React.FC = () => {
                   },
                   onError: (err) => {
                     toast.error(
-                      `Failed to refresh "${t.name}": ${err.message}`
+                      `Failed to refresh "${t.name}": ${serverErrorMessage(err)}`
                     );
                   },
                 }
@@ -524,7 +525,7 @@ export const Toolpacks: React.FC = () => {
               },
               onError: (err) => {
                 toast.error(
-                  `Failed to refresh "${target.name}": ${err.message}`
+                  `Failed to refresh "${target.name}": ${serverErrorMessage(err)}`
                 );
               },
             }

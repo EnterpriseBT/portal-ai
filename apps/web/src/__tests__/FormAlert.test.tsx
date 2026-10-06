@@ -42,7 +42,9 @@ describe("FormAlert", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
-  it("renders the standardized RBAC-denial lead for a permission code (#576)", () => {
+  // #711 (spec case 15): the server's refusal names the permission, so it's
+  // the lead, shown once; the generic lead would only repeat it.
+  it("shows a permission refusal's own message once, with its code", () => {
     render(
       <FormAlert
         serverError={{
@@ -51,15 +53,23 @@ describe("FormAlert", () => {
         }}
       />
     );
-    // Standardized lead...
+    expect(
+      screen.getAllByText(/You don't have permission to manage billing/)
+    ).toHaveLength(1);
+    expect(
+      screen.queryByText(/permission to perform this action/)
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("(PERMISSION_DENIED)")).toBeInTheDocument();
+  });
+
+  it("falls back to the standard lead for a refusal with no message", () => {
+    render(
+      <FormAlert serverError={{ message: "", code: "PERMISSION_DENIED" }} />
+    );
     expect(
       screen.getByText(/You don't have permission to perform this action/)
     ).toBeInTheDocument();
-    // ...with the server's specific reason + code kept as detail.
-    expect(
-      screen.getByText(/You don't have permission to manage billing/)
-    ).toBeInTheDocument();
-    expect(screen.getByText(/PERMISSION_DENIED/)).toBeInTheDocument();
+    expect(screen.getByText("(PERMISSION_DENIED)")).toBeInTheDocument();
   });
 
   it("does not apply the RBAC lead to a non-permission code", () => {
