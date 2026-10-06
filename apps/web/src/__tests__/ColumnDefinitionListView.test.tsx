@@ -17,8 +17,17 @@ const noopQuery = {
   error: null,
 };
 
+// #689: the caller's type-level permissions (Create is gated on them).
+let currentResourcePermissions: Record<string, Record<string, boolean>> = {};
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    organizations: {
+      current: () => ({
+        data: { resourcePermissions: currentResourcePermissions },
+      }),
+      usage: () => noopQuery,
+    },
     columnDefinitions: {
       list: () => currentListQuery,
       create: () => noopMutation,
@@ -36,9 +45,13 @@ const { render, screen, fireEvent } = await import("./test-utils");
 const { ColumnDefinitionListView } =
   await import("../views/ColumnDefinitionList.view");
 
+type Capabilities = { read: boolean; write: boolean; delete: boolean };
+
+// List rows carry the caller's `capabilities` (#688).
 const makeColumnDefinition = (
   overrides: Partial<ColumnDefinition> = {}
-): ColumnDefinition => ({
+): ColumnDefinition & { capabilities: Capabilities } => ({
+  capabilities: { read: true, write: true, delete: true },
   id: "cd-1",
   organizationId: "org-1",
   key: "first_name",
@@ -62,6 +75,9 @@ const makeColumnDefinition = (
 describe("ColumnDefinitionListView", () => {
   beforeEach(() => {
     currentListQuery = {};
+    currentResourcePermissions = {
+      column_definition: { read: true, write: true, create: true },
+    };
   });
 
   it("should display loading state", () => {
@@ -212,5 +228,44 @@ describe("ColumnDefinitionListView", () => {
       screen.getByRole("button", { name: /Create Column Definition/ })
     );
     expect(screen.getByText("New Column Definition")).toBeInTheDocument();
+  });
+
+  // #689: Create is the page's primary action.
+  describe("Create gate", () => {
+    beforeEach(() => {
+      currentListQuery = {
+        data: { columnDefinitions: [], total: 0, limit: 10, offset: 0 },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<ListQuery>;
+    });
+
+    // #708 (spec case 18): an owned-only grant makes the any-grant `write`
+    // true, but the create route is owner/admin only.
+    it("is disabled with a grant hint for a caller who reads but can't create", async () => {
+      currentResourcePermissions = {
+        column_definition: { read: true, write: true, create: false },
+      };
+      render(<ColumnDefinitionListView />);
+      const create = screen.getByRole("button", {
+        name: /Create Column Definition/,
+      });
+      expect(create).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(create);
+      expect(screen.queryByText("New Column Definition")).toBeNull();
+      fireEvent.mouseOver(create);
+      expect(
+        await screen.findByText("Ask for access to create column definitions")
+      ).toBeInTheDocument();
+    });
+
+    it("is hidden for a caller who can't read column definitions", () => {
+      currentResourcePermissions = {};
+      render(<ColumnDefinitionListView />);
+      expect(
+        screen.queryByRole("button", { name: /Create Column Definition/ })
+      ).toBeNull();
+    });
   });
 });

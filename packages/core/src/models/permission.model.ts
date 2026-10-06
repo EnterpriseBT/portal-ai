@@ -134,6 +134,18 @@ export const CALLER_CAPABILITY_ACTIONS = [
   "member.role.assign",
   "member.invite",
   "member.remove",
+  /** #690: change the org's default station. Derived, not a policy verb: the
+   *  server computes it with the same class `resource.write {type:"station"}`
+   *  check the org PATCH runs (owner/admin), which a member's own-station
+   *  write doesn't satisfy. */
+  "station.default.set",
+  /** #689: re-validate an entity's records. Derived: the revalidate route's
+   *  class `resource.write {type:"entity_record"}` (owner/admin), which a
+   *  member's write on their own records doesn't satisfy. */
+  "entity_record.revalidate",
+  /** #689: delete all of an entity's records. Derived: the clear route's class
+   *  `resource.delete {type:"entity_record"}` (owner/admin). */
+  "entity_record.clear",
 ] as const;
 export const CallerCapabilityActionSchema = z.enum(CALLER_CAPABILITY_ACTIONS);
 export type CallerCapabilityAction = z.infer<
@@ -233,6 +245,11 @@ export const ResourcePermissionMapSchema = z.record(
     read: z.boolean(),
     write: z.boolean(),
     delete: z.boolean(),
+    /** #708: the caller may create one, by the type's create route's own
+     *  check (the server's `CREATE_RULES`). The only create gate:
+     *  read/write/delete are any-grant (`canPerformAny`) signals, never action
+     *  gates. */
+    create: z.boolean(),
   })
 );
 export type ResourcePermissionMap = z.infer<typeof ResourcePermissionMapSchema>;

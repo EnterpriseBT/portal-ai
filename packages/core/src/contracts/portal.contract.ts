@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
+import { withShareableCapabilities } from "./capabilities.contract.js";
+
 import { PortalSchema } from "../models/portal.model.js";
 import {
   PortalResultSchema,
@@ -32,7 +36,8 @@ export type PortalWithIncludes = z.infer<typeof PortalWithIncludesSchema>;
 
 export const PortalListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    portals: z.array(PortalWithIncludesSchema),
+    /** #688: each row with the caller's capabilities. */
+    portals: z.array(withCapabilities(PortalWithIncludesSchema)),
   });
 
 export type PortalListResponsePayload = z.infer<
@@ -81,7 +86,7 @@ export const PinnedBlockEntrySchema = z.object({
 export type PinnedBlockEntry = z.infer<typeof PinnedBlockEntrySchema>;
 
 export const PortalGetResponsePayloadSchema = z.object({
-  portal: PortalSchema,
+  portal: withCapabilities(PortalSchema),
   messages: z.array(PortalMessageResponseSchema),
   pinnedBlocks: z.array(PinnedBlockEntrySchema).optional(),
 });
@@ -115,6 +120,32 @@ export const SendMessageBodySchema = z.object({
 export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 
 // ── Portal Result List ────────────────────────────────────────────────
+
+/** A pin as the list returns it: `portalName` is present with include=portal. */
+export const PortalResultListItemSchema = PortalResultSchema.extend({
+  portalName: z.string().nullable().optional(),
+});
+export type PortalResultListItem = z.infer<typeof PortalResultListItemSchema>;
+
+/** #688: the pin list, each row with the caller's capabilities on it. */
+export const PortalResultListResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    portalResults: z.array(
+      withShareableCapabilities(PortalResultListItemSchema)
+    ),
+  });
+export type PortalResultListResponsePayload = z.infer<
+  typeof PortalResultListResponsePayloadSchema
+>;
+
+/** #688: one pin with the caller's capabilities on it (replaces the #621
+ *  canShare/canWrite/canDelete flags). */
+export const PortalResultGetResponsePayloadSchema = z.object({
+  portalResult: withShareableCapabilities(PortalResultSchema),
+});
+export type PortalResultGetResponsePayload = z.infer<
+  typeof PortalResultGetResponsePayloadSchema
+>;
 
 export const PortalResultListRequestQuerySchema =
   PortalListRequestQuerySchema.extend({

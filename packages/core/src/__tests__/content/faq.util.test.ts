@@ -363,3 +363,20 @@ describe("FAQ mentions views (#674)", () => {
     ).toMatch(/view attached and shared with you/i);
   });
 });
+
+// #711 (spec case 21): policies govern permissions; roles and groups only
+// package them. Help (here and on the marketing site) describes who can do
+// something by the permission, never "only the owner".
+describe("FAQ_ENTRIES describe access by permission (#711)", () => {
+  it.each(["Who can manage billing?", "How do I delete my organization?"])(
+    "%s",
+    (question) => {
+      const entry = FAQ_ENTRIES.find((e) => e.question === question);
+      expect(entry).toBeDefined();
+      expect(entry!.answer).toMatch(/permission/i);
+      expect(entry!.answer).not.toMatch(
+        /\bonly the (organization'?s? )?owner\b|\benabled only for the owner\b/i
+      );
+    }
+  );
+});

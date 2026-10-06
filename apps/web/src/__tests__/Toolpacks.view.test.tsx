@@ -1,6 +1,6 @@
 import React from "react";
 import { jest } from "@jest/globals";
-import type { Toolpack } from "@portalai/core/contracts";
+import type { ToolpackWithCapabilities as Toolpack } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
 const { ToolpacksUI } = await import("../views/Toolpacks.view");
@@ -9,6 +9,7 @@ const PACKS: Toolpack[] = [
   {
     id: "builtin:data_query",
     kind: "builtin",
+    capabilities: { read: true, write: false, delete: false },
     slug: "data_query",
     name: "Data Query",
     description: "SQL and visualization tools.",
@@ -24,6 +25,7 @@ const PACKS: Toolpack[] = [
   {
     id: "builtin:statistics",
     kind: "builtin",
+    capabilities: { read: true, write: false, delete: false },
     slug: "statistics",
     name: "Statistics",
     description: "Descriptive stats and correlation.",
@@ -44,6 +46,7 @@ const PACKS: Toolpack[] = [
   {
     id: "builtin:financial",
     kind: "builtin",
+    capabilities: { read: true, write: false, delete: false },
     slug: "financial",
     name: "Financial",
     description: "TVM, NPV, IRR.",
@@ -126,6 +129,7 @@ describe("ToolpacksUI", () => {
     const customPack: Toolpack = {
       id: "otp-1",
       kind: "custom",
+      capabilities: { read: true, write: true, delete: true },
       slug: "customer_intel",
       name: "customer_intel",
       description: "External customer intelligence.",
@@ -166,6 +170,70 @@ describe("ToolpacksUI", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
+  describe("per-row actions follow the row's capabilities (#691)", () => {
+    const custom = (
+      id: string,
+      capabilities: { read: boolean; write: boolean; delete: boolean }
+    ): Toolpack =>
+      ({
+        id,
+        kind: "custom",
+        capabilities,
+        slug: `pack_${id}`,
+        name: `pack_${id}`,
+        description: "",
+        iconSlug: "Extension",
+        tools: [],
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeadersStatus: { has: false },
+        signingSecretStatus: { has: true },
+        schemaFetchedAt: Date.now(),
+        metadataFetchedAt: null,
+      }) as Toolpack;
+    const handlers = {
+      onEdit: jest.fn(),
+      onDelete: jest.fn(),
+      onRefresh: jest.fn(),
+    };
+
+    it("a pack another member registered shows no Refresh, Edit or Delete", () => {
+      renderUI({
+        toolpacks: [custom("a", { read: true, write: false, delete: false })],
+        ...handlers,
+      });
+      expect(screen.queryByLabelText("Edit toolpack")).toBeNull();
+      expect(screen.queryByLabelText("Delete toolpack")).toBeNull();
+      expect(screen.queryByLabelText("Refresh toolpack schema")).toBeNull();
+    });
+
+    it("write without delete shows Refresh and Edit, not Delete", () => {
+      renderUI({
+        toolpacks: [custom("b", { read: true, write: true, delete: false })],
+        ...handlers,
+      });
+      expect(screen.getByLabelText("Edit toolpack")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Refresh toolpack schema")
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Delete toolpack")).toBeNull();
+    });
+
+    it("each row is gated on its own capabilities", () => {
+      renderUI({
+        toolpacks: [
+          custom("mine", { read: true, write: true, delete: true }),
+          custom("theirs", { read: true, write: false, delete: false }),
+        ],
+        ...handlers,
+      });
+      expect(screen.getAllByLabelText("Delete toolpack")).toHaveLength(1);
+      expect(screen.getAllByLabelText("Edit toolpack")).toHaveLength(1);
+    });
+  });
+
   // Case 111
   it("renders the Register toolpack header button when onRegister is supplied", () => {
     const onRegister = jest.fn();
@@ -179,6 +247,7 @@ describe("ToolpacksUI", () => {
     const customPack: Toolpack = {
       id: "otp-1",
       kind: "custom",
+      capabilities: { read: true, write: true, delete: true },
       slug: "customer_intel",
       name: "customer_intel",
       description: "External customer intelligence.",
@@ -239,6 +308,7 @@ describe("ToolpacksUI", () => {
     const customPack: Toolpack = {
       id: "otp-42",
       kind: "custom",
+      capabilities: { read: true, write: true, delete: true },
       slug: "customer_intel",
       name: "customer_intel",
       description: "External calls.",
@@ -261,11 +331,18 @@ describe("ToolpacksUI", () => {
     } as never;
 
     // case 20 — unentitled
-    it("badges custom rows and disables Register with the plan tooltip when unentitled", async () => {
+    it("#691: badges custom rows and upsells Register, with the plan reason, when unentitled", async () => {
+      const onRegister = jest.fn();
+      const onUpgrade = jest.fn();
       renderUI({
         toolpacks: [...PACKS, customPack],
-        onRegister: jest.fn(),
+        onRegister,
         customToolpacksEntitled: false,
+        registerGate: {
+          kind: "upsell",
+          reason: "Your plan does not include custom toolpacks",
+          onUpgrade,
+        },
       });
 
       expect(screen.getByText("Inactive on your plan")).toBeInTheDocument();
@@ -273,12 +350,27 @@ describe("ToolpacksUI", () => {
       const register = screen.getByRole("button", {
         name: /register toolpack/i,
       });
-      expect(register).toBeDisabled();
+      // An upsell is enabled: it leads to an upgrade, not to the dialog.
+      expect(register).toBeEnabled();
+      fireEvent.click(register);
+      expect(onUpgrade).toHaveBeenCalledTimes(1);
+      expect(onRegister).not.toHaveBeenCalled();
 
-      fireEvent.mouseOver(register.parentElement as HTMLElement);
+      fireEvent.mouseOver(register);
       expect(
         await screen.findByText(/your plan does not include custom toolpacks/i)
       ).toBeInTheDocument();
+    });
+
+    it("#691: hides Register for a caller who can't create toolpacks", () => {
+      renderUI({
+        toolpacks: PACKS,
+        onRegister: jest.fn(),
+        registerGate: { kind: "hide" },
+      });
+      expect(
+        screen.queryByRole("button", { name: /register toolpack/i })
+      ).toBeNull();
     });
 
     // Scope narrowed by #284: built-in rows badge on their OWN axis

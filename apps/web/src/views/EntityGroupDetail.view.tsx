@@ -18,6 +18,7 @@ import {
   Typography,
   AsyncSearchableSelect,
   FormDefaultButton,
+  GatedButton,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type { DataTableColumn } from "@portalai/core/ui";
@@ -42,12 +43,15 @@ import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.c
 import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { decideActionGate } from "../utils/action-gate.util";
+import { useToast } from "../utils/toast.context";
 import {
   useAuthFetch,
   toServerError,
   type ServerError,
 } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
 // ── Overlap preview ─────────────────────────────────────────────────
@@ -279,6 +283,17 @@ export const EntityGroupDetailViewUI: React.FC<
   onDeleteDialogOpenChange,
 }) => {
   const navigate = useNavigate();
+  // #689: the group's own capabilities. Member add/remove/primary are group
+  // writes (the member routes check write on the group).
+  const canEditMembers = group.capabilities.write;
+  const editGate = decideActionGate({
+    allowed: group.capabilities.write,
+    blocked: isUpdatingGroup ? "Saving…" : null,
+  });
+  const deleteGate = decideActionGate({
+    allowed: group.capabilities.delete,
+    blocked: isDeletingGroup ? "Deleting…" : null,
+  });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [removeDialogMemberId, setRemoveDialogMemberId] = useState<
     string | null
@@ -317,37 +332,44 @@ export const EntityGroupDetailViewUI: React.FC<
     {
       key: "isPrimary",
       label: "Primary",
-      render: (_value, row) => (
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (row.isPrimary) onDemoteMember(row.id as string);
-            else onPromoteMember(row.id as string);
-          }}
-          aria-label={row.isPrimary ? "Remove as primary" : "Set as primary"}
-        >
-          {row.isPrimary ? <StarIcon color="primary" /> : <StarOutlineIcon />}
-        </IconButton>
-      ),
+      render: (_value, row) =>
+        canEditMembers ? (
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (row.isPrimary) onDemoteMember(row.id as string);
+              else onPromoteMember(row.id as string);
+            }}
+            aria-label={row.isPrimary ? "Remove as primary" : "Set as primary"}
+          >
+            {row.isPrimary ? <StarIcon color="primary" /> : <StarOutlineIcon />}
+          </IconButton>
+        ) : row.isPrimary ? (
+          <StarIcon color="primary" titleAccess="Primary" />
+        ) : null,
     },
-    {
-      key: "actions",
-      label: "Actions",
-      render: (_value, row) => (
-        <IconButton
-          size="small"
-          color="error"
-          onClick={(e) => {
-            e.stopPropagation();
-            setRemoveDialogMemberId(row.id as string);
-          }}
-          aria-label="Remove member"
-        >
-          <DeleteIcon fontSize="small" />
-        </IconButton>
-      ),
-    },
+    ...(canEditMembers
+      ? [
+          {
+            key: "actions",
+            label: "Actions",
+            render: (_value: unknown, row: Record<string, unknown>) => (
+              <IconButton
+                size="small"
+                color="error"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRemoveDialogMemberId(row.id as string);
+                }}
+                aria-label="Remove member"
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -363,14 +385,16 @@ export const EntityGroupDetailViewUI: React.FC<
           title={group.name}
           icon={<Icon name={IconName.Hub} />}
           primaryAction={
-            <Button
-              variant="contained"
-              startIcon={<EditIcon />}
-              onClick={onOpenEdit}
-              disabled={isUpdatingGroup}
-            >
-              Edit
-            </Button>
+            editGate.kind === "hide" ? undefined : (
+              <GatedButton
+                variant="contained"
+                startIcon={<EditIcon />}
+                onClick={onOpenEdit}
+                gate={editGate}
+              >
+                Edit
+              </GatedButton>
+            )
           }
           secondaryActions={[
             {
@@ -378,7 +402,7 @@ export const EntityGroupDetailViewUI: React.FC<
               icon: <DeleteIcon />,
               onClick: openDeleteDialog,
               color: "error",
-              disabled: isDeletingGroup,
+              gate: deleteGate,
             },
           ]}
         >
@@ -401,13 +425,15 @@ export const EntityGroupDetailViewUI: React.FC<
           title="Members"
           icon={<Icon name={IconName.Person} />}
           primaryAction={
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={onOpenAddMember}
-            >
-              Add Member
-            </Button>
+            canEditMembers ? (
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={onOpenAddMember}
+              >
+                Add Member
+              </Button>
+            ) : undefined
           }
         >
           <DataTable
@@ -513,6 +539,9 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const updateMutation = sdk.entityGroups.update(entityGroupId);
   const deleteMutation = sdk.entityGroups.delete(entityGroupId);
   const addMemberMutation = sdk.entityGroups.addMember(entityGroupId);
+  const { mutate: updateMember } = sdk.entityGroups.updateMember(entityGroupId);
+  const { mutate: removeMember } = sdk.entityGroups.removeMember(entityGroupId);
+  const toast = useToast();
 
   // Delete impact - the dialog state is inside the UI, but we track it here for the query
   const [deleteDialogOpenForImpact, setDeleteDialogOpenForImpact] =
@@ -625,43 +654,46 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     });
   }, [deleteMutation, invalidate, navigate]);
 
-  const handlePromoteMember = useCallback(
-    async (memberId: string) => {
-      await fetchWithAuth(
-        `/api/entity-groups/${encodeURIComponent(entityGroupId)}/members/${encodeURIComponent(memberId)}`,
+  // #689: member changes go through the SDK, so a 403 refetches the group
+  // (its gates re-render) and every failure is reported, not swallowed.
+  const handleSetPrimary = useCallback(
+    (memberId: string, isPrimary: boolean) => {
+      updateMember(
+        { memberId, isPrimary },
         {
-          method: "PATCH",
-          body: JSON.stringify({ isPrimary: true }),
+          onSuccess: invalidate,
+          onError: (error) =>
+            toast.error(
+              serverErrorMessage(error, "Couldn't update the member")
+            ),
         }
       );
-      invalidate();
     },
-    [fetchWithAuth, entityGroupId, invalidate]
+    [updateMember, invalidate, toast]
   );
-
+  const handlePromoteMember = useCallback(
+    (memberId: string) => handleSetPrimary(memberId, true),
+    [handleSetPrimary]
+  );
   const handleDemoteMember = useCallback(
-    async (memberId: string) => {
-      await fetchWithAuth(
-        `/api/entity-groups/${encodeURIComponent(entityGroupId)}/members/${encodeURIComponent(memberId)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ isPrimary: false }),
-        }
-      );
-      invalidate();
-    },
-    [fetchWithAuth, entityGroupId, invalidate]
+    (memberId: string) => handleSetPrimary(memberId, false),
+    [handleSetPrimary]
   );
 
   const handleRemoveMember = useCallback(
-    async (memberId: string) => {
-      await fetchWithAuth(
-        `/api/entity-groups/${encodeURIComponent(entityGroupId)}/members/${encodeURIComponent(memberId)}`,
-        { method: "DELETE" }
+    (memberId: string) => {
+      removeMember(
+        { memberId },
+        {
+          onSuccess: invalidate,
+          onError: (error) =>
+            toast.error(
+              serverErrorMessage(error, "Couldn't update the member")
+            ),
+        }
       );
-      invalidate();
     },
-    [fetchWithAuth, entityGroupId, invalidate]
+    [removeMember, invalidate, toast]
   );
 
   const resetAddMemberForm = useCallback(() => {

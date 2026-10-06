@@ -128,14 +128,15 @@ const openOrganizationTab = async () => {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("SettingsView — Danger zone (#197 slice 5)", () => {
-  it("disables Delete for a non-owner (member) — #576 role gating", async () => {
+  it("#691: shows no danger zone to a caller without org.delete", async () => {
     mockCurrent.mockReturnValue(
       loaded({ ...orgData, roles: ["member"], capabilities: memberCaps })
     );
     await openOrganizationTab();
+    expect(screen.queryByText("Danger zone")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Delete organization" })
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Delete organization" })
+    ).toBeNull();
   });
 
   it("renders the Danger zone and opens the delete dialog (case 25)", async () => {

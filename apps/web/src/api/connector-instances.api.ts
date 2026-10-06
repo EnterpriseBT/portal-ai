@@ -153,16 +153,24 @@ export const connectorInstances = {
       method: "POST",
     }),
 
+  // #689: a 403 on a write means the caller's capabilities on the instance
+  // changed; refetch so the page's gates re-render from them.
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   rename: (id: string) =>
     useAuthMutation<ConnectorInstanceGetResponsePayload, { name: string }>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   update: (id: string) =>
@@ -172,6 +180,9 @@ export const connectorInstances = {
     >({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   /**
@@ -193,6 +204,9 @@ export const connectorInstances = {
     useAuthMutation<ConnectorInstanceSyncResponsePayload, void>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/sync`,
       method: "POST",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   /**
@@ -209,6 +223,9 @@ export const connectorInstances = {
       url: (vars) =>
         `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(vars.instanceId)}/sync`,
       method: "POST",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   /**
@@ -224,6 +241,9 @@ export const connectorInstances = {
     useAuthMutation<TestConnectionResult, TestConnectionRequestBody>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/test-connection`,
       method: "POST",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   search: <TOption extends SelectOption = SelectOption>(

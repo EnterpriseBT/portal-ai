@@ -1,5 +1,8 @@
 import { jest } from "@jest/globals";
-import type { PortalResultWithIncludes } from "@portalai/core/contracts";
+import type { PortalResultListResponsePayload } from "@portalai/core/contracts";
+
+type PortalResultWithIncludes =
+  PortalResultListResponsePayload["portalResults"][number];
 
 const { render, screen, fireEvent } = await import("./test-utils");
 const { PinnedResultCardUI, PinnedResultsListUI } =
@@ -24,6 +27,7 @@ const makePinnedResult = (
   updatedBy: null,
   deleted: null,
   deletedBy: null,
+  capabilities: { read: true, write: true, delete: true, share: true },
   ...overrides,
 });
 
@@ -191,5 +195,36 @@ describe("PinnedResultsListUI", () => {
     expect(
       screen.queryByTestId("view-all-pinned-results")
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("PinnedResultCardUI gates (#690)", () => {
+  it("shows Unpin on a pin the caller may delete", () => {
+    render(
+      <PinnedResultCardUI
+        result={makePinnedResult()}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Unpin" })).toBeInTheDocument();
+  });
+
+  it("hides Unpin on a pin shared with the caller read-only", () => {
+    render(
+      <PinnedResultCardUI
+        result={makePinnedResult({
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        })}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Unpin" })).toBeNull();
   });
 });

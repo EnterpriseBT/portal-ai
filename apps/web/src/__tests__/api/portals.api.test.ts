@@ -72,6 +72,7 @@ describe("portals.api", () => {
       portals.sendMessage("portal-123");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/portals/portal-123/messages",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -79,21 +80,39 @@ describe("portals.api", () => {
   describe("rename", () => {
     it("sends PATCH to portal endpoint", () => {
       portals.rename("portal-123");
-      expect(mockUseAuthMutation).toHaveBeenCalledWith({
-        url: "/api/portals/portal-123",
-        method: "PATCH",
-      });
+      expect(mockUseAuthMutation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "/api/portals/portal-123",
+          method: "PATCH",
+        })
+      );
     });
   });
 
   describe("remove", () => {
     it("sends DELETE to portal endpoint", () => {
       portals.remove("portal-123");
-      expect(mockUseAuthMutation).toHaveBeenCalledWith({
-        url: "/api/portals/portal-123",
-        method: "DELETE",
-      });
+      expect(mockUseAuthMutation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "/api/portals/portal-123",
+          method: "DELETE",
+        })
+      );
     });
+  });
+
+  // #690: a 403 means the caller's capabilities changed; refetch them.
+  it.each([
+    ["rename", () => portals.rename("portal-123")],
+    ["remove", () => portals.remove("portal-123")],
+  ])("%s invalidates portals.root on a permission denial", (_, call) => {
+    call();
+    const config = mockUseAuthMutation.mock.calls[0][0] as {
+      onPermissionDenied?: { invalidate: (v: unknown) => unknown[] };
+    };
+    expect(config.onPermissionDenied?.invalidate(undefined)).toEqual([
+      queryKeys.portals.root,
+    ]);
   });
 
   describe("resetMessages", () => {
@@ -102,6 +121,7 @@ describe("portals.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/portals/portal-123/messages",
         method: "DELETE",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -112,6 +132,7 @@ describe("portals.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/portals/portal-123",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });

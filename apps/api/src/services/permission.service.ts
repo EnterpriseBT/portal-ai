@@ -4,9 +4,11 @@ import {
   RESOURCE_PERMISSION_TYPES,
   type OrgRole,
   type PolicyPrincipalType,
+  type CallerCapabilityAction,
   type CapabilityMap,
   type PagePermissionMap,
   type ResourcePermissionMap,
+  type ResourcePermissionType,
 } from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
@@ -72,6 +74,57 @@ export interface PermissionObject {
  * The list **visibility predicate** is `PermissionSet.visibilityPredicate`,
  * wired into list routes in #621.
  */
+/**
+ * Caller capabilities that aren't policy verbs: each is the class-level check
+ * its route runs, which an ownership-conditioned grant doesn't satisfy.
+ */
+const DERIVED_CAPABILITIES = {
+  // #690: the org PATCH's default-station change.
+  "station.default.set": (set) =>
+    set.can("resource.write", { type: "station" }),
+  // #689: the entity-record revalidate and clear routes (#599: owner/admin).
+  "entity_record.revalidate": (set) =>
+    set.can("resource.write", { type: "entity_record" }),
+  "entity_record.clear": (set) =>
+    set.can("resource.delete", { type: "entity_record" }),
+} satisfies Partial<
+  Record<CallerCapabilityAction, (set: PermissionSet) => boolean>
+>;
+
+/**
+ * How a type's create route authorizes (#708), so `resourcePermissions[type]
+ * .create` runs the same check:
+ *  - `class`: `{ type }`, an unconditional grant (owner/admin by default);
+ *  - `owned`: `{ type, createdBy: ctx.userId }`, the caller's own;
+ *  - `none`: no user create route (the system creates these).
+ * Each row names its route; an integration matrix drives the real routes
+ * (`create-capability.agreement.integration.test.ts`), so a row can't drift.
+ */
+type CreateRule = "class" | "owned" | "none";
+
+const CREATE_RULES: Record<ResourcePermissionType, CreateRule> = {
+  station: "owned", // POST /api/stations
+  pin: "owned", // POST /api/portal-results
+  curated_view: "class", // POST /api/curated-views (#599)
+  portal: "owned", // POST /api/portals
+  entity: "owned", // POST /api/connector-entities
+  entity_record: "owned", // POST /api/connector-entities/{id}/records
+  field_mapping: "owned", // POST /api/field-mappings
+  // POST /api/connector-instances. The Sheets/Excel/file-upload connect flows
+  // don't run this check yet (#710).
+  connector_instance: "owned",
+  connector_definition: "none",
+  entity_group: "class", // POST /api/entity-groups
+  tag: "class", // POST /api/entity-tags
+  column_definition: "class", // POST /api/column-definitions
+  job: "none",
+  toolpack: "class", // POST /api/toolpacks
+};
+
+type DerivedCapability = keyof typeof DERIVED_CAPABILITIES;
+const isDerived = (a: CallerCapabilityAction): a is DerivedCapability =>
+  a in DERIVED_CAPABILITIES;
+
 export class PermissionService {
   /**
    * Load the caller's effective {@link PermissionSet}. Gathers the statements of
@@ -225,10 +278,41 @@ export class PermissionService {
     ctx: PermissionContext,
     client: DbClient = db
   ): Promise<CapabilityMap> {
-    const set = await PermissionService.loadSet(ctx, client);
+    return PermissionService.capabilityMap(
+      await PermissionService.loadSet(ctx, client)
+    );
+  }
+
+  /**
+   * `can(a)` for every caller-capability action. Most are policy verbs; a
+   * derived one is computed with the exact check its route runs, so the
+   * button and the server agree.
+   */
+  static capabilityMap(set: PermissionSet): CapabilityMap {
     return Object.fromEntries(
-      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
+      CALLER_CAPABILITY_ACTIONS.map((action) => [
+        action,
+        isDerived(action) ? DERIVED_CAPABILITIES[action](set) : set.can(action),
+      ])
     ) as CapabilityMap;
+  }
+
+  /** #708: may the caller create a `type`, by its create route's check
+   *  (`CREATE_RULES`)? This is `set.can`, so conditions, instance scope and
+   *  denies all count, unlike the any-grant `canPerformAny`. */
+  static canCreate(
+    ctx: PermissionContext,
+    set: PermissionSet,
+    type: ResourcePermissionType
+  ): boolean {
+    switch (CREATE_RULES[type]) {
+      case "class":
+        return set.can("resource.write", { type });
+      case "owned":
+        return set.can("resource.write", { type, createdBy: ctx.userId });
+      case "none":
+        return false;
+    }
   }
 
   /**
@@ -252,9 +336,7 @@ export class PermissionService {
     resourcePermissions: ResourcePermissionMap;
   }> {
     const set = await PermissionService.loadSet(ctx, client);
-    const capabilities = Object.fromEntries(
-      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
-    ) as CapabilityMap;
+    const capabilities = PermissionService.capabilityMap(set);
     const pagePermissions = Object.fromEntries(
       NAV_PAGE_IDS.map((id) => [
         id,
@@ -268,6 +350,7 @@ export class PermissionService {
           read: set.canPerformAny("read", type),
           write: set.canPerformAny("write", type),
           delete: set.canPerformAny("delete", type),
+          create: PermissionService.canCreate(ctx, set, type),
         },
       ])
     ) as ResourcePermissionMap;

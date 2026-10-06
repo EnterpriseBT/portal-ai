@@ -31,6 +31,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
@@ -177,9 +178,8 @@ connectorEntityRouter.get(
 
       // #599: RBAC-gate raw entity reads — members see only entities they
       // created (≈none, entities are admin/sync-provisioned); admins (`*`) all.
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("entity", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("entity", {
         createdByCol: connectorEntities.createdBy,
         idCol: connectorEntities.id,
       });
@@ -218,8 +218,12 @@ connectorEntityRouter.get(
         | ConnectorEntityListWithInstanceResponsePayload
         | ConnectorEntityListWithTagsResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
-        connectorEntities:
-          data as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
+        // #688: each row with the caller's capabilities.
+        connectorEntities: ObjectCapabilitiesService.attach(
+          set,
+          "entity",
+          data as unknown as Array<{ id: string; createdBy: string }>
+        ) as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
         total,
         limit,
         offset,
@@ -323,11 +327,13 @@ connectorEntityRouter.get(
         );
       }
       // #599: an unreadable entity is indistinguishable from absent (404).
+      const set = await PermissionService.loadSet(req.application!.metadata);
       if (
-        !(await PermissionService.loadSet(req.application!.metadata)).can(
-          "resource.read",
-          { type: "entity", id, createdBy: connectorEntity.createdBy }
-        )
+        !set.can("resource.read", {
+          type: "entity",
+          id,
+          createdBy: connectorEntity.createdBy,
+        })
       ) {
         return next(
           new ApiError(
@@ -339,8 +345,14 @@ connectorEntityRouter.get(
       }
 
       return HttpService.success<ConnectorEntityGetResponsePayload>(res, {
-        connectorEntity:
-          connectorEntity as unknown as ConnectorEntityGetResponsePayload["connectorEntity"],
+        connectorEntity: {
+          ...connectorEntity,
+          capabilities: ObjectCapabilitiesService.for(
+            set,
+            "entity",
+            connectorEntity
+          ),
+        } as unknown as ConnectorEntityGetResponsePayload["connectorEntity"],
       });
     } catch (error) {
       logger.error(
@@ -734,7 +746,7 @@ connectorEntityRouter.patch(
       }
 
       // #685: org-scoped first. The permission engine doesn't see orgs, so
-      // without this an owner or admin of any org could edit another org's
+      // without this a holder of `* *` in any org could edit another org's
       // entity by id.
       const existing =
         await DbService.repository.connectorEntities.findById(id);

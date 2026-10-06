@@ -129,3 +129,48 @@ describe("useWidgetRefresh — BlockRef dispatch (#312)", () => {
     expect(pinRefreshMutate).not.toHaveBeenCalled();
   });
 });
+
+describe("useWidgetRefresh — read-only pin (#690)", () => {
+  const readOnlyPin = (): BlockRef => ({
+    kind: "pin",
+    portalResultId: `pr-${++seq}`,
+    canRefresh: false,
+  });
+
+  it("a stale read-only pin doesn't auto-refresh (no 403 for a read sharee)", async () => {
+    const { result } = renderHook(() => useWidgetRefresh(readOnlyPin(), STALE));
+    // Give a would-be mount refresh the chance to fire.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(pinRefreshMutate).not.toHaveBeenCalled();
+    expect(result.current.allowed).toBe(false);
+    // The freshness cue still has the data's age to show.
+    expect(result.current.lastUpdatedAt).toBe(STALE);
+  });
+
+  it("refresh() is a no-op for a read-only pin", async () => {
+    const { result } = renderHook(() =>
+      useWidgetRefresh(readOnlyPin(), Date.now())
+    );
+    await act(async () => {
+      result.current.refresh();
+    });
+    expect(pinRefreshMutate).not.toHaveBeenCalled();
+  });
+
+  it("allowed is true for a writable pin and a message, false with no ref", () => {
+    expect(
+      renderHook(() => useWidgetRefresh(pinRef(), Date.now())).result.current
+        .allowed
+    ).toBe(true);
+    expect(
+      renderHook(() => useWidgetRefresh(messageRef(), Date.now())).result
+        .current.allowed
+    ).toBe(true);
+    expect(
+      renderHook(() => useWidgetRefresh(undefined, Date.now())).result.current
+        .allowed
+    ).toBe(false);
+  });
+});

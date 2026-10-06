@@ -1,6 +1,5 @@
 import React, { useCallback } from "react";
 
-import type { PortalResult } from "@portalai/core/models";
 import {
   Icon,
   IconName,
@@ -106,8 +105,7 @@ export const PinnedResultsListView: React.FC = () => {
               <DataResult results={{ pinned: response }}>
                 {({ pinned }) => {
                   const payload = pinned as unknown as PortalResultsListPayload;
-                  const results =
-                    payload.portalResults as unknown as PortalResult[];
+                  const results = payload.portalResults;
                   if (payload.total === 0) {
                     const hasActiveFilters =
                       pagination.search ||

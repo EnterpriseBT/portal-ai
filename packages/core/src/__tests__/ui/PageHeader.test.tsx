@@ -186,4 +186,35 @@ describe("PageHeader Component", () => {
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
   });
+
+  // #688: an all-hidden secondary menu isn't rendered at all.
+  describe("Gates (#688)", () => {
+    it("omits the secondary actions menu when every action is hidden", () => {
+      render(
+        <PageHeader
+          title="Views"
+          secondaryActions={[
+            { label: "Share", onClick: jest.fn(), gate: { kind: "hide" } },
+            { label: "Delete", onClick: jest.fn(), gate: { kind: "hide" } },
+          ]}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    });
+
+    it("keeps the menu when at least one action is visible", () => {
+      render(
+        <PageHeader
+          title="Views"
+          secondaryActions={[
+            { label: "Share", onClick: jest.fn(), gate: { kind: "hide" } },
+            { label: "Delete", onClick: jest.fn() },
+          ]}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: "More actions" })
+      ).toBeInTheDocument();
+    });
+  });
 });

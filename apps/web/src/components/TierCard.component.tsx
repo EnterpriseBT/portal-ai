@@ -10,7 +10,6 @@ import {
   CardContent,
   Divider,
   Stack,
-  Tooltip,
   Typography,
 } from "@portalai/core/ui";
 
@@ -28,26 +27,10 @@ import {
 
 import type { BillingTier } from "@portalai/core/contracts";
 
-const BILLING_GATE_TOOLTIP = "You don't have permission to manage billing";
-
 /** A `contact` tier shown as an upgrade teaser (not the org's current plan)
  *  presents generically — the operator's specific plan name + blurb are shown
  *  only once the org is actually on it (#241). */
 const GENERIC_CONTACT_TIER_LABEL = "Enterprise";
-
-/** Wrap a disabled action in the owner-only tooltip (the `span` keeps the
- *  tooltip firing on a disabled MUI button). Plain function, not a component. */
-const withOwnerGate = (
-  canManageBilling: boolean,
-  action: React.ReactElement
-): React.ReactElement =>
-  canManageBilling ? (
-    action
-  ) : (
-    <Tooltip title={BILLING_GATE_TOOLTIP}>
-      <span>{action}</span>
-    </Tooltip>
-  );
 
 export interface TierCardUIProps {
   /** The tier to render. */
@@ -209,25 +192,24 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
         {/* CTA pinned to the bottom so it aligns across cards of varying
             content height (the card is a full-height flex column). */}
         <Box sx={{ mt: "auto", pt: 2, width: "100%" }}>
-          {cta === "subscribe" &&
-            !isCurrentPlan &&
-            withOwnerGate(
-              canManageBilling,
-              <Button
-                type="button"
-                variant="contained"
-                disabled={!canManageBilling || isPending}
-                onClick={() =>
-                  isSubscribed ? onSwitch?.(tier.slug) : onSubscribe(tier.slug)
-                }
-              >
-                {isPending
-                  ? "Redirecting…"
-                  : isSubscribed
-                    ? "Switch to this plan"
-                    : "Subscribe"}
-              </Button>
-            )}
+          {/* #691: plan changes need billing.manage; without it there's no
+              button (the billing page says why, once). */}
+          {cta === "subscribe" && !isCurrentPlan && canManageBilling && (
+            <Button
+              type="button"
+              variant="contained"
+              disabled={isPending}
+              onClick={() =>
+                isSubscribed ? onSwitch?.(tier.slug) : onSubscribe(tier.slug)
+              }
+            >
+              {isPending
+                ? "Redirecting…"
+                : isSubscribed
+                  ? "Switch to this plan"
+                  : "Subscribe"}
+            </Button>
+          )}
 
           {cta === "contact" && (
             <Stack

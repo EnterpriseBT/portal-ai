@@ -45,6 +45,7 @@ export const portals = {
   sendMessage: (portalId: string) =>
     useAuthMutation<void, SendMessageBody>({
       url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   rename: (id: string) =>
@@ -52,6 +53,8 @@ export const portals = {
       {
         url: `/api/portals/${encodeURIComponent(id)}`,
         method: "PATCH",
+        // #690: a 403 means the caller's capabilities changed; refetch them.
+        onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
       }
     ),
 
@@ -59,18 +62,21 @@ export const portals = {
     useAuthMutation<{ id: string }, void>({
       url: `/api/portals/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   resetMessages: (portalId: string) =>
     useAuthMutation<void, void>({
       url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   touch: (id: string) =>
     useAuthMutation<{ portal: { id: string } }, { lastOpened: number }>({
       url: `/api/portals/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   /**

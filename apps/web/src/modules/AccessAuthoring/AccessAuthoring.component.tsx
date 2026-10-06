@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
@@ -24,6 +24,10 @@ import { toServerError } from "../../utils/api.util";
 import { PolicyEditorDialog } from "./PolicyEditorDialog.component";
 import { RoleEditorDialog } from "./RoleEditorDialog.component";
 import { GroupEditorDialog } from "./GroupEditorDialog.component";
+import {
+  DeleteAccessItemDialogUI,
+  type AccessItemKind,
+} from "../../components/DeleteAccessItemDialog.component";
 
 type Section = "policies" | "roles" | "groups";
 
@@ -166,6 +170,13 @@ export const AccessAuthoring: React.FC = () => {
     open: boolean;
     group: GroupView | null;
   }>({ open: false, group: null });
+  // #691: a delete asks first. The target keeps its kind so a section switch
+  // while the dialog is open can't retarget it.
+  const [deleteTarget, setDeleteTarget] = useState<{
+    kind: AccessItemKind;
+    id: string;
+    name: string;
+  } | null>(null);
 
   const policiesQuery = sdk.policies.list();
   const rolesQuery = sdk.roles.list();
@@ -235,21 +246,58 @@ export const AccessAuthoring: React.FC = () => {
   };
 
   const onDelete = (id: string) => {
-    const [mutation, key, label] =
+    const kind: AccessItemKind =
       section === "policies"
-        ? [removePolicy, queryKeys.policies.root, "Policy"]
+        ? "policy"
         : section === "roles"
-          ? [removeRole, queryKeys.roles.root, "Role"]
-          : [removeGroup, queryKeys.groups.root, "Group"];
-    mutation.mutate(
-      { id },
+          ? "role"
+          : "group";
+    removeMutationFor(kind).reset();
+    setDeleteTarget({
+      kind,
+      id,
+      name: rows.find((r) => r.id === id)?.name ?? "",
+    });
+  };
+
+  const removeMutationFor = (kind: AccessItemKind) =>
+    kind === "policy"
+      ? removePolicy
+      : kind === "role"
+        ? removeRole
+        : removeGroup;
+  const deleteMutation = deleteTarget
+    ? removeMutationFor(deleteTarget.kind)
+    : null;
+
+  // A double-click's two clicks land before React re-renders with isPending,
+  // so the guard must be synchronous (the smoke walk saw two DELETEs).
+  const deleteInFlight = useRef(false);
+  const confirmDelete = () => {
+    if (!deleteTarget || deleteMutation?.isPending || deleteInFlight.current)
+      return;
+    deleteInFlight.current = true;
+    const target = deleteTarget;
+    const key =
+      target.kind === "policy"
+        ? queryKeys.policies.root
+        : target.kind === "role"
+          ? queryKeys.roles.root
+          : queryKeys.groups.root;
+    // The error stays in the dialog (FormAlert); success closes it.
+    removeMutationFor(target.kind).mutate(
+      { id: target.id },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: key });
-          toast.success(`${label} deleted`);
+          toast.success(
+            `${target.kind[0].toUpperCase()}${target.kind.slice(1)} deleted`
+          );
+          setDeleteTarget(null);
         },
-        onError: (error) =>
-          toast.error(toServerError(error)?.message ?? "Delete failed"),
+        onSettled: () => {
+          deleteInFlight.current = false;
+        },
       }
     );
   };
@@ -279,6 +327,15 @@ export const AccessAuthoring: React.FC = () => {
         open={groupEdit.open}
         onClose={() => setGroupEdit({ open: false, group: null })}
         group={groupEdit.group}
+      />
+      <DeleteAccessItemDialogUI
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        kind={deleteTarget?.kind ?? "policy"}
+        itemName={deleteTarget?.name ?? ""}
+        isPending={deleteMutation?.isPending ?? false}
+        serverError={toServerError(deleteMutation?.error ?? null)}
       />
     </>
   );

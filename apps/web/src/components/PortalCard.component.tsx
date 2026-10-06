@@ -5,11 +5,15 @@ import { DateFactory } from "@portalai/core/utils";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import DeleteIcon from "@mui/icons-material/Delete";
 
+import { decideActionGate } from "../utils/action-gate.util";
+
 interface PortalCardUIProps {
   id: string;
   name: string;
   created: number;
   lastOpened: number | null;
+  /** #690: the portal's `capabilities.delete`. */
+  canDelete: boolean;
   onClick: (id: string) => void;
   onDelete: (id: string) => void;
 }
@@ -19,6 +23,7 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
   name,
   created,
   lastOpened,
+  canDelete,
   onClick,
   onDelete,
 }) => {
@@ -28,6 +33,7 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
       icon: <DeleteIcon />,
       onClick: () => onDelete(id),
       color: "error",
+      gate: decideActionGate({ allowed: canDelete }),
     },
   ];
 

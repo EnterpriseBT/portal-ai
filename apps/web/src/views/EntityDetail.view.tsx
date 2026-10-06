@@ -19,6 +19,7 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
@@ -29,8 +30,6 @@ import {
 import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import Button from "@mui/material/Button";
-import Tooltip from "@mui/material/Tooltip";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -47,7 +46,11 @@ import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
 import { ClearEntityRecordsDialog } from "../components/ClearEntityRecordsDialog.component";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
-import { joinRunningJobLabels } from "../utils/running-job-label.util";
+import { connectorLockReason } from "../utils/running-job-label.util";
+import {
+  entityDetailActionGates,
+  type RecordPermissions,
+} from "../utils/entity-actions.util";
 import { useToast } from "../utils/toast.context";
 import { sse } from "../api/sse.api";
 import { awaitJobCompletion } from "../utils/job-stream.util";
@@ -65,6 +68,7 @@ import {
   type PaginationPersistedState,
 } from "../components/PaginationToolbar.component";
 import { useStorage } from "../utils/storage.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import {
   stripInvalidColumns,
   isFilterExpressionEmpty,
@@ -120,6 +124,12 @@ const TagAssignSelect: React.FC<TagAssignSelectProps> = ({
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
+const NO_RECORD_PERMISSIONS: RecordPermissions = {
+  create: false,
+  revalidate: false,
+  clear: false,
+};
+
 export interface BidirectionalFieldMappingRef {
   id: string;
   sourceField: string;
@@ -147,6 +157,8 @@ export interface EntityDetailViewUIProps {
   canReadTags?: boolean;
   /** Whether the connector instance has write capability. */
   isWriteEnabled?: boolean;
+  /** #689: the caller's entity-wide record permissions. Omitted = none. */
+  recordPermissions?: RecordPermissions;
   /** Called when user confirms entity deletion. */
   onDelete?: () => void;
   /** Whether the delete mutation is in progress. */
@@ -214,6 +226,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   onSearchTags,
   canReadTags,
   isWriteEnabled,
+  recordPermissions = NO_RECORD_PERMISSIONS,
   onDelete,
   isDeleting,
   deleteServerError,
@@ -247,11 +260,16 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   const navigate = useNavigate();
 
   const isLockedByJob = (runningJobs?.length ?? 0) > 0;
-  const clearDisabledReason = isLockedByJob
-    ? `${joinRunningJobLabels(runningJobs ?? [])} is running on this connector — deleting records is paused until it finishes.`
-    : !isWriteEnabled
-      ? "Writes are disabled for this connector."
-      : "";
+  const gates = entityDetailActionGates({
+    capabilities: entity.capabilities,
+    recordPermissions,
+    isWriteEnabled: isWriteEnabled === true,
+    lockedReason: connectorLockReason(runningJobs ?? []),
+    isUpdating: isUpdating === true,
+    isDeleting: isDeleting === true,
+    isClearingRecords: isClearingRecords === true,
+    isRevalidating: isRevalidating === true,
+  });
 
   // Column definitions captured from the first successful API response.
   // Used to populate the advanced filter builder and validate persisted filters.
@@ -328,30 +346,26 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           title={entity.label}
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            isWriteEnabled ? (
-              <Button
+            gates.edit.kind === "hide" ? undefined : (
+              <GatedButton
                 variant="contained"
                 startIcon={<EditIcon />}
                 onClick={() => onOpenEditDialog?.()}
-                disabled={isUpdating}
+                gate={gates.edit}
               >
                 Edit
-              </Button>
-            ) : undefined
+              </GatedButton>
+            )
           }
-          secondaryActions={
-            isWriteEnabled
-              ? [
-                  {
-                    label: "Delete",
-                    icon: <DeleteIcon />,
-                    onClick: () => onOpenDeleteDialog?.(),
-                    color: "error" as const,
-                    disabled: isDeleting,
-                  },
-                ]
-              : []
-          }
+          secondaryActions={[
+            {
+              label: "Delete",
+              icon: <DeleteIcon />,
+              onClick: () => onOpenDeleteDialog?.(),
+              color: "error" as const,
+              gate: gates.delete,
+            },
+          ]}
         >
           <MetadataList
             direction="vertical"
@@ -400,14 +414,14 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                     ) : undefined
                   }
                   onDelete={
-                    onUnassignTag
+                    onUnassignTag && gates.canEditTags
                       ? () => onUnassignTag(tag.assignmentId)
                       : undefined
                   }
                 />
               ))}
             </Stack>
-            {onSearchTags && onAssignTag && (
+            {onSearchTags && onAssignTag && gates.canEditTags && (
               <Box sx={{ mt: 1, maxWidth: 300 }}>
                 <TagAssignSelect
                   onSearch={onSearchTags}
@@ -452,51 +466,40 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               sx={{ flexWrap: "wrap", justifyContent: "flex-end", rowGap: 1 }}
             >
               {onOpenClearRecordsDialog && (
-                <Tooltip
-                  title={clearDisabledReason}
-                  disableHoverListener={!clearDisabledReason}
+                <GatedButton
+                  variant="outlined"
+                  size="small"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={onOpenClearRecordsDialog}
+                  gate={gates.clearRecords}
+                  data-testid="open-clear-entity-records"
                 >
-                  {/* span so the tooltip works on a disabled button */}
-                  <span>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      color="error"
-                      startIcon={<DeleteIcon />}
-                      onClick={onOpenClearRecordsDialog}
-                      disabled={
-                        isLockedByJob || !isWriteEnabled || isClearingRecords
-                      }
-                      data-testid="open-clear-entity-records"
-                    >
-                      {isClearingRecords ? "Deleting…" : "Delete records"}
-                    </Button>
-                  </span>
-                </Tooltip>
+                  {isClearingRecords ? "Deleting…" : "Delete records"}
+                </GatedButton>
               )}
               {onRevalidate && (
-                <Button
+                <GatedButton
                   variant="outlined"
                   size="small"
                   startIcon={<RefreshIcon />}
                   onClick={onRevalidate}
-                  disabled={isRevalidating}
+                  gate={gates.revalidate}
                 >
                   {isRevalidating ? "Re-validating..." : "Re-validate All"}
-                </Button>
+                </GatedButton>
               )}
-              {isWriteEnabled &&
-                columnDefs.length > 0 &&
-                onOpenCreateRecordDialog && (
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<AddIcon />}
-                    onClick={onOpenCreateRecordDialog}
-                  >
-                    Create
-                  </Button>
-                )}
+              {columnDefs.length > 0 && onOpenCreateRecordDialog && (
+                <GatedButton
+                  variant="outlined"
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={onOpenCreateRecordDialog}
+                  gate={gates.createRecord}
+                >
+                  Create
+                </GatedButton>
+              )}
             </Stack>
           }
         >
@@ -646,9 +649,17 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const { onSearch: handleSearchTags } = sdk.entityTags.search();
-  const { canOnResource, capabilitiesKnown } = useCapabilities();
+  const { can, canOnResource, capabilitiesKnown } = useCapabilities();
   // #630: optimistic while the current-org query loads.
   const canReadTags = !capabilitiesKnown || canOnResource("tag", "read");
+  // #689: actions fail closed. Create is an owned create; re-validate and
+  // clear are entity-wide, so they take the derived capabilities that mirror
+  // their routes' unconditional class checks.
+  const recordPermissions = {
+    create: canOnResource("entity_record", "create"),
+    revalidate: can("entity_record.revalidate"),
+    clear: can("entity_record.clear"),
+  };
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -724,9 +735,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         .catch((err: unknown) => {
           if (err instanceof DOMException && err.name === "AbortError") return;
           if (job.type === "entity_record_clear") {
-            toast.error(
-              err instanceof Error ? err.message : "Deleting records failed"
-            );
+            toast.error(serverErrorMessage(err, "Deleting records failed"));
           }
         })
         .finally(() => {
@@ -780,9 +789,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             toast.success(`Deleted ${deleted} records`);
           })
           .catch((err: unknown) => {
-            toast.error(
-              err instanceof Error ? err.message : "Deleting records failed"
-            );
+            toast.error(serverErrorMessage(err, "Deleting records failed"));
           })
           .finally(() => {
             queryClient.invalidateQueries({
@@ -923,6 +930,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             onSearchTags={handleSearchTags}
             canReadTags={canReadTags}
             isWriteEnabled={isWriteEnabled}
+            recordPermissions={recordPermissions}
             onDelete={handleDelete}
             isDeleting={deleteMutation.isPending}
             deleteServerError={toServerError(deleteMutation.error)}

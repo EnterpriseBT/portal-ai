@@ -35,6 +35,7 @@ import {
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
@@ -200,9 +201,8 @@ connectorInstanceRouter.get(
 
       // #630: filter to the connector instances the caller may `read` (a member
       // sees only their own; owner/admin see all — undefined predicate).
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("connector_instance", {
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const visibility = set.visibilityPredicate("connector_instance", {
         createdByCol: connectorInstances.createdBy,
         idCol: connectorInstances.id,
       });
@@ -260,8 +260,12 @@ connectorInstanceRouter.get(
         | ConnectorInstanceListResponsePayload
         | ConnectorInstanceListWithDefinitionResponsePayload
       >(res, {
-        connectorInstances:
-          redacted as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
+        // #688: each row with the caller's capabilities.
+        connectorInstances: ObjectCapabilitiesService.attach(
+          set,
+          "connector_instance",
+          redacted as unknown as Array<{ id: string; createdBy: string }>
+        ) as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
         total,
         limit,
         offset,
@@ -411,15 +415,23 @@ connectorInstanceRouter.get(
           : [undefined, undefined];
 
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
-        connectorInstance: redactInstance({
-          instance: connectorInstance as unknown as Parameters<
-            typeof redactInstance
-          >[0]["instance"],
-          slug: connectorDefinition?.slug ?? "",
-          connectorDefinition: connectorDefinition ?? null,
-          syncEligible,
-          identityWarnings,
-        }) as unknown as ConnectorInstanceWithDefinitionApi,
+        connectorInstance: {
+          ...(redactInstance({
+            instance: connectorInstance as unknown as Parameters<
+              typeof redactInstance
+            >[0]["instance"],
+            slug: connectorDefinition?.slug ?? "",
+            connectorDefinition: connectorDefinition ?? null,
+            syncEligible,
+            identityWarnings,
+          }) as unknown as ConnectorInstanceWithDefinitionApi),
+          // #688: the caller's capabilities on the instance.
+          capabilities: ObjectCapabilitiesService.for(
+            set,
+            "connector_instance",
+            connectorInstance
+          ),
+        },
       });
     } catch (error) {
       logger.error(
@@ -750,7 +762,8 @@ connectorInstanceRouter.post(
         return next(
           new ApiError(
             403,
-            ApiCode.INSUFFICIENT_ROLE,
+            // #711: a tenancy refusal, not a missing permission.
+            ApiCode.ORGANIZATION_MISMATCH,
             "You can only create connector instances in your current organization"
           )
         );

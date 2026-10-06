@@ -4,14 +4,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { CuratedViewListResponsePayload } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
   DetailCard,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
   PageEmptyState,
   PageHeader,
   Stack,
+  type ActionGate,
   type ActionSuiteItem,
 } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
@@ -26,7 +27,8 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
-import { useCapabilities } from "../utils/use-capabilities.util";
+import { decideActionGate } from "../utils/action-gate.util";
+import { useCreateGate } from "../utils/use-create-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
@@ -41,9 +43,9 @@ export interface CuratedViewsUIProps {
   views: CuratedViewRow[];
   isLoading: boolean;
   isError: boolean;
-  /** Whether the caller may create/delete/share views (admin). When false the
-   *  management affordances are hidden and the list is read-only. */
-  canManage: boolean;
+  /** #688: the page's Create action. Each row's Share and Delete are gated by
+   *  that row's own `capabilities`. */
+  createGate: ActionGate;
   /** True when a search/filter is active — drives the empty-state copy. */
   hasActiveFilters: boolean;
   /** The rendered pagination toolbar (search / sort / page controls). */
@@ -58,7 +60,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
   views,
   isLoading,
   isError,
-  canManage,
+  createGate,
   hasActiveFilters,
   paginationToolbar,
   onOpen,
@@ -68,11 +70,17 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
 }) => {
   const navigate = useNavigate();
 
-  const createButton = canManage ? (
-    <Button variant="contained" startIcon={<AddIcon />} onClick={onCreate}>
-      Create View
-    </Button>
-  ) : undefined;
+  const createButton =
+    createGate.kind === "hide" ? undefined : (
+      <GatedButton
+        gate={createGate}
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={onCreate}
+      >
+        Create View
+      </GatedButton>
+    );
 
   let body: React.ReactNode;
   if (isError) {
@@ -85,7 +93,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
         icon={<Icon name={IconName.Layers} />}
         title="No views available"
         description={
-          canManage
+          createGate.kind === "allow"
             ? "Create a view to expose a curated slice of connector data."
             : "No views have been shared with you yet."
         }
@@ -96,21 +104,22 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
     body = (
       <Stack spacing={1}>
         {views.map((view) => {
-          const actions: ActionSuiteItem[] = canManage
-            ? [
-                {
-                  label: "Share",
-                  icon: <ShareIcon />,
-                  onClick: () => onShare(view),
-                },
-                {
-                  label: "Delete",
-                  icon: <DeleteIcon />,
-                  onClick: () => onDelete(view),
-                  color: "error" as const,
-                },
-              ]
-            : [];
+          // #688: what this caller may do to this view.
+          const actions: ActionSuiteItem[] = [
+            {
+              label: "Share",
+              icon: <ShareIcon />,
+              onClick: () => onShare(view),
+              gate: decideActionGate({ allowed: view.capabilities.share }),
+            },
+            {
+              label: "Delete",
+              icon: <DeleteIcon />,
+              onClick: () => onDelete(view),
+              color: "error" as const,
+              gate: decideActionGate({ allowed: view.capabilities.delete }),
+            },
+          ];
           return (
             <DetailCard
               key={view.id}
@@ -167,8 +176,11 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
 // ── Container (wires hooks + fetching) ───────────────────────────────
 
 export const CuratedViews: React.FC = () => {
-  const { canOnResource } = useCapabilities();
-  const canManage = canOnResource("curated_view", "write");
+  // #708: Create decides from the create route's own check.
+  const createGate = useCreateGate(
+    "curated_view",
+    "Ask for access to create views"
+  );
 
   const pagination = usePagination({
     sortFields: [
@@ -228,7 +240,7 @@ export const CuratedViews: React.FC = () => {
         views={listResult.data?.curatedViews ?? []}
         isLoading={listResult.isLoading}
         isError={listResult.isError}
-        canManage={canManage}
+        createGate={createGate}
         hasActiveFilters={hasActiveFilters}
         paginationToolbar={<PaginationToolbar {...pagination.toolbarProps} />}
         onOpen={(view) => navigate({ to: `/views/${view.id}` })}

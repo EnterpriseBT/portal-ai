@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import MuiLink from "@mui/material/Link";
 
 import { SettingsTab } from "../utils/routes.util";
+import { useSettingsTabSwitch } from "../utils/settings-tab.context";
 import { UPGRADE_CTA_LABEL } from "../utils/tool-packs.util";
 
 export interface UpgradeLinkProps {
@@ -32,14 +33,23 @@ export interface UpgradeLinkProps {
 export const UpgradeLink: React.FC<UpgradeLinkProps> = ({
   label = UPGRADE_CTA_LABEL,
   variant = "body2",
-}) => (
-  <Link
-    to="/settings"
-    search={{ tab: SettingsTab.Billing }}
-    style={{ textDecoration: "none" }}
-  >
-    <MuiLink component="span" variant={variant} sx={{ cursor: "pointer" }}>
-      {label}
-    </MuiLink>
-  </Link>
-);
+}) => {
+  // #691: inside Settings, switch the tab (Settings reads ?tab= once).
+  const switchSettingsTab = useSettingsTabSwitch();
+  return (
+    <Link
+      to="/settings"
+      search={{ tab: SettingsTab.Billing }}
+      style={{ textDecoration: "none" }}
+      onClick={(e) => {
+        if (!switchSettingsTab) return;
+        e.preventDefault();
+        switchSettingsTab(SettingsTab.Billing);
+      }}
+    >
+      <MuiLink component="span" variant={variant} sx={{ cursor: "pointer" }}>
+        {label}
+      </MuiLink>
+    </Link>
+  );
+};

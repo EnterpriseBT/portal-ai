@@ -1,11 +1,11 @@
 import { jest } from "@jest/globals";
-import type { Station } from "@portalai/core/models";
+import type { StationListResponsePayload } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
 const { StationListUI, StationCardUI } =
   await import("../components/StationList.component");
 
-type StationFixture = Station & { enabledToolpacks?: string[] };
+type StationFixture = StationListResponsePayload["stations"][number];
 const makeStation = (
   overrides: Partial<StationFixture> = {}
 ): StationFixture => ({
@@ -20,6 +20,7 @@ const makeStation = (
   updatedBy: null,
   deleted: null,
   deletedBy: null,
+  capabilities: { read: true, write: true, delete: true, share: true },
   ...overrides,
 });
 
@@ -34,6 +35,7 @@ const station2 = makeStation({
 const defaultCardProps = {
   station: station1,
   isDefault: false,
+  canSetDefault: true,
   onSetDefault: jest.fn(),
   onOpen: jest.fn(),
   onDelete: jest.fn(),
@@ -109,6 +111,52 @@ describe("StationCardUI", () => {
     expect(onSetDefault).toHaveBeenCalledWith(station1);
   });
 
+  it("#690: shows Delete when the station's capabilities allow it", () => {
+    render(<StationCardUI {...defaultCardProps} />);
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("#690: hides Delete on a station the caller can't delete", () => {
+    render(
+      <StationCardUI
+        {...defaultCardProps}
+        station={makeStation({
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        })}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  });
+
+  it("#690: hides 'Set as default' without station.default.set", () => {
+    render(<StationCardUI {...defaultCardProps} canSetDefault={false} />);
+    expect(screen.queryByRole("button", { name: "Set as default" })).toBeNull();
+  });
+
+  it("#690: a read-only card with no default right renders no actions at all", () => {
+    render(
+      <StationCardUI
+        {...defaultCardProps}
+        canSetDefault={false}
+        station={makeStation({
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        })}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+  });
+
   it("should navigate when card is clicked", () => {
     const onOpen = jest.fn();
     render(<StationCardUI {...defaultCardProps} onOpen={onOpen} />);
@@ -120,6 +168,7 @@ describe("StationCardUI", () => {
 const defaultListProps = {
   stations: [station1, station2],
   defaultStationId: null as string | null,
+  canSetDefault: true,
   onSetDefault: jest.fn(),
   onOpen: jest.fn(),
   onDelete: jest.fn(),
@@ -130,6 +179,28 @@ describe("StationListUI", () => {
     render(<StationListUI {...defaultListProps} />);
     expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
     expect(screen.getByText("Finance Hub")).toBeInTheDocument();
+  });
+
+  it("#690: Delete shows only on the rows the caller may delete", () => {
+    render(
+      <StationListUI
+        {...defaultListProps}
+        stations={[
+          station1,
+          makeStation({
+            id: "station-2",
+            name: "Finance Hub",
+            capabilities: {
+              read: true,
+              write: false,
+              delete: false,
+              share: false,
+            },
+          }),
+        ]}
+      />
+    );
+    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
   });
 
   it("should show empty state when no stations", () => {

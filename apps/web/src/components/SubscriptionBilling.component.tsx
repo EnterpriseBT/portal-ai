@@ -1,7 +1,7 @@
 import React from "react";
 
 import Alert from "@mui/material/Alert";
-import { Box, Button, Stack, Tooltip, Typography } from "@portalai/core/ui";
+import { Box, Button, Stack, Typography } from "@portalai/core/ui";
 import Link from "@mui/material/Link";
 
 import { SALES_MAILTO } from "../utils/contact.util";
@@ -60,21 +60,10 @@ const synthesizeCurrentPlanTier = (
   price: null,
 });
 
-const BILLING_GATE_TOOLTIP = "You don't have permission to manage billing";
-
-/** Wrap a disabled action in the owner-only tooltip (the `span` keeps the
- *  tooltip firing on a disabled MUI button). Plain function, not a component. */
-const withBillingGate = (
-  canManageBilling: boolean,
-  action: React.ReactElement
-): React.ReactElement =>
-  canManageBilling ? (
-    action
-  ) : (
-    <Tooltip title={BILLING_GATE_TOOLTIP}>
-      <span>{action}</span>
-    </Tooltip>
-  );
+/** #691: shown once, in place of the plan-change and portal buttons a caller
+ *  without billing.manage doesn't get. */
+export const BILLING_PERMISSION_NOTE =
+  "You don't have permission to manage billing.";
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
@@ -86,7 +75,8 @@ export type SubscriptionBillingState =
 export interface SubscriptionBillingUIProps {
   /** Which of the tab's states to render (derived by the container). */
   state: SubscriptionBillingState;
-  /** Owner-only actions render disabled + tooltip for non-owners. */
+  /** The caller holds `billing.manage`; without it the plan and portal
+   *  actions are hidden (#691), and the note says the permission is missing. */
   canManageBilling: boolean;
   /** Human label of the org's current plan. */
   currentTierName: string;
@@ -134,6 +124,11 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
 
   return (
     <Stack spacing={2}>
+      {!canManageBilling && (
+        <Typography variant="body2" color="text.secondary">
+          {BILLING_PERMISSION_NOTE}
+        </Typography>
+      )}
       <FormAlert serverError={serverError} />
 
       <Typography variant="body1">
@@ -199,12 +194,11 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
 
       {state === "subscribed" && (
         <Box>
-          {withBillingGate(
-            canManageBilling,
+          {canManageBilling && (
             <Button
               type="button"
               variant="contained"
-              disabled={!canManageBilling || isPending}
+              disabled={isPending}
               onClick={onManage}
             >
               {isPending ? "Opening…" : "Manage subscription"}

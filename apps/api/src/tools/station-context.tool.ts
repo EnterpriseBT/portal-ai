@@ -98,7 +98,7 @@ interface StationContextResponse {
     }>;
   }>;
   /**
-   * The organization's column-definition catalog — the admin-curated set
+   * The organization's column-definition catalog — the curated set
    * of columns the agent maps to. `field_mapping_create` takes a
    * `columnDefinitionId` from this list; the agent has no
    * `column_definition_create` tool, so when a needed column isn't here it

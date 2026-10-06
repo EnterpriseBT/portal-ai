@@ -20,6 +20,9 @@ export const connectorInstanceLayoutPlans = {
   interpret: (connectorInstanceId: string) =>
     useAuthMutation<InterpretResponsePayload, InterpretRequestBody>({
       url: `${base(connectorInstanceId)}/interpret`,
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   getCurrent: (
@@ -59,10 +62,18 @@ export const connectorInstanceLayoutPlans = {
     useAuthMutation<LayoutPlanResponsePayload, PatchLayoutPlanBody>({
       url: `${base(connectorInstanceId)}/${encodeURIComponent(planId)}`,
       method: "PATCH",
+      // #689: plan edits are instance writes; a 403 refetches the instance
+      // so the editor falls back to its no-write notice.
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 
   commit: (connectorInstanceId: string, planId: string) =>
     useAuthMutation<LayoutPlanCommitResult, CommitLayoutPlanRequestBody>({
       url: `${base(connectorInstanceId)}/${encodeURIComponent(planId)}/commit`,
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
     }),
 };

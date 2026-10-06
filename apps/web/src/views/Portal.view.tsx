@@ -4,6 +4,7 @@ import type { PortalGetResponsePayload } from "@portalai/core/contracts";
 import {
   Box,
   Button,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
@@ -35,6 +36,7 @@ import { focusFirstInvalidField } from "../utils/form-validation.util";
 import { useLayout } from "../utils/layout.util";
 import { formatUsageValue } from "../utils/usage-format.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { decideActionGate } from "../utils/action-gate.util";
 
 // ── Portal data item component ──────────────────────────────────────
 
@@ -289,12 +291,18 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
   const renameMutation = sdk.portals.rename(portalId);
   const removeMutation = sdk.portals.remove(portalId);
   const touchMutation = sdk.portals.touch(portalId);
+  // #690: the same cached query PortalDataItem reads. Its capabilities decide
+  // the header's actions and whether opening the portal records lastOpened.
+  const canWrite =
+    sdk.portals.get(portalId).data?.portal.capabilities.write ?? false;
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Update lastOpened timestamp when the portal view is visited
+  // Update lastOpened when the portal view is visited, only for a caller who
+  // may write it (#690: an owner/admin viewing someone else's portal doesn't).
   React.useEffect(() => {
+    if (!canWrite) return;
     touchMutation.mutate(
       { lastOpened: DateFactory.now() },
       {
@@ -303,8 +311,8 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
         },
       }
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portalId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit; touchMutation and queryClient are stable enough and re-running on their identity would re-touch
+  }, [portalId, canWrite]);
 
   const handleRenameSubmit = useCallback(
     (name: string) => {
@@ -353,14 +361,17 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                   <PageHeader
                     title={item.portal.name}
                     primaryAction={
-                      <Button
+                      <GatedButton
                         size="small"
                         variant="contained"
                         startIcon={<EditIcon />}
                         onClick={() => setRenameOpen(true)}
+                        gate={decideActionGate({
+                          allowed: item.portal.capabilities.write,
+                        })}
                       >
                         Rename
-                      </Button>
+                      </GatedButton>
                     }
                     secondaryActions={[
                       {
@@ -368,6 +379,9 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                         icon: <DeleteIcon />,
                         onClick: () => setDeleteOpen(true),
                         color: "error",
+                        gate: decideActionGate({
+                          allowed: item.portal.capabilities.delete,
+                        }),
                       },
                     ]}
                   >

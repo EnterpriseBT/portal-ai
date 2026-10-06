@@ -7,7 +7,7 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
@@ -33,7 +33,7 @@ import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.c
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCapabilities } from "../utils/use-capabilities.util";
+import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 
@@ -51,8 +51,6 @@ export interface CuratedViewDetailUIProps {
   records: RecordRow[];
   recordsLoading: boolean;
   recordsError: boolean;
-  /** Whether the caller may edit/delete the view (admin). */
-  canManage: boolean;
   /** The rendered pagination toolbar (search / sort / page controls). */
   paginationToolbar: React.ReactNode;
   sortColumn?: string;
@@ -69,7 +67,6 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   records,
   recordsLoading,
   recordsError,
-  canManage,
   paginationToolbar,
   sortColumn,
   sortDirection,
@@ -78,6 +75,10 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   onDelete,
   onNavigate,
 }) => {
+  // #688: what this caller may do to this view.
+  const editGate = decideActionGate({ allowed: view.capabilities.write });
+  const deleteGate = decideActionGate({ allowed: view.capabilities.delete });
+
   let recordsBody: React.ReactNode;
   if (recordsError) {
     recordsBody = <EmptyResults />;
@@ -126,25 +127,28 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
           title={view.label}
           icon={<Icon name={IconName.Layers} />}
           primaryAction={
-            canManage ? (
+            editGate.kind === "hide" &&
+            deleteGate.kind === "hide" ? undefined : (
               <Stack direction="row" spacing={1}>
-                <Button
+                <GatedButton
+                  gate={editGate}
                   variant="outlined"
                   startIcon={<EditIcon />}
                   onClick={onEdit}
                 >
                   Edit
-                </Button>
-                <Button
+                </GatedButton>
+                <GatedButton
+                  gate={deleteGate}
                   variant="outlined"
                   color="error"
                   startIcon={<DeleteIcon />}
                   onClick={onDelete}
                 >
                   Delete
-                </Button>
+                </GatedButton>
               </Stack>
-            ) : undefined
+            )
           }
         />
 
@@ -191,9 +195,6 @@ export const CuratedViewDetail: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const { canOnResource } = useCapabilities();
-  const canManage = canOnResource("curated_view", "write");
-
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -287,7 +288,6 @@ export const CuratedViewDetail: React.FC = () => {
         records={recordsResult.data?.records ?? []}
         recordsLoading={recordsResult.isLoading}
         recordsError={recordsResult.isError}
-        canManage={canManage}
         paginationToolbar={<PaginationToolbar {...pagination.toolbarProps} />}
         sortColumn={pagination.sortBy}
         sortDirection={pagination.sortOrder}
@@ -297,6 +297,9 @@ export const CuratedViewDetail: React.FC = () => {
         onNavigate={(href) => navigate({ to: href })}
       />
       <CuratedViewEditorDialog
+        // #688: only the write-gated Edit button opens it. `open` isn't gated on
+        // capabilities itself: a save refused with a 403 refetches the view
+        // (onPermissionDenied), and the dialog must stay open to show why.
         open={editOpen}
         mode="edit"
         view={view}

@@ -30,6 +30,16 @@ const queryKeyValues = {
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // #690: PortalMessage gates Pin result on the caller's class pin write.
+    organizations: {
+      current: () => ({
+        data: {
+          resourcePermissions: {
+            pin: { read: true, write: true, delete: true, create: true },
+          },
+        },
+      }),
+    },
     connectorInstances: {
       delete: () =>
         ({

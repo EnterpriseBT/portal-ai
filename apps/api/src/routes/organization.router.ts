@@ -276,7 +276,7 @@ organizationRouter.patch(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: The caller is not the organization's owner
+ *         description: The caller lacks permission to delete the organization (PERMISSION_DENIED)
  *         content:
  *           application/json:
  *             schema:
@@ -343,7 +343,7 @@ organizationRouter.delete(
         );
       }
 
-      // Owner-only (#576). Throws INSUFFICIENT_ROLE-mapped ORGANIZATION_NOT_OWNER
+      // Gated on `org.delete` (#576). A refusal is PERMISSION_DENIED (#711)
       // for a non-owner (admin included — org deletion is owner-exclusive); the
       // outer catch forwards it.
       await PermissionService.check(req.application!.metadata, "org.delete");
@@ -401,7 +401,7 @@ organizationRouter.delete(
  * @openapi
  * /api/organization/members/{userId}/roles:
  *   put:
- *     summary: Set a member's complete role set (owner/admin)
+ *     summary: Set a member's complete role set (needs member.role.assign)
  *     description: >
  *       #620 multi-role set-the-set. Replaces the member's roles with the given
  *       set (the server diffs and adds/removes to match). Requires
@@ -534,7 +534,7 @@ organizationRouter.put(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: Not entitled to custom RBAC, or not an owner/admin
+ *         description: Not entitled to custom RBAC, or lacks permission to manage roles and access
  *         content:
  *           application/json:
  *             schema:
@@ -578,7 +578,7 @@ organizationRouter.put(
  * @openapi
  * /api/organization/invitations:
  *   post:
- *     summary: Invite a user to the organization (owner/admin)
+ *     summary: Invite a user to the organization (needs member.invite)
  *     tags: [Organization]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -595,7 +595,7 @@ organizationRouter.put(
  *             schema:
  *               $ref: '#/components/schemas/InvitationResponse'
  *       403:
- *         description: Caller's role may not invite
+ *         description: The caller lacks permission to invite members (PERMISSION_DENIED)
  *       409:
  *         description: Already a member, already invited, or seat limit reached
  */
@@ -639,7 +639,7 @@ organizationRouter.post(
  * @openapi
  * /api/organization/invitations:
  *   get:
- *     summary: List the organization's pending invitations (owner/admin)
+ *     summary: List the organization's pending invitations (needs member.invite)
  *     tags: [Organization]
  *     security: [{ bearerAuth: [] }]
  *     responses:
@@ -679,7 +679,7 @@ organizationRouter.get(
  * @openapi
  * /api/organization/invitations/{id}/revoke:
  *   post:
- *     summary: Revoke a pending invitation (owner/admin)
+ *     summary: Revoke a pending invitation (needs member.invite)
  *     tags: [Organization]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -727,7 +727,7 @@ organizationRouter.post(
  * @openapi
  * /api/organization/invitations/{id}/resend:
  *   post:
- *     summary: Rotate the token + extend expiry on a pending invitation (owner/admin)
+ *     summary: Rotate the token + extend expiry on a pending invitation (needs member.invite)
  *     tags: [Organization]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -775,7 +775,7 @@ organizationRouter.post(
  * @openapi
  * /api/organization/members:
  *   get:
- *     summary: List the organization's members (owner/admin)
+ *     summary: List the organization's members (any member, #621)
  *     tags: [Organization]
  *     security: [{ bearerAuth: [] }]
  *     responses:
@@ -895,7 +895,7 @@ organizationRouter.post(
  * @openapi
  * /api/organization/members/{userId}:
  *   delete:
- *     summary: Remove a member from the organization (owner/admin)
+ *     summary: Remove a member from the organization (needs member.remove)
  *     tags: [Organization]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -907,7 +907,7 @@ organizationRouter.post(
  *       204:
  *         description: Member removed
  *       403:
- *         description: Caller's role may not remove members
+ *         description: The caller lacks permission to remove members (PERMISSION_DENIED)
  *       404:
  *         description: Member not found in this organization
  *       409:
@@ -1403,7 +1403,7 @@ organizationRouter.get(
  *     tags:
  *       - Organization
  *     summary: List the current organization's security audit log
- *     description: Paginated, tamper-evident trail of security-relevant actions (#575) — logins, org/member changes, credential create/update/use, secret rotation, data export/delete. Newest-first by default; filterable by action and outcome. Owner-gated (widens to role='admin' with #576).
+ *     description: Paginated, tamper-evident trail of security-relevant actions (#575) — logins, org/member changes, credential create/update/use, secret rotation, data export/delete. Newest-first by default; filterable by action and outcome. Needs org.audit.read.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1460,7 +1460,7 @@ organizationRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: Caller is not the organization's owner
+ *         description: The caller lacks permission to view the audit log (PERMISSION_DENIED)
  *         content:
  *           application/json:
  *             schema:
@@ -1501,7 +1501,8 @@ organizationRouter.get(
       const organizationId = req.application?.metadata.organizationId as string;
 
       // Audit trail is owner + admin (#576 widened this from owner-only).
-      // Throws INSUFFICIENT_ROLE for a member; the outer catch forwards it.
+      // Throws PERMISSION_DENIED without `org.audit.read`; the outer catch
+      // forwards it.
       await PermissionService.check(
         req.application!.metadata,
         "org.audit.read"

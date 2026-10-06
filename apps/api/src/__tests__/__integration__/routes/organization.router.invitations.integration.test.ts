@@ -153,7 +153,7 @@ describe("Organization seats routes (#584)", () => {
     expect(revoked.body.payload.status).toBe("revoked");
   });
 
-  it("member: POST /invitations → 403 INSUFFICIENT_ROLE", async () => {
+  it("member: POST /invitations → 403 PERMISSION_DENIED", async () => {
     await seed("member");
     const res = await auth(
       request(app)
@@ -161,7 +161,7 @@ describe("Organization seats routes (#584)", () => {
         .send({ email: "x@x.com", role: "member" })
     );
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
   });
 
   it("rejects an invalid invite body → 400", async () => {

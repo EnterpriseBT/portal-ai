@@ -46,6 +46,7 @@ const twoGroups = {
         name: "Customer Identity",
         description: "Groups customer entities across connectors",
         memberCount: 3,
+        capabilities: { read: true, write: true, delete: true },
         created: Date.now(),
         createdBy: "system",
         updated: null,
@@ -59,6 +60,7 @@ const twoGroups = {
         name: "Product Catalog",
         description: null,
         memberCount: 0,
+        capabilities: { read: true, write: false, delete: false },
         created: Date.now(),
         createdBy: "system",
         updated: null,
@@ -102,6 +104,7 @@ describe("EntityGroupsView", () => {
   it("renders the page title", () => {
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -114,6 +117,7 @@ describe("EntityGroupsView", () => {
   it("renders breadcrumbs with Dashboard link", () => {
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -124,6 +128,7 @@ describe("EntityGroupsView", () => {
   it("renders group cards with name and description", () => {
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -140,6 +145,7 @@ describe("EntityGroupsView", () => {
 
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -150,6 +156,7 @@ describe("EntityGroupsView", () => {
   it("renders search bar in pagination toolbar", () => {
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -160,6 +167,7 @@ describe("EntityGroupsView", () => {
   it("renders Create Group button", () => {
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -173,6 +181,7 @@ describe("EntityGroupsView", () => {
     const user = userEvent.setup();
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -184,6 +193,7 @@ describe("EntityGroupsView", () => {
   it("renders member count on cards", () => {
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -195,6 +205,7 @@ describe("EntityGroupsView", () => {
   it("does not render description for group with null description", () => {
     render(
       <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
         onCreateGroup={mockOnCreateGroup}
         onDeleteGroup={mockOnDeleteGroup}
       />
@@ -205,5 +216,49 @@ describe("EntityGroupsView", () => {
     expect(
       screen.getByText("Groups customer entities across connectors")
     ).toBeInTheDocument();
+  });
+
+  // ── #689: gates ───────────────────────────────────────────────────
+  it("offers Delete only on groups the caller may delete", () => {
+    render(
+      <EntityGroupsViewUI
+        createGate={{ kind: "allow" }}
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
+    expect(screen.getAllByRole("button", { name: /^delete$/i })).toHaveLength(
+      1
+    );
+  });
+
+  it("shows Create disabled with the grant hint for a plausible caller", async () => {
+    const user = userEvent.setup();
+    render(
+      <EntityGroupsViewUI
+        createGate={{
+          kind: "disable",
+          reason: "Ask for access to create entity groups",
+        }}
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
+    const create = screen.getByRole("button", { name: /Create Group/i });
+    expect(create).toHaveAttribute("aria-disabled", "true");
+    await user.click(create);
+    expect(mockOnCreateGroup).not.toHaveBeenCalled();
+  });
+
+  it("hides Create, including in the empty state, for a hide gate", () => {
+    mockEntityGroupList.mockReturnValue(emptyGroups);
+    render(
+      <EntityGroupsViewUI
+        createGate={{ kind: "hide" }}
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
+    expect(screen.queryByRole("button", { name: /Create Group/i })).toBeNull();
   });
 });

@@ -1,5 +1,7 @@
 import { jest } from "@jest/globals";
-import type { PortalWithIncludes } from "@portalai/core/contracts";
+import type { PortalListResponsePayload } from "@portalai/core/contracts";
+
+type PortalWithIncludes = PortalListResponsePayload["portals"][number];
 
 const { render, screen, fireEvent } = await import("./test-utils");
 const { RecentPortalsListUI } =
@@ -19,6 +21,7 @@ const makePortal = (
   deleted: null,
   deletedBy: null,
   lastOpened: null,
+  capabilities: { read: true, write: true, delete: true },
   ...overrides,
 });
 
@@ -169,5 +172,22 @@ describe("RecentPortalsListUI", () => {
   it("should render a delete button for each portal", () => {
     render(<RecentPortalsListUI {...defaultProps} />);
     expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+  });
+
+  it("#690: Delete shows only on portals the caller may delete", () => {
+    render(
+      <RecentPortalsListUI
+        {...defaultProps}
+        portals={[
+          portal1,
+          makePortal({
+            id: "portal-3",
+            name: "Someone else's",
+            capabilities: { read: true, write: false, delete: false },
+          }),
+        ]}
+      />
+    );
+    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
   });
 });

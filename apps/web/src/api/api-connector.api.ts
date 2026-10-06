@@ -112,12 +112,24 @@ export const apiConnector = {
       useAuthMutation<ApiEndpointWire, PatchApiEndpointBody>({
         url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}`,
         method: "PATCH",
+        onPermissionDenied: {
+          invalidate: () => [
+            queryKeys.apiEndpoints.root,
+            queryKeys.connectorInstances.root,
+          ],
+        },
       }),
 
     delete: (instanceId: string, entityId: string) =>
       useAuthMutation<{ ok: true }, void>({
         url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}`,
         method: "DELETE",
+        onPermissionDenied: {
+          invalidate: () => [
+            queryKeys.apiEndpoints.root,
+            queryKeys.connectorInstances.root,
+          ],
+        },
       }),
 
     /**
@@ -134,6 +146,12 @@ export const apiConnector = {
       useAuthMutation<DiscoverColumnsResult, DiscoverColumnsRequestBody>({
         url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}/discover-columns`,
         method: "POST",
+        onPermissionDenied: {
+          invalidate: () => [
+            queryKeys.apiEndpoints.root,
+            queryKeys.connectorInstances.root,
+          ],
+        },
       }),
 
     /**

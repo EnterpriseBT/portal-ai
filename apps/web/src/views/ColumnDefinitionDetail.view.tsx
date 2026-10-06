@@ -11,8 +11,9 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
   DataTable,
+  GatedButton,
+  GatedIconButton,
   Icon,
   IconName,
   MetadataList,
@@ -24,7 +25,6 @@ import {
 } from "@portalai/core/ui";
 import type { ColumnConfig, DataTableColumn } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import IconButton from "@mui/material/IconButton";
 import AddIcon from "@mui/icons-material/Add";
 import CheckIcon from "@mui/icons-material/Check";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -35,6 +35,10 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { decideActionGate } from "../utils/action-gate.util";
+import { fieldMappingRowGates } from "../utils/entity-actions.util";
+import { columnDefinitionActionGates } from "../utils/column-definition-actions.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { TYPE_COLOR } from "../utils/column-definition-form.util";
 import { useStorage } from "../utils/storage.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
@@ -60,6 +64,12 @@ export const ColumnDefinitionDetailView: React.FC<
 > = ({ columnDefinitionId }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { canOnResource } = useCapabilities();
+  // #689: a field mapping create is an owned create; a section action, so
+  // without it Create is hidden rather than explained.
+  const createFieldMappingGate = decideActionGate({
+    allowed: canOnResource("field_mapping", "create"),
+  });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -194,6 +204,10 @@ export const ColumnDefinitionDetailView: React.FC<
           <DataResult results={{ item: itemResult }}>
             {({ item }: { item: ColumnDefinitionGetResponsePayload }) => {
               const cd = item.columnDefinition;
+              const gates = columnDefinitionActionGates({
+                capabilities: cd.capabilities,
+                system: cd.system,
+              });
               return (
                 <Stack spacing={4}>
                   <PageHeader
@@ -209,32 +223,26 @@ export const ColumnDefinitionDetailView: React.FC<
                     title={cd.label}
                     icon={<Icon name={IconName.ViewColumn} />}
                     primaryAction={
-                      <Button
-                        variant="contained"
-                        startIcon={<EditIcon />}
-                        onClick={() => setEditDialogOpen(true)}
-                        disabled={cd.system}
-                        title={
-                          cd.system
-                            ? "System column definitions are read-only"
-                            : undefined
-                        }
-                      >
-                        Edit
-                      </Button>
+                      gates.edit.kind === "hide" ? undefined : (
+                        <GatedButton
+                          variant="contained"
+                          startIcon={<EditIcon />}
+                          onClick={() => setEditDialogOpen(true)}
+                          gate={gates.edit}
+                        >
+                          Edit
+                        </GatedButton>
+                      )
                     }
-                    secondaryActions={
-                      cd.system
-                        ? []
-                        : [
-                            {
-                              label: "Delete",
-                              icon: <DeleteIcon />,
-                              onClick: () => setDeleteDialogOpen(true),
-                              color: "error",
-                            },
-                          ]
-                    }
+                    secondaryActions={[
+                      {
+                        label: "Delete",
+                        icon: <DeleteIcon />,
+                        onClick: () => setDeleteDialogOpen(true),
+                        color: "error",
+                        gate: gates.delete,
+                      },
+                    ]}
                   >
                     <MetadataList
                       direction="vertical"
@@ -303,14 +311,17 @@ export const ColumnDefinitionDetailView: React.FC<
                     title="Field Mappings"
                     icon={<Icon name={IconName.Link} />}
                     primaryAction={
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<AddIcon />}
-                        onClick={() => setCreateFieldMappingOpen(true)}
-                      >
-                        Create
-                      </Button>
+                      createFieldMappingGate.kind === "hide" ? undefined : (
+                        <GatedButton
+                          variant="outlined"
+                          size="small"
+                          startIcon={<AddIcon />}
+                          onClick={() => setCreateFieldMappingOpen(true)}
+                          gate={createFieldMappingGate}
+                        >
+                          Create
+                        </GatedButton>
+                      )
                     }
                   >
                     <PaginationToolbar {...mappingsPagination.toolbarProps} />
@@ -457,8 +468,12 @@ export const ColumnDefinitionDetailView: React.FC<
 
 // ── Field Mapping Table ─────────────────────────────────────────────
 
+/** A list row, with the caller's `capabilities` on it (#689). */
+type FieldMappingRow =
+  FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"][number];
+
 interface FieldMappingTableProps {
-  fieldMappings: FieldMappingWithConnectorEntity[];
+  fieldMappings: FieldMappingRow[];
   onEdit?: (fm: FieldMappingWithConnectorEntity) => void;
   onDelete?: (fm: FieldMappingWithConnectorEntity) => void;
 }
@@ -531,35 +546,38 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
             render: (_value: unknown, row: Record<string, unknown>) => {
               const fm = fieldMappings.find((f) => f.id === row.id);
               if (!fm) return null;
-              const writeEnabled =
-                fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
-                  ?.write === true;
+              const gates = fieldMappingRowGates({
+                capabilities: fm.capabilities,
+                isWriteEnabled:
+                  fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
+                    ?.write === true,
+              });
               return (
                 <Stack direction="row" spacing={0.5}>
-                  {onEdit && writeEnabled && (
-                    <IconButton
+                  {onEdit && (
+                    <GatedIconButton
                       size="small"
+                      gate={gates.edit}
                       onClick={(e) => {
                         e.stopPropagation();
                         onEdit(fm);
                       }}
                       aria-label="Edit field mapping"
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
+                      icon={IconName.Edit}
+                    />
                   )}
-                  {onDelete && writeEnabled && (
-                    <IconButton
+                  {onDelete && (
+                    <GatedIconButton
                       size="small"
                       color="error"
+                      gate={gates.delete}
                       onClick={(e) => {
                         e.stopPropagation();
                         onDelete(fm);
                       }}
                       aria-label="Delete field mapping"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                      icon={IconName.Delete}
+                    />
                   )}
                 </Stack>
               );

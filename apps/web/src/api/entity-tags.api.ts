@@ -69,6 +69,9 @@ export const entityTags = {
       {
         url: ENTITY_TAGS_URL,
         method: "POST",
+        // #689: a 403 means the caller's tag permissions changed; refetch so
+        // the gates re-render from them.
+        onPermissionDenied: { invalidate: () => [queryKeys.entityTags.root] },
       }
     ),
 
@@ -77,6 +80,7 @@ export const entityTags = {
       {
         url: `${ENTITY_TAGS_URL}/${encodeURIComponent(id)}`,
         method: "PATCH",
+        onPermissionDenied: { invalidate: () => [queryKeys.entityTags.root] },
       }
     ),
 
@@ -84,6 +88,7 @@ export const entityTags = {
     useAuthMutation<void, void>({
       url: `${ENTITY_TAGS_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.entityTags.root] },
     }),
 
   search: <TOption extends SelectOption = SelectOption>(

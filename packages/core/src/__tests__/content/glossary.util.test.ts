@@ -422,3 +422,20 @@ describe("Curated View term (#674)", () => {
     expect(station.relatedTerms).toContain("Curated View");
   });
 });
+
+// #711 (spec case 21): policies govern permissions; roles and groups only
+// package them. These entries describe access by permission, not by role.
+describe("GLOSSARY_ENTRIES describe access by permission (#711)", () => {
+  it.each(["Subscription Plan", "Billing Portal", "Permission Boundary"])(
+    "%s",
+    (term) => {
+      const entry = GLOSSARY_ENTRIES.find((e) => e.term === term);
+      expect(entry).toBeDefined();
+      const text = `${entry!.definition} ${entry!.example ?? ""}`;
+      expect(text).toMatch(/permission/i);
+      expect(text).not.toMatch(
+        /\b(the organization owner|an admin|their own role)\b/i
+      );
+    }
+  );
+});

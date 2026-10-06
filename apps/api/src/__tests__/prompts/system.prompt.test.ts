@@ -562,10 +562,10 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
     expect(prompt).toMatch(/can't find a table you just created/i);
   });
 
-  it("mentions _meta_column_catalog and states column definitions are admin-only", () => {
+  it("mentions _meta_column_catalog and states the agent can't create column definitions", () => {
     const prompt = buildSystemPrompt(makeContext());
     expect(prompt).toContain("_meta_column_catalog");
-    expect(prompt).toMatch(/admin-only/i);
+    expect(prompt).toMatch(/You cannot create new column definitions/);
     // Specifically must NOT promise the agent a column_definition_create tool.
     expect(prompt).not.toContain("column_definition_create");
   });
@@ -1054,5 +1054,17 @@ describe("buildSystemPrompt — Help (#367)", () => {
       makeContext({ effectiveToolPacks: [], entities: [] })
     );
     expect(prompt).toContain("## Help");
+  });
+
+  // #711 (spec case 8): policies govern permissions, so the prompt never
+  // tells the agent (or, through it, the user) that a role gates something.
+  it("never frames column definitions, or who to ask, by role", () => {
+    for (const ctx of [
+      makeContext(),
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] }),
+    ]) {
+      const prompt = buildSystemPrompt(ctx);
+      expect(prompt).not.toMatch(/admin-only|admin-curated|ask their admin/i);
+    }
   });
 });

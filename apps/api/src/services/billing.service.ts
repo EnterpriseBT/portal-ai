@@ -220,7 +220,7 @@ export class BillingService {
         "Billing is not configured in this environment"
       );
     }
-    // Owner-only (#576). check maps billing.manage deny → BILLING_NOT_OWNER,
+    // Gated on `billing.manage` (#576); a refusal is PERMISSION_DENIED (#711),
     // preserving the contract; runs after the configured-503 guard so the
     // documented order (configured → owner) is unchanged.
     await PermissionService.check(caller, "billing.manage");
@@ -314,7 +314,7 @@ export class BillingService {
         "Billing is not configured in this environment"
       );
     }
-    // Owner-only (#576). check maps billing.manage deny → BILLING_NOT_OWNER,
+    // Gated on `billing.manage` (#576); a refusal is PERMISSION_DENIED (#711),
     // preserving the contract; runs after the configured-503 guard so the
     // documented order (configured → owner) is unchanged.
     await PermissionService.check(caller, "billing.manage");

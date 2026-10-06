@@ -24,8 +24,16 @@ const noopSearch = () => ({
   labelMap: {},
 });
 
+// #689: the caller's type-level permissions (field-mapping create).
+let currentResourcePermissions: Record<string, Record<string, boolean>> = {};
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    organizations: {
+      current: () => ({
+        data: { resourcePermissions: currentResourcePermissions },
+      }),
+    },
     columnDefinitions: {
       get: () => currentGetQuery,
       update: () => noopMutation,
@@ -55,9 +63,15 @@ const { render, screen, fireEvent } = await import("./test-utils");
 const { ColumnDefinitionDetailView } =
   await import("../views/ColumnDefinitionDetail.view");
 
+// GET rows carry the caller's `capabilities` (#688).
 const makeColumnDefinition = (
-  overrides: Partial<ColumnDefinition> = {}
-): ColumnDefinition => ({
+  overrides: Partial<ColumnDefinition> & {
+    capabilities?: { read: boolean; write: boolean; delete: boolean };
+  } = {}
+): ColumnDefinition & {
+  capabilities: { read: boolean; write: boolean; delete: boolean };
+} => ({
+  capabilities: { read: true, write: true, delete: true },
   id: "cd-1",
   organizationId: "org-1",
   key: "first_name",
@@ -78,9 +92,13 @@ const makeColumnDefinition = (
   ...overrides,
 });
 
+// List rows carry the caller's `capabilities` (#688).
 const makeFieldMapping = (
   overrides: Partial<FieldMapping> = {}
-): FieldMapping => ({
+): FieldMapping & {
+  capabilities: { read: boolean; write: boolean; delete: boolean };
+} => ({
+  capabilities: { read: true, write: true, delete: true },
   id: "fm-1",
   organizationId: "org-1",
   connectorEntityId: "ce-1",
@@ -107,6 +125,9 @@ describe("ColumnDefinitionDetailView", () => {
   beforeEach(() => {
     currentGetQuery = {};
     currentFieldMappingListQuery = {};
+    currentResourcePermissions = {
+      field_mapping: { write: true, create: true },
+    };
   });
 
   it("should display loading state when query is loading", () => {
@@ -328,7 +349,7 @@ describe("ColumnDefinitionDetailView", () => {
       } as Partial<ListQuery>;
     });
 
-    it("disables Edit and hides Delete when the column definition is system", () => {
+    it("disables Edit and hides Delete when the column definition is system", async () => {
       const cd = makeColumnDefinition({ system: true });
       currentGetQuery = {
         data: { columnDefinition: cd },
@@ -339,10 +360,35 @@ describe("ColumnDefinitionDetailView", () => {
 
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
+      // #689: disabled with a reason the tooltip can show (a native
+      // `disabled` button never fires hover, so `title` was never seen).
       const edit = screen.getByRole("button", { name: /edit/i });
-      expect(edit).toBeDisabled();
+      expect(edit).toHaveAttribute("aria-disabled", "true");
+      fireEvent.mouseOver(edit);
+      expect(
+        await screen.findByText("System column definitions are read-only")
+      ).toBeInTheDocument();
 
       // Secondary actions menu (which hosts Delete) is absent when empty.
+      expect(
+        screen.queryByRole("button", { name: /more actions/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders no Edit or Delete for a caller who can only read it (#689)", () => {
+      const cd = makeColumnDefinition({
+        capabilities: { read: true, write: false, delete: false },
+      });
+      currentGetQuery = {
+        data: { columnDefinition: cd },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<GetQuery>;
+
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
       expect(
         screen.queryByRole("button", { name: /more actions/i })
       ).not.toBeInTheDocument();
@@ -407,7 +453,8 @@ describe("ColumnDefinitionDetailView", () => {
 
   describe("Write capability gating for field mappings", () => {
     const setupWithCapability = (
-      enabledCapabilityFlags: { write?: boolean } | null
+      enabledCapabilityFlags: { write?: boolean } | null,
+      capabilities = { read: true, write: true, delete: true }
     ) => {
       const cd = makeColumnDefinition();
       const fm = {
@@ -416,6 +463,7 @@ describe("ColumnDefinitionDetailView", () => {
           sourceField: "email",
           connectorEntityId: "ce-1",
         }),
+        capabilities,
         connectorEntity: {
           id: "ce-1",
           organizationId: "org-1",
@@ -447,28 +495,33 @@ describe("ColumnDefinitionDetailView", () => {
       } as Partial<ListQuery>;
     };
 
-    it("hides field mapping edit/delete buttons when write is explicitly disabled", () => {
+    it("disables field mapping edit/delete, naming why, when the connector's writes are off", () => {
       setupWithCapability({ write: false });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      expect(
-        screen.queryByLabelText("Edit field mapping")
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Delete field mapping")
-      ).not.toBeInTheDocument();
+      for (const label of ["Edit field mapping", "Delete field mapping"]) {
+        expect(screen.getByLabelText(label)).toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+      }
     });
 
-    it("shows field mapping edit/delete buttons when write is explicitly enabled", () => {
+    it("shows field mapping edit/delete buttons when write is enabled", () => {
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      expect(screen.getByLabelText("Edit field mapping")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit field mapping")).not.toHaveAttribute(
+        "aria-disabled"
+      );
       expect(screen.getByLabelText("Delete field mapping")).toBeInTheDocument();
     });
 
-    it("hides field mapping edit/delete when enabledCapabilityFlags is null", () => {
-      setupWithCapability(null);
+    it("hides field mapping edit/delete the caller can't perform on the row (#689)", () => {
+      setupWithCapability(
+        { write: true },
+        { read: true, write: false, delete: false }
+      );
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
       expect(
@@ -476,6 +529,20 @@ describe("ColumnDefinitionDetailView", () => {
       ).not.toBeInTheDocument();
       expect(
         screen.queryByLabelText("Delete field mapping")
+      ).not.toBeInTheDocument();
+    });
+
+    // #708 (spec case 18): `write` alone (e.g. an instance-only grant) isn't
+    // `create`.
+    it("hides the field mapping Create without field_mapping create (#689)", () => {
+      currentResourcePermissions = {
+        field_mapping: { write: true, create: false },
+      };
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(
+        screen.queryByRole("button", { name: /^Create$/ })
       ).not.toBeInTheDocument();
     });
   });

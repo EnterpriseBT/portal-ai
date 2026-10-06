@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { FieldMappingSchema } from "../models/field-mapping.model.js";
@@ -39,7 +41,8 @@ export type FieldMappingListRequestQuery = z.infer<
 
 export const FieldMappingListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    fieldMappings: z.array(FieldMappingSchema),
+    /** #688: each row with the caller's capabilities. */
+    fieldMappings: z.array(withCapabilities(FieldMappingSchema)),
   });
 
 export type FieldMappingListResponsePayload = z.infer<
@@ -48,7 +51,9 @@ export type FieldMappingListResponsePayload = z.infer<
 
 export const FieldMappingListWithConnectorEntityResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    fieldMappings: z.array(FieldMappingWithConnectorEntitySchema),
+    fieldMappings: z.array(
+      withCapabilities(FieldMappingWithConnectorEntitySchema)
+    ),
   });
 
 export type FieldMappingListWithConnectorEntityResponsePayload = z.infer<
@@ -57,7 +62,9 @@ export type FieldMappingListWithConnectorEntityResponsePayload = z.infer<
 
 export const FieldMappingListWithColumnDefinitionResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    fieldMappings: z.array(FieldMappingWithColumnDefinitionSchema),
+    fieldMappings: z.array(
+      withCapabilities(FieldMappingWithColumnDefinitionSchema)
+    ),
   });
 
 export type FieldMappingListWithColumnDefinitionResponsePayload = z.infer<
@@ -67,7 +74,7 @@ export type FieldMappingListWithColumnDefinitionResponsePayload = z.infer<
 // ── Get ───────────────────────────────────────────────────────────────
 
 export const FieldMappingGetResponsePayloadSchema = z.object({
-  fieldMapping: FieldMappingSchema,
+  fieldMapping: withCapabilities(FieldMappingSchema),
 });
 
 export type FieldMappingGetResponsePayload = z.infer<

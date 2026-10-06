@@ -58,13 +58,13 @@ const COPY: Record<Exclude<AcceptInvitationStatus, "pending">, StateCopy> = {
     icon: IconName.Warning,
     color: "warning",
     title: "This invitation has expired",
-    body: "Ask an admin of the organization to send you a fresh invite link.",
+    body: "Ask the person who invited you for a fresh invite link.",
   },
   invalid: {
     icon: IconName.Error,
     color: "error",
     title: "This invitation link is no longer valid",
-    body: "It may have already been used or been revoked. Ask an admin to resend it.",
+    body: "It may have already been used or been revoked. Ask the person who invited you to resend it.",
   },
   missingToken: {
     icon: IconName.Error,
@@ -76,7 +76,7 @@ const COPY: Record<Exclude<AcceptInvitationStatus, "pending">, StateCopy> = {
     icon: IconName.Error,
     color: "error",
     title: "Couldn't accept this invitation",
-    body: "Something went wrong. Please try again, or ask an admin to resend it.",
+    body: "Something went wrong. Please try again, or ask the person who invited you to resend it.",
   },
 };
 

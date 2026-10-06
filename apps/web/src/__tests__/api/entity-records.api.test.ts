@@ -106,6 +106,7 @@ describe("entity-records.api", () => {
       entityRecords.create("ce-1");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-entities/ce-1/records",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -115,6 +116,7 @@ describe("entity-records.api", () => {
       entityRecords.import("ce-1");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-entities/ce-1/records/import",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -125,6 +127,7 @@ describe("entity-records.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-entities/ce-1/records/rec-1",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -135,6 +138,7 @@ describe("entity-records.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-entities/ce-1/records",
         method: "DELETE",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -145,6 +149,7 @@ describe("entity-records.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-entities/ce-1/records/rec-1",
         method: "DELETE",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -154,6 +159,7 @@ describe("entity-records.api", () => {
       entityRecords.revalidate("ce-1");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-entities/ce-1/records/revalidate",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
 
@@ -161,7 +167,28 @@ describe("entity-records.api", () => {
       entityRecords.revalidate("ce/with/slashes");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-entities/ce%2Fwith%2Fslashes/records/revalidate",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
+    });
+  });
+
+  // #689: a 403 refetches the entityRecords so the gates re-render.
+  describe("onPermissionDenied", () => {
+    it.each([
+      ["create", () => entityRecords.create("ce-1")],
+      ["import", () => entityRecords.import("ce-1")],
+      ["clear", () => entityRecords.clear("ce-1")],
+      ["update", () => entityRecords.update("ce-1", "rec-1")],
+      ["delete", () => entityRecords.delete("ce-1", "rec-1")],
+      ["revalidate", () => entityRecords.revalidate("ce-1")],
+    ])("%s invalidates entityRecords.root", (_name, call) => {
+      call();
+      const config = mockUseAuthMutation.mock.calls[0][0] as {
+        onPermissionDenied: { invalidate: (vars: unknown) => unknown };
+      };
+      expect(config.onPermissionDenied.invalidate(undefined)).toEqual([
+        ["entityRecords"],
+      ]);
     });
   });
 });

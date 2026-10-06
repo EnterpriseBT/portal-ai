@@ -151,6 +151,11 @@ describe("Organization Router", () => {
         "member.role.assign": true,
         "member.invite": true,
         "member.remove": true,
+        // #690: derived from class write on station (the default-station PATCH).
+        "station.default.set": true,
+        // #689: derived from class write / delete on entity_record.
+        "entity_record.revalidate": true,
+        "entity_record.clear": true,
       });
     });
 
@@ -420,7 +425,7 @@ describe("Organization Router", () => {
       expect(res.body.code).toBe(ApiCode.ORGANIZATION_NOT_FOUND);
     });
 
-    it("returns 403 ORGANIZATION_NOT_OWNER for a non-owner member (case 14)", async () => {
+    it("returns 403 PERMISSION_DENIED for a caller without org delete (case 14)", async () => {
       const d = db as ReturnType<typeof drizzle>;
       const now = Date.now();
 
@@ -487,7 +492,11 @@ describe("Organization Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({ confirmationName: "Shared Org" });
       expect(res.status).toBe(403);
-      expect(res.body.code).toBe(ApiCode.ORGANIZATION_NOT_OWNER);
+      expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+      // #711: names the permission, not a role.
+      expect(res.body.message).toBe(
+        "You don't have permission to delete the organization."
+      );
 
       // Server-side authz means the org survives even a correct name.
       const [stillLive] = await d

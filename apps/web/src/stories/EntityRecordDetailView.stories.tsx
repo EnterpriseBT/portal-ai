@@ -1,7 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { EntityRecordDetailViewUI } from "../views/EntityRecordDetail.view";
-import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
-import type { ResolvedColumn } from "@portalai/core/contracts";
+import type { ConnectorEntity } from "@portalai/core/models";
+import type {
+  EntityRecordGetResponsePayload,
+  ResolvedColumn,
+} from "@portalai/core/contracts";
 
 const stubEntity: ConnectorEntity = {
   id: "ent-1",
@@ -17,7 +20,7 @@ const stubEntity: ConnectorEntity = {
   deletedBy: null,
 };
 
-const stubRecord: EntityRecord = {
+const stubRecord: EntityRecordGetResponsePayload["record"] = {
   id: "rec-f47ac10b-58cc-4372-a567-0e02b2c3d479",
   organizationId: "org-1",
   connectorEntityId: "ent-1",
@@ -44,6 +47,7 @@ const stubRecord: EntityRecord = {
   updatedBy: "user-abc",
   deleted: null,
   deletedBy: null,
+  capabilities: { read: true, write: true, delete: true },
 };
 
 const stubColumns: ResolvedColumn[] = [

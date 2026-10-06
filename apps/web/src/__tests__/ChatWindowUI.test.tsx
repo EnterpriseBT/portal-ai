@@ -293,6 +293,52 @@ describe("ChatWindowUI", () => {
     });
   });
 
+  describe("Locked by a running job (#690)", () => {
+    const reason = "1 bulk operation running — input unlocks when it finishes.";
+
+    it("says why the input is locked, under the input", () => {
+      render(
+        <ChatWindowUI
+          {...createProps({
+            disabled: true,
+            isStreaming: false,
+            lockedReason: reason,
+          })}
+        />
+      );
+      expect(screen.getByText(reason)).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)
+      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+    });
+
+    it("keeps Cancel disabled while locked but not streaming (nothing to cancel)", () => {
+      render(
+        <ChatWindowUI
+          {...createProps({
+            disabled: true,
+            isStreaming: false,
+            lockedReason: reason,
+          })}
+        />
+      );
+      expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+    });
+
+    it("enables Cancel while a response streams", () => {
+      render(
+        <ChatWindowUI {...createProps({ disabled: true, isStreaming: true })} />
+      );
+      expect(screen.getByRole("button", { name: /cancel/i })).toBeEnabled();
+    });
+
+    it("shows no lock note without a reason", () => {
+      render(<ChatWindowUI {...createProps({ disabled: true })} />);
+      expect(screen.queryByText(/bulk operation/)).toBeNull();
+    });
+  });
+
   describe("Keyboard Interaction", () => {
     it("calls onSubmit with value when Enter is pressed without Shift", () => {
       const props = createProps();

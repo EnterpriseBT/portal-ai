@@ -1,7 +1,10 @@
 import type {
   PinResultBody,
+  PortalResultGetResponsePayload,
+  PortalResultListResponsePayload,
   WidgetRefreshResponse,
 } from "@portalai/core/contracts";
+import type { PortalResult } from "@portalai/core/models";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -17,22 +20,14 @@ export type PortalResultsListParams = {
   include?: string;
 };
 
-export interface PortalResultsListPayload {
-  portalResults: unknown[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+/** #688: the list and GET are typed by the core contracts; each pin carries
+ *  the caller's `capabilities` (share/write/delete) on it. */
+export type PortalResultsListPayload = PortalResultListResponsePayload;
+export type PortalResultPayload = PortalResultGetResponsePayload;
 
-export interface PortalResultPayload {
-  portalResult: unknown;
-  /** #621: per-object capabilities the caller holds on this pin — gate the
-   *  Share / Rename / Delete+Unpin entry points so a read-only grantee isn't
-   *  shown an action that 403s. Present on the GET-by-id response; absent on
-   *  mutation responses. */
-  canShare?: boolean;
-  canWrite?: boolean;
-  canDelete?: boolean;
+/** What pin/rename return: the row, without capabilities. */
+export interface PortalResultMutationPayload {
+  portalResult: PortalResult;
 }
 
 export interface RenamePortalResultBody {
@@ -60,14 +55,15 @@ export const portalResults = {
     ),
 
   pin: () =>
-    useAuthMutation<PortalResultPayload, PinResultBody>({
+    useAuthMutation<PortalResultMutationPayload, PinResultBody>({
       url: "/api/portal-results",
     }),
 
   rename: (id: string) =>
-    useAuthMutation<PortalResultPayload, RenamePortalResultBody>({
+    useAuthMutation<PortalResultMutationPayload, RenamePortalResultBody>({
       url: `/api/portal-results/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 
   /**
@@ -82,6 +78,7 @@ export const portalResults = {
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}`,
       method: "DELETE",
       body: () => undefined,
+      onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 
   /**
@@ -95,5 +92,6 @@ export const portalResults = {
     useAuthMutation<WidgetRefreshResponse, { id: string }>({
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}/refresh`,
       body: () => undefined,
+      onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 };

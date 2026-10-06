@@ -52,10 +52,12 @@ describe("portal-results.api", () => {
   describe("rename", () => {
     it("sends PATCH to /api/portal-results/:id", () => {
       portalResults.rename("result-123");
-      expect(mockUseAuthMutation).toHaveBeenCalledWith({
-        url: "/api/portal-results/result-123",
-        method: "PATCH",
-      });
+      expect(mockUseAuthMutation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "/api/portal-results/result-123",
+          method: "PATCH",
+        })
+      );
     });
   });
 
@@ -89,5 +91,31 @@ describe("portal-results.api", () => {
 
       expect(config.url({ id: "a b/c" })).toBe("/api/portal-results/a%20b%2Fc");
     });
+  });
+
+  // #688/#711: a 403 on a pin mutation means the caller's access changed
+  // under an open page, so the pins re-fetch and their affordances re-render.
+  describe("onPermissionDenied", () => {
+    type MutationConfig = {
+      onPermissionDenied?: { invalidate: (vars: unknown) => unknown[] };
+    };
+    const lastConfig = () => {
+      const calls = mockUseAuthMutation.mock.calls;
+      return calls[calls.length - 1][0] as unknown as MutationConfig;
+    };
+
+    it.each([
+      ["rename", () => portalResults.rename("result-123")],
+      ["remove", () => portalResults.remove()],
+      ["refresh", () => portalResults.refresh()],
+    ])(
+      "%s invalidates portalResults.root on a permission denial",
+      (_, call) => {
+        call();
+        expect(lastConfig().onPermissionDenied?.invalidate(undefined)).toEqual([
+          queryKeys.portalResults.root,
+        ]);
+      }
+    );
   });
 });

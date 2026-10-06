@@ -28,9 +28,9 @@ import type { GateableTool } from "./cost-gate.service.js";
  *        {@link RbacObjectResolver}) and checks per object (batches are bounded
  *        ≤ 100 by the tool schema, so this is O(items), not O(table)).
  *      - `bulk` — an unbounded whole-entity scan checks *class-level* write
- *        (no `createdBy`), which only an **unconditional** grant (admin)
- *        satisfies; a member's conditional write cannot, so bulk scanners are
- *        admin-only. One check, zero per-row work.
+ *        (no `createdBy`), which only an **unconditional** grant satisfies;
+ *        a conditional (own-rows) write cannot, so bulk scanners need the
+ *        unconditional grant. One check, zero per-row work.
  *  - **catch** — any `ApiError(403)` thrown inside `execute` (e.g. an
  *    `rbac_management` tool's own service gate) is converted to the same
  *    refusal.
@@ -112,8 +112,8 @@ export function wrapWithPermissionGate(
           } else if (auth.mode === "bulk") {
             // An unbounded whole-entity scan requires *unconditional*
             // (class-level) write on the type — a member's created_by_caller
-            // write does not satisfy it, so bulk scanners are admin-only. One
-            // check, zero per-row work (O(1)).
+            // write does not satisfy it, so bulk scanners need the
+            // unconditional grant. One check, zero per-row work (O(1)).
             allowed = permissionSet.can(action, {
               type: auth.resourceType,
             } as PermissionObject);
@@ -154,7 +154,7 @@ export function wrapWithPermissionGate(
         }
         if (!allowed) {
           return permissionDenied(
-            `You do not have permission to ${auth.verb} this ${auth.resourceType}.`
+            `You don't have permission to ${auth.verb} this ${auth.resourceType}.`
           );
         }
       }

@@ -10,6 +10,7 @@
  * admin, the same rule as cancel), sees the job's state but not its payload.
  */
 
+import { JobControlService } from "./job-control.service.js";
 import type { PermissionContext } from "./permission.service.js";
 import type { PermissionSet } from "./permission-set.js";
 
@@ -20,16 +21,13 @@ interface JobLike {
 }
 
 export class JobPayloadRedactionService {
-  /** The creator, or a caller with unconditional job control, sees payloads. */
+  /** Whoever controls the job (`JobControlService`) sees its payloads. */
   static canSeePayload(
     ctx: PermissionContext,
     set: PermissionSet,
     job: { createdBy: string }
   ): boolean {
-    return (
-      job.createdBy === ctx.userId ||
-      set.can("resource.delete", { type: "job" })
-    );
+    return JobControlService.canControl(ctx, set, job);
   }
 
   /** The job with `metadata` emptied and `result` nulled unless visible. */

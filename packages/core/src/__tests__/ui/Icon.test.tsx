@@ -11,6 +11,11 @@ describe("Icon Component", () => {
       expect(screen.getByTestId("home-icon")).toBeInTheDocument();
     });
 
+    it("should render the Edit icon", () => {
+      render(<Icon name={IconName.Edit} data-testid="edit-icon" />);
+      expect(screen.getByTestId("edit-icon")).toBeInTheDocument();
+    });
+
     it("should render with valid props", () => {
       const validProps: IconProps = {
         name: IconName.Delete,

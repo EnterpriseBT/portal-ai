@@ -495,11 +495,12 @@ describe("PinnedResultDetailView container — remove", () => {
     mockRemove.mockReset().mockResolvedValue(undefined);
     currentGetQuery = {
       data: {
-        portalResult: makePinnedResult(),
-        // #621: the container gates Unpin/Delete on these server capabilities.
-        canShare: true,
-        canWrite: true,
-        canDelete: true,
+        // #621/#688: the container gates Unpin/Delete on the pin's
+        // server-computed capabilities.
+        portalResult: {
+          ...makePinnedResult(),
+          capabilities: { read: true, write: true, delete: true, share: true },
+        },
       },
       isLoading: false,
       error: null,

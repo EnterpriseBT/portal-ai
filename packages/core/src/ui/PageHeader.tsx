@@ -5,7 +5,7 @@ import Stack from "@mui/material/Stack";
 
 import { Breadcrumbs } from "./Breadcrumbs.js";
 import type { BreadcrumbItem, BreadcrumbsProps } from "./Breadcrumbs.js";
-import { ActionsMenu } from "./ActionsMenu.js";
+import { ActionsMenu, visibleActionItems } from "./ActionsMenu.js";
 import type { ActionMenuItem } from "./ActionsMenu.js";
 
 export { BreadcrumbItem };
@@ -47,7 +47,8 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
     },
     ref
   ) => {
-    const hasSecondaryActions = secondaryActions && secondaryActions.length > 0;
+    // #688: hidden actions don't count; an all-hidden menu isn't rendered.
+    const hasSecondaryActions = visibleActionItems(secondaryActions).length > 0;
     const hasActions = primaryAction || hasSecondaryActions;
 
     return (
@@ -101,7 +102,7 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
               >
                 {primaryAction}
                 {hasSecondaryActions && (
-                  <ActionsMenu items={secondaryActions} />
+                  <ActionsMenu items={secondaryActions ?? []} />
                 )}
               </Stack>
             )}

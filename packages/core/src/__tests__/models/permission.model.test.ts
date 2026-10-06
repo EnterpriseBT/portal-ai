@@ -431,7 +431,7 @@ describe("PagePermissionMapSchema (#630)", () => {
 });
 
 describe("ResourcePermissionMapSchema (#630)", () => {
-  const rwx = { read: true, write: false, delete: false };
+  const rwx = { read: true, write: false, delete: false, create: false };
   const full = Object.fromEntries(
     RESOURCE_PERMISSION_TYPES.map((t) => [t, rwx])
   );
@@ -451,7 +451,7 @@ describe("ResourcePermissionMapSchema (#630)", () => {
     expect(PERMISSION_VERBS).toContain("view");
   });
 
-  it("accepts a full read/write/delete map", () => {
+  it("accepts a full read/write/delete/create map", () => {
     expect(ResourcePermissionMapSchema.safeParse(full).success).toBe(true);
   });
 
@@ -460,6 +460,17 @@ describe("ResourcePermissionMapSchema (#630)", () => {
       ResourcePermissionMapSchema.safeParse({
         ...full,
         toolpack: { read: true, write: true },
+      }).success
+    ).toBe(false);
+  });
+
+  // #708 (spec case 1): `create` is the create gate, computed by the create
+  // route's own check, so the server always sends it.
+  it("requires `create` on every entry", () => {
+    expect(
+      ResourcePermissionMapSchema.safeParse({
+        ...full,
+        tag: { read: true, write: true, delete: true },
       }).success
     ).toBe(false);
   });
@@ -518,6 +529,14 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
       "member.role.assign": { verb: "manage", resourceType: "member" },
       "member.invite": { verb: "invite", resourceType: "member" },
       "member.remove": { verb: "delete", resourceType: "member" },
+      // #690: derived; granted by class `write station` (the org PATCH's rule).
+      "station.default.set": { verb: "write", resourceType: "station" },
+      // #689: derived; the record revalidate / clear routes' class checks.
+      "entity_record.revalidate": {
+        verb: "write",
+        resourceType: "entity_record",
+      },
+      "entity_record.clear": { verb: "delete", resourceType: "entity_record" },
     };
     for (const action of CALLER_CAPABILITY_ACTIONS) {
       const { verb, resourceType } = CAPABILITY_PAIRS[action];

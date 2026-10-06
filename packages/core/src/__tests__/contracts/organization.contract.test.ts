@@ -5,6 +5,7 @@ import {
   MemberRolesSetRequestSchema,
 } from "../../contracts/organization.contract.js";
 import { OrganizationModelFactory } from "../../models/organization.model.js";
+import { RESOURCE_PERMISSION_TYPES } from "../../models/permission.model.js";
 
 // ── GET /organization response (#620) ────────────────────────────────
 
@@ -21,6 +22,9 @@ describe("OrganizationGetResponseSchema (#620)", () => {
     "member.role.assign": true,
     "member.invite": true,
     "member.remove": true,
+    "station.default.set": true,
+    "entity_record.revalidate": true,
+    "entity_record.clear": true,
   };
   const base = {
     organization,
@@ -47,6 +51,29 @@ describe("OrganizationGetResponseSchema (#620)", () => {
     expect(OrganizationGetResponseSchema.safeParse(withoutRoles).success).toBe(
       false
     );
+  });
+
+  // #708 (spec case 2): each resourcePermissions entry carries `create`.
+  it("accepts resourcePermissions entries carrying `create`", () => {
+    const resourcePermissions = Object.fromEntries(
+      RESOURCE_PERMISSION_TYPES.map((t) => [
+        t,
+        { read: true, write: true, delete: true, create: t !== "job" },
+      ])
+    );
+    expect(
+      OrganizationGetResponseSchema.safeParse({ ...base, resourcePermissions })
+        .success
+    ).toBe(true);
+    expect(
+      OrganizationGetResponseSchema.safeParse({
+        ...base,
+        resourcePermissions: {
+          ...resourcePermissions,
+          tag: { read: true, write: true, delete: true },
+        },
+      }).success
+    ).toBe(false);
   });
 
   it("rejects a response missing capabilities", () => {

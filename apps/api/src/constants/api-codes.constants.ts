@@ -46,16 +46,23 @@ export enum ApiCode {
   /** The authed user has no live membership in the target org (switch authz). */
   MEMBERSHIP_NOT_FOUND = "MEMBERSHIP_NOT_FOUND",
   ORGANIZATION_INVALID_PAYLOAD = "ORGANIZATION_INVALID_PAYLOAD",
-  /** DELETE authz: the caller is a member but not the org's owner. 403. */
-  ORGANIZATION_NOT_OWNER = "ORGANIZATION_NOT_OWNER",
+  /** #711: the request names an organization other than the caller's current
+   *  one. A tenancy refusal, not a permission. 403. */
+  ORGANIZATION_MISMATCH = "ORGANIZATION_MISMATCH",
   /** DELETE confirmation: `confirmationName` doesn't match the org's name. 400. */
   ORGANIZATION_CONFIRMATION_MISMATCH = "ORGANIZATION_CONFIRMATION_MISMATCH",
   /** DELETE cascade failed server-side (transaction rolled back). 500. */
   ORGANIZATION_DELETE_FAILED = "ORGANIZATION_DELETE_FAILED",
 
   // Authorization / RBAC (#576)
-  /** The caller's role lacks the permission required for this action. 403. */
-  INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE",
+  /** #711: only the owner may assign or remove the owner/admin roles. A rule
+   *  about roles (an accepted heuristic, not a policy permission), so it names
+   *  them. 403. */
+  MEMBER_ROLE_ASSIGNMENT_RESTRICTED = "MEMBER_ROLE_ASSIGNMENT_RESTRICTED",
+  /** #711: the caller lacks the permission the action needs. The message names
+   *  it ("You don't have permission to manage billing."); policies govern
+   *  permissions, so it never says which role. 403. */
+  PERMISSION_DENIED = "PERMISSION_DENIED",
   /** A share/grant would give access the granter doesn't hold (boundary, #621). 403. */
   RBAC_GRANT_EXCEEDS_BOUNDARY = "RBAC_GRANT_EXCEEDS_BOUNDARY",
   /** The share grantee is not an active member of the organization (#621). 400. */
@@ -105,8 +112,6 @@ export enum ApiCode {
   // Billing (#176)
   /** Stripe env keys absent in this environment. 503. */
   BILLING_NOT_CONFIGURED = "BILLING_NOT_CONFIGURED",
-  /** Caller is a member but not the org's owner. 403. */
-  BILLING_NOT_OWNER = "BILLING_NOT_OWNER",
   /** Org already has a live subscription — plan changes go through the portal (Q1). 409. */
   BILLING_ALREADY_SUBSCRIBED = "BILLING_ALREADY_SUBSCRIBED",
   /** Org is on a managed custom tier — self-serve checkout is server-blocked (D5). 409. */
@@ -783,9 +788,6 @@ export enum ApiCode {
   // Security audit log (#575)
   /** Malformed audit-log query (unknown sortBy / bad pagination). 400. */
   AUDIT_LOG_INVALID_QUERY = "AUDIT_LOG_INVALID_QUERY",
-  /** Caller is not the organization's owner (audit read is owner-gated;
-   *  widens to role='admin' with #576). 403. */
-  AUDIT_LOG_NOT_AUTHORIZED = "AUDIT_LOG_NOT_AUTHORIZED",
   /** Audit-log read failed. 500. */
   AUDIT_LOG_FETCH_FAILED = "AUDIT_LOG_FETCH_FAILED",
 

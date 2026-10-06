@@ -51,6 +51,9 @@ export const entityRecords = {
       EntityRecordCreateRequestBody
     >({
       url: recordsUrl(connectorEntityId),
+      // #689: a 403 means the caller's record permissions changed; refetch so
+      // the gates re-render from them.
+      onPermissionDenied: { invalidate: () => [queryKeys.entityRecords.root] },
     }),
 
   import: (connectorEntityId: string) =>
@@ -59,6 +62,7 @@ export const entityRecords = {
       EntityRecordImportRequestBody
     >({
       url: recordsUrl(connectorEntityId, "/import"),
+      onPermissionDenied: { invalidate: () => [queryKeys.entityRecords.root] },
     }),
 
   clear: (connectorEntityId: string) =>
@@ -67,6 +71,7 @@ export const entityRecords = {
     useAuthMutation<JobCreateResponsePayload, void>({
       url: recordsUrl(connectorEntityId),
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.entityRecords.root] },
     }),
 
   get: (
@@ -88,16 +93,19 @@ export const entityRecords = {
     >({
       url: recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.entityRecords.root] },
     }),
 
   delete: (connectorEntityId: string, recordId: string) =>
     useAuthMutation<void, void>({
       url: recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.entityRecords.root] },
     }),
 
   revalidate: (connectorEntityId: string) =>
     useAuthMutation<JobCreateResponsePayload, void>({
       url: recordsUrl(connectorEntityId, "/revalidate"),
+      onPermissionDenied: { invalidate: () => [queryKeys.entityRecords.root] },
     }),
 };

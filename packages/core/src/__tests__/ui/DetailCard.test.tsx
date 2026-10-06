@@ -145,4 +145,26 @@ describe("DetailCard Component", () => {
       expect(ref.current?.classList.contains("MuiCard-root")).toBe(true);
     });
   });
+
+  it("#688: renders no actions when every action is hidden, and gates the rest", async () => {
+    const onDelete = jest.fn();
+    render(
+      <DetailCard
+        title="Contacts"
+        actions={[
+          { label: "Share", onClick: jest.fn(), gate: { kind: "hide" } },
+          {
+            label: "Delete",
+            onClick: onDelete,
+            gate: { kind: "disable", reason: "Deleting…" },
+          },
+        ]}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+    const del = screen.getByRole("button", { name: "Delete" });
+    expect(del).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(del);
+    expect(onDelete).not.toHaveBeenCalled();
+  });
 });

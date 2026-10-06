@@ -29,11 +29,13 @@ import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
 import {
   ALL_BUILTIN_SLUGS,
+  someBuiltinUnentitled,
   isBuiltinPackEntitled,
   UNENTITLED_PACK_REASON,
 } from "../utils/tool-packs.util";
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
+import { ToolPackUpgradeNoteUI } from "./ToolPackUpgradeNote.component";
 
 const BUILTIN_TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map(
   (pack) => {
@@ -311,6 +313,9 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           required
           error={touched.toolPacks && !!errors.toolPacks}
           helperText={touched.toolPacks ? errors.toolPacks : undefined}
+        />
+        <ToolPackUpgradeNoteUI
+          show={someBuiltinUnentitled(entitledBuiltinSlugs)}
         />
         {collisions.length > 0 && (
           <Alert severity="warning" data-testid="toolpack-collision-warning">

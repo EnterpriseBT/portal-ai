@@ -97,6 +97,63 @@ describe("ConnectorInstanceSyncButtonUI", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders nothing for a hide gate (no write on the instance)", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncButtonUI {...baseProps} gate={{ kind: "hide" }} />
+    );
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("renders a disable gate as aria-disabled, focusable, naming the reason", async () => {
+    const onSync = jest.fn();
+    const reason =
+      "Import is running on this connector — try again when it finishes.";
+    render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        onSync={onSync}
+        gate={{ kind: "disable", reason }}
+      />
+    );
+    const btn = screen.getByRole("button", { name: /sync now/i });
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    expect(onSync).not.toHaveBeenCalled();
+    fireEvent.mouseOver(btn);
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+  });
+
+  // #689 (code review): the caller's own sync is also the job that locks the
+  // connector. The button keeps saying "Syncing…" rather than "Sync now".
+  it("keeps the Syncing… label while its own sync holds the lock", () => {
+    render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        jobStatus="active"
+        gate={{
+          kind: "disable",
+          reason:
+            "Sync is running on this connector — try again when it finishes.",
+        }}
+      />
+    );
+    const btn = screen.getByRole("button");
+    expect(btn).toHaveTextContent(/syncing/i);
+    expect(btn).toBeDisabled();
+  });
+
+  it("still hides for a hide gate while a sync runs", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        jobStatus="active"
+        gate={{ kind: "hide" }}
+      />
+    );
+    expect(container.querySelector("button")).toBeNull();
+  });
+
   it("does not render the advisory tooltip when identityWarnings is empty", () => {
     render(
       <ConnectorInstanceSyncButtonUI {...baseProps} identityWarnings={[]} />

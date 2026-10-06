@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { render, screen, fireEvent } from "./test-utils";
 import { MembersTabUI } from "../components/MembersTab.component";
 import type { Member, SeatUsage } from "@portalai/core/contracts";
 
@@ -28,7 +28,8 @@ const base = {
   onInviteClick: jest.fn(),
   onResend: jest.fn(),
   onRevoke: jest.fn(),
-  canInvite: true,
+  inviteGate: { kind: "allow" } as const,
+  canRemove: true,
   lastInviteUrl: null,
   onCopyLink: jest.fn(),
   onDismissLink: jest.fn(),
@@ -79,17 +80,26 @@ describe("MembersTabUI invite + pending (#585)", () => {
     expect(onInviteClick).toHaveBeenCalled();
   });
 
-  it("disables the Invite button when the seat cap is reached", () => {
+  it("#691: at the seat cap, Invite is an upsell with the seat-limit reason", async () => {
+    const onUpgrade = jest.fn();
+    const onInviteClick = jest.fn();
+    const reason =
+      "Seat limit reached (5 / 5). Remove a member or upgrade to invite more.";
     render(
       <MembersTabUI
         {...base}
+        onInviteClick={onInviteClick}
         seatUsage={{ used: 5, max: 5 }}
-        canInvite={false}
+        inviteGate={{ kind: "upsell", reason, onUpgrade }}
       />
     );
-    expect(
-      screen.getByRole("button", { name: "Invite member" })
-    ).toBeDisabled();
+    const invite = screen.getByRole("button", { name: /Invite member/ });
+    expect(invite).toBeEnabled();
+    fireEvent.click(invite);
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+    expect(onInviteClick).not.toHaveBeenCalled();
+    fireEvent.mouseOver(invite);
+    expect(await screen.findByText(reason)).toBeInTheDocument();
   });
 
   it("shows the one-time invite link with a Copy control", () => {

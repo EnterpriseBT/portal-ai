@@ -4,6 +4,7 @@ import SyncIcon from "@mui/icons-material/Sync";
 
 import { JobModel } from "@portalai/core/models";
 import type { JobStatus } from "@portalai/core/models";
+import { GatedButton, type ActionGate } from "@portalai/core/ui";
 
 const SYNC_INELIGIBLE_TOOLTIP =
   "Sync is unavailable for this connector. Commit a layout plan first.";
@@ -36,13 +37,12 @@ export interface ConnectorInstanceSyncButtonUIProps {
    */
   variant?: "contained" | "outlined";
   /**
-   * When set, the button is disabled and renders this string as the
-   * tooltip. Set by the connector-instance view when an unrelated job
-   * (`layout_plan_commit`, future job types) has locked the instance —
-   * see CLAUDE.md §"Async Job State & Data Locking". `null`/undefined
-   * leaves the button's enablement to the eligibility / pending logic.
+   * The caller's gate on Sync (#689): `hide` without write on the instance,
+   * `disable` (aria-disabled, focusable, reason in the tooltip) while a job
+   * holds it — see CLAUDE.md §"Async Job State & Data Locking". Omitted or
+   * `allow` leaves enablement to the eligibility / pending logic.
    */
-  lockedReason?: string | null;
+  gate?: ActionGate;
 }
 
 /**
@@ -68,12 +68,23 @@ export const ConnectorInstanceSyncButtonUI = ({
   jobStatus,
   onSync,
   variant = "outlined",
-  lockedReason,
+  gate,
 }: ConnectorInstanceSyncButtonUIProps) => {
   const isLive = jobStatus !== null && !JobModel.isTerminalStatus(jobStatus);
   const isPending = isStarting || isLive;
-  const isLocked = !!lockedReason;
   const hasIdentityWarnings = (identityWarnings?.length ?? 0) > 0;
+
+  if (gate?.kind === "hide") return null;
+  // The caller's own sync is also the job that locks the connector, so while
+  // it runs, the pending state below (a disabled "Syncing…") wins over the
+  // lock's "Sync now".
+  if (gate?.kind === "disable" && !isPending) {
+    return (
+      <GatedButton variant={variant} startIcon={<SyncIcon />} gate={gate}>
+        Sync now
+      </GatedButton>
+    );
+  }
 
   const button = (
     <span>
@@ -81,16 +92,13 @@ export const ConnectorInstanceSyncButtonUI = ({
         variant={variant}
         startIcon={<SyncIcon />}
         onClick={onSync}
-        disabled={!syncEligible || isPending || isLocked}
+        disabled={!syncEligible || isPending}
       >
         {isPending ? "Syncing…" : "Sync now"}
       </Button>
     </span>
   );
 
-  if (isLocked) {
-    return <Tooltip title={lockedReason}>{button}</Tooltip>;
-  }
   if (!syncEligible) {
     return <Tooltip title={SYNC_INELIGIBLE_TOOLTIP}>{button}</Tooltip>;
   }

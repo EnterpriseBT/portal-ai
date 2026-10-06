@@ -50,6 +50,15 @@ type Story = StoryObj<ConnectorDefinitionCardUIProps>;
 export const Default: Story = {
   args: {
     connectorDefinition: baseConnector,
+    canConnect: true,
+  },
+};
+
+/** #689: a caller who can't create connector instances sees no Connect. */
+export const CannotConnect: Story = {
+  args: {
+    connectorDefinition: baseConnector,
+    canConnect: false,
   },
 };
 
@@ -60,6 +69,7 @@ export const WithIcon: Story = {
       iconUrl:
         "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/salesforce.svg",
     },
+    canConnect: true,
   },
 };
 

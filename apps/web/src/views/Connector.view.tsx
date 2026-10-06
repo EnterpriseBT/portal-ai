@@ -79,6 +79,9 @@ export const ConnectorView = () => {
     !capabilitiesKnown || canOnResource("connector_instance", "read");
   const canReadCatalog =
     !capabilitiesKnown || canOnResource("connector_definition", "read");
+  // #689: Connect starts a workflow that ends in an owned create of a
+  // connector instance; unlike the read gates above, an action fails closed.
+  const canCreateInstances = canOnResource("connector_instance", "create");
 
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [selectedConnectorDefinitionId, setSelectedConnectorDefinitionId] =
@@ -294,6 +297,7 @@ export const ConnectorView = () => {
                               <ConnectorDefinitionCardUI
                                 key={cd.id}
                                 connectorDefinition={cd}
+                                canConnect={canCreateInstances}
                                 onConnect={handleConnect}
                               />
                             )

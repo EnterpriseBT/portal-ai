@@ -33,9 +33,13 @@ type ColumnDefinitionDataListProps =
 type ColumnDefinitionDataItemProps =
   import("../components/ColumnDefinition.component").ColumnDefinitionDataItemProps;
 
+type Capabilities = { read: boolean; write: boolean; delete: boolean };
+
+// List rows carry the caller's `capabilities` (#688).
 const makeColumnDefinition = (
-  overrides: Partial<ColumnDefinition> = {}
-): ColumnDefinition => ({
+  overrides: Partial<ColumnDefinition> & { capabilities?: Capabilities } = {}
+): ColumnDefinition & { capabilities: Capabilities } => ({
+  capabilities: { read: true, write: true, delete: true },
   id: "cd-1",
   organizationId: "org-1",
   key: "first_name",
@@ -177,6 +181,19 @@ describe("ColumnDefinitionCardUI", () => {
     );
     expect(screen.getByText("Custom")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
+  });
+
+  it("renders no Delete on a custom row the caller can't delete (#689)", () => {
+    const cd = makeColumnDefinition({
+      system: false,
+      capabilities: { read: true, write: false, delete: false },
+    });
+    render(
+      <ColumnDefinitionCardUI columnDefinition={cd} onDelete={jest.fn()} />
+    );
+    expect(
+      screen.queryByRole("button", { name: /delete/i })
+    ).not.toBeInTheDocument();
   });
 
   it("renders a System chip and NO Delete action for system rows", () => {

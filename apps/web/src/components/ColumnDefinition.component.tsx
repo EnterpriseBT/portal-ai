@@ -5,6 +5,7 @@ import type {
   ColumnDefinitionGetResponsePayload,
   ColumnDefinitionListRequestQuery,
   ColumnDefinitionListResponsePayload,
+  ObjectCapabilities,
 } from "@portalai/core/contracts";
 import type { ColumnDefinition } from "@portalai/core/models";
 import { DetailCard, MetadataList } from "@portalai/core/ui";
@@ -15,6 +16,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
 import { TYPE_COLOR } from "../utils/column-definition-form.util";
+import { columnDefinitionActionGates } from "../utils/column-definition-actions.util";
 
 // ── Data Components ─────────────────────────────────────────────────
 
@@ -49,7 +51,8 @@ export const ColumnDefinitionDataItem = (
 // ── Card UI ─────────────────────────────────────────────────────────
 
 export interface ColumnDefinitionCardUIProps {
-  columnDefinition: ColumnDefinition;
+  /** A list row, with the caller's `capabilities` on it (#689). */
+  columnDefinition: ColumnDefinition & { capabilities: ObjectCapabilities };
   onClick?: (columnDefinition: ColumnDefinition) => void;
   onDelete?: (columnDefinition: ColumnDefinition) => void;
 }
@@ -59,17 +62,21 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
   onClick,
   onDelete,
 }) => {
-  const actions: ActionSuiteItem[] =
-    !cd.system && onDelete
-      ? [
-          {
-            label: "Delete",
-            icon: <DeleteIcon />,
-            onClick: () => onDelete(cd),
-            color: "error",
-          },
-        ]
-      : [];
+  const gates = columnDefinitionActionGates({
+    capabilities: cd.capabilities,
+    system: cd.system,
+  });
+  const actions: ActionSuiteItem[] = onDelete
+    ? [
+        {
+          label: "Delete",
+          icon: <DeleteIcon />,
+          onClick: () => onDelete(cd),
+          color: "error",
+          gate: gates.delete,
+        },
+      ]
+    : [];
 
   return (
     <DetailCard

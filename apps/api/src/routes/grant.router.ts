@@ -28,8 +28,9 @@ export const grantRouter = Router();
  *     summary: Share a station or pin with a member or the team (#621)
  *     description: >
  *       Grants `read` or `read-write` on one station/pin to a user or the team
- *       (role:member). Requires `resource.share` on the object (owner/admin/its
- *       creator); rejects a grant beyond the granter's own allow-set
+ *       (role:member). Requires `resource.share` on the object (the seeded
+ *       policies give it to its creator, and to any holder of `* *`); rejects
+ *       a grant beyond the granter's own allow-set
  *       (`RBAC_GRANT_EXCEEDS_BOUNDARY`) or a non-member grantee
  *       (`RBAC_GRANTEE_NOT_MEMBER`). Re-sharing replaces the prior access.
  *     tags: [Grants]

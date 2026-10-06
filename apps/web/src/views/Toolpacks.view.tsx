@@ -1,18 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import type { Toolpack } from "@portalai/core/contracts";
+import type { ToolpackWithCapabilities as Toolpack } from "@portalai/core/contracts";
 import {
+  ALLOW,
   Box,
-  Button,
   DataTable,
+  GatedButton,
   Icon,
   IconName,
   PageHeader,
   Stack,
+  type ActionGate,
   type DataTableColumn,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import AddIcon from "@mui/icons-material/Add";
@@ -41,6 +42,9 @@ import {
 } from "../utils/tool-packs.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useToast } from "../utils/toast.context";
+import { useCapabilities } from "../utils/use-capabilities.util";
+import { useActionGate } from "../utils/use-action-gate.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -69,6 +73,10 @@ export interface ToolpacksUIProps {
   onCloseModal: () => void;
   /** Optional — when set, the page renders a "Register toolpack" button. */
   onRegister?: () => void;
+  /** #691: how Register renders — decided by the container from class
+   *  toolpack write and the plan's `customToolpacks` (an upsell when the plan
+   *  excludes it). Defaults to allow. */
+  registerGate?: ActionGate;
   /** Optional — fires when the Edit action on a custom row is clicked. */
   onEdit?: (toolpack: Toolpack) => void;
   /** Optional — fires when the Delete action on a custom row is clicked. */
@@ -97,7 +105,8 @@ export interface ToolpacksUIProps {
   entitledBuiltinSlugs?: ReadonlySet<string>;
 }
 
-const NOT_ENTITLED_TOOLTIP = "Your plan does not include custom toolpacks";
+export const NOT_ENTITLED_TOOLTIP =
+  "Your plan does not include custom toolpacks";
 
 export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   toolpacks,
@@ -105,6 +114,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   onSelect,
   onCloseModal,
   onRegister,
+  registerGate = ALLOW,
   onEdit,
   onDelete,
   onRefresh,
@@ -209,9 +219,15 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
       render: (_value, row) => {
         const tp = toolpacks.find((t) => t.id === row.id);
         if (!tp || tp.kind !== "custom") return null;
+        // #691: a pack's actions follow its own capabilities (a custom pack
+        // is its creator's; owner/admin write any). Refresh and Edit rewrite
+        // the pack, so both need write.
+        const canWrite = tp.capabilities.write;
+        const canDelete = tp.capabilities.delete;
+        if (!canWrite && !canDelete) return null;
         return (
           <Stack direction="row" spacing={0.5}>
-            {onRefresh && (
+            {onRefresh && canWrite && (
               <IconButton
                 size="small"
                 aria-label="Refresh toolpack schema"
@@ -231,7 +247,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
                 )}
               </IconButton>
             )}
-            {onEdit && (
+            {onEdit && canWrite && (
               <IconButton
                 size="small"
                 aria-label="Edit toolpack"
@@ -243,7 +259,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
                 <EditIcon fontSize="small" />
               </IconButton>
             )}
-            {onDelete && (
+            {onDelete && canDelete && (
               <IconButton
                 size="small"
                 color="error"
@@ -327,28 +343,15 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
           title="Toolpacks"
           icon={<Icon name={IconName.Extension} />}
           primaryAction={
-            onRegister ? (
-              customToolpacksEntitled ? (
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={onRegister}
-                >
-                  Register toolpack
-                </Button>
-              ) : (
-                <Tooltip title={NOT_ENTITLED_TOOLTIP}>
-                  <span>
-                    <Button
-                      variant="contained"
-                      startIcon={<AddIcon />}
-                      disabled
-                    >
-                      Register toolpack
-                    </Button>
-                  </span>
-                </Tooltip>
-              )
+            onRegister && registerGate.kind !== "hide" ? (
+              <GatedButton
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={onRegister}
+                gate={registerGate}
+              >
+                Register toolpack
+              </GatedButton>
             ) : undefined
           }
         />
@@ -402,6 +405,17 @@ export const Toolpacks: React.FC = () => {
   const usageResult = sdk.organizations.usage();
   const customToolpacksEntitled =
     usageResult.data?.tier.entitlements.customToolpacks ?? true;
+  // #691: Register is an action, so its entitlement fails closed (unlike the
+  // display badge above): allowed with class toolpack write, an upsell to
+  // Billing when the plan excludes custom toolpacks.
+  const { canOnResource } = useCapabilities();
+  const { gate, entitled } = useActionGate();
+  const registerGate = gate({
+    // #708: the create route's own check (owner/admin by default).
+    allowed: canOnResource("toolpack", "create"),
+    entitled: entitled("customToolpacks"),
+    upgradeReason: NOT_ENTITLED_TOOLTIP,
+  });
   // #284: same query, other axis.
   const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
   const registerMutation = sdk.toolpacks.register();
@@ -431,6 +445,7 @@ export const Toolpacks: React.FC = () => {
             onSelect={setSelected}
             onCloseModal={() => setSelected(null)}
             onRegister={() => setRegisterOpen(true)}
+            registerGate={registerGate}
             customToolpacksEntitled={customToolpacksEntitled}
             entitledBuiltinSlugs={entitledBuiltinSlugs}
             onEdit={(t) => setEditing(t)}
@@ -450,7 +465,7 @@ export const Toolpacks: React.FC = () => {
                   },
                   onError: (err) => {
                     toast.error(
-                      `Failed to refresh "${t.name}": ${err.message}`
+                      `Failed to refresh "${t.name}": ${serverErrorMessage(err)}`
                     );
                   },
                 }
@@ -510,7 +525,7 @@ export const Toolpacks: React.FC = () => {
               },
               onError: (err) => {
                 toast.error(
-                  `Failed to refresh "${target.name}": ${err.message}`
+                  `Failed to refresh "${target.name}": ${serverErrorMessage(err)}`
                 );
               },
             }

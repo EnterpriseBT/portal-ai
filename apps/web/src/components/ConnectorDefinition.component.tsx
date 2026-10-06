@@ -54,25 +54,33 @@ export const ConnectorDefinitionItem = (
 
 export interface ConnectorDefinitionCardUIProps {
   connectorDefinition: ConnectorDefinition;
+  /** The caller may create connector instances (#689). Omitted = no. */
+  canConnect?: boolean;
   onConnect?: (connectorDefinition: ConnectorDefinition) => void;
 }
 
 export const ConnectorDefinitionCardUI = ({
   connectorDefinition: cd,
+  canConnect = false,
   onConnect,
 }: ConnectorDefinitionCardUIProps) => {
   const capabilities = (["sync", "read", "write", "push"] as const).filter(
     (c) => cd.capabilityFlags[c]
   );
 
-  const actions: ActionSuiteItem[] = [
-    {
-      label: "Connect",
-      icon: <LinkIcon />,
-      onClick: () => onConnect?.(cd),
-      variant: "contained",
-    },
-  ];
+  // #689: Connect is an owned create, and an inactive definition is no longer
+  // offered for new connections (the catalog can still list it).
+  const actions: ActionSuiteItem[] =
+    canConnect && cd.isActive
+      ? [
+          {
+            label: "Connect",
+            icon: <LinkIcon />,
+            onClick: () => onConnect?.(cd),
+            variant: "contained",
+          },
+        ]
+      : [];
 
   return (
     <DetailCard
@@ -100,7 +108,7 @@ export const ConnectorDefinitionCardUI = ({
           {cd.display.charAt(0).toUpperCase()}
         </Avatar>
       }
-      actions={actions}
+      actions={actions.length > 0 ? actions : undefined}
     >
       <MetadataList
         items={[

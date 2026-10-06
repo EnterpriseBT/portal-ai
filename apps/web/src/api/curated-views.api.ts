@@ -91,12 +91,16 @@ export const curatedViews = {
     >({
       url: `${CURATED_VIEWS_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
+      // #688: a 403 means the caller's capabilities changed; refetch so the
+      // affordances re-render from them.
+      onPermissionDenied: { invalidate: () => [queryKeys.curatedViews.root] },
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${CURATED_VIEWS_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.curatedViews.root] },
     }),
 
   attach: (id: string) =>
@@ -106,11 +110,23 @@ export const curatedViews = {
     >({
       url: `${CURATED_VIEWS_URL}/${encodeURIComponent(id)}/attach`,
       method: "POST",
+      onPermissionDenied: {
+        invalidate: () => [
+          queryKeys.curatedViews.root,
+          queryKeys.stations.root,
+        ],
+      },
     }),
 
   detach: (id: string, stationId: string) =>
     useAuthMutation<void, void>({
       url: `${CURATED_VIEWS_URL}/${encodeURIComponent(id)}/attach/${encodeURIComponent(stationId)}`,
       method: "DELETE",
+      onPermissionDenied: {
+        invalidate: () => [
+          queryKeys.curatedViews.root,
+          queryKeys.stations.root,
+        ],
+      },
     }),
 };

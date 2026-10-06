@@ -3,7 +3,13 @@ import React, { useState } from "react";
 import TextField from "@mui/material/TextField";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Button, Modal, Stack, MultiSearchableSelect } from "@portalai/core/ui";
+import {
+  Button,
+  MetadataList,
+  Modal,
+  Stack,
+  MultiSearchableSelect,
+} from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type { RoleView } from "@portalai/core/contracts";
 
@@ -85,24 +91,44 @@ export const RoleEditorDialogUI: React.FC<RoleEditorDialogUIProps> = ({
       }
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
-        <TextField
-          label="Name"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          required
-          disabled={readOnly}
-          fullWidth
-          autoFocus
-        />
-        <MultiSearchableSelect
-          label="Policies"
-          placeholder="Bundle policies into this role…"
-          options={policyOptions}
-          value={policyIds}
-          onChange={onPolicyIdsChange}
-          disabled={readOnly}
-          fullWidth
-        />
+        {readOnly ? (
+          // #691: a system role is immutable, so it reads as a view.
+          <MetadataList
+            direction="vertical"
+            items={[
+              { label: "Name", value: name },
+              {
+                label: "Policies",
+                value:
+                  policyIds
+                    .map(
+                      (id) =>
+                        policyOptions.find((o) => o.value === id)?.label ?? id
+                    )
+                    .join(", ") || "None",
+              },
+            ]}
+          />
+        ) : (
+          <>
+            <TextField
+              label="Name"
+              value={name}
+              onChange={(e) => onNameChange(e.target.value)}
+              required
+              fullWidth
+              autoFocus
+            />
+            <MultiSearchableSelect
+              label="Policies"
+              placeholder="Bundle policies into this role…"
+              options={policyOptions}
+              value={policyIds}
+              onChange={onPolicyIdsChange}
+              fullWidth
+            />
+          </>
+        )}
         <FormAlert serverError={serverError} />
       </Stack>
     </Modal>

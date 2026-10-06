@@ -36,10 +36,16 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, fireEvent } = await import("./test-utils");
 const { JobDetailView } = await import("../views/JobDetail.view");
 
-const makeJob = (overrides: Partial<Job> = {}): Job => ({
+type Capabilities = { read: boolean; write: boolean; delete: boolean };
+
+// GET rows carry the caller's `capabilities`; `delete` is cancel (#689).
+const makeJob = (
+  overrides: Partial<Job> & { capabilities?: Capabilities } = {}
+): Job & { capabilities: Capabilities } => ({
+  capabilities: { read: true, write: false, delete: true },
   id: "job-1",
   organizationId: "org-1",
   type: "system_check",
@@ -208,6 +214,44 @@ describe("JobDetailView", () => {
 
     render(<JobDetailView jobId="job-1" />);
     expect(screen.getByText("Cancel Job")).toBeInTheDocument();
+  });
+
+  // #689: Cancel follows the job's `capabilities.delete` (the cancel rule).
+  it("hides Cancel on a job the caller can't cancel", () => {
+    currentGetQuery = {
+      data: {
+        job: makeJob({
+          status: "active",
+          progress: 50,
+          capabilities: { read: true, write: false, delete: false },
+        }),
+      },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+
+    render(<JobDetailView jobId="job-1" />);
+    expect(screen.queryByText("Cancel Job")).not.toBeInTheDocument();
+  });
+
+  it("disables Cancel, naming why, while the cancel is in flight", async () => {
+    currentGetQuery = {
+      data: { job: makeJob({ status: "active", progress: 50 }) },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+    currentCancelMutation = {
+      ...currentCancelMutation,
+      isPending: true,
+    } as Partial<UseMutationResult<JobCancelResponsePayload, ApiError, void>>;
+
+    render(<JobDetailView jobId="job-1" />);
+    const cancel = screen.getByRole("button", { name: /cancel job/i });
+    expect(cancel).toHaveAttribute("aria-disabled", "true");
+    fireEvent.mouseOver(cancel);
+    expect(await screen.findByText("Cancelling…")).toBeInTheDocument();
   });
 
   it("should show progress bar for active jobs with stream data", () => {

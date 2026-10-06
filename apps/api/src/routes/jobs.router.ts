@@ -16,6 +16,7 @@ import { jobs } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { JobPayloadRedactionService } from "../services/job-payload-redaction.service.js";
+import { JobControlService } from "../services/job-control.service.js";
 
 const logger = createLogger({ module: "jobs" });
 
@@ -169,9 +170,11 @@ jobsRouter.get(
       const ctx = req.application!.metadata;
       const set = await PermissionService.loadSet(ctx);
       const result: JobListResponsePayload = {
-        jobs: data.map((job) =>
-          JobPayloadRedactionService.redact(ctx, set, job)
-        ),
+        // #689: with the caller's capabilities (`delete` = cancel).
+        jobs: data.map((job) => ({
+          ...JobPayloadRedactionService.redact(ctx, set, job),
+          capabilities: JobControlService.capabilities(ctx, set, job),
+        })),
         total,
         limit: query.limit,
         offset: query.offset,
@@ -271,13 +274,14 @@ jobsRouter.get(
         return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
       }
 
-      // #692: payloads are the creator's (and owner/admin's).
+      // #692: payloads are the creator's (and owner/admin's). #689: with
+      // the caller's capabilities (`delete` = cancel).
+      const set = await PermissionService.loadSet(ctx);
       return HttpService.success<JobGetResponsePayload>(res, {
-        job: JobPayloadRedactionService.redact(
-          ctx,
-          await PermissionService.loadSet(ctx),
-          job
-        ),
+        job: {
+          ...JobPayloadRedactionService.redact(ctx, set, job),
+          capabilities: JobControlService.capabilities(ctx, set, job),
+        },
       });
     } catch (error) {
       logger.error(
@@ -362,17 +366,20 @@ jobsRouter.post(
       if (!target || target.organizationId !== ctx.organizationId) {
         return next(new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found"));
       }
-      if (target.createdBy !== ctx.userId) {
-        const set = await PermissionService.loadSet(ctx);
-        if (!set.can("resource.delete", { type: "job" })) {
-          return next(
-            new ApiError(
-              403,
-              ApiCode.INSUFFICIENT_ROLE,
-              "You can only cancel jobs you started"
-            )
-          );
-        }
+      if (
+        !JobControlService.canControl(
+          ctx,
+          await PermissionService.loadSet(ctx),
+          target
+        )
+      ) {
+        return next(
+          new ApiError(
+            403,
+            ApiCode.PERMISSION_DENIED,
+            "You don't have permission to cancel this job."
+          )
+        );
       }
 
       const job = await JobsService.cancel(id).catch((error) => {

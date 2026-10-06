@@ -122,10 +122,11 @@ describe("PermissionSet — evaluation (spec cases 3–6, 12)", () => {
         expect((err as ApiError).code).toBe(code);
       }
     };
-    expectCode("billing.manage", ApiCode.BILLING_NOT_OWNER);
-    expectCode("org.delete", ApiCode.ORGANIZATION_NOT_OWNER);
-    expectCode("org.audit.read", ApiCode.AUDIT_LOG_NOT_AUTHORIZED);
-    expectCode("member.role.assign", ApiCode.INSUFFICIENT_ROLE);
+    // #711: one code; the message names the permission.
+    expectCode("billing.manage", ApiCode.PERMISSION_DENIED);
+    expectCode("org.delete", ApiCode.PERMISSION_DENIED);
+    expectCode("org.audit.read", ApiCode.PERMISSION_DENIED);
+    expectCode("member.role.assign", ApiCode.PERMISSION_DENIED);
   });
 });
 
