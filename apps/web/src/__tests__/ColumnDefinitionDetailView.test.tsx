@@ -24,8 +24,16 @@ const noopSearch = () => ({
   labelMap: {},
 });
 
+// #689: the caller's type-level permissions (field-mapping create).
+let currentResourcePermissions: Record<string, Record<string, boolean>> = {};
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    organizations: {
+      current: () => ({
+        data: { resourcePermissions: currentResourcePermissions },
+      }),
+    },
     columnDefinitions: {
       get: () => currentGetQuery,
       update: () => noopMutation,
@@ -78,9 +86,13 @@ const makeColumnDefinition = (
   ...overrides,
 });
 
+// List rows carry the caller's `capabilities` (#688).
 const makeFieldMapping = (
   overrides: Partial<FieldMapping> = {}
-): FieldMapping => ({
+): FieldMapping & {
+  capabilities: { read: boolean; write: boolean; delete: boolean };
+} => ({
+  capabilities: { read: true, write: true, delete: true },
   id: "fm-1",
   organizationId: "org-1",
   connectorEntityId: "ce-1",
@@ -107,6 +119,7 @@ describe("ColumnDefinitionDetailView", () => {
   beforeEach(() => {
     currentGetQuery = {};
     currentFieldMappingListQuery = {};
+    currentResourcePermissions = { field_mapping: { write: true } };
   });
 
   it("should display loading state when query is loading", () => {
@@ -407,16 +420,17 @@ describe("ColumnDefinitionDetailView", () => {
 
   describe("Write capability gating for field mappings", () => {
     const setupWithCapability = (
-      enabledCapabilityFlags: { write?: boolean } | null
+      enabledCapabilityFlags: { write?: boolean } | null,
+      capabilities = { read: true, write: true, delete: true }
     ) => {
       const cd = makeColumnDefinition();
       const fm = {
-        capabilities: { read: true, write: true, delete: true },
         ...makeFieldMapping({
           id: "fm-1",
           sourceField: "email",
           connectorEntityId: "ce-1",
         }),
+        capabilities,
         connectorEntity: {
           id: "ce-1",
           organizationId: "org-1",
@@ -448,28 +462,33 @@ describe("ColumnDefinitionDetailView", () => {
       } as Partial<ListQuery>;
     };
 
-    it("hides field mapping edit/delete buttons when write is explicitly disabled", () => {
+    it("disables field mapping edit/delete, naming why, when the connector's writes are off", () => {
       setupWithCapability({ write: false });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      expect(
-        screen.queryByLabelText("Edit field mapping")
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Delete field mapping")
-      ).not.toBeInTheDocument();
+      for (const label of ["Edit field mapping", "Delete field mapping"]) {
+        expect(screen.getByLabelText(label)).toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+      }
     });
 
-    it("shows field mapping edit/delete buttons when write is explicitly enabled", () => {
+    it("shows field mapping edit/delete buttons when write is enabled", () => {
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      expect(screen.getByLabelText("Edit field mapping")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit field mapping")).not.toHaveAttribute(
+        "aria-disabled"
+      );
       expect(screen.getByLabelText("Delete field mapping")).toBeInTheDocument();
     });
 
-    it("hides field mapping edit/delete when enabledCapabilityFlags is null", () => {
-      setupWithCapability(null);
+    it("hides field mapping edit/delete the caller can't perform on the row (#689)", () => {
+      setupWithCapability(
+        { write: true },
+        { read: true, write: false, delete: false }
+      );
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
       expect(
@@ -477,6 +496,16 @@ describe("ColumnDefinitionDetailView", () => {
       ).not.toBeInTheDocument();
       expect(
         screen.queryByLabelText("Delete field mapping")
+      ).not.toBeInTheDocument();
+    });
+
+    it("hides the field mapping Create without field_mapping create (#689)", () => {
+      currentResourcePermissions = {};
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(
+        screen.queryByRole("button", { name: /^Create$/ })
       ).not.toBeInTheDocument();
     });
   });

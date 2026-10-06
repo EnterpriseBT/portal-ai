@@ -30,7 +30,7 @@ Locks: `sdk.connectorInstances.runningJobs` / `sdk.connectorEntities.runningJobs
 1. **One lock reason.** Instance and entity surfaces compute `blocked = lockedReason` ("`<labels>` is running on this connector — try again when it finishes.") once, and feed it to every action's `gate({allowed, blocked})`. The hardcoded "Paused until…" string goes.
 2. **The connector's write flag is state, not permission.** `enabledCapabilityFlags.write === false` → `blocked: "Writes are disabled on this connector"` (`disable`), after the permission check. Permission comes only from `capabilities` (or class `canOnResource` for creates).
 3. **Gates per row:**
-   - Instance (13): Edit, Modify Layout Plan, Reconnect, Sync, Create Entity → `ci.capabilities.write`; Delete → `.delete`. All `+ blocked: lockedReason`. Raw buttons become `GatedButton`.
+   - Instance (13): Edit, Modify Layout Plan, Reconnect, Sync → `ci.capabilities.write`; Delete → `.delete`; Create Entity → class `canOnResource("entity","write")` (the server's owned entity create), then the write flag. All `+ blocked: lockedReason`, except Reconnect, which the server doesn't lock. Raw buttons become `GatedButton`.
    - Flags (14): without `write` → read-only display (On/Off text, no checkboxes). With write and locked → checkboxes `disabled`, with the lock reason as helper text.
    - Catalog (16): Connect → `canOnResource("connector_instance","write")` (hide); inactive definitions render no Connect. Card Delete → `row.capabilities.delete`.
    - Entity (17–18): tag unassign/assign, header Edit, Create record → `entity.capabilities.write`; header Delete → `.delete`; Delete records / Re-validate → class `entity_record` delete/write (matching the server), then flag, then lock.

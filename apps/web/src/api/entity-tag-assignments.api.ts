@@ -3,8 +3,7 @@ import type {
   EntityTagAssignmentCreateResponsePayload,
   EntityTagAssignmentListResponsePayload,
 } from "@portalai/core/contracts";
-import { useMutation } from "@tanstack/react-query";
-import { useAuthFetch, useAuthMutation, useAuthQuery } from "../utils/api.util";
+import { useAuthMutation, useAuthQuery } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import type { QueryOptions } from "./types";
 import { queryKeys } from "./keys";
@@ -31,18 +30,29 @@ export const entityTagAssignments = {
     >({
       url: entityTagAssignmentUrl(connectorEntityId),
       method: "POST",
+      // #689: tag assignment is an entity write; a 403 refetches the entity
+      // (whose capabilities gate it) and its tags.
+      onPermissionDenied: {
+        invalidate: () => [
+          queryKeys.connectorEntities.root,
+          queryKeys.entityTagAssignments.root,
+        ],
+      },
     }),
 
-  unassign: (connectorEntityId: string) => {
-    const { fetchWithAuth } = useAuthFetch();
-
-    return useMutation<void, unknown, { assignmentId: string }>({
-      mutationFn: async ({ assignmentId }) => {
-        await fetchWithAuth(
-          `${entityTagAssignmentUrl(connectorEntityId)}/${encodeURIComponent(assignmentId)}`,
-          { method: "DELETE" }
-        );
+  unassign: (connectorEntityId: string) =>
+    useAuthMutation<void, { assignmentId: string }>({
+      url: ({ assignmentId }) =>
+        `${entityTagAssignmentUrl(connectorEntityId)}/${encodeURIComponent(assignmentId)}`,
+      method: "DELETE",
+      body: () => undefined,
+      // #689: tag assignment is an entity write; a 403 refetches the entity
+      // (whose capabilities gate it) and its tags.
+      onPermissionDenied: {
+        invalidate: () => [
+          queryKeys.connectorEntities.root,
+          queryKeys.entityTagAssignments.root,
+        ],
       },
-    });
-  },
+    }),
 };

@@ -100,6 +100,11 @@ export const connectorEntities = {
     >({
       url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
+      // #689: a 403 means the caller's capabilities on the entity changed;
+      // refetch so the page's gates re-render from them.
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorEntities.root],
+      },
     }),
 
   create: () =>
@@ -109,12 +114,18 @@ export const connectorEntities = {
     >({
       url: CONNECTOR_ENTITIES_URL,
       method: "POST",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorEntities.root],
+      },
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorEntities.root],
+      },
     }),
 
   search: <TOption extends SelectOption = SelectOption>(

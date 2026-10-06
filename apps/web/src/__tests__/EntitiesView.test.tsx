@@ -56,6 +56,7 @@ const twoEntities = {
         key: "contacts",
         label: "Contacts",
         connectorInstance: { id: "inst-1", name: "My CSV" },
+        capabilities: { read: true, write: true, delete: true },
         created: Date.now(),
         createdBy: "system",
         updated: null,
@@ -70,6 +71,7 @@ const twoEntities = {
         key: "deals",
         label: "Deals",
         connectorInstance: { id: "inst-1", name: "My CSV" },
+        capabilities: { read: true, write: true, delete: true },
         created: Date.now(),
         createdBy: "system",
         updated: null,
@@ -107,6 +109,7 @@ describe("EntitiesView", () => {
   const sharedProps = {
     onDeleteEntity: mockOnDeleteEntity,
     onCreate: jest.fn(),
+    createGate: { kind: "allow" } as const,
   };
 
   beforeEach(() => {
@@ -162,62 +165,71 @@ describe("EntitiesView", () => {
     expect(screen.getByText("Tags")).toBeInTheDocument();
   });
 
-  describe("write capability gating", () => {
-    it("hides delete action when enabledCapabilityFlags.write is false", () => {
-      mockEntityList.mockReturnValue({
-        ...twoEntities,
-        data: {
-          ...twoEntities.data,
-          connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
-            ...e,
-            connectorInstance: {
-              ...e.connectorInstance,
-              enabledCapabilityFlags: { write: false },
-            },
-          })),
-        },
-      });
+  // #689: Delete follows each row's `capabilities` (the entity delete route
+  // doesn't check the connector's write flag); Create takes the page gate.
+  describe("permission gating", () => {
+    const withCapabilities = (del: boolean, write = false) => ({
+      ...twoEntities,
+      data: {
+        ...twoEntities.data,
+        connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
+          ...e,
+          connectorInstance: {
+            ...e.connectorInstance,
+            enabledCapabilityFlags: { write },
+          },
+          capabilities: { read: true, write: del, delete: del },
+        })),
+      },
+    });
+
+    it("shows Delete on rows the caller may delete, even with the connector's writes off", () => {
+      mockEntityList.mockReturnValue(withCapabilities(true, false));
+      render(<EntitiesViewUI {...sharedProps} />);
+      expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+    });
+
+    it("hides Delete on rows the caller can't delete", () => {
+      mockEntityList.mockReturnValue(withCapabilities(false, true));
       render(<EntitiesViewUI {...sharedProps} />);
       expect(
         screen.queryByRole("button", { name: "Delete" })
       ).not.toBeInTheDocument();
     });
 
-    it("shows delete action when enabledCapabilityFlags.write is true", () => {
-      mockEntityList.mockReturnValue({
-        ...twoEntities,
-        data: {
-          ...twoEntities.data,
-          connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
-            ...e,
-            connectorInstance: {
-              ...e.connectorInstance,
-              enabledCapabilityFlags: { write: true },
-            },
-          })),
-        },
-      });
-      render(<EntitiesViewUI {...sharedProps} />);
-      expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+    it("renders Create from its gate", async () => {
+      const onCreate = jest.fn();
+      const { unmount } = render(
+        <EntitiesViewUI
+          {...sharedProps}
+          onCreate={onCreate}
+          createGate={{ kind: "allow" }}
+        />
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: "Create Entity" })
+      );
+      expect(onCreate).toHaveBeenCalledTimes(1);
+      unmount();
+
+      render(
+        <EntitiesViewUI
+          {...sharedProps}
+          createGate={{
+            kind: "disable",
+            reason: "Ask for access to create entities",
+          }}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: "Create Entity" })
+      ).toHaveAttribute("aria-disabled", "true");
     });
 
-    it("hides delete action when enabledCapabilityFlags is null", () => {
-      mockEntityList.mockReturnValue({
-        ...twoEntities,
-        data: {
-          ...twoEntities.data,
-          connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
-            ...e,
-            connectorInstance: {
-              ...e.connectorInstance,
-              enabledCapabilityFlags: null,
-            },
-          })),
-        },
-      });
-      render(<EntitiesViewUI {...sharedProps} />);
+    it("hides Create for a hide gate", () => {
+      render(<EntitiesViewUI {...sharedProps} createGate={{ kind: "hide" }} />);
       expect(
-        screen.queryByRole("button", { name: "Delete" })
+        screen.queryByRole("button", { name: "Create Entity" })
       ).not.toBeInTheDocument();
     });
   });

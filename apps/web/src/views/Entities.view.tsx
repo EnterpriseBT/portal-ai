@@ -8,8 +8,8 @@ import type { EntityTag } from "@portalai/core/models";
 import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
   DetailCard,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
@@ -17,7 +17,7 @@ import {
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
-import type { ActionSuiteItem } from "@portalai/core/ui";
+import type { ActionGate, ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useQueryClient } from "@tanstack/react-query";
@@ -36,6 +36,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { useActionGate } from "../utils/use-action-gate.util";
 
 // ── Entity card ─────────────────────────────────────────────────────
 
@@ -55,10 +56,9 @@ const EntityCard: React.FC<EntityCardProps> = ({
   onClick,
   onDelete,
 }) => {
-  const isWriteEnabled =
-    entity.connectorInstance?.enabledCapabilityFlags?.write === true;
-
-  const actions: ActionSuiteItem[] = isWriteEnabled
+  // #689: the entity delete route checks delete on the entity (and the job
+  // lock, which the list can't see); not the connector's write flag.
+  const actions: ActionSuiteItem[] = entity.capabilities.delete
     ? [
         {
           label: "Delete",
@@ -115,11 +115,14 @@ const EntityCard: React.FC<EntityCardProps> = ({
 export interface EntitiesViewUIProps {
   onDeleteEntity: (entity: EntityWithTags) => void;
   onCreate: () => void;
+  /** How Create renders for this caller (#689). */
+  createGate: ActionGate;
 }
 
 export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
   onDeleteEntity,
   onCreate,
+  createGate,
 }) => {
   const navigate = useNavigate();
 
@@ -168,13 +171,16 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
           title="Entities"
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={onCreate}
-            >
-              Create Entity
-            </Button>
+            createGate.kind === "hide" ? undefined : (
+              <GatedButton
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={onCreate}
+                gate={createGate}
+              >
+                Create Entity
+              </GatedButton>
+            )
           }
         />
 
@@ -248,6 +254,16 @@ export const EntitiesView: React.FC = () => {
   const { canOnResource, capabilitiesKnown } = useCapabilities();
   const canReadConnectors =
     !capabilitiesKnown || canOnResource("connector_instance", "read");
+  const { gate } = useActionGate();
+  // #689: Create is the page's primary action (an owned entity create); a
+  // caller who reads entities but can't create them is told how to get it.
+  const createGate = gate({
+    allowed: canOnResource("entity", "write"),
+    primary: {
+      plausible: canOnResource("entity", "read"),
+      grantHint: "Ask for access to create entities",
+    },
+  });
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.connectorEntities.create();
@@ -312,6 +328,7 @@ export const EntitiesView: React.FC = () => {
       <EntitiesViewUI
         onDeleteEntity={handleDeleteEntity}
         onCreate={() => setCreateOpen(true)}
+        createGate={createGate}
       />
 
       <CreateConnectorEntityDialog
