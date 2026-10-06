@@ -8,8 +8,8 @@ Untagged steps can be walked in the browser (`/smoke-walk`). `— manual` needs 
 - AC1 (seeded member: Create View disabled with the hint) → §1
 - AC2 (the owner: every Create enabled) → §2
 - AC3 (custom owned-only grant: Create not enabled) → §3
-- AC4 (instance-only grant: Create not enabled, route refuses) → §4
-- AC5 (`create` agrees with each route) → §1.3, §3.3, §4.2, plus the CI matrix
+- AC4 (instance-only grant: Create not enabled, route refuses) → §4: the CI matrix only, because the product can't produce that caller (see §4)
+- AC5 (`create` agrees with each route) → §1.3, §3.3, plus the CI matrix
 - AC6 (no gate on `write`/`delete`; the guard) → §5
 - AC7 (docs) → §5
 
@@ -27,19 +27,25 @@ Untagged steps can be walked in the browser (`/smoke-walk`). `— manual` needs 
 - [ ] The e2e-fixture org's tier includes custom RBAC and custom toolpacks (the fixture's does).
 - [ ] As **owner**, the org has at least one connector with an entity (for the curated-view and entity pages). Upload a sample CSV if it doesn't.
 - [ ] Note the member's user id: `GET /api/organization/current` as the member, or the Members tab. — backend
+- [ ] **Member access for §1.4.** The seeded e2e member can't open **Entities** or **Connectors** (no `view page` grant), and can't read the connector catalog (no `read connector_definition`). Both pages show 403 for them. This is pre-existing #630 behaviour, unrelated to #708. As **owner**, in **Settings → Access**:
+  - create a policy **smoke708 access** with `allow view page:entities`, `allow view page:connectors` and `allow read connector_definition`;
+  - create a group **smoke708** containing the member, with that policy attached.
+
+  None of these statements changes a create rule.
+- [ ] **A member-owned entity with columns, for §1.4's record Create.** As **member** (after the step above), upload a sample CSV via **Connectors → Catalog → File Upload → Connect** and commit it. This gives the member their own connector, entity and columns.
 
 ### Reset between runs
 
-- [ ] Delete the **smoke708** group, policy and role. Restore the member's role to **member**. Delete the station **smoke708 shared**.
+- [ ] Delete the **smoke708** group and the **smoke708** and **smoke708 access** policies. Delete the member's smoke CSV connector. Confirm `GET /api/organization/current` as the member shows `pagePermissions.entities: false` again. — backend
 
 ## §1 — The seeded member (the bug that motivated #708)
 
 - [ ] As **member**, open **Views**.
 - [ ] Expected: **Create View** is `aria-disabled`. Hovering shows "Ask an owner or admin for access to create views", and clicking opens nothing.
 - [ ] As **member**: `curl -s localhost:3001/api/organization/current -H "Authorization: Bearer <member token>" | jq '.payload.resourcePermissions.curated_view'` gives `{"read": true, "write": true, "delete": true, "create": false}`. — backend
-- [ ] As **member**, open **Entities**, then a connector you own, then an entity you own:
+- [ ] As **member** (with the Fixtures' access policy), open **Entities**, then your smoke CSV connector, then its entity:
   - **Create Entity** and **Create** (record) are enabled (owned creates);
-  - **Connect** on **Connectors → Catalog** is enabled.
+  - every **Connect** on **Connectors → Catalog** is enabled.
 
 ## §2 — The owner
 
@@ -54,7 +60,8 @@ Untagged steps can be walked in the browser (`/smoke-walk`). `— manual` needs 
 
 ## §3 — A custom owned-only grant (owner/admin-only types)
 
-- [ ] As **owner**, go to **Settings → Access**. Create a policy **smoke708** with these statements, then a group **smoke708** containing the member, with the policy attached:
+- [ ] As **owner**, go to **Settings → Access**. Create a policy **smoke708** with these statements, and attach it to the Fixtures' group **smoke708** (the member is already in it):
+  - `allow view page:tags`, `allow view page:column_definitions`, `allow view page:entity_groups` (otherwise the member gets the 403 page before any Create renders);
   - `allow read tag`, `allow read column_definition`, `allow read entity_group`, `allow read toolpack`;
   - `allow write tag` (Ownership: **Created by caller**);
   - `allow write column_definition` (Created by caller);
@@ -66,12 +73,16 @@ Untagged steps can be walked in the browser (`/smoke-walk`). `— manual` needs 
   - **Toolpacks → Register** is absent (no permission, and Register has no plausible-primary state).
 - [ ] As **member**: `resourcePermissions.tag` gives `write: true, create: false`, and `curl -X POST localhost:3001/api/entity-tags -d '{"name":"smoke708"}' …` returns `403 INSUFFICIENT_ROLE`. — backend
 
-## §4 — An instance-only grant
+## §4 — An instance-only grant (not reachable through the product)
 
-- [ ] As **owner**, go to **Settings → Access**. Create a role **smoke708 bare** with **no** policies, and make it the member's only role (Members tab → roles).
-- [ ] As **owner**, create a station **smoke708 shared** and share it with the member with **write**.
-- [ ] As **member**: `resourcePermissions.station` gives `write: true, create: false`, and `POST /api/stations` `{"name":"x"}` returns `403 INSUFFICIENT_ROLE`. — backend
-- [ ] Restore the member's role to **member** (Reset).
+The product can't create a caller whose only grant on a type is an instance grant:
+- **A member always keeps a seeded org role.** `PUT /api/organization/members/:id/roles` refuses a custom role as the only role (`MEMBER_MIN_ONE_ROLE`).
+- **That role already allows the owned creates.** `member` grants `write … created_by_caller` on station, pin and connector_instance, so `create` is true there whatever instance grants (shares) the member also holds.
+
+So this criterion is proven by the CI matrix, which seeds the role assignment directly. There's nothing to walk in the browser.
+
+- [ ] In the PR's checks, **Integration Tests** includes `create-capability.agreement.integration.test.ts` → the three "instance-only grant: … isn't creatable, though its any-grant write is true" cases (connector_instance, station, pin) passing. — backend
+- [ ] The refusal still holds: as **owner**, `PUT /api/organization/members/<member id>/roles {"roleSlugs":["<a custom role slug>"]}` returns `MEMBER_MIN_ONE_ROLE`. If it ever stops refusing, this section needs a real walk. — backend
 
 ## §5 — Guard and docs
 
