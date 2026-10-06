@@ -1202,10 +1202,14 @@ const options: swaggerJsdoc.Options = {
               type: "object",
               required: ["jobs"],
               properties: {
+                // #689: each row with the caller's capabilities (delete = cancel).
                 jobs: {
                   type: "array",
                   items: {
-                    $ref: "#/components/schemas/Job",
+                    allOf: [
+                      { $ref: "#/components/schemas/Job" },
+                      withCapabilitiesRef(false),
+                    ],
                   },
                 },
               },
@@ -1216,8 +1220,12 @@ const options: swaggerJsdoc.Options = {
           type: "object",
           required: ["job"],
           properties: {
+            // #689: with the caller's capabilities (delete = cancel).
             job: {
-              $ref: "#/components/schemas/Job",
+              allOf: [
+                { $ref: "#/components/schemas/Job" },
+                withCapabilitiesRef(false),
+              ],
             },
           },
         },

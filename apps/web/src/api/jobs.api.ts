@@ -36,6 +36,9 @@ export const jobs = {
   cancel: (id: string) =>
     useAuthMutation<JobCancelResponsePayload, void>({
       url: `/api/jobs/${encodeURIComponent(id)}/cancel`,
+      // #689: a 403 means the caller no longer controls the job; refetch so
+      // Cancel re-renders from fresh capabilities.
+      onPermissionDenied: { invalidate: () => [queryKeys.jobs.root] },
     }),
 
   stream: (jobId: string | null | undefined) => useJobStream(jobId),

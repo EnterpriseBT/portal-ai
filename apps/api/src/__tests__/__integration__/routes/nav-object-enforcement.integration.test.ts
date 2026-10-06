@@ -393,6 +393,97 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
     expect(ownerRes.status).not.toBe(403);
   });
 
+  // #689: job payloads carry the caller's `capabilities`, where `delete` is
+  // the cancel rule (creator, or unconditional job control). The UI renders
+  // Cancel from it, so it must agree with the route.
+  describe("job capabilities agree with the cancel route (#689)", () => {
+    const jobCaps = async (jobId: string, sub: string) => {
+      const res = await bearer(request(app).get(`/api/jobs/${jobId}`), sub);
+      expect(res.status).toBe(200);
+      return res.body.payload.job.capabilities;
+    };
+    const cancelStatus = async (jobId: string, sub: string) =>
+      (await bearer(request(app).post(`/api/jobs/${jobId}/cancel`), sub))
+        .status;
+
+    it("a member sees delete=false on another's job, and its cancel is refused", async () => {
+      const memberJobId = generateId();
+      await db.insert(jobs).values({
+        id: memberJobId,
+        organizationId: orgId,
+        type: "connector_sync",
+        status: "pending",
+        progress: 0,
+        metadata: {},
+        createdBy: memberBId,
+        created: Date.now(),
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      expect(await jobCaps(memberJobId, memberAAuth0)).toEqual({
+        read: true,
+        write: false,
+        delete: false,
+      });
+      expect(await cancelStatus(memberJobId, memberAAuth0)).toBe(403);
+    });
+
+    it("the creator sees delete=true, and passes the cancel gate", async () => {
+      const memberJobId = generateId();
+      await db.insert(jobs).values({
+        id: memberJobId,
+        organizationId: orgId,
+        type: "connector_sync",
+        status: "pending",
+        progress: 0,
+        metadata: {},
+        createdBy: memberAId,
+        created: Date.now(),
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      expect((await jobCaps(memberJobId, memberAAuth0)).delete).toBe(true);
+      expect(await cancelStatus(memberJobId, memberAAuth0)).not.toBe(403);
+    });
+
+    it("the owner (unconditional job control) sees delete=true on another's job", async () => {
+      const memberJobId = generateId();
+      await db.insert(jobs).values({
+        id: memberJobId,
+        organizationId: orgId,
+        type: "connector_sync",
+        status: "pending",
+        progress: 0,
+        metadata: {},
+        createdBy: memberBId,
+        created: Date.now(),
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      expect((await jobCaps(memberJobId, ownerAuth0)).delete).toBe(true);
+      expect(await cancelStatus(memberJobId, ownerAuth0)).not.toBe(403);
+    });
+
+    it("the list rows carry the same capabilities as the GET", async () => {
+      const res = await bearer(request(app).get(`/api/jobs`), memberAAuth0);
+      expect(res.status).toBe(200);
+      const row = res.body.payload.jobs.find(
+        (j: { id: string }) => j.id === ownerJobId
+      );
+      expect(row.capabilities).toEqual(await jobCaps(ownerJobId, memberAAuth0));
+      expect(row.capabilities.delete).toBe(false);
+    });
+  });
+
   it("jobs /:id/cancel is org-scoped — a foreign-org job is 404", async () => {
     // A second org with its own job; memberA (in the first org) must not cancel it.
     const otherOwner = createUser(`auth0|nav-other-${generateId()}`);
