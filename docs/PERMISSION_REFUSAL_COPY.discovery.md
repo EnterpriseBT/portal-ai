@@ -173,7 +173,7 @@ Codes that are genuinely about roles, which stay:
 
 1. **`seat.service.ts:665-675`, "Only the owner can assign or remove the owner or admin role".** **Resolved: keep as is.** Assigning or removing the owner/admin roles isn't a policy permission. The hard-coded owner check is an accepted heuristic, so its message correctly names the roles. #711 leaves this rule, its message and its code alone, and the guard allowlists it.
 2. **Who to point to in hints.** **Resolved: name no one.** A user is assumed to know whom to ask in their organization, so a hint says what access is needed ("Ask for access to create views") and stops there. No "who can grant this" lookup.
-3. **The marketing site's FAQ/glossary build.** It bakes help content at build time (#311). Lean: changing the strings in core is enough; the site picks them up on its next build. The smoke checks `apps/site` renders the new FAQ text.
+3. **The marketing site's FAQ/glossary build.** It bakes help content at build time (#311). **Resolved:** changing the strings in core is enough; the site picks them up on its next build. The smoke checks `apps/site` renders the new FAQ text.
 4. **External API consumers of `INSUFFICIENT_ROLE`.** No in-repo client branches on it. Custom-toolpack webhooks receive tool *inputs*, not API errors. **Resolved: clean rename, accepted as a breaking API change**, recorded in the PR body.
 
 ## Enterprise-scale considerations
