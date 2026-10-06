@@ -24,6 +24,8 @@ import { sdk, queryKeys } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { FormAlert } from "../components/FormAlert.component";
+import { connectorLockReason } from "../utils/running-job-label.util";
+import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { RegionEditorUI } from "../modules/RegionEditor";
 import type {
   CellBounds,
@@ -79,6 +81,11 @@ export interface EditLayoutPlanViewUIProps {
   loadError: ReturnType<typeof toServerError>;
   commitError: ReturnType<typeof toServerError>;
   isCommitting: boolean;
+  /** The caller has write on the connector instance (#689). Without it the
+   *  editor isn't offered: every save and commit would be refused. */
+  canWrite: boolean;
+  /** A running job holds the instance: Commit is blocked with this reason. */
+  commitBlockedReason: string | null;
 
   /**
    * Connector instance id (for the breadcrumb back-link) and the
@@ -177,6 +184,8 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   loadError,
   commitError,
   isCommitting,
+  canWrite,
+  commitBlockedReason,
   connectorInstanceId,
   connectorInstanceName,
   entityOptions,
@@ -253,6 +262,29 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   }
   if (!editContext) return null;
 
+  if (!canWrite) {
+    return (
+      <Box>
+        <Stack spacing={4}>
+          {header}
+          <Box sx={{ maxWidth: 720 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography component="div" sx={{ fontWeight: 500, mb: 0.5 }}>
+                This layout plan can&rsquo;t be edited.
+              </Typography>
+              <Typography component="div">
+                You don&rsquo;t have write access to this connector.
+              </Typography>
+            </Alert>
+            <Button onClick={onLeaveView} variant="outlined">
+              Back
+            </Button>
+          </Box>
+        </Stack>
+      </Box>
+    );
+  }
+
   if (!editContext.editable) {
     return (
       <Box>
@@ -270,7 +302,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
             </Alert>
             <Stack direction="row" spacing={1}>
               <Button
-                href="/connectors/new/file-upload"
+                href="/connectors"
                 data-testid="reupload-link"
                 variant="contained"
               >
@@ -329,6 +361,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onCommit={onCommit}
           onBack={onBack}
           isCommitting={isCommitting}
+          commitDisabledReason={commitBlockedReason}
           resolveIdentityLocatorOptions={resolveIdentityLocatorOptions}
           onIdentityUpdate={onIdentityUpdate}
         />
@@ -359,6 +392,28 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const instanceQuery = sdk.connectorInstances.get(connectorInstanceId);
   const connectorInstanceName =
     instanceQuery.data?.connectorInstance.name ?? null;
+  const canWrite =
+    instanceQuery.data?.connectorInstance.capabilities.write ?? false;
+
+  // #689: the same lock the connector page shows. The server refuses the
+  // auto-PATCH while a job holds the instance, so Commit says why up front,
+  // and the job's SSE stream lifts the lock when it ends.
+  const runningJobsQuery =
+    sdk.connectorInstances.runningJobs(connectorInstanceId);
+  const runningJobs = useMemo(
+    () => runningJobsQuery.data?.runningJobs ?? [],
+    [runningJobsQuery.data?.runningJobs]
+  );
+  useRunningJobSubscriptions(
+    runningJobs,
+    useCallback(() => {
+      // The root covers the running-jobs list and the instance row.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connectorInstances.root,
+      });
+    }, [queryClient])
+  );
+  const commitBlockedReason = connectorLockReason(runningJobs);
 
   const {
     mutateAsync: recommitMutate,
@@ -785,10 +840,12 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   return (
     <EditLayoutPlanViewUI
       editContext={editContext}
-      loading={editContextQuery.isLoading}
+      loading={editContextQuery.isLoading || instanceQuery.isLoading}
       loadError={loadError}
       commitError={commitError}
       isCommitting={isCommitting}
+      canWrite={canWrite}
+      commitBlockedReason={commitBlockedReason}
       connectorInstanceId={connectorInstanceId}
       connectorInstanceName={connectorInstanceName}
       entityOptions={entityOptions}

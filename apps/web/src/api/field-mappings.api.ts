@@ -73,6 +73,8 @@ export const fieldMappings = {
     >({
       url: FIELD_MAPPINGS_URL,
       method: "POST",
+      // #689: a 403 means the caller's field-mapping permissions changed.
+      onPermissionDenied: { invalidate: () => [queryKeys.fieldMappings.root] },
     }),
 
   update: (id: string) =>
@@ -82,12 +84,14 @@ export const fieldMappings = {
     >({
       url: `${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.fieldMappings.root] },
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: { invalidate: () => [queryKeys.fieldMappings.root] },
     }),
 
   /** Search field mappings with `include=connectorEntity` — label shows `sourceField (entityLabel)`. */

@@ -4,7 +4,13 @@ import type { EntityTag } from "@portalai/core/models";
 const { render, screen, fireEvent } = await import("./test-utils");
 const { TagCardUI } = await import("../components/TagCard.component");
 
-const makeTag = (overrides: Partial<EntityTag> = {}): EntityTag => ({
+type Capabilities = { read: boolean; write: boolean; delete: boolean };
+
+// List rows carry the caller's `capabilities` (#688).
+const makeTag = (
+  overrides: Partial<EntityTag> & { capabilities?: Capabilities } = {}
+): EntityTag & { capabilities: Capabilities } => ({
+  capabilities: { read: true, write: true, delete: true },
   id: "tag-1",
   organizationId: "org-1",
   name: "Production",
@@ -81,5 +87,34 @@ describe("TagCardUI", () => {
     render(<TagCardUI tag={tag} onEdit={jest.fn()} onDelete={onDelete} />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(onDelete).toHaveBeenCalledWith(tag);
+  });
+
+  // #689: Edit and Delete follow the tag's own capabilities.
+  it("renders no Edit or Delete on a tag the caller can only read", () => {
+    render(
+      <TagCardUI
+        tag={makeTag({
+          capabilities: { read: true, write: false, delete: false },
+        })}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: /edit/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
+  });
+
+  it("renders Edit without Delete when the caller may write but not delete", () => {
+    render(
+      <TagCardUI
+        tag={makeTag({
+          capabilities: { read: true, write: true, delete: false },
+        })}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
   });
 });

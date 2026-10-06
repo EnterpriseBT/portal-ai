@@ -90,6 +90,7 @@ describe("connectorInstanceLayoutPlans.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci_123/layout-plan/plan_abc",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -99,6 +100,7 @@ describe("connectorInstanceLayoutPlans.api", () => {
       connectorInstanceLayoutPlans.commit("ci_123", "plan_abc");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci_123/layout-plan/plan_abc/commit",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });

@@ -30,17 +30,17 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { EntityRecordDetailViewUI, RelatedRecordsSection } =
   await import("../views/EntityRecordDetail.view");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
+import type { ConnectorEntity, EntityGroup } from "@portalai/core/models";
 import type {
-  ConnectorEntity,
-  EntityRecord,
-  EntityGroup,
-} from "@portalai/core/models";
-import type { ResolvedColumn } from "@portalai/core/contracts";
+  EntityRecordGetResponsePayload,
+  ResolvedColumn,
+} from "@portalai/core/contracts";
 
 const stubEntity: ConnectorEntity = {
   id: "ent-1",
@@ -56,7 +56,7 @@ const stubEntity: ConnectorEntity = {
   deletedBy: null,
 };
 
-const stubRecord: EntityRecord = {
+const stubRecord: EntityRecordGetResponsePayload["record"] = {
   id: "rec-1",
   organizationId: "org-1",
   connectorEntityId: "ent-1",
@@ -81,6 +81,7 @@ const stubRecord: EntityRecord = {
   updatedBy: null,
   deleted: null,
   deletedBy: null,
+  capabilities: { read: true, write: true, delete: true },
 };
 
 const stubColumns: ResolvedColumn[] = [
@@ -352,6 +353,115 @@ describe("EntityRecordDetailViewUI", () => {
       screen.queryByTestId("related-records-section")
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Related Records")).not.toBeInTheDocument();
+  });
+
+  // ── #689: per-object action gates ────────────────────────────────────
+  const openMenu = () =>
+    userEvent.click(screen.getByRole("button", { name: "More actions" }));
+
+  it("offers Edit, Delete and Re-validate to a writer", async () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        isWriteEnabled
+        canRevalidate
+        onRevalidate={jest.fn()}
+      />
+    );
+    await openMenu();
+    for (const name of [/edit/i, /delete/i, /re-validate/i]) {
+      expect(await screen.findByRole("menuitem", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("renders no actions for a caller who can only read the record", () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={{
+          ...stubRecord,
+          capabilities: { read: true, write: false, delete: false },
+        }}
+        columns={stubColumns}
+        isWriteEnabled
+        onRevalidate={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+  });
+
+  it("disables Edit and Delete, naming why, when the connector's writes are off", async () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        isWriteEnabled={false}
+      />
+    );
+    await openMenu();
+    const edit = await screen.findByRole("menuitem", { name: /edit/i });
+    expect(edit).toHaveAttribute("aria-disabled", "true");
+    await userEvent.hover(edit);
+    expect(
+      await screen.findByText("Writes are disabled on this connector")
+    ).toBeInTheDocument();
+  });
+
+  it("shows the lock alert and disables Edit and Delete while a job runs", async () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        isWriteEnabled
+        runningJobs={[
+          {
+            id: "job-1",
+            type: "connector_sync",
+            status: "active",
+            startedAt: Date.now(),
+            created: Date.now(),
+          },
+        ]}
+      />
+    );
+    // The alert says why the actions are paused (code review on #689).
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    await openMenu();
+    expect(
+      await screen.findByRole("menuitem", { name: /delete/i })
+    ).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("renders no lock alert when nothing is running", () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        isWriteEnabled
+        runningJobs={[]}
+      />
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("hides Re-validate without record write", async () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        isWriteEnabled
+        onRevalidate={jest.fn()}
+      />
+    );
+    await openMenu();
+    await screen.findByRole("menuitem", { name: /edit/i });
+    expect(screen.queryByRole("menuitem", { name: /re-validate/i })).toBeNull();
   });
 
   it("hides Related Records section when groups prop is omitted", () => {

@@ -139,6 +139,13 @@ export const CALLER_CAPABILITY_ACTIONS = [
    *  check the org PATCH runs (owner/admin), which a member's own-station
    *  write doesn't satisfy. */
   "station.default.set",
+  /** #689: re-validate an entity's records. Derived: the revalidate route's
+   *  class `resource.write {type:"entity_record"}` (owner/admin), which a
+   *  member's write on their own records doesn't satisfy. */
+  "entity_record.revalidate",
+  /** #689: delete all of an entity's records. Derived: the clear route's class
+   *  `resource.delete {type:"entity_record"}` (owner/admin). */
+  "entity_record.clear",
 ] as const;
 export const CallerCapabilityActionSchema = z.enum(CALLER_CAPABILITY_ACTIONS);
 export type CallerCapabilityAction = z.infer<

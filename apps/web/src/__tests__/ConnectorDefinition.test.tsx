@@ -216,7 +216,7 @@ describe("ConnectorDefinitionCardUI", () => {
 
   it("should render Connect button", () => {
     const cd = makeConnectorDefinition();
-    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} canConnect />);
     expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
   });
 
@@ -226,6 +226,7 @@ describe("ConnectorDefinitionCardUI", () => {
     render(
       <ConnectorDefinitionCardUI
         connectorDefinition={cd}
+        canConnect
         onConnect={onConnect}
       />
     );
@@ -235,9 +236,23 @@ describe("ConnectorDefinitionCardUI", () => {
 
   it("should not throw when Connect is clicked without onConnect handler", () => {
     const cd = makeConnectorDefinition();
-    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} canConnect />);
     expect(() =>
       fireEvent.click(screen.getByRole("button", { name: "Connect" }))
     ).not.toThrow();
+  });
+
+  // #689: Connect creates a connector instance (an owned create).
+  it("hides Connect when the caller can't create connector instances", () => {
+    const cd = makeConnectorDefinition();
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+  });
+
+  it("hides Connect on an inactive definition", () => {
+    const cd = makeConnectorDefinition({ isActive: false });
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} canConnect />);
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(screen.getByText("Inactive")).toBeInTheDocument();
   });
 });

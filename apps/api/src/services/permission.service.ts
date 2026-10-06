@@ -4,6 +4,7 @@ import {
   RESOURCE_PERMISSION_TYPES,
   type OrgRole,
   type PolicyPrincipalType,
+  type CallerCapabilityAction,
   type CapabilityMap,
   type PagePermissionMap,
   type ResourcePermissionMap,
@@ -72,6 +73,27 @@ export interface PermissionObject {
  * The list **visibility predicate** is `PermissionSet.visibilityPredicate`,
  * wired into list routes in #621.
  */
+/**
+ * Caller capabilities that aren't policy verbs: each is the class-level check
+ * its route runs, which an ownership-conditioned grant doesn't satisfy.
+ */
+const DERIVED_CAPABILITIES = {
+  // #690: the org PATCH's default-station change.
+  "station.default.set": (set) =>
+    set.can("resource.write", { type: "station" }),
+  // #689: the entity-record revalidate and clear routes (#599: owner/admin).
+  "entity_record.revalidate": (set) =>
+    set.can("resource.write", { type: "entity_record" }),
+  "entity_record.clear": (set) =>
+    set.can("resource.delete", { type: "entity_record" }),
+} satisfies Partial<
+  Record<CallerCapabilityAction, (set: PermissionSet) => boolean>
+>;
+
+type DerivedCapability = keyof typeof DERIVED_CAPABILITIES;
+const isDerived = (a: CallerCapabilityAction): a is DerivedCapability =>
+  a in DERIVED_CAPABILITIES;
+
 export class PermissionService {
   /**
    * Load the caller's effective {@link PermissionSet}. Gathers the statements of
@@ -233,16 +255,13 @@ export class PermissionService {
   /**
    * `can(a)` for every caller-capability action. Most are policy verbs; a
    * derived one is computed with the exact check its route runs, so the
-   * button and the server agree (#690: `station.default.set` is the org
-   * PATCH's class write on station).
+   * button and the server agree.
    */
   static capabilityMap(set: PermissionSet): CapabilityMap {
     return Object.fromEntries(
       CALLER_CAPABILITY_ACTIONS.map((action) => [
         action,
-        action === "station.default.set"
-          ? set.can("resource.write", { type: "station" })
-          : set.can(action),
+        isDerived(action) ? DERIVED_CAPABILITIES[action](set) : set.can(action),
       ])
     ) as CapabilityMap;
   }

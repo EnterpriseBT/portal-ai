@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
-import type { EntityTag } from "@portalai/core/models";
 
 import { TagCardUI, TagCardUIProps } from "../components/TagCard.component";
 
-const baseTag: EntityTag = {
+const baseTag: TagCardUIProps["tag"] = {
+  capabilities: { read: true, write: true, delete: true },
   id: "tag-001",
   organizationId: "org-1",
   name: "Production",

@@ -131,6 +131,8 @@ const stubEntity = {
 
 // ── Tests ───────────────────────────────────────────────────────────
 
+const ALL_RECORD_PERMISSIONS = { create: true, revalidate: true, clear: true };
+
 describe("EntityDetailViewUI", () => {
   beforeEach(() => {
     mockRecordsList.mockReturnValue(emptyRecordsList);
@@ -284,6 +286,70 @@ describe("EntityDetailViewUI", () => {
     expect(screen.getByLabelText("Add tag")).toBeInTheDocument();
   });
 
+  // ── #689: per-object gates ──────────────────────────────────────────
+  const readOnlyEntity = {
+    ...stubEntity,
+    capabilities: { read: true, write: false, delete: false },
+  };
+  const oneTag = [
+    {
+      id: "tag-1",
+      organizationId: "org-1",
+      name: "Important",
+      color: null,
+      description: null,
+      created: Date.now(),
+      createdBy: "system",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      assignmentId: "assignment-1",
+    },
+  ];
+
+  it("shows a read-only entity without Edit, Delete or tag editing", () => {
+    render(
+      <EntityDetailViewUI
+        entity={readOnlyEntity}
+        isWriteEnabled={true}
+        tags={oneTag}
+        onUnassignTag={jest.fn()}
+        onSearchTags={jest.fn<() => Promise<never[]>>().mockResolvedValue([])}
+        onAssignTag={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    expect(screen.getByText("Important")).toBeInTheDocument();
+    expect(screen.queryByTestId("CancelIcon")).toBeNull();
+    expect(screen.queryByLabelText("Add tag")).toBeNull();
+  });
+
+  it("lets a writer unassign a tag", async () => {
+    const onUnassignTag = jest.fn();
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        isWriteEnabled={true}
+        tags={oneTag}
+        onUnassignTag={onUnassignTag}
+      />
+    );
+    await userEvent.click(screen.getByTestId("CancelIcon"));
+    expect(onUnassignTag).toHaveBeenCalledWith("assignment-1");
+  });
+
+  it("keeps entity Delete when the connector's writes are off (the route doesn't check the flag)", async () => {
+    render(<EntityDetailViewUI entity={stubEntity} isWriteEnabled={false} />);
+    const edit = screen.getByRole("button", { name: "Edit" });
+    expect(edit).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+    expect(
+      await screen.findByRole("menuitem", { name: /delete/i })
+    ).toBeInTheDocument();
+  });
+
   it("does not block record display when a warning banner is shown", () => {
     mockFieldMappingsValidate.mockReturnValue({
       data: {
@@ -323,6 +389,7 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
+        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
@@ -334,17 +401,39 @@ describe("EntityDetailViewUI — New Record button", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides New Record button when isWriteEnabled is false", () => {
+  it("disables New Record, naming the reason, when the connector's writes are off", async () => {
     render(
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={false}
+        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
         onCreateRecord={jest.fn()}
       />
     );
+    const create = await screen.findByRole("button", { name: "Create" });
+    expect(create).toHaveAttribute("aria-disabled", "true");
+    await userEvent.hover(create);
+    expect(
+      await screen.findByText("Writes are disabled on this connector")
+    ).toBeInTheDocument();
+  });
+
+  it("hides New Record without record create (#689)", async () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        isWriteEnabled={true}
+        onOpenCreateRecordDialog={jest.fn()}
+        createRecordDialogOpen={false}
+        onCloseCreateRecordDialog={jest.fn()}
+        onCreateRecord={jest.fn()}
+      />
+    );
+    // Wait for the columns to land, so absence isn't just "not yet".
+    await screen.findAllByRole("row");
     expect(
       screen.queryByRole("button", { name: "Create" })
     ).not.toBeInTheDocument();
@@ -356,6 +445,7 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
+        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
@@ -373,6 +463,7 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
+        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={onOpen}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
@@ -390,6 +481,7 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
+        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={true}
         onCloseCreateRecordDialog={jest.fn()}
@@ -432,6 +524,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
 
   const clearProps = {
     isWriteEnabled: true,
+    recordPermissions: ALL_RECORD_PERMISSIONS,
     recordCount: 42,
     runningJobs: [] as Array<{
       id: string;
@@ -460,7 +553,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
         onOpenClearRecordsDialog={onOpen}
       />
     );
-    expect(clearButton()).not.toBeDisabled();
+    expect(clearButton()).not.toHaveAttribute("aria-disabled");
     await userEvent.click(clearButton());
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
@@ -481,7 +574,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
         ]}
       />
     );
-    expect(clearButton()).toBeDisabled();
+    expect(clearButton()).toHaveAttribute("aria-disabled", "true");
     // The lock alert names the running work — the "why" behind the disable.
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
@@ -494,7 +587,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
         isWriteEnabled={false}
       />
     );
-    expect(clearButton()).toBeDisabled();
+    expect(clearButton()).toHaveAttribute("aria-disabled", "true");
   });
 
   it("wires the dialog: typed confirm fires onClearRecords (case 30)", async () => {

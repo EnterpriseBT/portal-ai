@@ -395,4 +395,46 @@ describe("Same-org object access (#685)", () => {
       expect(patch.status).toBe(expected ? 200 : 403);
     }
   });
+
+  it("#689: entity_record.revalidate / .clear agree with the revalidate and clear routes", async () => {
+    // A member's own entity on their own write-enabled connector: they read
+    // it and write their own records, so only the class check can refuse them.
+    const def = await definition("file-upload");
+    const ownInstance = await instance(def, fx.memberId);
+    const entityId = generateId();
+    await db.insert(schema.connectorEntities).values({
+      id: entityId,
+      organizationId: fx.orgId,
+      connectorInstanceId: ownInstance,
+      key: `ent_${suffix()}`,
+      label: "Entity",
+      ...base(fx.memberId),
+    } as never);
+
+    for (const [sub, expected] of [
+      [MEMBER_SUB, false],
+      [OWNER_SUB, true],
+    ] as const) {
+      currentSub = sub;
+      const current = await request(app).get("/api/organization/current");
+      expect(current.status).toBe(200);
+      const caps = current.body.payload.capabilities;
+      expect(caps["entity_record.revalidate"]).toBe(expected);
+      expect(caps["entity_record.clear"]).toBe(expected);
+
+      const revalidate = await request(app).post(
+        `/api/connector-entities/${entityId}/records/revalidate`
+      );
+      const clear = await request(app).delete(
+        `/api/connector-entities/${entityId}/records`
+      );
+      if (expected) {
+        expect(revalidate.status).not.toBe(403);
+        expect(clear.status).not.toBe(403);
+      } else {
+        expect(revalidate.status).toBe(403);
+        expect(clear.status).toBe(403);
+      }
+    }
+  });
 });

@@ -3,6 +3,7 @@ import MuiSvgIcon from "@mui/material/SvgIcon";
 import type { SvgIconProps as MuiSvgIconProps } from "@mui/material/SvgIcon";
 import HomeIcon from "@mui/icons-material/Home";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import SendIcon from "@mui/icons-material/Send";
 import SearchIcon from "@mui/icons-material/Search";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -54,6 +55,7 @@ import PortalIcon from "../assets/icons/portal.svg";
 export enum IconName {
   Home = "home",
   Delete = "delete",
+  Edit = "edit",
   Send = "send",
   Search = "search",
   Settings = "settings",
@@ -118,6 +120,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <HomeIcon ref={ref} {...props} />;
       case IconName.Delete:
         return <DeleteIcon ref={ref} {...props} />;
+      case IconName.Edit:
+        return <EditIcon ref={ref} {...props} />;
       case IconName.Send:
         return <SendIcon ref={ref} {...props} />;
       case IconName.Search:

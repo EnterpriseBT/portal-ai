@@ -104,6 +104,7 @@ describe("field-mappings.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/field-mappings",
         method: "POST",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -114,6 +115,7 @@ describe("field-mappings.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/field-mappings/fm-123",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -124,6 +126,7 @@ describe("field-mappings.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/field-mappings/fm-123",
         method: "DELETE",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -135,6 +138,23 @@ describe("field-mappings.api", () => {
       // FieldMappingUpdateRequestBody includes the same as optional.
       // If these fields were missing, this file would not compile.
       expect(true).toBe(true);
+    });
+  });
+
+  // #689: a 403 refetches the fieldMappings so the gates re-render.
+  describe("onPermissionDenied", () => {
+    it.each([
+      ["create", () => fieldMappings.create()],
+      ["update", () => fieldMappings.update("fm-1")],
+      ["delete", () => fieldMappings.delete("fm-1")],
+    ])("%s invalidates fieldMappings.root", (_name, call) => {
+      call();
+      const config = mockUseAuthMutation.mock.calls[0][0] as {
+        onPermissionDenied: { invalidate: (vars: unknown) => unknown };
+      };
+      expect(config.onPermissionDenied.invalidate(undefined)).toEqual([
+        ["fieldMappings"],
+      ]);
     });
   });
 });

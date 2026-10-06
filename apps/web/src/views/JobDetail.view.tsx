@@ -1,6 +1,6 @@
 import {
   Box,
-  Button,
+  GatedButton,
   Icon,
   IconName,
   MetadataList,
@@ -22,6 +22,7 @@ import { JobDataItem } from "../components/Job.component";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { sdk } from "../api/sdk";
 import { formatJobProgress } from "../utils/job-progress.util";
+import { decideActionGate } from "../utils/action-gate.util";
 
 const dates = new DateFactory("UTC");
 
@@ -62,6 +63,12 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                   ? stream.completedAt
                   : job.completedAt;
                 const isTerminal = JobModel.isTerminalStatus(status);
+                // #689: `capabilities.delete` is the cancel rule (the job's
+                // creator, or unconditional job control).
+                const cancelGate = decideActionGate({
+                  allowed: job.capabilities.delete,
+                  blocked: isCancelling ? "Cancelling…" : null,
+                });
 
                 return (
                   <Stack spacing={3}>
@@ -75,16 +82,16 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                       title={job.type}
                       icon={<Icon name={IconName.Work} />}
                       primaryAction={
-                        !isTerminal ? (
-                          <Button
+                        !isTerminal && cancelGate.kind !== "hide" ? (
+                          <GatedButton
                             variant="contained"
                             color="error"
                             startIcon={<CancelIcon />}
                             onClick={() => cancel()}
-                            disabled={isCancelling}
+                            gate={cancelGate}
                           >
                             Cancel Job
-                          </Button>
+                          </GatedButton>
                         ) : undefined
                       }
                     >

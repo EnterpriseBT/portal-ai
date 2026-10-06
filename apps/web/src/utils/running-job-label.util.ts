@@ -40,3 +40,16 @@ export function joinRunningJobLabels(
   if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
   return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
 }
+
+/**
+ * #689: the reason a running job gives every action it blocks on a
+ * connector instance, or `null` when nothing is running. One sentence, so
+ * the tooltips, the flags and the layout-plan Commit all name the job alike.
+ */
+export function connectorLockReason(
+  jobs: Pick<RunningJobSummary, "type">[]
+): string | null {
+  return jobs.length > 0
+    ? `${joinRunningJobLabels(jobs)} is running on this connector — try again when it finishes.`
+    : null;
+}

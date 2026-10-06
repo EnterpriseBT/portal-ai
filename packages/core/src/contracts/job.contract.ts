@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { withCapabilities } from "./capabilities.contract.js";
+
 import {
   JobProgressDetailSchema,
   JobSchema,
@@ -32,7 +34,8 @@ export type JobListRequestQuery = z.infer<typeof JobListRequestQuerySchema>;
 
 export const JobListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    jobs: z.array(JobSchema),
+    /** #689: each row with the caller's capabilities (`delete` = cancel). */
+    jobs: z.array(withCapabilities(JobSchema)),
   });
 
 export type JobListResponsePayload = z.infer<
@@ -40,7 +43,8 @@ export type JobListResponsePayload = z.infer<
 >;
 
 export const JobGetResponsePayloadSchema = z.object({
-  job: JobSchema,
+  /** #689: with the caller's capabilities (`delete` = cancel). */
+  job: withCapabilities(JobSchema),
 });
 
 export type JobGetResponsePayload = z.infer<typeof JobGetResponsePayloadSchema>;

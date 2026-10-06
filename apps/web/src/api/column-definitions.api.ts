@@ -163,6 +163,11 @@ export const columnDefinitions = {
     >({
       url: COLUMN_DEFINITIONS_URL,
       method: "POST",
+      // #689: a 403 means the caller's column-definition permissions changed;
+      // refetch so the gates re-render from them.
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.columnDefinitions.root],
+      },
     }),
 
   update: (id: string) =>
@@ -172,12 +177,18 @@ export const columnDefinitions = {
     >({
       url: `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.columnDefinitions.root],
+      },
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.columnDefinitions.root],
+      },
     }),
 
   search: <TOption extends SelectOption = SelectOption>(
