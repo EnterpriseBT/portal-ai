@@ -51,20 +51,85 @@ Locks: `sdk.connectorInstances.runningJobs` / `sdk.connectorEntities.runningJobs
 
 Each slice ends with `npm run lint` (the action-gate guard) and `type-check`. `KNOWN_VIOLATIONS` stays `{}`.
 
-## Smoke (against your dev stack; walk in the browser)
+## Smoke (manual, against your dev stack)
 
-**Preflight:** `npm run dev`; `e2e:auth:all`. As **owner**: create a file-upload connector "smoke689" with one entity, one record, a custom column definition with a field mapping, a tag, and an entity group. Give the **member** read-only access to it (a policy `allow read` on that connector instance / entity, attached via a group). **Reset:** delete all of the above.
+Walk in the browser (`/smoke-walk` for the untagged steps). Tags: `— manual` needs a human (real vendor account); `— backend` is DB/CLI setup or proof. Acceptance criteria: **AC1** (member sees no instance actions on another's connector, sees them on their own, locked ⇒ `aria-disabled` naming the job) → §1, §2; **AC2** (every surface renders from the gates; guard passes) → §3–§7, plus `action-gate.guard.test.ts` in CI; **AC3** (no editable form without write) → §1.3, §2.
 
-1. **Member** on smoke689's instance page: no Edit/Sync/Delete/Modify Layout Plan/Create Entity; flags render as text. **Owner**: all present.
-2. As owner, start a sync. While it runs: Edit/Delete/Create Entity are `aria-disabled` and focusable, with the tooltip naming "Sync is running on this connector…"; the flags are disabled with the same reason.
-3. Member opens `/connectors/<id>/layout-plan/edit` directly → fallback "You don't have write access…"; its link lands on `/connectors`.
-4. Catalog: member (no class create) sees no Connect; an inactive definition shows no Connect for anyone.
-5. Member on the entity page: no tag ✕ / assign, no Edit/Delete/Create record/Delete records/Re-validate. Owner: present; turn the connector's Write flag off → Delete records shows "Writes are disabled on this connector".
-6. Member on Entities, Column definitions, Tags, Groups: Create shows `aria-disabled` with the grant hint (plausible primary); no row Edit/Delete; no member add/remove on a group.
-7. Owner on a system column definition: Edit shows a hover tooltip "System column definitions are read-only".
-8. Owner: Edit a column definition so revalidation is required; double-click "Confirm & Save" → one PATCH (network tab).
-9. Owner starts a sync; member opens that job → no Cancel. Owner → Cancel works.
-10. Revoke the member's group mid-session; the member clicks a stale action → "no longer have access" toast, and the action disappears after the refetch.
+**Preflight**
+- No migration. `npm run build --workspace @portalai/core` (stale dist otherwise), then `npm run dev`.
+- `npm run --workspace @portalai/e2e e2e:auth:all`. Switch admin and member into e2e-fixture (`POST /api/organization/switch`). The org must be on a tier with custom RBAC (the fixture's is).
+- **As owner:**
+  - Upload a sample CSV as file-upload connector **smoke689**, giving one entity with records.
+  - On that entity, add a custom column definition **smoke689_col** with a field mapping.
+  - Create a tag **smoke689** and an entity group **smoke689**, and add the entity as a member.
+- **As member:** upload a CSV as connector **smoke689-mine** (their own).
+- **As owner, Settings → Access:**
+  - Policy **smoke689 reader**: allow `read` on `connector_instance:<smoke689>` and `entity:<its entity>`, plus class `read` on `entity_record`, `field_mapping`, `tag`, `column_definition`, `entity_group`.
+  - Group **smoke689 readers** containing the member, with that policy attached.
+- **Holding a job in flight — backend:** in `psql`, run `BEGIN; LOCK TABLE entity_records IN ACCESS EXCLUSIVE MODE;`, then trigger the job. `ROLLBACK;` releases it.
+- **Reset:** delete the two connectors, the tag, the group, the column definition, the policy and the access group.
+
+**§1 Connector instance, layout plan, catalog (rows 13–16)**
+1. **Member** on smoke689's page:
+   - no Edit, no ⋮ menu, no Create Entity;
+   - Capabilities show as chips (Read, Write) with no checkboxes.
+
+   **Owner** on the same page: Edit, ⋮ (Delete) and Create Entity are present; the flags are checkboxes.
+2. **Member** on **smoke689-mine**: Edit, Delete and Create Entity are all present (their own connector).
+3. **Member** opens `/connectors/<smoke689 id>/layout-plan/edit` directly: "You don't have write access to this connector." with only **Back**, and no editor.
+4. **Owner**, Connectors → Catalog: Connect shows on active definitions. Toggle the Active filter off: an inactive definition shows **no** Connect.
+5. **Member**, Connected tab: no Delete on smoke689's card; Delete on smoke689-mine's.
+
+**§2 Entity, records, field mappings (rows 17–20)**
+1. **Member** on smoke689's entity:
+   - tags show without ✕ and with no "Add tag";
+   - no Edit, no ⋮, no Create, Delete records or Re-validate All.
+2. **Member** on smoke689-mine's entity:
+   - **Create** is present;
+   - **Delete records** and **Re-validate All** are absent (entity-wide actions; the code-review fix).
+
+   **Owner** on smoke689's entity: all of these are present.
+3. **Owner**, turn smoke689's **Write** flag off, then on the entity page:
+   - Create and Delete records are `aria-disabled`; hovering shows "Writes are disabled on this connector";
+   - ⋮ → Delete is still enabled (the route doesn't check the flag).
+
+   Turn Write back on.
+4. **Member** opens a smoke689 record: no ⋮ (no Edit, Delete or Re-validate).
+5. **Owner**, hold a job (preflight), then click **Re-validate All**:
+   - The entity page shows the lock alert, and Delete records / Edit are `aria-disabled` naming "Revalidation is running on this connector — try again when it finishes."
+   - Open a record: the **same lock alert** shows, and ⋮ → Edit / Delete are disabled with that reason.
+
+   `ROLLBACK;`. Within seconds and **without reloading**, the alert clears and the actions re-enable on the record page (the code-review fix).
+6. **Member** on smoke689_col's page: field-mapping rows have **no** edit or delete icons, and no Create in Field Mappings.
+
+   **Owner**: the icons are present. With smoke689's Write flag off, they're `aria-disabled` with the writes-disabled tooltip.
+
+**§3 Column definitions, tags, groups (rows 21–25)**
+1. **Member** on Column Definitions, Tags and Entity Groups:
+   - **Create** is `aria-disabled` with "Ask for access to create column definitions / tags / entity groups";
+   - cards have no Delete; tag cards have no Edit.
+2. **Owner**, open a **system** column definition: Edit is `aria-disabled`, hovering shows "System column definitions are read-only", and there's no ⋮.
+3. **Member** on group smoke689: no Edit, no ⋮, no Add Member, no Remove; the primary member shows a non-clickable star.
+
+   **Owner**: all present. Toggling the star and removing a member both work.
+4. **Owner**, edit smoke689_col's validation pattern so revalidation is required. Double-click **Confirm & Save**: the network tab shows **one** PATCH.
+
+**§4 Jobs (row 28)**
+1. **Owner**, hold a job and click Re-validate All. Then open it from Jobs:
+   - as **member**: no Cancel Job;
+   - as **owner**: Cancel Job is present, and clicking it shows "Cancelling…" disabled, then the job ends cancelled.
+
+   `ROLLBACK;`.
+2. **Backend**: `GET /api/jobs/<id>` as member shows `capabilities: {read: true, write: false, delete: false}`, and `POST …/cancel` as member returns 403.
+
+**§5 Stale permissions**
+1. **Owner**, add `write` on `connector_instance:<smoke689>` to **smoke689 reader**. **Member** reloads smoke689: the flags are checkboxes.
+2. **Owner** removes that statement. **Member**, without reloading, clicks the **Write** checkbox: the request returns 403, and after the refetch the flags render as chips.
+
+**§6 Sync label — manual** (needs a Google Sheets connector)
+1. Click **Sync now**: while the sync runs the button reads a disabled **"Syncing…"**, not "Sync now", and Edit / Delete are locked naming "Sync is running…".
+
+**Bug template:** Section · Expected · Got · Repro · ids (org / connector / entity / job).
 
 ## Out of scope
 
