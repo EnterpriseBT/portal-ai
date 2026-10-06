@@ -170,3 +170,87 @@ describe("permission-gated actions render through an ActionGate (#688)", () => {
     expect(violationsIn(`<TextField disabled={!canEdit} />`)).toEqual([]);
   });
 });
+
+// ── #708: a create gate reads `create`, never `write`/`delete` ───────────
+
+/**
+ * `resourcePermissions[type].write`/`.delete` are any-grant signals
+ * (`canPerformAny`): true for an owned-only, `created_by_system`-only or
+ * instance-only grant, none of which a create route accepts. So a Create gated
+ * on them is enabled for callers the route refuses, which is how every member
+ * got an enabled-but-403 Create View. A create reads
+ * `canOnResource(type, "create")` (the create route's own check); per-object
+ * write/delete come from the row's `capabilities`.
+ */
+const ANY_GRANT_GATE =
+  /\bcanOnResource\(\s*["'][a-z_]+["']\s*,\s*["'](write|delete)["']\s*\)/g;
+
+/** Source with comments removed (a doc comment may cite the old form). A
+ *  `//` right after `:` is a URL in a string, not a comment. */
+export function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+/** Every `canOnResource(type, "write" | "delete")` in code. */
+export function anyGrantGatesIn(source: string): string[] {
+  return [...stripComments(source).matchAll(ANY_GRANT_GATE)].map((m) => m[0]);
+}
+
+function codeFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) {
+      return name === "__tests__" || name === "stories" ? [] : codeFiles(path);
+    }
+    return /\.tsx?$/.test(path) && !path.endsWith(".d.ts") ? [path] : [];
+  });
+}
+
+describe("a create gate reads `create`, never `write`/`delete` (#708)", () => {
+  const code = codeFiles(webSrc).map((path) => ({
+    path: relative(webSrc, path),
+    source: readFileSync(path, "utf8"),
+  }));
+
+  it("scans .ts and .tsx (so the guard can't pass vacuously)", () => {
+    expect(code.some((f) => f.path.endsWith(".util.ts"))).toBe(true);
+    expect(code.length).toBeGreaterThan(files.length);
+  });
+
+  it("no web code gates on the any-grant write/delete", () => {
+    const offenders = code
+      .map((f) => ({ path: f.path, gates: anyGrantGatesIn(f.source) }))
+      .filter((f) => f.gates.length > 0)
+      .map(
+        (f) =>
+          `${f.path}: ${f.gates.join(", ")} — use canOnResource(type, "create") for a create; per-object write/delete come from the row's capabilities`
+      );
+    expect(offenders).toEqual([]);
+  });
+
+  it("flags the pattern in code, and ignores it in comments and URLs", () => {
+    expect(
+      anyGrantGatesIn(
+        `const g = gate({ allowed: canOnResource("tag", "write") });`
+      )
+    ).toHaveLength(1);
+    expect(
+      anyGrantGatesIn(`if (canOnResource('pin','delete')) remove();`)
+    ).toHaveLength(1);
+    expect(
+      anyGrantGatesIn(`/** was \`canOnResource("tag", "write")\` (#708) */`)
+    ).toEqual([]);
+    expect(
+      anyGrantGatesIn(`// canOnResource("tag", "write") gated this once`)
+    ).toEqual([]);
+    expect(
+      anyGrantGatesIn(
+        `const u = "https://x.io"; const g = canOnResource("tag", "write");`
+      )
+    ).toHaveLength(1);
+    expect(anyGrantGatesIn(`canOnResource("tag", "create")`)).toEqual([]);
+    expect(anyGrantGatesIn(`canOnResource("tag", "read")`)).toEqual([]);
+  });
+});
