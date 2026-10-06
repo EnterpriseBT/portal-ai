@@ -18,6 +18,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import type { StationAttachmentChange } from "../services/station-attachment.service.js";
 import { AuditService } from "../services/audit.service.js";
@@ -681,20 +682,18 @@ stationRouter.patch(
         );
       }
 
-      const existing = await DbService.repository.stations.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
-        );
-      }
       // #621: writing a station requires resource.write on it (own via
-      // MemberAccess, any via owner/admin, or a read-write grant).
+      // MemberAccess, any via owner/admin, or a read-write grant). #713: one
+      // the caller can't read answers 404, like its GET.
       const set = await PermissionService.loadSet(ctx);
-      set.check("resource.write", {
-        type: "station",
-        id,
-        createdBy: existing.createdBy,
-      });
+      ObjectAccessService.loadForVerb(
+        set,
+        organizationId,
+        "station",
+        await DbService.repository.stations.findById(id),
+        "write",
+        () => new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+      );
 
       const {
         name,
@@ -868,19 +867,17 @@ stationRouter.delete(
       const ctx = req.application!.metadata;
       const { organizationId, userId } = ctx;
 
-      const existing = await DbService.repository.stations.findById(id);
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
-          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
-        );
-      }
       // #621: deleting a station requires resource.delete — its creator (own),
       // or owner/admin. A read-write grantee cannot delete a shared station.
-      await PermissionService.check(ctx, "resource.delete", {
-        type: "station",
-        id,
-        createdBy: existing.createdBy,
-      });
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(ctx),
+        organizationId,
+        "station",
+        await DbService.repository.stations.findById(id),
+        "delete",
+        () => new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+      );
 
       await DbService.transaction(async (tx) => {
         const stationPortals = await DbService.repository.portals.findByStation(

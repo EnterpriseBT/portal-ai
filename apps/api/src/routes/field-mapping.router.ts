@@ -28,6 +28,7 @@ import {
 } from "../services/permission.service.js";
 import type { PermissionSet } from "../services/permission-set.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
@@ -687,21 +688,20 @@ fieldMappingRouter.patch(
       // #685: the mapping must be in the caller's org (it used to resolve
       // any mapping by id), and changing it needs write on it.
       const caller = req.application!.metadata;
-      const existing = await DbService.repository.fieldMappings.findById(id);
-      if (!existing || existing.organizationId !== caller.organizationId) {
-        return next(
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(caller),
+        caller.organizationId,
+        "field_mapping",
+        await DbService.repository.fieldMappings.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.FIELD_MAPPING_NOT_FOUND,
             "Field mapping not found"
           )
-        );
-      }
-      await PermissionService.check(caller, "resource.write", {
-        type: "field_mapping",
-        id: existing.id,
-        createdBy: existing.createdBy,
-      });
+      );
 
       // Assert write capability on the parent connector instance
       await assertWriteCapability(existing.connectorEntityId);
@@ -1074,28 +1074,19 @@ fieldMappingRouter.delete(
 
       // #685: resolve the mapping within the caller's org first. This used
       // to find any mapping by id, across orgs, before anything else.
-      const mappingToDelete =
-        await DbService.repository.fieldMappings.findById(id);
-      if (
-        !mappingToDelete ||
-        mappingToDelete.organizationId !== organizationId
-      ) {
-        return next(
+      // #713: one the caller can't read answers 404, like its GET.
+      const mappingToDelete = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "field_mapping",
+        await DbService.repository.fieldMappings.findById(id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.FIELD_MAPPING_NOT_FOUND,
             "Field mapping not found"
           )
-        );
-      }
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        {
-          type: "field_mapping",
-          id: mappingToDelete.id,
-          createdBy: mappingToDelete.createdBy,
-        }
       );
 
       // Assert write capability on the parent connector instance, then block

@@ -18,6 +18,7 @@ import { DbService } from "../services/db.service.js";
 import { entityTags } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 
 const logger = createLogger({ module: "entity-tag" });
@@ -518,28 +519,20 @@ entityTagRouter.patch(
         );
       }
 
-      const existing = await DbService.repository.entityTags.findById(id);
-      if (
-        !existing ||
-        existing.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #630: a member may edit only their own tag; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "tag",
+        await DbService.repository.entityTags.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.ENTITY_TAG_NOT_FOUND,
             "Entity tag not found"
           )
-        );
-      }
-      // #630: a member may edit only their own tag; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "tag",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       if (parsed.data.name && parsed.data.name !== existing.name) {
@@ -656,28 +649,20 @@ entityTagRouter.delete(
     try {
       const { id } = req.params;
 
-      const existing = await DbService.repository.entityTags.findById(id);
-      if (
-        !existing ||
-        existing.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #630: a member may delete only their own tag; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "tag",
+        await DbService.repository.entityTags.findById(id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.ENTITY_TAG_NOT_FOUND,
             "Entity tag not found"
           )
-        );
-      }
-      // #630: a member may delete only their own tag; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        {
-          type: "tag",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       const { userId } = req.application!.metadata;

@@ -50,12 +50,10 @@ After the fix, editing an object whose share was revoked under an open page gets
   - Edit `__tests__/config/route-authorization.map.ts`: each GAP entry's `by` text gains "unreadable → 404".
 - Tests:
   - New `apps/api/src/__tests__/services/object-access.service.test.ts` cases for `loadForVerb`: missing, cross-org, unreadable → 404 via `notFound`; readable but not permitted → 403; permitted → returns the row.
-  - New table in `__integration__/routes/same-org-access.authorization.integration.test.ts`: for each GAP route, an owner-created object, then as a member (MemberAccess) → **404 + the route's `*_NOT_FOUND` code**, and nothing written.
-  - Flip the existing 403 assertions the audit found:
-    - `nav-object-enforcement…:345` (connector sync)
-    - `field-mapping.router.integration.test.ts:2203`
-    - the curated-view and connector-instance router suites.
-    - Keep 403 cases where the caller *can* read (e.g. `station.enforcement` read-only grantee).
+  - New case in `__integration__/routes/object-capabilities.agreement.integration.test.ts`, which already seeds every type. For each type's write routes (PATCH, DELETE, pin refresh, connector sync):
+    - an owner-created row, as a member (MemberAccess) → the **same 404 + `*_NOT_FOUND` as its GET**, and the row survives;
+    - for member-readable types, a system row → **403 `PERMISSION_DENIED`**.
+  - Flip the one existing 403 assertion on an unreadable object: `nav-object-enforcement…` connector sync → 404 `CONNECTOR_INSTANCE_NOT_FOUND`. The other suites the audit flagged already target rows the caller can read, and pass unchanged.
 - `npm run test:unit` + `npm run test:integration` (api), `lint`, `type-check`.
 
 **Slice 2 — web (`fix(web)`)**

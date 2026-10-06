@@ -342,12 +342,13 @@ describe("nav/object RBAC enforcement (#630 slice 2)", () => {
     ).toBe(200);
   });
 
-  it("connector /:id/sync is refused (403) for a member on another member's instance", async () => {
+  it("connector /:id/sync is 404 for a member on another member's instance (#713: unreadable == absent)", async () => {
     const res = await bearer(
       request(app).post(`/api/connector-instances/${ciOwnB}/sync`),
       memberAAuth0
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("CONNECTOR_INSTANCE_NOT_FOUND");
   });
 
   it("entity-group /:id/impact is 404 for a member (admin-managed type)", async () => {

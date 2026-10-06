@@ -524,26 +524,19 @@ curatedViewRouter.patch(
       const { organizationId, userId } = req.application!.metadata;
       const body = parsed.data;
 
-      const existing = await DbService.repository.curatedViews.findById(
-        req.params.id
-      );
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "curated_view",
+        await DbService.repository.curatedViews.findById(req.params.id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.CURATED_VIEW_NOT_FOUND,
             "Curated view not found"
           )
-        );
-      }
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "curated_view",
-          id: existing.id,
-          createdBy: existing.createdBy,
-        }
       );
 
       if (body.filter) {
@@ -642,26 +635,19 @@ curatedViewRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { organizationId, userId } = req.application!.metadata;
-      const existing = await DbService.repository.curatedViews.findById(
-        req.params.id
-      );
-      if (!existing || existing.organizationId !== organizationId) {
-        return next(
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "curated_view",
+        await DbService.repository.curatedViews.findById(req.params.id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.CURATED_VIEW_NOT_FOUND,
             "Curated view not found"
           )
-        );
-      }
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        {
-          type: "curated_view",
-          id: existing.id,
-          createdBy: existing.createdBy,
-        }
       );
 
       const cascaded = await DbService.transaction(async (tx) => {

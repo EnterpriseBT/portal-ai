@@ -30,6 +30,7 @@ import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
@@ -616,29 +617,20 @@ columnDefinitionRouter.patch(
         parsed.data.validationPattern
       );
 
-      const existing =
-        await DbService.repository.columnDefinitions.findById(id);
-      if (
-        !existing ||
-        existing.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #630: a member may edit only their own definition; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "column_definition",
+        await DbService.repository.columnDefinitions.findById(id),
+        "write",
+        () =>
           new ApiError(
             404,
             ApiCode.COLUMN_DEFINITION_NOT_FOUND,
             "Column definition not found"
           )
-        );
-      }
-      // #630: a member may edit only their own definition; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "column_definition",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       if (existing.system) {
@@ -1024,29 +1016,20 @@ columnDefinitionRouter.delete(
     try {
       const { id } = req.params;
 
-      const existing =
-        await DbService.repository.columnDefinitions.findById(id);
-      if (
-        !existing ||
-        existing.organizationId !== req.application!.metadata.organizationId
-      ) {
-        return next(
+      // #630: a member may delete only their own definition; owner/admin any.
+      // #713: one the caller can't read answers 404, like its GET.
+      const existing = ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "column_definition",
+        await DbService.repository.columnDefinitions.findById(id),
+        "delete",
+        () =>
           new ApiError(
             404,
             ApiCode.COLUMN_DEFINITION_NOT_FOUND,
             "Column definition not found"
           )
-        );
-      }
-      // #630: a member may delete only their own definition; owner/admin any.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        {
-          type: "column_definition",
-          id,
-          createdBy: existing.createdBy,
-        }
       );
 
       if (existing.system) {
