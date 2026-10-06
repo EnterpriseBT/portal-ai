@@ -62,20 +62,81 @@ After the fix, editing an object whose share was revoked under an open page gets
 
 ## Smoke (manual, against your dev stack)
 
-Fixtures: owner, member (seeded `MemberAccess`) in e2e-fixture; tokens from `packages/e2e/.auth/*.storageState.json`.
+Untagged steps can be walked in the browser (`/smoke-walk`). `— backend` is an API probe.
 
-1. As **owner**, create a station, a view and a pin; don't share them. As **member**:
-   - `PATCH` and `DELETE` each (`/api/stations/:id`, `/api/curated-views/:id`, `/api/portal-results/:id`) → **404** with the type's `*_NOT_FOUND` code, matching its GET.
-   - Nothing changed (check as owner). — backend
-2. Same for an owner-created connector instance (`PATCH`, `DELETE`, `POST /:id/sync`), column definition and tag → 404, and nothing changed. — backend
-3. Share the station with the member at **Read**. `PATCH` as member → **403** `PERMISSION_DENIED` "You don't have permission to edit this station." (readable but not permitted still says so). — backend
-4. Browser, as **member**:
-   - share the station at **Read & write** and open it;
-   - as **owner**, revoke the share entirely;
-   - as **member**, Edit → Save.
+**Coverage:**
+- Decision 1 (404 before 403 on every write) → S1–S4.
+- Decision 2 (a 404 refreshes the page) → S5–S6.
+- Cross-org → S7.
 
-   Expected: the dialog shows "Station not found (STATION_NOT_FOUND)". After Cancel, the page re-fetches and shows "Station not found". No Edit is left on a dead page.
-5. Cross-org: as member, `PATCH /api/stations/<another org's station>` → 404, unchanged. — backend
+**Preflight**
+- [ ] `git checkout fix/713-unreadable-station-404 && git pull --ff-only`. No migration. `npm run dev` (API :3001, web :3000).
+  - Make sure :3001 is nodemon's own child, not an orphaned server from an earlier checkout: `ps -o ppid= -p $(lsof -ti :3001)` isn't `1`.
+- [ ] `npm run --workspace @portalai/e2e e2e:auth:all`. Owner and member switched into **e2e-fixture**.
+- [ ] Bearer tokens `$OWNER`, `$MEMBER` from `packages/e2e/.auth/*.storageState.json`. — backend
+- [ ] As **owner**, create, unshared:
+  - station **s713** (`POST /api/stations {"name":"s713"}`);
+  - a view on the Sandbox entity (or reuse **Smoke Contours** with no share);
+  - a tag **t713**.
+
+  Note an owner-created connector instance, entity, field mapping, column definition and record id (`GET` lists as owner). — backend
+
+**Reset:** delete **s713** and **t713**. Revoke any share made below. — backend
+
+**S1 — unreadable answers its GET's 404 on every write** — backend
+- [ ] As **member**, `GET /api/stations/<s713>` → 404 `STATION_NOT_FOUND`.
+- [ ] As member, `PATCH /api/stations/<s713> {"name":"x"}` → **404 `STATION_NOT_FOUND`**.
+- [ ] As member, `DELETE /api/stations/<s713>` → **404 `STATION_NOT_FOUND`**.
+- [ ] As owner, s713 is unchanged.
+- [ ] Same for the view: `PATCH /api/curated-views/<id> {"label":"x"}` and `DELETE` → 404 `CURATED_VIEW_NOT_FOUND`.
+- [ ] Same for the tag: `PATCH /api/entity-tags/<id> {"name":"x"}` and `DELETE` → 404 `ENTITY_TAG_NOT_FOUND`.
+
+**S2 — the action routes and the data types** — backend
+- [ ] Connector instance:
+  - `PATCH {"name":"x"}` → 404 `CONNECTOR_INSTANCE_NOT_FOUND`;
+  - `POST /api/connector-instances/<id>/sync` → 404 `CONNECTOR_INSTANCE_NOT_FOUND`;
+  - `DELETE` → 404 `CONNECTOR_INSTANCE_NOT_FOUND`;
+  - the instance still exists and no sync job was queued (`GET /api/jobs` as owner).
+- [ ] Column definition `PATCH {"label":"x"}` / `DELETE` → 404 `COLUMN_DEFINITION_NOT_FOUND`.
+- [ ] Entity `PATCH {"label":"x"}` / `DELETE` → 404 `CONNECTOR_ENTITY_NOT_FOUND`.
+- [ ] Field mapping `PATCH {"sourceField":"x","columnDefinitionId":"<any id>"}` → 404 **`FIELD_MAPPING_NOT_FOUND`**: the mapping is authorized before the body's column definition. `DELETE` → 404 `FIELD_MAPPING_NOT_FOUND`.
+- [ ] Record `PATCH /api/connector-entities/<eid>/records/<rid> {"data":{"a":1}}` / `DELETE` → 404. Expect the parent's `CONNECTOR_ENTITY_NOT_FOUND`, since the member can't read the entity either.
+- [ ] Pin: if one exists (pin a result from an owner portal), `PATCH {"name":"x"}`, `DELETE` and `POST /api/portal-results/<id>/refresh` → 404 `PORTAL_RESULT_NOT_FOUND`. If none exists, record that the CI agreement suite covers it.
+
+**S3 — missing ids answer the same 404** — backend
+- [ ] As **owner**, `DELETE /api/connector-entities/<random uuid>` → 404 `CONNECTOR_ENTITY_NOT_FOUND`. It used to skip the check and fall through to the delete service.
+- [ ] `PATCH /api/stations/<random uuid>` → 404 `STATION_NOT_FOUND`, the same body as an unreadable station's.
+
+**S4 — readable but not permitted is still 403** — backend
+- [ ] As **owner**, share **s713** with the member at **Read**.
+- [ ] As member, `PATCH /api/stations/<s713> {"name":"x"}` → **403 `PERMISSION_DENIED`** "You don't have permission to edit this station."
+- [ ] As member, `DELETE` → 403 "You don't have permission to delete this station."
+- [ ] Revoke the share.
+
+**S5 — revoked under an open page: the page refreshes (station)**
+- [ ] As **owner**, share **s713** with the member at **Read & write**.
+- [ ] As **member**, open the station page.
+- [ ] As **owner**, revoke the share entirely (`DELETE /api/grants/<id>`). — backend
+- [ ] As **member**, on the open page: More actions → **Edit** → change the name → **Save**. Expected:
+  - the network shows the PATCH 404 followed by a GET of the station (404);
+  - the page replaces itself with "Station not found", closing the dialog with it, so there's no stale Edit;
+  - nothing renamed (check as owner).
+
+  The dialog's own alert may not be seen, because the refresh lands at once. That's acceptable: the page says the station is gone.
+
+**S6 — deleted under an open page: the page refreshes (view)**
+- [ ] As **owner**, share a view with the member at **Read & write**.
+- [ ] As **member**, open the view's page.
+- [ ] As **owner**, delete the view. — backend
+- [ ] As **member**, **Edit** → **Save**. Expected: the PATCH answers 404 `CURATED_VIEW_NOT_FOUND`, the view re-fetches, and the page shows the view as not found with no Edit left. The dialog may close with the page.
+
+**S7 — cross-org** — backend
+- [ ] As **member**, `PATCH` and `DELETE` a station in an org the member doesn't belong to (create one in the owner's **My Organization**) → 404 `STATION_NOT_FOUND`; it's unchanged.
+
+**Sign-off**
+- [ ] Every step above verified against my own running stack — <date + name>
+
+**Bug-filing:** Step · Expected · Got · Repro · Identifiers (org/user/object ids, response body).
 
 ## Out of scope
 
