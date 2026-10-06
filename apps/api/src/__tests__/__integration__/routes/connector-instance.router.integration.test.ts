@@ -1303,8 +1303,9 @@ describe("Connector Instance Router", () => {
           enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
+      // #711: a tenancy refusal, not a missing permission.
       expect(res.status).toBe(403);
-      expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_MISMATCH);
     });
 
     it("inherits enabledCapabilityFlags from the definition when the body omits them", async () => {

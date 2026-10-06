@@ -876,7 +876,7 @@ describe("Toolpacks Router", () => {
       ]) {
         const res = await send();
         expect(res.status).toBe(403);
-        expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+        expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
       }
 
       const after = await row(id);
@@ -893,7 +893,7 @@ describe("Toolpacks Router", () => {
         .post("/api/toolpacks")
         .send(VALID_REGISTER_BODY);
       expect(res.status).toBe(403);
-      expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+      expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
     });
 
     it("the owner still edits, rotates and deletes", async () => {

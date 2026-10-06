@@ -40,7 +40,7 @@ import {
  * route. For each caller and type, read `create` from
  * `GET /api/organization/current`, then send a minimal valid create:
  * `create === true` ⇔ the route creates (2xx), and `create === false` ⇔ it
- * refuses with 403 `INSUFFICIENT_ROLE`. A disagreement means a `CREATE_RULES`
+ * refuses with 403 `PERMISSION_DENIED`. A disagreement means a `CREATE_RULES`
  * row has drifted from its route.
  *
  * Callers:
@@ -386,7 +386,7 @@ describe("create capability agrees with the create routes (#708)", () => {
       expect([type, res.status, res.body?.code]).toEqual([
         type,
         403,
-        ApiCode.INSUFFICIENT_ROLE,
+        ApiCode.PERMISSION_DENIED,
       ]);
     }
   }
@@ -646,6 +646,6 @@ describe("create capability agrees with the create routes (#708)", () => {
     expect(caps.create).toBe(false);
     const res = await attempt.curated_view(fx.memberId);
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
   });
 });

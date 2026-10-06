@@ -672,7 +672,9 @@ export class SeatService {
         ) {
           throw new ApiError(
             403,
-            ApiCode.INSUFFICIENT_ROLE,
+            // #711: a rule about roles (an accepted heuristic, not a policy
+            // permission), so its code and message name the roles.
+            ApiCode.MEMBER_ROLE_ASSIGNMENT_RESTRICTED,
             "Only the owner can assign or remove the owner or admin role"
           );
         }

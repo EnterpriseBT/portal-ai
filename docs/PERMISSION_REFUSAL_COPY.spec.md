@@ -14,7 +14,7 @@ Discovery: `docs/PERMISSION_REFUSAL_COPY.discovery.md`. Issue: [#711](https://gi
 1. **One code** (discovery D1-A): `ApiCode.PERMISSION_DENIED` replaces `INSUFFICIENT_ROLE`, `BILLING_NOT_OWNER`, `ORGANIZATION_NOT_OWNER` and `AUDIT_LOG_NOT_AUTHORIZED`. It's a clean rename with no alias, accepted as a **breaking API change** (OQ4) and recorded in the PR body.
 2. **The message names the permission** (D2-B). It's derived from `(action, object)` by `permissionRefusalMessage`, in a new text-only file (`permission-set.ts` contains NUL bytes). The fallback is "You don't have permission to perform this action." No structured `details` (D2-C is deferred).
 3. **A tenancy refusal isn't a permission refusal** (D4). The cross-org connector-instance create gets a new `ORGANIZATION_MISMATCH` (403). Job cancel becomes `PERMISSION_DENIED`, "…to cancel this job".
-4. **The role-assignment rule stays** (OQ1). `seat.service.ts:665-675` keeps its role check, its message ("Only the owner can assign or remove the owner or admin role") and its code. It's an accepted heuristic about roles, and the guard allowlists that exact string. The same holds for `LAST_OWNER_*`, `MEMBER_MIN_ONE_ROLE` and `RBAC_SYSTEM_IMMUTABLE`.
+4. **The role-assignment rule stays** (OQ1). `seat.service.ts:665-675` keeps its role check and its message ("Only the owner can assign or remove the owner or admin role"). *Revised in slice 1:* it can't keep its code, because that code was `INSUFFICIENT_ROLE`, so it gets its own `MEMBER_ROLE_ASSIGNMENT_RESTRICTED` (403). It's a rule about roles, not a permission, so `PERMISSION_DENIED` would mislabel it. It's an accepted heuristic about roles, and the guard allowlists that exact string. The same holds for `LAST_OWNER_*`, `MEMBER_MIN_ONE_ROLE` and `RBAC_SYSTEM_IMMUTABLE`.
 5. **Hints name no one** (OQ2): "Ask for access to …".
 6. **Clients show the server's message as the lead** for a denial, since it now names the permission, falling back to the standard lead only when it's empty. The `(CODE)` caption stays (D3-B, revised now that the message is specific).
 7. **The marketing site needs nothing extra** (OQ3): editing the core help strings is enough.
@@ -49,7 +49,7 @@ Discovery: `docs/PERMISSION_REFUSAL_COPY.discovery.md`. Issue: [#711](https://gi
 ### `ApiCode` (`apps/api/src/constants/api-codes.constants.ts`)
 
 - **Remove:** `ORGANIZATION_NOT_OWNER` (`:50`), `INSUFFICIENT_ROLE` (`:58`), `BILLING_NOT_OWNER` (`:109`), `AUDIT_LOG_NOT_AUTHORIZED` (`:788`), with their comments, including the stale `:786-787`.
-- **Add:**
+- **Add** (plus `MEMBER_ROLE_ASSIGNMENT_RESTRICTED`, see Key decision 4):
 
 ```ts
 /** #711: the caller lacks the permission the action needs. The message names

@@ -190,7 +190,7 @@ describe("wrapWithPermissionGate (#629)", () => {
   it("catches an ApiError(403) thrown in execute (an rbac tool's service gate)", async () => {
     const tools: Record<string, GateableTool> = {
       policy_create: tool(async () => {
-        throw new ApiError(403, ApiCode.INSUFFICIENT_ROLE, "not allowed");
+        throw new ApiError(403, ApiCode.PERMISSION_DENIED, "not allowed");
       }),
     };
     // rbac_management tools carry no descriptor — they rely on this catch.

@@ -223,8 +223,9 @@ describe("PUT /api/organization/members/:userId/roles (#620 set-the-set)", () =>
 
     const res = await putRoles(target, ["admin"]);
 
+    // #711: a rule about roles, so its code names it.
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.MEMBER_ROLE_ASSIGNMENT_RESTRICTED);
   });
 
   it("a member caller cannot set roles (403)", async () => {
@@ -234,7 +235,7 @@ describe("PUT /api/organization/members/:userId/roles (#620 set-the-set)", () =>
     const res = await putRoles(target, ["member"]);
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
   });
 
   it("returns 404 for a member not in this organization", async () => {

@@ -376,8 +376,8 @@ jobsRouter.post(
         return next(
           new ApiError(
             403,
-            ApiCode.INSUFFICIENT_ROLE,
-            "You can only cancel jobs you started"
+            ApiCode.PERMISSION_DENIED,
+            "You don't have permission to cancel this job."
           )
         );
       }

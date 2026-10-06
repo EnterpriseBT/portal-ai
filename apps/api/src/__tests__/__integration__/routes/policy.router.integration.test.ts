@@ -288,7 +288,7 @@ describe("/api/policies (#622 slice 3)", () => {
     await entitleOrg(orgId);
     const res = await auth(request(app).post("/api/policies")).send(body());
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
   });
 
   it("a duplicate policy name → 409", async () => {

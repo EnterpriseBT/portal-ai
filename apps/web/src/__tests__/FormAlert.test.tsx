@@ -46,8 +46,8 @@ describe("FormAlert", () => {
     render(
       <FormAlert
         serverError={{
-          message: "Only the organization owner can manage billing",
-          code: "BILLING_NOT_OWNER",
+          message: "You don't have permission to manage billing.",
+          code: "PERMISSION_DENIED",
         }}
       />
     );
@@ -57,9 +57,9 @@ describe("FormAlert", () => {
     ).toBeInTheDocument();
     // ...with the server's specific reason + code kept as detail.
     expect(
-      screen.getByText(/Only the organization owner can manage billing/)
+      screen.getByText(/You don't have permission to manage billing/)
     ).toBeInTheDocument();
-    expect(screen.getByText(/BILLING_NOT_OWNER/)).toBeInTheDocument();
+    expect(screen.getByText(/PERMISSION_DENIED/)).toBeInTheDocument();
   });
 
   it("does not apply the RBAC lead to a non-permission code", () => {

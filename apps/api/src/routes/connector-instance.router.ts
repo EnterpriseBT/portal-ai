@@ -762,7 +762,8 @@ connectorInstanceRouter.post(
         return next(
           new ApiError(
             403,
-            ApiCode.INSUFFICIENT_ROLE,
+            // #711: a tenancy refusal, not a missing permission.
+            ApiCode.ORGANIZATION_MISMATCH,
             "You can only create connector instances in your current organization"
           )
         );

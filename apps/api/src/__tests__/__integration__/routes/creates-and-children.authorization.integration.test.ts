@@ -339,7 +339,7 @@ describe("Child rows and creates authorization (#685)", () => {
       expect({ url, status: res.status, code: res.body.code }).toEqual({
         url,
         status: 403,
-        code: ApiCode.INSUFFICIENT_ROLE,
+        code: ApiCode.PERMISSION_DENIED,
       });
     }
     currentSub = OWNER_SUB;

@@ -345,6 +345,6 @@ describe("GET /api/rbac/objects (#622 slice 5)", () => {
       request(app).get("/api/rbac/objects?resourceType=station")
     );
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.INSUFFICIENT_ROLE);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
   });
 });

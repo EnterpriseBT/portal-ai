@@ -68,8 +68,8 @@ describe("useAuthMutation onPermissionDenied (#688)", () => {
   it("invalidates the declared keys on a permission denial", async () => {
     respond(403, {
       success: false,
-      message: "Insufficient role",
-      code: "INSUFFICIENT_ROLE",
+      message: "You don't have permission to edit this view.",
+      code: "PERMISSION_DENIED",
     });
     const { result, invalidate } = setup();
     result.current.mutate({ id: "cv-1" });
@@ -83,15 +83,29 @@ describe("useAuthMutation onPermissionDenied (#688)", () => {
   it("still calls the caller's onError, so feedback stays with the caller", async () => {
     respond(403, {
       success: false,
-      message: "Insufficient role",
-      code: "INSUFFICIENT_ROLE",
+      message: "You don't have permission to edit this view.",
+      code: "PERMISSION_DENIED",
     });
     const { result, onError } = setup();
     result.current.mutate({ id: "cv-1" });
     await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
     expect((onError.mock.calls[0][0] as { code: string }).code).toBe(
-      "INSUFFICIENT_ROLE"
+      "PERMISSION_DENIED"
     );
+  });
+
+  // #711 (spec case 16): the pre-#711 codes are gone; only PERMISSION_DENIED
+  // is a denial.
+  it("doesn't treat a retired role-named code as a denial", async () => {
+    respond(403, {
+      success: false,
+      message: "Your role does not permit this action",
+      code: "INSUFFICIENT_ROLE",
+    });
+    const { result, invalidate, onError } = setup();
+    result.current.mutate({ id: "cv-1" });
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("doesn't invalidate on any other error", async () => {

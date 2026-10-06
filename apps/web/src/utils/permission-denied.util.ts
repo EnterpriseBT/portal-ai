@@ -8,10 +8,9 @@ import type { ServerError } from "./api.util";
  * surfaces import the helper from here, which nothing mocks.
  */
 export const PERMISSION_DENIED_CODES: ReadonlySet<string> = new Set([
-  "INSUFFICIENT_ROLE",
-  "ORGANIZATION_NOT_OWNER",
-  "BILLING_NOT_OWNER",
-  "AUDIT_LOG_NOT_AUTHORIZED",
+  // #711: one code for every permission refusal; its message names the
+  // permission (policies govern permissions, so never a role).
+  "PERMISSION_DENIED",
 ]);
 
 /** The standardized lead shown for any permission denial. */

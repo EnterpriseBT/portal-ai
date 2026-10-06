@@ -234,7 +234,7 @@ describe("authorization (#685)", () => {
     mockGetPortal.mockResolvedValue(pendingTurn);
     mockAcquire.mockResolvedValue(true);
     mockWriteCheck.mockImplementationOnce(() => {
-      throw new ApiError(403, "INSUFFICIENT_ROLE" as never, "Forbidden");
+      throw new ApiError(403, "PERMISSION_DENIED" as never, "Forbidden");
     });
 
     const res = await request(app).get(STREAM_URL);
