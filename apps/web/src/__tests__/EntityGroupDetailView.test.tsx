@@ -451,4 +451,29 @@ describe("AddMemberDialog", () => {
     await user.keyboard("{Escape}{Enter}");
     expect(onAddMember).not.toHaveBeenCalled();
   });
+
+  // ── #689: gates from the group's own capabilities ──────────────────
+  const readOnlyGroup = {
+    ...stubGroup,
+    capabilities: { read: true, write: false, delete: false },
+  };
+
+  it("renders a read-only group without Edit, Delete or member controls", () => {
+    render(<EntityGroupDetailViewUI {...defaultProps} group={readOnlyGroup} />);
+    expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /more actions/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /add member/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /remove member/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /primary/i })).toBeNull();
+    // The primary member is still marked, read-only.
+    expect(screen.getByTitle("Primary")).toBeInTheDocument();
+  });
+
+  it("disables Edit while the group update is pending", () => {
+    render(<EntityGroupDetailViewUI {...defaultProps} isUpdatingGroup />);
+    expect(screen.getByRole("button", { name: /^edit$/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+  });
 });

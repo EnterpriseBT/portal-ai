@@ -14,10 +14,11 @@ import {
   PageEmptyState,
   PageHeader,
   DetailCard,
+  GatedButton,
   MetadataList,
   Stack,
 } from "@portalai/core/ui";
-import type { ActionSuiteItem } from "@portalai/core/ui";
+import type { ActionGate, ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -38,6 +39,9 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { FormAlert } from "../components/FormAlert.component";
+import { decideActionGate } from "../utils/action-gate.util";
+import { useActionGate } from "../utils/use-action-gate.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
@@ -83,6 +87,8 @@ const EntityGroupCard: React.FC<EntityGroupCardProps> = ({
       icon: <DeleteIcon />,
       onClick: onDelete,
       color: "error" as const,
+      // #689: the group's own delete.
+      gate: decideActionGate({ allowed: group.capabilities.delete }),
     },
   ];
 
@@ -116,13 +122,27 @@ export interface EntityGroupsViewUIProps {
   onDeleteGroup: (
     group: EntityGroupListResponsePayload["entityGroups"][number]
   ) => void;
+  /** How Create renders for this caller (#689). */
+  createGate: ActionGate;
 }
 
 export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
   onCreateGroup,
   onDeleteGroup,
+  createGate,
 }) => {
   const navigate = useNavigate();
+  const createButton =
+    createGate.kind === "hide" ? undefined : (
+      <GatedButton
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={onCreateGroup}
+        gate={createGate}
+      >
+        Create Group
+      </GatedButton>
+    );
 
   const pagination = usePagination({
     sortFields: [
@@ -150,15 +170,7 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
           onNavigate={(href) => navigate({ to: href })}
           title="Entity Groups"
           icon={<Icon name={IconName.Hub} />}
-          primaryAction={
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={onCreateGroup}
-            >
-              Create Group
-            </Button>
-          }
+          primaryAction={createButton}
         />
 
         <PaginationToolbar {...pagination.toolbarProps} />
@@ -194,15 +206,7 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                           icon={<Icon name={IconName.Hub} />}
                           title="No entity groups found"
                           description="Create your first entity group to get started."
-                          action={
-                            <Button
-                              variant="contained"
-                              startIcon={<AddIcon />}
-                              onClick={onCreateGroup}
-                            >
-                              Create Group
-                            </Button>
-                          }
+                          action={createButton}
                         />
                       );
                     }
@@ -344,6 +348,17 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
 
 export const EntityGroupsView: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canOnResource } = useCapabilities();
+  const { gate } = useActionGate();
+  // #689: entity group create is type-level; a caller who reads groups but
+  // can't create one sees Create disabled with how to get it.
+  const createGate = gate({
+    allowed: canOnResource("entity_group", "write"),
+    primary: {
+      plausible: canOnResource("entity_group", "read"),
+      grantHint: "Ask for access to create entity groups",
+    },
+  });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [deletingGroup, setDeletingGroup] = useState<
@@ -405,6 +420,7 @@ export const EntityGroupsView: React.FC = () => {
       <EntityGroupsViewUI
         onCreateGroup={handleOpenCreate}
         onDeleteGroup={handleDeleteGroup}
+        createGate={createGate}
       />
 
       <CreateGroupDialog

@@ -9,13 +9,14 @@ import type { ColumnDefinition } from "@portalai/core/models";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
 import {
   Box,
-  Button,
+  GatedButton,
   Icon,
   IconName,
   PageEmptyState,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
+import type { ActionGate } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -35,6 +36,8 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { useActionGate } from "../utils/use-action-gate.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
 
 const TYPE_OPTIONS = ColumnDataTypeEnum.options.map((t) => ({
   label: t,
@@ -46,11 +49,13 @@ const TYPE_OPTIONS = ColumnDataTypeEnum.options.map((t) => ({
 export interface ColumnDefinitionListViewUIProps {
   onCreateOpen: () => void;
   onDelete: (cd: ColumnDefinition) => void;
+  /** How Create renders for this caller (#689). */
+  createGate: ActionGate;
 }
 
 export const ColumnDefinitionListViewUI: React.FC<
   ColumnDefinitionListViewUIProps
-> = ({ onCreateOpen, onDelete }) => {
+> = ({ onCreateOpen, onDelete, createGate }) => {
   const navigate = useNavigate();
 
   const pagination = usePagination({
@@ -93,13 +98,16 @@ export const ColumnDefinitionListViewUI: React.FC<
           title="Column Definitions"
           icon={<Icon name={IconName.ViewColumn} />}
           primaryAction={
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={onCreateOpen}
-            >
-              Create Column Definition
-            </Button>
+            createGate.kind === "hide" ? undefined : (
+              <GatedButton
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={onCreateOpen}
+                gate={createGate}
+              >
+                Create Column Definition
+              </GatedButton>
+            )
           }
         />
 
@@ -167,6 +175,17 @@ export const ColumnDefinitionListViewUI: React.FC<
 
 export const ColumnDefinitionListView: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canOnResource } = useCapabilities();
+  const { gate } = useActionGate();
+  // #689: creating a column definition is a type-level create; a caller who
+  // reads them but can't create one sees Create disabled with how to get it.
+  const createGate = gate({
+    allowed: canOnResource("column_definition", "write"),
+    primary: {
+      plausible: canOnResource("column_definition", "read"),
+      grantHint: "Ask for access to create column definitions",
+    },
+  });
 
   // Create
   const [createOpen, setCreateOpen] = useState(false);
@@ -228,6 +247,7 @@ export const ColumnDefinitionListView: React.FC = () => {
       <ColumnDefinitionListViewUI
         onCreateOpen={handleOpenCreate}
         onDelete={handleOpenDelete}
+        createGate={createGate}
       />
 
       <CreateColumnDefinitionDialog

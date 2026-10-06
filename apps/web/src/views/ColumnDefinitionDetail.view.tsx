@@ -11,7 +11,6 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
   DataTable,
   GatedButton,
   GatedIconButton,
@@ -38,6 +37,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { fieldMappingRowGates } from "../utils/entity-actions.util";
+import { columnDefinitionActionGates } from "../utils/column-definition-actions.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { TYPE_COLOR } from "../utils/column-definition-form.util";
 import { useStorage } from "../utils/storage.util";
@@ -204,6 +204,10 @@ export const ColumnDefinitionDetailView: React.FC<
           <DataResult results={{ item: itemResult }}>
             {({ item }: { item: ColumnDefinitionGetResponsePayload }) => {
               const cd = item.columnDefinition;
+              const gates = columnDefinitionActionGates({
+                capabilities: cd.capabilities,
+                system: cd.system,
+              });
               return (
                 <Stack spacing={4}>
                   <PageHeader
@@ -219,32 +223,26 @@ export const ColumnDefinitionDetailView: React.FC<
                     title={cd.label}
                     icon={<Icon name={IconName.ViewColumn} />}
                     primaryAction={
-                      <Button
-                        variant="contained"
-                        startIcon={<EditIcon />}
-                        onClick={() => setEditDialogOpen(true)}
-                        disabled={cd.system}
-                        title={
-                          cd.system
-                            ? "System column definitions are read-only"
-                            : undefined
-                        }
-                      >
-                        Edit
-                      </Button>
+                      gates.edit.kind === "hide" ? undefined : (
+                        <GatedButton
+                          variant="contained"
+                          startIcon={<EditIcon />}
+                          onClick={() => setEditDialogOpen(true)}
+                          gate={gates.edit}
+                        >
+                          Edit
+                        </GatedButton>
+                      )
                     }
-                    secondaryActions={
-                      cd.system
-                        ? []
-                        : [
-                            {
-                              label: "Delete",
-                              icon: <DeleteIcon />,
-                              onClick: () => setDeleteDialogOpen(true),
-                              color: "error",
-                            },
-                          ]
-                    }
+                    secondaryActions={[
+                      {
+                        label: "Delete",
+                        icon: <DeleteIcon />,
+                        onClick: () => setDeleteDialogOpen(true),
+                        color: "error",
+                        gate: gates.delete,
+                      },
+                    ]}
                   >
                     <MetadataList
                       direction="vertical"

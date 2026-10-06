@@ -9,13 +9,14 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
+  GatedButton,
   Icon,
   IconName,
   PageEmptyState,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
+import type { ActionGate } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -32,6 +33,8 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { useActionGate } from "../utils/use-action-gate.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -54,14 +57,28 @@ export interface TagsViewUIProps {
   onCreateTag: () => void;
   onEditTag: (tag: EntityTag) => void;
   onDeleteTag: (tag: EntityTag) => void;
+  /** How Create renders for this caller (#689). */
+  createGate: ActionGate;
 }
 
 export const TagsViewUI: React.FC<TagsViewUIProps> = ({
   onCreateTag,
   onEditTag,
   onDeleteTag,
+  createGate,
 }) => {
   const navigate = useNavigate();
+  const createButton =
+    createGate.kind === "hide" ? undefined : (
+      <GatedButton
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={onCreateTag}
+        gate={createGate}
+      >
+        Create Tag
+      </GatedButton>
+    );
 
   const pagination = usePagination({
     sortFields: [
@@ -80,15 +97,7 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
           onNavigate={(href) => navigate({ to: href })}
           title="Tags"
           icon={<Icon name={IconName.Label} />}
-          primaryAction={
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={onCreateTag}
-            >
-              Create Tag
-            </Button>
-          }
+          primaryAction={createButton}
         />
 
         <PaginationToolbar {...pagination.toolbarProps} />
@@ -119,15 +128,7 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
                           icon={<Icon name={IconName.Label} />}
                           title="No tags found"
                           description="Create your first tag to get started."
-                          action={
-                            <Button
-                              variant="contained"
-                              startIcon={<AddIcon />}
-                              onClick={onCreateTag}
-                            >
-                              Create Tag
-                            </Button>
-                          }
+                          action={createButton}
                         />
                       );
                     }
@@ -159,6 +160,17 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
 
 export const TagsView: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canOnResource } = useCapabilities();
+  const { gate } = useActionGate();
+  // #689: tag create is type-level; a caller who reads tags but can't create
+  // one sees Create disabled with how to get it.
+  const createGate = gate({
+    allowed: canOnResource("tag", "write"),
+    primary: {
+      plausible: canOnResource("tag", "read"),
+      grantHint: "Ask for access to create tags",
+    },
+  });
 
   // Modal state
   const [formOpen, setFormOpen] = useState(false);
@@ -241,6 +253,7 @@ export const TagsView: React.FC = () => {
         onCreateTag={handleOpenCreate}
         onEditTag={handleOpenEdit}
         onDeleteTag={handleOpenDelete}
+        createGate={createGate}
       />
 
       <TagFormModal

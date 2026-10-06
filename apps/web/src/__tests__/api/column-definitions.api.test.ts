@@ -100,6 +100,7 @@ describe("column-definitions.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/column-definitions",
         method: "POST",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -110,6 +111,7 @@ describe("column-definitions.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/column-definitions/cd-123",
         method: "PATCH",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -120,6 +122,7 @@ describe("column-definitions.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/column-definitions/cd-123",
         method: "DELETE",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
   });
@@ -132,6 +135,23 @@ describe("column-definitions.api", () => {
       //   - Added: validationPattern, validationMessage, canonicalFormat
       // If these types were wrong, this file would not compile.
       expect(true).toBe(true);
+    });
+  });
+
+  // #689: a 403 refetches column definitions so the gates re-render.
+  describe("onPermissionDenied", () => {
+    it.each([
+      ["create", () => columnDefinitions.create()],
+      ["update", () => columnDefinitions.update("cd-1")],
+      ["delete", () => columnDefinitions.delete("cd-1")],
+    ])("%s invalidates columnDefinitions.root", (_name, call) => {
+      call();
+      const config = mockUseAuthMutation.mock.calls[0][0] as {
+        onPermissionDenied: { invalidate: (vars: unknown) => unknown };
+      };
+      expect(config.onPermissionDenied.invalidate(undefined)).toEqual([
+        ["columnDefinitions"],
+      ]);
     });
   });
 });

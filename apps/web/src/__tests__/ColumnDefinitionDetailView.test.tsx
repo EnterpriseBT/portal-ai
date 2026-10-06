@@ -63,9 +63,15 @@ const { render, screen, fireEvent } = await import("./test-utils");
 const { ColumnDefinitionDetailView } =
   await import("../views/ColumnDefinitionDetail.view");
 
+// GET rows carry the caller's `capabilities` (#688).
 const makeColumnDefinition = (
-  overrides: Partial<ColumnDefinition> = {}
-): ColumnDefinition => ({
+  overrides: Partial<ColumnDefinition> & {
+    capabilities?: { read: boolean; write: boolean; delete: boolean };
+  } = {}
+): ColumnDefinition & {
+  capabilities: { read: boolean; write: boolean; delete: boolean };
+} => ({
+  capabilities: { read: true, write: true, delete: true },
   id: "cd-1",
   organizationId: "org-1",
   key: "first_name",
@@ -341,7 +347,7 @@ describe("ColumnDefinitionDetailView", () => {
       } as Partial<ListQuery>;
     });
 
-    it("disables Edit and hides Delete when the column definition is system", () => {
+    it("disables Edit and hides Delete when the column definition is system", async () => {
       const cd = makeColumnDefinition({ system: true });
       currentGetQuery = {
         data: { columnDefinition: cd },
@@ -352,10 +358,35 @@ describe("ColumnDefinitionDetailView", () => {
 
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
+      // #689: disabled with a reason the tooltip can show (a native
+      // `disabled` button never fires hover, so `title` was never seen).
       const edit = screen.getByRole("button", { name: /edit/i });
-      expect(edit).toBeDisabled();
+      expect(edit).toHaveAttribute("aria-disabled", "true");
+      fireEvent.mouseOver(edit);
+      expect(
+        await screen.findByText("System column definitions are read-only")
+      ).toBeInTheDocument();
 
       // Secondary actions menu (which hosts Delete) is absent when empty.
+      expect(
+        screen.queryByRole("button", { name: /more actions/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders no Edit or Delete for a caller who can only read it (#689)", () => {
+      const cd = makeColumnDefinition({
+        capabilities: { read: true, write: false, delete: false },
+      });
+      currentGetQuery = {
+        data: { columnDefinition: cd },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<GetQuery>;
+
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
       expect(
         screen.queryByRole("button", { name: /more actions/i })
       ).not.toBeInTheDocument();

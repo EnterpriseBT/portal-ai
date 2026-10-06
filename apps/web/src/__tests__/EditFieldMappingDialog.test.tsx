@@ -249,6 +249,23 @@ describe("EditFieldMappingDialog", () => {
     });
   });
 
+  // #689 (audit row 23): Confirm & Save submits once and retires itself
+  // in the same handler, so a double click can't submit twice. (It can't be
+  // reached mid-save either: Save is disabled and Enter blocked while pending.)
+  it("submits once on a double click of Confirm & Save", async () => {
+    const onSubmit = jest.fn();
+    render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Normalized Key/), {
+      target: { value: "new_key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const confirm = await screen.findByRole("button", { name: /Confirm/ });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Confirm/ })).toBeNull();
+  });
+
   // ── Standard dialog behavior ───────────────────────────────────────
 
   it("should call onClose when Cancel is clicked", () => {
