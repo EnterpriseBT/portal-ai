@@ -449,6 +449,51 @@ describe("Layout Plans Draft Router", () => {
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
     });
+
+    // #687: a 500's message no longer reaches the client, so the parser's
+    // input errors (a hint naming a sheet that isn't there) answer 400 with
+    // their explanation; any other failure stays a scrubbed 500.
+    it("answers a parser input error with 400 and its explanation", async () => {
+      mockAnalyze.mockRejectedValue(
+        new Error(
+          'UNKNOWN_SHEET: regionHint references sheet "Nope" which is not in the workbook'
+        )
+      );
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadSessionId, regionHints: [] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INTERPRET_FAILED);
+      expect(res.body.message).toMatch(/^UNKNOWN_SHEET: .*"Nope"/);
+    });
+
+    it("answers any other interpret failure with a generic 500", async () => {
+      mockAnalyze.mockRejectedValue(new Error("anthropic: socket hang up"));
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadSessionId, regionHints: [] });
+
+      expect(res.status).toBe(500);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INTERPRET_FAILED);
+      expect(res.body.message).toBe("Internal server error");
+    });
   });
 
   /**

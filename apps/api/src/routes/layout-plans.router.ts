@@ -17,6 +17,7 @@ import { JobsService } from "../services/jobs.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
+import { interpretFailure } from "../utils/interpret-error.util.js";
 
 const logger = createLogger({ module: "layout-plans" });
 
@@ -88,7 +89,7 @@ async function assertSourceAccessible(
  *                     plan:
  *                       $ref: '#/components/schemas/LayoutPlan'
  *       400:
- *         description: Invalid request body
+ *         description: Invalid request body, or a region hint the interpreter can't use (`LAYOUT_PLAN_INTERPRET_FAILED` with `UNKNOWN_SHEET` / `UNSUPPORTED_LAYOUT_SHAPE` in the message)
  *       500:
  *         description: Interpreter failed
  */
@@ -136,15 +137,7 @@ layoutPlansRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Draft interpret failed"
       );
-      return next(
-        error instanceof ApiError
-          ? error
-          : new ApiError(
-              500,
-              ApiCode.LAYOUT_PLAN_INTERPRET_FAILED,
-              error instanceof Error ? error.message : "Interpret failed"
-            )
-      );
+      return next(error instanceof ApiError ? error : interpretFailure(error));
     }
   }
 );

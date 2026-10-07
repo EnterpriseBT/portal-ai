@@ -1,5 +1,6 @@
 import { ApiErrorResponse, ApiSuccessResponse } from "@portalai/core/contracts";
 import { Response } from "express";
+import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
 /**
@@ -39,6 +40,10 @@ export class ApiError extends Error {
   }
 }
 
+// #687: what every 500 answers with; shared with the web app, which treats it
+// as "no message". The catch-all logs the original first.
+export { INTERNAL_ERROR_MESSAGE };
+
 export class HttpService {
   public static ApiError = ApiError;
   public static ApiCode = ApiCode;
@@ -54,12 +59,18 @@ export class HttpService {
     } as ApiSuccessResponse<P>);
   }
   public static async error(res: Response, error: ApiError) {
-    return res.status(error.status ?? 500).json({
+    const status = error.status ?? 500;
+    // #687: a 500 keeps its code (the client contract) and its authored
+    // recommendation; the caught message and the free-form details stay in
+    // the log. Other 5xx (503 backpressure, 502 upstream refusals) carry
+    // copy written for the user and pass through.
+    const internal = status === 500;
+    return res.status(status).json({
       success: false,
-      message: error.message,
+      message: internal ? INTERNAL_ERROR_MESSAGE : error.message,
       code: error.code,
       ...(error.recommendation ? { recommendation: error.recommendation } : {}),
-      ...(error.details ? { details: error.details } : {}),
+      ...(error.details && !internal ? { details: error.details } : {}),
     } as ApiErrorResponse);
   }
 }

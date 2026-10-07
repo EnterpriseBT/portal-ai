@@ -8,6 +8,7 @@ import {
   PERMISSION_DENIED_MESSAGE,
   serverErrorMessage,
 } from "../utils/permission-denied.util";
+import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
 
 describe("serverErrorMessage (#711)", () => {
   it("shows a denial's own message, which names the permission", () => {
@@ -45,6 +46,17 @@ describe("serverErrorMessage (#711)", () => {
     expect(serverErrorMessage(undefined)).toBe("Something went wrong.");
     expect(serverErrorMessage("boom", "Failed")).toBe("Failed");
     expect(serverErrorMessage({ message: "" }, "Failed")).toBe("Failed");
+  });
+
+  // #687: the API answers every 500 with the same generic message, so it
+  // says nothing the call site's own fallback doesn't say better.
+  it("uses the fallback for the API's generic 500 message", () => {
+    expect(
+      serverErrorMessage(
+        { message: INTERNAL_ERROR_MESSAGE, code: "STATION_DELETE_FAILED" },
+        "Couldn't delete the station."
+      )
+    ).toBe("Couldn't delete the station.");
   });
 
   it("recognises only PERMISSION_DENIED as a denial", () => {

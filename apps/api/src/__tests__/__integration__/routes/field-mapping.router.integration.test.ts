@@ -456,6 +456,25 @@ describe("Field Mapping Router", () => {
       expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
     });
 
+    // #687: a DB error used to come back as the raw Drizzle message, the SQL
+    // text and its bound params. A NUL byte in the id is enough to trigger one.
+    it("answers a DB failure with a generic 500 that carries no SQL", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .get("/api/field-mappings/%00")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(500);
+      expect(res.body.message).toBe("Internal server error");
+      // The route's own code, so this exercises its DB-error path and not
+      // the catch-all's UNKNOWN.
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_FETCH_FAILED);
+      expect(JSON.stringify(res.body)).not.toMatch(
+        /failed query|select|params/i
+      );
+    });
+
     it("should return a field mapping by id", async () => {
       const { connectorEntityId, columnDefinitionId, organizationId } =
         await seedFullChain(db as ReturnType<typeof drizzle>);

@@ -196,8 +196,11 @@ portalEventsRouter.get(
         await PortalTurnGuardService.releaseTurnLock(lockKey);
       }
     } catch (error) {
+      // #687: a 500's message is the caught error's text (possibly SQL), so
+      // it stays in the log, like on a JSON response; other ApiErrors carry
+      // copy written for the user.
       const message =
-        error instanceof ApiError
+        error instanceof ApiError && (error.status ?? 500) !== 500
           ? error.message
           : "Failed to stream portal response";
 

@@ -446,7 +446,7 @@ Reference implementation: `packages/core/src/models/user.model.ts`
 - **Logging**: Log at route, service, and database layers using Pino logger
 - **Request validation**: Middleware with typed `Request` interfaces
 - **Response validation**: Validate payload structure before sending
-- **Error handling**: Use `ApiError` class with `next(error)` — never send error responses directly
+- **Error handling**: Use `ApiError` class with `next(error)` — never send error responses directly. A **500's message never reaches the client** (#687): `HttpService.error` answers it with `Internal server error`, keeping the `code` and an authored `recommendation` and dropping `details`, and the catch-all logs the original. So a caught DB error's text is safe to wrap, but put anything the user needs in a 4xx, or in a 502/503 written for them (those pass through)
 - **Authorization (#685, #692)**: every route (mutations, SSE **and reads**) authorizes **server-side** and is classified in `apps/api/src/__tests__/config/route-authorization.map.ts`. The guard test fails CI on an unclassified or stale route. Reads were added by #692, whose first inventory found by-id GETs that returned another org's rows. The rules:
   - **Resolve the caller from the request.** That means `getApplicationMetadata`, on SSE too (after `sseAuth`). Never trust an `organizationId` or user id from the body.
   - **Load the object org-scoped first, reads included.** `PermissionSet` doesn't see orgs, so without the row's org check an owner or admin of *any* org passes a bare `can`. Lists filter by org **and** `visibilityPredicate`; a by-id read checks org **and** `can("resource.read")`, else 404.

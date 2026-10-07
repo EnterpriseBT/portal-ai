@@ -1,5 +1,9 @@
 import { jest, describe, it, expect } from "@jest/globals";
-import { ApiError, HttpService } from "../../services/http.service.js";
+import {
+  ApiError,
+  HttpService,
+  INTERNAL_ERROR_MESSAGE,
+} from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import type { Response } from "express";
 
@@ -83,7 +87,58 @@ describe("HttpService", () => {
       await HttpService.error(res, error);
 
       expect(res.status).toHaveBeenCalledWith(500);
+      // #687: an unset status is a 500, so it is scrubbed too.
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: INTERNAL_ERROR_MESSAGE,
+        code: ApiCode.HEALTH_CHECK_FAILED,
+      });
     });
+
+    // #687: a 500's message is whatever the handler caught, often a Drizzle
+    // error carrying the SQL text and its bound params. It stays in the log.
+    it("scrubs a 500: generic message and no details, keeping code and recommendation", async () => {
+      const res = createMockResponse();
+      const error = new ApiError(
+        500,
+        ApiCode.FIELD_MAPPING_FETCH_FAILED,
+        'Failed query: select "id" from "field_mappings" where "id" = $1\nparams: secret',
+        {
+          recommendation: "Try again shortly.",
+          details: { params: ["secret"] },
+        }
+      );
+
+      await HttpService.error(res, error);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: INTERNAL_ERROR_MESSAGE,
+        code: ApiCode.FIELD_MAPPING_FETCH_FAILED,
+        recommendation: "Try again shortly.",
+      });
+    });
+
+    it.each([
+      [400, ApiCode.FIELD_MAPPING_FETCH_FAILED, "Bad id"],
+      [503, ApiCode.DB_ADMISSION_TIMEOUT, "The server is busy; try again."],
+    ])(
+      "leaves a %i's message and details alone",
+      async (status, code, message) => {
+        const res = createMockResponse();
+        await HttpService.error(
+          res,
+          new ApiError(status, code, message, { field: "x" })
+        );
+        expect(res.json).toHaveBeenCalledWith({
+          success: false,
+          message,
+          code,
+          details: { field: "x" },
+        });
+      }
+    );
   });
 });
 
