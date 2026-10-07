@@ -974,4 +974,61 @@ describe("Read access (#692)", () => {
     expect(asOwner.body.payload.targetRecordCount).toBe(2);
     expect(asOwner.body.payload.sourceRecordCount).toBe(4);
   });
+  // ── #699: a turn runs against the portal's station ─────────────────
+
+  it("sending in a portal needs read on its station: revoked or deleted is 404 and writes nothing", async () => {
+    const stationId = generateId();
+    await db.insert(schema.stations).values({
+      id: stationId,
+      organizationId: fx.orgId,
+      name: `Station ${suffix()}`,
+      description: null,
+      toolPacks: ["data_query"],
+      ...base(fx.ownerId),
+    } as never);
+    const portalId = generateId();
+    await db.insert(schema.portals).values({
+      id: portalId,
+      organizationId: fx.orgId,
+      stationId,
+      name: "Member portal",
+      ...base(fx.memberId),
+    } as never);
+    await shareWith(fx.memberId, "read", "station", stationId);
+    const send = () =>
+      request(app)
+        .post(`/api/portals/${portalId}/messages`)
+        .send({ message: "hello" });
+    const messageCount = async () =>
+      (
+        await db
+          .select()
+          .from(schema.portalMessages)
+          .where(eq(schema.portalMessages.portalId, portalId))
+      ).length;
+
+    as(MEMBER_SUB);
+    expect((await send()).status).toBe(200);
+    expect(await messageCount()).toBe(1);
+
+    // The owner revokes the share.
+    await db
+      .delete(schema.permissionGrants)
+      .where(eq(schema.permissionGrants.resourceId, stationId));
+    const revoked = await send();
+    expect(revoked.status).toBe(404);
+    expect(revoked.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+    expect(await messageCount()).toBe(1);
+
+    // Re-shared, then the station is deleted: absent reads the same.
+    await shareWith(fx.memberId, "read", "station", stationId);
+    await db
+      .update(schema.stations)
+      .set({ deleted: Date.now(), deletedBy: fx.ownerId } as never)
+      .where(eq(schema.stations.id, stationId));
+    const deleted = await send();
+    expect(deleted.status).toBe(404);
+    expect(deleted.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+    expect(await messageCount()).toBe(1);
+  });
 });

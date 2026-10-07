@@ -715,7 +715,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/portals/{id}/messages": {
     kind: "authorized",
-    by: "PortalAccessService.load write (#685)",
+    by: "PortalAccessService.load write (#685); the portal's station in org + readable, else 404 STATION_NOT_FOUND (#699)",
   },
   "POST /api/roles": {
     kind: "authorized",

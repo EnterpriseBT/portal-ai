@@ -12,6 +12,9 @@ import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
+import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
+import type { OrgRole } from "@portalai/core/models";
 
 const logger = createLogger({ module: "portal-events" });
 
@@ -157,7 +160,30 @@ portalEventsRouter.get(
         const station = await DbService.repository.stations.findById(
           portal.stationId
         );
-        if (!station) {
+        // #699: the turn runs against the station as its author, so the
+        // author must still read it, as POST /messages requires. Without this
+        // a turn posted before a revoke re-ran on every stream GET until one
+        // attempt succeeded. Unreadable reads as absent.
+        const authorSet =
+          turnUserId === caller.userId
+            ? callerSet
+            : await PermissionService.loadSet({
+                userId: turnUserId,
+                organizationId: portal.organizationId,
+                roles:
+                  (await DbService.repository.userRole.findEffectiveRoleNames(
+                    turnUserId,
+                    portal.organizationId
+                  )) as OrgRole[],
+              });
+        if (
+          !ObjectAccessService.readableInOrg(
+            authorSet,
+            portal.organizationId,
+            "station",
+            station
+          )
+        ) {
           return next(
             new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
           );

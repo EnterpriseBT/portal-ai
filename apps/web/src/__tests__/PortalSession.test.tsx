@@ -20,6 +20,9 @@ const mockUsageData = jest.fn<() => unknown>(() => undefined);
 const mockSendMessage = jest.fn<() => Promise<unknown>>();
 const mockResetMessages = jest.fn<() => Promise<unknown>>();
 const mockPinPortalResult = jest.fn();
+// #699: the container reads the portal's station to lock the composer when
+// it's gone for the caller; null = the station loads fine.
+const mockStationError = jest.fn<() => unknown>(() => null);
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -34,6 +37,13 @@ jest.unstable_mockModule("../api/sdk", () => ({
             pin: { read: true, write: true, delete: true, create: true },
           },
         },
+      }),
+    },
+    stations: {
+      get: () => ({
+        data: undefined,
+        isLoading: false,
+        error: mockStationError(),
       }),
     },
     portals: {
@@ -428,6 +438,8 @@ describe("PortalSessionUI", () => {
 
 describe("PortalSession (container) via PortalSessionUI", () => {
   beforeEach(() => {
+    // #699: tests that lock on the station set it; reset so none leaks.
+    mockStationError.mockReturnValue(null);
     mockGetPortal.mockReset();
     mockSendMessage.mockReset();
     MockEventSource.reset();
@@ -505,6 +517,26 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     await waitFor(() => {
       expect(screen.getByText("First message")).toBeInTheDocument();
     });
+  });
+
+  // #699: a revoked share or a deleted station answers 404, and the server
+  // would refuse the send; the composer says why instead.
+  it("locks the composer with a reason when the portal's station is unavailable", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockStationError.mockReturnValue({
+      status: 404,
+      code: "STATION_NOT_FOUND",
+      message: "Station not found",
+    });
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    expect(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)).toBeDisabled();
+    expect(
+      screen.getByText("This portal's station isn't available to you.")
+    ).toBeInTheDocument();
   });
 
   it("submit triggers sendMessage", async () => {
