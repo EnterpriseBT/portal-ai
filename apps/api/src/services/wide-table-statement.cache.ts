@@ -27,6 +27,12 @@ export interface WideTableCachedColumn {
    * The column on the wide table is `c_<sanitized(normalizedKey)>`.
    */
   normalizedKey: string;
+  /**
+   * #729: the field mapping's `createdBy` (immutable), so a conditional read
+   * (`created_by_caller` / `created_by_system`) can be checked from the cache.
+   * `null` when the mapping is missing or soft-deleted: fails closed.
+   */
+  fieldMappingCreatedBy: string | null;
 }
 
 /**
@@ -314,6 +320,9 @@ export class WideTableStatementCache {
     const normalizedKeyByMappingId = new Map(
       mappings.map((m) => [m.id, m.normalizedKey])
     );
+    const createdByByMappingId = new Map(
+      mappings.map((m) => [m.id, m.createdBy])
+    );
 
     const cols: WideTableCachedColumn[] = rows
       .map((r) => {
@@ -326,6 +335,8 @@ export class WideTableStatementCache {
           pgType: r.pgType,
           fieldMappingId: r.fieldMappingId,
           normalizedKey: normalizedKey ?? r.columnName.replace(/^c_/, ""),
+          fieldMappingCreatedBy:
+            createdByByMappingId.get(r.fieldMappingId) ?? null,
         };
       })
       // Defensive: collapse duplicate normalizedKeys (shouldn't happen given

@@ -374,6 +374,9 @@ export class PortalSqlServiceImpl {
     const effectiveFmIds = projectionRows.length
       ? new Set(projectionRows.map((p) => p.fieldMappingId))
       : new Set(stmt.columns.map((c) => c.fieldMappingId));
+    // #729: a member's field-mapping read is conditional (created_by_caller /
+    // created_by_system), which only matches with the mapping's creator; the
+    // cached column carries it.
     return stmt.columns.filter(
       (c) =>
         !VIEW_HIDDEN_COLUMNS.has(c.columnName) &&
@@ -381,6 +384,7 @@ export class PortalSqlServiceImpl {
         set.can("resource.read", {
           type: "field_mapping",
           id: c.fieldMappingId,
+          createdBy: c.fieldMappingCreatedBy ?? undefined,
         })
     );
   }
