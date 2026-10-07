@@ -41,17 +41,24 @@ export class CuratedViewPayloadService {
 
   /** The projection ids this caller may see: all of them for a caller with
    *  write, otherwise only the field mappings they can read (the same test as
-   *  the records endpoint's columns). */
+   *  the records endpoint's columns). #729: each carries its `createdBy`, so a
+   *  conditional read (created_by_caller / created_by_system) can match. */
   static scopeFieldMappingIds(
     set: PermissionSet,
     view: CuratedViewSelect,
-    fieldMappingIds: string[]
+    fieldMappings: { id: string; createdBy: string | null }[]
   ): string[] {
     if (CuratedViewPayloadService.canSeeDefinition(set, view)) {
-      return fieldMappingIds;
+      return fieldMappings.map((fm) => fm.id);
     }
-    return fieldMappingIds.filter((id) =>
-      set.can("resource.read", { type: "field_mapping", id })
-    );
+    return fieldMappings
+      .filter((fm) =>
+        set.can("resource.read", {
+          type: "field_mapping",
+          id: fm.id,
+          createdBy: fm.createdBy ?? undefined,
+        })
+      )
+      .map((fm) => fm.id);
   }
 }
