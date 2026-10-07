@@ -544,13 +544,12 @@ describe("File uploads streaming router", () => {
         .post("/api/layout-plans/interpret")
         .set("Authorization", "Bearer test-token")
         .send({ uploadSessionId, regionHints: [] });
-      // Service may 500 if LLM mock isn't wired here — what we care about is
-      // that the request passed Zod validation and reached the service (not
-      // 400 for bad body).
-      expect([200, 500]).toContain(interpretRes.status);
-      expect(interpretRes.body.code).not.toBe(
-        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD
-      );
+      // The body passed validation and the workbook resolved from the cache:
+      // the real parser ran and refused the empty hints. Since #687 that
+      // input error answers 400 with its explanation, not a scrubbed 500.
+      expect(interpretRes.status).toBe(400);
+      expect(interpretRes.body.code).toBe(ApiCode.LAYOUT_PLAN_INTERPRET_FAILED);
+      expect(interpretRes.body.message).toMatch(/^UNSUPPORTED_LAYOUT_SHAPE: /);
     });
 
     it("rejects interpret when uploadSessionId is missing from the body", async () => {
