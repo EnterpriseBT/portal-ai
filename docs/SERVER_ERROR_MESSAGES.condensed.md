@@ -35,6 +35,11 @@ For a 500 the response becomes:
 
 4xx, 502, 503 and 504 responses are unchanged.
 
+**Review follow-ups.**
+- **Interpret:** the parser's input errors (`UNKNOWN_SHEET`, `UNSUPPORTED_LAYOUT_SHAPE`) were 500s whose message told the user what to fix. They now answer **400** (`utils/interpret-error.util.ts`), so the scrub doesn't blank them.
+- **Web:** `serverErrorMessage` reads the generic message as "no message" and shows the call site's own fallback. The string lives in `@portalai/core/constants` (`INTERNAL_ERROR_MESSAGE`), so the API and web share it.
+- **Portal chat stream:** once the SSE stream is open, its catch applies the same rule, so a 500 `ApiError` sends the generic stream error.
+
 ## Plan — 1 slice
 
 **Files**
@@ -54,7 +59,8 @@ For a 500 the response becomes:
 1. `curl -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/field-mappings/%00` returns 500 with `{"message":"Internal server error","code":"FIELD_MAPPING_…"}` and no SQL. The API log shows the original `Failed query: …` line.
 2. Repeat for `GET /api/entity-groups/%00` and `GET /api/connector-entities/%00`. Each returns a generic message and a route-specific code.
 3. A 4xx is unchanged: `GET /api/field-mappings/<random uuid>` still returns 404 with its own message.
-4. In the app, trigger any error toast (e.g. open a deleted object's URL). It still reads as before. A 500 toast now says "Internal server error" instead of query text.
+4. Interpret with a region hint naming a sheet that isn't in the workbook: `POST /api/layout-plans/interpret` returns **400** `LAYOUT_PLAN_INTERPRET_FAILED` with the `UNKNOWN_SHEET: …` explanation.
+5. In the app, a failed action's toast shows the call site's own fallback (e.g. "Failed to …"), never "Internal server error" and never query text.
 
 ## Out of scope
 
