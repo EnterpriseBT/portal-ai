@@ -1013,6 +1013,19 @@ describe("buildAnalyticsTools()", () => {
       expect(out).toBe(sentinel.result);
     }
 
+    // #726: every built tool also caps what the model reads of its result,
+    // so a large inline result (contour GeoJSON) can't blow the context.
+    const big = {
+      rows: Array.from({ length: 100 }, () => ({ geom: "x".repeat(5_000) })),
+    };
+    for (const name of names) {
+      const toModelOutput = (tools[name] as any).toModelOutput;
+      expect(typeof toModelOutput).toBe("function");
+      const out = toModelOutput({ toolCallId: "t", input: {}, output: big });
+      expect(out.type).toBe("json");
+      expect(out.value.rowCount).toBe(100);
+    }
+
     // checkAdmission was invoked once per tool, tagged with the tool name.
     expect(spy).toHaveBeenCalledTimes(names.length);
     for (const name of names) {
