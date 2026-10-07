@@ -5,7 +5,7 @@
  * for saved/pinned analytics results.
  */
 
-import { eq, asc, desc, getTableColumns, type SQL } from "drizzle-orm";
+import { and, eq, asc, desc, getTableColumns, type SQL } from "drizzle-orm";
 
 import { portalResults, portals } from "../schema/index.js";
 import { db } from "../client.js";
@@ -15,6 +15,12 @@ import {
   type ListOptions,
 } from "./base.repository.js";
 import type { PortalResultSelect, PortalResultInsert } from "../schema/zod.js";
+
+/** A pin list's options: `portalVisibility` is the caller's `portal` read
+ *  predicate, applied to the `include=portal` join (#694). */
+export interface PortalResultListOptions extends ListOptions {
+  portalVisibility?: SQL;
+}
 
 export class PortalResultsRepository extends Repository<
   typeof portalResults,
@@ -29,7 +35,7 @@ export class PortalResultsRepository extends Repository<
 
   override async findMany(
     where?: SQL,
-    opts: ListOptions = {},
+    opts: PortalResultListOptions = {},
     client: DbClient = db
   ): Promise<PortalResultSelect[]> {
     if (opts.include?.includes("portal")) {
@@ -46,11 +52,12 @@ export class PortalResultsRepository extends Repository<
 
   /**
    * Return portal results with their source portal name attached.
-   * Uses a LEFT JOIN so results are returned even if the portal is missing or portalId is null.
+   * Uses a LEFT JOIN so results are returned even if the portal is missing,
+   * unreadable to the caller (`opts.portalVisibility`), or portalId is null.
    */
   private async findManyWithPortal(
     where: SQL | undefined,
-    opts: ListOptions = {},
+    opts: PortalResultListOptions = {},
     client: DbClient = db
   ): Promise<(PortalResultSelect & { portalName: string | null })[]> {
     const conditions = this.withSoftDelete(where, opts.includeDeleted);
@@ -61,7 +68,12 @@ export class PortalResultsRepository extends Repository<
         portalName: portals.name,
       })
       .from(portalResults)
-      .leftJoin(portals, eq(portalResults.portalId, portals.id))
+      // #694: a pin can be shared with someone who can't read its source
+      // portal; the predicate in the ON clause leaves `portalName` null then.
+      .leftJoin(
+        portals,
+        and(eq(portalResults.portalId, portals.id), opts.portalVisibility)
+      )
       .where(conditions)
       .$dynamic();
 

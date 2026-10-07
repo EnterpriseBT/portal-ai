@@ -223,6 +223,7 @@ webhookHandleRouter.post(
         schema: body.schema,
         stationId: grant.stationId ?? "webhook-staging",
         organizationId: grant.organizationId,
+        userId: grant.userId,
       });
 
       // Bind the produced handle to this session so the runtime can verify the

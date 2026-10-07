@@ -234,6 +234,9 @@ export class PortalSqlHandleService {
     schema?: Array<{ name: string; type: string }>;
     stationId: string;
     organizationId: string;
+    /** The user whose tool call staged the rows. Bound into the meta so the
+     *  handle reads back only for them, like every other produced handle (#694). */
+    userId?: string;
   }): Promise<{ envelope: QueryHandleEnvelope }> {
     const handleId = `qh-${randomUUID()}`;
     const truncated = opts.rows.length > HANDLE_ROW_CAP;
@@ -280,9 +283,9 @@ export class PortalSqlHandleService {
       envelope,
       opts.stationId,
       opts.organizationId,
-      // Rows are caller-supplied (webhook) — no re-executable `sql`, so no
-      // per-user re-scoping is needed and there may be no user in scope.
-      undefined
+      // Rows are caller-supplied (webhook) — no re-executable `sql` to
+      // re-scope, but the handle still belongs to its invoking user (#694).
+      opts.userId
     );
   }
 

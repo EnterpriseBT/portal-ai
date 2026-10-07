@@ -16,7 +16,7 @@ import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
-import { portalResults } from "../db/schema/index.js";
+import { portalResults, portals } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
 import { PortalResultPinService } from "../services/portal-result-pin.service.js";
@@ -479,6 +479,11 @@ portalResultsRouter.get(
         offset,
         orderBy: { column: portalResults.created, direction: sortOrder },
         include: include_,
+        // #694: name a pin's source portal only when the caller can read it.
+        portalVisibility: set.visibilityPredicate("portal", {
+          createdByCol: portals.createdBy,
+          idCol: portals.id,
+        }),
       };
 
       const [data, total] = await Promise.all([

@@ -670,4 +670,308 @@ describe("Read access (#692)", () => {
     const asOwner = await get(`/api/field-mappings/${membersMappingId}/impact`);
     expect(asOwner.body.payload.counterpart.id).toBe(counterpartId);
   });
+  // ── #694: same-org leftovers of the #692 inventory ──────────────────
+
+  /** Share an object with a user at `verb` (an object grant). */
+  async function shareWith(
+    principalId: string,
+    verb: string,
+    resourceType: string,
+    resourceId: string
+  ) {
+    await db.insert(schema.permissionGrants).values({
+      id: generateId(),
+      organizationId: fx.orgId,
+      principalType: "user",
+      principalId,
+      effect: "allow",
+      verb,
+      resourceType,
+      resourceId,
+      condition: null,
+      conditionParam: null,
+      ...base(fx.ownerId),
+    } as never);
+  }
+
+  it("pins: include=portal names the source portal only to a caller who can read it", async () => {
+    const stationId = generateId();
+    await db.insert(schema.stations).values({
+      id: stationId,
+      organizationId: fx.orgId,
+      name: `Station ${suffix()}`,
+      description: null,
+      toolPacks: ["data_query"],
+      ...base(fx.ownerId),
+    } as never);
+    const portalId = generateId();
+    await db.insert(schema.portals).values({
+      id: portalId,
+      organizationId: fx.orgId,
+      stationId,
+      name: "Owner secret portal",
+      ...base(fx.ownerId),
+    } as never);
+    const pinId = generateId();
+    await db.insert(schema.portalResults).values({
+      id: pinId,
+      organizationId: fx.orgId,
+      stationId,
+      portalId,
+      name: "Shared pin",
+      type: "text",
+      content: { value: "hello" },
+      ...base(fx.ownerId),
+    } as never);
+    await shareWith(fx.memberId, "read", "pin", pinId);
+
+    as(MEMBER_SUB);
+    const asMember = await get("/api/portal-results?include=portal");
+    expect(asMember.status).toBe(200);
+    const memberPin = asMember.body.payload.portalResults.find(
+      (r: { id: string }) => r.id === pinId
+    );
+    expect(memberPin).toBeDefined();
+    expect(memberPin.portalName).toBeNull();
+    expect(JSON.stringify(asMember.body)).not.toMatch(/secret/i);
+
+    as(OWNER_SUB);
+    const asOwner = await get("/api/portal-results?include=portal");
+    const ownerPin = asOwner.body.payload.portalResults.find(
+      (r: { id: string }) => r.id === pinId
+    );
+    expect(ownerPin.portalName).toBe("Owner secret portal");
+  });
+  /** An `entity_records` row and its wide-table row on `connectorEntityId`,
+   *  created by `createdBy`. Hydrated reads join the wide table, so a record
+   *  without its row isn't read at all. */
+  async function recordOn(
+    connectorEntityId: string,
+    createdBy: string,
+    sourceId: string,
+    normalizedData: Record<string, unknown> = {}
+  ) {
+    const id = generateId();
+    await db.insert(schema.entityRecords).values({
+      id,
+      organizationId: fx.orgId,
+      connectorEntityId,
+      sourceId,
+      data: {},
+      checksum: `c-${sourceId}`,
+      syncedAt: now,
+      ...base(createdBy),
+    } as never);
+    const { wideTableRepo } =
+      await import("../../../db/repositories/wide-table.repository.js");
+    const { wideTableStatementCache } =
+      await import("../../../services/wide-table-statement.cache.js");
+    const { projectToWideRow, buildMappingsForProjection } =
+      await import("../../../services/wide-table-projection.util.js");
+    const stmt = await wideTableStatementCache.get(
+      connectorEntityId,
+      db as never
+    );
+    await wideTableRepo.upsertMany(
+      connectorEntityId,
+      [
+        projectToWideRow(
+          {
+            id,
+            organizationId: fx.orgId,
+            sourceId,
+            syncedAt: now,
+            isValid: true,
+            normalizedData,
+          },
+          buildMappingsForProjection(stmt.columns)
+        ),
+      ],
+      db as never
+    );
+    return id;
+  }
+
+  it("validate-bidirectional checks only the records the caller can read", async () => {
+    // A member's entity A whose reference-array mapping points at the owner's
+    // entity B, and B's counterpart pointing back.
+    const a = await entityChain(fx.orgId, fx.memberId);
+    const b = await entityChain(fx.orgId, fx.ownerId);
+    const refColId = generateId();
+    await db.insert(schema.columnDefinitions).values({
+      id: refColId,
+      organizationId: fx.orgId,
+      key: `refs_${suffix()}`,
+      label: "Refs",
+      type: "reference-array",
+      description: null,
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+      ...base(fx.memberId),
+    } as never);
+    const nkA = `refs_a_${suffix()}`;
+    const nkB = `refs_b_${suffix()}`;
+    const refMapping = (
+      id: string,
+      entityId: string,
+      normalizedKey: string,
+      refEntityKey: string,
+      refNormalizedKey: string,
+      createdBy: string
+    ) => ({
+      id,
+      organizationId: fx.orgId,
+      connectorEntityId: entityId,
+      columnDefinitionId: refColId,
+      sourceField: normalizedKey,
+      isPrimaryKey: false,
+      normalizedKey,
+      required: false,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refEntityKey,
+      refNormalizedKey,
+      ...base(createdBy),
+    });
+    const mappingAId = generateId();
+    await db
+      .insert(schema.fieldMappings)
+      .values([
+        refMapping(mappingAId, a.entityId, nkA, b.entityKey, nkB, fx.memberId),
+        refMapping(generateId(), b.entityId, nkB, a.entityKey, nkA, fx.ownerId),
+      ] as never);
+    const { wideTableReconcilerService } =
+      await import("../../../services/wide-table-reconciler.service.js");
+    await wideTableReconcilerService.reconcileEntity(a.entityId, db as never);
+    await wideTableReconcilerService.reconcileEntity(b.entityId, db as never);
+
+    // Both of A's records reference a B record that doesn't exist, so both
+    // are inconsistent; only one is the member's.
+    const membersRecord = await recordOn(a.entityId, fx.memberId, "a1", {
+      [nkA]: ["missing-1"],
+    });
+    const ownersRecord = await recordOn(a.entityId, fx.ownerId, "a2", {
+      [nkA]: ["missing-2"],
+    });
+    // A correct link to a B record the member can't read: not checkable for
+    // the member, so not reported as broken (code review on #694).
+    await recordOn(a.entityId, fx.memberId, "a3", { [nkA]: ["b1"] });
+    await recordOn(b.entityId, fx.ownerId, "b1", { [nkB]: ["a3"] });
+    const path = `/api/field-mappings/${mappingAId}/validate-bidirectional`;
+
+    as(MEMBER_SUB);
+    const asMember = await get(path);
+    expect(asMember.status).toBe(200);
+    expect(asMember.body.payload.totalChecked).toBe(2);
+    expect(asMember.body.payload.inconsistentRecordIds).toEqual([
+      membersRecord,
+    ]);
+
+    as(OWNER_SUB);
+    const asOwner = await get(path);
+    expect(asOwner.body.payload.totalChecked).toBe(3);
+    expect([...asOwner.body.payload.inconsistentRecordIds].sort()).toEqual(
+      [membersRecord, ownersRecord].sort()
+    );
+  });
+
+  /** A group readable by the member, holding the member's own entity and an
+   *  owner-created entity the member can't read. */
+  async function mixedGroup() {
+    const mine = await entityChain(fx.orgId, fx.memberId);
+    const owners = await entityChain(fx.orgId, fx.ownerId);
+    const groupId = generateId();
+    await db.insert(schema.entityGroups).values({
+      id: groupId,
+      organizationId: fx.orgId,
+      name: `group-${suffix()}`,
+      description: null,
+      ...base(fx.ownerId),
+    } as never);
+    await db.insert(schema.entityGroupMembers).values(
+      [mine, owners].map((c) => ({
+        id: generateId(),
+        organizationId: fx.orgId,
+        entityGroupId: groupId,
+        connectorEntityId: c.entityId,
+        linkFieldMappingId: c.fieldMappingId,
+        isPrimary: false,
+        ...base(fx.ownerId),
+      })) as never
+    );
+    // Members don't read entity groups by default; this one is granted.
+    await shareWith(fx.memberId, "read", "entity_group", groupId);
+    return { groupId, mine, owners };
+  }
+
+  it("group members omits a member entity the caller can't read", async () => {
+    const g = await mixedGroup();
+
+    as(MEMBER_SUB);
+    const asMember = await get(`/api/entity-groups/${g.groupId}/members`);
+    expect(asMember.status).toBe(200);
+    expect(
+      asMember.body.payload.members.map(
+        (m: { connectorEntityId: string }) => m.connectorEntityId
+      )
+    ).toEqual([g.mine.entityId]);
+
+    as(OWNER_SUB);
+    const asOwner = await get(`/api/entity-groups/${g.groupId}/members`);
+    expect(asOwner.body.payload.members).toHaveLength(2);
+  });
+
+  it("group detail and resolve omit a member entity the caller can't read", async () => {
+    const g = await mixedGroup();
+    const ids = (rows: { connectorEntityId: string }[]) =>
+      rows.map((r) => r.connectorEntityId).sort();
+
+    as(MEMBER_SUB);
+    const detail = await get(`/api/entity-groups/${g.groupId}`);
+    expect(detail.status).toBe(200);
+    expect(ids(detail.body.payload.entityGroup.members)).toEqual([
+      g.mine.entityId,
+    ]);
+    const resolve = await get(
+      `/api/entity-groups/${g.groupId}/resolve?linkValue=x`
+    );
+    expect(resolve.status).toBe(200);
+    expect(ids(resolve.body.payload.results)).toEqual([g.mine.entityId]);
+
+    as(OWNER_SUB);
+    const ownerDetail = await get(`/api/entity-groups/${g.groupId}`);
+    expect(ids(ownerDetail.body.payload.entityGroup.members)).toEqual(
+      [g.mine.entityId, g.owners.entityId].sort()
+    );
+    const ownerResolve = await get(
+      `/api/entity-groups/${g.groupId}/resolve?linkValue=x`
+    );
+    expect(ids(ownerResolve.body.payload.results)).toEqual(
+      [g.mine.entityId, g.owners.entityId].sort()
+    );
+  });
+
+  it("overlap counts only records the caller can read, over member entities they can read", async () => {
+    const g = await mixedGroup();
+    // The member's entity holds one record of theirs and one of the owner's;
+    // the owner's entity holds two of the owner's.
+    await recordOn(g.mine.entityId, fx.memberId, "m1");
+    await recordOn(g.mine.entityId, fx.ownerId, "o1");
+    await recordOn(g.owners.entityId, fx.ownerId, "o2");
+    await recordOn(g.owners.entityId, fx.ownerId, "o3");
+    const path = overlapPath(g.groupId, g.mine.entityId, g.mine.fieldMappingId);
+
+    as(MEMBER_SUB);
+    const asMember = await get(path);
+    expect(asMember.status).toBe(200);
+    expect(asMember.body.payload.targetRecordCount).toBe(1);
+    expect(asMember.body.payload.sourceRecordCount).toBe(1);
+
+    as(OWNER_SUB);
+    const asOwner = await get(path);
+    expect(asOwner.body.payload.targetRecordCount).toBe(2);
+    expect(asOwner.body.payload.sourceRecordCount).toBe(4);
+  });
 });

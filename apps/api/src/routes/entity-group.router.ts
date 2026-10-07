@@ -303,7 +303,12 @@ entityGroupRouter.get(
           include: ["connectorEntity", "fieldMapping", "columnDefinition"],
         });
 
-      const members = enrichedMembers.map((m) => ({
+      // #694: a member whose entity the caller can't read is left out.
+      const members = ObjectAccessService.readableGroupMembers(
+        set,
+        ctx.organizationId,
+        enrichedMembers
+      ).map((m) => ({
         ...m,
         connectorEntityLabel: m.connectorEntity!.label,
         linkFieldMappingSourceField: m.columnDefinition!.key,
@@ -1005,10 +1010,15 @@ entityGroupRouter.get(
         );
       }
 
-      const enrichedMembers =
+      // #694: a member whose entity the caller can't read is left out, label
+      // and all; the records below are filtered on top of that.
+      const enrichedMembers = ObjectAccessService.readableGroupMembers(
+        permissionSet,
+        ctx.organizationId,
         await DbService.repository.entityGroupMembers.findByEntityGroupId(id, {
           include: ["connectorEntity", "fieldMapping", "columnDefinition"],
-        });
+        })
+      );
 
       const results: EntityGroupResolveResponsePayload["results"] = [];
 

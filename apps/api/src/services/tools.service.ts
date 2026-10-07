@@ -883,7 +883,9 @@ export class ToolService {
             // #161: the declared production drives the output write-grant
             // (rows + onLarge:handle → the webhook can stage a result handle),
             // independent of the input consumption tier.
-            tool.capability?.production
+            tool.capability?.production,
+            // #694: binds the handle a webhook stages to this user.
+            userId
           ).build();
           customToolNames.add(tool.name);
           customCostHint[tool.name] = declaredCost;
