@@ -46,6 +46,7 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { SystemUtilities } = await import("../../../utils/system.util.js");
 
 describe("curated-view.router integration", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -172,21 +173,39 @@ describe("curated-view.router integration", () => {
     ageFmId = generateId();
     tagsFmId = generateId();
     backupFmId = generateId();
-    await dbT
-      .insert(schema.fieldMappings)
-      .values([
-        mkMapping(emailFmId, orgId, entityId, cdEmail, "email", now),
-        mkMapping(ageFmId, orgId, entityId, cdAge, "age", now + 1),
-        mkMapping(tagsFmId, orgId, entityId, cdTags, "tags", now + 2),
-        mkMapping(
-          backupFmId,
-          orgId,
-          entityId,
-          cdEmail,
-          "backup_email",
-          now + 3
-        ),
-      ] as never);
+    await dbT.insert(schema.fieldMappings).values([
+      // Owner-created (#729): a member reads one only through a grant. In
+      // this suite SYSTEM_ID is "SYSTEM_TEST", and a member may read
+      // system-created mappings (created_by_system).
+      mkMapping(
+        emailFmId,
+        orgId,
+        entityId,
+        cdEmail,
+        "email",
+        now,
+        seeded.userId
+      ),
+      mkMapping(ageFmId, orgId, entityId, cdAge, "age", now + 1, seeded.userId),
+      mkMapping(
+        tagsFmId,
+        orgId,
+        entityId,
+        cdTags,
+        "tags",
+        now + 2,
+        seeded.userId
+      ),
+      mkMapping(
+        backupFmId,
+        orgId,
+        entityId,
+        cdEmail,
+        "backup_email",
+        now + 3,
+        seeded.userId
+      ),
+    ] as never);
 
     await reconciler.reconcileEntity(entityId, db);
 
@@ -594,6 +613,49 @@ describe("curated-view.router integration", () => {
     expect(row.filtered).toBe(true);
     expect(row.projected).toBe(true);
     expect(JSON.stringify(list.body)).not.toContain('"age"');
+  });
+
+  // #729: a member's field-mapping read is conditional (created_by_caller /
+  // created_by_system). The column check passed no createdBy, so no condition
+  // could match and the member got zero columns on every view: the view page
+  // spun forever and a portal session's views had no columns. The shares
+  // above (in_curated_view / instance grants) never needed createdBy.
+  it("#729: a member reads a system-created view's columns through created_by_system, with no shares", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "system_view",
+      label: "System view",
+      fieldMappingIds: [emailFmId, ageFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const system = SystemUtilities.id.system;
+    const dbT = db as ReturnType<typeof drizzle>;
+    await dbT.execute(
+      sql`update curated_views set created_by = ${system} where id = ${id}`
+    );
+    await dbT.execute(
+      sql`update field_mappings set created_by = ${system} where connector_entity_id = ${entityId}`
+    );
+    await dbT.execute(
+      sql`update entity_records set created_by = ${system} where connector_entity_id = ${entityId}`
+    );
+
+    currentSub = MEMBER_SUB;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.status).toBe(200);
+    expect([...got.body.payload.curatedView.fieldMappingIds].sort()).toEqual(
+      [emailFmId, ageFmId].sort()
+    );
+
+    const records = await request(app).get(
+      `/api/curated-views/${id}/records?limit=10&offset=0`
+    );
+    expect(records.status).toBe(200);
+    const keys = (
+      records.body.payload.columns as Array<{ normalizedKey: string }>
+    ).map((c) => c.normalizedKey);
+    expect(keys.length).toBeGreaterThan(0);
+    expect(records.body.payload.records.length).toBeGreaterThan(0);
   });
 
   it("#680: a caller with write on the view gets the full definition", async () => {
@@ -1055,7 +1117,8 @@ function mkMapping(
   connectorEntityId: string,
   columnDefinitionId: string,
   sourceField: string,
-  created: number
+  created: number,
+  createdBy: string
 ) {
   return {
     id,
@@ -1072,7 +1135,7 @@ function mkMapping(
     refNormalizedKey: null,
     refEntityKey: null,
     created,
-    createdBy: "SYSTEM_TEST",
+    createdBy,
     updated: null,
     updatedBy: null,
     deleted: null,

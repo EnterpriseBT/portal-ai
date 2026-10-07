@@ -323,6 +323,15 @@ curatedViewRouter.get(
         await DbService.repository.curatedViewFieldMappings.findByCuratedViewId(
           view.id
         );
+      // #729: the projection's creators, so a conditional field-mapping read
+      // (created_by_caller / created_by_system) can match.
+      const createdByFm = new Map(
+        (
+          await DbService.repository.fieldMappings.findByConnectorEntityId(
+            view.connectorEntityId
+          )
+        ).map((fm) => [fm.id, fm.createdBy])
+      );
       // #680: the definition only for a caller with write on the view; any
       // other reader gets no filter contents and only the projection ids they
       // can read.
@@ -342,7 +351,10 @@ curatedViewRouter.get(
           fieldMappingIds: CuratedViewPayloadService.scopeFieldMappingIds(
             set,
             view,
-            projection.map((p) => p.fieldMappingId)
+            projection.map((p) => ({
+              id: p.fieldMappingId,
+              createdBy: createdByFm.get(p.fieldMappingId),
+            }))
           ),
         },
       });
