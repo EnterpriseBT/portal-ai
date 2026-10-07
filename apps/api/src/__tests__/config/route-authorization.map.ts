@@ -255,11 +255,11 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/entity-groups/{entityGroupId}/members": {
     kind: "authorized",
-    by: "group in org + readable (404) (#692)",
+    by: "group in org + readable (404) (#692); members whose entity is unreadable omitted (#694)",
   },
   "GET /api/entity-groups/{entityGroupId}/members/overlap": {
     kind: "authorized",
-    by: "group in org + readable; target entity in org + readable (404); target mapping in org + on it (400) (#692)",
+    by: "group in org + readable; target entity in org + readable (404); target mapping in org + on it (400) (#692); counts over readable member entities and records only (#694)",
   },
   "GET /api/entity-groups/{id}": {
     kind: "authorized",
@@ -295,7 +295,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/field-mappings/{id}/validate-bidirectional": {
     kind: "authorized",
-    by: "loadReadableMapping (org + read field_mapping, 404) (#692)",
+    by: "loadReadableMapping (org + read field_mapping, 404) (#692); records filtered by visibilityPredicate entity_record (#694)",
   },
   "GET /api/file-uploads/sheet-slice": {
     kind: "authorized",

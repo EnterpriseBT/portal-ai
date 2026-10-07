@@ -19,7 +19,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { fieldMappings } from "../db/schema/index.js";
+import { entityRecords, fieldMappings } from "../db/schema/index.js";
 import type { FieldMappingSelect } from "../db/schema/zod.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import {
@@ -1214,7 +1214,12 @@ fieldMappingRouter.get(
       const { id } = req.params;
 
       // 1. Load mapping
-      const mapping = await loadReadableMapping(req.application!.metadata, id);
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const mapping = await loadReadableMapping(
+        req.application!.metadata,
+        id,
+        set
+      );
 
       // 2. Load column definition to verify type
       const columnDef = await DbService.repository.columnDefinitions.findById(
@@ -1265,14 +1270,31 @@ fieldMappingRouter.get(
       // neither is limited — an entity of any size is loaded whole. Fetching
       // the raw `data` blob per row on top of that is the #423/#425 OOM
       // shape; drop it from the projection.
+      // #694: reading the mapping is not reading its records. Both sides
+      // check only the records the caller may read, so the ids and counts
+      // returned never describe records they can't.
+      const recordVisibility = set.visibilityPredicate("entity_record", {
+        createdByCol: entityRecords.createdBy,
+        idCol: entityRecords.id,
+      });
+      const readableIn = (connectorEntityId: string) =>
+        recordVisibility
+          ? and(
+              eq(entityRecords.connectorEntityId, connectorEntityId),
+              recordVisibility
+            )
+          : undefined;
       const [recordsA, recordsB] = await Promise.all([
         DbService.repository.entityRecords.findHydratedMany(
           mapping.connectorEntityId,
-          { includeData: false }
+          { includeData: false, where: readableIn(mapping.connectorEntityId) }
         ),
         DbService.repository.entityRecords.findHydratedMany(
           counterpart.connectorEntityId,
-          { includeData: false }
+          {
+            includeData: false,
+            where: readableIn(counterpart.connectorEntityId),
+          }
         ),
       ]);
 
