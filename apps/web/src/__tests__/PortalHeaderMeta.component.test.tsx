@@ -29,7 +29,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { PortalHeaderMeta } = await import("../views/Portal.view");
+const { PortalHeaderMeta, PortalHeaderMetaUI } =
+  await import("../components/PortalHeaderMeta.component");
 
 // ── matchMedia helpers ───────────────────────────────────────────────
 
@@ -154,10 +155,87 @@ describe("PortalHeaderMeta", () => {
     resetMatchMedia();
   });
 
-  it("renders nothing until the station query resolves", () => {
+  it("shows only the usage strip while the station query loads", () => {
     mockStationsGet.mockReturnValue(mockStationResult(undefined));
-    const { container } = render(<PortalHeaderMeta stationId="station-1" />);
-    expect(container.firstChild).toBeNull();
+    mockOrganizationsUsage.mockReturnValue({
+      data: usageFixture,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    render(<PortalHeaderMeta stationId="station-1" />);
+    expect(screen.getByText("Metered usage")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-header-station-link")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-header-station-unavailable")
+    ).not.toBeInTheDocument();
+  });
+
+  // #699: a revoked share or a deleted station answers 404 (unreadable ==
+  // absent). The header used to vanish entirely, usage rows included.
+  it("says the station is unavailable on a 404 and keeps the usage strip", () => {
+    mockStationsGet.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: {
+        status: 404,
+        code: "STATION_NOT_FOUND",
+        message: "Station not found",
+      },
+    });
+    mockOrganizationsUsage.mockReturnValue({
+      data: usageFixture,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    render(<PortalHeaderMeta stationId="station-1" />);
+    expect(
+      screen.getByTestId("portal-header-station-unavailable")
+    ).toHaveTextContent("This portal's station isn't available to you.");
+    expect(screen.getByText("Metered usage")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-header-station-link")
+    ).not.toBeInTheDocument();
+  });
+
+  describe("PortalHeaderMetaUI (#699)", () => {
+    const uiProps = {
+      station: null,
+      stationUnavailable: false,
+      usage: usageFixture.usage.byClass,
+      isEntitled: () => true,
+      isMobile: false,
+      expanded: false,
+      onToggleExpanded: () => {},
+    };
+
+    it("renders the unavailable line with usage and no station rows", () => {
+      render(<PortalHeaderMetaUI {...uiProps} stationUnavailable />);
+      expect(
+        screen.getByTestId("portal-header-station-unavailable")
+      ).toBeInTheDocument();
+      expect(screen.getByText("Expensive usage")).toBeInTheDocument();
+      expect(screen.queryByText("Connectors")).not.toBeInTheDocument();
+    });
+
+    it("renders the station rows when the station is present", () => {
+      render(
+        <PortalHeaderMetaUI
+          {...uiProps}
+          station={stationFixture.station as never}
+        />
+      );
+      expect(
+        screen.getByTestId("portal-header-station-link")
+      ).toHaveTextContent("Sales Station");
+      expect(
+        screen.queryByTestId("portal-header-station-unavailable")
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("Desktop layout", () => {

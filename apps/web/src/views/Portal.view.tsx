@@ -5,36 +5,25 @@ import {
   Box,
   Button,
   GatedButton,
-  Icon,
-  IconName,
-  MetadataList,
   Modal,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import Collapse from "@mui/material/Collapse";
-import MuiLink from "@mui/material/Link";
 import TextField from "@mui/material/TextField";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
-import { StationAttachmentAlertsUI } from "../components/StationAttachmentAlerts.component";
-import { StationAttachmentListUI } from "../components/StationAttachmentList.component";
-import { toStationAttachmentItems } from "../utils/station-attachments.util";
+import { PortalHeaderMeta } from "../components/PortalHeaderMeta.component";
 import { PortalSession } from "../components/PortalSession.component";
-import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { focusFirstInvalidField } from "../utils/form-validation.util";
-import { useLayout } from "../utils/layout.util";
-import { formatUsageValue } from "../utils/usage-format.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { decideActionGate } from "../utils/action-gate.util";
 
@@ -125,156 +114,6 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
         <FormAlert serverError={serverError ?? null} />
       </Stack>
     </Modal>
-  );
-};
-
-// ── Portal header metadata ──────────────────────────────────────────
-//
-// Fetches the station (+ connector instance details) attached to this
-// portal and renders a compact metadata row under the page title showing
-// the station, its connectors, and its tool packs.
-
-interface PortalHeaderMetaProps {
-  stationId: string;
-}
-
-export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
-  stationId,
-}) => {
-  // #674: both attachment kinds, each with canRead.
-  const { data } = sdk.stations.get(stationId, {
-    include: "connectorInstance,curatedView",
-  });
-  // Org-level usage balance (#172) — same query the Settings page reads, so
-  // React Query dedupes it. Surfaced here so users see where their account
-  // stands without leaving the session.
-  const { data: usageData } = sdk.organizations.usage();
-  // #284: same cached query, entitlement axis.
-  const { isEntitled } = useBuiltinEntitlements();
-  const { isMobile } = useLayout();
-  const [expanded, setExpanded] = useState(false);
-  const station = data?.station;
-  if (!station) return null;
-
-  const attachments = toStationAttachmentItems(station);
-  const toolPacks = station.enabledToolpacks ?? [];
-  const usage = usageData?.usage.byClass;
-
-  const metadata = (
-    <MetadataList
-      size="small"
-      spacing={0.75}
-      items={[
-        {
-          label: "Station",
-          value: (
-            <MuiLink
-              component={Link}
-              to={`/stations/${station.id}`}
-              variant="body2"
-              data-testid="portal-header-station-link"
-            >
-              {station.name}
-            </MuiLink>
-          ),
-        },
-        // #674: both rows always show (— when empty); the alert says why.
-        {
-          label: "Connectors",
-          value: (
-            <StationAttachmentListUI
-              kind="connector"
-              items={attachments.connectors}
-            />
-          ),
-          variant: "chip",
-        },
-        {
-          label: "Views",
-          value: (
-            <StationAttachmentListUI kind="view" items={attachments.views} />
-          ),
-          variant: "chip",
-        },
-        {
-          label: "Tool Packs",
-          value: (
-            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-              {toolPacks.map((pack) => (
-                <ToolPackChipWithMetadata
-                  key={pack}
-                  pack={pack}
-                  entitled={isEntitled(pack)}
-                />
-              ))}
-            </Stack>
-          ),
-          variant: "chip",
-          hidden: toolPacks.length === 0,
-        },
-      ]}
-    />
-  );
-
-  // Usage allocation lives on its own always-visible strip, above (and separate
-  // from) the collapsible session details, so account balance is glanceable
-  // regardless of the mobile toggle state.
-  const usageMeta = usage ? (
-    <MetadataList
-      size="small"
-      spacing={0.75}
-      items={[
-        {
-          label: "Metered usage",
-          value: formatUsageValue(usage.metered),
-          icon: <Icon name={IconName.Search} fontSize="small" />,
-        },
-        {
-          label: "Expensive usage",
-          value: formatUsageValue(usage.expensive),
-          icon: <Icon name={IconName.MemoryChip} fontSize="small" />,
-        },
-      ]}
-    />
-  ) : null;
-
-  // On small screens, tuck the session details behind a toggle so the session
-  // feed gets the full viewport. The button is kept small and inline.
-  const sessionDetails = !isMobile ? (
-    metadata
-  ) : (
-    <Box>
-      <Button
-        size="small"
-        variant="text"
-        onClick={() => setExpanded((e) => !e)}
-        startIcon={
-          <Icon name={expanded ? IconName.ExpandLess : IconName.ExpandMore} />
-        }
-        aria-expanded={expanded}
-        aria-controls="portal-header-meta-panel"
-        data-testid="portal-header-meta-toggle"
-        sx={{ px: 0.5, textTransform: "none" }}
-      >
-        {expanded ? "Hide session details" : "Show session details"}
-      </Button>
-      <Collapse in={expanded} unmountOnExit>
-        <Box id="portal-header-meta-panel" sx={{ pt: 1 }}>
-          {metadata}
-        </Box>
-      </Collapse>
-    </Box>
-  );
-
-  return (
-    <Stack spacing={1}>
-      {usageMeta}
-      <StationAttachmentAlertsUI
-        viewCount={attachments.views.length}
-        connectorCount={attachments.connectors.length}
-      />
-      {sessionDetails}
-    </Stack>
   );
 };
 

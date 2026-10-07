@@ -25,6 +25,7 @@ import { usePortalStream } from "../utils/portal-stream.util";
 import { toServerError, type ApiError } from "../utils/api.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
+import { usePortalStationLock } from "../utils/portal-station.util";
 import { useElapsed } from "../utils/use-elapsed.util";
 import {
   PortalMessage,
@@ -473,7 +474,12 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     await streamActions.send(portalId);
   };
 
-  const chatLock = usePortalChatLock(portalId);
+  // A running import job locks the composer (#85); so does a station the
+  // caller can no longer read (#699), since the server would refuse the send.
+  // The job lock wins when both apply: it's the more transient state.
+  const jobLock = usePortalChatLock(portalId);
+  const stationLock = usePortalStationLock(portalQuery.data?.portal.stationId);
+  const chatLock = jobLock.locked ? jobLock : stationLock;
 
   // #279 — the newest open tool step is the one the user is shown; when it
   // closes, the one before it becomes current again. Indexed rather than
