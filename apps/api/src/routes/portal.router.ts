@@ -13,6 +13,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { AgentTurnCeilingService } from "../services/agent-turn-ceiling.service.js";
 import { portals, portalMessages, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -535,7 +536,7 @@ portalRouter.delete(
  *       403:
  *         description: The caller can read the portal but not change it (#685)
  *       404:
- *         description: Portal not found, or not readable by the caller (#685, portals are per-user)
+ *         description: Portal not found, or not readable by the caller (#685, portals are per-user, `PORTAL_NOT_FOUND`); or its station is deleted or no longer readable by the caller (#699, `STATION_NOT_FOUND`). Nothing is written
  *         content:
  *           application/json:
  *             schema:
@@ -755,7 +756,31 @@ portalRouter.post(
       }
 
       // #685: posting a turn writes to the portal (per-user), else 404/403.
-      await PortalAccessService.load(req.application!.metadata, id, "write");
+      const { portal, set } = await PortalAccessService.load(
+        req.application!.metadata,
+        id,
+        "write"
+      );
+
+      // #699: a turn runs against the portal's station (its context,
+      // attachments and tool packs), so the sender must still read it. A
+      // revoked share or a deleted station reads as absent, before anything
+      // is written or counted against the turn ceiling.
+      const station = await DbService.repository.stations.findById(
+        portal.stationId
+      );
+      if (
+        !ObjectAccessService.readableInOrg(
+          set,
+          organizationId,
+          "station",
+          station
+        )
+      ) {
+        return next(
+          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+        );
+      }
 
       // #498: the un-charged agent-turn ceiling gates HERE — before the
       // user row is written and before any stream/model call exists, so a
