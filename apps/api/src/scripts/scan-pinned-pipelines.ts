@@ -21,11 +21,16 @@
  *     missed); listed for a human look
  * A pipeline passes only when it validates and every relation is ok.
  *
- * Writes nothing. Usage (DATABASE_URL points at the env, e.g. through a
- * `portalops db tunnel`):
- *   DATABASE_URL=… npx tsx src/scripts/scan-pinned-pipelines.ts [--json out.json]
+ * Writes nothing. Two ways to feed it:
+ *   - DATABASE_URL=… npx tsx src/scripts/scan-pinned-pipelines.ts [--json out.json]
+ *   - --from-dir <dir>: JSON exports of the same five reads (pins.json,
+ *     blocks.json, physical.json, entities.json, views.json), e.g. taken with
+ *     `portalops db psql --env <env> -- -tAqc "select json_agg(…)"`, so no
+ *     database credential leaves the CLI. The queries are the ones in
+ *     `loadFromDb` below.
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import postgres from "postgres";
 
 import { validatePortalSql } from "../services/portal-sql-validation.util.js";
@@ -47,38 +52,32 @@ interface Finding {
 const META_VIEWS = new Set(["_meta_entities", "_meta_columns"]);
 const WIDE_TABLE = /^er__([0-9a-f-]{36})$/;
 
-async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required");
-  const jsonOut = process.argv.includes("--json")
-    ? process.argv[process.argv.indexOf("--json") + 1]
-    : undefined;
+interface PipelineRow {
+  id: string;
+  organization_id: string;
+  created_by: string;
+  pipeline_sql: string;
+  block_index?: number;
+}
+interface ScanInput {
+  pins: PipelineRow[];
+  blocks: PipelineRow[];
+  physical: string[];
+  entities: { id: string; organization_id: string }[];
+  views: { organization_id: string; key: string }[];
+}
+
+async function loadFromDb(url: string): Promise<ScanInput> {
   const sql = postgres(url, { max: 1 });
   try {
     // Belt and braces: the session refuses any write.
     await sql`set session characteristics as transaction read only`;
-
-    const pins = await sql<
-      {
-        id: string;
-        organization_id: string;
-        created_by: string;
-        pipeline_sql: string;
-      }[]
-    >`
+    const pins = await sql<PipelineRow[]>`
       select id, organization_id, created_by,
              content->'pipeline'->>'sql' as pipeline_sql
       from portal_results
       where deleted is null and content->'pipeline'->>'sql' is not null`;
-    const blocks = await sql<
-      {
-        id: string;
-        organization_id: string;
-        created_by: string;
-        block_index: number;
-        pipeline_sql: string;
-      }[]
-    >`
+    const blocks = await sql<PipelineRow[]>`
       select m.id, m.organization_id, m.created_by,
              (b.ordinality - 1)::int as block_index,
              coalesce(b.block->'content'->'pipeline'->>'sql',
@@ -89,31 +88,60 @@ async function main() {
         and jsonb_typeof(m.blocks) = 'array'
         and coalesce(b.block->'content'->'pipeline'->>'sql',
                      b.block->'pipeline'->>'sql') is not null`;
-
     // Every relation that exists in the database, outside the catalogs.
-    const physical = new Set(
-      (
-        await sql<{ relname: string }[]>`
-          select c.relname from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-          where c.relkind in ('r','p','v','m','f')
-            and n.nspname not in ('pg_catalog','information_schema','pg_toast')`
-      ).map((r) => r.relname)
-    );
-    const entityOrg = new Map(
-      (
-        await sql<{ id: string; organization_id: string }[]>`
-          select id, organization_id from connector_entities`
-      ).map((r) => [r.id, r.organization_id])
-    );
-    const viewKeysByOrg = new Map<string, Set<string>>();
-    for (const r of await sql<{ organization_id: string; key: string }[]>`
-      select organization_id, key from curated_views where deleted is null`) {
-      const set = viewKeysByOrg.get(r.organization_id) ?? new Set<string>();
-      set.add(r.key);
-      viewKeysByOrg.set(r.organization_id, set);
-    }
+    const physical = (
+      await sql<{ relname: string }[]>`
+        select c.relname from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where c.relkind in ('r','p','v','m','f')
+          and n.nspname not in ('pg_catalog','information_schema','pg_toast')`
+    ).map((r) => r.relname);
+    const entities = await sql<{ id: string; organization_id: string }[]>`
+      select id, organization_id from connector_entities`;
+    const views = await sql<{ organization_id: string; key: string }[]>`
+      select organization_id, key from curated_views where deleted is null`;
+    return { pins, blocks, physical, entities, views };
+  } finally {
+    await sql.end();
+  }
+}
 
+function loadFromDir(dir: string): ScanInput {
+  const read = <T>(name: string): T =>
+    JSON.parse(readFileSync(join(dir, name), "utf8")) as T;
+  return {
+    pins: read("pins.json"),
+    blocks: read("blocks.json"),
+    physical: read("physical.json"),
+    entities: read("entities.json"),
+    views: read("views.json"),
+  };
+}
+
+function argValue(flag: string): string | undefined {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+async function main() {
+  const jsonOut = argValue("--json");
+  const fromDir = argValue("--from-dir");
+  const url = process.env.DATABASE_URL;
+  if (!fromDir && !url)
+    throw new Error("DATABASE_URL or --from-dir <dir> is required");
+  const input = fromDir ? loadFromDir(fromDir) : await loadFromDb(url!);
+  const { pins, blocks } = input;
+  const physical = new Set(input.physical);
+  const entityOrg = new Map(
+    input.entities.map((r) => [r.id, r.organization_id])
+  );
+  const viewKeysByOrg = new Map<string, Set<string>>();
+  for (const r of input.views) {
+    const set = viewKeysByOrg.get(r.organization_id) ?? new Set<string>();
+    set.add(r.key);
+    viewKeysByOrg.set(r.organization_id, set);
+  }
+  {
     const classify = (
       rel: string,
       orgId: string
@@ -132,16 +160,7 @@ async function main() {
     };
 
     const findings: Finding[] = [];
-    const scan = (
-      source: Finding["source"],
-      row: {
-        id: string;
-        organization_id: string;
-        created_by: string;
-        pipeline_sql: string;
-        block_index?: number;
-      }
-    ) => {
+    const scan = (source: Finding["source"], row: PipelineRow) => {
       const base = {
         source,
         id: row.id,
@@ -208,8 +227,6 @@ async function main() {
       writeFileSync(jsonOut, JSON.stringify({ summary, findings }, null, 2));
       console.log(`full findings written to ${jsonOut}`);
     }
-  } finally {
-    await sql.end();
   }
 }
 
