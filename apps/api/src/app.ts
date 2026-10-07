@@ -15,7 +15,11 @@ import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
 import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
-import { ApiError, HttpService } from "./services/http.service.js";
+import {
+  ApiError,
+  HttpService,
+  INTERNAL_ERROR_MESSAGE,
+} from "./services/http.service.js";
 import { toDbCancellationApiError } from "./db/request-cancellation.util.js";
 import { isExpectedBackpressure } from "./utils/log-level.util.js";
 import { createLogger } from "./utils/logger.util.js";
@@ -207,7 +211,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   log.error({ err }, "Unhandled error caught by error handler");
   return res.status(500).json({
     success: false,
-    message: "Internal server error",
+    message: INTERNAL_ERROR_MESSAGE,
     code: "UNKNOWN",
   });
 });

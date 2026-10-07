@@ -39,6 +39,13 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * #687: the message a 500 answers with. A 500's own message is whatever the
+ * handler caught, often a Drizzle error carrying the SQL text and its bound
+ * params, so it never reaches the client. The catch-all logs it first.
+ */
+export const INTERNAL_ERROR_MESSAGE = "Internal server error";
+
 export class HttpService {
   public static ApiError = ApiError;
   public static ApiCode = ApiCode;
@@ -54,12 +61,18 @@ export class HttpService {
     } as ApiSuccessResponse<P>);
   }
   public static async error(res: Response, error: ApiError) {
-    return res.status(error.status ?? 500).json({
+    const status = error.status ?? 500;
+    // #687: a 500 keeps its code (the client contract) and its authored
+    // recommendation; the caught message and the free-form details stay in
+    // the log. Other 5xx (503 backpressure, 502 upstream refusals) carry
+    // copy written for the user and pass through.
+    const internal = status === 500;
+    return res.status(status).json({
       success: false,
-      message: error.message,
+      message: internal ? INTERNAL_ERROR_MESSAGE : error.message,
       code: error.code,
       ...(error.recommendation ? { recommendation: error.recommendation } : {}),
-      ...(error.details ? { details: error.details } : {}),
+      ...(error.details && !internal ? { details: error.details } : {}),
     } as ApiErrorResponse);
   }
 }
