@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, ilike, sql, type SQL, type Column } from "drizzle-orm";
 
 import { FieldMappingModelFactory } from "@portalai/core/models";
 import {
@@ -1270,32 +1270,52 @@ fieldMappingRouter.get(
       // neither is limited — an entity of any size is loaded whole. Fetching
       // the raw `data` blob per row on top of that is the #423/#425 OOM
       // shape; drop it from the projection.
-      // #694: reading the mapping is not reading its records. Both sides
-      // check only the records the caller may read, so the ids and counts
-      // returned never describe records they can't.
+      // #694: reading the mapping is not reading its records. Side A is the
+      // caller's readable records only, so the ids and counts returned never
+      // describe a record they can't read. Side B is loaded whole, because a
+      // counterpart the caller can't read still exists: an A record pointing
+      // at one is not checkable, which is not the same as broken.
       const recordVisibility = set.visibilityPredicate("entity_record", {
         createdByCol: entityRecords.createdBy,
         idCol: entityRecords.id,
       });
-      const readableIn = (connectorEntityId: string) =>
-        recordVisibility
-          ? and(
-              eq(entityRecords.connectorEntityId, connectorEntityId),
-              recordVisibility
-            )
-          : undefined;
-      const [recordsA, recordsB] = await Promise.all([
+      const [recordsA, recordsB, readableBSourceIds] = await Promise.all([
         DbService.repository.entityRecords.findHydratedMany(
           mapping.connectorEntityId,
-          { includeData: false, where: readableIn(mapping.connectorEntityId) }
+          {
+            includeData: false,
+            where: recordVisibility
+              ? and(
+                  eq(
+                    entityRecords.connectorEntityId,
+                    mapping.connectorEntityId
+                  ),
+                  recordVisibility
+                )
+              : undefined,
+          }
         ),
         DbService.repository.entityRecords.findHydratedMany(
           counterpart.connectorEntityId,
-          {
-            includeData: false,
-            where: readableIn(counterpart.connectorEntityId),
-          }
+          { includeData: false }
         ),
+        // Undefined = the caller reads every B record.
+        recordVisibility
+          ? DbService.repository.entityRecords
+              .findHydratedMany(counterpart.connectorEntityId, {
+                includeData: false,
+                // Only the source ids are needed; skip the rehydration.
+                normalizedDataProjection: sql`'{}'::jsonb`,
+                where: and(
+                  eq(
+                    entityRecords.connectorEntityId,
+                    counterpart.connectorEntityId
+                  ),
+                  recordVisibility
+                ),
+              })
+              .then((rows) => new Set(rows.map((r) => r.sourceId)))
+          : Promise.resolve(undefined),
       ]);
 
       // 7. Build a lookup: entity B sourceId → set of IDs in its reference-array field
@@ -1322,6 +1342,9 @@ fieldMappingRouter.get(
         const idsInA = Array.isArray(arr) ? arr.map(String) : [];
         const isInconsistent = idsInA.some((targetId) => {
           const bSet = bArrayBySourceId.get(targetId);
+          // #694: a counterpart the caller can't read isn't judged either way.
+          if (bSet && readableBSourceIds && !readableBSourceIds.has(targetId))
+            return false;
           return !bSet || !bSet.has(recA.sourceId);
         });
         if (isInconsistent) {

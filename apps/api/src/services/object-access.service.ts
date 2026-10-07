@@ -16,6 +16,26 @@ interface OwnedRow {
 }
 
 export class ObjectAccessService {
+  /**
+   * #694: reading an entity group is not reading its members' entities. A
+   * member whose entity the caller can't read is left out (unreadable ==
+   * absent), on every route that returns a group's members.
+   */
+  static readableGroupMembers<T extends { connectorEntity?: OwnedRow | null }>(
+    set: PermissionSet,
+    organizationId: string,
+    members: T[]
+  ): T[] {
+    return members.filter((m) =>
+      ObjectAccessService.readableInOrg(
+        set,
+        organizationId,
+        "entity",
+        m.connectorEntity
+      )
+    );
+  }
+
   static readableInOrg<T extends OwnedRow>(
     set: PermissionSet,
     organizationId: string,

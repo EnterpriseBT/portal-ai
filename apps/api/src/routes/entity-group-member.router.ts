@@ -17,7 +17,6 @@ import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
-import type { PermissionSet } from "../services/permission-set.js";
 import { entityRecords } from "../db/schema/index.js";
 
 const logger = createLogger({ module: "entity-group-member" });
@@ -52,30 +51,6 @@ async function assertGroupReadable(req: Request, entityGroupId: string) {
     );
   }
   return set;
-}
-
-/**
- * #694: reading a group is not reading its members' entities. A member whose
- * entity the caller can't read is left out (unreadable == absent), from the
- * member list and from overlap alike.
- */
-function readableMembers<
-  T extends {
-    connectorEntity?: {
-      id: string;
-      organizationId: string;
-      createdBy: string;
-    } | null;
-  },
->(set: PermissionSet, organizationId: string, members: T[]): T[] {
-  return members.filter((m) =>
-    ObjectAccessService.readableInOrg(
-      set,
-      organizationId,
-      "entity",
-      m.connectorEntity ?? null
-    )
-  );
 }
 
 /**
@@ -180,7 +155,7 @@ entityGroupMemberRouter.get(
           );
         });
 
-      const members = readableMembers(
+      const members = ObjectAccessService.readableGroupMembers(
         set,
         req.application!.metadata.organizationId,
         enrichedMembers
@@ -905,7 +880,7 @@ entityGroupMemberRouter.get(
       );
 
       // Get existing members of the group
-      const enrichedMembers = readableMembers(
+      const enrichedMembers = ObjectAccessService.readableGroupMembers(
         set,
         req.application!.metadata.organizationId,
         await DbService.repository.entityGroupMembers.findByEntityGroupId(

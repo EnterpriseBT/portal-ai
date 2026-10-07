@@ -855,19 +855,23 @@ describe("Read access (#692)", () => {
     const ownersRecord = await recordOn(a.entityId, fx.ownerId, "a2", {
       [nkA]: ["missing-2"],
     });
+    // A correct link to a B record the member can't read: not checkable for
+    // the member, so not reported as broken (code review on #694).
+    await recordOn(a.entityId, fx.memberId, "a3", { [nkA]: ["b1"] });
+    await recordOn(b.entityId, fx.ownerId, "b1", { [nkB]: ["a3"] });
     const path = `/api/field-mappings/${mappingAId}/validate-bidirectional`;
 
     as(MEMBER_SUB);
     const asMember = await get(path);
     expect(asMember.status).toBe(200);
-    expect(asMember.body.payload.totalChecked).toBe(1);
+    expect(asMember.body.payload.totalChecked).toBe(2);
     expect(asMember.body.payload.inconsistentRecordIds).toEqual([
       membersRecord,
     ]);
 
     as(OWNER_SUB);
     const asOwner = await get(path);
-    expect(asOwner.body.payload.totalChecked).toBe(2);
+    expect(asOwner.body.payload.totalChecked).toBe(3);
     expect([...asOwner.body.payload.inconsistentRecordIds].sort()).toEqual(
       [membersRecord, ownersRecord].sort()
     );
@@ -917,6 +921,36 @@ describe("Read access (#692)", () => {
     as(OWNER_SUB);
     const asOwner = await get(`/api/entity-groups/${g.groupId}/members`);
     expect(asOwner.body.payload.members).toHaveLength(2);
+  });
+
+  it("group detail and resolve omit a member entity the caller can't read", async () => {
+    const g = await mixedGroup();
+    const ids = (rows: { connectorEntityId: string }[]) =>
+      rows.map((r) => r.connectorEntityId).sort();
+
+    as(MEMBER_SUB);
+    const detail = await get(`/api/entity-groups/${g.groupId}`);
+    expect(detail.status).toBe(200);
+    expect(ids(detail.body.payload.entityGroup.members)).toEqual([
+      g.mine.entityId,
+    ]);
+    const resolve = await get(
+      `/api/entity-groups/${g.groupId}/resolve?linkValue=x`
+    );
+    expect(resolve.status).toBe(200);
+    expect(ids(resolve.body.payload.results)).toEqual([g.mine.entityId]);
+
+    as(OWNER_SUB);
+    const ownerDetail = await get(`/api/entity-groups/${g.groupId}`);
+    expect(ids(ownerDetail.body.payload.entityGroup.members)).toEqual(
+      [g.mine.entityId, g.owners.entityId].sort()
+    );
+    const ownerResolve = await get(
+      `/api/entity-groups/${g.groupId}/resolve?linkValue=x`
+    );
+    expect(ids(ownerResolve.body.payload.results)).toEqual(
+      [g.mine.entityId, g.owners.entityId].sort()
+    );
   });
 
   it("overlap counts only records the caller can read, over member entities they can read", async () => {
