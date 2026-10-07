@@ -26,7 +26,7 @@
 
 **Chosen: C for Sheets/Excel; at the route for commit.**
 - **Authorize** (both routers): when `connectorInstanceId` is absent, run the owned create check before `buildConsentUrl`. A refusal is `403 PERMISSION_DENIED` via the existing `ApiError` passthrough in the `catch`.
-- **Callback** (both services, new-connect branch only): build a `PermissionContext` from the signed state (`userId`, `organizationId`, `roles` from `findEffectiveRoleNames`) and run the same check before `connectorInstances.create`. The boundary sits at the write. It costs one `loadSet` per connect, and a refusal there goes through `next(err)` like an expired state does today. One shared helper (`ConnectorInstanceAccessService.assertCanCreate(ctx)`) so all five call sites run the identical check. The generic route moves to it too.
+- **Callback** (both services, new-connect branch only): require a live membership, then build a `PermissionContext` from the signed state (`userId`, `organizationId`, `roles` from `findEffectiveRoleNames`) and run the same check before `connectorInstances.create`. The boundary sits at the write. It costs one `loadSet` per connect, and a refusal there goes through `next(err)` like an expired state does today. One shared helper (`ConnectorInstanceAccessService.assertCanCreate(ctx)`) so all five call sites run the identical check. The generic route moves to it too.
 - **Commit**: in `/api/layout-plans/commit`, when `connectorInstanceId` is absent, call `assertCanCreate(caller)` beside `assertSourceAccessible` and before `prepareDraftCommit`. The route is JWT-authenticated and the insert is synchronous, so there is no window to close. `/interpret` creates nothing and is unchanged.
 - **Reconnect paths are unchanged**: they already require write on the existing instance.
 
@@ -63,3 +63,52 @@
 - System inserts that no caller drives (`application.service.ts:703` sandbox auto-provision, `demo-seed.service.ts:529`): they don't run under a caller's permissions.
 - Making the OAuth popup render a friendly page for a callback refusal. It shows the same raw error as an expired state today, and after the authorize check it is reachable only when a grant changes within the 5-minute window.
 - Frontend changes: #708 already gates Connect on `canCreate`. This ticket makes the server match that gate.
+
+## Adversarial
+
+Probes for #710's new create checks (Sheets/Excel authorize + callback, file-upload commit). **Branch under test:** `fix/710-connect-flows-create-check` (PR [#716](https://github.com/EnterpriseBT/portal-ai/pull/716)). Nearly every probe is an API call: the surfaces are routes, and the UI already hides Connect.
+
+**Fixture:** a **denied** caller (the e2e member in a group whose policy denies `write connector_instance`), plus a bearer token pulled from that identity's saved e2e login (`packages/e2e/.auth/`). **Reset:** delete the deny group and policy afterwards, and confirm the member's `connector_instance.create` is true again.
+
+### §1 — Boundary input
+- [ ] Denied caller: authorize (Sheets, then Excel) with `{"connectorInstanceId": ""}` → **403 `PERMISSION_DENIED`**, no consent URL. An empty id is a new connection, not a skipped check. — backend
+- [ ] Denied caller: authorize with `{"connectorInstanceId": " "}` (whitespace) → **404 `CONNECTOR_INSTANCE_NOT_FOUND`**, no consent URL. It is treated as a reconnect of a row that doesn't exist. — backend
+- [ ] Denied caller: commit with `uploadSessionId` + `"connectorInstanceId": ""` → **400 `LAYOUT_PLAN_INVALID_PAYLOAD`** (schema `min(1)`), nothing written. — backend
+
+### §2 — Malformed input
+- [ ] Denied caller: authorize with `connectorInstanceId` as a number, array, object or `null` → **403** in every case. A non-string falls to the new-connection branch, which runs the create check. — backend
+- [ ] Denied caller: commit with both `uploadSessionId` and `connectorInstanceId` → **400**, no instance row and no job. — backend
+
+### §3 — Concurrency & races
+- [ ] Grant revoked between Review and **Commit plan** (walked in smoke step 5) → commit refused with a readable error, 0 instances, 0 jobs. Retrying after the grant is restored succeeds once. No duplicate instance.
+- [ ] Deny applied after authorize but before consent completes (inside the 5-minute state window) → callback refused **before the code exchange**, no `connector_instances` row. — manual (real Google consent)
+
+### §4 — Permission boundaries
+- [ ] A user whose only grant is instance-scoped (`write connector_instance:<X>`, no owned create): authorize with `connectorInstanceId: X` → **200** (reconnect still works). With no id → **403**. Proves the create check doesn't break reconnect. — backend
+- [ ] Denied caller: authorize with the id of another member's instance they can read but not write → **403**, not a consent URL. — backend
+- [ ] The same instance-scoped user commits to instance X (`connectorInstanceId` path) → not refused by the create check. Only a create is gated; the existing write check on X decides. (The denied fixture can't run this probe: its deny also blocks writes to its own instances.) — backend
+
+### §5 — Multi-tenant isolation
+- [ ] Authorize with a `connectorInstanceId` from another org → **404**, no consent URL. — backend
+- [ ] Commit with an `uploadSessionId` belonging to another org or another member → **404** from the source check, before any create. — backend
+- [ ] A user denied in org A but permitted in org B, active in B: authorize → 200 and the state carries org B. Switch the active org to A and authorize → 403. The check follows the request's org, not a cached one. — backend
+
+### §6 — State & lifecycle
+- [ ] Member **removed from the org** after authorize, then completes the callback within 5 minutes → expected: refused, no row. The security review flagged this as unconfirmed: the callback re-reads roles, but a leftover user-principal or group policy could still grant the create. — manual (real Google consent; record the observed result in Findings)
+- [ ] Callback replayed with the same `state` after a successful connect → no second instance beyond what the flow allows; the expired state returns 400 after 5 minutes. — manual
+
+### §7 — Misuse sequences
+- [ ] Denied caller retries **Commit plan** repeatedly in the same dialog → every attempt refused, no partial plan, entity or instance rows. — agent-walkable
+- [ ] Denied caller drives the hidden Connect anyway: opens the File Upload workflow from a stale tab opened while permitted, uploads, interprets → `/interpret` may succeed (it creates nothing), commit refused. — agent-walkable
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §6 removed member + a live user-principal policy attachment | The callback passed the create check and reached the code exchange: `assertCanCreateFromState` re-read roles but not membership, and `SeatService.removeMember` doesn't tombstone user-principal attachments. No API or CLI creates those, so it needed a DB-planted row | low | fixed-in-PR: `assertCanCreateFromState` now requires a live `organization_users` row (403 `MEMBERSHIP_NOT_FOUND`); regression tests in both callback suites |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name> — confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/job/entity ids):

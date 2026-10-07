@@ -77,12 +77,27 @@ export class ConnectorInstanceAccessService {
   /**
    * The same check for an OAuth callback, which has no JWT: the caller comes
    * from the signed state, so their roles are re-read here, at the write,
-   * rather than trusted from when authorize ran.
+   * rather than trusted from when authorize ran. The membership is re-checked
+   * too: the JWT middleware resolves it for every other request, and a member
+   * removed since authorize could otherwise pass on a policy attached to their
+   * user, which removal doesn't tombstone.
    */
   static async assertCanCreateFromState(
     userId: string,
     organizationId: string
   ): Promise<void> {
+    const membership =
+      await DbService.repository.organizationUsers.findByOrganizationAndUser(
+        organizationId,
+        userId
+      );
+    if (!membership) {
+      throw new ApiError(
+        403,
+        ApiCode.MEMBERSHIP_NOT_FOUND,
+        `User is not a member of organization ${organizationId}`
+      );
+    }
     const roles = (await DbService.repository.userRole.findEffectiveRoleNames(
       userId,
       organizationId

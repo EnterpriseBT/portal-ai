@@ -229,15 +229,15 @@ export async function seedTenancyFixture(
 }
 
 /**
- * #710: attach a custom policy to `userId` that denies `verb resourceType`
- * outright. A deny beats every allow in the caller's union, so the caller
- * loses the permission whatever their role grants.
+ * #710: attach a custom policy directly to `userId` (a user-principal
+ * attachment) with one class-level statement on `verb resourceType`.
  */
-export async function denyForUser(
+async function attachUserPolicy(
   db: Db,
   args: {
     organizationId: string;
     userId: string;
+    effect: "allow" | "deny";
     verb: PermissionVerb;
     resourceType: PermissionResourceType;
   }
@@ -246,7 +246,7 @@ export async function denyForUser(
     .create("system")
     .update({
       organizationId: args.organizationId,
-      name: `Deny ${args.verb} ${args.resourceType} ${generateId()}`,
+      name: `${args.effect} ${args.verb} ${args.resourceType} ${generateId()}`,
       kind: "custom",
       description: null,
     })
@@ -258,7 +258,7 @@ export async function denyForUser(
       .update({
         organizationId: args.organizationId,
         policyId: policy.id,
-        effect: "deny",
+        effect: args.effect,
         verb: args.verb,
         resourceType: args.resourceType,
         resourceId: null,
@@ -277,6 +277,40 @@ export async function denyForUser(
       })
       .parse() as never
   );
+}
+
+/**
+ * #710: deny `verb resourceType` to `userId` outright. A deny beats every
+ * allow in the caller's union, so the caller loses the permission whatever
+ * their role grants.
+ */
+export async function denyForUser(
+  db: Db,
+  args: {
+    organizationId: string;
+    userId: string;
+    verb: PermissionVerb;
+    resourceType: PermissionResourceType;
+  }
+): Promise<void> {
+  await attachUserPolicy(db, { ...args, effect: "deny" });
+}
+
+/**
+ * #710: allow `verb resourceType` to `userId` through a policy attached to
+ * the user. Member removal doesn't tombstone such an attachment, so it
+ * outlives the membership.
+ */
+export async function allowForUser(
+  db: Db,
+  args: {
+    organizationId: string;
+    userId: string;
+    verb: PermissionVerb;
+    resourceType: PermissionResourceType;
+  }
+): Promise<void> {
+  await attachUserPolicy(db, { ...args, effect: "allow" });
 }
 
 /**

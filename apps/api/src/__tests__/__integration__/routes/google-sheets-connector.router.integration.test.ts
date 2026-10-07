@@ -25,6 +25,7 @@ import {
 } from "../../../utils/oauth-state.util.js";
 import { decryptCredentials } from "../../../utils/crypto.util.js";
 import {
+  allowForUser,
   denyForUser,
   seedUserAndOrg,
   teardownOrg,
@@ -386,6 +387,38 @@ describe("Google Sheets Connector Router — GET /callback", () => {
     expect(res.status).toBe(403);
     expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
     // Refused before the code exchange: the provider issued no tokens.
+    expect(exchangeCodeMock).not.toHaveBeenCalled();
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.organizationId, organizationId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses a new connection from a member removed since authorize, even with a policy attached to their user (#710)", async () => {
+    const { userId, organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const state = signState({ userId, organizationId });
+    // Removal tombstones the membership but not a user-principal attachment.
+    await allowForUser(db as ReturnType<typeof drizzle>, {
+      organizationId,
+      userId,
+      verb: "write",
+      resourceType: "connector_instance",
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .update(schema.organizationUsers)
+      .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+      .where(eq(schema.organizationUsers.userId, userId));
+
+    const res = await request(app)
+      .get("/api/connectors/google-sheets/callback")
+      .query({ code: "good-code", state });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.MEMBERSHIP_NOT_FOUND);
     expect(exchangeCodeMock).not.toHaveBeenCalled();
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()
