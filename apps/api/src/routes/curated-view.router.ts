@@ -81,6 +81,19 @@ async function validateFilter(
   }
 }
 
+/** #729: an entity's live field mappings, id → createdBy. */
+async function fieldMappingCreators(
+  connectorEntityId: string
+): Promise<Map<string, string>> {
+  return new Map(
+    (
+      await DbService.repository.fieldMappings.findByConnectorEntityId(
+        connectorEntityId
+      )
+    ).map((m) => [m.id, m.createdBy])
+  );
+}
+
 /**
  * The self-exposure guard: the caller must independently `read` every field
  * mapping in the *effective* projection — the explicit `fieldMappingIds`, or
@@ -93,16 +106,22 @@ async function assertFieldsReadable(
   connectorEntityId: string,
   fieldMappingIds: string[] | undefined
 ): Promise<void> {
+  // #729: each mapping's creator, so a conditional read (created_by_caller /
+  // created_by_system) can match. An id not on this entity has none and
+  // fails closed.
+  const createdByFm = await fieldMappingCreators(connectorEntityId);
   const effective =
     fieldMappingIds && fieldMappingIds.length > 0
       ? fieldMappingIds
-      : (
-          await DbService.repository.fieldMappings.findByConnectorEntityId(
-            connectorEntityId
-          )
-        ).map((m) => m.id);
+      : [...createdByFm.keys()];
   for (const id of effective) {
-    if (!set.can("resource.read", { type: "field_mapping", id })) {
+    if (
+      !set.can("resource.read", {
+        type: "field_mapping",
+        id,
+        createdBy: createdByFm.get(id),
+      })
+    ) {
       throw new ApiError(
         403,
         ApiCode.CURATED_VIEW_FIELD_NOT_READABLE,
@@ -324,14 +343,13 @@ curatedViewRouter.get(
           view.id
         );
       // #729: the projection's creators, so a conditional field-mapping read
-      // (created_by_caller / created_by_system) can match.
-      const createdByFm = new Map(
-        (
-          await DbService.repository.fieldMappings.findByConnectorEntityId(
-            view.connectorEntityId
-          )
-        ).map((fm) => [fm.id, fm.createdBy])
-      );
+      // (created_by_caller / created_by_system) can match. Only needed when
+      // the ids are scoped (a reader without write, on a projected view).
+      const createdByFm =
+        projection.length > 0 &&
+        !CuratedViewPayloadService.canSeeDefinition(set, view)
+          ? await fieldMappingCreators(view.connectorEntityId)
+          : new Map<string, string>();
       // #680: the definition only for a caller with write on the view; any
       // other reader gets no filter contents and only the projection ids they
       // can read.
@@ -353,7 +371,7 @@ curatedViewRouter.get(
             view,
             projection.map((p) => ({
               id: p.fieldMappingId,
-              createdBy: createdByFm.get(p.fieldMappingId),
+              createdBy: createdByFm.get(p.fieldMappingId) ?? null,
             }))
           ),
         },

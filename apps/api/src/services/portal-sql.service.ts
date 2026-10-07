@@ -43,7 +43,6 @@ import { unwrapPgError } from "../utils/pg-error.util.js";
 import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
 import { curatedViewsRepo } from "../db/repositories/curated-views.repository.js";
 import { curatedViewFieldMappingsRepo } from "../db/repositories/curated-view-field-mappings.repository.js";
-import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { userRolesRepo } from "../db/repositories/user-roles.repository.js";
 import { PermissionService } from "./permission.service.js";
 import type { PermissionSet } from "./permission-set.js";
@@ -376,16 +375,8 @@ export class PortalSqlServiceImpl {
       ? new Set(projectionRows.map((p) => p.fieldMappingId))
       : new Set(stmt.columns.map((c) => c.fieldMappingId));
     // #729: a member's field-mapping read is conditional (created_by_caller /
-    // created_by_system), which only matches with the mapping's creator. One
-    // read of the entity's mappings supplies it.
-    const createdByFm = new Map(
-      (
-        await fieldMappingsRepo.findByConnectorEntityId(
-          view.connectorEntityId,
-          client
-        )
-      ).map((fm) => [fm.id, fm.createdBy])
-    );
+    // created_by_system), which only matches with the mapping's creator; the
+    // cached column carries it.
     return stmt.columns.filter(
       (c) =>
         !VIEW_HIDDEN_COLUMNS.has(c.columnName) &&
@@ -393,7 +384,7 @@ export class PortalSqlServiceImpl {
         set.can("resource.read", {
           type: "field_mapping",
           id: c.fieldMappingId,
-          createdBy: createdByFm.get(c.fieldMappingId),
+          createdBy: c.fieldMappingCreatedBy ?? undefined,
         })
     );
   }

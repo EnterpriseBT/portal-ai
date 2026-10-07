@@ -20,6 +20,7 @@ import { wideTableStatementCache as singletonStatementCache } from "../../../ser
 import {
   generateId,
   seedUserAndOrg,
+  allowForUser,
   teardownOrg,
   createUser,
   createOrganizationUser,
@@ -628,17 +629,10 @@ describe("curated-view.router integration", () => {
       fieldMappingIds: [emailFmId, ageFmId],
     });
     const id = created.body.payload.curatedView.id as string;
-    const system = SystemUtilities.id.system;
-    const dbT = db as ReturnType<typeof drizzle>;
-    await dbT.execute(
-      sql`update curated_views set created_by = ${system} where id = ${id}`
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update curated_views set created_by = ${SystemUtilities.id.system} where id = ${id}`
     );
-    await dbT.execute(
-      sql`update field_mappings set created_by = ${system} where connector_entity_id = ${entityId}`
-    );
-    await dbT.execute(
-      sql`update entity_records set created_by = ${system} where connector_entity_id = ${entityId}`
-    );
+    await makeEntitySystemOwned();
 
     currentSub = MEMBER_SUB;
     const got = await request(app).get(`/api/curated-views/${id}`);
@@ -656,6 +650,83 @@ describe("curated-view.router integration", () => {
     ).map((c) => c.normalizedKey);
     expect(keys.length).toBeGreaterThan(0);
     expect(records.body.payload.records.length).toBeGreaterThan(0);
+  });
+
+  /** Make the fixture entity's mappings and records system-created (#729). */
+  async function makeEntitySystemOwned() {
+    const system = SystemUtilities.id.system;
+    const dbT = db as ReturnType<typeof drizzle>;
+    await dbT.execute(
+      sql`update field_mappings set created_by = ${system} where connector_entity_id = ${entityId}`
+    );
+    await dbT.execute(
+      sql`update entity_records set created_by = ${system} where connector_entity_id = ${entityId}`
+    );
+    // The statement cache carries each mapping's creator.
+    singletonStatementCache.clear();
+  }
+
+  // #729 (code review): the create/update guard had the same omission, so a
+  // member creating a view over system-created fields got 403 on every field.
+  it("#729: a member given view-create can project system-created field mappings", async () => {
+    await makeEntitySystemOwned();
+    // View create is class-level (owner/admin by default); a custom policy can
+    // give it to anyone, and the field guard then decides the projection.
+    await allowForUser(db as ReturnType<typeof drizzle>, {
+      organizationId: orgId,
+      userId: memberId,
+      verb: "write",
+      resourceType: "curated_view",
+    });
+    currentSub = MEMBER_SUB;
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "member_over_system",
+      label: "Member over system",
+      fieldMappingIds: [emailFmId, ageFmId],
+    });
+    expect(created.body.code ?? null).toBeNull();
+    expect(created.status).toBe(201);
+  });
+
+  // #729 (code review): the portal session build reads the same columns, so a
+  // member's session view over system-created mappings has them.
+  it("#729: a member's portal session build gets the system-created view's columns", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "session_system_view",
+      label: "Session system view",
+      fieldMappingIds: [emailFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const dbT = db as ReturnType<typeof drizzle>;
+    await dbT.execute(
+      sql`update curated_views set created_by = ${SystemUtilities.id.system} where id = ${id}`
+    );
+    await dbT.insert(schema.stationViews).values({
+      id: generateId(),
+      organizationId: orgId,
+      stationId,
+      curatedViewId: id,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    await makeEntitySystemOwned();
+
+    const { PortalSqlService } =
+      await import("../../../services/portal-sql.service.js");
+    const { views } = await PortalSqlService.resolveGrantedViewColumns(
+      stationId,
+      orgId,
+      memberId,
+      db
+    );
+    const session = views.find((v) => v.view.id === id);
+    expect(session?.columns.map((c) => c.normalizedKey)).toEqual(["email"]);
   });
 
   it("#680: a caller with write on the view gets the full definition", async () => {

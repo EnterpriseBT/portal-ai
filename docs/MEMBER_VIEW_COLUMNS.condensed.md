@@ -18,7 +18,7 @@ It hit app-dev's `demo` org, which is system-provisioned. It has been live since
 
 ## Decision — pass the creator
 
-One `fieldMappingsRepo.findByConnectorEntityId` read per view supplies each mapping's `createdBy`, and both checks pass it. There's no new grant and no policy change. The existing shares (`in_curated_view`, instance grants) keep working; they never needed `createdBy`.
+The wide-table statement cache, which already loads the entity's mappings, carries each column's `fieldMappingCreatedBy` (`null` if the mapping is gone, which fails closed). The column check reads it with no extra query. The view GET and the create/update self-exposure guard (`assertFieldsReadable`, found in code review) look creators up only when they need them. There's no new grant and no policy change. The existing shares (`in_curated_view`, instance grants) keep working; they never needed `createdBy`.
 
 **Tests encoded the bug.** In the integration suite `SYSTEM_ID` is `SYSTEM_TEST`, so the curated-view fixture's mappings were system-created. Three member tests "expected hidden" columns that a member may in fact read. Those tests mean "a mapping the member can't read", so the fixture's mappings are now owner-created. The new #729 test makes view, mappings and records system-created explicitly.
 
@@ -38,4 +38,4 @@ One `fieldMappingsRepo.findByConnectorEntityId` read per view supplies each mapp
 
 ## Out of scope
 
-- Other `can()` call sites that omit `createdBy` for owned types. Worth an audit; that's a separate ticket if any turn up.
+- A guard so no `can()` on an owned type can omit `createdBy` again. That's a follow-up ticket.

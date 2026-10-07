@@ -46,7 +46,7 @@ export class CuratedViewPayloadService {
   static scopeFieldMappingIds(
     set: PermissionSet,
     view: CuratedViewSelect,
-    fieldMappings: { id: string; createdBy: string | undefined }[]
+    fieldMappings: { id: string; createdBy: string | null }[]
   ): string[] {
     if (CuratedViewPayloadService.canSeeDefinition(set, view)) {
       return fieldMappings.map((fm) => fm.id);
@@ -56,7 +56,7 @@ export class CuratedViewPayloadService {
         set.can("resource.read", {
           type: "field_mapping",
           id: fm.id,
-          createdBy: fm.createdBy,
+          createdBy: fm.createdBy ?? undefined,
         })
       )
       .map((fm) => fm.id);
