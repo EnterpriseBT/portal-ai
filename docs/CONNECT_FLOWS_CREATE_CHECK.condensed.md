@@ -53,9 +53,9 @@
 2. As the member, `curl -X POST :3001/api/connector-instances` with a REST body → **403 `PERMISSION_DENIED`** (baseline, unchanged).
 3. As the member, `POST :3001/api/connectors/google-sheets/authorize` with `{}` → **403 `PERMISSION_DENIED`**, no consent URL returned.
 4. Same for `POST :3001/api/connectors/microsoft-excel/authorize` → **403**.
-5. As the member, upload a CSV in the File Upload workflow and commit → the commit is refused with a readable error. `psql`: no new `connector_instances` row for the member, no `layout_plan_commit` job.
-6. In the app, as the member, Connections → Connect: the button is in #708's disabled state with the grant hint, so it agrees with steps 3–5.
-7. Detach the deny policy. As the member, connect a CSV end-to-end → instance created, commit job completes. Reconnect an existing Sheets instance the member owns → still works.
+5. The seeded member can't open Connectors (MemberAccess has no `view page:connectors`), so walk 5–7 as the e2e **admin** added to the same deny group. Open File Upload while permitted, upload a CSV up to Review, re-apply the deny, then **Commit plan** → the dialog shows "You don't have permission to create or edit connectors. (PERMISSION_DENIED)". `psql`: no new `connector_instances` row, no `layout_plan_commit` job.
+6. Connectors → Catalog while denied: **Connect is hidden** on every card (`ConnectorDefinition.component.tsx` hides it when `create` is false), and it reappears once the deny is lifted, matching steps 3–5.
+7. Lift the deny and retry **Commit plan** → instance created and `active`, commit job completes. Reconnect an existing Sheets instance the caller owns → still works (manual: real Google consent).
 8. (callback window, backend) As the member, mint a Sheets authorize URL, attach the deny policy, then complete consent within 5 min → the callback errors and creates no row.
 
 ## Out of scope
