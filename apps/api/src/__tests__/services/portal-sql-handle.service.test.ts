@@ -489,3 +489,51 @@ describe("handle re-execution (#667 — a commented handle query in every wrappe
     for (const q of sentSql()) expect(() => validatePortalSql(q)).not.toThrow();
   });
 });
+
+// #704: a large geometry in the first rows must not reach the model through
+// samplePeek — the staged rows (UI-only) keep the full value.
+describe("samplePeek is capped for the model (#704)", () => {
+  const bigGeom = "0102000020E6100000".padEnd(200_000, "A");
+  const rows = () =>
+    Array.from({ length: 150 }, (_, i) => ({
+      id: i,
+      geom: i < 5 ? bigGeom : "0101000020E6100000",
+    }));
+
+  const stagedRows = () =>
+    mockRedisSet.mock.calls
+      .map((c) => (c as unknown as [string, string])[1])
+      .map((v) => JSON.parse(v) as unknown)
+      .filter((v): v is Array<Record<string, unknown>> => Array.isArray(v))
+      .flat();
+
+  it("produce truncates big cells in the peek but stages them whole", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: rows() });
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "s",
+      organizationId: "o",
+      userId: "user-1",
+      sql: "SELECT id, geom FROM contours",
+    });
+    expect(envelope.samplePeek[0].geom).toBe(
+      `…<truncated, original ${bigGeom.length}b>`
+    );
+    expect(envelope.samplePeek[0].id).toBe(0);
+    expect(
+      Buffer.byteLength(JSON.stringify(envelope.samplePeek), "utf8")
+    ).toBeLessThanOrEqual(100_000);
+    expect(stagedRows()[0].geom).toBe(bigGeom);
+  });
+
+  it("produceFromRows truncates big cells in the peek but stages them whole", async () => {
+    const { envelope } = await PortalSqlHandleService.produceFromRows({
+      rows: rows(),
+      stationId: "s",
+      organizationId: "o",
+    });
+    expect(envelope.samplePeek[0].geom).toBe(
+      `…<truncated, original ${bigGeom.length}b>`
+    );
+    expect(stagedRows()[0].geom).toBe(bigGeom);
+  });
+});

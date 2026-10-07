@@ -41,6 +41,7 @@ import {
   type TransformDescriptor,
 } from "./transform-fold.js";
 import { fenceSql } from "./portal-sql-validation.util.js";
+import { capSamplePeek } from "./portal-sql-response.util.js";
 
 const logger = createLogger({ module: "portal-sql-handle" });
 
@@ -131,7 +132,8 @@ export class PortalSqlHandleService {
     // stages rows to Redis instead; the agent only ever sees the
     // small envelope `{queryHandle, rowCount, schema, samplePeek}`,
     // so those caps would only damage the user-visible rendering for
-    // no benefit. Lift them here.
+    // no benefit. Lift them here — for the staged rows only: the peek is
+    // what the model sees, so it is capped separately (#704).
     const result = await PortalSqlService.runSqlQuery({
       stationId: opts.stationId,
       organizationId: opts.organizationId,
@@ -187,9 +189,7 @@ export class PortalSqlHandleService {
         }))
       : [];
 
-    const samplePeek = rowsRaw.slice(0, SAMPLE_PEEK_SIZE) as Array<
-      Record<string, unknown>
-    >;
+    const samplePeek = capSamplePeek(rowsRaw.slice(0, SAMPLE_PEEK_SIZE));
 
     // #129: retain the query so the cursor tier can re-execute it past the
     // snapshot. Streamability isn't precomputed here — `streamHandle` branches
@@ -257,9 +257,7 @@ export class PortalSqlHandleService {
           }))
         : []);
 
-    const samplePeek = rowsRaw.slice(0, SAMPLE_PEEK_SIZE) as Array<
-      Record<string, unknown>
-    >;
+    const samplePeek = capSamplePeek(rowsRaw.slice(0, SAMPLE_PEEK_SIZE));
 
     const envelope: QueryHandleEnvelope = {
       queryHandle: handleId,
@@ -400,9 +398,7 @@ export class PortalSqlHandleService {
       // transform handle the rest is recoverable via the cursor re-fold (same
       // posture as `produce`), for a one-shot stream the snapshot IS the cap.
       truncated: head.length < total,
-      samplePeek: head.slice(0, SAMPLE_PEEK_SIZE) as Array<
-        Record<string, unknown>
-      >,
+      samplePeek: capSamplePeek(head.slice(0, SAMPLE_PEEK_SIZE)),
       sql: null,
     };
 
