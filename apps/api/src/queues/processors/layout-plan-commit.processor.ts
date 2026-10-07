@@ -9,6 +9,7 @@ import {
 import { DbService } from "../../services/db.service.js";
 import { environment } from "../../environment.js";
 import { createLogger } from "../../utils/logger.util.js";
+import { jobErrorText } from "../../utils/job-error-text.util.js";
 
 const logger = createLogger({ module: "layout-plan-commit-processor" });
 
@@ -117,9 +118,11 @@ export const layoutPlanCommitProcessor: TypedJobProcessor<
     const neverOwnedTheWork = err instanceof SyncLockWaitTimeoutError;
     if (isFinalAttempt && metadata.kind === "draft" && !neverOwnedTheWork) {
       try {
+        // #719: the reason lands in the instance's `last_error_message`,
+        // which org members read; a DB failure records no SQL or values.
         await LayoutPlanDraftService.rollbackFailedDraftCommit(
           metadata,
-          err instanceof Error ? err.message : String(err)
+          jobErrorText(err)
         );
       } catch (cleanupErr) {
         logger.error(

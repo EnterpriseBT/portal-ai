@@ -159,6 +159,34 @@ describe("jobs worker classifies batch outcomes (#410)", () => {
       "provider exploded"
     );
   });
+
+  // #719: every org member reads `jobs.error`, so a database failure records
+  // a fixed sentence, never the SQL, params or the row values pg quotes.
+  it("records a database failure without the SQL, params or row values", async () => {
+    const pg = Object.assign(
+      new Error('duplicate key value violates unique constraint "uq_x"'),
+      {
+        name: "PostgresError",
+        severity: "ERROR",
+        code: "23505",
+        detail: "Key (source_id)=(secret-source) already exists.",
+      }
+    );
+    createJobsWorker({
+      bulk_geocode: async () => {
+        throw new Error(
+          'Failed query: insert into "entity_records" values ($1)\nparams: secret-source',
+          { cause: pg }
+        );
+      },
+    });
+    if (!captured) throw new Error("worker handler was not captured");
+    await expect(captured(job("bulk_geocode"))).rejects.toThrow();
+    const error = (terminalCall()?.[2] as { error?: string }).error;
+    expect(error).toBe(
+      "Database error (unique violation, SQLSTATE 23505). See the server log."
+    );
+  });
 });
 
 /**

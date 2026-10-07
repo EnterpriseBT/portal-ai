@@ -34,7 +34,7 @@ Options:
 - **Anything else.** It returns today's text unchanged, so upstream, auth, parse and stall reasons keep reading the same.
 - `formatJobError` becomes this util. The worker already logs `err` in full next to each write, so nothing is lost for operators.
 
-**Same util, other writers.** It also replaces the two raw `err.message` writes to `last_error_message`.
+**Same util, other writers.** It also replaces the raw `err.message` that a failed draft commit writes to `last_error_message` (`layout-plan-commit.processor.ts`). The Google token-refresh writer is left alone: it records a `GoogleAuthError` refresh failure, never DB text, and walking to its root cause would replace its own message.
 
 **Existing rows.** A data migration rewrites `jobs.error` and `connector_instances.last_error_message` rows that already hold raw DB text to the generic sentence. It matches `Failed query:%`, plus the formatter's ` | code: <SQLSTATE>` shape. It is an `UPDATE`, not DDL, so `lint:migrations` is unaffected.
 
@@ -44,7 +44,7 @@ Options:
 - **Files:**
   - New `apps/api/src/utils/job-error-text.util.ts`.
   - Edit `queues/jobs.worker.ts`: `formatJobError` delegates to the util.
-  - Edit `services/layout-plan-draft.service.ts` and `services/google-access-token-cache.service.ts` (the `last_error_message` writes).
+  - Edit `queues/processors/layout-plan-commit.processor.ts` (the draft-rollback reason that becomes `last_error_message`).
 - **Tests:**
   - New `__tests__/utils/job-error-text.util.test.ts`:
     - A Drizzle-wrapped pg unique violation yields the category, the SQLSTATE and no SQL, values or constraint.
