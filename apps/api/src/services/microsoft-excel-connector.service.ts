@@ -22,6 +22,7 @@ import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
+import { ConnectorInstanceAccessService } from "./connector-instance-access.service.js";
 import { DbService } from "./db.service.js";
 import { MicrosoftAccessTokenCacheService } from "./microsoft-access-token-cache.service.js";
 import {
@@ -112,6 +113,15 @@ export class MicrosoftExcelConnectorService {
       connectorInstanceId: reconnectTargetId,
     } = verifyStateOrApiError(input.state);
 
+    // #710: a new connection needs the owned create. Check before the code
+    // exchange, so a caller refused since authorize is never issued tokens.
+    if (!reconnectTargetId) {
+      await ConnectorInstanceAccessService.assertCanCreateFromState(
+        userId,
+        organizationId
+      );
+    }
+
     const tokens = await callExchangeOrApiError(input.code);
     const tenantId = decodeTenantIdFromIdToken(tokens.idToken);
     const profile = await callFetchProfileOrApiError(
@@ -178,6 +188,12 @@ export class MicrosoftExcelConnectorService {
       );
       connectorInstanceId = updated?.id ?? target.id;
     } else {
+      // #710: re-checked at the write too (the check above ran before the
+      // provider round-trip).
+      await ConnectorInstanceAccessService.assertCanCreateFromState(
+        userId,
+        organizationId
+      );
       const created = await DbService.repository.connectorInstances.create({
         id: SystemUtilities.id.v4.generate(),
         organizationId,

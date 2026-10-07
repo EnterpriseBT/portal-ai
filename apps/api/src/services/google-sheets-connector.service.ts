@@ -16,6 +16,7 @@ import type { Workbook, WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
+import { ConnectorInstanceAccessService } from "./connector-instance-access.service.js";
 import { DbService } from "./db.service.js";
 import { GoogleAccessTokenCacheService } from "./google-access-token-cache.service.js";
 import { GoogleAuthError, GoogleAuthService } from "./google-auth.service.js";
@@ -78,6 +79,15 @@ export class GoogleSheetsConnectorService {
       connectorInstanceId: reconnectTargetId,
     } = verifyStateOrApiError(input.state);
 
+    // #710: a new connection needs the owned create. Check before the code
+    // exchange, so a caller refused since authorize is never issued tokens.
+    if (!reconnectTargetId) {
+      await ConnectorInstanceAccessService.assertCanCreateFromState(
+        userId,
+        organizationId
+      );
+    }
+
     const tokens = await callExchangeOrApiError(input.code);
     const email = await callFetchEmailOrApiError(tokens.accessToken);
 
@@ -137,6 +147,12 @@ export class GoogleSheetsConnectorService {
       );
       connectorInstanceId = updated?.id ?? target.id;
     } else {
+      // #710: re-checked at the write too (the check above ran before the
+      // provider round-trip).
+      await ConnectorInstanceAccessService.assertCanCreateFromState(
+        userId,
+        organizationId
+      );
       const created = await DbService.repository.connectorInstances.create({
         id: SystemUtilities.id.v4.generate(),
         organizationId,

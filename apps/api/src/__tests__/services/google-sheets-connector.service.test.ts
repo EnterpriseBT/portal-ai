@@ -82,6 +82,17 @@ const findByOrgAndDefinitionMock =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const findDefinitionBySlugMock = jest.fn<(slug: string) => Promise<unknown>>();
 
+// #710: the callback's create check is covered by the route integration
+// suites; here it always passes so these tests exercise the provider flow.
+jest.unstable_mockModule(
+  "../../services/connector-instance-access.service.js",
+  () => ({
+    ConnectorInstanceAccessService: {
+      assertCanCreateFromState: jest.fn(async () => undefined),
+    },
+  })
+);
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {

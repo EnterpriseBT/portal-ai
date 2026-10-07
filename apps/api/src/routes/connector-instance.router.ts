@@ -36,6 +36,7 @@ import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
@@ -769,10 +770,7 @@ connectorInstanceRouter.post(
           )
         );
       }
-      await PermissionService.check(caller, "resource.write", {
-        type: "connector_instance",
-        createdBy: caller.userId,
-      });
+      await ConnectorInstanceAccessService.assertCanCreate(caller);
 
       // Verify the connector definition exists
       const definition = await DbService.repository.connectorDefinitions

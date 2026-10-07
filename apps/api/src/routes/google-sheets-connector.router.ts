@@ -51,7 +51,7 @@ export const googleSheetsConnectorPublicRouter = Router();
  *       - bearerAuth: []
  *     responses:
  *       403:
- *         description: The caller lacks permission on this object or it isn't theirs (#685)
+ *         description: The caller can't write the instance being reconnected, or (new connection) lacks permission to create connector instances (#685, #710)
  *       200:
  *         description: Consent URL minted
  *         content:
@@ -92,6 +92,12 @@ googleSheetsConnectorRouter.post(
           req.application!.metadata,
           connectorInstanceId,
           "write"
+        );
+      } else {
+        // #710: a new connection creates an instance, so it needs the
+        // owned create. Refused here, before the consent redirect.
+        await ConnectorInstanceAccessService.assertCanCreate(
+          req.application!.metadata
         );
       }
 

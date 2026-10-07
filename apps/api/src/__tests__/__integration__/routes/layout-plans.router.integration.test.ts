@@ -18,6 +18,7 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
+  denyForUser,
   generateId,
   seedUserAndOrg,
   teardownOrg,
@@ -785,6 +786,56 @@ describe("Layout Plans Draft Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+    });
+
+    it("returns 403 PERMISSION_DENIED and creates nothing when the caller may not create connector instances (#710)", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+      await denyForUser(db as Db, {
+        organizationId,
+        userId,
+        verb: "write",
+        resourceType: "connector_instance",
+      });
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "Refused commit",
+          plan: makePlan(emailId, nameId),
+          uploadSessionId,
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+      expect(
+        await (db as Db)
+          .select()
+          .from(connectorInstances)
+          .where(eq(connectorInstances.organizationId, organizationId))
+      ).toHaveLength(0);
+      expect(
+        await (db as Db)
+          .select()
+          .from(schema.jobs)
+          .where(eq(schema.jobs.organizationId, organizationId))
+      ).toHaveLength(0);
     });
 
     describe("C1 duplicate-target guard", () => {

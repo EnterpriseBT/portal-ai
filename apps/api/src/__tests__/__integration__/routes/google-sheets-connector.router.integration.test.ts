@@ -24,7 +24,12 @@ import {
   STATE_TTL_MS,
 } from "../../../utils/oauth-state.util.js";
 import { decryptCredentials } from "../../../utils/crypto.util.js";
-import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
+import {
+  allowForUser,
+  denyForUser,
+  seedUserAndOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const { connectorDefinitions, connectorInstances } = schema;
 
@@ -158,6 +163,27 @@ describe("Google Sheets Connector Router — POST /authorize", () => {
     const state = url.searchParams.get("state");
     expect(state).toBeTruthy();
     expect(verifyState(state as string)).toEqual({ userId, organizationId });
+  });
+
+  it("returns 403 PERMISSION_DENIED and no consent URL when the caller may not create connector instances (#710)", async () => {
+    const { userId, organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    await denyForUser(db as ReturnType<typeof drizzle>, {
+      organizationId,
+      userId,
+      verb: "write",
+      resourceType: "connector_instance",
+    });
+
+    const res = await request(app)
+      .post("/api/connectors/google-sheets/authorize")
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(res.body.payload).toBeUndefined();
   });
 
   it("returns 500 GOOGLE_OAUTH_NOT_CONFIGURED when GOOGLE_OAUTH_CLIENT_ID is empty", async () => {
@@ -337,6 +363,67 @@ describe("Google Sheets Connector Router — GET /callback", () => {
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()
       .from(connectorInstances);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses a new connection whose caller lost the create permission after authorize, and creates no row (#710)", async () => {
+    const { userId, organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    await insertGoogleSheetsDefinition(db as ReturnType<typeof drizzle>);
+    // State minted while permitted; the deny lands inside the 5-min window.
+    const state = signState({ userId, organizationId });
+    await denyForUser(db as ReturnType<typeof drizzle>, {
+      organizationId,
+      userId,
+      verb: "write",
+      resourceType: "connector_instance",
+    });
+    const res = await request(app)
+      .get("/api/connectors/google-sheets/callback")
+      .query({ code: "good-code", state });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    // Refused before the code exchange: the provider issued no tokens.
+    expect(exchangeCodeMock).not.toHaveBeenCalled();
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.organizationId, organizationId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses a new connection from a member removed since authorize, even with a policy attached to their user (#710)", async () => {
+    const { userId, organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const state = signState({ userId, organizationId });
+    // Removal tombstones the membership but not a user-principal attachment.
+    await allowForUser(db as ReturnType<typeof drizzle>, {
+      organizationId,
+      userId,
+      verb: "write",
+      resourceType: "connector_instance",
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .update(schema.organizationUsers)
+      .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+      .where(eq(schema.organizationUsers.userId, userId));
+
+    const res = await request(app)
+      .get("/api/connectors/google-sheets/callback")
+      .query({ code: "good-code", state });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.MEMBERSHIP_NOT_FOUND);
+    expect(exchangeCodeMock).not.toHaveBeenCalled();
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.organizationId, organizationId));
     expect(rows).toHaveLength(0);
   });
 

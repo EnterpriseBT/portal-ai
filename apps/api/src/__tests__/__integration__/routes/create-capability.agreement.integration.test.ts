@@ -5,6 +5,8 @@ import {
   expect,
   beforeEach,
   afterEach,
+  beforeAll,
+  afterAll,
 } from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
@@ -26,9 +28,11 @@ import {
 
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+import { environment } from "../../../environment.js";
 import {
   createOrganizationUser,
   createUser,
+  denyForUser,
   generateId,
   seedTenancyFixture,
   teardownOrg,
@@ -61,6 +65,7 @@ const MEMBER_SUB = "auth0|cap-create-member";
 const OTHER_SUB = "auth0|cap-create-other";
 const OWNED_ONLY_SUB = "auth0|cap-create-owned-only";
 const INSTANCE_SUB = "auth0|cap-create-instance";
+const DENIED_SUB = "auth0|cap-create-denied";
 let currentSub = OWNER_SUB;
 
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
@@ -104,6 +109,30 @@ const SCHEMA_RESPONSE = JSON.stringify({
       },
     },
   ],
+});
+
+// #710: the Sheets/Excel authorize routes mint a consent URL, so their OAuth
+// env must be configured or they 500 before the create check.
+const OAUTH_ENV = {
+  OAUTH_STATE_SECRET: "cap-create-state-secret",
+  GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
+  GOOGLE_OAUTH_REDIRECT_URI:
+    "http://localhost:3001/api/connectors/google-sheets/callback",
+  MICROSOFT_OAUTH_CLIENT_ID: "test-client-id",
+  MICROSOFT_OAUTH_REDIRECT_URI:
+    "http://localhost:3001/api/connectors/microsoft-excel/callback",
+} as const;
+const originalOAuthEnv: Partial<Record<keyof typeof OAUTH_ENV, string>> = {};
+beforeAll(() => {
+  for (const key of Object.keys(OAUTH_ENV) as (keyof typeof OAUTH_ENV)[]) {
+    originalOAuthEnv[key] = environment[key];
+    environment[key] = OAUTH_ENV[key];
+  }
+});
+afterAll(() => {
+  for (const key of Object.keys(OAUTH_ENV) as (keyof typeof OAUTH_ENV)[]) {
+    environment[key] = originalOAuthEnv[key] as string;
+  }
 });
 
 const { app } = await import("../../../app.js");
@@ -160,6 +189,7 @@ describe("create capability agrees with the create routes (#708)", () => {
   let definitionId: string;
   let ownedOnlyId: string;
   let instanceUserId: string;
+  let deniedUserId: string;
   /** Entities whose `er__<id>` wide tables need dropping afterwards. */
   const wideTables: string[] = [];
 
@@ -168,6 +198,7 @@ describe("create capability agrees with the create routes (#708)", () => {
     [MEMBER_SUB]: () => fx.memberId,
     [OWNED_ONLY_SUB]: () => ownedOnlyId,
     [INSTANCE_SUB]: () => instanceUserId,
+    [DENIED_SUB]: () => deniedUserId,
   };
 
   // ── Parent rows (created by the caller under test) ──────────────────
@@ -563,6 +594,22 @@ describe("create capability agrees with the create routes (#708)", () => {
     await instanceGrant(instanceUserId, "station", generateId());
     await instanceGrant(instanceUserId, "pin", generateId());
 
+    // #710: a seeded member with an explicit deny on connector instances.
+    const denied = createUser(DENIED_SUB);
+    await db.insert(schema.users).values(denied as never);
+    await db.insert(schema.organizationUsers).values(
+      createOrganizationUser(fx.orgId, denied.id, {
+        role: "member",
+      }) as never
+    );
+    deniedUserId = denied.id;
+    await denyForUser(db, {
+      organizationId: fx.orgId,
+      userId: deniedUserId,
+      verb: "write",
+      resourceType: "connector_instance",
+    });
+
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({
       ok: true,
@@ -648,4 +695,38 @@ describe("create capability agrees with the create routes (#708)", () => {
     expect(res.status).toBe(403);
     expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
   });
+
+  // #710: every connect flow that creates a connector instance agrees with
+  // the same `create`. The file-upload commit is held to the same check in
+  // layout-plans.router.integration.test.ts (it needs a seeded upload session).
+  const connectFlows: Record<string, () => Promise<request.Response>> = {
+    "POST /api/connector-instances": () =>
+      attempt.connector_instance(userIdFor[currentSub]()),
+    "POST /api/connectors/google-sheets/authorize": () =>
+      request(app).post("/api/connectors/google-sheets/authorize").send({}),
+    "POST /api/connectors/microsoft-excel/authorize": () =>
+      request(app).post("/api/connectors/microsoft-excel/authorize").send({}),
+  };
+  const flowCases = Object.keys(connectFlows).flatMap((flow) =>
+    (
+      [
+        [OWNER_SUB, true],
+        [MEMBER_SUB, true],
+        [INSTANCE_SUB, false],
+        [DENIED_SUB, false],
+      ] as const
+    ).map(([sub, expected]) => [flow, sub, expected] as const)
+  );
+  it.each(flowCases)(
+    "connect flow %s as %s agrees with create (%s) (#710)",
+    async (flow, sub, expected) => {
+      currentSub = sub;
+      const current = await request(app).get("/api/organization/current");
+      expect(current.status).toBe(200);
+      const create: boolean =
+        current.body.payload.resourcePermissions.connector_instance.create;
+      const res = await connectFlows[flow]!();
+      expectAgreement("connector_instance", create, res, expected);
+    }
+  );
 });
