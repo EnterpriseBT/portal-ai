@@ -10,52 +10,12 @@ import type { SyncProgressUpdate } from "../adapters/adapter.interface.js";
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 import { JOBS_QUEUE_NAME } from "./jobs.queue.js";
+import { jobErrorText } from "../utils/job-error-text.util.js";
 
 const logger = createLogger({ module: "jobs-worker" });
 
 /** Untyped processor — accepts any BullMQ job. Used by the registry map. */
 export type JobProcessor = (job: BullJob) => Promise<unknown>;
-
-/**
- * Build a failure message that surfaces the actual root cause.
- *
- * Drizzle wraps postgres errors so that `.message` only contains the
- * failed SQL + bound params — not the reason. The underlying postgres
- * error (e.g. "duplicate key value violates unique constraint") lives
- * on `.cause`. We walk the cause chain and prefer postgres's `detail` /
- * `code` / `message` fields when present, falling back to the wrapper
- * message on plain errors.
- */
-function formatJobError(err: unknown): string {
-  if (!(err instanceof Error)) return String(err);
-
-  let cursor: unknown = err;
-  let depth = 0;
-  while (cursor instanceof Error && depth < 5) {
-    const causeCandidate = (cursor as { cause?: unknown }).cause;
-    if (causeCandidate instanceof Error) {
-      cursor = causeCandidate;
-      depth++;
-      continue;
-    }
-    break;
-  }
-
-  const root = cursor instanceof Error ? cursor : err;
-  const pg = root as Error & {
-    code?: string;
-    detail?: string;
-    constraint_name?: string;
-    table_name?: string;
-  };
-
-  const parts: string[] = [];
-  if (pg.message) parts.push(pg.message);
-  if (pg.detail) parts.push(`detail: ${pg.detail}`);
-  if (pg.code) parts.push(`code: ${pg.code}`);
-  if (pg.constraint_name) parts.push(`constraint: ${pg.constraint_name}`);
-  return parts.join(" | ");
-}
 
 /** BullMQ job data shape for a given job type (jobId + type + typed metadata). */
 export type JobData<T extends JobType = JobType> = {
@@ -261,7 +221,7 @@ export const createJobsWorker = (
         }
         return result;
       } catch (err) {
-        const message = formatJobError(err);
+        const message = jobErrorText(err);
         const status = statusForFailedAttempt(bullJob, err);
         logger.error(
           {
@@ -351,7 +311,7 @@ export const createJobsWorker = (
         TERMINAL_JOB_STATUSES.includes(row.status) || row.status === "pending";
       if (handled) return;
 
-      const reason = formatJobError(err);
+      const reason = jobErrorText(err);
       // A stall-limit exhaustion (UnrecoverableError) carries a specific,
       // self-explanatory reason ("job stalled more than allowable limit"), so
       // record it verbatim. Wrapping it produced the self-contradictory

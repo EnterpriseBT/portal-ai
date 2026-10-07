@@ -7,6 +7,7 @@ import { JobEventsService } from "./job-events.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
+import { jobErrorText } from "../utils/job-error-text.util.js";
 
 const logger = createLogger({ module: "jobs-service" });
 
@@ -92,10 +93,14 @@ export class JobsService {
       );
       return { ...job, bullJobId: bullJob.id ?? null };
     } catch (err) {
+      logger.error({ jobId: job.id, err }, "Failed to enqueue job");
       // If enqueue fails, mark the job as failed
       await DbService.repository.jobs.update(job.id, {
         status: "failed",
-        error: err instanceof Error ? err.message : "Failed to enqueue job",
+        // #719: every org member reads `jobs.error`; a DB failure here (the
+        // bullJobId update) records no SQL or params. Logged in full above.
+        error:
+          err instanceof Error ? jobErrorText(err) : "Failed to enqueue job",
       });
       throw new ApiError(
         500,

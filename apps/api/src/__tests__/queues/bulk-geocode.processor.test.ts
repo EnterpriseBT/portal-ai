@@ -120,6 +120,33 @@ describe("runBulkGeocode (#315)", () => {
     expect(commitCharge).toHaveBeenCalledWith(1);
   });
 
+  // #719: a failed geometry write is a database error. It used to be labelled
+  // a provider outage, with Drizzle's SQL and params as the message.
+  it("reports a failed geometry write as GEOCODE_WRITE_FAILED with no SQL", async () => {
+    const pg = Object.assign(
+      new Error('invalid input syntax for type uuid: "x"'),
+      {
+        name: "PostgresError",
+        severity: "ERROR",
+        code: "22P02",
+      }
+    );
+    const writeGeometry = jest.fn(async () => {
+      throw new Error(
+        'Failed query: update "er__e1" set "geom" = $1 where id = $2\nparams: secret',
+        { cause: pg }
+      );
+    });
+    const result = await runBulkGeocode(args, baseDeps({ writeGeometry }));
+
+    expect(result.partialFailures?.[0]?.error).toMatchObject({
+      code: ApiCode.GEOCODE_WRITE_FAILED,
+      message:
+        "Database error (invalid input, SQLSTATE 22P02). See the server log.",
+    });
+    expect(JSON.stringify(result.partialFailures)).not.toMatch(/secret|update/);
+  });
+
   it("a row with no address is a failure, never a silent skip", async () => {
     const result = await runBulkGeocode(
       args,

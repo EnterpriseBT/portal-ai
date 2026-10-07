@@ -755,6 +755,9 @@ export enum ApiCode {
   GEOCODE_PROVIDER_UNAVAILABLE = "GEOCODE_PROVIDER_UNAVAILABLE",
   /** The provider returned no match for the address / coordinates (#315). */
   GEOCODE_ADDRESS_UNRESOLVED = "GEOCODE_ADDRESS_UNRESOLVED",
+  /** Geocoded, but saving the geometry to the record failed (a database
+   *  error, not the provider) (#719). */
+  GEOCODE_WRITE_FAILED = "GEOCODE_WRITE_FAILED",
 
   // Subscription tiers (#172)
   /** The default subscription tier row is not seeded — a 500-class invariant
@@ -872,6 +875,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "The geocoding provider is unreachable right now. Relay this to the user and retry later — do not invent coordinates.",
   [ApiCode.GEOCODE_ADDRESS_UNRESOLVED]:
     "The provider found no match for that address or coordinate. Ask the user to refine it — do not invent coordinates.",
+  [ApiCode.GEOCODE_WRITE_FAILED]:
+    "The address was geocoded but saving it to the record failed. Relay this to the user; retrying the job may succeed.",
   [ApiCode.BULK_DISPATCH_TOO_MANY_IDS]:
     "Too many ids in one request. Split into multiple calls of ≤ 1000 ids each.",
   [ApiCode.COMPUTE_INPUT_TOO_LARGE]:
