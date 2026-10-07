@@ -26,8 +26,9 @@ import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useLayout } from "../utils/layout.util";
 import { formatUsageValue } from "../utils/usage-format.util";
 import {
-  isStationUnavailable,
+  STATION_LOAD_FAILED_MESSAGE,
   STATION_UNAVAILABLE_MESSAGE,
+  usePortalStation,
 } from "../utils/portal-station.util";
 
 // ── Pure UI ─────────────────────────────────────────────────────────
@@ -37,6 +38,8 @@ export interface PortalHeaderMetaUIProps {
   station: StationGetResponsePayload["station"] | null;
   /** #699: the station is deleted or no longer readable by the caller. */
   stationUnavailable: boolean;
+  /** #699: the station failed to load for another reason (a 5xx, network). */
+  stationLoadFailed?: boolean;
   usage?: OrganizationUsageGetResponse["usage"]["byClass"];
   isEntitled: (pack: string) => boolean;
   isMobile: boolean;
@@ -52,6 +55,7 @@ export interface PortalHeaderMetaUIProps {
 export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
   station,
   stationUnavailable,
+  stationLoadFailed = false,
   usage,
   isEntitled,
   isMobile,
@@ -80,11 +84,11 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
     />
   ) : null;
 
-  if (!station) {
+  if (!station || stationUnavailable) {
     return (
       <Stack spacing={1}>
         {usageMeta}
-        {stationUnavailable && (
+        {stationUnavailable ? (
           <Typography
             variant="body2"
             color="text.secondary"
@@ -92,7 +96,15 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
           >
             {STATION_UNAVAILABLE_MESSAGE}
           </Typography>
-        )}
+        ) : stationLoadFailed ? (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-testid="portal-header-station-load-failed"
+          >
+            {STATION_LOAD_FAILED_MESSAGE}
+          </Typography>
+        ) : null}
       </Stack>
     );
   }
@@ -209,9 +221,7 @@ export interface PortalHeaderMetaProps {
 export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   stationId,
 }) => {
-  const stationQuery = sdk.stations.get(stationId, {
-    include: "connectorInstance,curatedView",
-  });
+  const { station, unavailable, loadFailed } = usePortalStation(stationId);
   // Same query the Settings page reads, so React Query dedupes it.
   const { data: usageData } = sdk.organizations.usage();
   // #284: same cached query, entitlement axis.
@@ -221,8 +231,9 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
 
   return (
     <PortalHeaderMetaUI
-      station={stationQuery.data?.station ?? null}
-      stationUnavailable={isStationUnavailable(stationQuery.error)}
+      station={station}
+      stationUnavailable={unavailable}
+      stationLoadFailed={loadFailed}
       usage={usageData?.usage.byClass}
       isEntitled={isEntitled}
       isMobile={isMobile}

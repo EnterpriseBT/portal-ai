@@ -32,6 +32,13 @@ Options:
 - **Server.** `POST /:id/messages` loads the portal's station and requires it in the org and readable (`readableInOrg`). Otherwise it answers **404 `STATION_NOT_FOUND`**, the same code the stream uses for a missing station. That keeps unreadable == absent, so a revoked share and a delete read the same. The check runs before the turn ceiling and before the message row is written, so a refused send writes nothing.
 - **Header.** When the station query fails with 404, the header renders a short line: "This portal's station isn't available to you." It also keeps the usage strip and drops the station-specific rows. While the query is loading it renders the usage strip alone, never `null`.
 - **Composer.** `PortalSession` reads the same station query; React Query dedupes it because the key and include are identical. On a 404 it locks the composer with that reason through the existing `chatLocked`/`chatLockReason` props. The job lock keeps precedence when both apply, since it is the more transient state. History, pins and reading old answers are unchanged.
+- **Review follow-ups.**
+  - The stream's fresh-turn branch also requires the turn author to read the station. Without it, a turn posted before a revoke re-ran on every stream GET until one attempt succeeded.
+  - A refused send invalidates `stations.root`, so the composer locks right away.
+  - One `usePortalStation` hook serves the header and the composer.
+  - A refetch that 404s never shows stale station data.
+  - Any other load error shows "Couldn't load this portal's station" and leaves the composer enabled.
+  - Only a `STATION_NOT_FOUND` 404 counts as unavailable.
 - **File policy.** `PortalHeaderMeta` moves to `apps/web/src/components/PortalHeaderMeta.component.tsx`, split into `PortalHeaderMetaUI` (props only) and the `PortalHeaderMeta` container, as the Component File Policy requires. The view imports it.
 
 ## Plan — 2 slices
@@ -72,5 +79,4 @@ Run as owner and member of one org (`e2e:use <role>`).
 ## Out of scope
 
 - **Re-pointing a portal at another station.** No such affordance exists, and it's a feature, not this bug.
-- **Turns posted before the revoke.** A pending turn whose stream starts after the revoke still runs once. The stream re-checks only that the station exists, and a turn already accepted is allowed to finish.
 - **Hiding portals whose station is unreadable from the portals list.** The portal is still the member's own, and it stays readable.

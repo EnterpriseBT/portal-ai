@@ -202,6 +202,60 @@ describe("PortalHeaderMeta", () => {
     ).not.toBeInTheDocument();
   });
 
+  // Code review on #699: a refetch that 404s keeps the previous data, which
+  // must not keep showing the station beside a locked composer.
+  it("treats a 404 as unavailable even when stale station data is cached", () => {
+    mockStationsGet.mockReturnValue({
+      data: stationFixture,
+      isLoading: false,
+      isError: true,
+      error: {
+        status: 404,
+        code: "STATION_NOT_FOUND",
+        message: "Station not found",
+      },
+    });
+    render(<PortalHeaderMeta stationId="station-1" />);
+    expect(
+      screen.getByTestId("portal-header-station-unavailable")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-header-station-link")
+    ).not.toBeInTheDocument();
+  });
+
+  it("says the station failed to load on any other error, not that it's unavailable", () => {
+    mockStationsGet.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: { status: 503, code: "DB_ADMISSION_TIMEOUT", message: "busy" },
+    });
+    render(<PortalHeaderMeta stationId="station-1" />);
+    expect(
+      screen.getByTestId("portal-header-station-load-failed")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-header-station-unavailable")
+    ).not.toBeInTheDocument();
+  });
+
+  it("reads only a STATION_NOT_FOUND 404 as unavailable", () => {
+    mockStationsGet.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: { status: 404, code: "NOT_FOUND", message: "Not found" },
+    });
+    render(<PortalHeaderMeta stationId="station-1" />);
+    expect(
+      screen.queryByTestId("portal-header-station-unavailable")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("portal-header-station-load-failed")
+    ).toBeInTheDocument();
+  });
+
   describe("PortalHeaderMetaUI (#699)", () => {
     const uiProps = {
       station: null,
@@ -275,9 +329,11 @@ describe("PortalHeaderMeta", () => {
     it("#674: fetches both attachment kinds", () => {
       mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
       render(<PortalHeaderMeta stationId="station-1" />);
-      expect(mockStationsGet).toHaveBeenCalledWith("station-1", {
-        include: "connectorInstance,curatedView",
-      });
+      expect(mockStationsGet).toHaveBeenCalledWith(
+        "station-1",
+        { include: "connectorInstance,curatedView" },
+        { enabled: true }
+      );
     });
 
     it("#674: renders a Views row beside Connectors, with no alert when both are attached", () => {

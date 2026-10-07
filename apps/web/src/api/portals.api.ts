@@ -45,7 +45,11 @@ export const portals = {
   sendMessage: (portalId: string) =>
     useAuthMutation<void, SendMessageBody>({
       url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
-      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
+      // #699: a 404 STATION_NOT_FOUND means the portal's station is gone for
+      // the caller; refetching it locks the composer with the reason.
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.portals.root, queryKeys.stations.root],
+      },
     }),
 
   rename: (id: string) =>

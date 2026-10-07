@@ -56,7 +56,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: {
       stations: { findById: mockStationFindById },
       portals: { findById: jest.fn() },
+      // #699: the author's roles, to load their set when they aren't the caller.
+      userRole: { findEffectiveRoleNames: async () => [] },
     },
+  },
+}));
+
+// #699: the turn author's permission set (the author isn't the caller here).
+const mockAuthorCan = jest.fn(() => true);
+jest.unstable_mockModule("../../services/permission.service.js", () => ({
+  PermissionService: {
+    loadSet: async () => ({ can: mockAuthorCan, check: jest.fn() }),
   },
 }));
 
@@ -149,13 +159,19 @@ const answeredTurn = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockStationFindById.mockResolvedValue({ id: "station-1", name: "Station" });
+  mockStationFindById.mockResolvedValue({
+    id: "station-1",
+    name: "Station",
+    organizationId: "org-1",
+    createdBy: "user-1",
+  });
+  mockAuthorCan.mockReturnValue(true);
   mockBuildStationContext.mockResolvedValue({ stationId: "station-1" });
   mockStreamResponse.mockResolvedValue();
   mockRelease.mockResolvedValue();
   mockAccessLoad.mockResolvedValue({
     portal: PORTAL,
-    set: { check: mockWriteCheck },
+    set: { check: mockWriteCheck, can: () => true },
   });
 });
 
@@ -228,6 +244,27 @@ describe("fresh pending turn", () => {
 // ── #685: identity + access ──────────────────────────────────────────
 
 describe("authorization (#685)", () => {
+  // #699: POST /messages refuses a sender who can't read the station, but a
+  // turn posted before a revoke is still pending. Its author must still read
+  // the station when the stream runs it, else it re-ran on every GET.
+  it("refuses a pending turn whose author can no longer read the station (404), without calling the model", async () => {
+    mockGetPortal.mockResolvedValue(pendingTurn);
+    mockAcquire.mockResolvedValue(true);
+    mockAuthorCan.mockReturnValue(false);
+
+    const res = await request(app).get(STREAM_URL);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("STATION_NOT_FOUND");
+    expect(mockStreamResponse).not.toHaveBeenCalled();
+    expect(mockAuthorCan).toHaveBeenCalledWith("resource.read", {
+      type: "station",
+      id: "station-1",
+      createdBy: "user-1",
+    });
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
   it("a fresh turn runs as the pending message's author, not the stream caller or the portal's creator", async () => {
     mockGetPortal.mockResolvedValue(pendingTurn);
     mockAcquire.mockResolvedValue(true);

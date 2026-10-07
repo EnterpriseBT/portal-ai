@@ -438,6 +438,8 @@ describe("PortalSessionUI", () => {
 
 describe("PortalSession (container) via PortalSessionUI", () => {
   beforeEach(() => {
+    // #699: tests that lock on the station set it; reset so none leaks.
+    mockStationError.mockReturnValue(null);
     mockGetPortal.mockReset();
     mockSendMessage.mockReset();
     MockEventSource.reset();
@@ -535,7 +537,6 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     expect(
       screen.getByText("This portal's station isn't available to you.")
     ).toBeInTheDocument();
-    mockStationError.mockReturnValue(null);
   });
 
   it("submit triggers sendMessage", async () => {
