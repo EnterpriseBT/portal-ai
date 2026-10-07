@@ -49,6 +49,7 @@ import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { PortalSelect, PortalMessageSelect } from "../db/schema/zod.js";
 import { portalResults } from "../db/schema/index.js";
+import { toModelView } from "./model-output.util.js";
 
 const logger = createLogger({ module: "portal-service" });
 
@@ -929,6 +930,9 @@ const RECENT_TURNS_FULL_RESULTS = 2;
  */
 const MAX_RESULT_ROWS = 50;
 
+/** #726: the longest sample cell an old-turn summary quotes. */
+const SUMMARY_CELL_CHARS = 120;
+
 /**
  * Extract rows from a tool result regardless of shape.
  * Returns the array of rows and a reference to the parent object (if wrapped).
@@ -987,9 +991,11 @@ function summarizeToolResult(toolName: string, content: unknown): string {
   const sample = rows[0];
   const sampleStr = columns
     .slice(0, 5)
-    .map(
-      (c) => `${c}: ${JSON.stringify((sample as Record<string, unknown>)[c])}`
-    )
+    .map((c) => {
+      // #726: a sample cell can be a whole polygon; keep the summary short.
+      const cell = JSON.stringify((sample as Record<string, unknown>)[c]) ?? "";
+      return `${c}: ${cell.length > SUMMARY_CELL_CHARS ? `${cell.slice(0, SUMMARY_CELL_CHARS)}…` : cell}`;
+    })
     .join(", ");
   const colExtra = columns.length > 5 ? `, +${columns.length - 5} more` : "";
 
@@ -1119,7 +1125,9 @@ function reconstructModelMessages(
         const toolName = String(block.toolName ?? "tool");
         const raw = truncateResults
           ? summarizeToolResult(toolName, block.content)
-          : capResultRows(block.content);
+          : // #726: the same byte cap the live step applies (toModelOutput);
+            // the row cap alone let 50 contour polygons through.
+            toModelView(capResultRows(block.content));
 
         const output =
           typeof raw === "string"
