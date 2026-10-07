@@ -381,7 +381,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/portal-results": {
     kind: "authorized",
-    by: "org filter + visibilityPredicate pin (#621)",
+    by: "org filter + visibilityPredicate pin (#621); include=portal names only a readable portal (#694)",
   },
   "GET /api/portal-results/{id}": {
     kind: "authorized",

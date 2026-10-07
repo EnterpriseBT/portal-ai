@@ -670,4 +670,76 @@ describe("Read access (#692)", () => {
     const asOwner = await get(`/api/field-mappings/${membersMappingId}/impact`);
     expect(asOwner.body.payload.counterpart.id).toBe(counterpartId);
   });
+  // ── #694: same-org leftovers of the #692 inventory ──────────────────
+
+  /** Share an object with a user at `verb` (an object grant). */
+  async function shareWith(
+    principalId: string,
+    verb: string,
+    resourceType: string,
+    resourceId: string
+  ) {
+    await db.insert(schema.permissionGrants).values({
+      id: generateId(),
+      organizationId: fx.orgId,
+      principalType: "user",
+      principalId,
+      effect: "allow",
+      verb,
+      resourceType,
+      resourceId,
+      condition: null,
+      conditionParam: null,
+      ...base(fx.ownerId),
+    } as never);
+  }
+
+  it("pins: include=portal names the source portal only to a caller who can read it", async () => {
+    const stationId = generateId();
+    await db.insert(schema.stations).values({
+      id: stationId,
+      organizationId: fx.orgId,
+      name: `Station ${suffix()}`,
+      description: null,
+      toolPacks: ["data_query"],
+      ...base(fx.ownerId),
+    } as never);
+    const portalId = generateId();
+    await db.insert(schema.portals).values({
+      id: portalId,
+      organizationId: fx.orgId,
+      stationId,
+      name: "Owner secret portal",
+      ...base(fx.ownerId),
+    } as never);
+    const pinId = generateId();
+    await db.insert(schema.portalResults).values({
+      id: pinId,
+      organizationId: fx.orgId,
+      stationId,
+      portalId,
+      name: "Shared pin",
+      type: "text",
+      content: { value: "hello" },
+      ...base(fx.ownerId),
+    } as never);
+    await shareWith(fx.memberId, "read", "pin", pinId);
+
+    as(MEMBER_SUB);
+    const asMember = await get("/api/portal-results?include=portal");
+    expect(asMember.status).toBe(200);
+    const memberPin = asMember.body.payload.portalResults.find(
+      (r: { id: string }) => r.id === pinId
+    );
+    expect(memberPin).toBeDefined();
+    expect(memberPin.portalName).toBeNull();
+    expect(JSON.stringify(asMember.body)).not.toMatch(/secret/i);
+
+    as(OWNER_SUB);
+    const asOwner = await get("/api/portal-results?include=portal");
+    const ownerPin = asOwner.body.payload.portalResults.find(
+      (r: { id: string }) => r.id === pinId
+    );
+    expect(ownerPin.portalName).toBe("Owner secret portal");
+  });
 });
