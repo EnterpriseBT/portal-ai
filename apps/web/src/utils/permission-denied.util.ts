@@ -1,3 +1,5 @@
+import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
+
 import type { ServerError } from "./api.util";
 
 /**
@@ -40,7 +42,8 @@ function fieldsOf(error: unknown): { message?: string; code?: string } {
  * #711: what to show for a server error. A permission refusal's message names
  * the permission ("You don't have permission to manage billing."), so a denial
  * shows it as is, or the standard lead if it's empty. Anything else shows its
- * message, or `fallback` when there's nothing to show.
+ * message, or `fallback` when there's nothing to show (an API 500's generic
+ * message counts as nothing, #687).
  */
 export function serverErrorMessage(
   error: unknown,
@@ -49,5 +52,8 @@ export function serverErrorMessage(
   const { message, code } = fieldsOf(error);
   const text = message?.trim();
   if (isPermissionDenied(code)) return text || PERMISSION_DENIED_MESSAGE;
+  // #687: every API 500 answers with the same generic message, so the call
+  // site's own fallback ("Couldn't delete the station.") says more.
+  if (text === INTERNAL_ERROR_MESSAGE) return fallback;
   return text || fallback;
 }

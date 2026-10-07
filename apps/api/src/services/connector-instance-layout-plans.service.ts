@@ -37,6 +37,7 @@ import type { DbClient } from "../db/repositories/base.repository.js";
 import { db } from "../db/client.js";
 import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { inflateSheetPreviewFromChunks } from "../utils/workbook-preview.util.js";
+import { interpretFailure } from "../utils/interpret-error.util.js";
 
 /**
  * Connector slugs whose `resolveWorkbook` path the edit-context endpoint
@@ -87,11 +88,7 @@ export class ConnectorInstanceLayoutPlansService {
         userId
       );
     } catch (err) {
-      throw new ApiError(
-        500,
-        ApiCode.LAYOUT_PLAN_INTERPRET_FAILED,
-        err instanceof Error ? err.message : "Interpret failed"
-      );
+      throw interpretFailure(err);
     }
 
     const planId = SystemUtilities.id.v4.generate();

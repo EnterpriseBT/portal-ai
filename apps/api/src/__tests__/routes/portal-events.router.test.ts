@@ -190,6 +190,39 @@ describe("fresh pending turn", () => {
     expect(mockReplayTurn).not.toHaveBeenCalled();
     expect(mockRelease).toHaveBeenCalledTimes(1);
   });
+
+  // #687: once the stream is open, an error goes out as a stream_error
+  // event. A 500's message is the caught error's text, so it stays in the
+  // log; an ApiError with any other status carries copy for the user.
+  it("sends a generic stream_error for a 500, never its message", async () => {
+    mockGetPortal.mockResolvedValue(pendingTurn);
+    mockAcquire.mockResolvedValue(true);
+    mockStreamResponse.mockRejectedValue(
+      new ApiError(
+        500,
+        "PORTAL_STREAM_FAILED" as never,
+        'Failed query: insert into "portal_messages" params: secret'
+      )
+    );
+
+    const res = await request(app).get(STREAM_URL);
+
+    expect(res.text).toContain("stream_error");
+    expect(res.text).toContain("Failed to stream portal response");
+    expect(res.text).not.toMatch(/failed query|secret/i);
+  });
+
+  it("sends a non-500 ApiError's own message as the stream_error", async () => {
+    mockGetPortal.mockResolvedValue(pendingTurn);
+    mockAcquire.mockResolvedValue(true);
+    mockStreamResponse.mockRejectedValue(
+      new ApiError(429, "TOOL_USAGE_RATE_LIMITED" as never, "Slow down a bit")
+    );
+
+    const res = await request(app).get(STREAM_URL);
+
+    expect(res.text).toContain("Slow down a bit");
+  });
 });
 
 // ── #685: identity + access ──────────────────────────────────────────

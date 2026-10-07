@@ -467,7 +467,9 @@ describe("Field Mapping Router", () => {
 
       expect(res.status).toBe(500);
       expect(res.body.message).toBe("Internal server error");
-      expect(res.body.code).toBeDefined();
+      // The route's own code, so this exercises its DB-error path and not
+      // the catch-all's UNKNOWN.
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_FETCH_FAILED);
       expect(JSON.stringify(res.body)).not.toMatch(
         /failed query|select|params/i
       );

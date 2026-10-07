@@ -1,5 +1,6 @@
 import { ApiErrorResponse, ApiSuccessResponse } from "@portalai/core/contracts";
 import { Response } from "express";
+import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
 /**
@@ -39,12 +40,9 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * #687: the message a 500 answers with. A 500's own message is whatever the
- * handler caught, often a Drizzle error carrying the SQL text and its bound
- * params, so it never reaches the client. The catch-all logs it first.
- */
-export const INTERNAL_ERROR_MESSAGE = "Internal server error";
+// #687: what every 500 answers with; shared with the web app, which treats it
+// as "no message". The catch-all logs the original first.
+export { INTERNAL_ERROR_MESSAGE };
 
 export class HttpService {
   public static ApiError = ApiError;

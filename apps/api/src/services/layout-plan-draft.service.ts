@@ -56,6 +56,7 @@ import { MicrosoftExcelConnectorService } from "./microsoft-excel-connector.serv
 import { ApiError } from "./http.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import { interpretFailure } from "../utils/interpret-error.util.js";
 
 const logger = createLogger({ module: "layout-plan-draft" });
 
@@ -91,11 +92,7 @@ export class LayoutPlanDraftService {
       );
       return { plan };
     } catch (err) {
-      throw new ApiError(
-        500,
-        ApiCode.LAYOUT_PLAN_INTERPRET_FAILED,
-        err instanceof Error ? err.message : "Interpret failed"
-      );
+      throw interpretFailure(err);
     }
   }
 
