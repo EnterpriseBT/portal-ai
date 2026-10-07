@@ -17,13 +17,6 @@ const logger = createLogger({ module: "jobs-worker" });
 /** Untyped processor — accepts any BullMQ job. Used by the registry map. */
 export type JobProcessor = (job: BullJob) => Promise<unknown>;
 
-/**
- * The text a failed attempt records. #719: a database failure records a
- * fixed sentence naming the SQLSTATE, never the SQL, params or row values
- * (every org member reads `jobs.error`); the caller logs `err` in full.
- */
-const formatJobError = jobErrorText;
-
 /** BullMQ job data shape for a given job type (jobId + type + typed metadata). */
 export type JobData<T extends JobType = JobType> = {
   jobId: string;
@@ -228,7 +221,7 @@ export const createJobsWorker = (
         }
         return result;
       } catch (err) {
-        const message = formatJobError(err);
+        const message = jobErrorText(err);
         const status = statusForFailedAttempt(bullJob, err);
         logger.error(
           {
@@ -318,7 +311,7 @@ export const createJobsWorker = (
         TERMINAL_JOB_STATUSES.includes(row.status) || row.status === "pending";
       if (handled) return;
 
-      const reason = formatJobError(err);
+      const reason = jobErrorText(err);
       // A stall-limit exhaustion (UnrecoverableError) carries a specific,
       // self-explanatory reason ("job stalled more than allowable limit"), so
       // record it verbatim. Wrapping it produced the self-contradictory

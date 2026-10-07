@@ -36,6 +36,14 @@ Options:
 
 **Same util, other writers.** It also replaces the raw `err.message` that a failed draft commit writes to `last_error_message` (`layout-plan-commit.processor.ts`). The Google token-refresh writer is left alone: it records a `GoogleAuthError` refresh failure, never DB text, and walking to its root cause would replace its own message.
 
+**Review follow-ups.**
+- **Wrapper detection.** Drizzle's wrapper is matched anywhere in a message (`includes`), as the migration does. A re-wrap that embeds it no longer slips through.
+- **Connection errors.** postgres.js connection errors (`CONNECT_TIMEOUT`, `CONNECTION_CLOSED`, …) name the host, so they record "Database connection error".
+- **Unmapped SQLSTATE.** It reads `Database error (SQLSTATE XX000)`.
+- **Non-DB errors.** They keep the old shape, including a numeric `code` and a `detail`.
+- **bulk_geocode partial failures.** A geometry-write failure records the DB sentence under a new `GEOCODE_WRITE_FAILED` code. It used to be labelled a provider outage, with the SQL as its message.
+- **Enqueue failure.** The catch now logs `err` and stores `jobErrorText(err)`.
+
 **Existing rows.** A data migration rewrites `jobs.error` and `connector_instances.last_error_message` rows that already hold raw DB text to the generic sentence. It matches `Failed query:%`, plus the formatter's ` | code: <SQLSTATE>` shape. It is an `UPDATE`, not DDL, so `lint:migrations` is unaffected.
 
 ## Plan — 2 slices
@@ -69,5 +77,5 @@ Run the touched tests with `npm run test:unit` / `test:integration -- --testPath
 ## Out of scope
 
 - **Redacting `error` per reader, or a controller-only detail column (option b).** Revisit if users need richer self-serve diagnostics.
-- **The Redis enqueue-failure message** (`jobs.service.ts:96-99`). It's infrastructure text, not tenant data.
+- **Per-row failure text in a bulk transform's portal message**, and copies of the old error already saved in portal messages. Portal readers are the portal's creator plus owners and admins, not every member, and the per-row reason is useful to the creator.
 - **Error text outside jobs and `last_error_message`** (tool results built from other errors). Separate audit if wanted.

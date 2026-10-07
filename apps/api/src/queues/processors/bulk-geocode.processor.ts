@@ -12,6 +12,7 @@ import { cacheGet, cacheSet } from "../../services/geocoding/cache.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { environment } from "../../environment.js";
 import { createLogger } from "../../utils/logger.util.js";
+import { databaseErrorText } from "../../utils/job-error-text.util.js";
 
 const logger = createLogger({ module: "bulk-geocode.processor" });
 
@@ -124,12 +125,17 @@ export async function runBulkGeocode(
       failed++;
       if (partialFailures.length < MAX_PARTIAL_FAILURES) {
         const e = err as { code?: string; message?: string };
+        // #719: a failed geometry write is a database error, not the
+        // provider: say so, without the SQL, params or values it carries.
+        const dbText = databaseErrorText(err);
         partialFailures.push({
           sourceKey: recordId,
           error: {
             success: false,
-            code: (e.code as string) ?? ApiCode.GEOCODE_PROVIDER_UNAVAILABLE,
-            message: e.message ?? "Geocode failed.",
+            code: dbText
+              ? ApiCode.GEOCODE_WRITE_FAILED
+              : ((e.code as string) ?? ApiCode.GEOCODE_PROVIDER_UNAVAILABLE),
+            message: dbText ?? e.message ?? "Geocode failed.",
           },
         });
       }

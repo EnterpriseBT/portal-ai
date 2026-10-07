@@ -1,7 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
 import { UnrecoverableError } from "bullmq";
 
-import { jobErrorText } from "../../utils/job-error-text.util.js";
+import {
+  databaseErrorText,
+  jobErrorText,
+} from "../../utils/job-error-text.util.js";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
@@ -53,9 +56,23 @@ describe("jobErrorText (#719)", () => {
     );
   });
 
+  // Seen live in the #719 smoke: revalidating an entity whose wide table is gone.
+  it("names a missing table", () => {
+    expect(
+      jobErrorText(
+        pgError({
+          message: 'relation "er__secret" does not exist',
+          code: "42P01",
+        })
+      )
+    ).toBe(
+      "Database error (missing table, SQLSTATE 42P01). See the server log."
+    );
+  });
+
   it("names an unmapped SQLSTATE generically", () => {
     expect(jobErrorText(pgError({ message: "x", code: "XX000" }))).toBe(
-      "Database error (database error, SQLSTATE XX000). See the server log."
+      "Database error (SQLSTATE XX000). See the server log."
     );
   });
 
@@ -64,6 +81,37 @@ describe("jobErrorText (#719)", () => {
       new Error('Failed query: select "id" from "jobs"\nparams: secret')
     );
     expect(text).toBe("Database error. See the server log.");
+  });
+
+  it("scrubs a re-wrap that embeds Drizzle's message mid-text", () => {
+    const text = jobErrorText(
+      new Error(
+        'pipeline rejected: Failed query: select "id" from "jobs"\nparams: secret'
+      )
+    );
+    expect(text).toBe("Database error. See the server log.");
+  });
+
+  // postgres.js connection failures name the database host and port.
+  it("scrubs a postgres.js connection error", () => {
+    const conn = Object.assign(
+      new Error("write CONNECT_TIMEOUT db.internal.prod:5432"),
+      { code: "CONNECT_TIMEOUT" }
+    );
+    expect(jobErrorText(new Error("sync failed", { cause: conn }))).toBe(
+      "Database connection error. See the server log."
+    );
+  });
+
+  // Code review on #719: non-DB errors keep the old formatter's shape.
+  it("keeps a numeric code and a detail on a non-database error", () => {
+    const sdk = Object.assign(new Error("Request had insufficient scopes"), {
+      code: 403,
+      detail: "sheets.readonly missing",
+    });
+    expect(jobErrorText(sdk)).toBe(
+      "Request had insufficient scopes | detail: sheets.readonly missing | code: 403"
+    );
   });
 
   it("keeps an upstream network failure's text, as today", () => {
@@ -93,5 +141,9 @@ describe("jobErrorText (#719)", () => {
 
   it("stringifies a non-Error throw", () => {
     expect(jobErrorText("boom")).toBe("boom");
+  });
+
+  it("databaseErrorText is null for a non-database failure", () => {
+    expect(databaseErrorText(new Error("provider timed out"))).toBeNull();
   });
 });
