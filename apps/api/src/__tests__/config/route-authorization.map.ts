@@ -263,7 +263,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/entity-groups/{id}": {
     kind: "authorized",
-    by: "org scope + per-object resource.read entity_group (404)",
+    by: "org scope + per-object resource.read entity_group (404); members whose entity is unreadable omitted (#694)",
   },
   "GET /api/entity-groups/{id}/impact": {
     kind: "authorized",
@@ -271,7 +271,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/entity-groups/{id}/resolve": {
     kind: "authorized",
-    by: "org scope + per-object read entity_group (404) + entity_record visibilityPredicate per member",
+    by: "org scope + per-object read entity_group (404) + entity_record visibilityPredicate per member; members whose entity is unreadable omitted (#694)",
   },
   "GET /api/entity-tags": {
     kind: "authorized",
