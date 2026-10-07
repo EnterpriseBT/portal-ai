@@ -114,3 +114,27 @@ describe("PortalSqlHandleService.produceFromStream (#161)", () => {
     expect(envelope.truncated).toBe(false);
   });
 });
+
+describe("produceFromStream samplePeek cap (#704)", () => {
+  it("truncates big cells in the peek but stages them whole", async () => {
+    const bigGeom = "0102000020E6100000".padEnd(200_000, "A");
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      id: i,
+      geom: i === 0 ? bigGeom : "small",
+    }));
+    const { envelope } = await PortalSqlHandleService.produceFromStream({
+      rows: asStream(rows, 8),
+      stationId: "s1",
+      organizationId: "o1",
+    });
+    expect(envelope.samplePeek[0].geom).toBe(
+      `…<truncated, original ${bigGeom.length}b>`
+    );
+    expect(envelope.samplePeek[1].geom).toBe("small");
+    const snap = await PortalSqlHandleService.getSnapshot(
+      envelope.queryHandle,
+      { offset: 0, limit: 5_000 }
+    );
+    expect(snap.rows[0].geom).toBe(bigGeom);
+  });
+});

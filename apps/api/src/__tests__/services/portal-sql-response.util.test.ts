@@ -9,6 +9,7 @@ import {
   applyRowCap,
   applyCellCap,
   buildResponse,
+  capSamplePeek,
   PORTAL_SQL_DEFAULTS,
 } from "../../services/portal-sql-response.util.js";
 
@@ -114,5 +115,51 @@ describe("buildResponse", () => {
     );
     expect(collapsed.columnSizes).toHaveProperty("blob");
     expect(collapsed.hint).toContain("100000 bytes");
+  });
+});
+
+// #704: the handle envelope's samplePeek is model-facing, so it carries the
+// inline path's cell cap and a payload bound even though the staged rows lift
+// both.
+describe("capSamplePeek", () => {
+  it("replaces a cell over the cell cap with the truncation marker", () => {
+    const geom = "01".repeat(100_000);
+    const [row] = capSamplePeek([{ id: 1, geom }]);
+    expect(row.geom).toBe(`…<truncated, original ${geom.length}b>`);
+    expect(row.id).toBe(1);
+  });
+
+  it("passes numbers, booleans, nulls and short strings through", () => {
+    const rows = [{ n: 1.5, b: true, z: null, s: "short" }];
+    expect(capSamplePeek(rows)).toEqual(rows);
+  });
+
+  it("drops tail rows until the serialised peek fits the payload cap", () => {
+    // 300 columns × 400 B survive the cell cap but blow 100 KB per row set.
+    const wide = (i: number) =>
+      Object.fromEntries(
+        Array.from({ length: 300 }, (_, c) => [`c${c}`, `${i}`.padEnd(400)])
+      );
+    const rows = Array.from({ length: 10 }, (_, i) => wide(i));
+    const peek = capSamplePeek(rows);
+    expect(peek.length).toBeLessThan(10);
+    expect(Buffer.byteLength(JSON.stringify(peek), "utf8")).toBeLessThanOrEqual(
+      PORTAL_SQL_DEFAULTS.payloadCap
+    );
+    expect(peek.map((r) => r.c0)).toEqual(
+      rows.slice(0, peek.length).map((r) => r.c0)
+    );
+  });
+
+  it("honours explicit caps", () => {
+    const peek = capSamplePeek([{ s: "abcdef" }, { s: "ghijkl" }], {
+      cellCap: 3,
+      payloadCap: 60,
+    });
+    expect(peek).toEqual([{ s: "…<truncated, original 6b>" }]);
+  });
+
+  it("returns [] for no rows", () => {
+    expect(capSamplePeek([])).toEqual([]);
   });
 });

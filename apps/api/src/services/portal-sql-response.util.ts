@@ -76,6 +76,29 @@ export function applyCellCap(
   });
 }
 
+/**
+ * Bound a query-handle envelope's `samplePeek` (#704). The handle path lifts
+ * `cellCap`/`payloadCap` for the staged rows (the UI renders those), but the
+ * peek is model-facing: one raw geometry cell is megabytes of EWKB hex. Cap
+ * each cell exactly as the inline path does, then drop tail rows until the
+ * serialised peek fits `payloadCap` (a wide table can exceed it after the
+ * cell cap alone).
+ */
+export function capSamplePeek(
+  rows: Record<string, unknown>[],
+  caps: { cellCap?: number; payloadCap?: number } = {}
+): Record<string, unknown>[] {
+  const peek = applyCellCap(rows, caps.cellCap ?? PORTAL_SQL_DEFAULTS.cellCap);
+  const payloadCap = caps.payloadCap ?? PORTAL_SQL_DEFAULTS.payloadCap;
+  while (
+    peek.length > 0 &&
+    Buffer.byteLength(JSON.stringify(peek), "utf8") > payloadCap
+  ) {
+    peek.pop();
+  }
+  return peek;
+}
+
 function capCell(value: unknown, cap: number): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === "number" || typeof value === "boolean") return value;
