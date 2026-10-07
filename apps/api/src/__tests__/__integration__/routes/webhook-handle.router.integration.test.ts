@@ -224,6 +224,29 @@ describe("POST /api/webhook/handle/:sessionId — outbound staging (#124)", () =
     expect(snap.rows[1]).toEqual({ k: "b", n: 2 });
   });
 
+  it("binds the staged handle to the token's user (#694)", async () => {
+    const sessionId = "sess-write-user";
+    const writeToken = await WebhookReadTokenService.mint({
+      organizationId: ORG,
+      handleId: sessionId,
+      mode: "write",
+      stationId: "station-1",
+      userId: "user-694",
+    });
+
+    const res = await POST(sessionId, writeToken, { rows: [{ a: 1 }] });
+    expect(res.status).toBe(200);
+    staged.push(res.body.payload.resultHandle);
+
+    // `_userId` on the meta is what GET /api/portal-sql/handle/:id checks, so
+    // only the invoking user can read the handle back, not every org member.
+    const meta = await PortalSqlHandleService.getMeta(
+      res.body.payload.resultHandle
+    );
+    expect(meta._userId).toBe("user-694");
+    expect(meta._organizationId).toBe(ORG);
+  });
+
   it("401 with no token", async () => {
     const res = await POST("sess-x", undefined, { rows: [] });
     expect(res.status).toBe(401);

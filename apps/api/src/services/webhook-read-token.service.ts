@@ -34,6 +34,9 @@ interface TokenRecord {
   /** Owning station — carried on write tokens so the staged handle's meta is
    *  attributed correctly by `produceFromRows`. */
   stationId?: string;
+  /** Invoking user — carried on write tokens so the staged handle is bound to
+   *  them like every other user-produced handle, not readable org-wide (#694). */
+  userId?: string;
   /** ms-epoch logical expiry; the Redis key outlives this by `GRACE_MS`. */
   exp: number;
 }
@@ -66,6 +69,7 @@ export class WebhookReadTokenService {
     handleId: string;
     mode: WebhookTokenMode;
     stationId?: string;
+    userId?: string;
     ttlMs?: number;
     now?: number;
   }): Promise<string> {
@@ -80,6 +84,7 @@ export class WebhookReadTokenService {
       handleId: opts.handleId,
       mode: opts.mode,
       ...(opts.stationId ? { stationId: opts.stationId } : {}),
+      ...(opts.userId ? { userId: opts.userId } : {}),
       exp: now + ttlMs,
     };
     await getRedisClient().set(

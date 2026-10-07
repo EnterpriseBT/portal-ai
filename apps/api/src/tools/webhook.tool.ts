@@ -37,6 +37,7 @@ export class WebhookTool extends Tool {
   private organizationId?: string;
   private consumption?: Consumption;
   private production?: Production;
+  private userId?: string;
 
   constructor(
     toolName: string,
@@ -46,7 +47,8 @@ export class WebhookTool extends Tool {
     stationId: string,
     consumption?: Consumption,
     organizationId?: string,
-    production?: Production
+    production?: Production,
+    userId?: string
   ) {
     super();
     this.slug = toolName;
@@ -58,6 +60,7 @@ export class WebhookTool extends Tool {
     this.consumption = consumption;
     this.organizationId = organizationId;
     this.production = production;
+    this.userId = userId;
   }
 
   /** #161: a tool gets the output write-grant when it declares it produces
@@ -225,6 +228,8 @@ export class WebhookTool extends Tool {
       handleId: sessionId,
       mode: "write",
       stationId: this.stationId,
+      // #694: the handle the webhook stages is the invoking user's.
+      userId: this.userId,
     });
     return {
       sessionId,

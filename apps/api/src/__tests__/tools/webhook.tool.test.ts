@@ -62,7 +62,8 @@ const HANDLE_PROD: Production = { kind: "rows", onLarge: "handle" };
 function buildTool(
   consumption?: Consumption,
   organizationId = "org-1",
-  production?: Production
+  production?: Production,
+  userId: string | undefined = "user-1"
 ) {
   return new WebhookTool(
     "summarize",
@@ -72,7 +73,8 @@ function buildTool(
     "station-1",
     consumption,
     organizationId,
-    production
+    production,
+    userId
   ).build();
 }
 
@@ -266,6 +268,23 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
       expect(body.output.writeToken).toBe("tok-write");
       expect(mockMint).toHaveBeenCalledWith(
         expect.objectContaining({ mode: "write" })
+      );
+    });
+
+    it("binds the output grant to the invoking user (#694)", async () => {
+      mockResolveRecordSource.mockResolvedValue({
+        rows: [{ a: 1 }],
+        total: 1,
+        sampled: false,
+      });
+      const t = buildTool(streaming, "org-1", HANDLE_PROD, "user-7");
+
+      await exec(t, { rows: [{ a: 1 }] });
+
+      // The staged handle inherits this user, so another member of the org
+      // can't read it back through GET /api/portal-sql/handle/:id.
+      expect(mockMint).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "write", userId: "user-7" })
       );
     });
 

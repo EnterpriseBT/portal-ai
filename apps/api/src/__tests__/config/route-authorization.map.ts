@@ -740,7 +740,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "POST /api/webhook/handle/{sessionId}": {
     kind: "exempt",
     reason:
-      "custom-tool runtime: scoped write token bound to the handle, fail-closed",
+      "custom-tool runtime: scoped write token bound to the handle, fail-closed; the staged handle carries the token's user (#694)",
   },
   "POST /api/webhooks/aws-marketplace": {
     kind: "exempt",
