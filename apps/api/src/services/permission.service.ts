@@ -1,6 +1,7 @@
 import {
   CALLER_CAPABILITY_ACTIONS,
   NAV_PAGE_IDS,
+  OWNERSHIPLESS_RESOURCE_TYPES,
   RESOURCE_PERMISSION_TYPES,
   type OrgRole,
   type PolicyPrincipalType,
@@ -66,12 +67,16 @@ export type PermissionAction =
  * a check that left it out failed closed for members while owners and admins
  * passed through `* *` (#729). `createdBy: null` is the explicit "creator
  * unknown" (a deleted row, an id from the request that isn't the parent's):
- * only an unconditional, instance or FK-expanded grant can match it. A `page`
- * has no creator.
+ * only an unconditional, instance or FK-expanded grant can match it. An
+ * ownerless type (`OWNERSHIPLESS_RESOURCE_TYPES`, e.g. `page`) has no creator.
  */
 export type PermissionObject =
   | { type: string; id?: undefined; createdBy?: string }
-  | { type: "page"; id: string; createdBy?: undefined }
+  | {
+      type: (typeof OWNERSHIPLESS_RESOURCE_TYPES)[number];
+      id: string;
+      createdBy?: undefined;
+    }
   | { type: string; id: string; createdBy: string | null };
 
 /**

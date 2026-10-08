@@ -34,7 +34,7 @@ export type PermissionObject =
 
 - `tsc` now rejects every by-id object without a creator, including variables, helpers and `string | undefined` values. `type-check` already gates every PR (Static Checks), so this meets "CI fails on a new omission" with nothing new to maintain.
 - **`createdBy: null` is the recorded allowlist.** It means "the creator is unknown or irrelevant, so only unconditional, instance or FK-expanded grants can match". It's written at the call site where a reviewer sees it, which beats a list kept in a test file. `normalize` maps `null` to `undefined`, so the engine's semantics stay exactly as they are (out of scope per the ticket). The three #730 sites become `?? null`.
-- **Guard test** `apps/api/src/__tests__/permission-object.guard.test.ts` fails CI on any `as PermissionObject` (or `as unknown as PermissionObject`) in `apps/api/src`, since a cast is the only way past (c). It reads files as UTF-8 text, not via grep, because `permission-set.ts` holds NUL sentinels (see `permission-copy.guard.test.ts`). The three existing casts in `permission-gate.service.ts` are deleted, so the guard has no allowlist.
+- **Guard test** `apps/api/src/__tests__/permission-object.guard.test.ts` closes the two ways past (c). It parses `apps/api/src` with the TypeScript AST, so casts spread over several lines are caught, and grep's trouble with `permission-set.ts`'s NUL sentinels doesn't apply. (1) **Casts:** it flags any `as PermissionObject` / `<PermissionObject>`, and any cast on an argument of `can`/`check`/`isDenied`/`assertWithinBoundary` (`as never`, `as any`, …), except the action's `as PermissionAction`. (2) **A silent `?? null`:** the compiler can't tell "creator unknown" from "creator not looked up", so any `createdBy: … ?? null` must carry a comment citing an issue (`// #729: …`) on its line or the line above. The three existing casts in `permission-gate.service.ts` are deleted, so the guard has no allowlist (code review on #735).
 - No runtime assertion. The compile-time check already covers every site, and (b) would add a throw on hot paths that only fires under test.
 
 ## Plan — one slice
@@ -49,7 +49,7 @@ export type PermissionObject =
 
 **Tests**
 - New unit cases in `permission-set.test.ts`: (1) `createdBy: null` on an owned type fails a member's `created_by_caller` / `created_by_system` statement and passes an instance grant on that id; (2) `null` behaves exactly like the old omitted key under deny-wins.
-- Guard self-test: an embedded fixture containing `as PermissionObject` is flagged, then the real tree is scanned clean.
+- Guard self-test: embedded fixtures for each cast form and for an unexplained `?? null` are flagged, while a commented `?? null`, a typed annotation and unrelated `as never` pass. Then the real tree is scanned and must be clean.
 - `npm run type-check`, `npm run lint`, `npm run test:unit -- --testPathPattern 'permission|curated-view|portal-sql'`; the `rbac-fk-expansion` integration test via `npm run test:integration -- --testPathPattern rbac-fk-expansion`.
 
 ## Smoke (manual, against your dev stack)
