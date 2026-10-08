@@ -33,7 +33,7 @@ The 403 also gets clearer. When the effective projection is "all columns", the m
 - Member PATCHes an explicit view to `[]` (a real change, widening to all columns) with an unreadable column present → 403 with the all-columns message.
 - View whose every projected column was deleted; PATCH `{ label, fieldMappingIds: <stored ids> }` → 200, projection untouched.
 - Same stored ids in a different order → treated as unchanged (200).
-- The #736 test "a save whose every projected mapping is deleted is refused" resends its one stored id, which is now unchanged and gets 200 (covered above). It's rewritten to the changed case that still has to refuse: a view on [email, age] with age deleted, PATCHed to `[age]` → 400, and the projection is untouched. The other #736 tests stay green.
+- The #736 test "a save whose every projected mapping is deleted is refused" resends its one stored id, which is now unchanged and gets 200 (covered above). It's rewritten to the changed case that still has to refuse: a view on [email, age] with age deleted, PATCHed to `[age]` → 400, and the projection is untouched. #736's "saves after a deletion and drops it" now asserts that the resend keeps the projection and that the next real change (adding `tags`) drops the dead id.
 - `npm run type-check`, `lint`; `npm run test:integration -- --testPathPattern curated-view`.
 
 ## Smoke (manual, against your dev stack)

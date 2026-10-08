@@ -848,7 +848,7 @@ describe("curated-view.router integration", () => {
     expect(await viewCount("unknown_fm")).toBe(0);
   });
 
-  it("#736: a view still saves after one of its projected mappings is deleted, and drops it", async () => {
+  it("#736: a view still saves after one of its projected mappings is deleted, and a change drops it", async () => {
     const id = (
       await createView({
         connectorEntityId: entityId,
@@ -868,16 +868,28 @@ describe("curated-view.router integration", () => {
     expect(res.status).toBe(200);
     const got = await request(app).get(`/api/curated-views/${id}`);
     expect(got.body.payload.curatedView.label).toBe("Renamed");
-    expect(got.body.payload.curatedView.fieldMappingIds).toEqual([emailFmId]);
+    // #738: resending the stored ids is no change, so the projection is kept.
+    expect([...got.body.payload.curatedView.fieldMappingIds].sort()).toEqual(
+      [emailFmId, ageFmId].sort()
+    );
+    // The next real change drops the deleted mapping.
+    const changed = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [...stored, tagsFmId] });
+    expect(changed.status).toBe(200);
+    const after = await request(app).get(`/api/curated-views/${id}`);
+    expect([...after.body.payload.curatedView.fieldMappingIds].sort()).toEqual(
+      [emailFmId, tagsFmId].sort()
+    );
   });
 
-  it("#736: a save whose every projected mapping is deleted is refused, never widened to all columns", async () => {
+  it("#736: a changed save left with only deleted mappings is refused, never widened to all columns", async () => {
     const id = (
       await createView({
         connectorEntityId: entityId,
         key: "all_stale",
         label: "All stale",
-        fieldMappingIds: [ageFmId],
+        fieldMappingIds: [emailFmId, ageFmId],
       })
     ).body.payload.curatedView.id as string;
     await softDeleteMapping(ageFmId);
@@ -888,7 +900,143 @@ describe("curated-view.router integration", () => {
     expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
     const got = await request(app).get(`/api/curated-views/${id}`);
     expect(got.body.payload.curatedView.label).toBe("All stale");
+    expect([...got.body.payload.curatedView.fieldMappingIds].sort()).toEqual(
+      [emailFmId, ageFmId].sort()
+    );
+  });
+
+  /** #738: the view's live projection rows, as ids of the rows themselves. */
+  async function projectionRowIds(viewId: string): Promise<string[]> {
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select({ id: schema.curatedViewFieldMappings.id })
+      .from(schema.curatedViewFieldMappings)
+      .where(
+        sql`${schema.curatedViewFieldMappings.curatedViewId} = ${viewId} and ${schema.curatedViewFieldMappings.deleted} is null`
+      );
+    return rows.map((r) => r.id).sort();
+  }
+
+  /** #738: a view the member owns over system-created (member-readable)
+   *  mappings, plus a mapping on the same entity that someone else created,
+   *  which the member can't read. */
+  async function memberOwnedView(
+    key: string,
+    fieldMappingIds: string[]
+  ): Promise<string> {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key,
+        label: key,
+        fieldMappingIds,
+      })
+    ).body.payload.curatedView.id as string;
+    await makeEntitySystemOwned();
+    const dbT = db as ReturnType<typeof drizzle>;
+    await dbT.execute(
+      sql`update curated_views set created_by = ${memberId} where id = ${id}`
+    );
+    const cd = generateId();
+    await dbT
+      .insert(schema.columnDefinitions)
+      .values(
+        mkColumnDef(
+          cd,
+          orgId,
+          "secret",
+          "Secret",
+          "string",
+          Date.now()
+        ) as never
+      );
+    await dbT
+      .insert(schema.fieldMappings)
+      .values(
+        mkMapping(
+          generateId(),
+          orgId,
+          entityId,
+          cd,
+          "secret",
+          Date.now(),
+          "someone-else"
+        ) as never
+      );
+    singletonStatementCache.clear();
+    currentSub = MEMBER_SUB;
+    return id;
+  }
+
+  it("#738: re-saving an unchanged all-columns view needs no read on every column", async () => {
+    const id = await memberOwnedView("member_all", []);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed", fieldMappingIds: [] });
+    expect(res.body.code ?? null).toBeNull();
+    expect(res.status).toBe(200);
+    currentSub = OWNER_SUB;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.label).toBe("Renamed");
+    expect(got.body.payload.curatedView.fieldMappingIds).toEqual([]);
+  });
+
+  it("#738: changing an all-columns view to a readable list still saves", async () => {
+    const id = await memberOwnedView("member_all_to_list", []);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [emailFmId] });
+    expect(res.status).toBe(200);
+  });
+
+  it("#738: widening a list to all columns over an unreadable column is refused, and says why", async () => {
+    const id = await memberOwnedView("member_list_to_all", [emailFmId]);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_FIELD_NOT_READABLE);
+    expect(res.body.message).toBe(
+      "An all-columns view needs read access to every column of its entity"
+    );
+    currentSub = OWNER_SUB;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.fieldMappingIds).toEqual([emailFmId]);
+  });
+
+  it("#738: a label save on a view whose every projected mapping is deleted keeps it as is", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "all_dead_label",
+        label: "All dead",
+        fieldMappingIds: [ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    await softDeleteMapping(ageFmId);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed", fieldMappingIds: [ageFmId] });
+    expect(res.status).toBe(200);
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.label).toBe("Renamed");
     expect(got.body.payload.curatedView.fieldMappingIds).toEqual([ageFmId]);
+  });
+
+  it("#738: the same ids in another order are no change, so no rows are rewritten", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "reordered",
+        label: "Reordered",
+        fieldMappingIds: [emailFmId, ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    const before = await projectionRowIds(id);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [ageFmId, emailFmId] });
+    expect(res.status).toBe(200);
+    expect(await projectionRowIds(id)).toEqual(before);
   });
 
   it("#736: a label-only PATCH doesn't re-check the projection", async () => {

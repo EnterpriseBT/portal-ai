@@ -106,6 +106,13 @@ async function fieldMappingCreators(
   );
 }
 
+/** Whether two id lists hold the same set of ids, ignoring order and repeats. */
+function sameIdSet(a: string[], b: string[]): boolean {
+  const sa = new Set(a);
+  const sb = new Set(b);
+  return sa.size === sb.size && [...sa].every((id) => sb.has(id));
+}
+
 /**
  * Validate a projection (`fieldMappingIds`) against the view's entity and
  * return the ids to store, in order:
@@ -179,7 +186,8 @@ async function assertProjection(
       }
     }
   }
-  const effective = live && live.length > 0 ? live : [...createdByFm.keys()];
+  const allColumns = !live || live.length === 0;
+  const effective = !live || live.length === 0 ? [...createdByFm.keys()] : live;
   for (const id of effective) {
     // Every id here is a live mapping of this entity, so it has a creator.
     const createdBy = createdByFm.get(id);
@@ -190,7 +198,10 @@ async function assertProjection(
       throw new ApiError(
         403,
         ApiCode.CURATED_VIEW_FIELD_NOT_READABLE,
-        "You cannot project a field mapping you do not have read access to"
+        // #738: say why when no single field was chosen.
+        allColumns
+          ? "An all-columns view needs read access to every column of its entity"
+          : "You cannot project a field mapping you do not have read access to"
       );
     }
   }
@@ -642,7 +653,19 @@ curatedViewRouter.patch(
         await validateFilter(body.filter, existing.connectorEntityId);
       }
       // Only a request that changes the projection is checked against it.
-      const projection = body.fieldMappingIds
+      // #738: the editor sends the stored ids back on every save, so the same
+      // set (any order) is no change: nothing to check, nothing to rewrite.
+      const changesProjection =
+        body.fieldMappingIds !== undefined &&
+        !sameIdSet(
+          body.fieldMappingIds,
+          (
+            await DbService.repository.curatedViewFieldMappings.findByCuratedViewId(
+              existing.id
+            )
+          ).map((r) => r.fieldMappingId)
+        );
+      const projection = changesProjection
         ? await assertProjection(
             set,
             existing.connectorEntityId,
