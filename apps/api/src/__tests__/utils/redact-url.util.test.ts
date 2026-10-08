@@ -40,8 +40,24 @@ describe("redactUrl (#728)", () => {
     expect(redactUrl("/a?token=S#frag")).toBe("/a?token=[REDACTED]#frag");
   });
 
-  it("drops an undecodable query string whole (fail closed)", () => {
-    expect(redactUrl("/a?%E0%A4%A=SECRET&token=S")).toBe("/a");
+  it("drops an undecodable parameter on its own (fail closed), keeping the rest", () => {
+    expect(redactUrl("/a?%E0%A4%A=SECRET&jobId=123&token=S")).toBe(
+      "/a?jobId=123&token=[REDACTED]"
+    );
+  });
+
+  // #728 (code review): Express's extended parser folds these into values
+  // that still authenticate, and camelCase names are credentials too.
+  it.each([
+    ["token[]=S", "token[]=[REDACTED]"],
+    ["token%5B%5D=S", "token%5B%5D=[REDACTED]"],
+    ["token[0]=S", "token[0]=[REDACTED]"],
+    ["auth[token]=S", "auth[token]=[REDACTED]"],
+    ["accessToken=S", "accessToken=[REDACTED]"],
+    ["Access-Token=S", "Access-Token=[REDACTED]"],
+    ["idToken=S", "idToken=[REDACTED]"],
+  ])("redacts %s", (param, expected) => {
+    expect(redactUrl(`/a?${param}&keep=1`)).toBe(`/a?${expected}&keep=1`);
   });
 
   it("passes undefined through", () => {
@@ -55,6 +71,22 @@ describe("redactQuery (#728)", () => {
       token: "[REDACTED]",
       Access_Token: "[REDACTED]",
       x: "1",
+    });
+  });
+
+  it("redacts at any depth and inside arrays, and camelCase names", () => {
+    expect(
+      redactQuery({
+        token: ["S"],
+        auth: { access_token: "S2", ok: "1" },
+        accessToken: "S3",
+        list: [{ token: "S4" }],
+      })
+    ).toEqual({
+      token: "[REDACTED]",
+      auth: { access_token: "[REDACTED]", ok: "1" },
+      accessToken: "[REDACTED]",
+      list: [{ token: "[REDACTED]" }],
     });
   });
 

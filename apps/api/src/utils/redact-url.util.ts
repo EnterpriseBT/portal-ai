@@ -2,33 +2,50 @@
  * #728: a URL safe to log. SSE streams authenticate with `?token=<JWT>`
  * (`EventSource` can't send headers), and request logs wrote the URL verbatim,
  * putting live bearer tokens in CloudWatch. Every place a request URL is
- * logged goes through this: the `req` serializer, the request logger's
+ * logged goes through this: the request serializers, the request logger's
  * messages, and the error handler's `route` fields. A guard test fails CI on
  * a raw `req.url` / `originalUrl` in the source.
  *
  * The value of a sensitive query parameter becomes `[REDACTED]`; the path,
- * every other parameter, their order and any fragment are kept. A query
- * string that can't be decoded is dropped whole (fail closed).
+ * every other parameter, their order and any fragment are kept. A parameter
+ * whose name can't be decoded is dropped (fail closed) and the rest are kept.
  */
 
 export const REDACTED = "[REDACTED]";
 
-/** Query parameter names (lower-cased) whose values are credentials. */
-const SENSITIVE_PARAMS = new Set([
+/**
+ * Credential parameter names, normalized ({@link normalizeName}): lower-cased
+ * with `_` and `-` removed, so `access_token`, `accessToken` and
+ * `Access-Token` all match.
+ */
+const SENSITIVE_NAMES = new Set([
   "token",
-  "access_token",
-  "id_token",
-  "refresh_token",
+  "accesstoken",
+  "idtoken",
+  "refreshtoken",
   "code",
-  "api_key",
   "apikey",
   "key",
   "secret",
-  "client_secret",
+  "clientsecret",
   "signature",
   "sig",
   "password",
 ]);
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[_-]/g, "");
+}
+
+/** A query key is sensitive if any of its `qs` segments is: `token`,
+ *  `token[]`, `token[0]`, `auth[token]` (Express's extended parser folds the
+ *  bracket forms into objects/arrays that still authenticate). */
+function isSensitiveKey(key: string): boolean {
+  return key
+    .split(/[[\]]/)
+    .filter(Boolean)
+    .some((segment) => SENSITIVE_NAMES.has(normalizeName(segment)));
+}
 
 export function redactUrl(url: string): string;
 export function redactUrl(url: string | undefined): string | undefined;
@@ -48,11 +65,11 @@ export function redactUrl(url: string | undefined): string | undefined {
     const rawKey = eq < 0 ? part : part.slice(0, eq);
     let key: string;
     try {
-      key = decodeURIComponent(rawKey.replace(/\+/g, " ")).toLowerCase();
+      key = decodeURIComponent(rawKey.replace(/\+/g, " "));
     } catch {
-      return path; // undecodable: drop the whole query string
+      continue; // undecodable name: drop this parameter, keep the rest
     }
-    parts.push(SENSITIVE_PARAMS.has(key) ? `${rawKey}=${REDACTED}` : part);
+    parts.push(isSensitiveKey(key) ? `${rawKey}=${REDACTED}` : part);
   }
   return `${path}?${parts.join("&")}${fragment}`;
 }
@@ -60,13 +77,17 @@ export function redactUrl(url: string | undefined): string | undefined {
 /**
  * #728: the parsed query object (Express's `req.query`, which the request
  * serializer emits alongside `url`) with every sensitive parameter's value
- * replaced. Shallow; non-object input passes through.
+ * replaced, at any depth (`qs` nests `auth[token]` as `{ auth: { token } }`).
+ * Non-object input passes through.
  */
 export function redactQuery<T>(query: T): T {
-  if (!query || typeof query !== "object" || Array.isArray(query)) return query;
+  if (!query || typeof query !== "object") return query;
+  if (Array.isArray(query)) return query.map((v) => redactQuery(v)) as T;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
-    out[key] = SENSITIVE_PARAMS.has(key.toLowerCase()) ? REDACTED : value;
+    out[key] = SENSITIVE_NAMES.has(normalizeName(key))
+      ? REDACTED
+      : redactQuery(value);
   }
   return out as T;
 }

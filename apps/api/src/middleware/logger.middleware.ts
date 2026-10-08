@@ -3,8 +3,13 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { Request } from "express";
 import type pino from "pino";
 import pinoHttpModule from "pino-http";
-import { logger } from "../utils/logger.util.js";
-import { redactQuery, redactUrl } from "../utils/redact-url.util.js";
+import {
+  BASE_ERROR_SERIALIZERS,
+  BASE_REDACT_PATHS,
+  logger,
+  redactSerializedRequest,
+} from "../utils/logger.util.js";
+import { redactUrl } from "../utils/redact-url.util.js";
 
 // Use default export from pino-http
 const pinoHttp = pinoHttpModule.default || pinoHttpModule;
@@ -53,16 +58,13 @@ export function httpLogLevel(
 export function createHttpLogger(base: pino.Logger = logger) {
   return pinoHttp({
     logger: base,
-    // #728: pino-http applies its own request serializer (it ignores the base
-    // logger's), handing a custom one the already-serialized request; redact
-    // the URL there too, or every request line carries SSE's `?token=<JWT>`.
+    // #728: pino-http's child replaces the base logger's `serializers` and
+    // `redact` for every request-scoped log (`req.log`, and `createLogger`
+    // inside a request). Re-apply the base error serializer (#540) and redact
+    // paths, plus a request serializer that redacts SSE's `?token=<JWT>`.
     serializers: {
-      req: (serialized: { url?: string; query?: unknown }) => ({
-        ...serialized,
-        url: redactUrl(serialized.url),
-        // Express's parsed `req.query` rides on the serialized request too.
-        query: redactQuery(serialized.query),
-      }),
+      ...BASE_ERROR_SERIALIZERS,
+      req: redactSerializedRequest,
     },
     genReqId: (req: IncomingMessage, res: ServerResponse): string => {
       const inbound =
@@ -94,6 +96,7 @@ export function createHttpLogger(base: pino.Logger = logger) {
     },
     redact: {
       paths: [
+        ...BASE_REDACT_PATHS,
         "req.headers.authorization",
         "req.headers.cookie",
         'req.headers["proxy-authorization"]',
