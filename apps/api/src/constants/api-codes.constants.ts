@@ -304,6 +304,12 @@ export enum ApiCode {
   /** #674: an attachment id is missing, in another org, or not readable by
    *  the caller. One code for all three, so it never confirms existence. */
   STATION_ATTACHMENT_NOT_READABLE = "STATION_ATTACHMENT_NOT_READABLE",
+  /** #706: a create/update body that fails its schema (incl. unknown keys). */
+  STATION_INVALID_PAYLOAD = "STATION_INVALID_PAYLOAD",
+  STATION_FETCH_FAILED = "STATION_FETCH_FAILED",
+  STATION_CREATE_FAILED = "STATION_CREATE_FAILED",
+  STATION_UPDATE_FAILED = "STATION_UPDATE_FAILED",
+  STATION_DELETE_FAILED = "STATION_DELETE_FAILED",
 
   // Portals
   PORTAL_NOT_FOUND = "PORTAL_NOT_FOUND",

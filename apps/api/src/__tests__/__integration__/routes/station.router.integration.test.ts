@@ -329,10 +329,28 @@ describe("Station Router", () => {
       expect(instances).toHaveLength(1);
     });
 
-    it("returns 400 for invalid body", async () => {
+    it("returns 400 STATION_INVALID_PAYLOAD for invalid body (#706)", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-      await request(app).post("/api/stations").send({}).expect(400);
+      const res = await request(app).post("/api/stations").send({}).expect(400);
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid station payload: name: /);
+    });
+
+    it("#706: rejects an unknown key (update's curatedViewChanges) instead of dropping it", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "S", curatedViewChanges: { add: [generateId()] } })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+      expect(res.body.message).toContain("curatedViewChanges");
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.name, "S"));
+      expect(rows).toHaveLength(0);
     });
   });
 
@@ -365,6 +383,55 @@ describe("Station Router", () => {
         .patch(`/api/stations/${generateId()}`)
         .send({ name: "X" })
         .expect(404);
+    });
+    // #706: a bad body on an existing station is a payload error, not a
+    // missing station, and an unknown key fails instead of no-op'ing.
+    it("#706: an empty body is 400 STATION_INVALID_PAYLOAD, not STATION_NOT_FOUND", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({})
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        "Invalid station payload: At least one field must be provided"
+      );
+    });
+
+    it("#706: create's curatedViewIds on an update is a 400 naming it, and nothing changes", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      for (const body of [
+        { curatedViewIds: [generateId()] },
+        { name: "Renamed", curatedViewIds: [generateId()] },
+      ]) {
+        const res = await request(app)
+          .patch(`/api/stations/${station.id}`)
+          .send(body)
+          .expect(400);
+        expect(res.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+        expect(res.body.message).toContain("curatedViewIds");
+      }
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.id, station.id));
+      expect(row.name).toBe(station.name);
     });
   });
 

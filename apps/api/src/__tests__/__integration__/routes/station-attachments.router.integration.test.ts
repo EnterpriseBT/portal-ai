@@ -470,20 +470,23 @@ describe("station attachments (#674)", () => {
     expect(await liveViewIds(stationId)).toEqual([]);
   });
 
-  it("ignores full-set attachment lists on update (they no longer exist there)", async () => {
+  // #706: full-set lists aren't update fields. They used to be silently
+  // dropped (a 200 that attached nothing); now the body is refused whole.
+  it("refuses full-set attachment lists on update, changing nothing (#706)", async () => {
     const stationId = await insertStation();
     await request(app)
       .patch(`/api/stations/${stationId}`)
       .send({ curatedViewChanges: { add: [v1] } })
       .expect(200);
-    await request(app)
+    const res = await request(app)
       .patch(`/api/stations/${stationId}`)
       .send({
         name: "Renamed",
         curatedViewIds: [],
         connectorInstanceIds: [ci1],
       })
-      .expect(200);
+      .expect(400);
+    expect(res.body.code).toBe("STATION_INVALID_PAYLOAD");
     expect(await liveViewIds(stationId)).toEqual([v1]);
     expect(await liveInstanceIds(stationId)).toEqual([]);
   });
