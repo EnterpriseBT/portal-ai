@@ -31,12 +31,18 @@ const PIPELINE = {
   organizationId: ORG,
 };
 
-/** A message carrying one d3 block whose content holds the durable pipeline. */
+/** #695: the smallest valid map spec. A `points` layer aggregates like the
+ *  old spec-less fixture did (bins), so the render tests keep their meaning. */
+const MAP_SPEC = {
+  layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
+};
+
+/** A message carrying one geo block whose content holds the durable pipeline. */
 const messageWithPipeline = {
   id: "msg-1",
   organizationId: ORG,
   portalId: "portal-1",
-  blocks: [{ type: "d3", content: { pipeline: PIPELINE } }],
+  blocks: [{ type: "geo", content: { spec: MAP_SPEC, pipeline: PIPELINE } }],
 };
 
 function deps(
@@ -663,7 +669,8 @@ describe("PortalMapTileService.renderTile (#316)", () => {
             id: "p-1",
             organizationId: ORG,
             createdBy: "u-owner",
-            content: { pipeline: PIPELINE },
+            type: "geo",
+            content: { spec: MAP_SPEC, pipeline: PIPELINE },
           }),
         })
       )
@@ -692,6 +699,80 @@ describe("PortalMapTileService.renderTile (#316)", () => {
             ...messageWithPipeline,
             organizationId: "other-org",
           }),
+        })
+      )
+    );
+  });
+
+  // #695: a table or chart carries the same durable pipeline as a map, but
+  // has no geometry. Its tile is absent (404), and no SQL runs.
+  it("404s for a non-map block with a valid pipeline, without running the query", async () => {
+    let ran = 0;
+    for (const block of [
+      { type: "data-table", content: { pipeline: PIPELINE } },
+      { type: "d3", content: { spec: { mark: "bar" }, pipeline: PIPELINE } },
+    ]) {
+      await expectNotFound(
+        PortalMapTileService.renderTile(
+          {
+            ref: { kind: "message", messageId: "msg-1", blockIndex: 0 },
+            ...base,
+          },
+          deps({
+            findMessageById: async () => ({
+              ...messageWithPipeline,
+              blocks: [block],
+            }),
+            runTileQuery: async () => {
+              ran++;
+              throw new Error("tile query must not run");
+            },
+          })
+        )
+      );
+    }
+    expect(ran).toBe(0);
+  });
+
+  // #695 (code review): "is this a map" is the block's type, not how strictly
+  // its stored spec parses, so a later tightening of MapSpecSchema can't
+  // blank a stored map.
+  it("still renders a geo block whose stored spec no longer parses as a MapSpec", async () => {
+    const res = await PortalMapTileService.renderTile(
+      {
+        ref: { kind: "message", messageId: "msg-1", blockIndex: 0 },
+        ...base,
+      },
+      deps({
+        findMessageById: async () => ({
+          ...messageWithPipeline,
+          blocks: [
+            {
+              type: "geo",
+              content: { spec: { layers: [] }, pipeline: PIPELINE },
+            },
+          ],
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("404s for a pinned non-map result with a valid pipeline", async () => {
+    await expectNotFound(
+      PortalMapTileService.renderTile(
+        { ref: { kind: "pin", portalResultId: "p-1" }, ...base },
+        deps({
+          findPortalResultById: async () => ({
+            id: "p-1",
+            organizationId: ORG,
+            createdBy: "u-owner",
+            type: "data-table",
+            content: { pipeline: PIPELINE },
+          }),
+          runTileQuery: async () => {
+            throw new Error("tile query must not run");
+          },
         })
       )
     );
@@ -740,7 +821,8 @@ describe("PortalMapTileService.renderTile (#316)", () => {
         deps({
           findPortalResultById: async () => ({
             organizationId: "other",
-            content: { pipeline: PIPELINE },
+            type: "geo",
+            content: { spec: MAP_SPEC, pipeline: PIPELINE },
           }),
         })
       )

@@ -620,6 +620,9 @@ export class PortalMapTileService {
       const blocks = (message.blocks ?? []) as Array<Record<string, unknown>>;
       const block = blocks[ref.blockIndex];
       if (!block) throw notFound();
+      // #695: only a map has tiles. A table or chart block carries the same
+      // pipeline, which has no geometry, so it is absent here: no SQL runs.
+      if (block.type !== "geo") throw notFound();
       const inner = (block.content ?? block) as Record<string, unknown>;
       const parsed = VizPipelineSchema.safeParse(inner.pipeline);
       if (!parsed.success) throw notFound();
@@ -646,6 +649,9 @@ export class PortalMapTileService {
       }))
     )
       throw notFound();
+    // #695: a pinned table or chart has no tiles either. A pin keeps its
+    // block's type, the same test the dissolve precompute uses.
+    if (row.type !== "geo") throw notFound();
     const content = (row.content ?? {}) as Record<string, unknown>;
     const parsed = VizPipelineSchema.safeParse(content.pipeline);
     if (!parsed.success) throw notFound();
