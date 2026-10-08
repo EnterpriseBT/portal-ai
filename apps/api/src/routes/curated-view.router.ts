@@ -95,34 +95,57 @@ async function fieldMappingCreators(
 }
 
 /**
- * The self-exposure guard: the caller must independently `read` every field
- * mapping in the *effective* projection — the explicit `fieldMappingIds`, or
- * (when omitted = unrestricted) all of the entity's current field mappings.
- * A view-editor can only expose fields they already hold. Throws
- * `CURATED_VIEW_FIELD_NOT_READABLE` (403).
+ * Validate a projection (`fieldMappingIds`) against the view's entity, in
+ * order:
+ *
+ * 1. **No duplicates.** A repeated id would hit the projection's unique index.
+ * 2. **Every id is a live column of this entity** (#736). A projection is a
+ *    subset of its entity's columns, so an id from another entity or org, a
+ *    deleted mapping or an unknown id is bad input: 400, the same answer for
+ *    each, so it says nothing about ids elsewhere. It runs before the read
+ *    check because a caller with an unconditional grant would otherwise pass
+ *    a foreign id.
+ * 3. **The self-exposure guard:** the caller must independently `read` every
+ *    field mapping in the *effective* projection (the explicit ids, or when
+ *    omitted = unrestricted, all of the entity's current mappings). A
+ *    view-editor can only expose fields they already hold. Throws
+ *    `CURATED_VIEW_FIELD_NOT_READABLE` (403).
  */
-async function assertFieldsReadable(
+async function assertProjection(
   set: Awaited<ReturnType<typeof PermissionService.loadSet>>,
   connectorEntityId: string,
   fieldMappingIds: string[] | undefined
 ): Promise<void> {
+  if (
+    fieldMappingIds &&
+    new Set(fieldMappingIds).size !== fieldMappingIds.length
+  ) {
+    throw new ApiError(
+      400,
+      ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+      "Duplicate field mapping in projection"
+    );
+  }
   // #729: each mapping's creator, so a conditional read (created_by_caller /
-  // created_by_system) can match. An id not on this entity has none and
-  // fails closed.
+  // created_by_system) can match.
   const createdByFm = await fieldMappingCreators(connectorEntityId);
   const effective =
     fieldMappingIds && fieldMappingIds.length > 0
       ? fieldMappingIds
       : [...createdByFm.keys()];
-  for (const id of effective) {
-    if (
-      !set.can("resource.read", {
-        type: "field_mapping",
-        id,
-        // #729: an id not on this entity has no creator, so it fails closed.
-        createdBy: createdByFm.get(id) ?? null,
-      })
-    ) {
+  const creators = effective.map((id) => {
+    const createdBy = createdByFm.get(id);
+    if (createdBy === undefined) {
+      throw new ApiError(
+        400,
+        ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+        "Field mapping is not a column of this entity"
+      );
+    }
+    return { id, createdBy };
+  });
+  for (const { id, createdBy } of creators) {
+    if (!set.can("resource.read", { type: "field_mapping", id, createdBy })) {
       throw new ApiError(
         403,
         ApiCode.CURATED_VIEW_FIELD_NOT_READABLE,
@@ -402,7 +425,7 @@ curatedViewRouter.get(
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       201: { description: Created }
- *       400: { description: Invalid payload or filter }
+ *       400: { description: "Invalid payload or filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the entity (CURATED_VIEW_INVALID_PAYLOAD)" }
  *       403: { description: "Not permitted, or a projected field is not readable" }
  *       409: { description: Duplicate key }
  */
@@ -446,11 +469,7 @@ curatedViewRouter.post(
 
       if (body.filter)
         await validateFilter(body.filter, body.connectorEntityId);
-      await assertFieldsReadable(
-        set,
-        body.connectorEntityId,
-        body.fieldMappingIds
-      );
+      await assertProjection(set, body.connectorEntityId, body.fieldMappingIds);
 
       const duplicate = await DbService.repository.curatedViews.findByKey(
         organizationId,
@@ -535,6 +554,7 @@ curatedViewRouter.post(
  *       - { in: path, name: id, required: true, schema: { type: string } }
  *     responses:
  *       200: { description: Updated }
+ *       400: { description: "Invalid filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the view's entity (CURATED_VIEW_INVALID_PAYLOAD)" }
  *       403: { description: "Not permitted, or an added field is not readable" }
  *       404: { description: Not found }
  */
@@ -576,7 +596,7 @@ curatedViewRouter.patch(
       }
       if (body.fieldMappingIds) {
         const set = await PermissionService.loadSet(req.application!.metadata);
-        await assertFieldsReadable(
+        await assertProjection(
           set,
           existing.connectorEntityId,
           body.fieldMappingIds
