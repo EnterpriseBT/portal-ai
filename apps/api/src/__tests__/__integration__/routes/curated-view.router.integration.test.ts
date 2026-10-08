@@ -666,6 +666,247 @@ describe("curated-view.router integration", () => {
     singletonStatementCache.clear();
   }
 
+  /** #736: a field mapping on a fresh entity in `organizationId` (this org or
+   *  another), sharing this suite's connector definition. */
+  async function foreignMapping(organizationId: string): Promise<string> {
+    const dbT = db as ReturnType<typeof drizzle>;
+    const now = Date.now();
+    const [{ connectorDefinitionId }] = await dbT
+      .select({
+        connectorDefinitionId: schema.connectorInstances.connectorDefinitionId,
+      })
+      .from(schema.connectorInstances)
+      .innerJoin(
+        schema.connectorEntities,
+        sql`${schema.connectorEntities.connectorInstanceId} = ${schema.connectorInstances.id}`
+      )
+      .where(sql`${schema.connectorEntities.id} = ${entityId}`);
+    const audit = {
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    const instanceId = generateId();
+    await dbT.insert(schema.connectorInstances).values({
+      id: instanceId,
+      connectorDefinitionId,
+      organizationId,
+      name: "Other Instance",
+      status: "active",
+      config: {},
+      credentials: null,
+      lastSyncAt: null,
+      lastErrorMessage: null,
+      enabledCapabilityFlags: { read: true, write: true, sync: true },
+      ...audit,
+    } as never);
+    const otherEntityId = generateId();
+    await dbT.insert(schema.connectorEntities).values({
+      id: otherEntityId,
+      organizationId,
+      connectorInstanceId: instanceId,
+      key: `other_${otherEntityId.slice(0, 8)}`,
+      label: "Other",
+      ...audit,
+    } as never);
+    const cd = generateId();
+    await dbT
+      .insert(schema.columnDefinitions)
+      .values(
+        mkColumnDef(
+          cd,
+          organizationId,
+          "other",
+          "Other",
+          "string",
+          now
+        ) as never
+      );
+    const fm = generateId();
+    await dbT
+      .insert(schema.fieldMappings)
+      .values(
+        mkMapping(
+          fm,
+          organizationId,
+          otherEntityId,
+          cd,
+          "other",
+          now,
+          "SYSTEM_TEST"
+        ) as never
+      );
+    return fm;
+  }
+
+  async function viewCount(key: string): Promise<number> {
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select({ id: schema.curatedViews.id })
+      .from(schema.curatedViews)
+      .where(sql`${schema.curatedViews.key} = ${key}`);
+    return rows.length;
+  }
+
+  it("#736: create rejects a field mapping from another entity in the org (400)", async () => {
+    const res = await createView({
+      connectorEntityId: entityId,
+      key: "cross_entity",
+      label: "Cross entity",
+      fieldMappingIds: [emailFmId, await foreignMapping(orgId)],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    expect(await viewCount("cross_entity")).toBe(0);
+  });
+
+  it("#736: create rejects a field mapping from another org (400)", async () => {
+    const other = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      "auth0|ci-curated-other-org"
+    );
+    const res = await createView({
+      connectorEntityId: entityId,
+      key: "cross_org",
+      label: "Cross org",
+      fieldMappingIds: [await foreignMapping(other.organizationId)],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    expect(await viewCount("cross_org")).toBe(0);
+  });
+
+  it("#736: create rejects a duplicate field mapping (400, not 500)", async () => {
+    const res = await createView({
+      connectorEntityId: entityId,
+      key: "dup_fm",
+      label: "Duplicate",
+      fieldMappingIds: [emailFmId, emailFmId],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    expect(await viewCount("dup_fm")).toBe(0);
+  });
+
+  it("#736: PATCH rejects another entity's field mapping and keeps the projection", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "patch_target",
+        label: "Patch target",
+        fieldMappingIds: [emailFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [ageFmId, await foreignMapping(orgId)] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.fieldMappingIds).toEqual([emailFmId]);
+  });
+
+  it("#736: a member given view-create sending a foreign id gets 400, not 403", async () => {
+    await allowForUser(db as ReturnType<typeof drizzle>, {
+      organizationId: orgId,
+      userId: memberId,
+      verb: "write",
+      resourceType: "curated_view",
+    });
+    const foreign = await foreignMapping(orgId);
+    currentSub = MEMBER_SUB;
+    const res = await createView({
+      connectorEntityId: entityId,
+      key: "member_foreign",
+      label: "Member foreign",
+      fieldMappingIds: [foreign],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+  });
+
+  /** #736: soft-delete a field mapping the way its route does, leaving the
+   *  projection rows that name it in place. */
+  async function softDeleteMapping(id: string): Promise<void> {
+    await (db as ReturnType<typeof drizzle>)
+      .update(schema.fieldMappings)
+      .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+      .where(sql`${schema.fieldMappings.id} = ${id}`);
+  }
+
+  it("#736: create rejects an unknown field mapping id (400)", async () => {
+    const res = await createView({
+      connectorEntityId: entityId,
+      key: "unknown_fm",
+      label: "Unknown",
+      fieldMappingIds: [emailFmId, generateId()],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    expect(await viewCount("unknown_fm")).toBe(0);
+  });
+
+  it("#736: a view still saves after one of its projected mappings is deleted, and drops it", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "stale_projection",
+        label: "Stale",
+        fieldMappingIds: [emailFmId, ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    await softDeleteMapping(ageFmId);
+    // The editor sends the stored ids back on every save.
+    const stored = (await request(app).get(`/api/curated-views/${id}`)).body
+      .payload.curatedView.fieldMappingIds as string[];
+    expect([...stored].sort()).toEqual([emailFmId, ageFmId].sort());
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed", fieldMappingIds: stored });
+    expect(res.status).toBe(200);
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.label).toBe("Renamed");
+    expect(got.body.payload.curatedView.fieldMappingIds).toEqual([emailFmId]);
+  });
+
+  it("#736: a save whose every projected mapping is deleted is refused, never widened to all columns", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "all_stale",
+        label: "All stale",
+        fieldMappingIds: [ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    await softDeleteMapping(ageFmId);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed", fieldMappingIds: [ageFmId] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.label).toBe("All stale");
+    expect(got.body.payload.curatedView.fieldMappingIds).toEqual([ageFmId]);
+  });
+
+  it("#736: a label-only PATCH doesn't re-check the projection", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "label_only",
+        label: "Label only",
+        fieldMappingIds: [ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    await softDeleteMapping(ageFmId);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed" });
+    expect(res.status).toBe(200);
+  });
+
   // #729 (code review): the create/update guard had the same omission, so a
   // member creating a view over system-created fields got 403 on every field.
   it("#729: a member given view-create can project system-created field mappings", async () => {
