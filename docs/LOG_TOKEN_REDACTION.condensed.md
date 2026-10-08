@@ -30,6 +30,12 @@ Options:
   - The two message formatters use it.
   - `app.ts` logs `route: redactUrl(req.originalUrl)`.
 
+**Found while implementing.** Two details the survey missed:
+- **pino-http's own serializer.** pino-http applies its own request serializer and ignores the base logger's, so it gets its own. It hands that serializer the already-serialized request, so it only redacts `url`.
+- **The parsed query object.** The serialized request also carries Express's parsed `query` object, so `query.token` held the JWT in clear even after `url` was redacted. `redactQuery` blanks sensitive keys in it, in both serializers.
+
+The end-to-end guard test caught both.
+
 ## Plan — 1 slice
 
 **Files:** new `utils/redact-url.util.ts`; edit `utils/logger.util.ts` (serializer), `middleware/logger.middleware.ts` (messages) and `app.ts` (route fields).

@@ -23,6 +23,7 @@ import {
 import { toDbCancellationApiError } from "./db/request-cancellation.util.js";
 import { isExpectedBackpressure } from "./utils/log-level.util.js";
 import { createLogger } from "./utils/logger.util.js";
+import { redactUrl } from "./utils/redact-url.util.js";
 
 import { registerAdapters } from "./adapters/register.js";
 
@@ -118,7 +119,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   if (cancellation) err = cancellation;
   if (err instanceof ApiError && err.code === ApiCode.REQUEST_ABANDONED) {
     log.info(
-      { code: err.code, route: req.originalUrl },
+      { code: err.code, route: redactUrl(req.originalUrl) },
       "Request abandoned by client; pending DB work cancelled"
     );
     if (res.destroyed || res.headersSent) return;
@@ -129,7 +130,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   // job — warn, and flag the response so pino-http's own line is warn too.
   if (isExpectedBackpressure(err)) {
     log.warn(
-      { code: err.code, status: err.status, route: req.originalUrl },
+      { code: err.code, status: err.status, route: redactUrl(req.originalUrl) },
       "Request shed by backpressure"
     );
     res.locals.logAsWarn = true;
@@ -158,7 +159,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     const code =
       status === 403 ? ApiCode.AUTH_FORBIDDEN : ApiCode.AUTH_UNAUTHORIZED;
     log.warn(
-      { status, code, route: req.originalUrl },
+      { status, code, route: redactUrl(req.originalUrl) },
       "JWT auth rejected by middleware"
     );
     return HttpService.error(res, new ApiError(status, code, err.message));
@@ -176,7 +177,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     log.warn(
       {
         limitBytes: environment.REQUEST_JSON_LIMIT_BYTES,
-        route: req.originalUrl,
+        route: redactUrl(req.originalUrl),
       },
       "JSON body exceeded size limit"
     );
@@ -195,7 +196,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     bodyParserErr.type === "charset.unsupported"
   ) {
     log.warn(
-      { route: req.originalUrl, type: bodyParserErr.type },
+      { route: redactUrl(req.originalUrl), type: bodyParserErr.type },
       "Malformed JSON body"
     );
     return HttpService.error(

@@ -1,6 +1,7 @@
 import pino from "pino";
 import { environment } from "../environment.js";
 import { requestContext } from "./request-context.util.js";
+import { redactQuery, redactUrl } from "./redact-url.util.js";
 
 /**
  * PII-safe error serializer (#540).
@@ -93,6 +94,22 @@ export function sanitizeError(err: unknown, depth = 0): unknown {
  * Pretty format: Human-readable, colorized output for development
  * JSON format: Structured logs for production parsing/aggregation
  */
+/** #728: pino's request serializer with credential query parameters redacted. */
+export function serializeRequest(
+  req: Parameters<typeof pino.stdSerializers.req>[0]
+): ReturnType<typeof pino.stdSerializers.req> {
+  const serialized = pino.stdSerializers.req(req) as ReturnType<
+    typeof pino.stdSerializers.req
+  > & { query?: unknown };
+  return {
+    ...serialized,
+    url: redactUrl(serialized.url),
+    ...(serialized.query !== undefined
+      ? { query: redactQuery(serialized.query) }
+      : {}),
+  };
+}
+
 export const logger = pino({
   level: environment.LOG_LEVEL,
   base: {
@@ -121,7 +138,9 @@ export const logger = pino({
     // Registered for both keys errors are logged under across the codebase.
     err: sanitizeError,
     error: sanitizeError,
-    req: pino.stdSerializers.req,
+    // #728: the request URL carries SSE's `?token=<JWT>`; redact it on every
+    // line that serializes `req` (the request line and every req.log line).
+    req: serializeRequest,
     res: pino.stdSerializers.res,
   },
   redact: {
