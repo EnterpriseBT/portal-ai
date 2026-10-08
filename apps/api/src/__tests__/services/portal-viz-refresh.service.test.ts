@@ -6,6 +6,8 @@ import type {
   PinRefreshDeps,
 } from "../../services/portal-viz-refresh.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
+import { ApiError } from "../../services/http.service.js";
+import { STALE_REFERENCE } from "../../services/portal-sql-validation.util.js";
 
 // The service loads the persisted message + re-executes its pipeline. Both the
 // message loader and resolveSqlDelivery are injected via the deps seam so the
@@ -673,5 +675,105 @@ describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
       kind: "inline",
       rows: [{ month: "Jan", total: 12 }],
     });
+  });
+});
+
+// #727: a stored pipeline naming a column (or view) the caller's views no
+// longer expose was refused by the SQL layer, then answered 500. It's a
+// widget that can't be refreshed until its prompt is re-run: the 422 the web
+// already shows as "can't auto-refresh — re-run the prompt".
+describe("PortalVizRefreshService — stale pipelines (#727)", () => {
+  const unknownColumn = () =>
+    jest.fn(async () => {
+      throw new ApiError(
+        400,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        "unknown column: c_name",
+        { reason: STALE_REFERENCE }
+      );
+    });
+
+  it("widget refresh: an unknown column → VIZ_WIDGET_NOT_REFRESHABLE (422)", async () => {
+    await expectApiCode(
+      PortalVizRefreshService.refresh(
+        {
+          messageId: "msg-1",
+          blockIndex: 1,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
+        deps({ resolveSqlDelivery: unknownColumn() as never })
+      ),
+      ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
+      422
+    );
+  });
+
+  it("pin refresh: an unknown entity → VIZ_WIDGET_NOT_REFRESHABLE (422)", async () => {
+    await expectApiCode(
+      PortalVizRefreshService.refreshPinnedResult(
+        { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
+        pinDeps({
+          resolveSqlDelivery: jest.fn(async () => {
+            throw new ApiError(
+              400,
+              ApiCode.PORTAL_SQL_FORBIDDEN,
+              "unknown entity: customers",
+              { reason: STALE_REFERENCE }
+            );
+          }) as never,
+        })
+      ),
+      ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
+      422
+    );
+  });
+
+  it("a PORTAL_SQL_FORBIDDEN that isn't a stale reference still propagates", async () => {
+    await expectApiCode(
+      PortalVizRefreshService.refresh(
+        {
+          messageId: "msg-1",
+          blockIndex: 1,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
+        deps({
+          resolveSqlDelivery: jest.fn(async () => {
+            throw new ApiError(
+              400,
+              ApiCode.PORTAL_SQL_FORBIDDEN,
+              "unknown entity: lookalike, but not a stale-reference refusal"
+            );
+          }) as never,
+        })
+      ),
+      ApiCode.PORTAL_SQL_FORBIDDEN,
+      400
+    );
+  });
+
+  it("any other failure still propagates as itself", async () => {
+    await expectApiCode(
+      PortalVizRefreshService.refresh(
+        {
+          messageId: "msg-1",
+          blockIndex: 1,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
+        deps({
+          resolveSqlDelivery: jest.fn(async () => {
+            throw new ApiError(
+              400,
+              ApiCode.PORTAL_SQL_TIMEOUT,
+              "query timed out (30s)"
+            );
+          }) as never,
+        })
+      ),
+      ApiCode.PORTAL_SQL_TIMEOUT,
+      400
+    );
   });
 });

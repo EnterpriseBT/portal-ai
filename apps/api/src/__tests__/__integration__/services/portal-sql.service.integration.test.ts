@@ -28,6 +28,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
 
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import {
   WideTableStatementCache,
@@ -1128,6 +1129,24 @@ describe("PortalSqlService integration tests", () => {
           organizationId: orgId,
         })
       ).rejects.toThrow(/unknown entity: private_audit/);
+    });
+
+    // #727: a column the view doesn't expose (dropped from its projection,
+    // or hidden from this caller) is a 42703, which escaped as a 500. It now
+    // reads like a missing entity.
+    it("a column the view doesn't expose is PORTAL_SQL_FORBIDDEN 'unknown column', not a 500", async () => {
+      await expect(
+        portalSql.runSqlQuery({
+          userId,
+          sql: `SELECT "c_no_such_column" FROM contacts`,
+          stationId,
+          organizationId: orgId,
+        })
+      ).rejects.toMatchObject({
+        status: 400,
+        code: ApiCode.PORTAL_SQL_FORBIDDEN,
+        message: expect.stringMatching(/^unknown column: .*c_no_such_column/),
+      });
     });
 
     // Phase 3 slice 5 case 71 — read-after-write semantics.

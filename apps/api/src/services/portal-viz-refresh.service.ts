@@ -17,6 +17,7 @@ import { DateFactory } from "@portalai/core/utils";
 
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { STALE_REFERENCE } from "./portal-sql-validation.util.js";
 import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "../tools/result-sink.js";
 import {
@@ -236,11 +237,38 @@ export class PortalVizRefreshService {
   }
 
   /**
+   * #727: {@link runPipeline}, with a stored query that no longer matches the
+   * caller's views (it names a view or column they don't expose: an "unknown
+   * entity" / "unknown column" refusal) answered as a widget that can't be
+   * refreshed until its prompt is re-run, not a 500.
+   */
+  private static async executePipeline(
+    ...args: Parameters<typeof PortalVizRefreshService.runPipeline>
+  ): Promise<WidgetRefreshResponse> {
+    try {
+      return await this.runPipeline(...args);
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
+        err.details?.reason === STALE_REFERENCE
+      ) {
+        throw new ApiError(
+          422,
+          ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
+          "This widget's query no longer matches the data you can see — re-run the prompt to rebuild it."
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Shared core: execute a durable pipeline read-only under the (verified)
    * caller org — the same funnel as the original mint — and map the delivery
    * to the refresh-response union.
    */
-  private static async executePipeline(
+  private static async runPipeline(
     pipeline: VizPipeline,
     organizationId: string,
     userId: string,
