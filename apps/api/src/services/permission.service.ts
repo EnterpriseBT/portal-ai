@@ -1,6 +1,7 @@
 import {
   CALLER_CAPABILITY_ACTIONS,
   NAV_PAGE_IDS,
+  OWNERSHIPLESS_RESOURCE_TYPES,
   RESOURCE_PERMISSION_TYPES,
   type OrgRole,
   type PolicyPrincipalType,
@@ -57,13 +58,26 @@ export type PermissionAction =
   | "resource.share"
   | "resource.view";
 
-/** The object a `resource.*` action targets. `createdBy` drives the ownership
- *  condition; `id` selects instance-level statements/grants. */
-export interface PermissionObject {
-  type: string;
-  id?: string;
-  createdBy?: string;
-}
+/**
+ * The object a `resource.*` action targets. `createdBy` drives the ownership
+ * condition; `id` selects instance-level statements/grants.
+ *
+ * #731: a by-id object must say who created it. An ownership condition
+ * (`created_by_caller` / `created_by_system`) only matches a known creator, so
+ * a check that left it out failed closed for members while owners and admins
+ * passed through `* *` (#729). `createdBy: null` is the explicit "creator
+ * unknown" (a deleted row, an id from the request that isn't the parent's):
+ * only an unconditional, instance or FK-expanded grant can match it. An
+ * ownerless type (`OWNERSHIPLESS_RESOURCE_TYPES`, e.g. `page`) has no creator.
+ */
+export type PermissionObject =
+  | { type: string; id?: undefined; createdBy?: string }
+  | {
+      type: (typeof OWNERSHIPLESS_RESOURCE_TYPES)[number];
+      id: string;
+      createdBy?: undefined;
+    }
+  | { type: string; id: string; createdBy: string | null };
 
 /**
  * The data-driven authorization engine (#598) — replaces #576's hardcoded role

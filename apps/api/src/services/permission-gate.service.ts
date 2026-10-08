@@ -4,10 +4,7 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { RbacObjectResolver } from "./rbac-object-resolver.js";
 import type { PermissionSet } from "./permission-set.js";
-import type {
-  PermissionAction,
-  PermissionObject,
-} from "./permission.service.js";
+import type { PermissionAction } from "./permission.service.js";
 import type { GateableTool } from "./cost-gate.service.js";
 
 /**
@@ -80,7 +77,7 @@ async function checkObject(
     type: resourceType,
     id,
     createdBy,
-  } as PermissionObject);
+  });
 }
 
 export function wrapWithPermissionGate(
@@ -108,7 +105,7 @@ export function wrapWithPermissionGate(
             allowed = permissionSet.can(action, {
               type: auth.resourceType,
               createdBy: ctx.userId,
-            } as PermissionObject);
+            });
           } else if (auth.mode === "bulk") {
             // An unbounded whole-entity scan requires *unconditional*
             // (class-level) write on the type — a member's created_by_caller
@@ -116,7 +113,7 @@ export function wrapWithPermissionGate(
             // unconditional grant. One check, zero per-row work (O(1)).
             allowed = permissionSet.can(action, {
               type: auth.resourceType,
-            } as PermissionObject);
+            });
           } else if (auth.mode === "single") {
             const id = extractId(input, auth.targetIdArg);
             allowed = id

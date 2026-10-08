@@ -209,7 +209,9 @@ toolpacksRouter.get(
             set,
             t.kind === "builtin"
               ? { id: t.id, kind: "builtin" }
-              : { id: t.id, kind: "custom", createdBy: createdByOf.get(t.id)! }
+              : // #731: every custom pack in `filtered` came from `customRows`,
+                // so its creator is always in the map.
+                { id: t.id, kind: "custom", createdBy: createdByOf.get(t.id)! }
           ),
         })),
         total: filtered.length,

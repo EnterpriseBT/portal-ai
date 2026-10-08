@@ -119,7 +119,8 @@ async function assertFieldsReadable(
       !set.can("resource.read", {
         type: "field_mapping",
         id,
-        createdBy: createdByFm.get(id),
+        // #729: an id not on this entity has no creator, so it fails closed.
+        createdBy: createdByFm.get(id) ?? null,
       })
     ) {
       throw new ApiError(
@@ -371,6 +372,7 @@ curatedViewRouter.get(
             view,
             projection.map((p) => ({
               id: p.fieldMappingId,
+              // #729: a mapping deleted since the projection was saved.
               createdBy: createdByFm.get(p.fieldMappingId) ?? null,
             }))
           ),
