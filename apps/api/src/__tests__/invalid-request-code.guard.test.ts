@@ -5,7 +5,10 @@
  * same way).
  *
  * Scans the API source with the TypeScript AST for
- * `new ApiError(400, ApiCode.<X>_NOT_FOUND, …)`. The allowlist holds the 400s
+ * `new ApiError(400, ApiCode.<X>_NOT_FOUND, …)` and
+ * `invalidPayload(ApiCode.<X>_NOT_FOUND, …)`, including either branch of a
+ * conditional code. A status or code held in a variable isn't followed; none
+ * exist today. The allowlist holds the 400s
  * that genuinely are a not-found *reference* inside an otherwise valid
  * request. It only shrinks, and an entry that no longer exists fails too.
  */
@@ -31,7 +34,23 @@ const ALLOWED: Array<{ file: string; code: string }> = [
   },
 ];
 
-/** Every `new ApiError(400, ApiCode.*_NOT_FOUND, …)` in `source`. */
+/** The `*_NOT_FOUND` codes an expression can evaluate to: `ApiCode.X`, or
+ *  either branch of a conditional (code review on #744). */
+function notFoundCodes(e: ts.Expression, sf: ts.SourceFile): string[] {
+  if (ts.isParenthesizedExpression(e)) return notFoundCodes(e.expression, sf);
+  if (ts.isConditionalExpression(e)) {
+    return [
+      ...notFoundCodes(e.whenTrue, sf),
+      ...notFoundCodes(e.whenFalse, sf),
+    ];
+  }
+  const m = /^ApiCode\.(\w+_NOT_FOUND)$/.exec(e.getText(sf));
+  return m ? [m[1]] : [];
+}
+
+/** Every 400 with a `*_NOT_FOUND` code in `source`: a direct
+ *  `new ApiError(400, ApiCode.*_NOT_FOUND, …)`, or the shared
+ *  `invalidPayload(ApiCode.*_NOT_FOUND, …)` helper, which is always a 400. */
 export function notFound400s(source: string): string[] {
   const sf = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, true);
   const out: string[] = [];
@@ -43,8 +62,13 @@ export function notFound400s(source: string): string[] {
       n.arguments.length >= 2 &&
       n.arguments[0].getText(sf) === "400"
     ) {
-      const m = /^ApiCode\.(\w+_NOT_FOUND)$/.exec(n.arguments[1].getText(sf));
-      if (m) out.push(m[1]);
+      out.push(...notFoundCodes(n.arguments[1], sf));
+    } else if (
+      ts.isCallExpression(n) &&
+      n.expression.getText(sf) === "invalidPayload" &&
+      n.arguments.length >= 1
+    ) {
+      out.push(...notFoundCodes(n.arguments[0], sf));
     }
     ts.forEachChild(n, visit);
   };
@@ -94,6 +118,17 @@ describe("malformed-request 400s don't claim a missing object (#742)", () => {
         'throw new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "Invalid portal payload");'
       )
     ).toEqual(["PORTAL_NOT_FOUND"]);
+    // Through the shared helper, and in either branch of a conditional.
+    expect(
+      notFound400s(
+        'invalidPayload(ApiCode.PORTAL_NOT_FOUND, "Invalid portal payload", e);'
+      )
+    ).toEqual(["PORTAL_NOT_FOUND"]);
+    expect(
+      notFound400s(
+        "new ApiError(400, kind ? ApiCode.PORTAL_NOT_FOUND : (ApiCode.PIN_NOT_FOUND), m);"
+      )
+    ).toEqual(["PORTAL_NOT_FOUND", "PIN_NOT_FOUND"]);
     expect(
       notFound400s(
         [

@@ -259,7 +259,7 @@ portalMapRouter.get(
  *       204: { description: Empty tile }
  *       304: { description: Not modified (ETag match) }
  *       400:
- *         description: Invalid tile address, zoom, x/y or blockIndex (MAP_TILE_INVALID_REQUEST)
+ *         description: Invalid tile address, zoom or x/y (MAP_TILE_INVALID_REQUEST)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
