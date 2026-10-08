@@ -44,7 +44,7 @@ The `@openapi` 400 descriptions on the touched routes name the new codes.
 **Tests**
 - Guard: a self-test on embedded fixtures (flags `new ApiError(400, ApiCode.X_NOT_FOUND, …)`, ignores 404 and allowlisted codes), then the real tree is clean, and every allowlist entry still exists.
 - `__tests__/utils/zod-issue.util.test.ts`: `invalidPayload` builds the 400, message and details.
-- Integration (`portal.router.integration.test.ts`, `portal-results.router.integration.test.ts`, `portal-map.router.integration.test.ts`): each site returns its new code, with a test per route where one doesn't exist yet: POST portal `{}`, PATCH portal `{}`, POST message `{}`, POST pin `{}`, PATCH pin `{}`, a tile at z=23, an x out of range, and `blockIndex=abc`.
+- Integration (`portal.router.integration.test.ts`, `portal-results.router.integration.test.ts`): POST portal `{}`, PATCH portal `{}` and POST message `{}` (the existing status-only tests now also assert the code and message), plus new POST pin `{}` and PATCH pin `{}`. Tile coordinates: `__tests__/routes/portal-map.router.test.ts` (`parseTileCoords`) asserts `MAP_TILE_INVALID_REQUEST`. The route-level `blockIndex` check has no route test harness (the map suite calls the service directly), so it's covered by smoke step 4 and the guard.
 - `npm run type-check`, `lint`, the touched unit and integration suites.
 
 ## Smoke (manual, against your dev stack)

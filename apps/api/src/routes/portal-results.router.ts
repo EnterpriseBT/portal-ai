@@ -12,6 +12,7 @@ import type { PortalResultType } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
@@ -82,7 +83,7 @@ export const portalResultsRouter = Router();
  *                       $ref: '#/components/schemas/PortalResult'
  *       400:
  *         description: >
- *           Invalid payload (`PORTAL_RESULT_NOT_FOUND`), block index outside
+ *           Invalid payload (`PORTAL_RESULT_INVALID_PAYLOAD`), block index outside
  *           the target message (`PORTAL_RESULT_BLOCK_INDEX_INVALID`), or a
  *           block that cannot pin — a transient kind, a type with no
  *           pinned-content contract, or content failing that contract
@@ -121,10 +122,10 @@ portalResultsRouter.post(
       const parsed = PinResultBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
-            "Invalid pin result payload"
+          invalidPayload(
+            ApiCode.PORTAL_RESULT_INVALID_PAYLOAD,
+            "Invalid pin result payload",
+            parsed.error
           )
         );
       }
@@ -652,7 +653,7 @@ portalResultsRouter.get(
  *                     portalResult:
  *                       $ref: '#/components/schemas/PortalResult'
  *       400:
- *         description: Invalid payload
+ *         description: Name is required (PORTAL_RESULT_INVALID_PAYLOAD)
  *         content:
  *           application/json:
  *             schema:
@@ -682,7 +683,11 @@ portalResultsRouter.patch(
       const { name } = req.body as { name?: string };
       if (!name || typeof name !== "string" || name.trim() === "") {
         return next(
-          new ApiError(400, ApiCode.PORTAL_RESULT_NOT_FOUND, "name is required")
+          new ApiError(
+            400,
+            ApiCode.PORTAL_RESULT_INVALID_PAYLOAD,
+            "name is required"
+          )
         );
       }
 

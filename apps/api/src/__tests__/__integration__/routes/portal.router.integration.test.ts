@@ -205,7 +205,10 @@ describe("Portal Router", () => {
     it("returns 400 for invalid payload", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-      await request(app).post("/api/portals").send({}).expect(400);
+      const res = await request(app).post("/api/portals").send({}).expect(400);
+      // #742: a bad body is a payload error, not a missing portal.
+      expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid portal payload: /);
     });
   });
 
@@ -588,10 +591,12 @@ describe("Portal Router", () => {
     it("returns 400 when neither name nor lastOpened is provided", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-      await request(app)
+      const res = await request(app)
         .patch(`/api/portals/${generateId()}`)
         .send({})
         .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+      expect(res.body.message).toBe("name or lastOpened is required");
     });
 
     it("returns 400 when name is empty and lastOpened is absent", async () => {
@@ -766,10 +771,12 @@ describe("Portal Router", () => {
         .insert(portals)
         .values(portal as never);
 
-      await request(app)
+      const res = await request(app)
         .post(`/api/portals/${portal.id}/messages`)
         .send({})
         .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid message payload: /);
     });
   });
 });

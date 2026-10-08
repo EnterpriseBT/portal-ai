@@ -1,0 +1,107 @@
+/**
+ * #742: a malformed request is a 400 with a `*_INVALID_*` code, never a
+ * `*_NOT_FOUND` one. Clients key off `code`, so `400 PORTAL_NOT_FOUND` on a
+ * bad body read as "the portal is gone" (#706 fixed the station routes the
+ * same way).
+ *
+ * Scans the API source with the TypeScript AST for
+ * `new ApiError(400, ApiCode.<X>_NOT_FOUND, …)`. The allowlist holds the 400s
+ * that genuinely are a not-found *reference* inside an otherwise valid
+ * request. It only shrinks, and an entry that no longer exists fails too.
+ */
+import { describe, it, expect } from "@jest/globals";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join, relative } from "node:path";
+import ts from "typescript";
+
+const apiSrc = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** `file → code`: a valid body that names something that doesn't exist. */
+const ALLOWED: Array<{ file: string; code: string }> = [
+  // A bidirectional mapping names a target mapping that doesn't exist.
+  {
+    file: "routes/field-mapping.router.ts",
+    code: "FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND",
+  },
+  // A bulk job names a tool that isn't bulk-dispatchable on the station.
+  {
+    file: "queues/processors/bulk-transform.processor.ts",
+    code: "BULK_DISPATCH_TOOL_NOT_FOUND",
+  },
+];
+
+/** Every `new ApiError(400, ApiCode.*_NOT_FOUND, …)` in `source`. */
+export function notFound400s(source: string): string[] {
+  const sf = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, true);
+  const out: string[] = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      ts.isNewExpression(n) &&
+      n.expression.getText(sf) === "ApiError" &&
+      n.arguments &&
+      n.arguments.length >= 2 &&
+      n.arguments[0].getText(sf) === "400"
+    ) {
+      const m = /^ApiCode\.(\w+_NOT_FOUND)$/.exec(n.arguments[1].getText(sf));
+      if (m) out.push(m[1]);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) {
+      return name === "__tests__" ? [] : sourceFiles(path);
+    }
+    return path.endsWith(".ts") ? [path] : [];
+  });
+}
+
+describe("malformed-request 400s don't claim a missing object (#742)", () => {
+  const found = sourceFiles(apiSrc).flatMap((path) =>
+    notFound400s(readFileSync(path, "utf8")).map((code) => ({
+      file: relative(apiSrc, path),
+      code,
+    }))
+  );
+
+  it("no 400 uses a *_NOT_FOUND code outside the allowlist", () => {
+    const offenders = found
+      .filter(
+        (f) => !ALLOWED.some((a) => a.file === f.file && a.code === f.code)
+      )
+      .map((f) => `${f.file}: ${f.code}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("every allowlist entry still exists (the list only shrinks)", () => {
+    for (const a of ALLOWED) {
+      expect([
+        a,
+        found.some((f) => f.file === a.file && f.code === a.code),
+      ]).toEqual([a, true]);
+    }
+  });
+
+  it("catches a 400 with a *_NOT_FOUND code, and ignores others", () => {
+    expect(
+      notFound400s(
+        'throw new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "Invalid portal payload");'
+      )
+    ).toEqual(["PORTAL_NOT_FOUND"]);
+    expect(
+      notFound400s(
+        [
+          'new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found");',
+          'new ApiError(400, ApiCode.PORTAL_INVALID_PAYLOAD, "bad");',
+          'invalidPayload(ApiCode.PORTAL_INVALID_PAYLOAD, "x", e);',
+        ].join("\n")
+      )
+    ).toEqual([]);
+  });
+});

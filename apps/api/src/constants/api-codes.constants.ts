@@ -314,6 +314,9 @@ export enum ApiCode {
   // Portals
   PORTAL_NOT_FOUND = "PORTAL_NOT_FOUND",
   PORTAL_RESULT_NOT_FOUND = "PORTAL_RESULT_NOT_FOUND",
+  /** #742: a portal / pin request body that fails validation. */
+  PORTAL_INVALID_PAYLOAD = "PORTAL_INVALID_PAYLOAD",
+  PORTAL_RESULT_INVALID_PAYLOAD = "PORTAL_RESULT_INVALID_PAYLOAD",
   /**
    * The addressed block's type is outside `PINNABLE_BLOCK_TYPES` (transient
    * kinds), it has no pinned-content contract yet, or its content fails that
@@ -482,6 +485,8 @@ export enum ApiCode {
    * can't distinguish "not yours" from "doesn't exist" — no existence leak.
    */
   MAP_TILE_NOT_FOUND = "MAP_TILE_NOT_FOUND",
+  /** #742: a malformed tile address (zoom, x/y or blockIndex). */
+  MAP_TILE_INVALID_REQUEST = "MAP_TILE_INVALID_REQUEST",
   /**
    * #316: the tile query exceeded `statement_timeout`. The widget renders an
    * error tile rather than blank ground, so a slow layer is visible.

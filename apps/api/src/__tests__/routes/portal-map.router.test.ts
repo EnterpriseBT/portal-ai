@@ -33,7 +33,7 @@ describe("parseTileCoords (#316)", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
       expect((err as ApiError).status).toBe(400);
-      expect((err as ApiError).code).toBe(ApiCode.MAP_TILE_NOT_FOUND);
+      expect((err as ApiError).code).toBe(ApiCode.MAP_TILE_INVALID_REQUEST);
     }
   };
 

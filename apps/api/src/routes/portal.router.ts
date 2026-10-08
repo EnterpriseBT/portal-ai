@@ -12,6 +12,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { AgentTurnCeilingService } from "../services/agent-turn-ceiling.service.js";
@@ -72,7 +73,7 @@ export const portalRouter = Router();
  *                     portal:
  *                       $ref: '#/components/schemas/Portal'
  *       400:
- *         description: Invalid payload or station has no tool packs
+ *         description: Invalid payload (PORTAL_INVALID_PAYLOAD) or station has no tool packs (PORTAL_STATION_NO_TOOLS)
  *         content:
  *           application/json:
  *             schema:
@@ -98,7 +99,11 @@ portalRouter.post(
       const parsed = CreatePortalBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "Invalid portal payload")
+          invalidPayload(
+            ApiCode.PORTAL_INVALID_PAYLOAD,
+            "Invalid portal payload",
+            parsed.error
+          )
         );
       }
 
@@ -528,7 +533,7 @@ portalRouter.delete(
  *                       type: string
  *                       example: streaming
  *       400:
- *         description: Invalid payload
+ *         description: Invalid message payload (PORTAL_INVALID_PAYLOAD)
  *         content:
  *           application/json:
  *             schema:
@@ -585,7 +590,7 @@ portalRouter.delete(
  *       200:
  *         description: Portal updated successfully
  *       400:
- *         description: Invalid payload (neither name nor lastOpened provided)
+ *         description: Invalid payload, neither name nor lastOpened provided (PORTAL_INVALID_PAYLOAD)
  *       403:
  *         description: The caller can read the portal but not change it (#685)
  *       404:
@@ -613,7 +618,7 @@ portalRouter.patch(
         return next(
           new ApiError(
             400,
-            ApiCode.PORTAL_NOT_FOUND,
+            ApiCode.PORTAL_INVALID_PAYLOAD,
             "name or lastOpened is required"
           )
         );
@@ -751,7 +756,11 @@ portalRouter.post(
       const parsed = SendMessageBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "Invalid message payload")
+          invalidPayload(
+            ApiCode.PORTAL_INVALID_PAYLOAD,
+            "Invalid message payload",
+            parsed.error
+          )
         );
       }
 
