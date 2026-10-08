@@ -3,7 +3,13 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { Request } from "express";
 import type pino from "pino";
 import pinoHttpModule from "pino-http";
-import { logger } from "../utils/logger.util.js";
+import {
+  BASE_ERROR_SERIALIZERS,
+  BASE_REDACT_PATHS,
+  logger,
+  redactSerializedRequest,
+} from "../utils/logger.util.js";
+import { redactUrl } from "../utils/redact-url.util.js";
 
 // Use default export from pino-http
 const pinoHttp = pinoHttpModule.default || pinoHttpModule;
@@ -49,52 +55,69 @@ export function httpLogLevel(
  * and attached to every log line via `reqId` so logs from a single request
  * can be grouped in CloudWatch Logs Insights.
  */
-export const httpLogger = pinoHttp({
-  logger,
-  genReqId: (req: IncomingMessage, res: ServerResponse): string => {
-    const inbound =
-      req.headers[REQUEST_ID_HEADER] ?? req.headers[CORRELATION_ID_HEADER];
-    const headerValue = Array.isArray(inbound) ? inbound[0] : inbound;
-    const id = isNonEmptyString(headerValue) ? headerValue : randomUUID();
-    res.setHeader(REQUEST_ID_HEADER, id);
-    return id;
-  },
-  customLogLevel: httpLogLevel,
-  customSuccessMessage: (req: IncomingMessage, res: ServerResponse): string => {
-    return `${req.method} ${req.url} ${res.statusCode}`;
-  },
-  customErrorMessage: (
-    req: IncomingMessage,
-    res: ServerResponse,
-    err: Error
-  ): string => {
-    return `${req.method} ${req.url} ${res.statusCode} - ${err.message}`;
-  },
-  customProps: (req: IncomingMessage, _res: ServerResponse): object => {
-    const expressReq = req as Request;
-    return {
-      userId: expressReq.auth?.payload?.sub,
-    };
-  },
-  redact: {
-    paths: [
-      "req.headers.authorization",
-      "req.headers.cookie",
-      'req.headers["proxy-authorization"]',
-      'req.headers["x-api-key"]',
-      'res.headers["set-cookie"]',
-      "req.body.password",
-      "req.body.token",
-      "req.body.accessToken",
-      "req.body.refreshToken",
-      "req.body.idToken",
-      "req.body.id_token",
-      "req.body.apiKey",
-      "req.body.api_key",
-      "req.body.clientSecret",
-      "req.body.client_secret",
-      "req.body.secret",
-    ],
-    censor: "[REDACTED]",
-  },
-});
+export function createHttpLogger(base: pino.Logger = logger) {
+  return pinoHttp({
+    logger: base,
+    // #728: pino-http's child replaces the base logger's `serializers` and
+    // `redact` for every request-scoped log (`req.log`, and `createLogger`
+    // inside a request). Re-apply the base error serializer (#540) and redact
+    // paths, plus a request serializer that redacts SSE's `?token=<JWT>`.
+    serializers: {
+      ...BASE_ERROR_SERIALIZERS,
+      req: redactSerializedRequest,
+    },
+    genReqId: (req: IncomingMessage, res: ServerResponse): string => {
+      const inbound =
+        req.headers[REQUEST_ID_HEADER] ?? req.headers[CORRELATION_ID_HEADER];
+      const headerValue = Array.isArray(inbound) ? inbound[0] : inbound;
+      const id = isNonEmptyString(headerValue) ? headerValue : randomUUID();
+      res.setHeader(REQUEST_ID_HEADER, id);
+      return id;
+    },
+    customLogLevel: httpLogLevel,
+    customSuccessMessage: (
+      req: IncomingMessage,
+      res: ServerResponse
+    ): string => {
+      return `${req.method} ${redactUrl(req.url)} ${res.statusCode}`;
+    },
+    customErrorMessage: (
+      req: IncomingMessage,
+      res: ServerResponse,
+      err: Error
+    ): string => {
+      return `${req.method} ${redactUrl(req.url)} ${res.statusCode} - ${err.message}`;
+    },
+    customProps: (req: IncomingMessage, _res: ServerResponse): object => {
+      const expressReq = req as Request;
+      return {
+        userId: expressReq.auth?.payload?.sub,
+      };
+    },
+    redact: {
+      paths: [
+        ...BASE_REDACT_PATHS,
+        "req.headers.authorization",
+        "req.headers.cookie",
+        'req.headers["proxy-authorization"]',
+        'req.headers["x-api-key"]',
+        'res.headers["set-cookie"]',
+        "req.body.password",
+        "req.body.token",
+        "req.body.accessToken",
+        "req.body.refreshToken",
+        "req.body.idToken",
+        "req.body.id_token",
+        "req.body.apiKey",
+        "req.body.api_key",
+        "req.body.clientSecret",
+        "req.body.client_secret",
+        "req.body.secret",
+      ],
+      censor: "[REDACTED]",
+    },
+  });
+}
+
+/** The app's request logger (see {@link createHttpLogger}). */
+export const httpLogger = createHttpLogger();

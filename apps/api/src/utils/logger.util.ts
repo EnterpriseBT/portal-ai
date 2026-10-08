@@ -1,6 +1,7 @@
 import pino from "pino";
 import { environment } from "../environment.js";
 import { requestContext } from "./request-context.util.js";
+import { redactQuery, redactUrl } from "./redact-url.util.js";
 
 /**
  * PII-safe error serializer (#540).
@@ -84,6 +85,82 @@ export function sanitizeError(err: unknown, depth = 0): unknown {
 }
 
 /**
+ * #728: the base logger's credential + #540 DB-error redaction paths. Exported
+ * so the request logger (`createHttpLogger`), whose pino-http child replaces a
+ * parent's `redact`, applies them to every request-scoped log too.
+ */
+export const BASE_REDACT_PATHS: string[] = [
+  "*.password",
+  "*.token",
+  "*.accessToken",
+  "*.refreshToken",
+  "*.idToken",
+  "*.id_token",
+  "*.apiKey",
+  "*.api_key",
+  "*.clientSecret",
+  "*.client_secret",
+  "*.secret",
+  "*.authorization",
+  // #540: DB-error value fields — defense-in-depth behind the `err`
+  // serializer above (which already allowlists these away). Scoped to the
+  // `err`/`err.cause` paths, not `*.`, so unrelated fields that legitimately
+  // carry a `detail`/`query` key are never censored.
+  "err.detail",
+  "err.where",
+  "err.table",
+  "err.column",
+  "err.constraint",
+  "err.internalQuery",
+  "err.query",
+  "err.parameters",
+  "err.raw",
+  "err.cause.detail",
+  "err.cause.where",
+  "err.cause.table",
+  "err.cause.column",
+  "err.cause.constraint",
+];
+
+/**
+ * #728: the base error serializers (#540's PII-safe `sanitizeError`), shared
+ * with the request logger for the same reason: a pino-http child replaces the
+ * parent's `serializers`, so without this a request-scoped `log.error({ err })`
+ * skipped the sanitizer.
+ */
+export const BASE_ERROR_SERIALIZERS = {
+  err: sanitizeError,
+  error: sanitizeError,
+};
+
+/**
+ * #728: a serialized request (pino's std shape) with credential query
+ * parameters redacted, in its `url` and in Express's parsed `query`. The one
+ * redaction both request serializers use.
+ */
+export function redactSerializedRequest<
+  T extends { url?: string; query?: unknown },
+>(serialized: T): T {
+  return {
+    ...serialized,
+    url: redactUrl(serialized.url),
+    query: redactQuery(serialized.query),
+  };
+}
+
+/** #728: pino's request serializer, redacted (for a raw `req` logged through
+ *  the base logger; request-scoped lines use `createHttpLogger`'s). */
+export function serializeRequest(
+  req: Parameters<typeof pino.stdSerializers.req>[0]
+): ReturnType<typeof pino.stdSerializers.req> {
+  return redactSerializedRequest(
+    pino.stdSerializers.req(req) as ReturnType<
+      typeof pino.stdSerializers.req
+    > & { query?: unknown }
+  );
+}
+
+/**
  * Application logger configuration using Pino.
  *
  * Configuration is controlled via environment variables:
@@ -119,44 +196,14 @@ export const logger = pino({
   serializers: {
     // #540: PII-safe error serializer — never emits DB-error value fields.
     // Registered for both keys errors are logged under across the codebase.
-    err: sanitizeError,
-    error: sanitizeError,
-    req: pino.stdSerializers.req,
+    ...BASE_ERROR_SERIALIZERS,
+    // #728: a raw `req` logged through the base logger; request lines and
+    // req.log lines use createHttpLogger's serializer (pino-http replaces this).
+    req: serializeRequest,
     res: pino.stdSerializers.res,
   },
   redact: {
-    paths: [
-      "*.password",
-      "*.token",
-      "*.accessToken",
-      "*.refreshToken",
-      "*.idToken",
-      "*.id_token",
-      "*.apiKey",
-      "*.api_key",
-      "*.clientSecret",
-      "*.client_secret",
-      "*.secret",
-      "*.authorization",
-      // #540: DB-error value fields — defense-in-depth behind the `err`
-      // serializer above (which already allowlists these away). Scoped to the
-      // `err`/`err.cause` paths, not `*.`, so unrelated fields that legitimately
-      // carry a `detail`/`query` key are never censored.
-      "err.detail",
-      "err.where",
-      "err.table",
-      "err.column",
-      "err.constraint",
-      "err.internalQuery",
-      "err.query",
-      "err.parameters",
-      "err.raw",
-      "err.cause.detail",
-      "err.cause.where",
-      "err.cause.table",
-      "err.cause.column",
-      "err.cause.constraint",
-    ],
+    paths: [...BASE_REDACT_PATHS],
     censor: "[REDACTED]",
   },
 });

@@ -11,7 +11,11 @@ import { jwtCheck } from "./auth.middleware.js";
  * `jwtCheck` middleware.
  */
 export const sseAuth = (req: Request, res: Response, next: NextFunction) => {
-  const token = req.query.token as string | undefined;
+  // #728: only a plain `?token=` string. Express's extended parser turns
+  // `token[]=…` / `token[0]=…` into an array that would otherwise stringify
+  // into a usable "Bearer <jwt>" while slipping past log redaction.
+  const raw = req.query.token;
+  const token = typeof raw === "string" ? raw : undefined;
   if (!token) {
     return res.status(401).json({ success: false, message: "Missing token" });
   }
