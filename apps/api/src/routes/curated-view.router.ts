@@ -1,5 +1,13 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, inArray, type SQL, type Column } from "drizzle-orm";
+import {
+  eq,
+  and,
+  ilike,
+  inArray,
+  isNotNull,
+  type SQL,
+  type Column,
+} from "drizzle-orm";
 
 import {
   CuratedViewModelFactory,
@@ -28,7 +36,11 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { curatedViews, stationViews } from "../db/schema/index.js";
+import {
+  curatedViews,
+  fieldMappings,
+  stationViews,
+} from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
@@ -95,27 +107,32 @@ async function fieldMappingCreators(
 }
 
 /**
- * Validate a projection (`fieldMappingIds`) against the view's entity, in
- * order:
+ * Validate a projection (`fieldMappingIds`) against the view's entity and
+ * return the ids to store, in order:
  *
  * 1. **No duplicates.** A repeated id would hit the projection's unique index.
- * 2. **Every id is a live column of this entity** (#736). A projection is a
- *    subset of its entity's columns, so an id from another entity or org, a
- *    deleted mapping or an unknown id is bad input: 400, the same answer for
- *    each, so it says nothing about ids elsewhere. It runs before the read
- *    check because a caller with an unconditional grant would otherwise pass
- *    a foreign id.
- * 3. **The self-exposure guard:** the caller must independently `read` every
+ * 2. **Every id is a column of this entity** (#736). A projection is a subset
+ *    of its entity's columns, so an id from another entity or org, or an
+ *    unknown id, is bad input: 400, the same answer for each, so it says
+ *    nothing about ids elsewhere. It runs before the read check because a
+ *    caller with an unconditional grant would otherwise pass a foreign id.
+ * 3. **A deleted column of this entity is dropped, not refused.** Deleting a
+ *    field mapping leaves it in the projections that name it, and the editor
+ *    sends a view's stored ids back on every save, so refusing it would make
+ *    the view uneditable. Dropping it cleans the row up on the next save.
+ * 4. **Never widen by dropping.** An empty projection means "all columns", so
+ *    a non-empty request left with nothing is refused, not stored as `[]`.
+ * 5. **The self-exposure guard:** the caller must independently `read` every
  *    field mapping in the *effective* projection (the explicit ids, or when
  *    omitted = unrestricted, all of the entity's current mappings). A
  *    view-editor can only expose fields they already hold. Throws
  *    `CURATED_VIEW_FIELD_NOT_READABLE` (403).
  */
 async function assertProjection(
-  set: Awaited<ReturnType<typeof PermissionService.loadSet>>,
+  set: PermissionSet,
   connectorEntityId: string,
   fieldMappingIds: string[] | undefined
-): Promise<void> {
+): Promise<string[] | undefined> {
   if (
     fieldMappingIds &&
     new Set(fieldMappingIds).size !== fieldMappingIds.length
@@ -129,23 +146,47 @@ async function assertProjection(
   // #729: each mapping's creator, so a conditional read (created_by_caller /
   // created_by_system) can match.
   const createdByFm = await fieldMappingCreators(connectorEntityId);
-  const effective =
-    fieldMappingIds && fieldMappingIds.length > 0
-      ? fieldMappingIds
-      : [...createdByFm.keys()];
-  const creators = effective.map((id) => {
-    const createdBy = createdByFm.get(id);
-    if (createdBy === undefined) {
-      throw new ApiError(
-        400,
-        ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
-        "Field mapping is not a column of this entity"
+  let live = fieldMappingIds;
+  if (fieldMappingIds) {
+    live = fieldMappingIds.filter((id) => createdByFm.has(id));
+    const rest = fieldMappingIds.filter((id) => !createdByFm.has(id));
+    if (rest.length > 0) {
+      const deleted = new Set(
+        (
+          await DbService.repository.fieldMappings.findMany(
+            and(
+              eq(fieldMappings.connectorEntityId, connectorEntityId),
+              inArray(fieldMappings.id, rest),
+              isNotNull(fieldMappings.deleted)
+            ),
+            { includeDeleted: true }
+          )
+        ).map((m) => m.id)
       );
+      if (rest.some((id) => !deleted.has(id))) {
+        throw new ApiError(
+          400,
+          ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+          "Field mapping is not a column of this entity"
+        );
+      }
+      if (live.length === 0) {
+        throw new ApiError(
+          400,
+          ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+          "None of the selected columns exist any more"
+        );
+      }
     }
-    return { id, createdBy };
-  });
-  for (const { id, createdBy } of creators) {
-    if (!set.can("resource.read", { type: "field_mapping", id, createdBy })) {
+  }
+  const effective = live && live.length > 0 ? live : [...createdByFm.keys()];
+  for (const id of effective) {
+    // Every id here is a live mapping of this entity, so it has a creator.
+    const createdBy = createdByFm.get(id);
+    if (
+      createdBy === undefined ||
+      !set.can("resource.read", { type: "field_mapping", id, createdBy })
+    ) {
       throw new ApiError(
         403,
         ApiCode.CURATED_VIEW_FIELD_NOT_READABLE,
@@ -153,6 +194,7 @@ async function assertProjection(
       );
     }
   }
+  return live;
 }
 
 /**
@@ -469,7 +511,11 @@ curatedViewRouter.post(
 
       if (body.filter)
         await validateFilter(body.filter, body.connectorEntityId);
-      await assertProjection(set, body.connectorEntityId, body.fieldMappingIds);
+      const projection = await assertProjection(
+        set,
+        body.connectorEntityId,
+        body.fieldMappingIds
+      );
 
       const duplicate = await DbService.repository.curatedViews.findByKey(
         organizationId,
@@ -502,9 +548,9 @@ curatedViewRouter.post(
           row as never,
           tx
         );
-        if (body.fieldMappingIds && body.fieldMappingIds.length > 0) {
+        if (projection && projection.length > 0) {
           const fmFactory = new CuratedViewFieldMappingModelFactory();
-          const rows = body.fieldMappingIds.map((fieldMappingId) => {
+          const rows = projection.map((fieldMappingId) => {
             const m = fmFactory.create(userId);
             m.update({
               organizationId,
@@ -577,8 +623,9 @@ curatedViewRouter.patch(
       const body = parsed.data;
 
       // #713: one the caller can't read answers 404, like its GET.
+      const set = await PermissionService.loadSet(req.application!.metadata);
       const existing = ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
+        set,
         organizationId,
         "curated_view",
         await DbService.repository.curatedViews.findById(req.params.id),
@@ -594,14 +641,14 @@ curatedViewRouter.patch(
       if (body.filter) {
         await validateFilter(body.filter, existing.connectorEntityId);
       }
-      if (body.fieldMappingIds) {
-        const set = await PermissionService.loadSet(req.application!.metadata);
-        await assertProjection(
-          set,
-          existing.connectorEntityId,
-          body.fieldMappingIds
-        );
-      }
+      // Only a request that changes the projection is checked against it.
+      const projection = body.fieldMappingIds
+        ? await assertProjection(
+            set,
+            existing.connectorEntityId,
+            body.fieldMappingIds
+          )
+        : undefined;
 
       const updated = await DbService.transaction(async (tx) => {
         const patch: Record<string, unknown> = {
@@ -618,7 +665,7 @@ curatedViewRouter.patch(
           tx
         );
         // Projection replace: drop the old rows, insert the new set.
-        if (body.fieldMappingIds) {
+        if (projection) {
           const old =
             await DbService.repository.curatedViewFieldMappings.findByCuratedViewId(
               existing.id,
@@ -631,9 +678,9 @@ curatedViewRouter.patch(
               tx
             );
           }
-          if (body.fieldMappingIds.length > 0) {
+          if (projection.length > 0) {
             const fmFactory = new CuratedViewFieldMappingModelFactory();
-            const rows = body.fieldMappingIds.map((fieldMappingId) => {
+            const rows = projection.map((fieldMappingId) => {
               const m = fmFactory.create(userId);
               m.update({
                 organizationId,
