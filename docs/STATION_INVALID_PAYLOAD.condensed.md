@@ -47,3 +47,43 @@ The `@openapi` 400 descriptions on POST and PATCH name the code and the unknown-
 
 - The web app's handling of these codes; nothing keys off a 400 or 500 station code today.
 - Making other routers' body schemas strict. Station is the one with a reported silent no-op.
+
+## Adversarial
+
+Probes for how #706 breaks. The change makes three schemas strict, and it echoes the first validation issue in the message and every issue in `details`. So the probes ask whether hostile or odd bodies are rejected cleanly (never a 500, never a partial write), whether the more specific 400 tells callers anything about stations they can't see, and whether the real web flows still save. **Branch under test:** `fix/706-station-invalid-payload-code` (PR [#741](https://github.com/EnterpriseBT/portal-ai/pull/741)). API probes use `curl` against `:3001` with the e2e owner and member tokens, in `e2e-fixture`. Create the stations a probe needs and delete them afterwards.
+
+### §1 Boundary & limit inputs
+- [ ] PATCH a station you own with `{ "name": "x", <500 junk keys> }`. Expected safe result: 400 `STATION_INVALID_PAYLOAD`, no 500, and the name unchanged. — backend
+- [ ] PATCH with a body over the JSON limit (`REQUEST_JSON_LIMIT_BYTES`, e.g. a 5 MB `description`). Expected safe result: 413 from the body parser, not a 500 and not a write. — backend
+- [ ] PATCH `{ "curatedViewChanges": {} }`. Expected safe result: 200 with nothing attached. This is the deliberate #674 rule that an empty change object counts as a field, which the code review chose to keep; record it as observed. — backend
+
+### §2 Malformed & injection input
+- [ ] POST `/api/stations` with a JSON array `[]`, a bare string `"x"`, and `null`. Expected safe result: 400 `STATION_INVALID_PAYLOAD` each time (or the body parser's 400), never a 500. — backend
+- [ ] PATCH `{ "name": "x", "__proto__": { "polluted": true } }` and `{ "constructor": { "prototype": { "polluted": true } } }`. Expected safe result: 400 (unknown key), and a later `GET /api/stations` response carries no `polluted` field anywhere. — backend
+- [ ] PATCH `{ "name": 123 }` and `{ "toolPacks": [] }`. Expected safe result: 400, with the message naming the path (`name: …`, `toolPacks: …`). — backend
+
+### §3 Concurrency & races: N/A. Validation runs before any write; no new state.
+
+### §4 Auth & permission boundaries
+- [ ] As the **member**, PATCH an owner's station (which the member can't read) with an **invalid** body, and then a random station id with the same body. Expected safe result: an identical 400 for both, since validation reads only the body. Then with a **valid** body: the same 404 `STATION_NOT_FOUND` for both. Nothing about the station leaks. — backend
+
+### §5 Multi-tenant isolation
+- [ ] As the e2e owner, PATCH an Org B station id with an invalid body, and then with a valid one. Expected safe result: an invalid body gives the same 400 as a random id; a valid body gives 404 `STATION_NOT_FOUND`, the same as a random id. — backend
+
+### §6 State & lifecycle abuse
+- [ ] Delete a station you own, then PATCH it with an invalid body and then a valid one. Expected safe result: an invalid body → 400 `STATION_INVALID_PAYLOAD` (validation first, as for any id); a valid body → 404 `STATION_NOT_FOUND`. A deleted station is never reported as a payload error once the body is valid. — backend
+
+### §7 Misuse sequences
+- [ ] In the browser as the owner: create a station from the Create Station dialog, then open Edit, rename it, attach a curated view and save. Expected safe result: both dialogs save with no error alert; the station shows the new name and one attached view. The dialogs' typed bodies pass the strict schemas. Delete the station afterwards.
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name>: confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/station ids):
