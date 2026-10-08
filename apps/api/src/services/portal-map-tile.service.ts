@@ -18,6 +18,7 @@ import crypto from "crypto";
 
 import { sql } from "drizzle-orm";
 import {
+  MapSpecSchema,
   VizPipelineSchema,
   resolveAggTreatment,
   type VizPipeline,
@@ -621,6 +622,9 @@ export class PortalMapTileService {
       const block = blocks[ref.blockIndex];
       if (!block) throw notFound();
       const inner = (block.content ?? block) as Record<string, unknown>;
+      // #695: only a map has tiles. A table or chart block carries the same
+      // pipeline, which has no geometry, so it is absent here, not a 500.
+      if (!MapSpecSchema.safeParse(inner.spec).success) throw notFound();
       const parsed = VizPipelineSchema.safeParse(inner.pipeline);
       if (!parsed.success) throw notFound();
       return {
@@ -647,6 +651,8 @@ export class PortalMapTileService {
     )
       throw notFound();
     const content = (row.content ?? {}) as Record<string, unknown>;
+    // #695: a pinned table or chart has no tiles either.
+    if (!MapSpecSchema.safeParse(content.spec).success) throw notFound();
     const parsed = VizPipelineSchema.safeParse(content.pipeline);
     if (!parsed.success) throw notFound();
     return {

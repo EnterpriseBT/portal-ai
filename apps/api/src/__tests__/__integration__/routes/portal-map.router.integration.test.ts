@@ -42,6 +42,12 @@ import {
  *  read-access suite and the service unit tests): every source is allowed. */
 const allowAllSources = async () => true;
 
+/** #695: tiles serve only map blocks, so every map fixture carries a minimal
+ *  map spec. A `points` layer aggregates like the old spec-less fixture. */
+const MAP_SPEC = {
+  layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
+};
+
 describe("Portal map tile route (#316)", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: DbClient;
@@ -277,6 +283,7 @@ describe("Portal map tile route (#316)", () => {
       name: "Parcels map",
       type: "geo",
       content: {
+        spec: MAP_SPEC,
         pipeline: {
           sql: 'SELECT "c_geom" AS geom FROM parcels',
           stationId,
@@ -350,6 +357,49 @@ describe("Portal map tile route (#316)", () => {
     expect(res.body).toBeUndefined();
   });
 
+  // #695: a pinned table carries a valid pipeline but no geometry. Its tile
+  // was a 500 (`column src.geom does not exist`); it is absent: 404.
+  it("#695: a tile for a pinned non-map result is 404, not 500", async () => {
+    const tablePinId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id: tablePinId,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Parcel table",
+        type: "data-table",
+        content: {
+          pipeline: {
+            sql: 'SELECT "c_name" FROM parcels',
+            stationId,
+            organizationId: orgId,
+          },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    await expect(
+      PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: tablePinId },
+        z: 0,
+        x: 0,
+        y: 0,
+        organizationId: orgId,
+        userId,
+        authorizeSource: allowAllSources,
+      })
+    ).rejects.toMatchObject({ status: 404, code: "MAP_TILE_NOT_FOUND" });
+  });
+
   // #727: a stored pipeline naming a column the view no longer exposes (a
   // projection change, or a viewer whose grants hide it) is a 42703, which
   // answered 500 on every tile. It degrades like a missing view: empty, 204.
@@ -367,6 +417,7 @@ describe("Portal map tile route (#316)", () => {
         name: "Stale-column map",
         type: "geo",
         content: {
+          spec: MAP_SPEC,
           pipeline: {
             sql: 'SELECT "c_geom" AS geom, "c_no_such_column" FROM parcels',
             stationId,
@@ -412,7 +463,13 @@ describe("Portal map tile route (#316)", () => {
         type: "geo",
         content: {
           spec: {
-            layers: [{ style: { colorBy: { column: "c_hidden_status" } } }],
+            layers: [
+              {
+                kind: "points",
+                source: { geometryColumn: "geom" },
+                style: { colorBy: { column: "c_hidden_status" } },
+              },
+            ],
             popup: { template: "{{c_hidden_name}}" },
           },
           pipeline: {
@@ -459,6 +516,7 @@ describe("Portal map tile route (#316)", () => {
         name: "Raw-table map",
         type: "geo",
         content: {
+          spec: MAP_SPEC,
           pipeline: {
             sql: `SELECT "c_geom" AS geom FROM "er__${entityId}"`,
             stationId,
@@ -500,6 +558,7 @@ describe("Portal map tile route (#316)", () => {
         name: "Commented map",
         type: "geo",
         content: {
+          spec: MAP_SPEC,
           pipeline: {
             sql: 'SELECT "c_geom" AS geom /* inline note */ FROM parcels -- trailing note',
             stationId,

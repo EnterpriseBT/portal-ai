@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#695](https://github.com/EnterpriseBT/portal-ai/issues/695) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** `PortalMapTileService.resolvePipeline` accepts any message block or pin whose `content.pipeline` parses as a `VizPipeline`, whatever kind of block it is. A `data-table` or `d3` answer carries the same durable pipeline, so a tile request against one runs its SQL as a geometry source, and Postgres fails with `column src.geom does not exist`. That comes back as **500**, plus an error-log entry, instead of the route's `404 MAP_TILE_NOT_FOUND`. The UI only asks for tiles on map blocks, so this takes a direct or crafted request. Authorization is unaffected: a source the caller can't read is refused with a 404 before this point (#692). Only `apps/api` changes.
+**Why.** `PortalMapTileService.resolvePipeline` accepts any message block or pin whose `content.pipeline` parses as a `VizPipeline`, whatever kind of block it is. A `data-table` or `d3` answer carries the same durable pipeline, so a tile request against one runs its SQL as a geometry source, and Postgres fails with `column src.geom does not exist`. That came back as **500**, plus an error-log entry, instead of the route's `404 MAP_TILE_NOT_FOUND`. Since #727, which degrades a missing-column tile query to an empty tile, it's a **204** instead: the non-map SQL still runs on every such request, and the answer still claims an empty map rather than no map. The UI only asks for tiles on map blocks, so this takes a direct or crafted request. Authorization is unaffected: a source the caller can't read is refused with a 404 before this point (#692). Only `apps/api` changes.
 
 ## Current shape
 
@@ -35,7 +35,7 @@ Options: (a) check `block.type === "geo"`. Pins don't carry a block type the sam
 
 ## Smoke (manual, against your dev stack)
 
-1. As the e2e owner, find a portal message whose block is **not** a map (e.g. a `data-table` answer): `select id, blocks->0->>'type' from portal_messages where organization_id = '<e2e org>' and blocks->0->>'type' <> 'geo' limit 1`. `GET /api/portal-map/tiles/message/<id>/0/0/0/0` → **404** `MAP_TILE_NOT_FOUND`, and the API log shows no `src.geom` error.
+1. As the e2e owner, find a portal message whose block is **not** a map (e.g. a `data-table` answer): `select id, blocks->0->>'type' from portal_messages where organization_id = '<e2e org>' and blocks->0->>'type' <> 'geo' limit 1`. `GET /api/portal-map/tiles/message/<id>/0/0/0/0` → **404** `MAP_TILE_NOT_FOUND` (it was 204 on `main`, and 500 before #727), and the API log shows no `src.geom` error.
 2. The same against a pinned non-map result (`/tiles/pin/<pinId>/0/0/0`) → 404.
 3. A real map block (the smoke contours or polygons portal) still serves tiles: open it, pan and zoom, and tiles load (200s in the network tab).
 
