@@ -109,6 +109,17 @@ describe("CreateStationBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("#706: rejects an unknown key (update's curatedViewChanges)", () => {
+    const parsed = CreateStationBodySchema.safeParse({
+      name: "S",
+      curatedViewChanges: { add: ["cv-1"] },
+    });
+    expect(parsed.success).toBe(false);
+    expect(
+      parsed.error?.issues.some((i) => i.code === "unrecognized_keys")
+    ).toBe(true);
+  });
+
   it("#674: accepts curatedViewIds beside connectorInstanceIds", () => {
     const result = CreateStationBodySchema.safeParse({
       name: "Analytics Station",
@@ -183,14 +194,34 @@ describe("UpdateStationBodySchema", () => {
     ).toBe(true);
   });
 
-  it("#674: update no longer accepts full-set attachment lists", () => {
+  it("#674/#706: update rejects full-set attachment lists rather than dropping them", () => {
     const parsed = UpdateStationBodySchema.safeParse({
       name: "S",
       curatedViewIds: ["cv-1"],
       connectorInstanceIds: ["ci-1"],
     });
-    expect(parsed.success && "curatedViewIds" in parsed.data).toBe(false);
-    expect(parsed.success && "connectorInstanceIds" in parsed.data).toBe(false);
+    expect(parsed.success).toBe(false);
+    expect(
+      parsed.error?.issues.some((i) => i.code === "unrecognized_keys")
+    ).toBe(true);
+  });
+
+  it("#706: a typo inside a change object is rejected, not dropped", () => {
+    const parsed = UpdateStationBodySchema.safeParse({
+      curatedViewChanges: { added: ["cv-1"] },
+    });
+    expect(parsed.success).toBe(false);
+    expect(
+      parsed.error?.issues.some((i) => i.code === "unrecognized_keys")
+    ).toBe(true);
+  });
+
+  it("#706: update still enforces at least one field", () => {
+    const parsed = UpdateStationBodySchema.safeParse({});
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe(
+      "At least one field must be provided"
+    );
   });
 
   it("#674: rejects an id that is both added and removed", () => {

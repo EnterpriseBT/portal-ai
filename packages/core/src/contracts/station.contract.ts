@@ -114,15 +114,19 @@ export type StationGetResponsePayload = z.infer<
 
 // ── Create ────────────────────────────────────────────────────────────
 
-export const CreateStationBodySchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
-  connectorInstanceIds: z.array(z.string()).optional(),
-  /** #674: curated views to attach, independent of the connectors. Each must
-   *  be readable by the caller. */
-  curatedViewIds: z.array(z.string()).optional(),
-  toolPacks: z.array(z.string()).min(1).optional(),
-});
+export const CreateStationBodySchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    connectorInstanceIds: z.array(z.string()).optional(),
+    /** #674: curated views to attach, independent of the connectors. Each must
+     *  be readable by the caller. */
+    curatedViewIds: z.array(z.string()).optional(),
+    toolPacks: z.array(z.string()).min(1).optional(),
+  })
+  // #706: an unknown key (e.g. update's `curatedViewChanges`) is a 400, not
+  // silently dropped.
+  .strict();
 
 export type CreateStationBody = z.infer<typeof CreateStationBodySchema>;
 
@@ -149,6 +153,8 @@ export const StationAttachmentChangesSchema = z
     add: z.array(z.string()).optional(),
     remove: z.array(z.string()).optional(),
   })
+  // #706: a typo like `added` is a 400, not a change that attaches nothing.
+  .strict()
   .refine(
     (c) => {
       const removed = new Set(c.remove ?? []);
@@ -169,6 +175,9 @@ export const UpdateStationBodySchema = z
     curatedViewChanges: StationAttachmentChangesSchema.optional(),
     toolPacks: z.array(z.string()).min(1).optional(),
   })
+  // #706: an unknown key (e.g. create's `curatedViewIds`) is a 400, not a
+  // silent no-op that reports success while attaching nothing.
+  .strict()
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
     message: "At least one field must be provided",
   });
