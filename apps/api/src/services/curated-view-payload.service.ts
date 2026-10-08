@@ -56,7 +56,7 @@ export class CuratedViewPayloadService {
         set.can("resource.read", {
           type: "field_mapping",
           id: fm.id,
-          createdBy: fm.createdBy ?? undefined,
+          createdBy: fm.createdBy,
         })
       )
       .map((fm) => fm.id);

@@ -182,7 +182,9 @@ describe("#599 slice 2 — FK-condition expansion (in_curated_view)", () => {
   const canRead = (
     set: Awaited<ReturnType<typeof PermissionService.loadSet>>,
     id: string
-  ) => set.can("resource.read", { type: "field_mapping", id });
+  ) =>
+    // #731: creator unknown — only the FK-expanded instance grant can match.
+    set.can("resource.read", { type: "field_mapping", id, createdBy: null });
 
   it("an explicit-projection view grants read on ONLY its joined field mappings", async () => {
     const viewId = await makeView([fmIds[0]]); // amount only

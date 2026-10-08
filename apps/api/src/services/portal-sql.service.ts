@@ -385,7 +385,7 @@ export class PortalSqlServiceImpl {
         set.can("resource.read", {
           type: "field_mapping",
           id: c.fieldMappingId,
-          createdBy: c.fieldMappingCreatedBy ?? undefined,
+          createdBy: c.fieldMappingCreatedBy,
         })
     );
   }

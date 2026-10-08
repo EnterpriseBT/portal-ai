@@ -501,7 +501,7 @@ describe("PermissionSet.assertStatementsWithinBoundary (#622)", () => {
 // ── Page view + class-vs-object composition (#630) ───────────────────
 
 describe("PermissionSet — page view + composable surfaces (#630)", () => {
-  const page = (id: string) => ({ type: "page", id });
+  const page = (id: string) => ({ type: "page" as const, id });
 
   it("view page:<id> is allowed only for the granted id (class-level implicit-deny)", () => {
     const set = new PermissionSet(ctx("member"), [
@@ -558,7 +558,11 @@ describe("PermissionSet — page view + composable surfaces (#630)", () => {
 });
 
 describe("PermissionSet — isDenied + FK-condition fail-closed (#599 slice 2)", () => {
-  const rec = (id?: string) => ({ type: "entity_record", id });
+  const rec = (id: string) => ({
+    type: "entity_record",
+    id,
+    createdBy: null,
+  });
 
   it("isDenied is true on an explicit unconditional class-level deny", () => {
     const set = new PermissionSet(ctx("member"), [
@@ -613,7 +617,54 @@ describe("PermissionSet — isDenied + FK-condition fail-closed (#599 slice 2)",
       }),
     ]);
     expect(
-      set.can("resource.read", { type: "field_mapping", id: "fm-1" })
+      set.can("resource.read", {
+        type: "field_mapping",
+        id: "fm-1",
+        createdBy: null,
+      })
     ).toBe(false);
+  });
+});
+
+// ── By-id objects name their creator (#731) ─────────────────────────
+
+describe("PermissionSet — explicit unknown creator (#731)", () => {
+  const unknown = (id = "st-1") => ({
+    type: "station",
+    id,
+    createdBy: null,
+  });
+
+  it("`createdBy: null` matches no ownership condition", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "read", condition: "created_by_caller" }),
+      S({ verb: "read", condition: "created_by_system" }),
+    ]);
+    expect(set.can("resource.read", obj("user-1"))).toBe(true);
+    expect(set.can("resource.read", obj(SYSTEM))).toBe(true);
+    expect(set.can("resource.read", unknown())).toBe(false);
+  });
+
+  it("`createdBy: null` still matches unconditional and instance grants", () => {
+    expect(
+      new PermissionSet(ctx("member"), [S({ verb: "read" })]).can(
+        "resource.read",
+        unknown()
+      )
+    ).toBe(true);
+    const instance = new PermissionSet(ctx("member"), [
+      S({ verb: "read", resourceId: "st-1" }),
+    ]);
+    expect(instance.can("resource.read", unknown("st-1"))).toBe(true);
+    expect(instance.can("resource.read", unknown("st-2"))).toBe(false);
+  });
+
+  it("deny still wins over an allow for `createdBy: null`", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "read" }),
+      S({ effect: "deny", verb: "read", resourceId: "st-1" }),
+    ]);
+    expect(set.can("resource.read", unknown("st-1"))).toBe(false);
+    expect(set.isDenied("read", "station", unknown("st-1"))).toBe(true);
   });
 });

@@ -119,7 +119,7 @@ async function assertFieldsReadable(
       !set.can("resource.read", {
         type: "field_mapping",
         id,
-        createdBy: createdByFm.get(id),
+        createdBy: createdByFm.get(id) ?? null,
       })
     ) {
       throw new ApiError(
