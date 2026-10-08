@@ -1204,6 +1204,20 @@ function translateExecutionError(err: unknown): unknown {
       `unknown entity: ${missing}`
     );
   }
+  if (code === "42703") {
+    // #727: a column the view doesn't expose to this caller (dropped from the
+    // projection, or hidden by their grants) is indistinguishable from one
+    // that doesn't exist, the sibling of 42P01's "unknown entity".
+    const match =
+      /column "([^"]+)" does not exist/i.exec(message) ??
+      /column ([\w.]+) does not exist/i.exec(message);
+    const missing = match?.[1] ?? "(unknown column)";
+    return new ApiError(
+      400,
+      ApiCode.PORTAL_SQL_FORBIDDEN,
+      `unknown column: ${missing}`
+    );
+  }
   if (code === "57014") {
     return new ApiError(
       400,

@@ -845,7 +845,7 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
   [ApiCode.VIZ_WIDGET_NOT_FOUND]:
     "That visualization widget wasn't found, or isn't available to your organization.",
   [ApiCode.VIZ_WIDGET_NOT_REFRESHABLE]:
-    "This chart predates live refresh — re-run the prompt to regenerate it with current data.",
+    "This chart can't be refreshed: it predates live refresh, or its query no longer matches the data the user can see (#727). Re-run the prompt to regenerate it with current data.",
   [ApiCode.VIZ_REFRESH_RATE_LIMITED]:
     "Too many refreshes in a short window. Wait a moment and try again.",
   [ApiCode.API_RATE_LIMITED]: "Too many requests. Wait a moment and try again.",

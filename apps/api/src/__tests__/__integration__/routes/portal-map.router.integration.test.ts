@@ -350,6 +350,50 @@ describe("Portal map tile route (#316)", () => {
     expect(res.body).toBeUndefined();
   });
 
+  // #727: a stored pipeline naming a column the view no longer exposes (a
+  // projection change, or a viewer whose grants hide it) is a 42703, which
+  // answered 500 on every tile. It degrades like a missing view: empty, 204.
+  it("#727: a pin whose pipeline names a column the view doesn't expose serves an empty tile (204), not 500", async () => {
+    const stalePinId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id: stalePinId,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Stale-column map",
+        type: "geo",
+        content: {
+          pipeline: {
+            sql: 'SELECT "c_geom" AS geom, "c_no_such_column" FROM parcels',
+            stationId,
+            organizationId: orgId,
+          },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: stalePinId },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+      userId,
+      authorizeSource: allowAllSources,
+    });
+    expect(res.status).toBe(204);
+    expect(res.body).toBeUndefined();
+  });
+
   it("#660: a pin whose stored pipeline reads a raw er__ table serves an empty tile, never the data", async () => {
     // A pinned pipeline only ever passed the pre-#660 regex gate, so one could
     // hold a physical-table reference. The tile re-validates it every run and

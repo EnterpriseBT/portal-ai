@@ -1131,7 +1131,12 @@ export class PortalMapTileService {
       // and never the data. An org-wide-deleted view degrades to empty for
       // everyone, which is acceptable. This is the per-user counterpart to the
       // old org-wide builder, where the view always existed so this never fired.
-      if (unwrapPgError(err).code === "42P01") {
+      // #727: a missing column (42703) is the same situation one level down:
+      // the stored pipeline names a column this caller's view doesn't expose
+      // (a projection change, or grants that hide it). Same empty tile, never
+      // a 500 on every tile of the map.
+      const pgCode = unwrapPgError(err).code;
+      if (pgCode === "42P01" || pgCode === "42703") {
         return {
           mvt: null,
           featureCount: 0,

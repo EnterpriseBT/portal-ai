@@ -240,7 +240,34 @@ export class PortalVizRefreshService {
    * caller org — the same funnel as the original mint — and map the delivery
    * to the refresh-response union.
    */
+  /**
+   * #727: {@link runPipeline}, with a stored query that no longer matches the
+   * caller's views (it names a view or column they don't expose: an "unknown
+   * entity" / "unknown column" refusal) answered as a widget that can't be
+   * refreshed until its prompt is re-run, not a 500.
+   */
   private static async executePipeline(
+    ...args: Parameters<typeof PortalVizRefreshService.runPipeline>
+  ): Promise<WidgetRefreshResponse> {
+    try {
+      return await this.runPipeline(...args);
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
+        /^unknown (entity|column):/.test(err.message)
+      ) {
+        throw new ApiError(
+          422,
+          ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
+          "This widget's query no longer matches the data you can see — re-run the prompt to rebuild it."
+        );
+      }
+      throw err;
+    }
+  }
+
+  private static async runPipeline(
     pipeline: VizPipeline,
     organizationId: string,
     userId: string,
