@@ -10,11 +10,13 @@
  * - **A cast.** Any `as PermissionObject` / `<PermissionObject>`, and any cast
  *   (`as never`, `as any`, …) on an argument of a permission call, except the
  *   action string's `as PermissionAction`. There is no allowlist.
- * - **A silent `?? null`.** `null` means "creator unknown", which is right for
- *   a deleted row or an id that isn't the parent's, and is the #729 bug when
- *   the creator simply wasn't looked up. The compiler can't tell them apart, so
- *   a `createdBy: … ?? null` must carry its reason, a comment citing an issue
- *   (`// #729: …`) on the same line or directly above.
+ * - **A forced or defaulted creator.** `null` means "creator unknown", which is
+ *   right for a deleted row or an id that isn't the parent's, and is the #729
+ *   bug when the creator simply wasn't looked up. The compiler can't tell them
+ *   apart, nor see through `m.get(id)!`, `m.get(id) as string`, `?? ""` or
+ *   `|| null`. So a `createdBy:` written with `!`, a cast, `??` or `||` must
+ *   carry its reason, a comment citing an issue (`// #729: …`) on the same
+ *   line or in the `//` block directly above.
  *
  * Parsed with the TypeScript AST rather than grepped: casts span lines, and
  * `permission-set.ts` carries NUL-byte sentinels that make grep skip it.
@@ -34,14 +36,63 @@ const PERMISSION_CALLS = new Set([
   "isDenied",
   "assertWithinBoundary",
 ]);
+/** A file that talks to the permission engine. The forced-creator rule only
+ *  applies here: elsewhere a by-id `createdBy` is a row's audit stamp on a
+ *  write (`prior?.createdBy ?? userId`), not an ownership claim. This is a
+ *  heuristic boundary, so a new permission wrapper belongs in this list. */
+const PERMISSION_DOMAIN =
+  /\b(PermissionSet|PermissionService|ObjectAccessService|ObjectCapabilitiesService|PortalAccessService|ConnectorInstanceAccessService|CuratedViewPayloadService)\b|\.(can|check)\(/;
 const REASON = /\/\/.*#\d+|\/\*[\s\S]*#\d+[\s\S]*\*\//;
 
 function isCast(n: ts.Node): n is ts.AsExpression | ts.TypeAssertion {
   return ts.isAsExpression(n) || ts.isTypeAssertionExpression(n);
 }
 
+/**
+ * A `createdBy` value that silences the compiler rather than naming a real
+ * creator: a non-null `!`, a cast, or a `??` / `||` fallback (`?? null`,
+ * `?? ""`, `|| null`, …). Each one turns "creator not looked up" into a value
+ * the type accepts, which is the #729 bug (adversarial walk on #735).
+ */
+function forcesCreator(e: ts.Expression): boolean {
+  while (ts.isParenthesizedExpression(e)) e = e.expression;
+  return (
+    ts.isNonNullExpression(e) ||
+    isCast(e) ||
+    (ts.isBinaryExpression(e) &&
+      (e.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+        e.operatorToken.kind === ts.SyntaxKind.BarBarToken))
+  );
+}
+
+/** An object literal with an `id`: the by-id shape whose creator a
+ *  permission check matches. A record write carries `createdBy` too, but its
+ *  default (`prior?.createdBy ?? userId`) is the row's audit stamp, not an
+ *  ownership claim. */
+function isByIdObject(o: ts.Node): boolean {
+  return (
+    ts.isObjectLiteralExpression(o) &&
+    o.properties.some(
+      (p) =>
+        p.name?.getText() === "id" ||
+        (ts.isShorthandPropertyAssignment(p) && p.name.text === "id")
+    )
+  );
+}
+
+/** The line itself, or the `//` comment block directly above it, cites an
+ *  issue. */
+function hasReason(lines: string[], line: number): boolean {
+  if (REASON.test(lines[line])) return true;
+  for (let i = line - 1; i >= 0 && /^\s*(\/\/|:\s*\/\/)/.test(lines[i]); i--) {
+    if (REASON.test(lines[i])) return true;
+  }
+  return false;
+}
+
 /** Every violation in `source`, as `<line>: <text>`. */
 export function permissionObjectViolations(source: string): string[] {
+  const inPermissionDomain = PERMISSION_DOMAIN.test(source);
   const sf = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, true);
   const lines = source.split("\n");
   const out: string[] = [];
@@ -71,14 +122,13 @@ export function permissionObjectViolations(source: string): string[] {
     } else if (
       ts.isPropertyAssignment(n) &&
       n.name.getText(sf) === "createdBy" &&
-      ts.isBinaryExpression(n.initializer) &&
-      n.initializer.operatorToken.kind ===
-        ts.SyntaxKind.QuestionQuestionToken &&
-      n.initializer.right.kind === ts.SyntaxKind.NullKeyword
+      inPermissionDomain &&
+      isByIdObject(n.parent) &&
+      forcesCreator(n.initializer)
     ) {
       const line = sf.getLineAndCharacterOfPosition(n.getStart(sf)).line;
-      if (!REASON.test(lines[line]) && !REASON.test(lines[line - 1] ?? "")) {
-        report(n, "`createdBy: … ?? null` without a reason");
+      if (!hasReason(lines, line)) {
+        report(n, "`createdBy` forced or defaulted without a reason");
       }
     }
     ts.forEachChild(n, visit);
@@ -116,7 +166,7 @@ describe("by-id permission objects name their creator (#731)", () => {
     }
   });
 
-  it("no source file casts past PermissionObject or nulls a creator silently", () => {
+  it("no source file casts past PermissionObject or forces a creator silently", () => {
     const offenders = files.flatMap((f) =>
       permissionObjectViolations(f.source).map((v) => `${f.path}:${v}`)
     );
@@ -132,6 +182,11 @@ describe("by-id permission objects name their creator (#731)", () => {
       "set.check(action, {\n  type,\n  id,\n} as any);",
       "set.isDenied('read', 'station', o as never);",
       "set.can(action, { type, id, createdBy: m.get(id) ?? null });",
+      "set.can(action, { type, id, createdBy: m.get(id)! });",
+      "set.can(action, { type, id, createdBy: m.get(id) as string });",
+      'set.can(action, { type, id, createdBy: m.get(id) ?? "" });',
+      "set.can(action, { type, id, createdBy: (m.get(id) || null) });",
+      "// #731: unrelated, a blank line breaks the block\n\nset.can(a, { id, createdBy: m.get(id)! });",
     ]) {
       expect([bad, permissionObjectViolations(bad).length]).toEqual([bad, 1]);
     }
@@ -143,6 +198,9 @@ describe("by-id permission objects name their creator (#731)", () => {
       "set.can(action, { type, id, createdBy: m.get(id) ?? null }); // #729: gone",
       "// #729: an id not on this entity has no creator\nconst o = { createdBy: m.get(id) ?? null };",
       "save(data as never);",
+      "set.can(a, cond\n  ? x\n  : // #731: the map holds every id,\n    // as shown above.\n    { id, createdBy: m.get(id)! });",
+      "set.can(action, { type, id, createdBy: m.get(id)! }); // #731: test",
+      "const o = { createdBy: ctx.userId };",
     ]) {
       expect([ok, permissionObjectViolations(ok)]).toEqual([ok, []]);
     }
