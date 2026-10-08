@@ -56,3 +56,47 @@ The 403 also gets clearer. When the new projection is "all columns", the message
 - Omitting unchanged fields in the editor (option a). The server rule covers every client.
 - Naming the unreadable column in the 403: it would disclose an unreadable column's name.
 - Cleaning dead ids out of projections on label-only saves; they're harmless and drop on the next real change.
+
+## Adversarial
+
+Probes for how #738 breaks. The change loosens the self-exposure guard: only what a change **newly** exposes is checked, and an unchanged set skips the check entirely. So the probes ask whether any sequence lets a writer expose a column they can't read that the view didn't already show, read it themselves, or use the shortcut to get around the write check or #736's checks. **Branch under test:** `fix/738-resave-unrestricted-view` (PR [#739](https://github.com/EnterpriseBT/portal-ai/pull/739)). API probes use `curl` against `:3001` with the e2e owner and member tokens, in `e2e-fixture` on "Smoke Polygons" (`baec54f9-…`, system-created mappings `text`, `enum`, `geometry`, all readable by the member). Each probe that needs one inserts a **secret** mapping on the same entity, created by the owner, which the member can't read. The member owns a view through `update curated_views set created_by = '<member>'`. Remove every `adv738_*` view, grant, secret mapping and projection row afterwards, and restore anything soft-deleted.
+
+### Preflight
+- [ ] The dev stack is up on this branch; e2e owner and member sessions are fresh; `owner.storageState.json` is backed up (for the §7 identity switch).
+
+### §1 Boundary & limit inputs
+- [ ] Member-owned view stored as `[]` (no rows); PATCH `fieldMappingIds: []`. Expected safe result: 200, treated as unchanged, and no projection rows are written. — backend
+- [ ] Member-owned view stored as `[text]` with secret present; PATCH `[]`. Expected safe result: 403 with "An all-columns view needs read access to every column of its entity", and the projection is still `[text]`. — backend
+
+### §2 Malformed & injection input: N/A. No new input parsing; #736's walk covered malformed ids on this route.
+
+### §3 Concurrency & races
+- [ ] Member-owned view `[text, secret]`. Fire two PATCHes at once (`& … & wait`): one resends `[text, secret]` (unchanged) and one sends `[secret]` (narrowing). Expected safe result: both return 200 or one returns a clean error, never a 500. The final projection is one of the two sets, with no duplicate rows. — backend
+
+### §4 Auth & permission boundaries
+- [ ] The owner shares a member-unowned view read-only with the member. The member PATCHes it, resending the stored ids unchanged with a new label. Expected safe result: 403 `PERMISSION_DENIED`. The shortcut never runs ahead of the write check, and the label is unchanged. — backend
+- [ ] Member-owned view `[text, secret]`; the member PATCHes `[secret]` (removes `text`). Expected safe result: 200 (narrowing). Then the member GETs `/records`: **no** `secret` column or values. The member can't read the column through their own view. — backend
+- [ ] Member-owned view `[text, secret]`; the member swaps `text` for `enum` (`[secret, enum]`). Expected safe result: 200. Then the member PATCHes to add a **second** secret mapping. Expected safe result: 403 `CURATED_VIEW_FIELD_NOT_READABLE`, with the projection unchanged. — backend
+
+### §5 Multi-tenant isolation
+- [ ] Member-owned view `[text, secret]`; PATCH the stored ids plus an Org B mapping id. Expected safe result: 400 `CURATED_VIEW_INVALID_PAYLOAD` (the set changed, so #736's membership check runs), and the projection is unchanged. — backend
+
+### §6 State & lifecycle abuse
+- [ ] Member-owned view `[text, secret]`; soft-delete `secret`, then restore it in SQL. The member PATCHes `[text, secret, enum]`. Expected safe result: 200. `secret` counts as already shown (the view projected it the whole time), only `enum` is checked, and nothing new is exposed. — backend
+- [ ] Member-owned all-columns view (`[]`), saved **before** secret exists; then secret is added. The member PATCHes `[secret]`. Expected safe result: 200 (narrowing from all columns; secret was already shown through `[]`). The member's own `/records` still shows no `secret` column. — backend
+- [ ] Owner view `[enum]`; soft-delete `enum`; PATCH `{ label, fieldMappingIds: [enum] }`. Expected safe result: 200, label saved, projection untouched. A changed request `[text, enum]` → 200 and stores `[text]`. — backend
+
+### §7 Misuse sequences
+- [ ] In the browser as the **member** (`e2e:use member`, then close and reopen the browser): open the editor on the member's own all-columns view while secret exists, change only the label, and save. Expected safe result: it saves with no error alert and the new label shows. This is the original #738 repro. Switch back to the owner afterwards (`e2e:use owner`).
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name>: confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/view/mapping ids):
