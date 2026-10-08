@@ -428,9 +428,17 @@ export class PortalService {
     }
 
     const messages = await repo.portalMessages.findByPortal(portalId);
-    const coreMessages = reconstructModelMessages(messages);
+    // #726 (review): the model messages are built on access only. The UI's
+    // GET reads portal + messages and never pays for the projection.
+    let coreMessages: ModelMessage[] | undefined;
 
-    const result: PortalWithMessages = { portal, messages, coreMessages };
+    const result: PortalWithMessages = {
+      portal,
+      messages,
+      get coreMessages() {
+        return (coreMessages ??= reconstructModelMessages(messages));
+      },
+    };
 
     if (opts?.include?.includes("pinnedResults")) {
       const allPins = await repo.portalResults.findMany(
@@ -976,6 +984,17 @@ function capResultRows(content: unknown): unknown {
 }
 
 /**
+ * #726: a recent turn's tool result as the model reads it on replay — the same
+ * projection the live step sent (`toModelOutput`), so the model's account of
+ * a result doesn't change between turns (true row count, no raw rows it never
+ * saw). Only a result that already fits keeps the row cap.
+ */
+function replayResult(content: unknown): unknown {
+  const viewed = toModelView(content);
+  return viewed === content ? capResultRows(content) : viewed;
+}
+
+/**
  * Build a compact placeholder for a truncated tool result so the model
  * retains awareness that the tool was called without the full payload.
  * Includes column names and a sample row for context.
@@ -1125,9 +1144,7 @@ function reconstructModelMessages(
         const toolName = String(block.toolName ?? "tool");
         const raw = truncateResults
           ? summarizeToolResult(toolName, block.content)
-          : // #726: the same byte cap the live step applies (toModelOutput);
-            // the row cap alone let 50 contour polygons through.
-            toModelView(capResultRows(block.content));
+          : replayResult(block.content);
 
         const output =
           typeof raw === "string"

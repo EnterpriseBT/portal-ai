@@ -1191,8 +1191,8 @@ describe("PortalService", () => {
       expect(
         Buffer.byteLength(JSON.stringify(value), "utf8")
       ).toBeLessThanOrEqual(100_000);
-      // The existing row cap (50), then the byte cap.
-      expect(value.rowCount).toBe(50);
+      // The same projection the live step sent: the true row count.
+      expect(value.rowCount).toBe(80);
       expect(value.spec).toEqual({ basemap: "streets" });
     });
 

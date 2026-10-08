@@ -34,6 +34,15 @@ Options:
 - **Large output with a `rows` array:** `rows` is replaced by `rowCount` plus `samplePeek: capSamplePeek(rows)`, and a one-line `note` says the rows were omitted for the model and the user sees the full result. Other fields (`type`, `spec`, `pipeline`, `title`, `schema`) are kept, with their string cells capped the same way.
 - **Anything else large:** `{ truncated: true, originalBytes, preview }`, where `preview` is the first 2 KB of the JSON.
 
+**Review follow-ups.**
+- **Replay matches live.** Replay projects the stored result first, the same as the live step, so the model sees the true row count and never gets raw rows it didn't see live. Only a result that already fits keeps the 50-row cap.
+- **Useful fields kept.** Fields like the d3 `program` and the `pipeline` SQL stay whole, and are cut back only if the view would still be over budget.
+- **More row shapes.** A top-level array counts as rows. Tuple rows are sampled as `{ value }`, and the sample reads only the first 20 rows.
+- **Fallbacks.** The last-resort preview lists the result's fields. An output that can't be serialized fails closed.
+- **Composes with a tool's own projection.** If a tool already defines `toModelOutput`, it runs first and a JSON result from it is capped too.
+- **No cost on page loads.** `getPortal`'s `coreMessages` is lazy, so the UI's GET never pays for the projection.
+- **Not done: a per-turn total budget.** With 100 KB per result, a turn stays around 3× under the 1M-token limit. The whole-prompt pre-flight check stays out of scope.
+
 Wiring:
 - The wrap sets `toModelOutput: ({ output }) => ({ type: "json", value: toModelView(output) })` on every tool, next to `wrapWithCostGate`, and the existing guard test asserts it is present.
 - `reconstructModelMessages` passes each replayed tool result through `toModelView` before its existing row trim, and `summarizeToolResult` caps cells.

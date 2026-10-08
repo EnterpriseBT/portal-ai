@@ -73,33 +73,93 @@ describe("toModelView (#726)", () => {
     expect(bytes(view)).toBeLessThanOrEqual(MODEL_OUTPUT_MAX_BYTES);
   });
 
-  it("leaves a value JSON can't encode alone", () => {
+  it("leaves undefined alone", () => {
     expect(toModelView(undefined)).toBeUndefined();
+  });
+
+  // #726 (review) follow-ups.
+  it("fails closed on an output that can't be serialized", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(toModelView(circular)).toMatchObject({ truncated: true });
+  });
+
+  it("keeps a long program and pipeline whole when the projection fits", () => {
+    const program = "p".repeat(12_000);
+    const output = {
+      type: "d3",
+      program,
+      pipeline: { sql: "s".repeat(11_000) },
+      rows: Array.from({ length: 100 }, () => ({ geom: contour(2_000) })),
+    };
+    const view = toModelView(output) as Record<string, unknown>;
+    expect(view.program).toBe(program);
+    expect(view.pipeline).toEqual(output.pipeline);
+    expect(view.rowCount).toBe(100);
+  });
+
+  it("treats a top-level array as rows and samples tuple rows", () => {
+    const rows = Array.from({ length: 100 }, (_, i) => [i, "x".repeat(2_000)]);
+    const view = toModelView(rows) as Record<string, unknown>;
+    expect(view.rowCount).toBe(100);
+    const sample = view.samplePeek as Array<Record<string, unknown>>;
+    expect(sample.length).toBeGreaterThan(0);
+    expect(sample[0]).toHaveProperty("value");
+  });
+
+  it("names the fields in the last-resort preview", () => {
+    const view = toModelView({
+      a: "x".repeat(60_000),
+      b: "y".repeat(60_000),
+    }) as Record<string, unknown>;
+    expect(view.fields).toEqual(["a", "b"]);
   });
 });
 
 describe("wrapWithModelOutputCap (#726)", () => {
-  it("matches the SDK default within budget: a string as text, undefined as null", () => {
+  it("runs a tool's own toModelOutput first and caps its JSON", async () => {
+    const big = {
+      rows: Array.from({ length: 100 }, () => ({ geom: contour(2_000) })),
+    };
+    const tools: Record<
+      string,
+      { toModelOutput?: (o: { output: unknown }) => unknown }
+    > = {
+      a: { toModelOutput: () => ({ type: "json", value: big }) },
+      b: { toModelOutput: () => ({ type: "text", value: "own summary" }) },
+    };
+    wrapWithModelOutputCap(tools as never);
+    const a = (await tools.a.toModelOutput!({ output: null })) as {
+      value: Record<string, unknown>;
+    };
+    expect(a.value.rowCount).toBe(100);
+    expect(await tools.b.toModelOutput!({ output: null })).toEqual({
+      type: "text",
+      value: "own summary",
+    });
+  });
+
+  it("matches the SDK default within budget: a string as text, undefined as null", async () => {
     const tools: Record<
       string,
       { toModelOutput?: (o: { output: unknown }) => unknown }
     > = { a: {} };
     wrapWithModelOutputCap(tools);
-    expect(tools.a.toModelOutput!({ output: "ok" })).toEqual({
+    expect(await tools.a.toModelOutput!({ output: "ok" })).toEqual({
       type: "text",
       value: "ok",
     });
-    expect(tools.a.toModelOutput!({ output: undefined })).toEqual({
+    expect(await tools.a.toModelOutput!({ output: undefined })).toEqual({
       type: "json",
       value: null,
     });
-    expect(tools.a.toModelOutput!({ output: { x: 1 } })).toEqual({
+    expect(await tools.a.toModelOutput!({ output: { x: 1 } })).toEqual({
       type: "json",
       value: { x: 1 },
     });
   });
 
-  it("gives every tool a toModelOutput that sends the model view", () => {
+  it("gives every tool a toModelOutput that sends the model view", async () => {
     const tools: Record<
       string,
       { toModelOutput?: (o: { output: unknown }) => unknown }
@@ -112,7 +172,7 @@ describe("wrapWithModelOutputCap (#726)", () => {
       rows: Array.from({ length: 100 }, () => ({ geom: contour(2_000) })),
     };
     for (const tool of Object.values(tools)) {
-      const out = tool.toModelOutput!({ output: big }) as {
+      const out = (await tool.toModelOutput!({ output: big })) as {
         type: string;
         value: Record<string, unknown>;
       };

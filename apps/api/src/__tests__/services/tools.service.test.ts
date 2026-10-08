@@ -1021,7 +1021,11 @@ describe("buildAnalyticsTools()", () => {
     for (const name of names) {
       const toModelOutput = (tools[name] as any).toModelOutput;
       expect(typeof toModelOutput).toBe("function");
-      const out = toModelOutput({ toolCallId: "t", input: {}, output: big });
+      const out = await toModelOutput({
+        toolCallId: "t",
+        input: {},
+        output: big,
+      });
       expect(out.type).toBe("json");
       expect(out.value.rowCount).toBe(100);
     }
