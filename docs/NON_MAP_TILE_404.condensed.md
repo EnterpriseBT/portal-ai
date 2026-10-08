@@ -44,3 +44,40 @@ Options: (a) **check the type**: `block.type === "geo"` for a message, `row.type
 
 - Mapping tile query errors in general to 4xx. Only "not a map" is a 404; other failures stay visible.
 - Changing what the UI requests. It already asks only for map blocks.
+
+## Adversarial
+
+Probes for how #695 breaks. The change adds one early 404, for any tile source whose type isn't `geo`, after the existing org and read checks. So the probes ask whether that 404 tells callers anything the other 404s don't, whether a real map can be refused by mistake, and whether any path still runs a non-map pipeline as a tile. **Branch under test:** `fix/695-non-map-tile-404` (PR [#740](https://github.com/EnterpriseBT/portal-ai/pull/740)). API probes use `curl` against `:3001` with the e2e owner and member tokens, in `e2e-fixture`. Fixtures: message `4969aa01-…`, where block 2 is a `data-table` with a pipeline; geo messages `698c0000-…-0001` and `-0002` (block 0); Org B's ids from the #731/#736 walks. Delete any pin a probe creates.
+
+### §1 Boundary & limit inputs
+- [ ] Same message, valid and invalid indexes: `…/tiles/message/4969aa01-…/2/0/0/0` (table), `…/99/0/0/0` (out of range), and a `tool-result` block index. Expected safe result: 404 `MAP_TILE_NOT_FOUND` with the **identical body** for all three. — backend
+- [ ] A geo message at an extreme valid tile (`z=22` and a far `x/y`). Expected safe result: 200 or 204 (an empty tile), never 404. Being a map doesn't depend on the tile address. — backend
+
+### §2 Malformed & injection input: N/A. No new input parsing; the route's existing z/x/y and id validation is unchanged.
+### §3 Concurrency & races: N/A. A read-only check on stored rows, with no writer involved.
+
+### §4 Auth & permission boundaries
+- [ ] As the **member**, who can't read the portal behind message `4969aa01-…`, request a tile for (a) its `data-table` block and (b) a geo block in a portal they can't read. Expected safe result: the same 404 body for both, identical to the owner's non-map 404. The type check never runs ahead of the read check, so it isn't an oracle. — backend
+- [ ] As the **owner**, pin the `data-table` block, then share the pin read-only with the member. As the member, request the pin's tile. Expected safe result: 404 `MAP_TILE_NOT_FOUND`. Being able to read a non-map pin doesn't make it renderable. — backend
+
+### §5 Multi-tenant isolation
+- [ ] As the e2e owner, request a tile for an Org B **geo** message or pin id, and for an Org B **non-map** one. Expected safe result: the same 404 body for both, identical to an unknown id. Another org's type isn't revealed. — backend
+
+### §6 State & lifecycle abuse
+- [ ] Pin a geo block, confirm its tile is 200, then delete the pin and request it again. Expected safe result: 404 after the delete, with the same body as for a non-map pin. — backend
+- [ ] Pin a `data-table` block whose stored row is `type = 'data-table'`. Then set its `content` to a geo-looking spec in SQL (`update portal_results set content = content || '{"spec":{"layers":[{"kind":"points","source":{"geometryColumn":"geom"}}]}}'`). Expected safe result: still 404. Only the type decides, so a map-shaped spec on a non-map row doesn't run its SQL. — backend
+
+### §7 Misuse sequences
+- [ ] In the browser as the owner, open the polygons map portal (geo message `698c0000-…-0001`), then pan and zoom. Expected safe result: tiles load (200s in the network log), and the map shows no "tile failed" notice. The map path is unaffected.
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name>: confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/message/pin ids):
