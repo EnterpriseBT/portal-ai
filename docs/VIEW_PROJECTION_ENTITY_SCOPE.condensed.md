@@ -57,6 +57,53 @@ The response keeps the existing code, so the contract doesn't change. The web ed
 
 ## Out of scope
 
-- Backfilling or deleting existing cross-entity rows: read paths already ignore them, and step 5 checks whether any exist.
+- Backfilling or deleting existing cross-entity rows: read paths already ignore them, and step 6 found none on app-dev (2026-10-08).
 - A new API code. `CURATED_VIEW_INVALID_PAYLOAD` already covers "Unknown connector entity" on the same route.
 - The deleted-mapping id still listed in a view's `fieldMappingIds` (noted in the #731 walk). It's cosmetic, and a different path.
+
+## Adversarial
+
+Probes for how #736 breaks. The check now refuses some ids, drops others and stores what's left, and an empty projection means "all columns", so the probes ask: can anyone get a projection stored that crosses an entity or org, widens a view, or exposes a column they can't read, and does any answer tell foreign ids apart? **Branch under test:** `fix/736-view-projection-entity-scope` (PR [#737](https://github.com/EnterpriseBT/portal-ai/pull/737)). API probes use `curl` against `:3001` with the `access_token` from `packages/e2e/.auth/<role>.storageState.json`, in `e2e-fixture`, on "Smoke Polygons" (`baec54f9-…`, mappings `f5a19670-…` text, `4a207116-…` enum, `37d0c414-…` geometry). Soft-delete a mapping with SQL (`update field_mappings set deleted = …`), never through the API, which drops the wide-table column. Restore every mapping and delete every `adv736_*` view and grant afterwards.
+
+### Preflight
+- [ ] The dev stack is up (web :3000, API :3001) on this branch; `e2e:auth:all` sessions are fresh; `owner.storageState.json` is backed up so `e2e:use owner` restores it.
+
+### §1 Boundary & limit inputs
+- [ ] Owner: POST with `fieldMappingIds: [""]`. Expected safe result: 400, with nothing created and no 500. — backend
+- [ ] Owner: POST with 1 valid id plus 300 random UUIDs. Expected safe result: 400 "not a column of this entity", with nothing created and no 500 (the `inArray` lookup handles a long list). — backend
+- [ ] Owner: POST with `fieldMappingIds: []`. Expected safe result: 201, and the view is unrestricted (all three columns on `/records`). That's the intended "all columns" path, still behind the read check on every column. — backend
+
+### §2 Malformed & injection input
+- [ ] Owner: POST with `fieldMappingIds: ["x' OR '1'='1"]` and with `[123]`. Expected safe result: 400 for both (the string is "not a column", the number is a schema error); nothing is created; the query is parameterised. — backend
+
+### §3 Concurrency & races
+- [ ] Owner: fire two PATCHes to one view at once, one with `[text]` and one with `[text, enum]` (`curl … & curl … & wait`). Expected safe result: both return 200 or one returns a clean error, never a 500. The final projection equals one of the two requests, with no duplicate or mixed rows (`select field_mapping_id from curated_view_field_mappings where curated_view_id = … and deleted is null`). — backend
+
+### §4 Auth & permission boundaries
+- [ ] Owner shares a projected view read-only with the member. As the member, PATCH it with `fieldMappingIds` holding another entity's mapping. Expected safe result: 403 `PERMISSION_DENIED` from the write check, **not** 400. The projection check never runs for a caller who can't write, so it isn't an oracle. — backend
+- [ ] As the member, PATCH a view they can't read with a foreign id. Expected safe result: 404 `CURATED_VIEW_NOT_FOUND`, identical to a random view id. — backend
+- [ ] Give the member `write curated_view` (a custom grant, as in the #729 test) and have them own a view projecting one column. Then the owner creates a new owner-created mapping on the same entity (SQL insert), which the member can't read, and the member PATCHes to add it. Expected safe result: 403 `CURATED_VIEW_FIELD_NOT_READABLE`. Dropping and validation didn't loosen the self-exposure guard. — backend
+
+### §5 Multi-tenant isolation
+- [ ] Owner of `e2e-fixture`: PATCH a view with (a) an Org B **live** mapping id, (b) an Org B mapping soft-deleted with SQL, and (c) a random UUID. Expected safe result: an identical 400 with the same message for all three. A foreign deleted id is **not** dropped, because the deleted-mapping lookup is scoped to the view's entity. Restore the Org B mapping afterwards. — backend
+- [ ] Same, with a **soft-deleted mapping of another entity in the same org** ("Smoke Contours"). Expected safe result: 400, not dropped. — backend
+
+### §6 State & lifecycle abuse
+- [ ] View on [text, enum]; soft-delete enum; PATCH `{ fieldMappingIds: [enum] }` (only the dead id). Expected safe result: 400 "None of the selected columns exist any more", and the stored projection is still `[text, enum]`, not widened to all columns. — backend
+- [ ] View on [enum]; soft-delete enum; PATCH `{ label }` only. Expected safe result: 200, with the projection untouched (still `[enum]`); `/records` shows no columns rather than all of them. — backend
+- [ ] View on [text, enum]; soft-delete enum; save the stored ids (drops enum); then **restore** enum in SQL. Expected safe result: the view stays `[text]`. A restored mapping doesn't come back into a projection it was dropped from. — backend
+
+### §7 Misuse sequences
+- [ ] In the browser as owner: open the editor on a view whose projection holds a soft-deleted mapping, change only the label, and save. Expected safe result: it saves with no error alert, the detail page shows one fewer selected column, and the dead column never appears in the picker.
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name>: confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/view/mapping ids):
