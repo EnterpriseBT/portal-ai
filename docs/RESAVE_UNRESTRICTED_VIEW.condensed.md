@@ -18,21 +18,28 @@
 
 Options: (a) the editor omits `fieldMappingIds` when unchanged. That's client-only, so other clients and stale tabs still hit the 403. (b) **PATCH compares the requested ids with the stored ones as a set and, when they're equal, treats the field as absent**: no check and no replace. (c) Keep the check but skip only the read step when unchanged. That still 400s the all-dead case and still rewrites rows for nothing.
 
-**Decided: (b).** It holds for every client and is one comparison against a read PATCH already makes. "Unchanged" means the same set of ids as the view's live projection rows (`[]` matches a view with no rows). Order is ignored, and so are duplicates: nothing is written, so they can't reach the unique index. Any actual change, including adding or removing one id or switching between `[]` and a list, still runs the full `assertProjection`. That's the only way to change exposure. One consequence: a label-only save no longer drops a dead id from the projection (#736). That's harmless, because read paths already ignore it and the next real projection change drops it.
+**Decided: (b)**, widened by code review on #739 to fix the cause rather than one symptom. The self-exposure guard exists so a view editor can't expose a column they can't read. Re-checking columns the view **already** shows doesn't serve that purpose, and it's what blocked the save. So:
 
-The 403 also gets clearer. When the effective projection is "all columns", the message says so: "An all-columns view needs read access to every column of its entity". An explicit list keeps the existing message. Neither names the unreadable column, because naming it would reveal something the caller can't read. The code stays `CURATED_VIEW_FIELD_NOT_READABLE`.
+1. **Unchanged = not sent.** PATCH compares the requested ids with the view's live projection rows as a set (`[]` matches no rows). If they're equal, there's nothing to check and nothing to rewrite. Duplicates are refused first, so `[a, b, a]` against stored `[a, b]` is still a 400. A label-only save therefore no longer drops a dead id from the projection (#736); read paths ignore it, and the next real change drops it.
+2. **A change is checked only on what it newly exposes.** That means the added ids, or for a widen to all columns, every live column not already projected. Narrowing exposes nothing, so it's never refused: removing a column, all columns → a list, or dropping a dead id. Creating a view counts every column it will show as new. One consequence is deliberate: a writer may keep a column they can't read while editing the others. Someone who could read it exposed it, and the writer gains no new access.
+3. **One snapshot.** The stored projection is read inside the PATCH transaction, after the view-row update takes its lock, so the comparison, the check and the replace all see the same rows and a concurrent save can't slip in between. `assertProjection`'s reads run on that transaction's client.
+
+The 403 also gets clearer. When the new projection is "all columns", the message says so: "An all-columns view needs read access to every column of its entity". An explicit list keeps the existing message. Neither names the unreadable column, because naming it would reveal something the caller can't read. The code stays `CURATED_VIEW_FIELD_NOT_READABLE`, and the PATCH `@openapi` 403 description now spells out the rule.
 
 ## Plan — one slice
 
 **Files**
-- Edit: `apps/api/src/routes/curated-view.router.ts`: PATCH loads the stored projection ids before the check and compares sets; if they're equal, the projection is `undefined`. `assertProjection` picks the all-columns message when the effective projection came from `[]`.
+- Edit: `apps/api/src/routes/curated-view.router.ts`: `assertProjection(set, entity, ids, stored?, client?)` checks read only on newly exposed columns (`stored` undefined on create). PATCH refuses duplicates, then, inside the transaction, compares with the stored rows and only runs the check and the replace on a real change. The all-columns 403 message is added, and the `@openapi` 403 is updated.
 
 **Tests** (`apps/api/src/__tests__/__integration__/routes/curated-view.router.integration.test.ts`)
 - Member-owned unrestricted view; an owner-created column is added; member PATCHes `{ label, fieldMappingIds: [] }` → 200 and the label is saved. Fails today with 403.
 - Same view, member PATCHes `{ fieldMappingIds: [<a column they can read>] }` (a real change) → 200; the guard still passes on a readable explicit list.
 - Member PATCHes an explicit view to `[]` (a real change, widening to all columns) with an unreadable column present → 403 with the all-columns message.
 - View whose every projected column was deleted; PATCH `{ label, fieldMappingIds: <stored ids> }` → 200, projection untouched.
-- Same stored ids in a different order → treated as unchanged (200).
+- Same stored ids in a different order → treated as unchanged (200), and no rows are rewritten.
+- The view keeps a column the member can't read: removing another column → 200; adding a readable one → 200. A view that doesn't show it yet: adding it → 403.
+- All columns → a list that includes an unreadable column (narrowing) → 200.
+- A duplicate id in a set that otherwise matches the stored one → 400.
 - The #736 test "a save whose every projected mapping is deleted is refused" resends its one stored id, which is now unchanged and gets 200 (covered above). It's rewritten to the changed case that still has to refuse: a view on [email, age] with age deleted, PATCHed to `[age]` → 400, and the projection is untouched. #736's "saves after a deletion and drops it" now asserts that the resend keeps the projection and that the next real change (adding `tags`) drops the dead id.
 - `npm run type-check`, `lint`; `npm run test:integration -- --testPathPattern curated-view`.
 
@@ -41,6 +48,7 @@ The 403 also gets clearer. When the effective projection is "all columns", the m
 1. As the e2e **member**, own an all-columns view on "Smoke Polygons" (create it as the owner, then `update curated_views set created_by = '<member id>'`). Add an owner-created mapping to the entity in SQL. In the editor, rename the view → saves; the label changes.
 2. As the member, set that view's columns to just `parcel_id` → saves. Then back to all columns ("Leave empty") → refused with "An all-columns view needs read access to every column of its entity".
 3. As the owner, rename a view whose projected columns were all soft-deleted (in SQL) → saves; the columns still read "N selected".
+3b. As the owner, put the member-unreadable mapping into the member's view alongside `parcel_id` and `zone` (SQL projection row). As the member, remove `zone` → saves, and the view now shows `parcel_id` plus the unreadable column.
 4. Clean up: remove the extra mapping and the views, and restore any soft-deleted mappings.
 
 ## Out of scope

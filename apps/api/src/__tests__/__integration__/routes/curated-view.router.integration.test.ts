@@ -921,8 +921,9 @@ describe("curated-view.router integration", () => {
    *  which the member can't read. */
   async function memberOwnedView(
     key: string,
-    fieldMappingIds: string[]
-  ): Promise<string> {
+    fieldMappingIds: string[],
+    opts: { secretProjected?: boolean } = {}
+  ): Promise<{ id: string; secret: string }> {
     const id = (
       await createView({
         connectorEntityId: entityId,
@@ -949,11 +950,12 @@ describe("curated-view.router integration", () => {
           Date.now()
         ) as never
       );
+    const secret = generateId();
     await dbT
       .insert(schema.fieldMappings)
       .values(
         mkMapping(
-          generateId(),
+          secret,
           orgId,
           entityId,
           cd,
@@ -963,12 +965,27 @@ describe("curated-view.router integration", () => {
         ) as never
       );
     singletonStatementCache.clear();
+    if (opts.secretProjected) {
+      // Someone who could read it put the secret column in the view.
+      await dbT.insert(schema.curatedViewFieldMappings).values({
+        id: generateId(),
+        organizationId: orgId,
+        curatedViewId: id,
+        fieldMappingId: secret,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
     currentSub = MEMBER_SUB;
-    return id;
+    return { id, secret };
   }
 
   it("#738: re-saving an unchanged all-columns view needs no read on every column", async () => {
-    const id = await memberOwnedView("member_all", []);
+    const { id } = await memberOwnedView("member_all", []);
     const res = await request(app)
       .patch(`/api/curated-views/${id}`)
       .send({ label: "Renamed", fieldMappingIds: [] });
@@ -981,7 +998,7 @@ describe("curated-view.router integration", () => {
   });
 
   it("#738: changing an all-columns view to a readable list still saves", async () => {
-    const id = await memberOwnedView("member_all_to_list", []);
+    const { id } = await memberOwnedView("member_all_to_list", []);
     const res = await request(app)
       .patch(`/api/curated-views/${id}`)
       .send({ fieldMappingIds: [emailFmId] });
@@ -989,7 +1006,7 @@ describe("curated-view.router integration", () => {
   });
 
   it("#738: widening a list to all columns over an unreadable column is refused, and says why", async () => {
-    const id = await memberOwnedView("member_list_to_all", [emailFmId]);
+    const { id } = await memberOwnedView("member_list_to_all", [emailFmId]);
     const res = await request(app)
       .patch(`/api/curated-views/${id}`)
       .send({ fieldMappingIds: [] });
@@ -1001,6 +1018,70 @@ describe("curated-view.router integration", () => {
     currentSub = OWNER_SUB;
     const got = await request(app).get(`/api/curated-views/${id}`);
     expect(got.body.payload.curatedView.fieldMappingIds).toEqual([emailFmId]);
+  });
+
+  it("#738: a writer can remove a column while the view keeps one they can't read", async () => {
+    const { id, secret } = await memberOwnedView(
+      "member_narrow",
+      [emailFmId, ageFmId],
+      { secretProjected: true }
+    );
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [emailFmId, secret] });
+    expect(res.body.code ?? null).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it("#738: a writer can add a readable column while the view keeps one they can't read", async () => {
+    const { id, secret } = await memberOwnedView(
+      "member_add_readable",
+      [emailFmId],
+      { secretProjected: true }
+    );
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [emailFmId, secret, ageFmId] });
+    expect(res.body.code ?? null).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it("#738: a writer still can't add a column they can't read", async () => {
+    const { id, secret } = await memberOwnedView("member_add_secret", [
+      emailFmId,
+    ]);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [emailFmId, secret] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_FIELD_NOT_READABLE);
+    expect(res.body.message).toBe(
+      "You cannot project a field mapping you do not have read access to"
+    );
+  });
+
+  it("#738: narrowing an all-columns view exposes nothing new, so it isn't refused", async () => {
+    const { id, secret } = await memberOwnedView("member_all_narrow", []);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [emailFmId, secret] });
+    expect(res.status).toBe(200);
+  });
+
+  it("#738: a duplicate id is refused even when the set matches the stored one", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "dup_unchanged",
+        label: "Dup unchanged",
+        fieldMappingIds: [emailFmId, ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [emailFmId, ageFmId, emailFmId] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
   });
 
   it("#738: a label save on a view whose every projected mapping is deleted keeps it as is", async () => {
