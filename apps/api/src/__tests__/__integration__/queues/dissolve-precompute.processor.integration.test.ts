@@ -398,6 +398,22 @@ describe("dissolve-precompute processor (#472)", () => {
     expect(await countRows(pinId)).toBe(0);
   });
 
+  // #727 (code review): a pipeline naming a column the caller's views don't
+  // expose fails while running (42703), which can't succeed on a retry. It
+  // was retried with the full budget on every dissolve-band tile.
+  it("#727: a pipeline naming a column the views don't expose fails terminally and writes nothing", async () => {
+    await insertParcel(0, "Private");
+    const pinId = await createPin(
+      'SELECT "c_geom" AS geom, "c_no_such_column" FROM parcels',
+      "c_no_such_column"
+    );
+    const { UnrecoverableError } = await import("bullmq");
+    await expect(runProcessor(pinId, orgId, userId)).rejects.toBeInstanceOf(
+      UnrecoverableError
+    );
+    expect(await countRows(pinId)).toBe(0);
+  });
+
   it("#660: a rejected pipeline also clears that owner/scope's previously precomputed rows", async () => {
     await insertParcel(0, "Private");
     // First precompute from a valid pipeline → rows exist.

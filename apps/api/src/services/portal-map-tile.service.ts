@@ -69,6 +69,24 @@ class TileTxResult extends Error {
   }
 }
 
+/** #727: the tile query named a column the caller's views don't expose
+ *  (Postgres 42703). Carries the bare column name so the caller can tell a
+ *  wrapper-added property column from one the stored pipeline names. */
+class StaleColumnError extends Error {
+  constructor(readonly column: string) {
+    super(`stale column: ${column}`);
+  }
+}
+
+/** The bare column name from a 42703 message (`column "x"` / `column src.x`). */
+function missingColumnOf(message: string | undefined): string {
+  const m =
+    /column "([^"]+)" does not exist/i.exec(message ?? "") ??
+    /column (.+?) does not exist/i.exec(message ?? "");
+  const name = (m?.[1] ?? "").replace(/^"|"$/g, "");
+  return name.slice(name.lastIndexOf(".") + 1);
+}
+
 /**
  * Max features rasterised into a single tile before clipping (limits row 3).
  * Tuned for client render weight, not just query cost: a dense polygon layer
@@ -917,6 +935,82 @@ export class PortalMapTileService {
     // too, neither needing a count. The probe is the raw query at `cap + 1`:
     // cheap for points/lines (indexed envelope filter, no per-row simplify), so
     // it doubles as the raw serve for a tile that fits.
+    // #727: a column the caller's views don't expose. If it's one the tile
+    // wrapper adds (colorBy / popup property), drop it and re-run, so only
+    // the colouring or popup degrades. If the stored pipeline itself names
+    // it, the layer serves empty (as for a view they can't read) and the
+    // stale pin is logged so it can be found and rebuilt.
+    let props = propertyColumns;
+    for (;;) {
+      try {
+        return await this.runTileModes({
+          pipeline,
+          pipelineSql,
+          propertyColumns: props,
+          organizationId,
+          userId,
+          envelope,
+          z,
+          tolerance,
+          cap,
+          aggregation,
+          layerTotal,
+          layerTotalExact,
+        });
+      } catch (err) {
+        if (!(err instanceof StaleColumnError)) throw err;
+        if (props.includes(err.column)) {
+          props = props.filter((c) => c !== err.column);
+          continue;
+        }
+        logger.warn(
+          {
+            event: "tile.pipeline-stale-column",
+            stationId: pipeline.stationId,
+            column: err.column,
+          },
+          "Map pipeline names a column the caller's views don't expose; serving an empty tile"
+        );
+        return {
+          mvt: null,
+          featureCount: 0,
+          truncated: false,
+          aggregated: false,
+        };
+      }
+    }
+  }
+
+  /** #727: the raw / probe / aggregate tile for one set of property columns
+   *  (split out so a missing property column can be dropped and re-run). */
+  private static async runTileModes(args: {
+    pipeline: VizPipeline;
+    pipelineSql: string;
+    propertyColumns: string[];
+    organizationId: string;
+    userId: string;
+    envelope: string;
+    z: number;
+    tolerance: number;
+    cap: number;
+    aggregation: TileAggregation;
+    layerTotal: number | null;
+    layerTotalExact: boolean;
+  }): Promise<TileQueryResult> {
+    const {
+      pipeline,
+      pipelineSql,
+      propertyColumns,
+      organizationId,
+      userId,
+      envelope,
+      z,
+      tolerance,
+      cap,
+      aggregation,
+      layerTotal,
+      layerTotalExact,
+    } = args;
     const isPolygon = aggregation.treatment === "dissolve";
     const fitsWholeLayer =
       layerTotalExact && layerTotal !== null && layerTotal <= cap;
@@ -1098,11 +1192,22 @@ export class PortalMapTileService {
           statementTimeoutMs: TILE_STATEMENT_TIMEOUT_MS,
         });
 
-        const rows = (await tx.execute(sql.raw(tileSql))) as unknown as Array<{
+        // #727: a 42703 from the tile query (not from the session-view DDL
+        // above, which would be a platform defect and stays loud) means the
+        // query named a column this caller's views don't expose.
+        let rows: Array<{
           mvt: Buffer | Uint8Array | null;
           n: number;
           n_limited: number;
         }>;
+        try {
+          rows = (await tx.execute(sql.raw(tileSql))) as unknown as typeof rows;
+        } catch (queryErr) {
+          const pg = unwrapPgError(queryErr);
+          if (pg.code === "42703")
+            throw new StaleColumnError(missingColumnOf(pg.message));
+          throw queryErr;
+        }
         const row = rows[0];
         const featureCount = row ? Number(row.n) : 0;
         const limited = row ? Number(row.n_limited) : 0;
@@ -1122,6 +1227,7 @@ export class PortalMapTileService {
       );
     } catch (err) {
       if (err instanceof TileTxResult) return err.result;
+      if (err instanceof StaleColumnError) throw err;
       // #643/#660: the pipeline was validated above to reference only this caller's
       // session views (the relation gate), so a missing relation here means a view
       // vanished between resolution and execution (e.g. deleted). A missing relation
@@ -1131,12 +1237,7 @@ export class PortalMapTileService {
       // and never the data. An org-wide-deleted view degrades to empty for
       // everyone, which is acceptable. This is the per-user counterpart to the
       // old org-wide builder, where the view always existed so this never fired.
-      // #727: a missing column (42703) is the same situation one level down:
-      // the stored pipeline names a column this caller's view doesn't expose
-      // (a projection change, or grants that hide it). Same empty tile, never
-      // a 500 on every tile of the map.
-      const pgCode = unwrapPgError(err).code;
-      if (pgCode === "42P01" || pgCode === "42703") {
+      if (unwrapPgError(err).code === "42P01") {
         return {
           mvt: null,
           featureCount: 0,

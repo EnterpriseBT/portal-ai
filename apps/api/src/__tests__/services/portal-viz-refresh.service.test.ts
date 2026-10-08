@@ -7,6 +7,7 @@ import type {
 } from "../../services/portal-viz-refresh.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
+import { STALE_REFERENCE } from "../../services/portal-sql-validation.util.js";
 
 // The service loads the persisted message + re-executes its pipeline. Both the
 // message loader and resolveSqlDelivery are injected via the deps seam so the
@@ -687,7 +688,8 @@ describe("PortalVizRefreshService — stale pipelines (#727)", () => {
       throw new ApiError(
         400,
         ApiCode.PORTAL_SQL_FORBIDDEN,
-        "unknown column: c_name"
+        "unknown column: c_name",
+        { reason: STALE_REFERENCE }
       );
     });
 
@@ -716,13 +718,38 @@ describe("PortalVizRefreshService — stale pipelines (#727)", () => {
             throw new ApiError(
               400,
               ApiCode.PORTAL_SQL_FORBIDDEN,
-              "unknown entity: customers"
+              "unknown entity: customers",
+              { reason: STALE_REFERENCE }
             );
           }) as never,
         })
       ),
       ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
       422
+    );
+  });
+
+  it("a PORTAL_SQL_FORBIDDEN that isn't a stale reference still propagates", async () => {
+    await expectApiCode(
+      PortalVizRefreshService.refresh(
+        {
+          messageId: "msg-1",
+          blockIndex: 1,
+          organizationId: "org-1",
+          userId: "user-1",
+        },
+        deps({
+          resolveSqlDelivery: jest.fn(async () => {
+            throw new ApiError(
+              400,
+              ApiCode.PORTAL_SQL_FORBIDDEN,
+              "unknown entity: lookalike, but not a stale-reference refusal"
+            );
+          }) as never,
+        })
+      ),
+      ApiCode.PORTAL_SQL_FORBIDDEN,
+      400
     );
   });
 

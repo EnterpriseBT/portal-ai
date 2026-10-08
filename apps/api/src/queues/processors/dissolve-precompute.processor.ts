@@ -30,6 +30,7 @@ import {
   fenceSql,
   validatePortalSql,
 } from "../../services/portal-sql-validation.util.js";
+import { unwrapPgError } from "../../utils/pg-error.util.js";
 
 const logger = createLogger({ module: "dissolve-precompute" });
 
@@ -445,6 +446,34 @@ async function runDissolve(
   };
 }
 
+/**
+ * #727: a stored pipeline naming a view or column the caller's views no longer
+ * expose (42P01 / 42703 while running it) can't succeed on a retry, so it's
+ * terminal, like a gate rejection. Without this, every dissolve-band tile of a
+ * stale polygon pin enqueued a fill that failed and burned its retry budget.
+ */
+async function runDissolveTerminalOnStale(
+  owner: Owner,
+  organizationId: string,
+  userId: string
+) {
+  try {
+    return await runDissolve(owner, organizationId, userId);
+  } catch (err) {
+    const code = unwrapPgError(err).code;
+    if (code === "42703" || code === "42P01") {
+      logger.warn(
+        { event: "dissolve.pipeline-stale", owner, code },
+        "Pinned map pipeline names a view or column the caller's views don't expose; failing the precompute"
+      );
+      throw new UnrecoverableError(
+        `pipeline names a view or column the caller's views don't expose (${code})`
+      );
+    }
+    throw err;
+  }
+}
+
 export const dissolvePrecomputeProcessor: TypedJobProcessor<
   "dissolve_precompute"
 > = async (bullJob) => {
@@ -474,7 +503,7 @@ export const dissolvePrecomputeProcessor: TypedJobProcessor<
   const outcome = await SyncLockService.withAdvisoryLock(
     DISSOLVE_LOCK_NAMESPACE,
     lockKey,
-    () => runDissolve(owner, organizationId, userId),
+    () => runDissolveTerminalOnStale(owner, organizationId, userId),
     { event: "dissolve-lock", subject: "owner" }
   );
 

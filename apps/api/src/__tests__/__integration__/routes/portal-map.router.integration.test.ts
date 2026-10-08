@@ -394,6 +394,54 @@ describe("Portal map tile route (#316)", () => {
     expect(res.body).toBeUndefined();
   });
 
+  // #727 (code review): a column only the tile wrapper adds (colorBy / popup
+  // property) that the caller's view doesn't expose degrades the colouring,
+  // not the layer: the geometry still renders.
+  it("#727: a colorBy/popup column the view doesn't expose still renders the geometry (200)", async () => {
+    const propPinId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id: propPinId,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Hidden colour column",
+        type: "geo",
+        content: {
+          spec: {
+            layers: [{ style: { colorBy: { column: "c_hidden_status" } } }],
+            popup: { template: "{{c_hidden_name}}" },
+          },
+          pipeline: {
+            sql: 'SELECT "c_geom" AS geom FROM parcels',
+            stationId,
+            organizationId: orgId,
+          },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: propPinId },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+      userId,
+      authorizeSource: allowAllSources,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+  });
+
   it("#660: a pin whose stored pipeline reads a raw er__ table serves an empty tile, never the data", async () => {
     // A pinned pipeline only ever passed the pre-#660 regex gate, so one could
     // hold a physical-table reference. The tile re-validates it every run and

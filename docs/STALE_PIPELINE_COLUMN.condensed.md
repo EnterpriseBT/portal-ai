@@ -20,6 +20,12 @@
 2. **Tiles:** `42703` is handled like `42P01`: an empty result, so a **204**. The map draws nothing for that tile, silently, as it already does for a view the caller can't read. A per-tile error would re-fire on every pan and zoom.
 3. **Widget and pin refresh:** an "unknown entity" or "unknown column" refusal from `executePipeline` becomes **`422 VIZ_WIDGET_NOT_REFRESHABLE`**, with the message "This widget's query no longer matches the data you can see — re-run the prompt to rebuild it." The web already turns that code into the "can't auto-refresh, re-run the prompt" state, so no client change is needed. That code's hint in `api-codes.constants.ts` (written for "predates live refresh") widens to cover a stale query too.
 
+**Review follow-ups.**
+- **Tiles degrade only what's missing.** A `42703` from the tile query becomes a typed `StaleColumnError`. If the missing column is one the tile wrapper adds (colour-by or popup property), it's dropped and the tile re-runs, so only the colouring or popup degrades. Only a column the stored pipeline itself names serves empty, and that logs `tile.pipeline-stale-column`.
+- **View-creation errors stay loud.** A `42703` while the session views are being created is a platform defect, not a stale query, so it isn't swallowed.
+- **A structured reason, not the wording.** The 42P01 / 42703 translations and the gate's "unknown entity" check carry `details.reason: "stale_reference"` (`STALE_REFERENCE`), and refresh matches on that.
+- **Dissolve doesn't retry.** A stale reference in the dissolve precompute is terminal (`UnrecoverableError`) instead of burning its retry budget on every dissolve-band tile.
+
 *Not chosen:*
 - **A new error code.** It needs a web change for the same user-facing outcome.
 - **Rewriting the stored pipeline to drop the column.** That silently changes what a saved chart shows.

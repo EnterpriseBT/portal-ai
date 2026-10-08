@@ -60,6 +60,7 @@ import { STATEMENT_TIMEOUT_MS } from "@portalai/core/constants";
 import {
   assertRelationsAllowed,
   fenceSql,
+  STALE_REFERENCE,
   validatePortalSql,
 } from "./portal-sql-validation.util.js";
 import { applyImplicitLimit } from "./portal-sql-limit.util.js";
@@ -1185,6 +1186,15 @@ function parseExplainEstimate(result: unknown): {
  *     LLM bypassed the deny-list somehow; the tx-level read-only flag
  *     caught it). Shouldn't happen in practice.
  *
+ *   - `42703` (#727) → `PORTAL_SQL_FORBIDDEN` with an "unknown column: <name>"
+ *     message. A column the view doesn't expose to the caller (dropped from
+ *     its projection, or hidden by their grants) is indistinguishable from
+ *     one that doesn't exist, the sibling of 42P01.
+ *
+ * 42P01 and 42703 carry `details.reason: "stale_reference"`, so a caller can
+ * tell "this query names something the caller's views don't expose" from any
+ * other refusal without matching on the wording (widget refresh does).
+ *
  * Any other Postgres error propagates as-is so the existing API error
  * pipeline handles it.
  */
@@ -1201,7 +1211,8 @@ function translateExecutionError(err: unknown): unknown {
     return new ApiError(
       400,
       ApiCode.PORTAL_SQL_FORBIDDEN,
-      `unknown entity: ${missing}`
+      `unknown entity: ${missing}`,
+      { reason: STALE_REFERENCE }
     );
   }
   if (code === "42703") {
@@ -1210,12 +1221,13 @@ function translateExecutionError(err: unknown): unknown {
     // that doesn't exist, the sibling of 42P01's "unknown entity".
     const match =
       /column "([^"]+)" does not exist/i.exec(message) ??
-      /column ([\w.]+) does not exist/i.exec(message);
+      /column (.+?) does not exist/i.exec(message);
     const missing = match?.[1] ?? "(unknown column)";
     return new ApiError(
       400,
       ApiCode.PORTAL_SQL_FORBIDDEN,
-      `unknown column: ${missing}`
+      `unknown column: ${missing}`,
+      { reason: STALE_REFERENCE }
     );
   }
   if (code === "57014") {

@@ -25,6 +25,12 @@
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
+
+/** #727: `details.reason` on a refusal for a view or column the caller's
+ *  views don't expose (the relation gate here, and the 42P01 / 42703
+ *  translation in `PortalSqlService`), so a caller can tell a stale stored
+ *  query from any other refusal without matching on the wording. */
+export const STALE_REFERENCE = "stale_reference";
 import {
   assertFunctionsAllowed,
   parsePortalSql,
@@ -377,7 +383,14 @@ export function assertRelationsAllowed(
       // Same wording as Postgres's own 42P01 translation (`translateExecution-
       // Error`): an ungranted or physical relation is indistinguishable from
       // one that doesn't exist, so the answer never confirms a hidden table.
-      throw forbidden(`unknown entity: ${rel}`);
+      // #727: tagged so a stored pipeline naming a view the caller no longer
+      // has reads as stale (widget refresh), same as the 42P01 translation.
+      throw new ApiError(
+        400,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `unknown entity: ${rel}`,
+        { reason: STALE_REFERENCE }
+      );
     }
   }
 }
