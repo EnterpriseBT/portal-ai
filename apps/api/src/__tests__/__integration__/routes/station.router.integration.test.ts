@@ -406,6 +406,26 @@ describe("Station Router", () => {
       );
     });
 
+    it("#706: a typo inside curatedViewChanges is a 400 naming the path, not a no-op 200", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ curatedViewChanges: { added: [generateId()] } })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        'Invalid station payload: curatedViewChanges: Unrecognized key: "added"'
+      );
+    });
+
     it("#706: create's curatedViewIds on an update is a 400 naming it, and nothing changes", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

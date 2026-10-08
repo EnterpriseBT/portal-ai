@@ -32,6 +32,7 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
+import { describeFirstZodIssue } from "../utils/zod-issue.util.js";
 import {
   assertUrlSafeToFetch,
   SsrfBlockedError,
@@ -141,24 +142,6 @@ function parseJson(text: string, url: string): unknown {
       `The toolpack response from ${url} is not valid JSON (${reason}).`
     );
   }
-}
-
-/**
- * Render a one-line summary of the first Zod issue so error messages
- * surface what specifically is wrong with a malformed response —
- * e.g. `tools.0.name: Required` rather than the generic "failed
- * validation".
- */
-function describeFirstZodIssue(
-  issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }>
-): string {
-  const first = issues[0];
-  if (!first) return "validation failed";
-  const path =
-    first.path.length > 0
-      ? first.path.map((p) => String(p)).join(".")
-      : "(root)";
-  return `${path}: ${first.message}`;
 }
 
 // ---------------------------------------------------------------------------

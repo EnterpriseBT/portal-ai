@@ -206,6 +206,16 @@ describe("UpdateStationBodySchema", () => {
     ).toBe(true);
   });
 
+  it("#706: a typo inside a change object is rejected, not dropped", () => {
+    const parsed = UpdateStationBodySchema.safeParse({
+      curatedViewChanges: { added: ["cv-1"] },
+    });
+    expect(parsed.success).toBe(false);
+    expect(
+      parsed.error?.issues.some((i) => i.code === "unrecognized_keys")
+    ).toBe(true);
+  });
+
   it("#706: update still enforces at least one field", () => {
     const parsed = UpdateStationBodySchema.safeParse({});
     expect(parsed.success).toBe(false);

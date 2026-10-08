@@ -153,6 +153,8 @@ export const StationAttachmentChangesSchema = z
     add: z.array(z.string()).optional(),
     remove: z.array(z.string()).optional(),
   })
+  // #706: a typo like `added` is a 400, not a change that attaches nothing.
+  .strict()
   .refine(
     (c) => {
       const removed = new Set(c.remove ?? []);

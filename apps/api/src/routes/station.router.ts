@@ -27,6 +27,7 @@ import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { describeFirstZodIssue } from "../utils/zod-issue.util.js";
 
 const logger = createLogger({ module: "station" });
 
@@ -34,12 +35,10 @@ const logger = createLogger({ module: "station" });
  *  station. The first issue names the problem (an unknown key, or "At least
  *  one field must be provided"); all of them go in `details`. */
 function invalidPayload(error: z.ZodError): ApiError {
-  const first = error.issues[0];
-  const where = first?.path.length ? `${first.path.join(".")}: ` : "";
   return new ApiError(
     400,
     ApiCode.STATION_INVALID_PAYLOAD,
-    `Invalid station payload: ${where}${first?.message ?? "invalid body"}`,
+    `Invalid station payload: ${describeFirstZodIssue(error.issues, "invalid body")}`,
     { issues: error.issues }
   );
 }
