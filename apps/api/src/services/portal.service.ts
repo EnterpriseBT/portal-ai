@@ -49,6 +49,7 @@ import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { PortalSelect, PortalMessageSelect } from "../db/schema/zod.js";
 import { portalResults } from "../db/schema/index.js";
+import { toModelView } from "./model-output.util.js";
 
 const logger = createLogger({ module: "portal-service" });
 
@@ -427,9 +428,17 @@ export class PortalService {
     }
 
     const messages = await repo.portalMessages.findByPortal(portalId);
-    const coreMessages = reconstructModelMessages(messages);
+    // #726 (review): the model messages are built on access only. The UI's
+    // GET reads portal + messages and never pays for the projection.
+    let coreMessages: ModelMessage[] | undefined;
 
-    const result: PortalWithMessages = { portal, messages, coreMessages };
+    const result: PortalWithMessages = {
+      portal,
+      messages,
+      get coreMessages() {
+        return (coreMessages ??= reconstructModelMessages(messages));
+      },
+    };
 
     if (opts?.include?.includes("pinnedResults")) {
       const allPins = await repo.portalResults.findMany(
@@ -929,6 +938,9 @@ const RECENT_TURNS_FULL_RESULTS = 2;
  */
 const MAX_RESULT_ROWS = 50;
 
+/** #726: the longest sample cell an old-turn summary quotes. */
+const SUMMARY_CELL_CHARS = 120;
+
 /**
  * Extract rows from a tool result regardless of shape.
  * Returns the array of rows and a reference to the parent object (if wrapped).
@@ -972,6 +984,17 @@ function capResultRows(content: unknown): unknown {
 }
 
 /**
+ * #726: a recent turn's tool result as the model reads it on replay — the same
+ * projection the live step sent (`toModelOutput`), so the model's account of
+ * a result doesn't change between turns (true row count, no raw rows it never
+ * saw). Only a result that already fits keeps the row cap.
+ */
+function replayResult(content: unknown): unknown {
+  const viewed = toModelView(content);
+  return viewed === content ? capResultRows(content) : viewed;
+}
+
+/**
  * Build a compact placeholder for a truncated tool result so the model
  * retains awareness that the tool was called without the full payload.
  * Includes column names and a sample row for context.
@@ -987,9 +1010,11 @@ function summarizeToolResult(toolName: string, content: unknown): string {
   const sample = rows[0];
   const sampleStr = columns
     .slice(0, 5)
-    .map(
-      (c) => `${c}: ${JSON.stringify((sample as Record<string, unknown>)[c])}`
-    )
+    .map((c) => {
+      // #726: a sample cell can be a whole polygon; keep the summary short.
+      const cell = JSON.stringify((sample as Record<string, unknown>)[c]) ?? "";
+      return `${c}: ${cell.length > SUMMARY_CELL_CHARS ? `${cell.slice(0, SUMMARY_CELL_CHARS)}…` : cell}`;
+    })
     .join(", ");
   const colExtra = columns.length > 5 ? `, +${columns.length - 5} more` : "";
 
@@ -1119,7 +1144,7 @@ function reconstructModelMessages(
         const toolName = String(block.toolName ?? "tool");
         const raw = truncateResults
           ? summarizeToolResult(toolName, block.content)
-          : capResultRows(block.content);
+          : replayResult(block.content);
 
         const output =
           typeof raw === "string"

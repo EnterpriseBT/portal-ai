@@ -19,6 +19,10 @@ import {
   type GateableTool,
 } from "./cost-gate.service.js";
 import {
+  wrapWithModelOutputCap,
+  type ModelOutputTool,
+} from "./model-output.util.js";
+import {
   PermissionService,
   type PermissionContext,
 } from "./permission.service.js";
@@ -959,6 +963,11 @@ export class ToolService {
         };
       }
     );
+
+    // #726: what the model reads of each result is byte-capped (the stream,
+    // persistence and the widget keep the full result). Beside the cost gate,
+    // so no tool, built-in or custom, skips it; the guard test asserts it.
+    wrapWithModelOutputCap(tools as unknown as Record<string, ModelOutputTool>);
 
     logger.info(
       {

@@ -1135,6 +1135,67 @@ describe("PortalService", () => {
       });
     });
 
+    // #726: a replayed map result kept 50 full GeoJSON polygons (row cap
+    // only), so a follow-up after a contour map overflowed the context.
+    it("replays a large tool result under the model byte cap", async () => {
+      const polygon = {
+        type: "MultiPolygon",
+        coordinates: [["x".repeat(20_000)]],
+      };
+      const messages = [
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ type: "text", content: "contours" }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool-call",
+              toolCallId: "tc-geo",
+              toolName: "visualize_map",
+              args: {},
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tc-geo",
+              toolName: "visualize_map",
+              content: {
+                type: "geo",
+                spec: { basemap: "streets" },
+                rows: Array.from({ length: 80 }, (_, i) => ({
+                  elev: i,
+                  geom: polygon,
+                })),
+              },
+            },
+            { type: "text", content: "Here is the map." },
+          ],
+        },
+        {
+          id: "u2",
+          role: "user",
+          blocks: [{ type: "text", content: "which is lowest?" }],
+        },
+      ];
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockFindByPortal.mockResolvedValue(messages);
+
+      const result = await PortalService.getPortal(PORTAL_ID);
+      const toolMsg = result.coreMessages.find((m) => m.role === "tool") as {
+        content: Array<{ output: { value: Record<string, unknown> } }>;
+      };
+      const value = toolMsg.content[0].output.value;
+      expect(
+        Buffer.byteLength(JSON.stringify(value), "utf8")
+      ).toBeLessThanOrEqual(100_000);
+      // The same projection the live step sent: the true row count.
+      expect(value.rowCount).toBe(80);
+      expect(value.spec).toEqual({ basemap: "streets" });
+    });
+
     it("throws PORTAL_NOT_FOUND when portal does not exist", async () => {
       mockFindById_portal.mockResolvedValue(null);
 
