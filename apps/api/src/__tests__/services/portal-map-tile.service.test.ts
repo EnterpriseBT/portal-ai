@@ -669,6 +669,7 @@ describe("PortalMapTileService.renderTile (#316)", () => {
             id: "p-1",
             organizationId: ORG,
             createdBy: "u-owner",
+            type: "geo",
             content: { spec: MAP_SPEC, pipeline: PIPELINE },
           }),
         })
@@ -733,6 +734,30 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     expect(ran).toBe(0);
   });
 
+  // #695 (code review): "is this a map" is the block's type, not how strictly
+  // its stored spec parses, so a later tightening of MapSpecSchema can't
+  // blank a stored map.
+  it("still renders a geo block whose stored spec no longer parses as a MapSpec", async () => {
+    const res = await PortalMapTileService.renderTile(
+      {
+        ref: { kind: "message", messageId: "msg-1", blockIndex: 0 },
+        ...base,
+      },
+      deps({
+        findMessageById: async () => ({
+          ...messageWithPipeline,
+          blocks: [
+            {
+              type: "geo",
+              content: { spec: { layers: [] }, pipeline: PIPELINE },
+            },
+          ],
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("404s for a pinned non-map result with a valid pipeline", async () => {
     await expectNotFound(
       PortalMapTileService.renderTile(
@@ -742,7 +767,8 @@ describe("PortalMapTileService.renderTile (#316)", () => {
             id: "p-1",
             organizationId: ORG,
             createdBy: "u-owner",
-            content: { spec: { mark: "bar" }, pipeline: PIPELINE },
+            type: "data-table",
+            content: { pipeline: PIPELINE },
           }),
           runTileQuery: async () => {
             throw new Error("tile query must not run");
@@ -795,6 +821,7 @@ describe("PortalMapTileService.renderTile (#316)", () => {
         deps({
           findPortalResultById: async () => ({
             organizationId: "other",
+            type: "geo",
             content: { spec: MAP_SPEC, pipeline: PIPELINE },
           }),
         })

@@ -14,22 +14,23 @@
 | Map spec contract | `packages/core/src/contracts/map-spec.contract.ts:180` `MapSpecSchema` | `layers` 1–8, each with a `kind` and a geometry source; geo block content is `{ spec: MapSpec, pipeline?, … }` (`GeoBaseContentSchema`, :196) |
 | Unit tests | `apps/api/src/__tests__/services/portal-map-tile.service.test.ts` | the shared fixture is a **`d3` block with a pipeline and no spec** (:35), which only works today because nothing checks the spec |
 
-## Decision — a tile source must be a map: its spec parses as `MapSpecSchema`
+## Decision — a tile source must be a map: its type is `geo`
 
-Options: (a) check `block.type === "geo"`. Pins don't carry a block type the same way, and a type string is a weaker contract than the shape the renderer actually reads. (b) **Require `content.spec` to parse as `MapSpecSchema`**, on both the message and the pin branch, before accepting the pipeline. (c) Catch the query error (`42703 undefined_column` on `geom`) and map it to 404. That only treats the symptom: the non-map SQL still runs against the database on every such request, and it could mask a real bug in a map pipeline.
+Options: (a) **check the type**: `block.type === "geo"` for a message, `row.type === "geo"` for a pin. A pin keeps its block's type (`portal-results.router.ts:219`), and `dissolve-precompute.service.ts:214` already selects map pins with `WHERE type = 'geo'`. (b) Require `content.spec` to parse as `MapSpecSchema`. (c) Catch the query error (`42703 undefined_column` on `geom`) and map it to 404.
 
-**Decided: (b).** One check on the contract the renderer depends on. A spec that doesn't parse as a map → `notFound()`, the same answer as an unknown block, before any SQL or scope resolution runs. Geo blocks always carry a `MapSpec` (`visualize_map` emits it, `GeoInlineContentSchema` requires it), so valid maps are unaffected. No error mapping (c): a `geom` failure on a real map spec is a bug that should stay loud.
+**Decided: (a).** The draft chose (b) on the mistaken belief that pins carry no type; code review on #740 corrected it. The type is the contract the rest of the code already uses for "is this a map", and it costs nothing. (b) would have tied every stored map's tiles to how strict `MapSpecSchema` is. A later tightening would blank existing maps silently, since a 404 logs nothing. It would also run a full Zod parse on every tile request, and a future non-map block with a map-shaped spec would still get through. A non-`geo` source → `notFound()`, before any SQL or scope resolution runs. A `geo` block whose stored spec doesn't parse still renders through the loose spec readers, as before. (c) isn't used: a `geom` failure on a real map is a bug that should stay loud.
 
 ## Plan — one slice
 
 **Files**
-- Edit: `apps/api/src/services/portal-map-tile.service.ts`: in `resolvePipeline`, both branches require `MapSpecSchema.safeParse(<content>.spec).success`, or throw `notFound()`. Imported from `@portalai/core/contracts`.
+- Edit: `apps/api/src/services/portal-map-tile.service.ts`: in `resolvePipeline`, the message branch requires `block.type === "geo"` and the pin branch `row.type === "geo"` (after the pin's read check), or throws `notFound()`.
 
 **Tests** (`apps/api/src/__tests__/services/portal-map-tile.service.test.ts`)
-- The shared fixture becomes a `geo` block with a minimal valid `MapSpec` (one `polygons` layer with `geometryColumn: "geom"`), so the existing render tests still describe real maps.
+- The shared fixture becomes a `geo` block with a minimal valid `MapSpec` (one `points` layer with `geometryColumn: "geom"`, which aggregates like the old spec-less fixture), and the pin fixtures carry `type: "geo"`, so the existing render tests describe real maps.
 - New: a message `data-table` block with a valid pipeline → 404 `MAP_TILE_NOT_FOUND`, and the tile query runner is **never called** (a spy on `runTileQuery`).
 - New: a `d3` block with a pipeline and a non-map spec → 404.
-- New: a pin whose content has a pipeline but a non-map spec → 404.
+- New: a pin of type `data-table` with a valid pipeline → 404.
+- New: a `geo` block whose stored spec no longer parses as a `MapSpec` still renders (200), so a tighter contract can't blank stored maps.
 - `apps/api/src/__tests__/__integration__/routes/portal-map.router.integration.test.ts`: check whether its fixtures seed map blocks without a spec, and fix them the same way if so.
 - `npm run type-check`, `lint`; `npm run test:unit -- --testPathPattern portal-map-tile`; `npm run test:integration -- --testPathPattern portal-map`.
 
