@@ -6,7 +6,7 @@ import {
   type UseQueryOptions,
   type QueryKey,
 } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import type {
   ApiErrorResponse,
   ApiSuccessResponse,
@@ -219,6 +219,53 @@ interface AuthMutationConfig<TData, TVariables> {
    * invalidation.
    */
   onPermissionDenied?: { invalidate: (variables: TVariables) => QueryKey[] };
+  /**
+   * #751: drop a call whose request (method, resolved URL, serialized body)
+   * is already in flight from this hook, so a double-click, a double Enter or
+   * click then Enter sends once. True by default. Set false only for an
+   * endpoint that must receive identical concurrent requests.
+   */
+  dedupeInFlight?: boolean;
+}
+
+interface BuiltRequest {
+  method: string;
+  url: string;
+  bodyPayload: unknown;
+  isBinary: boolean;
+}
+
+/** The request a mutation sends for `variables`. One function builds both
+ *  the request and its in-flight key, so the two can't disagree. */
+function buildRequest<TVariables>(
+  config: {
+    url: string | ((variables: TVariables) => string);
+    body?: (variables: TVariables) => unknown;
+    method: string;
+  },
+  variables: TVariables
+): BuiltRequest {
+  const url =
+    typeof config.url === "function" ? config.url(variables) : config.url;
+  const bodyPayload = config.body ? config.body(variables) : variables;
+  const isBinary =
+    (typeof FormData !== "undefined" && bodyPayload instanceof FormData) ||
+    (typeof Blob !== "undefined" && bodyPayload instanceof Blob);
+  return { method: config.method, url, bodyPayload, isBinary };
+}
+
+/**
+ * #751: what makes two calls the same request: method, resolved URL and
+ * serialized body. `null` for a binary body, which can't be compared and is
+ * never deduped (no `useAuthMutation` caller sends one today).
+ */
+export function requestKey(req: BuiltRequest): string | null {
+  if (req.isBinary) return null;
+  const body =
+    req.bodyPayload === undefined || req.bodyPayload === null
+      ? ""
+      : JSON.stringify(req.bodyPayload);
+  return `${req.method} ${req.url} ${body}`;
 }
 
 /**
@@ -250,26 +297,24 @@ export const useAuthMutation = <TData, TVariables>({
   options,
   mutationOptions,
   onPermissionDenied,
+  dedupeInFlight = true,
 }: AuthMutationConfig<TData, TVariables>) => {
   const { fetchWithAuth } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  return useMutation<TData, ApiError, TVariables>({
+  const mutation = useMutation<TData, ApiError, TVariables>({
     mutationFn: async (variables) => {
-      const resolvedUrl = typeof url === "function" ? url(variables) : url;
-      const bodyPayload = body ? body(variables) : variables;
-      const isFormData =
-        typeof FormData !== "undefined" && bodyPayload instanceof FormData;
+      const request = buildRequest({ url, body, method }, variables);
       const response = await fetchWithAuth<ApiSuccessResponse<TData>>(
-        resolvedUrl,
+        request.url,
         {
           ...options,
           method,
-          ...(bodyPayload !== undefined && bodyPayload !== null
+          ...(request.bodyPayload !== undefined && request.bodyPayload !== null
             ? {
-                body: isFormData
-                  ? (bodyPayload as BodyInit)
-                  : JSON.stringify(bodyPayload),
+                body: request.isBinary
+                  ? (request.bodyPayload as BodyInit)
+                  : JSON.stringify(request.bodyPayload),
               }
             : {}),
         }
@@ -290,4 +335,48 @@ export const useAuthMutation = <TData, TVariables>({
         }
       : {}),
   });
+
+  // #751: requests in flight from this hook, by `requestKey`. Held in refs
+  // and checked synchronously, so a second activation inside the render lag
+  // (before `isPending` disables the button) can't send again.
+  const inFlight = useRef(new Map<string, Promise<TData>>());
+  const latest = useRef({ mutation, url, body, method, dedupeInFlight });
+  // A layout effect, not a render-time write (refs aren't read or written
+  // during render): it runs after each commit, before any later input.
+  useLayoutEffect(() => {
+    latest.current = { mutation, url, body, method, dedupeInFlight };
+  });
+
+  type MutateAsync = typeof mutation.mutateAsync;
+  const mutateAsync = useCallback<MutateAsync>((variables, callOptions) => {
+    const current = latest.current;
+    const key = current.dedupeInFlight
+      ? requestKey(buildRequest(current, variables))
+      : null;
+    if (key === null) {
+      return current.mutation.mutateAsync(variables, callOptions);
+    }
+    const running = inFlight.current.get(key);
+    if (running) return running;
+    const request = current.mutation.mutateAsync(variables, callOptions);
+    inFlight.current.set(key, request);
+    void request
+      .finally(() => {
+        if (inFlight.current.get(key) === request) inFlight.current.delete(key);
+      })
+      .catch(() => {});
+    return request;
+  }, []);
+
+  type Mutate = typeof mutation.mutate;
+  // Like react-query's `mutate`: never throws; errors reach `onError` and
+  // `mutation.error`.
+  const mutate = useCallback<Mutate>(
+    (variables, callOptions) => {
+      void mutateAsync(variables, callOptions).catch(() => {});
+    },
+    [mutateAsync]
+  );
+
+  return { ...mutation, mutate, mutateAsync };
 };
