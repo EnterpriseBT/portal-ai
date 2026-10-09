@@ -84,5 +84,8 @@
       "Bash(portalai user get:*)",
       "mcp__playwright"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "playwright"
+  ]
 }
