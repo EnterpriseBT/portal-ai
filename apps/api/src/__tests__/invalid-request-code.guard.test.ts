@@ -32,6 +32,13 @@ const ALLOWED: Array<{ file: string; code: string }> = [
     file: "queues/processors/bulk-transform.processor.ts",
     code: "BULK_DISPATCH_TOOL_NOT_FOUND",
   },
+  // 403 "you aren't a member of this organization": the caller's own
+  // membership is what's missing, not an object they asked for.
+  { file: "services/application.service.ts", code: "MEMBERSHIP_NOT_FOUND" },
+  {
+    file: "services/connector-instance-access.service.ts",
+    code: "MEMBERSHIP_NOT_FOUND",
+  },
 ];
 
 /** The `*_NOT_FOUND` codes an expression can evaluate to: `ApiCode.X`, or
@@ -48,9 +55,11 @@ function notFoundCodes(e: ts.Expression, sf: ts.SourceFile): string[] {
   return m ? [m[1]] : [];
 }
 
-/** Every 400 with a `*_NOT_FOUND` code in `source`: a direct
- *  `new ApiError(400, ApiCode.*_NOT_FOUND, …)`, or the shared
- *  `invalidPayload(ApiCode.*_NOT_FOUND, …)` helper, which is always a 400. */
+/** Every non-404 4xx with a `*_NOT_FOUND` code in `source`: a direct
+ *  `new ApiError(4xx, ApiCode.*_NOT_FOUND, …)`, or the shared
+ *  `invalidPayload(ApiCode.*_NOT_FOUND, …)` helper, which is always a 400.
+ *  #743 widened it from 400: a 403 "belongs to another organization" told
+ *  callers the object existed. */
 export function notFound400s(source: string): string[] {
   const sf = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, true);
   const out: string[] = [];
@@ -60,7 +69,8 @@ export function notFound400s(source: string): string[] {
       n.expression.getText(sf) === "ApiError" &&
       n.arguments &&
       n.arguments.length >= 2 &&
-      n.arguments[0].getText(sf) === "400"
+      /^4\d\d$/.test(n.arguments[0].getText(sf)) &&
+      n.arguments[0].getText(sf) !== "404"
     ) {
       out.push(...notFoundCodes(n.arguments[1], sf));
     } else if (
@@ -86,7 +96,7 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-describe("malformed-request 400s don't claim a missing object (#742)", () => {
+describe("non-404 4xx never claims a missing object (#742, #743)", () => {
   const found = sourceFiles(apiSrc).flatMap((path) =>
     notFound400s(readFileSync(path, "utf8")).map((code) => ({
       file: relative(apiSrc, path),
@@ -94,7 +104,7 @@ describe("malformed-request 400s don't claim a missing object (#742)", () => {
     }))
   );
 
-  it("no 400 uses a *_NOT_FOUND code outside the allowlist", () => {
+  it("no non-404 4xx uses a *_NOT_FOUND code outside the allowlist", () => {
     const offenders = found
       .filter(
         (f) => !ALLOWED.some((a) => a.file === f.file && a.code === f.code)
@@ -118,6 +128,12 @@ describe("malformed-request 400s don't claim a missing object (#742)", () => {
         'throw new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "Invalid portal payload");'
       )
     ).toEqual(["PORTAL_NOT_FOUND"]);
+    // #743: a 403 (or any non-404 4xx) is flagged too.
+    expect(
+      notFound400s(
+        'new ApiError(403, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "belongs to a different organization");'
+      )
+    ).toEqual(["CONNECTOR_INSTANCE_NOT_FOUND"]);
     // Through the shared helper, and in either branch of a conditional.
     expect(
       notFound400s(

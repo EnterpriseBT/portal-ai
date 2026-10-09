@@ -151,11 +151,13 @@ export class LayoutPlanDraftService {
           `Connector instance not found: ${body.connectorInstanceId}`
         );
       }
+      // #743: another org's instance is absent, not forbidden: the same
+      // 404 as an unknown id, so its existence never leaks.
       if (existing.organizationId !== organizationId) {
         throw new ApiError(
-          403,
+          404,
           ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-          "Connector instance belongs to a different organization"
+          `Connector instance not found: ${body.connectorInstanceId}`
         );
       }
       connectorInstanceId = existing.id;
@@ -453,6 +455,26 @@ export class LayoutPlanDraftService {
         404,
         ApiCode.LAYOUT_PLAN_NOT_FOUND,
         "Layout plan not found for this connector instance"
+      );
+    }
+    // #743: the route authorizes only the instance in the URL, so the body's
+    // workbook source must be that instance's own: the instance itself, or
+    // the upload session its commits read (what edit-context hands the
+    // editor). Anything else, including another member's session or
+    // instance, gets one answer and nothing is enqueued.
+    const ownSource =
+      workbookSource.kind === "connectorInstance"
+        ? workbookSource.connectorInstanceId === connectorInstanceId
+        : workbookSource.uploadSessionId ===
+          (await DbService.repository.jobs.findLatestUploadSessionIdForConnectorInstance(
+            connectorInstanceId,
+            organizationId
+          ));
+    if (!ownSource) {
+      throw new ApiError(
+        400,
+        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+        "The workbook source doesn't belong to this connector instance"
       );
     }
     return {

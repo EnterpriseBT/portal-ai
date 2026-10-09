@@ -257,6 +257,56 @@ describe("Same-org object access (#685)", () => {
     }
   });
 
+  // #743: the recommit route authorized only the instance in the URL; the
+  // body's workbook source went into the job unchecked, so a member could
+  // copy another member's upload or instance into their own.
+  it("recommit: a member can't source their own instance's recommit from the owner's upload session or instance (400, no job)", async () => {
+    const def = await definition("sandbox");
+    const membersInstance = await instance(def, fx.memberId);
+    const ownersInstance = await instance(def, fx.ownerId);
+    const ownersSession = generateId();
+    await upload(fx.ownerId, ownersSession);
+    const planId = generateId();
+    await db.insert(schema.connectorInstanceLayoutPlans).values({
+      id: planId,
+      connectorInstanceId: membersInstance,
+      planVersion: "1.0.0",
+      revisionTag: null,
+      plan: {},
+      interpretationTrace: null,
+      supersededBy: null,
+      ...base(fx.memberId),
+    } as never);
+    currentSub = MEMBER_SUB;
+
+    for (const body of [
+      { uploadSessionId: ownersSession },
+      { connectorInstanceId: ownersInstance },
+    ]) {
+      const res = await request(app)
+        .post(
+          `/api/connector-instances/${membersInstance}/layout-plan/${planId}/commit`
+        )
+        .send(body);
+      expect([JSON.stringify(body), res.status]).toEqual([
+        JSON.stringify(body),
+        400,
+      ]);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+    }
+    const jobs = await db
+      .select()
+      .from(schema.jobs)
+      .where(eq(schema.jobs.type, "layout_plan_commit"));
+    expect(
+      jobs.filter(
+        (j) =>
+          (j.metadata as { connectorInstanceId?: string })
+            .connectorInstanceId === membersInstance
+      )
+    ).toHaveLength(0);
+  });
+
   it("draft layout plans: a member can't interpret or commit from the owner's instance or upload session (404)", async () => {
     const def = await definition("sandbox");
     const ownersInstance = await instance(def, fx.ownerId);

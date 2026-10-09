@@ -728,6 +728,120 @@ describe("Connector Instance Layout Plans Router", () => {
       );
     }
 
+    /** #743: record `uploadSessionId` as this instance's workbook source,
+     *  as a prior commit job would have. */
+    async function linkUploadSession(sessionId: string, planId: string) {
+      const now = Date.now();
+      await (db as Db).insert(schema.jobs).values({
+        id: generateId(),
+        organizationId,
+        type: "layout_plan_commit",
+        status: "completed",
+        progress: 100,
+        metadata: {
+          kind: "draft",
+          organizationId,
+          userId,
+          connectorInstanceId,
+          planId,
+          connectorDefinitionId: "_seed",
+          name: "seed",
+          isExistingInstance: false,
+          plan: {},
+          workbookSource: { kind: "uploadSession", uploadSessionId: sessionId },
+        },
+        result: null,
+        error: null,
+        startedAt: now,
+        completedAt: now,
+        bullJobId: null,
+        attempts: 1,
+        maxAttempts: 1,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
+
+    async function recommitJobCount(): Promise<number> {
+      const rows = await (db as Db)
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.type, "layout_plan_commit"));
+      return rows.filter(
+        (j) =>
+          (j.metadata as { kind?: string; connectorInstanceId?: string })
+            .kind === "recommit" &&
+          (j.metadata as { connectorInstanceId?: string })
+            .connectorInstanceId === connectorInstanceId
+      ).length;
+    }
+
+    // #743: a recommit reads only its own instance's workbook. Any other
+    // source gets the same 400, and no job is enqueued.
+    it("#743: refuses an upload session that isn't this instance's (400, no job)", async () => {
+      const planId = await insertPlanRow(
+        db as Db,
+        {
+          planVersion: "1.0.0",
+          workbookFingerprint: {
+            sheetNames: ["Sheet1"],
+            dimensions: { Sheet1: { rows: 1, cols: 1 } },
+            anchorCells: [],
+          },
+          regions: [],
+          confidence: { overall: 0.9, perRegion: {} },
+        } as unknown as LayoutPlan
+      );
+      await linkUploadSession(generateId(), planId);
+      const res = await request(app)
+        .post(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadSessionId: generateId() });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      expect(await recommitJobCount()).toBe(0);
+    });
+
+    it("#743: refuses another instance as the source, and accepts its own (202)", async () => {
+      const planId = await insertPlanRow(
+        db as Db,
+        {
+          planVersion: "1.0.0",
+          workbookFingerprint: {
+            sheetNames: ["Sheet1"],
+            dimensions: { Sheet1: { rows: 1, cols: 1 } },
+            anchorCells: [],
+          },
+          regions: [],
+          confidence: { overall: 0.9, perRegion: {} },
+        } as unknown as LayoutPlan
+      );
+      const other = await request(app)
+        .post(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId: generateId() });
+      expect(other.status).toBe(400);
+      expect(other.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      expect(await recommitJobCount()).toBe(0);
+
+      const own = await request(app)
+        .post(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId });
+      expect(own.status).toBe(202);
+      expect(await recommitJobCount()).toBe(1);
+    });
+
     it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {
       const colEmailId = await seedColumnDefinition(
         db as Db,
@@ -751,12 +865,15 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
+      // #743: the source must be this instance's own upload session.
+      const sessionId = generateId();
+      await linkUploadSession(sessionId, planId);
       const res = await request(app)
         .post(
           `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
         )
         .set("Authorization", "Bearer test-token")
-        .send({ uploadSessionId: generateId() });
+        .send({ uploadSessionId: sessionId });
 
       expect(res.status).toBe(202);
       expect(res.body.success).toBe(true);
