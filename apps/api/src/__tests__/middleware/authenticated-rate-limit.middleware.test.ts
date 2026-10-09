@@ -18,12 +18,20 @@ jest.unstable_mockModule("../../utils/rate-limit.util.js", () => ({
   RATE_WINDOW_MS: 60_000,
 }));
 
+const mockWarn = jest.fn();
+jest.unstable_mockModule("../../utils/logger.util.js", () => ({
+  createLogger: () => ({ warn: mockWarn, info: jest.fn(), error: jest.fn() }),
+}));
+
 const { authenticatedRateLimit } =
   await import("../../middleware/authenticated-rate-limit.middleware.js");
 const { ApiError } = await import("../../services/http.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
+
+const API = { bucket: "api", limitPerMinute: 300 } as const;
+const TILES = { bucket: "tiles", limitPerMinute: 1200 } as const;
 
 const reqFor = (sub: string | undefined) =>
   ({ auth: sub ? { payload: { sub } } : undefined }) as unknown as Request;
@@ -35,6 +43,7 @@ beforeEach(() => {
   mockSecondsLeft.mockReset();
   mockSecondsLeft.mockReturnValue(42);
   setHeader.mockReset();
+  mockWarn.mockReset();
 });
 
 // ── case 1 — under the limit passes through, keyed by subject ─────────
@@ -43,7 +52,7 @@ it("calls next() with no error while under the limit, keyed by the Auth0 sub", a
   mockIncrement.mockResolvedValue(3);
   const next = jest.fn();
 
-  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
 
   expect(mockIncrement).toHaveBeenCalledWith(
     "authed:auth0|user-a",
@@ -58,7 +67,7 @@ it("denies 429 API_RATE_LIMITED when the window count exceeds the limit", async 
   mockIncrement.mockResolvedValue(301);
   const next = jest.fn();
 
-  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
 
   const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
   expect(err).toBeInstanceOf(ApiError);
@@ -70,8 +79,8 @@ it("denies 429 API_RATE_LIMITED when the window count exceeds the limit", async 
 
 it("keys each subject into its own window so one principal's limit doesn't affect another", async () => {
   const next = jest.fn();
-  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
-  await authenticatedRateLimit(300)(reqFor("auth0|user-b"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-b"), res, next);
 
   expect(mockIncrement).toHaveBeenNthCalledWith(
     1,
@@ -91,7 +100,7 @@ it("fails open (passes the request) when the Redis counter errors", async () => 
   mockIncrement.mockRejectedValue(new Error("redis down"));
   const next = jest.fn();
 
-  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
 
   expect(next).toHaveBeenCalledWith();
 });
@@ -101,7 +110,7 @@ it("fails open (passes the request) when the Redis counter errors", async () => 
 it("allows the request without touching Redis when the subject is absent", async () => {
   const next = jest.fn();
 
-  await authenticatedRateLimit(300)(reqFor(undefined), res, next);
+  await authenticatedRateLimit(API)(reqFor(undefined), res, next);
 
   expect(mockIncrement).not.toHaveBeenCalled();
   expect(next).toHaveBeenCalledWith();
@@ -113,7 +122,7 @@ it("sets Retry-After to the seconds left in the window the request was counted i
   mockIncrement.mockResolvedValue(301);
   const next = jest.fn();
 
-  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
 
   // The same instant feeds the counter and the remainder, so the hint matches
   // the window the request was counted in.
@@ -130,7 +139,7 @@ it("says 1 second, singular", async () => {
   mockSecondsLeft.mockReturnValue(1);
   const next = jest.fn();
 
-  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
 
   const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
   expect(err.message).toBe("Too many requests. Try again in 1 second.");
@@ -140,8 +149,53 @@ it("sets no Retry-After on an allowed request", async () => {
   mockIncrement.mockResolvedValue(300);
   const next = jest.fn();
 
-  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+  await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
 
   expect(setHeader).not.toHaveBeenCalled();
   expect(next).toHaveBeenCalledWith();
+});
+
+// ── case 7 — tiles count in their own bucket (#705) ──────────────────
+
+it("keys the tiles bucket apart from the API bucket", async () => {
+  mockIncrement.mockResolvedValue(1);
+  const next = jest.fn();
+
+  await authenticatedRateLimit(TILES)(reqFor("auth0|user-a"), res, next);
+
+  expect(mockIncrement).toHaveBeenCalledWith(
+    "authed-tiles:auth0|user-a",
+    expect.any(Number)
+  );
+  expect(next).toHaveBeenCalledWith();
+});
+
+it("limits the tiles bucket at its own ceiling, naming map tiles", async () => {
+  const next = jest.fn();
+  mockIncrement.mockResolvedValue(1200);
+  await authenticatedRateLimit(TILES)(reqFor("auth0|user-a"), res, next);
+  expect(next).toHaveBeenLastCalledWith();
+
+  mockIncrement.mockResolvedValue(1201);
+  await authenticatedRateLimit(TILES)(reqFor("auth0|user-a"), res, next);
+  const err = next.mock.calls[1][0] as InstanceType<typeof ApiError>;
+  expect(err.status).toBe(429);
+  expect(err.code).toBe(ApiCode.API_RATE_LIMITED);
+  expect(err.message).toBe(
+    "Too many map tile requests. Try again in 42 seconds."
+  );
+  expect(setHeader).toHaveBeenCalledWith("Retry-After", "42");
+});
+
+it("fails open per bucket, naming the bucket in the warning", async () => {
+  mockIncrement.mockRejectedValue(new Error("redis down"));
+  const next = jest.fn();
+
+  await authenticatedRateLimit(TILES)(reqFor("auth0|user-a"), res, next);
+
+  expect(next).toHaveBeenCalledWith();
+  expect(mockWarn).toHaveBeenCalledWith(
+    expect.objectContaining({ bucket: "tiles", sub: "auth0|user-a" }),
+    expect.any(String)
+  );
 });

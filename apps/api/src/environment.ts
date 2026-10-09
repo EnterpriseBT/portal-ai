@@ -166,11 +166,21 @@ export const environment = {
     10
   ),
   // Per-user fixed-window cap on the authenticated API (#574), keyed by the
-  // Auth0 subject. Generous by design: normal app usage bursts well under
-  // this, so anything near the ceiling is a runaway client or abuse. Fail-open
+  // Auth0 subject. Map tiles don't count here; they have their own bucket
+  // below. Anything near the ceiling is a runaway client or abuse. Fail-open
   // on a Redis outage (see authenticated-rate-limit.middleware.ts).
   AUTH_API_RATE_LIMIT_PER_MIN: parseInt(
     process.env.AUTH_API_RATE_LIMIT_PER_MIN || "300",
+    10
+  ),
+  // Per-user fixed-window cap on map tile requests (#705), separate from the
+  // API bucket so panning a map never throttles the rest of the app. Generous
+  // by design: a pan fans out 6-10 tiles, 304 revalidations count, a station
+  // can show several maps, and a fixed window allows a 2x burst across a
+  // minute boundary. The tile admission gate (#698) bounds the database
+  // regardless, so too high costs nothing; too low pauses real maps.
+  AUTH_TILE_RATE_LIMIT_PER_MIN: parseInt(
+    process.env.AUTH_TILE_RATE_LIMIT_PER_MIN || "1200",
     10
   ),
   // Retention window for the tool-usage audit ledger (#179 D5): rows older
