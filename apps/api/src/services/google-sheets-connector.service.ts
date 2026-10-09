@@ -383,11 +383,13 @@ export class GoogleSheetsConnectorService {
         `Connector instance not found: ${connectorInstanceId}`
       );
     }
+    // #743: another org's instance is absent, not forbidden: the same
+    // 404 as an unknown id, so its existence never leaks.
     if (instance.organizationId !== organizationId) {
       throw new ApiError(
-        403,
+        404,
         ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-        "Connector instance belongs to a different organization"
+        `Connector instance not found: ${connectorInstanceId}`
       );
     }
     const cfg = instance.config as
@@ -443,11 +445,13 @@ export class GoogleSheetsConnectorService {
         `Connector instance ${connectorInstanceId} not found`
       );
     }
+    // #743: another org's instance is absent, not forbidden: the same
+    // 404 as an unknown id, so its existence never leaks.
     if (instance.organizationId !== organizationId) {
       throw new ApiError(
-        403,
+        404,
         ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-        "Connector instance belongs to a different organization"
+        `Connector instance ${connectorInstanceId} not found`
       );
     }
     const prefix = workbookCacheKey(GOOGLE_SHEETS_SLUG, connectorInstanceId);

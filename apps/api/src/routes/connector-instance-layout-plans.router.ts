@@ -557,7 +557,10 @@ connectorInstanceLayoutPlansRouter.patch(
  *                 payload:
  *                   $ref: '#/components/schemas/LayoutPlanCommitResult'
  *       400:
- *         description: Invalid workbook payload
+ *         description: >
+ *           Invalid workbook payload, or a workbook source (uploadSessionId /
+ *           connectorInstanceId) that isn't this connector instance's own
+ *           (LAYOUT_PLAN_INVALID_PAYLOAD)
  *         content:
  *           application/json:
  *             schema:

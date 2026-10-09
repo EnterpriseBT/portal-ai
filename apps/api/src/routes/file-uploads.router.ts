@@ -291,12 +291,11 @@ fileUploadsRouter.post(
  *               $ref: '#/components/schemas/SheetSliceResponse'
  *       400:
  *         description: Malformed or missing query params (`FILE_UPLOAD_PARSE_INVALID_PAYLOAD`)
- *       403:
- *         description: Upload session belongs to another organization (`FILE_UPLOAD_FORBIDDEN`)
  *       404:
  *         description: >
- *           No cached session for this id (`FILE_UPLOAD_SESSION_NOT_FOUND`), or the
- *           rectangle falls outside the sheet (`FILE_UPLOAD_SLICE_OUT_OF_BOUNDS`)
+ *           No cached session for this id, or it belongs to another organization
+ *           (`FILE_UPLOAD_SESSION_NOT_FOUND`), or the rectangle falls outside the
+ *           sheet (`FILE_UPLOAD_SLICE_OUT_OF_BOUNDS`)
  *       500:
  *         description: Slice read failed (`FILE_UPLOAD_PARSE_FAILED`)
  */

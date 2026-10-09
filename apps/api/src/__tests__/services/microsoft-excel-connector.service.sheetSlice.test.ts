@@ -156,7 +156,8 @@ describe("MicrosoftExcelConnectorService.resolveWorkbook", () => {
     }
   });
 
-  it("throws 403 when instance belongs to a different org", async () => {
+  // #743: another org's instance is absent (404), the same as unknown.
+  it("throws 404 when instance belongs to a different org", async () => {
     findByIdMock.mockResolvedValue({
       id: "ci-1",
       organizationId: "org-other",
@@ -165,7 +166,8 @@ describe("MicrosoftExcelConnectorService.resolveWorkbook", () => {
       await MicrosoftExcelConnectorService.resolveWorkbook("ci-1", "org-1");
       throw new Error("expected throw");
     } catch (err) {
-      expect((err as { status?: number }).status).toBe(403);
+      expect((err as { status?: number }).status).toBe(404);
+      expect((err as Error).message).toBe("Connector instance ci-1 not found");
     }
   });
 

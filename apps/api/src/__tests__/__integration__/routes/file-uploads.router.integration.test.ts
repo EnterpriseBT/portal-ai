@@ -284,6 +284,46 @@ describe("File uploads streaming router", () => {
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_NOT_FOUND);
     });
+
+    // #743: another org's upload is absent (404), the same as an unknown id,
+    // never a 403 that confirms it exists.
+    it("returns the unknown-id 404 for another organization's upload", async () => {
+      const other = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        "auth0|other-org-uploader"
+      );
+      const uploadId = `u_${Date.now()}`;
+      const now = Date.now();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.fileUploads)
+        .values({
+          id: uploadId,
+          organizationId: other.organizationId,
+          filename: "data.csv",
+          contentType: "text/csv",
+          sizeBytes: 10,
+          s3Key: `uploads/${uploadId}`,
+          status: "pending",
+          uploadSessionId: null,
+          created: now,
+          createdBy: other.userId,
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      const res = await request(app)
+        .post("/api/file-uploads/confirm")
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadId });
+      const unknown = await request(app)
+        .post("/api/file-uploads/confirm")
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadId: "u_does_not_exist" });
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_NOT_FOUND);
+      expect(res.body).toEqual(unknown.body);
+    });
   });
 
   describe("POST /api/file-uploads/parse", () => {

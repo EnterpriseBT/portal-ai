@@ -233,8 +233,9 @@ function mapMicrosoftAuthError(err: unknown): ApiError {
 
 /**
  * Resolve a `connectorInstanceId` to an owned `ConnectorInstance` row.
- *   - 404 when the row is missing or soft-deleted.
- *   - 403 when the row exists but belongs to a different organization.
+ *   - 404 when the row is missing, soft-deleted, in another organization or
+ *     unreadable (the same answer for each, #713/#743).
+ *   - 403 when it's readable but a change needs write the caller lacks.
  */
 async function resolveOwnedInstance(
   req: Request,
@@ -312,8 +313,7 @@ function parseIntStrict(value: unknown): number | undefined {
  *     responses:
  *       200: { description: Workbooks listed }
  *       400: { description: connectorInstanceId missing }
- *       403: { description: Instance belongs to a different organization }
- *       404: { description: Instance not found }
+ *       404: { description: "Instance not found, in another organization, or not readable" }
  *       409: { description: Connected Microsoft account has no OneDrive (MICROSOFT_EXCEL_NO_ONEDRIVE) }
  *       502: { description: Graph rejected the listing or refresh }
  */
@@ -376,8 +376,8 @@ microsoftExcelConnectorRouter.get(
  *     responses:
  *       200: { description: Workbook selected; preview returned }
  *       400: { description: Missing driveItemId }
- *       403: { description: Instance belongs to a different organization }
- *       404: { description: Connector instance not found }
+ *       403: { description: Instance readable but not writable by the caller }
+ *       404: { description: "Connector instance not found, in another organization, or not readable" }
  *       409: { description: Connected Microsoft account has no OneDrive (MICROSOFT_EXCEL_NO_ONEDRIVE) }
  *       413: { description: Workbook exceeds the configured byte cap }
  *       415: { description: Only .xlsx workbooks are supported }

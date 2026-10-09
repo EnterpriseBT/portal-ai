@@ -226,7 +226,8 @@ describe("GoogleSheetsConnectorService.fetchWorkbookForSync", () => {
     ).rejects.toThrow(/not found/i);
   });
 
-  it("throws when the instance belongs to a different organization", async () => {
+  // #743: another org's instance is absent (404), the same as unknown.
+  it("throws 404 when the instance belongs to a different organization", async () => {
     findInstanceMock.mockResolvedValue({
       id: "ci-1",
       organizationId: "different-org",
@@ -238,7 +239,10 @@ describe("GoogleSheetsConnectorService.fetchWorkbookForSync", () => {
         "org-1",
         jest.fn<typeof fetch>()
       )
-    ).rejects.toThrow(/different organization/i);
+    ).rejects.toMatchObject({
+      status: 404,
+      message: "Connector instance not found: ci-1",
+    });
   });
 
   it("throws when the instance has no spreadsheetId in config (selectSheet never called)", async () => {

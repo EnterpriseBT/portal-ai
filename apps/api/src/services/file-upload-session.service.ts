@@ -279,11 +279,12 @@ export const FileUploadSessionService = {
         `Upload ${uploadId} not found`
       );
     }
+    // #743: another org's upload is absent, not forbidden (#713).
     if (row.organizationId !== organizationId) {
       throw new ApiError(
-        403,
-        ApiCode.FILE_UPLOAD_FORBIDDEN,
-        "Upload does not belong to this organization"
+        404,
+        ApiCode.FILE_UPLOAD_NOT_FOUND,
+        `Upload ${uploadId} not found`
       );
     }
     if (row.status === "uploaded") {
@@ -377,10 +378,11 @@ export const FileUploadSessionService = {
         );
       }
       if (row.organizationId !== organizationId) {
+        // #743: another org's upload is absent, not forbidden (#713).
         throw new ApiError(
-          403,
-          ApiCode.FILE_UPLOAD_FORBIDDEN,
-          `Upload ${id} belongs to a different organization`
+          404,
+          ApiCode.FILE_UPLOAD_NOT_FOUND,
+          `Upload ${id} not found`
         );
       }
       if (row.status !== "uploaded" && row.status !== "parsed") {
@@ -457,10 +459,11 @@ export const FileUploadSessionService = {
         );
       }
       if (row.organizationId !== organizationId) {
+        // #743: another org's upload is absent, not forbidden (#713).
         throw new ApiError(
-          403,
-          ApiCode.FILE_UPLOAD_FORBIDDEN,
-          `Upload ${id} belongs to a different organization`
+          404,
+          ApiCode.FILE_UPLOAD_NOT_FOUND,
+          `Upload ${id} not found`
         );
       }
       if (row.status !== "uploaded" && row.status !== "parsed") {
@@ -634,10 +637,11 @@ export const FileUploadSessionService = {
       }
       for (const upload of uploadsForSession) {
         if (upload.organizationId !== organizationId) {
+          // #743: another org's session is absent, not forbidden (#713).
           throw new ApiError(
-            403,
-            ApiCode.FILE_UPLOAD_FORBIDDEN,
-            "Upload session belongs to a different organization"
+            404,
+            ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
+            `Upload session ${uploadSessionId} not found`
           );
         }
       }
@@ -678,10 +682,11 @@ export const FileUploadSessionService = {
         );
       for (const upload of uploadsForSession) {
         if (upload.organizationId !== organizationId) {
+          // #743: another org's session is absent, not forbidden (#713).
           throw new ApiError(
-            403,
-            ApiCode.FILE_UPLOAD_FORBIDDEN,
-            "Upload session belongs to a different organization"
+            404,
+            ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
+            `Upload session ${uploadSessionId} not found`
           );
         }
       }
@@ -711,10 +716,11 @@ export const FileUploadSessionService = {
       );
     for (const upload of uploadsForSession) {
       if (upload.organizationId !== organizationId) {
+        // #743: another org's session is absent, not forbidden (#713).
         throw new ApiError(
-          403,
-          ApiCode.FILE_UPLOAD_FORBIDDEN,
-          "Upload session belongs to a different organization"
+          404,
+          ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
+          `Upload session ${uploadSessionId} not found`
         );
       }
     }
