@@ -29,6 +29,8 @@ Options: (a) per-query `retryDelay` only — each query retries on its own clock
 4. **`client.ts` splits the rule**: queries retry `API_RATE_LIMITED` (up to 3 failures, `retryDelay` = the window plus the release spread) — a query sits in loading during the wait, so no per-query error renders; mutations keep `shouldRetry` unchanged (4xx → never), pinned by a test for 429.
 5. **The notice**: `useRateLimitNotice()` (new `apps/web/src/utils/use-rate-limit-notice.util.ts`) raises `toast.warning("You're making requests faster than allowed. Data will load again in N seconds.", { autoHideMs: wait })` once per window. Mounted **once** in `ApplicationProvider`, inside `ToastProvider`, so every page gets it whatever its layout (the portal page uses `FullScreenLayout`). It stays up for the wait it names via a new `ToastOptions.autoHideMs` override, since the default warning duration (6s) is far shorter than a window. Warning, not error: nothing failed that the user must act on.
 
+6. **Adversarial fixes.** §3.1: a longer refusal that extends the running window by ≥2s notifies again (`extended: true`), and the notice dismisses its toast and raises one naming the new wait. Toast raises now return the toast id for this, and smaller extensions from parallel refusals are ignored so the notice doesn't churn. §3.2: core's `Modal` holds further submits from the moment one fires until `submitDisabled` turns true (or 500 ms), closing a pre-existing double-Enter race where `isPending` rendered a macrotask after `mutate()`.
+
 Only `API_RATE_LIMITED` triggers any of this. `MAP_TILE_RATE_LIMITED` stays the map's (#705); a non-limiter 429 (no code) keeps today's no-retry behavior. A toast rather than a banner, though the toast pattern reserves conditions for their own surface: the ticket chose it, a spent bucket is the direct result of the user's own activity, and the notice ends with the window.
 
 ## Plan — 2 slices
@@ -47,6 +49,53 @@ Only `API_RATE_LIMITED` triggers any of this. `MAP_TILE_RATE_LIMITED` stays the 
 4. During a window, submit a create dialog (e.g. New Station) → the dialog's FormAlert reads "Too many requests. Try again in N seconds."; Network shows the POST sent **once**; nothing resends it after the window.
 5. Pan a map with the API bucket fine → tile behavior unchanged (#705); no rate-limit toast.
 6. Trip the limit on a portal page (`/portals/:id`, full-screen layout) → the same single toast appears there.
+
+## Adversarial
+
+Probes for how the pause, retry and notice break. Branch `feat/747-api-rate-limit-notice` (PR [#750](https://github.com/EnterpriseBT/portal-ai/pull/750)). **Preflight:** your dev stack on this branch, signed in as the e2e owner. **Trip the limit** by using up the per-user allowance with DB-only GETs (`/api/entity-tags?limit=1`) from the page with the user's token, just after the top of a UTC minute. Never use `/api/profile`, which calls Auth0 upstream. **Forge a refusal** where a probe needs one with a Playwright `page.route` that answers the named URL with the stated status, headers and body. **Reset** between probes with a full reload (the pause is per tab, in memory) and wait for the minute to roll over.
+
+### §1 — Boundary inputs
+- [ ] Forge `429 API_RATE_LIMITED` with `Retry-After: 99999` on a list GET — the toast names **60 seconds** (clamped), and reads resume within about 63 s, not hours.
+- [ ] Forge `Retry-After: 0` with `details.retryAfterSeconds: 0` — the wait is clamped to 1 s; no tight retry loop (at most 3 retries per query in Network, at least 1 s apart).
+- [ ] Forge a `429 API_RATE_LIMITED` with no `Retry-After` and no `details` — the 2 s default applies: toast "2 seconds", reads recover, no error toast.
+
+### §2 — Malformed refusals
+- [ ] Forge a 429 whose body is HTML (`<html>Too Many Requests</html>`, as a proxy would send) — no pause, no rate-limit toast, and no crash. The page shows the same error state as any network failure did before this change.
+- [ ] Forge a `429` with code `MAP_TILE_RATE_LIMITED` on a non-tile GET, and a 429 with an empty code — neither starts the pause or raises the notice, and neither is retried.
+- [ ] Forge `Retry-After: "Wed, 21 Oct 2026 07:28:00 GMT"` (HTTP-date form) with `details.retryAfterSeconds: 20` — falls back to the 20 s detail, never `NaN`; the toast names 20 seconds.
+
+### §3 — Concurrency & races
+- [ ] Trip the limit, then forge a second refusal with a **longer** wait inside the same window — no second toast; reads stay held until the longer wait ends.
+- [ ] During a window, fill New Station and press Enter twice fast — at most one `POST /api/stations` (the dialog's submit is disabled while pending); it is refused once and never resent after the window.
+- [ ] During a window, type 20 characters quickly into a searchable select (e.g. a station's tool or entity picker) — after the window the held searches go out spread over ≤3 s, they **don't start a new window**, and the picker shows the results for the final text, not a stale earlier one.
+
+### §4 — Auth & permission boundaries
+N/A — client-only change. The limit is enforced by the server (#574); the client pause only decides when *it* asks. Ignoring the pause (e.g. raw `fetch` from devtools) is still refused by the server, as the smoke walk's own bucket-spending showed.
+
+### §5 — Multi-tenant isolation
+- [ ] Use up the allowance as the e2e owner; in a second browser context as the e2e member, load Dashboard — the member's reads return 200 with no toast (separate limit per user; client pause is per tab). — backend
+- [ ] As a user in two orgs, switch org during a window — reads stay held (same per-user limit), no second toast, and after the window the **new** org's data loads (no stale previous-org rows).
+
+### §6 — State & lifecycle
+- [ ] Trip the limit on a portal page, then navigate to Dashboard before the window ends — the portal's held reads are **never sent** (no `/api/portals/:id…` requests after the navigation).
+- [ ] Sign out during a window and sign back in — no stuck pause: the fresh session's reads go out normally once the server window allows, with no leftover toast.
+- [ ] Leave the tab in the background across the window end (switch tabs for 90 s), then return — reads have recovered; no error toasts accumulated while hidden.
+
+### §7 — Misuse sequences
+- [ ] Press F5 five times during one window — each load shows at most one rate-limit toast, no error toasts, and Network shows only that load's first wave of 429s. No retry storm: each query retries at most 3 times, spaced by the window.
+- [ ] Open the app in a second tab of the same user during a window — that tab shows its own single toast (the pause is per tab) and recovers by itself; neither tab ends in an error state.
+- [ ] Keep the limit used up for three consecutive windows (re-spend it each minute) — after the 3rd refused retry a query shows its ordinary error state (no infinite retry), and the toast text never claims the page reloads itself.
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk; empty when every probe held)_ | | | |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name> — confirmed against my own running stack
+
+**Bug-filing template:** Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/user/portal ids):
 
 ## Out of scope
 

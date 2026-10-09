@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import type { UseMutationResult } from "@tanstack/react-query";
 import type { PortalMessageResponse } from "@portalai/core/contracts";
+import type { ToastApi } from "../utils/toast.context";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -51,19 +52,13 @@ jest.unstable_mockModule("../api/sdk", () => ({
 // test-utils' render already mounts a ToastProvider, and an inner provider
 // wins, so this exercises the real `useToast` lookup.
 const mockToast = {
-  success: jest.fn(),
-  info: jest.fn(),
-  warning: jest.fn(),
-  error:
-    jest.fn<
-      (
-        msg: string,
-        opts?: { action?: { label: string; onClick: () => void } }
-      ) => void
-    >(),
-  show: jest.fn(),
-  dismiss: jest.fn(),
-  dismissAll: jest.fn(),
+  success: jest.fn<ToastApi["success"]>(),
+  info: jest.fn<ToastApi["info"]>(),
+  warning: jest.fn<ToastApi["warning"]>(),
+  error: jest.fn<ToastApi["error"]>(),
+  show: jest.fn<ToastApi["show"]>(),
+  dismiss: jest.fn<ToastApi["dismiss"]>(),
+  dismissAll: jest.fn<ToastApi["dismissAll"]>(),
 };
 
 // The failures table needs router params; stub it — this suite only cares

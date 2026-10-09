@@ -19,18 +19,29 @@ const DEFAULT_RETRY_AFTER_MS = 2_000;
 const MIN_RETRY_AFTER_MS = 1_000;
 // A rate-limit window is a minute, so its Retry-After is at most 60s.
 const MAX_RETRY_AFTER_MS = 60_000;
+// A refusal that pushes the running window's end out by at least this much is
+// news worth replacing the notice for. Parallel refusals from one window name
+// the same end give or take a second of rounding, and must not churn it.
+const EXTENSION_NOTICE_MS = 2_000;
 // Held reads leave over this spread once the window ends, so a busy page
 // doesn't spend the fresh bucket in one instant and start another window.
 const RELEASE_SPREAD_MS = 3_000;
 
 let apiReadsPausedUntil = 0;
 
-type RateLimitWindowListener = (waitMs: number) => void;
+/** A new rate-limit window, or a running one pushed out by a longer refusal
+ *  (`extended`). `waitMs` is the whole wait from now. */
+export interface RateLimitWindowEvent {
+  waitMs: number;
+  extended: boolean;
+}
+
+type RateLimitWindowListener = (event: RateLimitWindowEvent) => void;
 const windowListeners = new Set<RateLimitWindowListener>();
 
-/** Hear each new rate-limit window once, with its wait. Extending a running
- *  window is not news, so one notice covers every refusal inside it.
- *  Returns the unsubscribe. */
+/** Hear each new rate-limit window once, with its wait, and again only if a
+ *  longer refusal extends it by a real amount (so the notice can name the
+ *  wait that actually holds). Returns the unsubscribe. */
 export function onApiRateLimitWindow(
   listener: RateLimitWindowListener
 ): () => void {
@@ -64,13 +75,20 @@ export function retryAfterMs(error: { retryAfterSeconds?: number }): number {
  *  never shortens it. */
 export function pauseApiReads(ms: number): void {
   const isNewWindow = apiReadPauseRemainingMs() === 0;
+  const previousEnd = apiReadsPausedUntil;
   apiReadsPausedUntil = Math.max(apiReadsPausedUntil, Date.now() + ms);
-  if (!isNewWindow) return;
+  const extended =
+    !isNewWindow && apiReadsPausedUntil - previousEnd >= EXTENSION_NOTICE_MS;
+  if (!isNewWindow && !extended) return;
+  const event: RateLimitWindowEvent = {
+    waitMs: apiReadPauseRemainingMs(),
+    extended,
+  };
   for (const listener of windowListeners) {
     // Best-effort: this runs on a refused read's error path, and a notice
     // that throws must not replace the 429 the retry rule keys on.
     try {
-      listener(ms);
+      listener(event);
     } catch {
       // The notice is lost; the pause and the retry still hold.
     }

@@ -57,7 +57,9 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
     setQueue([]);
   }, []);
 
-  const show = useCallback((toast: Omit<Toast, "id">) => {
+  const show = useCallback((toast: Omit<Toast, "id">): string => {
+    // Assigned here, not in the updater: StrictMode runs updaters twice.
+    const id = nextId();
     setQueue((prev) => {
       // Dedupe against what the user can currently SEE. Pending duplicates
       // are not compared — they are not yet competing for attention.
@@ -67,7 +69,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
       );
       if (isDuplicate) return prev;
 
-      const next = [...prev, { ...toast, id: nextId() }];
+      const next = [...prev, { ...toast, id }];
       if (next.length <= TOAST_QUEUE_CAP) return next;
 
       // Over cap: drop the OLDEST PENDING toast. Visible ones are never
@@ -79,6 +81,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
       ];
       return kept;
     });
+    return id;
   }, []);
 
   const visible = useMemo(() => queue.slice(0, TOAST_MAX_VISIBLE), [queue]);

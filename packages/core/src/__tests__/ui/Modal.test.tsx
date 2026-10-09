@@ -331,6 +331,48 @@ describe("Modal Component", () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
+    // #747: a mutation's pending state renders a macrotask after `mutate()`
+    // (react-query notifies on a timeout), so `submitDisabled` is still false
+    // when a fast second Enter lands. Measured: a double Enter sent two
+    // creates. The modal holds further submits until the dialog disables.
+    it("submits once for two Enters before the dialog re-renders as pending", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} />);
+      await user.type(screen.getByLabelText("Name"), "x{Enter}{Enter}");
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it("submits again once a pending submit has finished", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const { rerender } = render(<FormModal onSubmit={onSubmit} />);
+      await user.type(screen.getByLabelText("Name"), "x{Enter}");
+      rerender(<FormModal onSubmit={onSubmit} submitDisabled />);
+      rerender(<FormModal onSubmit={onSubmit} />);
+      await user.type(screen.getByLabelText("Name"), "{Enter}");
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+    });
+
+    // A submit that never disables the dialog (validation failed) must not
+    // lock Enter out: the hold ends on its own.
+    it("submits again after a short hold when the dialog never disabled", async () => {
+      jest.useFakeTimers();
+      try {
+        const user = userEvent.setup({
+          advanceTimers: jest.advanceTimersByTime,
+        });
+        const onSubmit = jest.fn();
+        render(<FormModal onSubmit={onSubmit} />);
+        await user.type(screen.getByLabelText("Name"), "x{Enter}");
+        jest.advanceTimersByTime(500);
+        await user.type(screen.getByLabelText("Name"), "{Enter}");
+        expect(onSubmit).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     // The dialog validates in its own onSubmit (Zod + field errors), as the
     // visible submit does, so Enter must skip the browser's native `required`
     // check (which shows a different message). That's `formnovalidate` on the

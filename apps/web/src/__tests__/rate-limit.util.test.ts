@@ -147,25 +147,58 @@ describe("onApiRateLimitWindow (#747)", () => {
     jest.restoreAllMocks();
   });
 
-  it("hears each new window once, not its extensions", () => {
+  it("hears each new window once, with its wait", () => {
     const listener = jest.fn();
     const unsubscribe = onApiRateLimitWindow(listener);
 
     pauseApiReads(30_000);
-    pauseApiReads(10_000);
-    pauseApiReads(40_000);
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith(30_000);
+    expect(listener).toHaveBeenCalledWith({ waitMs: 30_000, extended: false });
 
-    jest.advanceTimersByTime(40_000);
+    jest.advanceTimersByTime(30_000);
     pauseApiReads(5_000);
     expect(listener).toHaveBeenCalledTimes(2);
-    expect(listener).toHaveBeenLastCalledWith(5_000);
+    expect(listener).toHaveBeenLastCalledWith({
+      waitMs: 5_000,
+      extended: false,
+    });
 
     unsubscribe();
     jest.advanceTimersByTime(5_000);
     pauseApiReads(5_000);
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  // #747 adversarial §3.1: a longer refusal inside a running window held
+  // reads for 31s while the notice still said 5s and hid at 5s.
+  it("hears an extension of the running window, with the new wait", () => {
+    const listener = jest.fn();
+    const unsubscribe = onApiRateLimitWindow(listener);
+
+    pauseApiReads(5_000);
+    jest.advanceTimersByTime(1_000);
+    pauseApiReads(30_000);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith({
+      waitMs: 30_000,
+      extended: true,
+    });
+
+    unsubscribe();
+  });
+
+  it("ignores a refusal that doesn't lengthen the wait by much", () => {
+    const listener = jest.fn();
+    const unsubscribe = onApiRateLimitWindow(listener);
+
+    // Parallel refusals from one window name the same end, give or take a
+    // second of rounding; each would otherwise replace the notice.
+    pauseApiReads(30_000);
+    pauseApiReads(10_000);
+    pauseApiReads(31_000);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
   });
 
   it("keeps a throwing listener from breaking the pause or the others", () => {
@@ -177,7 +210,7 @@ describe("onApiRateLimitWindow (#747)", () => {
 
     expect(() => pauseApiReads(10_000)).not.toThrow();
     expect(apiReadPauseRemainingMs()).toBe(10_000);
-    expect(after).toHaveBeenCalledWith(10_000);
+    expect(after).toHaveBeenCalledWith({ waitMs: 10_000, extended: false });
 
     unsubscribeThrowing();
     unsubscribeAfter();

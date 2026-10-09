@@ -12,16 +12,19 @@ import { pauseApiReads, resetApiReadPause } from "../utils/rate-limit.util";
 
 import type { ToastApi } from "../utils/toast.context";
 
-const toastApi = () =>
-  ({
-    success: jest.fn(),
-    info: jest.fn(),
-    warning: jest.fn(),
-    error: jest.fn(),
-    show: jest.fn(),
+const toastApi = () => {
+  let n = 0;
+  const raise = () => `toast-${++n}`;
+  return {
+    success: jest.fn(raise),
+    info: jest.fn(raise),
+    warning: jest.fn(raise),
+    error: jest.fn(raise),
+    show: jest.fn(raise),
     dismiss: jest.fn(),
     dismissAll: jest.fn(),
-  }) satisfies ToastApi;
+  } satisfies ToastApi;
+};
 
 const renderNotice = (api: ToastApi) =>
   renderHook(() => useRateLimitNotice(), {
@@ -70,6 +73,36 @@ describe("useRateLimitNotice", () => {
       "You're making requests faster than allowed. Data will load again in 1 second.",
       { autoHideMs: 1_000 }
     );
+  });
+
+  // Adversarial §3.1: the notice named the first wait and hid with it while
+  // a longer refusal kept reads held. It now follows the extended wait.
+  it("replaces its notice when a longer refusal extends the window", () => {
+    const api = toastApi();
+    renderNotice(api);
+
+    pauseApiReads(5_000);
+    jest.advanceTimersByTime(1_000);
+    pauseApiReads(30_000);
+
+    expect(api.dismiss).toHaveBeenCalledWith("toast-1");
+    expect(api.warning).toHaveBeenCalledTimes(2);
+    expect(api.warning).toHaveBeenLastCalledWith(
+      "You're making requests faster than allowed. Data will load again in 30 seconds.",
+      { autoHideMs: 30_000 }
+    );
+  });
+
+  it("does not dismiss anything for a fresh window", () => {
+    const api = toastApi();
+    renderNotice(api);
+
+    pauseApiReads(5_000);
+    jest.advanceTimersByTime(5_000);
+    pauseApiReads(5_000);
+
+    expect(api.warning).toHaveBeenCalledTimes(2);
+    expect(api.dismiss).not.toHaveBeenCalled();
   });
 
   it("stops listening on unmount", () => {
