@@ -19,6 +19,7 @@ import {
   AsyncSearchableSelect,
   FormDefaultButton,
   GatedButton,
+  swallowRepeatClick,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type { DataTableColumn } from "@portalai/core/ui";
@@ -186,7 +187,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
             <FormAlert serverError={serverError ?? null} />
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogActions onClickCapture={swallowRepeatClick}>
           <Button type="button" onClick={onClose} disabled={isAdding}>
             Cancel
           </Button>
@@ -504,7 +505,7 @@ export const EntityGroupDetailViewUI: React.FC<
             Are you sure you want to remove this member from the group?
           </Typography>
         </DialogContent>
-        <DialogActions>
+        <DialogActions onClickCapture={swallowRepeatClick}>
           <Button onClick={() => setRemoveDialogMemberId(null)}>Cancel</Button>
           <Button
             color="error"

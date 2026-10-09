@@ -15,6 +15,22 @@ import { FormDefaultButton } from "./FormDefaultButton.js";
  *  validation failure, say), so Enter can't be locked out. */
 const SUBMIT_HOLD_MS = 500;
 
+/**
+ * #751: swallow the repeat clicks of a double- or triple-click. Put it on a
+ * dialog's actions row as `onClickCapture`. A mutation's pending state
+ * disables the submit a render after `mutate()`, so a double-click's second
+ * click would otherwise submit again: measured as two creates. That click
+ * carries `detail` 2; a single click carries 1 and a keyboard activation 0,
+ * so both pass. `Modal` applies it to its own actions; a raw `Dialog` form
+ * puts it on its `DialogActions`.
+ */
+export const swallowRepeatClick = (e: React.MouseEvent): void => {
+  if (e.detail > 1) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+};
+
 export interface ModalProps extends Omit<
   DialogProps,
   "title" | "onClose" | "open"
@@ -155,7 +171,11 @@ export const Modal: React.FC<ModalProps> = ({
         </DialogTitle>
       )}
       <DialogContent>{children}</DialogContent>
-      {actions && <DialogActions>{actions}</DialogActions>}
+      {actions && (
+        <DialogActions onClickCapture={swallowRepeatClick}>
+          {actions}
+        </DialogActions>
+      )}
       {isForm && <FormDefaultButton disabled={submitDisabled} />}
     </Dialog>
   );

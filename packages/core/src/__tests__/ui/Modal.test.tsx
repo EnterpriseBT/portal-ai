@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { Modal } from "../../ui/Modal";
@@ -408,6 +408,54 @@ describe("Modal Component", () => {
       render(<FormModal onSubmit={onSubmit} />);
       await user.click(screen.getByRole("button", { name: "Save" }));
       expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    // #751: a double-click's second click lands before the mutation's
+    // pending state disables the button (measured: two creates). It carries
+    // `detail` 2, so the actions row swallows it.
+    it("fires the visible action once on a double-click", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} />);
+      await user.dblClick(screen.getByRole("button", { name: "Save" }));
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it("lets separate single clicks through", () => {
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} />);
+      const save = screen.getByRole("button", { name: "Save" });
+      fireEvent.click(save, { detail: 1 });
+      fireEvent.click(save, { detail: 1 });
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+    });
+
+    it("lets a keyboard activation through (detail 0)", () => {
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} />);
+      fireEvent.click(screen.getByRole("button", { name: "Save" }), {
+        detail: 0,
+      });
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it("swallows only the repeat, so a double-click on Cancel still closes once", async () => {
+      const user = userEvent.setup();
+      const onClose = jest.fn();
+      render(
+        <Modal
+          open
+          onClose={onClose}
+          title="Form"
+          actions={
+            <button type="button" onClick={onClose}>
+              Cancel
+            </button>
+          }
+        />
+      );
+      await user.dblClick(screen.getByRole("button", { name: "Cancel" }));
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it("adds no submit control to a dialog that isn't a form", () => {
