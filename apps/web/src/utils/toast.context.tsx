@@ -21,6 +21,10 @@ export interface ToastAction {
 
 export interface ToastOptions {
   action?: ToastAction;
+  /** Overrides the severity's auto-hide (`TOAST_AUTO_HIDE_MS`) for a notice
+   *  whose relevance has a known end, e.g. a rate-limit wait (#747). Ignored
+   *  for an error, which persists until dismissed. */
+  autoHideMs?: number;
 }
 
 /** A queued toast. `id` is assigned at raise time, never from render. */
@@ -29,15 +33,21 @@ export interface Toast {
   message: string;
   severity: ToastSeverity;
   action?: ToastAction;
+  autoHideMs?: number;
 }
 
+/**
+ * Each raise returns the toast's id, for a caller that later replaces its own
+ * notice (#747). When a raise is dropped as a duplicate of a visible toast,
+ * nothing was added and dismissing the returned id is a no-op.
+ */
 export interface ToastApi {
-  success(message: string, options?: ToastOptions): void;
-  info(message: string, options?: ToastOptions): void;
-  warning(message: string, options?: ToastOptions): void;
-  error(message: string, options?: ToastOptions): void;
+  success(message: string, options?: ToastOptions): string;
+  info(message: string, options?: ToastOptions): string;
+  warning(message: string, options?: ToastOptions): string;
+  error(message: string, options?: ToastOptions): string;
   /** The primitive the four severity methods delegate to. */
-  show(toast: Omit<Toast, "id">): void;
+  show(toast: Omit<Toast, "id">): string;
   dismiss(id: string): void;
   dismissAll(): void;
 }
@@ -51,11 +61,11 @@ export const ToastContext = createContext<ToastApi | null>(null);
  * any consumer that memoizes on it.
  */
 const NO_OP_TOAST_API: ToastApi = {
-  success: () => {},
-  info: () => {},
-  warning: () => {},
-  error: () => {},
-  show: () => {},
+  success: () => "",
+  info: () => "",
+  warning: () => "",
+  error: () => "",
+  show: () => "",
   dismiss: () => {},
   dismissAll: () => {},
 };

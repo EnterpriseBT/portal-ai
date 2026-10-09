@@ -2,6 +2,7 @@ import { jest } from "@jest/globals";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { PortalResultsListPayload } from "../api/portal-results.api";
 import type { ApiError } from "../utils";
+import type { ToastApi } from "../utils/toast.context";
 
 type ListQuery = UseQueryResult<PortalResultsListPayload, ApiError>;
 type PortalResult = PortalResultsListPayload["portalResults"][number];
@@ -33,19 +34,13 @@ const { PinnedResultsListView } =
   await import("../views/PinnedResultsListView.view");
 
 const mockToast = {
-  success: jest.fn(),
-  info: jest.fn(),
-  warning: jest.fn(),
-  error:
-    jest.fn<
-      (
-        msg: string,
-        opts?: { action?: { label: string; onClick: () => void } }
-      ) => void
-    >(),
-  show: jest.fn(),
-  dismiss: jest.fn(),
-  dismissAll: jest.fn(),
+  success: jest.fn<ToastApi["success"]>(),
+  info: jest.fn<ToastApi["info"]>(),
+  warning: jest.fn<ToastApi["warning"]>(),
+  error: jest.fn<ToastApi["error"]>(),
+  show: jest.fn<ToastApi["show"]>(),
+  dismiss: jest.fn<ToastApi["dismiss"]>(),
+  dismissAll: jest.fn<ToastApi["dismissAll"]>(),
 };
 
 const makePinnedResult = (

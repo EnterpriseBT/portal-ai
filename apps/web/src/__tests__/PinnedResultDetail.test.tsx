@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import type { PortalResult } from "@portalai/core/models";
 import type { UseMutationResult } from "@tanstack/react-query";
+import type { ToastApi } from "../utils/toast.context";
 
 // ── Mocks (container tests, #286) ────────────────────────────────────
 
@@ -60,19 +61,13 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const mockToast = {
-  success: jest.fn(),
-  info: jest.fn(),
-  warning: jest.fn(),
-  error:
-    jest.fn<
-      (
-        msg: string,
-        opts?: { action?: { label: string; onClick: () => void } }
-      ) => void
-    >(),
-  show: jest.fn(),
-  dismiss: jest.fn(),
-  dismissAll: jest.fn(),
+  success: jest.fn<ToastApi["success"]>(),
+  info: jest.fn<ToastApi["info"]>(),
+  warning: jest.fn<ToastApi["warning"]>(),
+  error: jest.fn<ToastApi["error"]>(),
+  show: jest.fn<ToastApi["show"]>(),
+  dismiss: jest.fn<ToastApi["dismiss"]>(),
+  dismissAll: jest.fn<ToastApi["dismissAll"]>(),
 };
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 
 import { queryClient } from "../client";
 import { ApiError } from "../utils/api.util";
@@ -10,6 +10,19 @@ import { ApiError } from "../utils/api.util";
  * server already did to reject it. 5xx keeps its retries.
  */
 type RetryFn = (failureCount: number, error: Error) => boolean;
+type DelayFn = (failureCount: number, error: Error) => number;
+
+/** A `429 API_RATE_LIMITED` as `fetchWithAuth` builds it (#747). */
+function rateLimited(seconds: number): ApiError {
+  const err = new ApiError(
+    `Too many requests. Try again in ${seconds} seconds.`,
+    "API_RATE_LIMITED",
+    429,
+    { retryAfterSeconds: seconds }
+  );
+  err.retryAfterSeconds = seconds;
+  return err;
+}
 
 function retryPredicates(): { queries: RetryFn; mutations: RetryFn } {
   const defaults = queryClient.getDefaultOptions();
@@ -69,10 +82,61 @@ describe("queryClient retry policy", () => {
     expect(mutations(0, noOrgUser)).toBe(false);
   });
 
+  // #747: the API bucket's 429 is the one 4xx whose answer changes with time.
+  it("retries a query on API_RATE_LIMITED up to three failures", () => {
+    const { queries } = retryPredicates();
+    const err = rateLimited(30);
+    expect(queries(0, err)).toBe(true);
+    expect(queries(2, err)).toBe(true);
+    expect(queries(3, err)).toBe(false);
+  });
+
+  it("never retries a mutation on API_RATE_LIMITED — no write is resent", () => {
+    const { mutations } = retryPredicates();
+    expect(mutations(0, rateLimited(30))).toBe(false);
+  });
+
+  it("does not retry a map-tile or codeless 429", () => {
+    const { queries } = retryPredicates();
+    const tile = new ApiError(
+      "Too many map tile requests.",
+      "MAP_TILE_RATE_LIMITED",
+      429
+    );
+    const codeless = new ApiError("Too Many Requests", "", 429);
+    expect(queries(0, tile)).toBe(false);
+    expect(queries(0, codeless)).toBe(false);
+  });
+
   it("retries a non-ApiError failure (network blip) up to three times", () => {
     const { queries } = retryPredicates();
     const err = new Error("network down");
     expect(queries(0, err)).toBe(true);
     expect(queries(3, err)).toBe(false);
+  });
+});
+
+describe("queryClient query retry delay (#747)", () => {
+  function queryDelay(): DelayFn {
+    const delay = queryClient.getDefaultOptions().queries?.retryDelay;
+    if (typeof delay !== "function") {
+      throw new Error("expected queries.retryDelay to be a function");
+    }
+    return delay as DelayFn;
+  }
+
+  it("waits out the rate-limit window the server named, plus a spread", () => {
+    const random = jest.spyOn(Math, "random").mockReturnValue(0);
+    expect(queryDelay()(0, rateLimited(42))).toBe(42_000);
+    random.mockReturnValue(0.5);
+    expect(queryDelay()(0, rateLimited(42))).toBe(43_500);
+    random.mockRestore();
+  });
+
+  it("keeps react-query's exponential backoff for everything else", () => {
+    const err = new ApiError("Bad gateway", "UPSTREAM_FAILED", 502);
+    expect(queryDelay()(0, err)).toBe(1_000);
+    expect(queryDelay()(1, err)).toBe(2_000);
+    expect(queryDelay()(10, err)).toBe(30_000);
   });
 });

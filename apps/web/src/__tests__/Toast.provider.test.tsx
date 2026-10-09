@@ -137,6 +137,38 @@ describe("ToastProvider — per-severity timing (spec cases 5–8)", () => {
     expect(screen.queryByTestId("toast-warning")).not.toBeInTheDocument();
   });
 
+  // #747: the rate-limit notice replaces itself when its wait is extended,
+  // so a raise hands back an id `dismiss` accepts.
+  it("returns the raised toast's id, which dismiss accepts", () => {
+    const api = mount();
+    let id = "";
+    raise(() => {
+      id = api().warning("Wait 5s", { autoHideMs: 5_000 });
+    });
+    expect(id).not.toBe("");
+    expect(screen.getByTestId("toast-warning")).toHaveTextContent("Wait 5s");
+    raise(() => api().dismiss(id));
+    expect(screen.queryByTestId("toast-warning")).not.toBeInTheDocument();
+  });
+
+  // #747: a rate-limit notice stays up for the wait it names.
+  it("honours an autoHideMs override instead of the severity's duration", () => {
+    const api = mount();
+    raise(() => api().warning("Wait 42s", { autoHideMs: 42_000 }));
+    advance(TOAST_AUTO_HIDE_MS.warning as number);
+    expect(screen.getByTestId("toast-warning")).toHaveTextContent("Wait 42s");
+    advance(42_000 - (TOAST_AUTO_HIDE_MS.warning as number));
+    expect(screen.queryByTestId("toast-warning")).not.toBeInTheDocument();
+  });
+
+  // Review: the error rule holds even against an explicit override.
+  it("ignores autoHideMs on an error, which persists until dismissed", () => {
+    const api = mount();
+    raise(() => api().error("Stays anyway", { autoHideMs: 1_000 }));
+    advance(60_000);
+    expect(screen.getByTestId("toast-error")).toHaveTextContent("Stays anyway");
+  });
+
   it("never auto-dismisses an error", () => {
     const api = mount();
     raise(() => api().error("Stays"));

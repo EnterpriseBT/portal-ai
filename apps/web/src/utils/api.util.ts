@@ -14,6 +14,13 @@ import type {
 import { useAuth } from "../providers/Auth.provider";
 import { handleAuthError } from "./auth-error.util";
 import { isPermissionDenied } from "./permission-denied.util";
+import {
+  apiReadPauseRemainingMs,
+  isApiRateLimited,
+  pauseApiReads,
+  retryAfterMs,
+  waitForApiReadPause,
+} from "./rate-limit.util";
 
 export interface ServerError {
   message: string;
@@ -39,6 +46,8 @@ export class ApiError extends Error {
   status: number;
   success: false;
   details?: Record<string, unknown>;
+  /** A 429's wait, from `Retry-After` or `details.retryAfterSeconds` (#747). */
+  retryAfterSeconds?: number;
 
   constructor(
     message: string,
@@ -55,6 +64,23 @@ export class ApiError extends Error {
 }
 
 /**
+ * A 429's wait in seconds (#747): the `Retry-After` header (integer seconds,
+ * which is all our limiter sends), else `details.retryAfterSeconds`.
+ */
+function retryAfterSecondsOf(
+  response: Response,
+  body: ApiErrorResponse
+): number | undefined {
+  const header = Number.parseInt(
+    response.headers?.get("Retry-After") ?? "",
+    10
+  );
+  if (Number.isFinite(header)) return header;
+  const detail = body.details?.retryAfterSeconds;
+  return typeof detail === "number" ? detail : undefined;
+}
+
+/**
  * Hook that returns an authenticated fetch function.
  * Retrieves the access token from the auth seam (#607) and attaches it as a
  * Bearer token. The audience is resolved inside `getToken`, per provider.
@@ -68,6 +94,11 @@ export const useAuthFetch = () => {
 
   const fetchWithAuth = useCallback(
     async <T>(url: string, options: RequestInit = {}): Promise<T> => {
+      // #747: every read honours the tab-wide rate-limit pause, whichever
+      // hook issued it. Writes never wait: they report the server's wait.
+      const isRead = (options.method ?? "GET").toUpperCase() === "GET";
+      if (isRead) await waitForApiReadPause(options.signal ?? undefined);
+
       let token: string;
       try {
         token = await getToken();
@@ -96,12 +127,19 @@ export const useAuthFetch = () => {
 
       if (!response.ok) {
         const body = (await response.json()) as ApiErrorResponse;
-        throw new ApiError(
+        const error = new ApiError(
           body.message,
           body.code,
           response.status,
           body.details
         );
+        if (response.status === 429) {
+          error.retryAfterSeconds = retryAfterSecondsOf(response, body);
+        }
+        if (isRead && isApiRateLimited(error)) {
+          pauseApiReads(retryAfterMs(error));
+        }
+        throw error;
       }
 
       return response.json() as Promise<T>;
@@ -140,8 +178,16 @@ export const useAuthQuery = <T>(
 
   return useQuery<T, ApiError, T, QueryKey>({
     queryKey,
-    queryFn: async () => {
-      const response = await fetchWithAuth<ApiSuccessResponse<T>>(url, options);
+    queryFn: async (context) => {
+      // #747: hand react-query's signal over only while reads are paused, so
+      // a query whose page goes away stops waiting and never sends. Reading
+      // `context.signal` opts that query into abort-on-unmount, which every
+      // other query must not change into.
+      const signal = apiReadPauseRemainingMs() > 0 ? context.signal : undefined;
+      const response = await fetchWithAuth<ApiSuccessResponse<T>>(
+        url,
+        signal ? { ...options, signal } : options
+      );
       return response.payload;
     },
     ...queryOptions,
