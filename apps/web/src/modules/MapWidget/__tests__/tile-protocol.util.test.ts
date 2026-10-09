@@ -267,6 +267,18 @@ describe("fetchTile — busy backoff (#698)", () => {
     await next;
   });
 
+  it("a 429 without Retry-After (a proxy throttle) reports failed and pauses nothing (#705)", async () => {
+    const { statuses, deps, fetchMock } = harness(mkRes(200));
+    (fetchMock as unknown as jest.Mock).mockImplementationOnce(async () =>
+      mkRes(429)
+    );
+    await expect(fetchTile(url(7), undefined, deps)).rejects.toThrow("429");
+    expect(statuses[0]).toMatchObject({ rateLimited: false, failed: true });
+
+    await fetchTile(url(8), undefined, deps);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // not held
+  });
+
   it("a tile already queued for a fetch slot also waits out the pause", async () => {
     const settlers: Array<(r: Response) => void> = [];
     const registry = new Map<string, TileContext>();

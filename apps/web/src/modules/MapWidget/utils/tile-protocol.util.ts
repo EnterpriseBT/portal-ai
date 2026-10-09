@@ -178,14 +178,15 @@ export async function fetchTile(
       signal,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    ctx?.onStatus(readTileStatus(res.status, res.headers));
+    const status = readTileStatus(res.status, res.headers);
+    ctx?.onStatus(status);
 
     // 204/304 are legitimately empty — return empty bytes so MapLibre caches an
     // (correctly) empty tile.
     // #698/#705: the server's tile gate is saturated, or the caller's tile
     // rate limit is spent — pause the tab's tile queue for its Retry-After
     // window before this tile errors (and is retried).
-    if (res.status === 503 || res.status === 429) {
+    if (status.busy || status.rateLimited) {
       pauseTileFetches(parseRetryAfter(res.headers.get("Retry-After")));
     }
     if (res.status === 204 || res.status === 304) {

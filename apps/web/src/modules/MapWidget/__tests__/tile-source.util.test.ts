@@ -79,6 +79,14 @@ describe("readTileStatus", () => {
       rateLimited: false,
     });
   });
+  it("a 429 with no Retry-After is not our limiter — it reads as failed (#705)", () => {
+    // A proxy or WAF throttle answers 429 without the hint; reporting it as a
+    // short pause would hide a persistent upstream refusal.
+    expect(readTileStatus(429, headers({}))).toMatchObject({
+      rateLimited: false,
+      failed: true,
+    });
+  });
   it("a 504 is a timeout only, never busy (#698)", () => {
     expect(readTileStatus(504, headers({}))).toMatchObject({
       timedOut: true,

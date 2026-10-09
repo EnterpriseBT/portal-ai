@@ -291,7 +291,7 @@ describe("MapWidgetUI", () => {
     expect(
       screen.getByTestId("map-widget-tile-rate-limited")
     ).toHaveTextContent(
-      "Loading map tiles too quickly — tiles resume in a few seconds."
+      "Loading map tiles too quickly — tiles will load when you pan or zoom."
     );
     expect(screen.queryByTestId("map-widget-tile-failed")).toBeNull();
     expect(screen.queryByTestId("map-widget-tile-busy")).toBeNull();

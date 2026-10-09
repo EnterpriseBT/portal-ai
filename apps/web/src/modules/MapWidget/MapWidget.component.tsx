@@ -389,7 +389,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             color="warning.main"
             data-testid="map-widget-tile-rate-limited"
           >
-            Loading map tiles too quickly — tiles resume in a few seconds.
+            Loading map tiles too quickly — tiles will load when you pan or
+            zoom.
           </Typography>
         ) : null}
         {tiles.simplified ? (
