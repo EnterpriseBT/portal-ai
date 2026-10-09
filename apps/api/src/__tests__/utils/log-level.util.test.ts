@@ -25,4 +25,20 @@ describe("isExpectedBackpressure (#698)", () => {
     expect(isExpectedBackpressure(new Error("boom"))).toBe(false);
     expect(isExpectedBackpressure(undefined)).toBe(false);
   });
+
+  it("treats a client over its rate limit (API_RATE_LIMITED) as expected backpressure (#705)", () => {
+    expect(
+      isExpectedBackpressure(
+        new ApiError(429, ApiCode.API_RATE_LIMITED, "slow down")
+      )
+    ).toBe(true);
+  });
+
+  it("keeps the anonymous site limiter (SITE_CONFIG_RATE_LIMITED) as an error (#705)", () => {
+    expect(
+      isExpectedBackpressure(
+        new ApiError(429, ApiCode.SITE_CONFIG_RATE_LIMITED, "scraper")
+      )
+    ).toBe(false);
+  });
 });

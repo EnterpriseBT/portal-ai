@@ -7,9 +7,15 @@
  *
  * The client supplies only the reference + tile coordinates — never SQL. The
  * server reads the block's persisted pipeline and runs ST_AsMVT over it. Free
- * and unmetered (like widget-refresh); abuse protection is the org scope plus
- * the DB's own statement_timeout — the per-org viz-refresh rate window is NOT
- * applied, since a single pan legitimately issues dozens of tile requests.
+ * and unmetered (like widget-refresh). The per-org viz-refresh rate window is
+ * NOT applied, since a single pan legitimately issues dozens of tile requests.
+ * Abuse is bounded in three layers instead:
+ *   - a per-user tile bucket (#705, `AUTH_TILE_RATE_LIMIT_PER_MIN`), separate
+ *     from the API bucket and mounted ahead of it in `protected.router.ts`;
+ *   - the tile admission gate (#698), per process and per org, which bounds
+ *     the database (`503 MAP_TILE_BUSY` + `Retry-After`);
+ *   - the client's six concurrent tile fetches per tab (#350).
+ * Every query also runs under the DB's statement_timeout.
  */
 
 import { Router, Request, Response, NextFunction } from "express";
@@ -203,6 +209,11 @@ async function handle(
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
+ *       429:
+ *         description: Per-user tile rate limit exceeded (API_RATE_LIMITED) — retry after the Retry-After window
+ *         headers:
+ *           Retry-After: { description: Seconds until the rate-limit window resets, schema: { type: integer } }
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       503:
  *         description: Tile admission gate saturated (MAP_TILE_BUSY) — retry after the Retry-After window
  *         headers:
@@ -263,6 +274,11 @@ portalMapRouter.get(
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
+ *       429:
+ *         description: Per-user tile rate limit exceeded (API_RATE_LIMITED) — retry after the Retry-After window
+ *         headers:
+ *           Retry-After: { description: Seconds until the rate-limit window resets, schema: { type: integer } }
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       503:
  *         description: Tile admission gate saturated (MAP_TILE_BUSY) — retry after the Retry-After window

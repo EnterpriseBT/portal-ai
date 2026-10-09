@@ -7,15 +7,21 @@
  * it at `error` would put routine load-shedding in the error stream and trip
  * error-rate alerting exactly when the gate is doing its job.
  *
+ * Likewise `429 API_RATE_LIMITED` (#705): a signed-in user over their
+ * per-user API or map-tile bucket is the limiter doing its job, and a busy
+ * map session would otherwise flood the error stream.
+ *
  * Deliberately NOT here: `DB_ADMISSION_TIMEOUT`. It means the shared pool was
  * exhausted for 30s — the condition #698 exists to prevent — so it stays an
- * error that should alert.
+ * error that should alert. Nor `SITE_CONFIG_RATE_LIMITED`: the anonymous
+ * site limiter is only reached by a scraper, which is worth seeing.
  */
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
 const BACKPRESSURE_API_CODES: ReadonlySet<ApiCode> = new Set([
   ApiCode.MAP_TILE_BUSY,
+  ApiCode.API_RATE_LIMITED,
 ]);
 
 /** True for an `ApiError` that is expected load-shedding, logged at `warn`. */
