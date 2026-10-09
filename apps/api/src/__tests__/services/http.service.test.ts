@@ -12,6 +12,7 @@ function createMockResponse(): Response {
   const res = {
     status: jest.fn().mockReturnThis(),
     json: jest.fn().mockReturnThis(),
+    setHeader: jest.fn(),
   } as unknown as Response;
   return res;
 }
@@ -139,6 +140,51 @@ describe("HttpService", () => {
         });
       }
     );
+  });
+});
+
+describe("HttpService.error — Retry-After (#705)", () => {
+  it("sets Retry-After from a numeric details.retryAfterSeconds", async () => {
+    for (const [status, code] of [
+      [429, ApiCode.API_RATE_LIMITED],
+      [503, ApiCode.MAP_TILE_BUSY],
+    ] as const) {
+      const res = createMockResponse();
+      await HttpService.error(
+        res,
+        new ApiError(status, code, "wait", { retryAfterSeconds: 7 })
+      );
+      expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "7");
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ details: { retryAfterSeconds: 7 } })
+      );
+    }
+  });
+
+  it("sets no Retry-After without a numeric hint", async () => {
+    const res = createMockResponse();
+    await HttpService.error(
+      res,
+      new ApiError(429, ApiCode.API_RATE_LIMITED, "wait", {
+        retryAfterSeconds: "soon",
+      })
+    );
+    await HttpService.error(
+      res,
+      new ApiError(404, ApiCode.MAP_TILE_NOT_FOUND, "gone")
+    );
+    expect(res.setHeader).not.toHaveBeenCalled();
+  });
+
+  it("sets no Retry-After on a 500, whose details are scrubbed", async () => {
+    const res = createMockResponse();
+    await HttpService.error(
+      res,
+      new ApiError(500, ApiCode.HEALTH_CHECK_FAILED, "boom", {
+        retryAfterSeconds: 3,
+      })
+    );
+    expect(res.setHeader).not.toHaveBeenCalled();
   });
 });
 

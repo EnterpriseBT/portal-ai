@@ -27,8 +27,12 @@ jest.unstable_mockModule("../../utils/redis.util.js", () => ({
   getRedisClient: () => ({ incr: mockIncr, expire: mockExpire }),
 }));
 
-const { incrementRateWindow, REDIS_OP_TIMEOUT_MS } =
-  await import("../../utils/rate-limit.util.js");
+const {
+  incrementRateWindow,
+  REDIS_OP_TIMEOUT_MS,
+  RATE_WINDOW_MS,
+  secondsUntilWindowEnd,
+} = await import("../../utils/rate-limit.util.js");
 
 /** A promise that never settles — exactly what ioredis's offline queue
  *  produces while Redis is unreachable. */
@@ -166,5 +170,28 @@ describe("incrementFixedWindow (#498)", () => {
     await incrementRateWindow("org-9:metered", now);
     expect(mockIncr).toHaveBeenCalledWith("usage:rate:org-9:metered:1");
     expect(mockExpire).toHaveBeenCalledWith(expect.any(String), 120);
+  });
+});
+
+describe("secondsUntilWindowEnd (#705)", () => {
+  const start = 1_700_000_040_000; // a whole minute
+
+  it("is the full window at the window's first millisecond", () => {
+    expect(start % RATE_WINDOW_MS).toBe(0);
+    expect(secondsUntilWindowEnd(RATE_WINDOW_MS, start)).toBe(60);
+  });
+
+  it("rounds a partial second up", () => {
+    expect(secondsUntilWindowEnd(RATE_WINDOW_MS, start + 15_500)).toBe(45);
+  });
+
+  it("is never below 1, even in the window's last millisecond", () => {
+    expect(secondsUntilWindowEnd(RATE_WINDOW_MS, start + 59_999)).toBe(1);
+  });
+
+  it("starts the next window on the boundary", () => {
+    expect(secondsUntilWindowEnd(RATE_WINDOW_MS, start + RATE_WINDOW_MS)).toBe(
+      60
+    );
   });
 });

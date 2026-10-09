@@ -12,8 +12,11 @@ import type { Request, Response } from "express";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockIncrement = jest.fn<(key: string, now?: number) => Promise<number>>();
+const mockSecondsLeft = jest.fn<(windowMs: number, now?: number) => number>();
 jest.unstable_mockModule("../../utils/rate-limit.util.js", () => ({
   incrementRateWindow: mockIncrement,
+  secondsUntilWindowEnd: mockSecondsLeft,
+  RATE_WINDOW_MS: 60_000,
 }));
 
 const { publicRateLimit } =
@@ -28,6 +31,8 @@ const res = {} as Response;
 
 beforeEach(() => {
   mockIncrement.mockReset();
+  mockSecondsLeft.mockReset();
+  mockSecondsLeft.mockReturnValue(17);
 });
 
 // ── case 1 — under the limit passes through ──────────────────────────
@@ -38,7 +43,10 @@ it("calls next() with no error while under the limit, keyed by IP", async () => 
 
   await publicRateLimit(60)(req, res, next);
 
-  expect(mockIncrement).toHaveBeenCalledWith("public-site:203.0.113.7");
+  expect(mockIncrement).toHaveBeenCalledWith(
+    "public-site:203.0.113.7",
+    expect.any(Number)
+  );
   expect(next).toHaveBeenCalledWith();
 });
 
@@ -65,4 +73,19 @@ it("fails open (passes the request) when the Redis counter errors", async () => 
   await publicRateLimit(60)(req, res, next);
 
   expect(next).toHaveBeenCalledWith();
+});
+
+// ── case 4 — a refusal says when to come back (#705) ─────────────────
+
+it("carries details.retryAfterSeconds on a refusal (the error handler sets Retry-After)", async () => {
+  mockIncrement.mockResolvedValue(61);
+  const next = jest.fn();
+
+  await publicRateLimit(60)(req, res, next);
+
+  const countedAt = mockIncrement.mock.calls[0][1];
+  expect(mockSecondsLeft).toHaveBeenCalledWith(60_000, countedAt);
+  const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
+  expect(err.details).toEqual({ retryAfterSeconds: 17 });
+  expect(err.message).toBe("Too many requests. Try again in 17 seconds.");
 });

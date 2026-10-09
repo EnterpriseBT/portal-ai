@@ -161,6 +161,25 @@ export const LargeResultVectorTiles: Story = {
       aggregated: false,
       failed: false,
       busy: false,
+      rateLimited: false,
+    },
+  },
+};
+
+/** #705: the caller's per-user tile rate limit is spent — a timed pause with
+ *  its own notice, never the "failed" one. */
+export const TilesRateLimited: Story = {
+  args: {
+    ...LargeResultVectorTiles.args,
+    title: "All parcels (tile rate limit reached)",
+    tileStatus: {
+      simplified: false,
+      truncated: false,
+      timedOut: false,
+      aggregated: false,
+      failed: false,
+      busy: false,
+      rateLimited: true,
     },
   },
 };

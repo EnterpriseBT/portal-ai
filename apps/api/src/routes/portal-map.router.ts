@@ -7,9 +7,15 @@
  *
  * The client supplies only the reference + tile coordinates — never SQL. The
  * server reads the block's persisted pipeline and runs ST_AsMVT over it. Free
- * and unmetered (like widget-refresh); abuse protection is the org scope plus
- * the DB's own statement_timeout — the per-org viz-refresh rate window is NOT
- * applied, since a single pan legitimately issues dozens of tile requests.
+ * and unmetered (like widget-refresh). The per-org viz-refresh rate window is
+ * NOT applied, since a single pan legitimately issues dozens of tile requests.
+ * Abuse is bounded in three layers instead:
+ *   - a per-user tile bucket (#705, `AUTH_TILE_RATE_LIMIT_PER_MIN`), separate
+ *     from the API bucket and mounted ahead of it in `protected.router.ts`;
+ *   - the tile admission gate (#698), per process and per org, which bounds
+ *     the database (`503 MAP_TILE_BUSY` + `Retry-After`);
+ *   - the client's six concurrent tile fetches per tab (#350).
+ * Every query also runs under the DB's statement_timeout.
  */
 
 import { Router, Request, Response, NextFunction } from "express";
@@ -69,17 +75,6 @@ export function parseTileCoords(
 
 /** Apply the render result to the response: 200 bytes / 204 / 304, with the
  *  degradation + caching headers on every outcome. */
-/** #698: headers an error response carries — `Retry-After` on a busy tile, so
- *  the widget pauses its tile queue instead of hammering a saturated gate. */
-export function applyTileErrorHeaders(res: Response, err: unknown): void {
-  if (err instanceof ApiError && err.code === ApiCode.MAP_TILE_BUSY) {
-    const retryAfter = err.details?.retryAfterSeconds;
-    if (typeof retryAfter === "number") {
-      res.setHeader("Retry-After", String(retryAfter));
-    }
-  }
-}
-
 function sendTile(res: Response, result: TileRenderResult): void {
   res.setHeader("ETag", result.etag);
   res.setHeader("Cache-Control", "private, max-age=60");
@@ -166,7 +161,7 @@ async function handle(
     });
     sendTile(res, result);
   } catch (err) {
-    applyTileErrorHeaders(res, err);
+    // A busy gate's Retry-After rides details; HttpService.error sets it.
     next(err);
   }
 }
@@ -202,6 +197,11 @@ async function handle(
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
+ *       429:
+ *         description: Per-user tile rate limit exceeded (MAP_TILE_RATE_LIMITED) — retry after the Retry-After window
+ *         headers:
+ *           Retry-After: { description: Seconds until the rate-limit window resets, schema: { type: integer } }
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       503:
  *         description: Tile admission gate saturated (MAP_TILE_BUSY) — retry after the Retry-After window
@@ -264,6 +264,11 @@ portalMapRouter.get(
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
+ *       429:
+ *         description: Per-user tile rate limit exceeded (MAP_TILE_RATE_LIMITED) — retry after the Retry-After window
+ *         headers:
+ *           Retry-After: { description: Seconds until the rate-limit window resets, schema: { type: integer } }
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       503:
  *         description: Tile admission gate saturated (MAP_TILE_BUSY) — retry after the Retry-After window
  *         headers:
@@ -283,4 +288,12 @@ portalMapRouter.get(
       res,
       next
     )
+);
+
+/** #705: end the tile mount. `protected.router.ts` mounts this router behind
+ *  the tile rate-limit bucket and ahead of the API one, so an unmatched
+ *  /portal-map path must stop here rather than fall through and be counted
+ *  against both. */
+portalMapRouter.use((_req: Request, _res: Response, next: NextFunction) =>
+  next(new ApiError(404, ApiCode.MAP_TILE_NOT_FOUND, "No such map tile route"))
 );

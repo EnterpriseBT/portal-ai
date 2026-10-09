@@ -13,7 +13,7 @@
 import { Request, Response, NextFunction } from "express";
 
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
-import { ApiError } from "../services/http.service.js";
+import { rateLimitedError } from "../utils/rate-limit-refusal.util.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -28,13 +28,14 @@ export function publicRateLimit(limitPerMinute: number) {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const count = await incrementRateWindow(`public-site:${req.ip}`);
+      const now = Date.now();
+      const count = await incrementRateWindow(`public-site:${req.ip}`, now);
       if (count > limitPerMinute) {
         return next(
-          new ApiError(
-            429,
+          rateLimitedError(
             ApiCode.SITE_CONFIG_RATE_LIMITED,
-            "Too many requests. Try again in a minute."
+            "Too many requests.",
+            now
           )
         );
       }

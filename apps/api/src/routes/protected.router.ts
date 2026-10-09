@@ -39,12 +39,32 @@ export const protectedRouter = Router();
 // All routes in this router require a valid JWT
 protectedRouter.use(jwtCheck);
 
-// Per-user fixed-window rate limit on the authenticated API (#574). Mounted
-// here so it covers every authenticated route and nothing else — SSE, health,
-// and the anonymous public router are mounted outside this router. Fail-open
-// on a Redis outage; keyed by the Auth0 subject.
+// Map tiles have their own per-user bucket (#705): a pan fans out dozens of
+// tile requests, which on the shared bucket throttled the whole app. Mounted
+// BEFORE the API limiter so a tile request never reaches it — keep it here.
+// Every route on portalMapRouter counts against the tile bucket, and the
+// router ends in a 404 so no /portal-map request falls through to the API
+// bucket. It carries requireOrgWritable itself, since it is mounted ahead of
+// the router-wide one below.
 protectedRouter.use(
-  authenticatedRateLimit(environment.AUTH_API_RATE_LIMIT_PER_MIN)
+  "/portal-map",
+  authenticatedRateLimit({
+    bucket: "tiles",
+    limitPerMinute: environment.AUTH_TILE_RATE_LIMIT_PER_MIN,
+  }),
+  requireOrgWritable,
+  portalMapRouter
+);
+
+// Per-user fixed-window rate limit on the authenticated API (#574). Mounted
+// here so it covers every other authenticated route and nothing else — SSE,
+// health, and the anonymous public router are mounted outside this router.
+// Fail-open on a Redis outage; keyed by the Auth0 subject.
+protectedRouter.use(
+  authenticatedRateLimit({
+    bucket: "api",
+    limitPerMinute: environment.AUTH_API_RATE_LIMIT_PER_MIN,
+  })
 );
 // Read-only degradation for a lapsed marketplace entitlement (#568): mutating
 // methods are gated when the org's term has expired; reads always pass.
@@ -80,7 +100,6 @@ protectedRouter.use("/stations", stationRouter);
 protectedRouter.use("/portals", portalRouter);
 protectedRouter.use("/portal-results", portalResultsRouter);
 protectedRouter.use("/portal-sql", portalSqlHandleRouter);
-protectedRouter.use("/portal-map", portalMapRouter);
 protectedRouter.use("/toolpacks", toolpacksRouter);
 protectedRouter.use("/connectors/google-sheets", googleSheetsConnectorRouter);
 protectedRouter.use(

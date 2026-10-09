@@ -1,10 +1,6 @@
-import { describe, it, expect, jest } from "@jest/globals";
-import type { Response } from "express";
+import { describe, it, expect } from "@jest/globals";
 
-import {
-  applyTileErrorHeaders,
-  parseTileCoords,
-} from "../../routes/portal-map.router.js";
+import { parseTileCoords } from "../../routes/portal-map.router.js";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
@@ -60,33 +56,5 @@ describe("parseTileCoords (#316)", () => {
 
   it("rejects non-integer coordinates", () => {
     expectBadRequest(() => parseTileCoords("5", "1.5", "0"));
-  });
-});
-
-describe("applyTileErrorHeaders (#698)", () => {
-  const fakeRes = () => {
-    const setHeader = jest.fn();
-    return { res: { setHeader } as unknown as Response, setHeader };
-  };
-
-  it("sets Retry-After from a MAP_TILE_BUSY error's retry hint", () => {
-    const { res, setHeader } = fakeRes();
-    applyTileErrorHeaders(
-      res,
-      new ApiError(503, ApiCode.MAP_TILE_BUSY, "busy", {
-        retryAfterSeconds: 2,
-      })
-    );
-    expect(setHeader).toHaveBeenCalledWith("Retry-After", "2");
-  });
-
-  it("sets nothing for other errors", () => {
-    const { res, setHeader } = fakeRes();
-    applyTileErrorHeaders(
-      res,
-      new ApiError(504, ApiCode.MAP_TILE_TIMEOUT, "slow")
-    );
-    applyTileErrorHeaders(res, new Error("boom"));
-    expect(setHeader).not.toHaveBeenCalled();
   });
 });

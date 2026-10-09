@@ -60,13 +60,17 @@ const tileFetchQueue: Array<() => void> = [];
  * saturated. Every map in the tab shares that server, so the whole tab's tile
  * queue pauses for the `Retry-After` window instead of re-firing into a busy
  * gate — the client half of breaking the overload loop.
+ *
+ * #705: a `429 API_RATE_LIMITED` pauses the same way. The limit is per user,
+ * so every map in the tab is spending the same bucket.
  */
 let tileFetchesPausedUntil = 0;
 const DEFAULT_RETRY_AFTER_MS = 2_000;
 const MIN_RETRY_AFTER_MS = 1_000;
-const MAX_RETRY_AFTER_MS = 30_000;
+// A rate-limit window is a minute, so its Retry-After can be up to 60s (#705).
+const MAX_RETRY_AFTER_MS = 60_000;
 
-/** `Retry-After` (integer seconds) → milliseconds, clamped to [1s, 30s];
+/** `Retry-After` (integer seconds) → milliseconds, clamped to [1s, 60s];
  *  2s when missing or unparseable. */
 export function parseRetryAfter(value: string | null): number {
   const seconds = value === null ? NaN : Number.parseInt(value, 10);
@@ -174,13 +178,15 @@ export async function fetchTile(
       signal,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    ctx?.onStatus(readTileStatus(res.status, res.headers));
+    const status = readTileStatus(res.status, res.headers);
+    ctx?.onStatus(status);
 
     // 204/304 are legitimately empty — return empty bytes so MapLibre caches an
     // (correctly) empty tile.
-    // #698: the server's tile gate is saturated — pause the tab's tile queue
-    // for its Retry-After window before this tile errors (and is retried).
-    if (res.status === 503) {
+    // #698/#705: the server's tile gate is saturated, or the caller's tile
+    // rate limit is spent — pause the tab's tile queue for its Retry-After
+    // window before this tile errors (and is retried).
+    if (status.busy || status.rateLimited) {
       pauseTileFetches(parseRetryAfter(res.headers.get("Retry-After")));
     }
     if (res.status === 204 || res.status === 304) {

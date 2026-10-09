@@ -497,6 +497,7 @@ export enum ApiCode {
    * shows a busy notice and pauses tile fetches for that window.
    */
   MAP_TILE_BUSY = "MAP_TILE_BUSY",
+  MAP_TILE_RATE_LIMITED = "MAP_TILE_RATE_LIMITED",
   /**
    * #698: the request's first DB query waited longer than the admission
    * deadline for a pool connection, so it was cancelled before it ran — the
@@ -861,6 +862,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
   [ApiCode.API_RATE_LIMITED]: "Too many requests. Wait a moment and try again.",
   [ApiCode.MAP_TILE_BUSY]:
     "The map server is busy. Tiles retry automatically after a short pause.",
+  [ApiCode.MAP_TILE_RATE_LIMITED]:
+    "Map tiles are loading too quickly. They load again when you pan or zoom after a short pause.",
   [ApiCode.DB_ADMISSION_TIMEOUT]:
     "The service is busy and your request was not applied. Wait a moment and try again.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:

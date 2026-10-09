@@ -39,6 +39,7 @@ describe("readTileStatus", () => {
       aggregated: false,
       failed: false,
       busy: false,
+      rateLimited: false,
     });
     expect(
       readTileStatus(200, headers({ "X-Portal-Tile-Truncated": "1" }))
@@ -60,6 +61,7 @@ describe("readTileStatus", () => {
       aggregated: false,
       failed: false,
       busy: false,
+      rateLimited: false,
     });
   });
   it("flags a 503 as busy — neither failed nor timedOut (#698)", () => {
@@ -67,6 +69,22 @@ describe("readTileStatus", () => {
       busy: true,
       failed: false,
       timedOut: false,
+    });
+  });
+  it("flags a 429 as rateLimited — never failed or busy (#705)", () => {
+    expect(readTileStatus(429, headers({ "Retry-After": "12" }))).toMatchObject(
+      { rateLimited: true, failed: false, busy: false, timedOut: false }
+    );
+    expect(readTileStatus(503, headers({}))).toMatchObject({
+      rateLimited: false,
+    });
+  });
+  it("a 429 with no Retry-After is not our limiter — it reads as failed (#705)", () => {
+    // A proxy or WAF throttle answers 429 without the hint; reporting it as a
+    // short pause would hide a persistent upstream refusal.
+    expect(readTileStatus(429, headers({}))).toMatchObject({
+      rateLimited: false,
+      failed: true,
     });
   });
   it("a 504 is a timeout only, never busy (#698)", () => {

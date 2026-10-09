@@ -193,9 +193,11 @@ describe("parseRetryAfter (#698)", () => {
     expect(parseRetryAfter(null)).toBe(2_000);
     expect(parseRetryAfter("soon")).toBe(2_000);
   });
-  it("clamps to [1s, 30s]", () => {
+  it("clamps to [1s, 60s], so a full rate-limit window is honoured (#705)", () => {
     expect(parseRetryAfter("0")).toBe(1_000);
-    expect(parseRetryAfter("999")).toBe(30_000);
+    expect(parseRetryAfter("60")).toBe(60_000);
+    expect(parseRetryAfter("120")).toBe(60_000);
+    expect(parseRetryAfter("999")).toBe(60_000);
   });
 });
 
@@ -239,6 +241,42 @@ describe("fetchTile — busy backoff (#698)", () => {
     await settle();
     expect(fetchMock).toHaveBeenCalledTimes(2); // released after 3s
     await next;
+  });
+
+  it("reports rateLimited on a 429, still throws, and pauses the next fetch for Retry-After (#705)", async () => {
+    const { statuses, deps, fetchMock } = harness(mkRes(200));
+    (fetchMock as unknown as jest.Mock).mockImplementationOnce(async () =>
+      mkRes(429, { "Retry-After": "4" })
+    );
+    await expect(fetchTile(url(5), undefined, deps)).rejects.toThrow("429");
+    expect(statuses[0]).toMatchObject({
+      rateLimited: true,
+      failed: false,
+      busy: false,
+    });
+
+    const next = fetchTile(url(6), undefined, deps).catch(() => undefined);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1); // held by the pause
+    jest.advanceTimersByTime(3_999);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(1);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2); // released after 4s
+    await next;
+  });
+
+  it("a 429 without Retry-After (a proxy throttle) reports failed and pauses nothing (#705)", async () => {
+    const { statuses, deps, fetchMock } = harness(mkRes(200));
+    (fetchMock as unknown as jest.Mock).mockImplementationOnce(async () =>
+      mkRes(429)
+    );
+    await expect(fetchTile(url(7), undefined, deps)).rejects.toThrow("429");
+    expect(statuses[0]).toMatchObject({ rateLimited: false, failed: true });
+
+    await fetchTile(url(8), undefined, deps);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // not held
   });
 
   it("a tile already queued for a fetch slot also waits out the pause", async () => {

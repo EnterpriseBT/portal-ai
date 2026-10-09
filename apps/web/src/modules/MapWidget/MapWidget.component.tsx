@@ -383,6 +383,16 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             Map server is busy — tiles will load when you pan or zoom.
           </Typography>
         ) : null}
+        {tiles.rateLimited ? (
+          <Typography
+            variant="caption"
+            color="warning.main"
+            data-testid="map-widget-tile-rate-limited"
+          >
+            Loading map tiles too quickly — tiles will load when you pan or
+            zoom.
+          </Typography>
+        ) : null}
         {tiles.simplified ? (
           <Typography
             variant="caption"
