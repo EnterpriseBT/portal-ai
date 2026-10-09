@@ -50,3 +50,43 @@ The five **cross-org 403s become 404 `CONNECTOR_INSTANCE_NOT_FOUND` "Connector i
 
 - Re-sourcing a recommit from a different instance or session as a feature. Nothing uses it, and it would need its own authorization model.
 - #745 (validation-error consistency).
+
+## Adversarial
+
+Probes for how #743 breaks. The fix gates a recommit's workbook source on "this instance's own": the instance itself, or an upload session a commit into it already recorded. It also turns cross-org 403s into the unknown-id 404. So the probes ask whether any body can still steer a recommit to data the caller shouldn't reach, whether recorded-session matching can be gamed (another instance's session, a deleted job, a malformed id), and whether any cross-org answer is still distinguishable. **Branch under test:** `fix/743-recommit-source-authorization` (PR [#746](https://github.com/EnterpriseBT/portal-ai/pull/746)). All probes are `— backend` (`curl` against `:3001` with the e2e owner and member tokens, plus SQL). The e2e org has no file-upload or cloud instance with a plan, so each probe seeds what it needs in SQL: instances with `file-upload` / `google-sheets` definitions, plan rows, and `layout_plan_commit` job rows recording a session. Remove all of it afterwards.
+
+### §1 Boundary & limit inputs
+- [ ] Recommit bodies that fail the schema: `{}`, `{ "uploadSessionId": "" }`, and both fields at once. Expected safe result: 400 `LAYOUT_PLAN_INVALID_PAYLOAD` from the schema, and no job. — backend
+
+### §2 Malformed & injection input
+- [ ] A file-upload instance with a recorded session `S`: recommit with `{ "uploadSessionId": "S' OR '1'='1" }`, then `{ "uploadSessionId": "%" }`. Expected safe result: 400 "The workbook source doesn't belong to this connector instance" for both (the lookup is parameterized and exact-match), and no job. — backend
+
+### §3 Concurrency & races: N/A. The source check is a read before enqueue; it adds no shared state or new write path.
+
+### §4 Auth & permission boundaries
+- [ ] The **member** owns a file-upload instance M with a plan. The owner has an upload session `O`, recorded only on the owner's instance A. As the member, recommit M with `{ "uploadSessionId": "O" }`, then with `{ "connectorInstanceId": "A" }`. Expected safe result: 400 for both, with no job on M. — backend
+- [ ] As the **member**, recommit the **owner's** instance A, naming A's own recorded session. Expected safe result: 404 `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND` from the URL check, before any source check. — backend
+
+### §5 Multi-tenant isolation
+- [ ] As the e2e owner, recommit their own instance naming (a) an Org B upload session id and (b) an Org B instance id, then (c) a random id. Expected safe result: an identical 400 body for all three. — backend
+- [ ] `POST /api/file-uploads/confirm` with an Org B upload id vs a random id. Expected safe result: an identical 404 body. — backend
+
+### §6 State & lifecycle abuse
+- [ ] File-upload instance F has two recorded sessions, S1 (older) and S2 (newer); S1's job row is then soft-deleted. Recommit with S2 → 202. With S1 → 400 (a deleted record doesn't count). Cancel or clean up the enqueued job. — backend
+- [ ] Recommit naming a plan that belongs to a **different** instance (the path instance is writable). Expected safe result: 404 `LAYOUT_PLAN_NOT_FOUND`, and no job. — backend
+
+### §7 Misuse sequences
+- [ ] The caller can write two file-upload instances, A and B. Session `SA` is recorded on A only. Recommit **B** with `{ "uploadSessionId": "SA" }`. Expected safe result: 400 and no job. A session belongs to the instance it was committed into, not to everything the caller can write. — backend
+- [ ] A Google Sheets instance G: recommit with `{ "connectorInstanceId": G }` → 202. Recommit with a session recorded on G (seeded) → 400. Then a file-upload instance naming itself → 400. No job comes from either 400. — backend
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name>: confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/instance/plan/session/job ids):
