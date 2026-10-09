@@ -2,10 +2,11 @@
  * #747: the client half of the authenticated API limiter (#574). A
  * `429 API_RATE_LIMITED` means the user's per-minute bucket is spent, and the
  * bucket is per user, so every read in the tab is spending the same one. The
- * first refusal pauses reads tab-wide for its `Retry-After` window; reads
- * issued meanwhile wait it out instead of spending refused requests into the
- * same window. Mutations never wait or retry here: their own surfaces show the
- * server's "Try again in N seconds."
+ * first refused read pauses reads tab-wide for its `Retry-After` window;
+ * reads issued meanwhile wait it out instead of spending refused requests
+ * into the same window. `fetchWithAuth` applies it to every GET. Writes never
+ * wait or retry here: their own surfaces show the server's "Try again in N
+ * seconds."
  *
  * Mirrors the map's tile pause (`tile-protocol.util.ts`, #705), which keeps
  * its own state for `MAP_TILE_RATE_LIMITED`. Kept free of `api.util` imports
@@ -18,6 +19,9 @@ const DEFAULT_RETRY_AFTER_MS = 2_000;
 const MIN_RETRY_AFTER_MS = 1_000;
 // A rate-limit window is a minute, so its Retry-After is at most 60s.
 const MAX_RETRY_AFTER_MS = 60_000;
+// Held reads leave over this spread once the window ends, so a busy page
+// doesn't spend the fresh bucket in one instant and start another window.
+const RELEASE_SPREAD_MS = 3_000;
 
 let apiReadsPausedUntil = 0;
 
@@ -61,8 +65,15 @@ export function retryAfterMs(error: { retryAfterSeconds?: number }): number {
 export function pauseApiReads(ms: number): void {
   const isNewWindow = apiReadPauseRemainingMs() === 0;
   apiReadsPausedUntil = Math.max(apiReadsPausedUntil, Date.now() + ms);
-  if (isNewWindow) {
-    for (const listener of windowListeners) listener(ms);
+  if (!isNewWindow) return;
+  for (const listener of windowListeners) {
+    // Best-effort: this runs on a refused read's error path, and a notice
+    // that throws must not replace the 429 the retry rule keys on.
+    try {
+      listener(ms);
+    } catch {
+      // The notice is lost; the pause and the retry still hold.
+    }
   }
 }
 
@@ -71,18 +82,43 @@ export function apiReadPauseRemainingMs(): number {
   return Math.max(0, apiReadsPausedUntil - Date.now());
 }
 
+/** A random delay within the release spread. */
+export function releaseJitterMs(): number {
+  return Math.random() * RELEASE_SPREAD_MS;
+}
+
+/** Resolves after `ms`; rejects with `AbortError` if `signal` fires first. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
- * Wait out any running pause, re-checking since it may be extended. Takes no
- * abort signal on purpose: reading react-query's `signal` opts every query
- * into abort-on-unmount, and a wait abandoned by its query ends within 60s
- * anyway.
+ * Wait out any running pause, re-checking since it may be extended, then a
+ * random part of the release spread. Resolves at once when no pause is
+ * running. Rejects with `AbortError` if `signal` fires first, so a read whose
+ * page has gone never sends.
  */
-export async function waitForApiReadPause(): Promise<void> {
+export async function waitForApiReadPause(signal?: AbortSignal): Promise<void> {
+  if (apiReadPauseRemainingMs() === 0) return;
   while (apiReadPauseRemainingMs() > 0) {
-    await new Promise<void>((resolve) =>
-      setTimeout(resolve, apiReadPauseRemainingMs())
-    );
+    await sleep(apiReadPauseRemainingMs(), signal);
   }
+  const jitter = releaseJitterMs();
+  if (jitter > 0) await sleep(jitter, signal);
 }
 
 /** Clears the pause. For tests: the state is module-level. */

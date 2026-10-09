@@ -102,7 +102,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
 
     for (const toast of visible) {
       if (live.has(toast.id)) continue;
-      const duration = TOAST_AUTO_HIDE_MS[toast.severity];
+      const duration = toast.autoHideMs ?? TOAST_AUTO_HIDE_MS[toast.severity];
       if (duration == null) continue; // errors persist
       live.set(
         toast.id,

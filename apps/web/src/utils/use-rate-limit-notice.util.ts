@@ -10,7 +10,12 @@ const inSeconds = (s: number) => (s === 1 ? "1 second" : `${s} seconds`);
  * refused at once when the bucket runs out, so this raises a single warning
  * per window, naming the wait, instead of each read painting its own error.
  * A warning, not an error: the reads recover by themselves, so nothing waits
- * on the user. Mutations still report through their own surfaces.
+ * on the user. It stays up for the wait it names, since the default warning
+ * duration is far shorter than a window. Mutations still report through
+ * their own surfaces.
+ *
+ * Mounted once, in `ApplicationProvider`, so every page gets it whatever its
+ * layout (the portal page uses `FullScreenLayout`).
  */
 export function useRateLimitNotice(): void {
   const toast = useToast();
@@ -20,7 +25,8 @@ export function useRateLimitNotice(): void {
       onApiRateLimitWindow((waitMs) => {
         const seconds = Math.ceil(waitMs / 1_000);
         toast.warning(
-          `You're making requests faster than allowed. This page will refresh by itself in ${inSeconds(seconds)}.`
+          `You're making requests faster than allowed. Data will load again in ${inSeconds(seconds)}.`,
+          { autoHideMs: waitMs }
         );
       }),
     [toast]

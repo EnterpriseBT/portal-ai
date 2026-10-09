@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 
 import { queryClient } from "../client";
 import { ApiError } from "../utils/api.util";
@@ -125,8 +125,12 @@ describe("queryClient query retry delay (#747)", () => {
     return delay as DelayFn;
   }
 
-  it("waits out the rate-limit window the server named", () => {
+  it("waits out the rate-limit window the server named, plus a spread", () => {
+    const random = jest.spyOn(Math, "random").mockReturnValue(0);
     expect(queryDelay()(0, rateLimited(42))).toBe(42_000);
+    random.mockReturnValue(0.5);
+    expect(queryDelay()(0, rateLimited(42))).toBe(43_500);
+    random.mockRestore();
   });
 
   it("keeps react-query's exponential backoff for everything else", () => {

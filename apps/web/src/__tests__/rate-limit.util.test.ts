@@ -26,10 +26,13 @@ describe("rate-limit.util", () => {
   beforeEach(() => {
     jest.useFakeTimers();
     resetApiReadPause();
+    // No release spread unless a test asks for one.
+    jest.spyOn(Math, "random").mockReturnValue(0);
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   describe("isApiRateLimited", () => {
@@ -106,6 +109,28 @@ describe("rate-limit.util", () => {
       await jest.advanceTimersByTimeAsync(3_000);
       expect(done).toBe(true);
     });
+
+    it("spreads the release so held reads don't leave together", async () => {
+      jest.spyOn(Math, "random").mockReturnValue(0.5);
+      pauseApiReads(5_000);
+      let done = false;
+      void waitForApiReadPause().then(() => {
+        done = true;
+      });
+
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(done).toBe(false);
+      await jest.advanceTimersByTimeAsync(1_500);
+      expect(done).toBe(true);
+    });
+
+    it("rejects with AbortError when its read is abandoned", async () => {
+      pauseApiReads(5_000);
+      const controller = new AbortController();
+      const waiting = waitForApiReadPause(controller.signal);
+      controller.abort();
+      await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    });
   });
 });
 
@@ -113,10 +138,13 @@ describe("onApiRateLimitWindow (#747)", () => {
   beforeEach(() => {
     jest.useFakeTimers();
     resetApiReadPause();
+    // No release spread unless a test asks for one.
+    jest.spyOn(Math, "random").mockReturnValue(0);
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   it("hears each new window once, not its extensions", () => {
@@ -138,5 +166,20 @@ describe("onApiRateLimitWindow (#747)", () => {
     jest.advanceTimersByTime(5_000);
     pauseApiReads(5_000);
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a throwing listener from breaking the pause or the others", () => {
+    const after = jest.fn();
+    const unsubscribeThrowing = onApiRateLimitWindow(() => {
+      throw new Error("toast broke");
+    });
+    const unsubscribeAfter = onApiRateLimitWindow(after);
+
+    expect(() => pauseApiReads(10_000)).not.toThrow();
+    expect(apiReadPauseRemainingMs()).toBe(10_000);
+    expect(after).toHaveBeenCalledWith(10_000);
+
+    unsubscribeThrowing();
+    unsubscribeAfter();
   });
 });

@@ -1,7 +1,11 @@
 import { QueryCache, QueryClient, MutationCache } from "@tanstack/react-query";
 
 import { ApiError, handleAuthError } from "./utils";
-import { isApiRateLimited, retryAfterMs } from "./utils/rate-limit.util";
+import {
+  isApiRateLimited,
+  releaseJitterMs,
+  retryAfterMs,
+} from "./utils/rate-limit.util";
 
 /**
  * Shared retry rule for queries and mutations.
@@ -36,9 +40,12 @@ const shouldRetryQuery = (failureCount: number, error: Error): boolean => {
   return shouldRetry(failureCount, error);
 };
 
-/** React-query's default backoff, except a rate limit waits its window. */
+/** React-query's default backoff, except a rate limit waits its window, then
+ *  a random part of the release spread so retries don't land together. */
 const queryRetryDelay = (failureCount: number, error: Error): number => {
-  if (isApiRateLimited(error)) return retryAfterMs(error as ApiError);
+  if (isApiRateLimited(error)) {
+    return retryAfterMs(error as ApiError) + releaseJitterMs();
+  }
   return Math.min(1000 * 2 ** failureCount, 30_000);
 };
 

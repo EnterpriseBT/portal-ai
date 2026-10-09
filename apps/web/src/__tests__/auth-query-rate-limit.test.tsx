@@ -1,7 +1,7 @@
 /**
- * #747: `fetchWithAuth` reads a 429's `Retry-After` onto the error, and
- * `useAuthQuery` pauses reads tab-wide on `API_RATE_LIMITED`, so a read issued
- * during the window waits instead of spending a refused request.
+ * #747: `fetchWithAuth` reads a 429's `Retry-After` onto the error and pauses
+ * every GET tab-wide on `API_RATE_LIMITED`, so a read issued during the
+ * window waits instead of spending a refused request. Writes never wait.
  */
 import { jest } from "@jest/globals";
 import React from "react";
@@ -29,7 +29,8 @@ jest.unstable_mockModule("../providers/Auth.provider", () => ({
 const { renderHook, waitFor } = await import("@testing-library/react");
 const { QueryClient, QueryClientProvider } =
   await import("@tanstack/react-query");
-const { useAuthQuery, ApiError } = await import("../utils/api.util");
+const { useAuthFetch, useAuthQuery, ApiError } =
+  await import("../utils/api.util");
 const { apiReadPauseRemainingMs, pauseApiReads, resetApiReadPause } =
   await import("../utils/rate-limit.util");
 
@@ -64,8 +65,17 @@ const renderQuery = () => {
   });
 };
 
+const renderFetch = () =>
+  renderHook(() => useAuthFetch()).result.current.fetchWithAuth;
+
 beforeEach(() => {
   resetApiReadPause();
+  // No release spread: the timing assertions stay exact.
+  jest.spyOn(Math, "random").mockReturnValue(0);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 describe("fetchWithAuth on a 429 (#747)", () => {
@@ -150,5 +160,83 @@ describe("useAuthQuery read pause (#747)", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("never sends a held read whose query was unmounted", async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchMock = jest
+        .fn<typeof fetch>()
+        .mockResolvedValue(response(200, { success: true, payload: "ok" }));
+      global.fetch = fetchMock;
+      pauseApiReads(5_000);
+
+      const { unmount } = renderQuery();
+      await jest.advanceTimersByTimeAsync(1_000);
+      unmount();
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("fetchWithAuth read pause, outside useAuthQuery (#747)", () => {
+  it("holds a GET issued during the pause", async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchMock = jest
+        .fn<typeof fetch>()
+        .mockResolvedValue(response(200, { success: true, payload: "ok" }));
+      global.fetch = fetchMock;
+      const fetchWithAuth = renderFetch();
+      pauseApiReads(5_000);
+
+      const pending = fetchWithAuth("/api/search?q=a");
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(fetchMock).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1_000);
+      await expect(pending).resolves.toEqual({ success: true, payload: "ok" });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("starts the pause on a refused GET", async () => {
+    global.fetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        response(429, rateLimitedBody(30), { "Retry-After": "30" })
+      );
+    const fetchWithAuth = renderFetch();
+    await expect(fetchWithAuth("/api/search?q=a")).rejects.toBeInstanceOf(
+      ApiError
+    );
+    expect(apiReadPauseRemainingMs()).toBeGreaterThan(29_000);
+  });
+
+  it("sends a write at once during the pause, and a refused write starts none", async () => {
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        response(429, rateLimitedBody(30), { "Retry-After": "30" })
+      );
+    global.fetch = fetchMock;
+    const fetchWithAuth = renderFetch();
+
+    await expect(
+      fetchWithAuth("/api/stations", { method: "POST", body: "{}" })
+    ).rejects.toMatchObject({
+      code: "API_RATE_LIMITED",
+      retryAfterSeconds: 30,
+    });
+    expect(apiReadPauseRemainingMs()).toBe(0);
+
+    pauseApiReads(10_000);
+    await expect(
+      fetchWithAuth("/api/stations", { method: "POST", body: "{}" })
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

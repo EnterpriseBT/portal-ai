@@ -50,7 +50,9 @@ describe("useRateLimitNotice", () => {
 
     expect(api.warning).toHaveBeenCalledTimes(1);
     expect(api.warning).toHaveBeenCalledWith(
-      "You're making requests faster than allowed. This page will refresh by itself in 42 seconds."
+      "You're making requests faster than allowed. Data will load again in 42 seconds.",
+      // Up for the wait it names, not the default warning duration.
+      { autoHideMs: 42_000 }
     );
     expect(api.error).not.toHaveBeenCalled();
   });
@@ -65,7 +67,8 @@ describe("useRateLimitNotice", () => {
 
     expect(api.warning).toHaveBeenCalledTimes(2);
     expect(api.warning).toHaveBeenLastCalledWith(
-      "You're making requests faster than allowed. This page will refresh by itself in 1 second."
+      "You're making requests faster than allowed. Data will load again in 1 second.",
+      { autoHideMs: 1_000 }
     );
   });
 

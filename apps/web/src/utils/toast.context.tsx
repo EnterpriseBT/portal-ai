@@ -21,6 +21,9 @@ export interface ToastAction {
 
 export interface ToastOptions {
   action?: ToastAction;
+  /** Overrides the severity's auto-hide (`TOAST_AUTO_HIDE_MS`) for a notice
+   *  whose relevance has a known end, e.g. a rate-limit wait (#747). */
+  autoHideMs?: number;
 }
 
 /** A queued toast. `id` is assigned at raise time, never from render. */
@@ -29,6 +32,7 @@ export interface Toast {
   message: string;
   severity: ToastSeverity;
   action?: ToastAction;
+  autoHideMs?: number;
 }
 
 export interface ToastApi {

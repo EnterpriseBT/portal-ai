@@ -137,6 +137,16 @@ describe("ToastProvider — per-severity timing (spec cases 5–8)", () => {
     expect(screen.queryByTestId("toast-warning")).not.toBeInTheDocument();
   });
 
+  // #747: a rate-limit notice stays up for the wait it names.
+  it("honours an autoHideMs override instead of the severity's duration", () => {
+    const api = mount();
+    raise(() => api().warning("Wait 42s", { autoHideMs: 42_000 }));
+    advance(TOAST_AUTO_HIDE_MS.warning as number);
+    expect(screen.getByTestId("toast-warning")).toHaveTextContent("Wait 42s");
+    advance(42_000 - (TOAST_AUTO_HIDE_MS.warning as number));
+    expect(screen.queryByTestId("toast-warning")).not.toBeInTheDocument();
+  });
+
   it("never auto-dismisses an error", () => {
     const api = mount();
     raise(() => api().error("Stays"));

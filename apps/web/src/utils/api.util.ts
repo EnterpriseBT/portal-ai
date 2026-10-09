@@ -15,6 +15,7 @@ import { useAuth } from "../providers/Auth.provider";
 import { handleAuthError } from "./auth-error.util";
 import { isPermissionDenied } from "./permission-denied.util";
 import {
+  apiReadPauseRemainingMs,
   isApiRateLimited,
   pauseApiReads,
   retryAfterMs,
@@ -93,6 +94,11 @@ export const useAuthFetch = () => {
 
   const fetchWithAuth = useCallback(
     async <T>(url: string, options: RequestInit = {}): Promise<T> => {
+      // #747: every read honours the tab-wide rate-limit pause, whichever
+      // hook issued it. Writes never wait: they report the server's wait.
+      const isRead = (options.method ?? "GET").toUpperCase() === "GET";
+      if (isRead) await waitForApiReadPause(options.signal ?? undefined);
+
       let token: string;
       try {
         token = await getToken();
@@ -129,6 +135,9 @@ export const useAuthFetch = () => {
         );
         if (response.status === 429) {
           error.retryAfterSeconds = retryAfterSecondsOf(response, body);
+        }
+        if (isRead && isApiRateLimited(error)) {
+          pauseApiReads(retryAfterMs(error));
         }
         throw error;
       }
@@ -169,22 +178,17 @@ export const useAuthQuery = <T>(
 
   return useQuery<T, ApiError, T, QueryKey>({
     queryKey,
-    queryFn: async () => {
-      // #747: a read issued while the API bucket is spent waits out the
-      // window rather than spending a refused request into it.
-      await waitForApiReadPause();
-      try {
-        const response = await fetchWithAuth<ApiSuccessResponse<T>>(
-          url,
-          options
-        );
-        return response.payload;
-      } catch (error) {
-        if (isApiRateLimited(error)) {
-          pauseApiReads(retryAfterMs(error as ApiError));
-        }
-        throw error;
-      }
+    queryFn: async (context) => {
+      // #747: hand react-query's signal over only while reads are paused, so
+      // a query whose page goes away stops waiting and never sends. Reading
+      // `context.signal` opts that query into abort-on-unmount, which every
+      // other query must not change into.
+      const signal = apiReadPauseRemainingMs() > 0 ? context.signal : undefined;
+      const response = await fetchWithAuth<ApiSuccessResponse<T>>(
+        url,
+        signal ? { ...options, signal } : options
+      );
+      return response.payload;
     },
     ...queryOptions,
   });
