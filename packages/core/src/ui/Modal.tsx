@@ -77,6 +77,11 @@ export const Modal: React.FC<ModalProps> = ({
   useEffect(() => {
     if (submitDisabled) releaseSubmitHold();
   }, [submitDisabled]);
+  // A submit that closed the dialog must not leave the hold armed for the
+  // next time it opens.
+  useEffect(() => {
+    if (!open) releaseSubmitHold();
+  }, [open]);
   useEffect(() => releaseSubmitHold, []);
 
   const paperSlot = props.slotProps?.paper as

@@ -278,12 +278,15 @@ describe("Modal Component", () => {
     const FormModal = ({
       onSubmit,
       submitDisabled,
+      open = true,
     }: {
       onSubmit: () => void;
       submitDisabled?: boolean;
+      open?: boolean;
     }) => (
       <Modal
         {...defaultProps}
+        open={open}
         title="Form"
         submitDisabled={submitDisabled}
         slotProps={{
@@ -349,6 +352,19 @@ describe("Modal Component", () => {
       const { rerender } = render(<FormModal onSubmit={onSubmit} />);
       await user.type(screen.getByLabelText("Name"), "x{Enter}");
       rerender(<FormModal onSubmit={onSubmit} submitDisabled />);
+      rerender(<FormModal onSubmit={onSubmit} />);
+      await user.type(screen.getByLabelText("Name"), "{Enter}");
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+    });
+
+    // Review: a submit that closes the dialog straight away must not leave the
+    // hold armed for the next time it opens.
+    it("releases the hold when the dialog closes", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const { rerender } = render(<FormModal onSubmit={onSubmit} />);
+      await user.type(screen.getByLabelText("Name"), "x{Enter}");
+      rerender(<FormModal onSubmit={onSubmit} open={false} />);
       rerender(<FormModal onSubmit={onSubmit} />);
       await user.type(screen.getByLabelText("Name"), "{Enter}");
       expect(onSubmit).toHaveBeenCalledTimes(2);

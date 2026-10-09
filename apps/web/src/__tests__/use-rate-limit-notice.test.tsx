@@ -93,16 +93,46 @@ describe("useRateLimitNotice", () => {
     );
   });
 
-  it("does not dismiss anything for a fresh window", () => {
+  // Review: a notice can outlive its window (its auto-hide starts when it
+  // becomes visible), so a new window must replace it, not stack beside it.
+  it("replaces a still-visible notice when a new window starts", () => {
     const api = toastApi();
     renderNotice(api);
 
     pauseApiReads(5_000);
     jest.advanceTimersByTime(5_000);
-    pauseApiReads(5_000);
+    pauseApiReads(3_000);
 
+    expect(api.dismiss).toHaveBeenCalledWith("toast-1");
     expect(api.warning).toHaveBeenCalledTimes(2);
+  });
+
+  // Review: a notice queued behind other toasts would otherwise appear after
+  // reads resumed and stay up a full wait. It ends with its window.
+  it("dismisses the notice when its window ends", () => {
+    const api = toastApi();
+    renderNotice(api);
+
+    pauseApiReads(5_000);
+    jest.advanceTimersByTime(4_999);
     expect(api.dismiss).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    expect(api.dismiss).toHaveBeenCalledWith("toast-1");
+  });
+
+  it("ends an extended notice with the extended window, not the first", () => {
+    const api = toastApi();
+    renderNotice(api);
+
+    pauseApiReads(5_000);
+    jest.advanceTimersByTime(1_000);
+    pauseApiReads(30_000); // replaces toast-1 with toast-2
+    api.dismiss.mockClear();
+
+    jest.advanceTimersByTime(29_999);
+    expect(api.dismiss).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    expect(api.dismiss).toHaveBeenCalledWith("toast-2");
   });
 
   it("stops listening on unmount", () => {

@@ -105,7 +105,11 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
 
     for (const toast of visible) {
       if (live.has(toast.id)) continue;
-      const duration = toast.autoHideMs ?? TOAST_AUTO_HIDE_MS[toast.severity];
+      // An error persists until dismissed, whatever the caller asked for.
+      const duration =
+        toast.severity === "error"
+          ? null
+          : (toast.autoHideMs ?? TOAST_AUTO_HIDE_MS[toast.severity]);
       if (duration == null) continue; // errors persist
       live.set(
         toast.id,

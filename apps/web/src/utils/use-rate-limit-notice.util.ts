@@ -14,8 +14,10 @@ const inSeconds = (s: number) => (s === 1 ? "1 second" : `${s} seconds`);
  * duration is far shorter than a window. Mutations still report through
  * their own surfaces.
  *
- * A longer refusal that extends the running window replaces the notice, so
- * it names, and lasts for, the wait that actually holds reads.
+ * Each new or extended window replaces the previous notice, so it names the
+ * wait that actually holds reads and two never stack. The notice also ends at
+ * its window's end: a toast's own auto-hide starts only once it is visible,
+ * so one queued behind others would outlive the wait it names.
  *
  * Mounted once, in `ApplicationProvider`, so every page gets it whatever its
  * layout (the portal page uses `FullScreenLayout`).
@@ -23,17 +25,33 @@ const inSeconds = (s: number) => (s === 1 ? "1 second" : `${s} seconds`);
 export function useRateLimitNotice(): void {
   const toast = useToast();
   const noticeId = useRef<string | null>(null);
+  const noticeExpiry = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(
-    () =>
-      onApiRateLimitWindow(({ waitMs, extended }) => {
-        if (extended && noticeId.current) toast.dismiss(noticeId.current);
-        const seconds = Math.ceil(waitMs / 1_000);
-        noticeId.current = toast.warning(
-          `You're making requests faster than allowed. Data will load again in ${inSeconds(seconds)}.`,
-          { autoHideMs: waitMs }
-        );
-      }),
-    [toast]
-  );
+  useEffect(() => {
+    const clearExpiry = () => {
+      if (noticeExpiry.current !== null) clearTimeout(noticeExpiry.current);
+      noticeExpiry.current = null;
+    };
+    const unsubscribe = onApiRateLimitWindow(({ waitMs }) => {
+      // Dismissed before raising, so the new notice is never dropped as a
+      // duplicate of the one it replaces.
+      if (noticeId.current) toast.dismiss(noticeId.current);
+      clearExpiry();
+      const seconds = Math.ceil(waitMs / 1_000);
+      const id = toast.warning(
+        `You're making requests faster than allowed. Data will load again in ${inSeconds(seconds)}.`,
+        { autoHideMs: waitMs }
+      );
+      noticeId.current = id;
+      noticeExpiry.current = setTimeout(() => {
+        toast.dismiss(id);
+        noticeId.current = null;
+        noticeExpiry.current = null;
+      }, waitMs);
+    });
+    return () => {
+      unsubscribe();
+      clearExpiry();
+    };
+  }, [toast]);
 }

@@ -161,6 +161,14 @@ describe("ToastProvider — per-severity timing (spec cases 5–8)", () => {
     expect(screen.queryByTestId("toast-warning")).not.toBeInTheDocument();
   });
 
+  // Review: the error rule holds even against an explicit override.
+  it("ignores autoHideMs on an error, which persists until dismissed", () => {
+    const api = mount();
+    raise(() => api().error("Stays anyway", { autoHideMs: 1_000 }));
+    advance(60_000);
+    expect(screen.getByTestId("toast-error")).toHaveTextContent("Stays anyway");
+  });
+
   it("never auto-dismisses an error", () => {
     const api = mount();
     raise(() => api().error("Stays"));

@@ -22,7 +22,8 @@ export interface ToastAction {
 export interface ToastOptions {
   action?: ToastAction;
   /** Overrides the severity's auto-hide (`TOAST_AUTO_HIDE_MS`) for a notice
-   *  whose relevance has a known end, e.g. a rate-limit wait (#747). */
+   *  whose relevance has a known end, e.g. a rate-limit wait (#747). Ignored
+   *  for an error, which persists until dismissed. */
   autoHideMs?: number;
 }
 
