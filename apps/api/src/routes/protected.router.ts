@@ -42,14 +42,17 @@ protectedRouter.use(jwtCheck);
 // Map tiles have their own per-user bucket (#705): a pan fans out dozens of
 // tile requests, which on the shared bucket throttled the whole app. Mounted
 // BEFORE the API limiter so a tile request never reaches it — keep it here.
-// Every route on portalMapRouter counts against the tile bucket. Skips
-// requireOrgWritable below, which gates only mutating methods; tiles are GET.
+// Every route on portalMapRouter counts against the tile bucket, and the
+// router ends in a 404 so no /portal-map request falls through to the API
+// bucket. It carries requireOrgWritable itself, since it is mounted ahead of
+// the router-wide one below.
 protectedRouter.use(
   "/portal-map",
   authenticatedRateLimit({
     bucket: "tiles",
     limitPerMinute: environment.AUTH_TILE_RATE_LIMIT_PER_MIN,
   }),
+  requireOrgWritable,
   portalMapRouter
 );
 

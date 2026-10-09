@@ -35,14 +35,12 @@ const TILES = { bucket: "tiles", limitPerMinute: 1200 } as const;
 
 const reqFor = (sub: string | undefined) =>
   ({ auth: sub ? { payload: { sub } } : undefined }) as unknown as Request;
-const setHeader = jest.fn();
-const res = { setHeader } as unknown as Response;
+const res = {} as Response;
 
 beforeEach(() => {
   mockIncrement.mockReset();
   mockSecondsLeft.mockReset();
   mockSecondsLeft.mockReturnValue(42);
-  setHeader.mockReset();
   mockWarn.mockReset();
 });
 
@@ -118,7 +116,7 @@ it("allows the request without touching Redis when the subject is absent", async
 
 // ── case 6 — a refusal says when to come back (#705) ─────────────────
 
-it("sets Retry-After to the seconds left in the window the request was counted in", async () => {
+it("names the seconds left in the window the request was counted in", async () => {
   mockIncrement.mockResolvedValue(301);
   const next = jest.fn();
 
@@ -128,7 +126,6 @@ it("sets Retry-After to the seconds left in the window the request was counted i
   // the window the request was counted in.
   const countedAt = mockIncrement.mock.calls[0][1];
   expect(mockSecondsLeft).toHaveBeenCalledWith(60_000, countedAt);
-  expect(setHeader).toHaveBeenCalledWith("Retry-After", "42");
   const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
   expect(err.details).toEqual({ retryAfterSeconds: 42 });
   expect(err.message).toBe("Too many requests. Try again in 42 seconds.");
@@ -145,13 +142,12 @@ it("says 1 second, singular", async () => {
   expect(err.message).toBe("Too many requests. Try again in 1 second.");
 });
 
-it("sets no Retry-After on an allowed request", async () => {
+it("allows a request at the limit", async () => {
   mockIncrement.mockResolvedValue(300);
   const next = jest.fn();
 
   await authenticatedRateLimit(API)(reqFor("auth0|user-a"), res, next);
 
-  expect(setHeader).not.toHaveBeenCalled();
   expect(next).toHaveBeenCalledWith();
 });
 
@@ -180,11 +176,13 @@ it("limits the tiles bucket at its own ceiling, naming map tiles", async () => {
   await authenticatedRateLimit(TILES)(reqFor("auth0|user-a"), res, next);
   const err = next.mock.calls[1][0] as InstanceType<typeof ApiError>;
   expect(err.status).toBe(429);
-  expect(err.code).toBe(ApiCode.API_RATE_LIMITED);
+  // Its own code, so a map session's 429s log at warn while the API
+  // bucket's stay errors (#705 review).
+  expect(err.code).toBe(ApiCode.MAP_TILE_RATE_LIMITED);
   expect(err.message).toBe(
     "Too many map tile requests. Try again in 42 seconds."
   );
-  expect(setHeader).toHaveBeenCalledWith("Retry-After", "42");
+  expect(err.details).toEqual({ retryAfterSeconds: 42 });
 });
 
 it("fails open per bucket, naming the bucket in the warning", async () => {

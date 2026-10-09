@@ -100,7 +100,7 @@ describe("per-user rate-limit buckets (#705)", () => {
   it("limits tiles at their own ceiling without touching the API", async () => {
     freshSub();
     const refused = await exhaust(TILE);
-    expect(refused.body.code).toBe(ApiCode.API_RATE_LIMITED);
+    expect(refused.body.code).toBe(ApiCode.MAP_TILE_RATE_LIMITED);
     expect(refused.body.message).toMatch(/^Too many map tile requests\./);
     expect(Number(refused.headers["retry-after"])).toBeGreaterThanOrEqual(1);
 
@@ -112,6 +112,16 @@ describe("per-user rate-limit buckets (#705)", () => {
     const sub = freshSub();
     await request(app).get(TILE);
 
+    expect(await rateKeys("authed-tiles", sub)).toHaveLength(1);
+    expect(await rateKeys("authed", sub)).toHaveLength(0);
+  });
+
+  it("ends the tile mount: an unknown /portal-map path is a 404 that never reaches the API bucket", async () => {
+    const sub = freshSub();
+    const res = await request(app).get("/api/portal-map/not-a-tile-route");
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.MAP_TILE_NOT_FOUND);
     expect(await rateKeys("authed-tiles", sub)).toHaveLength(1);
     expect(await rateKeys("authed", sub)).toHaveLength(0);
   });

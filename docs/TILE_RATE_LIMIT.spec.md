@@ -7,6 +7,8 @@ This spec pins three things:
 - every rate-limit 429 says exactly when to come back;
 - the map treats a 429 as a timed pause with its own notice, never as "failed".
 
+> **Amended after code review (#748).** Tiles refuse with their own `429 MAP_TILE_RATE_LIMITED`, and only that code logs at warn (`API_RATE_LIMITED` stays an error). `HttpService.error` sets `Retry-After` from `details.retryAfterSeconds` for every error, replacing the per-site header code (including #698's `applyTileErrorHeaders`), and both limiters build their refusal with `rateLimitedError` (`utils/rate-limit-refusal.util.ts`). The tile mount carries `requireOrgWritable` and ends in a `404 MAP_TILE_NOT_FOUND`. The web map counts a 429 as `rateLimited` only when it carries `Retry-After`, and its notice says tiles load on the next pan or zoom. Where this conflicts with the text below, this note wins.
+
 ## Key decisions (flag for review)
 
 1. **Tiles have a separate bucket.** The tile bucket is `AUTH_TILE_RATE_LIMIT_PER_MIN` (default **1200**), keyed `authed-tiles:${sub}`. Tiles never count against the API bucket (`authed:${sub}`, unchanged, so existing windows aren't reset on deploy).

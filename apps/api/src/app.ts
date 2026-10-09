@@ -127,7 +127,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   }
 
   // #698/#705: expected load-shedding (503 MAP_TILE_BUSY, 429
-  // API_RATE_LIMITED) is a gate or limiter doing its job — warn, and flag the
+  // MAP_TILE_RATE_LIMITED) is a gate or limiter doing its job — warn, and flag the
   // response so pino-http's own line is warn too.
   if (isExpectedBackpressure(err)) {
     log.warn(

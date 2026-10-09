@@ -26,12 +26,20 @@ describe("isExpectedBackpressure (#698)", () => {
     expect(isExpectedBackpressure(undefined)).toBe(false);
   });
 
-  it("treats a client over its rate limit (API_RATE_LIMITED) as expected backpressure (#705)", () => {
+  it("treats a spent map-tile bucket (MAP_TILE_RATE_LIMITED) as expected backpressure (#705)", () => {
+    expect(
+      isExpectedBackpressure(
+        new ApiError(429, ApiCode.MAP_TILE_RATE_LIMITED, "slow down")
+      )
+    ).toBe(true);
+  });
+
+  it("keeps the API bucket (API_RATE_LIMITED) an error: a runaway client should alert (#705)", () => {
     expect(
       isExpectedBackpressure(
         new ApiError(429, ApiCode.API_RATE_LIMITED, "slow down")
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("keeps the anonymous site limiter (SITE_CONFIG_RATE_LIMITED) as an error (#705)", () => {

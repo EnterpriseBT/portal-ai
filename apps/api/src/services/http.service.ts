@@ -65,6 +65,12 @@ export class HttpService {
     // the log. Other 5xx (503 backpressure, 502 upstream refusals) carry
     // copy written for the user and pass through.
     const internal = status === 500;
+    // #705: a typed backoff hint (rate-limit 429, busy 503) also goes out as
+    // the standard header, set here once so the body and header can't diverge.
+    const retryAfter = error.details?.retryAfterSeconds;
+    if (!internal && typeof retryAfter === "number") {
+      res.setHeader("Retry-After", String(retryAfter));
+    }
     return res.status(status).json({
       success: false,
       message: internal ? INTERNAL_ERROR_MESSAGE : error.message,

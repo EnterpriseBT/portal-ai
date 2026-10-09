@@ -27,14 +27,12 @@ const { ApiCode } = await import("../../constants/api-codes.constants.js");
 // ── Fixtures ─────────────────────────────────────────────────────────
 
 const req = { ip: "203.0.113.7" } as Request;
-const setHeader = jest.fn();
-const res = { setHeader } as unknown as Response;
+const res = {} as Response;
 
 beforeEach(() => {
   mockIncrement.mockReset();
   mockSecondsLeft.mockReset();
   mockSecondsLeft.mockReturnValue(17);
-  setHeader.mockReset();
 });
 
 // ── case 1 — under the limit passes through ──────────────────────────
@@ -79,7 +77,7 @@ it("fails open (passes the request) when the Redis counter errors", async () => 
 
 // ── case 4 — a refusal says when to come back (#705) ─────────────────
 
-it("sets Retry-After and details.retryAfterSeconds on a refusal", async () => {
+it("carries details.retryAfterSeconds on a refusal (the error handler sets Retry-After)", async () => {
   mockIncrement.mockResolvedValue(61);
   const next = jest.fn();
 
@@ -87,7 +85,6 @@ it("sets Retry-After and details.retryAfterSeconds on a refusal", async () => {
 
   const countedAt = mockIncrement.mock.calls[0][1];
   expect(mockSecondsLeft).toHaveBeenCalledWith(60_000, countedAt);
-  expect(setHeader).toHaveBeenCalledWith("Retry-After", "17");
   const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
   expect(err.details).toEqual({ retryAfterSeconds: 17 });
   expect(err.message).toBe("Too many requests. Try again in 17 seconds.");

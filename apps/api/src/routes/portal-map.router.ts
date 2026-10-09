@@ -75,17 +75,6 @@ export function parseTileCoords(
 
 /** Apply the render result to the response: 200 bytes / 204 / 304, with the
  *  degradation + caching headers on every outcome. */
-/** #698: headers an error response carries — `Retry-After` on a busy tile, so
- *  the widget pauses its tile queue instead of hammering a saturated gate. */
-export function applyTileErrorHeaders(res: Response, err: unknown): void {
-  if (err instanceof ApiError && err.code === ApiCode.MAP_TILE_BUSY) {
-    const retryAfter = err.details?.retryAfterSeconds;
-    if (typeof retryAfter === "number") {
-      res.setHeader("Retry-After", String(retryAfter));
-    }
-  }
-}
-
 function sendTile(res: Response, result: TileRenderResult): void {
   res.setHeader("ETag", result.etag);
   res.setHeader("Cache-Control", "private, max-age=60");
@@ -172,7 +161,7 @@ async function handle(
     });
     sendTile(res, result);
   } catch (err) {
-    applyTileErrorHeaders(res, err);
+    // A busy gate's Retry-After rides details; HttpService.error sets it.
     next(err);
   }
 }
@@ -210,7 +199,7 @@ async function handle(
  *         description: No renderable tile for this reference (or cross-org)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       429:
- *         description: Per-user tile rate limit exceeded (API_RATE_LIMITED) — retry after the Retry-After window
+ *         description: Per-user tile rate limit exceeded (MAP_TILE_RATE_LIMITED) — retry after the Retry-After window
  *         headers:
  *           Retry-After: { description: Seconds until the rate-limit window resets, schema: { type: integer } }
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
@@ -276,7 +265,7 @@ portalMapRouter.get(
  *         description: No renderable tile for this reference (or cross-org)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       429:
- *         description: Per-user tile rate limit exceeded (API_RATE_LIMITED) — retry after the Retry-After window
+ *         description: Per-user tile rate limit exceeded (MAP_TILE_RATE_LIMITED) — retry after the Retry-After window
  *         headers:
  *           Retry-After: { description: Seconds until the rate-limit window resets, schema: { type: integer } }
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
@@ -299,4 +288,12 @@ portalMapRouter.get(
       res,
       next
     )
+);
+
+/** #705: end the tile mount. `protected.router.ts` mounts this router behind
+ *  the tile rate-limit bucket and ahead of the API one, so an unmatched
+ *  /portal-map path must stop here rather than fall through and be counted
+ *  against both. */
+portalMapRouter.use((_req: Request, _res: Response, next: NextFunction) =>
+  next(new ApiError(404, ApiCode.MAP_TILE_NOT_FOUND, "No such map tile route"))
 );

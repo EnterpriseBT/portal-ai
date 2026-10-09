@@ -28,16 +28,10 @@
 
 import { Request, Response, NextFunction } from "express";
 
-import {
-  incrementRateWindow,
-  secondsUntilWindowEnd,
-  RATE_WINDOW_MS,
-} from "../utils/rate-limit.util.js";
-import { ApiError } from "../services/http.service.js";
+import { incrementRateWindow } from "../utils/rate-limit.util.js";
+import { rateLimitedError } from "../utils/rate-limit-refusal.util.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
-
-const inSeconds = (s: number) => (s === 1 ? "1 second" : `${s} seconds`);
 
 const logger = createLogger({ module: "authenticated-rate-limit" });
 
@@ -47,6 +41,13 @@ export type AuthRateLimitBucket = "api" | "tiles";
 const BUCKET_KEY_PREFIX: Record<AuthRateLimitBucket, string> = {
   api: "authed",
   tiles: "authed-tiles",
+};
+
+// Tiles have their own code so a map session's 429s log as expected
+// backpressure while the API bucket's stay errors (#705).
+const BUCKET_CODE: Record<AuthRateLimitBucket, ApiCode> = {
+  api: ApiCode.API_RATE_LIMITED,
+  tiles: ApiCode.MAP_TILE_RATE_LIMITED,
 };
 
 const BUCKET_REFUSAL: Record<AuthRateLimitBucket, string> = {
@@ -67,7 +68,7 @@ export function authenticatedRateLimit({
 }) {
   return async (
     req: Request,
-    res: Response,
+    _res: Response,
     next: NextFunction
   ): Promise<void> => {
     const sub = req.auth?.payload.sub;
@@ -84,17 +85,8 @@ export function authenticatedRateLimit({
         now
       );
       if (count > limitPerMinute) {
-        // #705: say exactly when the window the request was counted in ends,
-        // so a client can back off instead of retrying into the limit.
-        const retryAfterSeconds = secondsUntilWindowEnd(RATE_WINDOW_MS, now);
-        res.setHeader("Retry-After", String(retryAfterSeconds));
         return next(
-          new ApiError(
-            429,
-            ApiCode.API_RATE_LIMITED,
-            `${BUCKET_REFUSAL[bucket]} Try again in ${inSeconds(retryAfterSeconds)}.`,
-            { retryAfterSeconds }
-          )
+          rateLimitedError(BUCKET_CODE[bucket], BUCKET_REFUSAL[bucket], now)
         );
       }
     } catch (error) {
