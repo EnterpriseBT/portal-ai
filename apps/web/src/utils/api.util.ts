@@ -14,6 +14,12 @@ import type {
 import { useAuth } from "../providers/Auth.provider";
 import { handleAuthError } from "./auth-error.util";
 import { isPermissionDenied } from "./permission-denied.util";
+import {
+  isApiRateLimited,
+  pauseApiReads,
+  retryAfterMs,
+  waitForApiReadPause,
+} from "./rate-limit.util";
 
 export interface ServerError {
   message: string;
@@ -39,6 +45,8 @@ export class ApiError extends Error {
   status: number;
   success: false;
   details?: Record<string, unknown>;
+  /** A 429's wait, from `Retry-After` or `details.retryAfterSeconds` (#747). */
+  retryAfterSeconds?: number;
 
   constructor(
     message: string,
@@ -52,6 +60,23 @@ export class ApiError extends Error {
     this.success = false;
     this.details = details;
   }
+}
+
+/**
+ * A 429's wait in seconds (#747): the `Retry-After` header (integer seconds,
+ * which is all our limiter sends), else `details.retryAfterSeconds`.
+ */
+function retryAfterSecondsOf(
+  response: Response,
+  body: ApiErrorResponse
+): number | undefined {
+  const header = Number.parseInt(
+    response.headers?.get("Retry-After") ?? "",
+    10
+  );
+  if (Number.isFinite(header)) return header;
+  const detail = body.details?.retryAfterSeconds;
+  return typeof detail === "number" ? detail : undefined;
 }
 
 /**
@@ -96,12 +121,16 @@ export const useAuthFetch = () => {
 
       if (!response.ok) {
         const body = (await response.json()) as ApiErrorResponse;
-        throw new ApiError(
+        const error = new ApiError(
           body.message,
           body.code,
           response.status,
           body.details
         );
+        if (response.status === 429) {
+          error.retryAfterSeconds = retryAfterSecondsOf(response, body);
+        }
+        throw error;
       }
 
       return response.json() as Promise<T>;
@@ -141,8 +170,21 @@ export const useAuthQuery = <T>(
   return useQuery<T, ApiError, T, QueryKey>({
     queryKey,
     queryFn: async () => {
-      const response = await fetchWithAuth<ApiSuccessResponse<T>>(url, options);
-      return response.payload;
+      // #747: a read issued while the API bucket is spent waits out the
+      // window rather than spending a refused request into it.
+      await waitForApiReadPause();
+      try {
+        const response = await fetchWithAuth<ApiSuccessResponse<T>>(
+          url,
+          options
+        );
+        return response.payload;
+      } catch (error) {
+        if (isApiRateLimited(error)) {
+          pauseApiReads(retryAfterMs(error as ApiError));
+        }
+        throw error;
+      }
     },
     ...queryOptions,
   });

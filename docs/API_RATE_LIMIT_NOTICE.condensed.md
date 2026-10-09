@@ -23,9 +23,9 @@ Options: (a) per-query `retryDelay` only — each query retries on its own clock
 
 **Decision: (b).**
 
-1. **New `apps/web/src/utils/rate-limit.util.ts`** — module state mirroring the tile pause: `retryAfterMs(error)` (`ApiError.retryAfterSeconds` → ms, clamped [1s, 60s], 2s default — the clamp is the tile precedent's), `pauseApiReads(ms)` (extends, never shortens), `waitForApiReadPause(signal)` (abort-aware), and a tiny subscribe/notify so the UI hears "a new window began, N seconds".
+1. **New `apps/web/src/utils/rate-limit.util.ts`** — module state mirroring the tile pause: `retryAfterMs(error)` (`ApiError.retryAfterSeconds` → ms, clamped [1s, 60s], 2s default — the clamp is the tile precedent's), `pauseApiReads(ms)` (extends, never shortens), `waitForApiReadPause()` (no abort signal: reading react-query's `signal` opts every query into abort-on-unmount, and an orphaned wait ends within 60s), and a tiny subscribe/notify so the UI hears "a new window began, N seconds".
 2. **`fetchWithAuth` reads `Retry-After`** (the deliverable): on a 429 it sets `ApiError.retryAfterSeconds` from the header, falling back to `details.retryAfterSeconds`. A new optional field, not a widened `details` contract.
-3. **`useAuthQuery`'s `queryFn`** awaits `waitForApiReadPause(signal)` before fetching, and on `API_RATE_LIMITED` calls `pauseApiReads(retryAfterMs(err))` before rethrowing. Reads issued during the window never hit the server; a cancelled query stops waiting.
+3. **`useAuthQuery`'s `queryFn`** awaits `waitForApiReadPause()` before fetching, and on `API_RATE_LIMITED` calls `pauseApiReads(retryAfterMs(err))` before rethrowing. Reads issued during the window never hit the server.
 4. **`client.ts` splits the rule**: queries retry `API_RATE_LIMITED` (up to 3 failures, `retryDelay` = time left in the pause) — a query sits in loading during the wait, so no per-query error renders; mutations keep `shouldRetry` unchanged (4xx → never), now pinned by a test for 429.
 5. **The notice**: `useRateLimitNotice()` (new `apps/web/src/utils/use-rate-limit-notice.util.ts`) subscribes and raises `toast.warning("You're making requests faster than allowed. This page will refresh by itself in N seconds.")` — **once per window**: a notify while the previous window is still running is ignored. Called from `AuthorizedLayout` (the only place SDK reads run; already a container), so it sits inside `ToastProvider`. Warning, not error: nothing failed that the user must act on, and errors persist until dismissed.
 
@@ -33,7 +33,7 @@ Only `API_RATE_LIMITED` triggers any of this. `MAP_TILE_RATE_LIMITED` stays the 
 
 ## Plan — 2 slices
 
-**Slice 1 — pause + retry.** Files: new `utils/rate-limit.util.ts`; edit `utils/api.util.ts` (`ApiError.retryAfterSeconds`, header read, `useAuthQuery` wait/pause), `client.ts` (query retry + `retryDelay`). Tests: new `__tests__/rate-limit.util.test.ts` (clamp/default, extend-never-shorten, abort while waiting); edit `__tests__/client.test.ts` (query retries `API_RATE_LIMITED` with the pause as delay; mutation never retries a 429; `MAP_TILE_RATE_LIMITED`/codeless 429 not retried); `useAuthQuery` test asserting a 429 header lands on the error and a second query waits instead of fetching.
+**Slice 1 — pause + retry.** Files: new `utils/rate-limit.util.ts`; edit `utils/api.util.ts` (`ApiError.retryAfterSeconds`, header read, `useAuthQuery` wait/pause), `client.ts` (query retry + `retryDelay`). Tests: new `__tests__/rate-limit.util.test.ts` (clamp/default, extend-never-shorten, wait spans an extension); edit `__tests__/client.test.ts` (query retries `API_RATE_LIMITED` with the pause as delay; mutation never retries a 429; `MAP_TILE_RATE_LIMITED`/codeless 429 not retried); `useAuthQuery` test asserting a 429 header lands on the error and a second query waits instead of fetching.
 
 **Slice 2 — the notice.** Files: new `utils/use-rate-limit-notice.util.ts`; edit `layouts/Authorized.layout.tsx`. Tests: new `__tests__/use-rate-limit-notice.test.tsx` — one toast for three 429s in one window, a second toast after the window ends, the wait in the copy, no provider → no throw.
 

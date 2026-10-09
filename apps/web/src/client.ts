@@ -1,6 +1,7 @@
 import { QueryCache, QueryClient, MutationCache } from "@tanstack/react-query";
 
 import { ApiError, handleAuthError } from "./utils";
+import { isApiRateLimited, retryAfterMs } from "./utils/rate-limit.util";
 
 /**
  * Shared retry rule for queries and mutations.
@@ -24,6 +25,23 @@ const shouldRetry = (failureCount: number, error: Error): boolean => {
   return failureCount < 3;
 };
 
+/**
+ * #747: reads also retry `429 API_RATE_LIMITED`, the one 4xx whose answer
+ * changes with time, after the window the server named. A query stays loading
+ * while it waits, so a spent bucket doesn't paint every list as an error.
+ * Mutations keep `shouldRetry`: a write is never resent on its own.
+ */
+const shouldRetryQuery = (failureCount: number, error: Error): boolean => {
+  if (isApiRateLimited(error)) return failureCount < 3;
+  return shouldRetry(failureCount, error);
+};
+
+/** React-query's default backoff, except a rate limit waits its window. */
+const queryRetryDelay = (failureCount: number, error: Error): number => {
+  if (isApiRateLimited(error)) return retryAfterMs(error as ApiError);
+  return Math.min(1000 * 2 ** failureCount, 30_000);
+};
+
 const onAuthError = (error: Error) => {
   if (error instanceof ApiError) {
     if (error.status === 401 || error.code === "ORGANIZATION_USER_NOT_FOUND") {
@@ -38,7 +56,8 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60 * 1000, // 1 minute
-      retry: shouldRetry,
+      retry: shouldRetryQuery,
+      retryDelay: queryRetryDelay,
     },
     mutations: {
       retry: shouldRetry,
