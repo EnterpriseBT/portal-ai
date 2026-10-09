@@ -199,6 +199,7 @@ describe("MapWidgetUI", () => {
           aggregated: false,
           failed: false,
           busy: false,
+          rateLimited: false,
         }}
       />
     );
@@ -216,6 +217,7 @@ describe("MapWidgetUI", () => {
           aggregated: false,
           failed: false,
           busy: false,
+          rateLimited: false,
         }}
       />
     );
@@ -231,6 +233,7 @@ describe("MapWidgetUI", () => {
           aggregated: false,
           failed: false,
           busy: false,
+          rateLimited: false,
         }}
       />
     );
@@ -247,6 +250,7 @@ describe("MapWidgetUI", () => {
           aggregated: false,
           failed: false,
           busy: true,
+          rateLimited: false,
         }}
       />
     );
@@ -263,10 +267,34 @@ describe("MapWidgetUI", () => {
           aggregated: false,
           failed: true,
           busy: false,
+          rateLimited: false,
         }}
       />
     );
     expect(screen.getByTestId("map-widget-tile-failed")).toBeInTheDocument();
+
+    // #705: over the per-user tile limit is a timed pause, never a failure.
+    rerender(
+      <MapWidgetUI
+        {...tileProps}
+        tileStatus={{
+          simplified: false,
+          truncated: false,
+          timedOut: false,
+          aggregated: false,
+          failed: false,
+          busy: false,
+          rateLimited: true,
+        }}
+      />
+    );
+    expect(
+      screen.getByTestId("map-widget-tile-rate-limited")
+    ).toHaveTextContent(
+      "Loading map tiles too quickly — tiles resume in a few seconds."
+    );
+    expect(screen.queryByTestId("map-widget-tile-failed")).toBeNull();
+    expect(screen.queryByTestId("map-widget-tile-busy")).toBeNull();
   });
 
   it("truncated line tile reads as ranked ('most prominent'), not arbitrary (#337)", () => {
@@ -287,6 +315,7 @@ describe("MapWidgetUI", () => {
         aggregated: false,
         failed: false,
         busy: false,
+        rateLimited: false,
       },
     };
     // Line layer → "most prominent" copy.
@@ -316,6 +345,7 @@ describe("MapWidgetUI", () => {
           aggregated: true, // … the aggregate notice wins
           failed: false,
           busy: false,
+          rateLimited: false,
         }}
       />
     );

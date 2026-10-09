@@ -26,6 +26,9 @@ export interface TileStatus {
   /** The server's tile gate is saturated (503 MAP_TILE_BUSY, #698) — tiles
    *  will load after the `Retry-After` pause; not a failure of this layer. */
   busy: boolean;
+  /** The caller's per-user tile rate limit is spent (429 API_RATE_LIMITED,
+   *  #705) — tiles resume after the `Retry-After` pause; not a failure. */
+  rateLimited: boolean;
 }
 
 export const EMPTY_TILE_STATUS: TileStatus = {
@@ -35,6 +38,7 @@ export const EMPTY_TILE_STATUS: TileStatus = {
   aggregated: false,
   failed: false,
   busy: false,
+  rateLimited: false,
 };
 
 /**
@@ -53,7 +57,8 @@ export function tilePath(ref: BlockRef | undefined): string | null {
 
 /** Fold one tile response's status + headers into the notice state (#316 sets
  *  `X-Portal-Tile-Simplified` / `X-Portal-Tile-Truncated`; 504 on timeout;
- *  503 when the server's tile gate is busy, #698). */
+ *  503 when the server's tile gate is busy, #698; 429 when the caller's tile
+ *  rate limit is spent, #705). */
 export function readTileStatus(
   status: number,
   headers: { get(name: string): string | null }
@@ -63,10 +68,12 @@ export function readTileStatus(
     truncated: headers.get("X-Portal-Tile-Truncated") != null,
     timedOut: status === 504,
     aggregated: headers.get("X-Portal-Tile-Aggregated") != null,
-    // A 504 is the timeout case above; 204/304 are legitimately empty. Anything
-    // else >= 400 is a genuine failure the widget should report (#449).
-    failed: status >= 400 && status !== 504 && status !== 503,
+    // A 504 is the timeout case above; 204/304 are legitimately empty; 503 and
+    // 429 are timed pauses (#698, #705). Anything else >= 400 is a genuine
+    // failure the widget should report (#449).
+    failed: status >= 400 && status !== 504 && status !== 503 && status !== 429,
     busy: status === 503,
+    rateLimited: status === 429,
   };
 }
 
