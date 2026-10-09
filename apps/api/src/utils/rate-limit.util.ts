@@ -26,6 +26,9 @@ import { withRedisTimeout, REDIS_OP_TIMEOUT_MS } from "./redis-timeout.util.js";
 
 const WINDOW_TTL_SECONDS = 120; // covers the current minute + boundary slack
 
+/** The minute window `incrementRateWindow` counts in. */
+export const RATE_WINDOW_MS = 60_000;
+
 /**
  * Re-exported so this module's existing callers and tests keep one name for
  * the bound. The helper itself lives in `redis-timeout.util.ts`.
@@ -46,7 +49,21 @@ export async function incrementRateWindow(
   key: string,
   now: number = Date.now()
 ): Promise<number> {
-  return incrementFixedWindow(key, 60_000, WINDOW_TTL_SECONDS, now);
+  return incrementFixedWindow(key, RATE_WINDOW_MS, WINDOW_TTL_SECONDS, now);
+}
+
+/**
+ * #705: seconds until the fixed window containing `now` ends — the exact
+ * `Retry-After` for a refusal counted in that window, since windows are
+ * wall-clock aligned. Always in [1, windowMs / 1000]; a window's last
+ * millisecond rounds up to 1 rather than telling the client to retry now.
+ */
+export function secondsUntilWindowEnd(
+  windowMs: number,
+  now: number = Date.now()
+): number {
+  const windowEnd = (Math.floor(now / windowMs) + 1) * windowMs;
+  return Math.max(1, Math.ceil((windowEnd - now) / 1000));
 }
 
 /**

@@ -12,10 +12,16 @@
 
 import { Request, Response, NextFunction } from "express";
 
-import { incrementRateWindow } from "../utils/rate-limit.util.js";
+import {
+  incrementRateWindow,
+  secondsUntilWindowEnd,
+  RATE_WINDOW_MS,
+} from "../utils/rate-limit.util.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
+
+const inSeconds = (s: number) => (s === 1 ? "1 second" : `${s} seconds`);
 
 const logger = createLogger({ module: "public-rate-limit" });
 
@@ -24,17 +30,23 @@ const logger = createLogger({ module: "public-rate-limit" });
 export function publicRateLimit(limitPerMinute: number) {
   return async (
     req: Request,
-    _res: Response,
+    res: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
-      const count = await incrementRateWindow(`public-site:${req.ip}`);
+      const now = Date.now();
+      const count = await incrementRateWindow(`public-site:${req.ip}`, now);
       if (count > limitPerMinute) {
+        // #705: say exactly when the window the request was counted in ends,
+        // so a client can back off instead of retrying into the limit.
+        const retryAfterSeconds = secondsUntilWindowEnd(RATE_WINDOW_MS, now);
+        res.setHeader("Retry-After", String(retryAfterSeconds));
         return next(
           new ApiError(
             429,
             ApiCode.SITE_CONFIG_RATE_LIMITED,
-            "Too many requests. Try again in a minute."
+            `Too many requests. Try again in ${inSeconds(retryAfterSeconds)}.`,
+            { retryAfterSeconds }
           )
         );
       }

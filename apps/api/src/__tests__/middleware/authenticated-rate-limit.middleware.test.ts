@@ -11,8 +11,11 @@ import type { Request, Response } from "express";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockIncrement = jest.fn<(key: string, now?: number) => Promise<number>>();
+const mockSecondsLeft = jest.fn<(windowMs: number, now?: number) => number>();
 jest.unstable_mockModule("../../utils/rate-limit.util.js", () => ({
   incrementRateWindow: mockIncrement,
+  secondsUntilWindowEnd: mockSecondsLeft,
+  RATE_WINDOW_MS: 60_000,
 }));
 
 const { authenticatedRateLimit } =
@@ -24,10 +27,14 @@ const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 const reqFor = (sub: string | undefined) =>
   ({ auth: sub ? { payload: { sub } } : undefined }) as unknown as Request;
-const res = {} as Response;
+const setHeader = jest.fn();
+const res = { setHeader } as unknown as Response;
 
 beforeEach(() => {
   mockIncrement.mockReset();
+  mockSecondsLeft.mockReset();
+  mockSecondsLeft.mockReturnValue(42);
+  setHeader.mockReset();
 });
 
 // ── case 1 — under the limit passes through, keyed by subject ─────────
@@ -38,7 +45,10 @@ it("calls next() with no error while under the limit, keyed by the Auth0 sub", a
 
   await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
 
-  expect(mockIncrement).toHaveBeenCalledWith("authed:auth0|user-a");
+  expect(mockIncrement).toHaveBeenCalledWith(
+    "authed:auth0|user-a",
+    expect.any(Number)
+  );
   expect(next).toHaveBeenCalledWith();
 });
 
@@ -63,8 +73,16 @@ it("keys each subject into its own window so one principal's limit doesn't affec
   await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
   await authenticatedRateLimit(300)(reqFor("auth0|user-b"), res, next);
 
-  expect(mockIncrement).toHaveBeenNthCalledWith(1, "authed:auth0|user-a");
-  expect(mockIncrement).toHaveBeenNthCalledWith(2, "authed:auth0|user-b");
+  expect(mockIncrement).toHaveBeenNthCalledWith(
+    1,
+    "authed:auth0|user-a",
+    expect.any(Number)
+  );
+  expect(mockIncrement).toHaveBeenNthCalledWith(
+    2,
+    "authed:auth0|user-b",
+    expect.any(Number)
+  );
 });
 
 // ── case 4 — Redis failure fails OPEN ────────────────────────────────
@@ -86,5 +104,44 @@ it("allows the request without touching Redis when the subject is absent", async
   await authenticatedRateLimit(300)(reqFor(undefined), res, next);
 
   expect(mockIncrement).not.toHaveBeenCalled();
+  expect(next).toHaveBeenCalledWith();
+});
+
+// ── case 6 — a refusal says when to come back (#705) ─────────────────
+
+it("sets Retry-After to the seconds left in the window the request was counted in", async () => {
+  mockIncrement.mockResolvedValue(301);
+  const next = jest.fn();
+
+  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+
+  // The same instant feeds the counter and the remainder, so the hint matches
+  // the window the request was counted in.
+  const countedAt = mockIncrement.mock.calls[0][1];
+  expect(mockSecondsLeft).toHaveBeenCalledWith(60_000, countedAt);
+  expect(setHeader).toHaveBeenCalledWith("Retry-After", "42");
+  const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
+  expect(err.details).toEqual({ retryAfterSeconds: 42 });
+  expect(err.message).toBe("Too many requests. Try again in 42 seconds.");
+});
+
+it("says 1 second, singular", async () => {
+  mockIncrement.mockResolvedValue(301);
+  mockSecondsLeft.mockReturnValue(1);
+  const next = jest.fn();
+
+  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+
+  const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
+  expect(err.message).toBe("Too many requests. Try again in 1 second.");
+});
+
+it("sets no Retry-After on an allowed request", async () => {
+  mockIncrement.mockResolvedValue(300);
+  const next = jest.fn();
+
+  await authenticatedRateLimit(300)(reqFor("auth0|user-a"), res, next);
+
+  expect(setHeader).not.toHaveBeenCalled();
   expect(next).toHaveBeenCalledWith();
 });
