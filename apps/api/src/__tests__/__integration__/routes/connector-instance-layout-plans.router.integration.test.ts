@@ -808,6 +808,35 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(await recommitJobCount()).toBe(0);
     });
 
+    // #743 (code review): any session previously committed into this
+    // instance is its own, not only the latest (a later commit may have
+    // failed).
+    it("#743: accepts an earlier session of this instance, not only the latest", async () => {
+      const planId = await insertPlanRow(
+        db as Db,
+        {
+          planVersion: "1.0.0",
+          workbookFingerprint: {
+            sheetNames: ["Sheet1"],
+            dimensions: { Sheet1: { rows: 1, cols: 1 } },
+            anchorCells: [],
+          },
+          regions: [],
+          confidence: { overall: 0.9, perRegion: {} },
+        } as unknown as LayoutPlan
+      );
+      const earlier = generateId();
+      await linkUploadSession(earlier, planId);
+      await linkUploadSession(generateId(), planId);
+      const res = await request(app)
+        .post(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadSessionId: earlier });
+      expect(res.status).toBe(202);
+    });
+
     it("#743: refuses another instance as the source, and accepts its own (202)", async () => {
       const planId = await insertPlanRow(
         db as Db,
@@ -2160,6 +2189,48 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(res.body.code).toBe(
         ApiCode.LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND
       );
+    });
+
+    // #743 (code review): the connector type rules out a source the worker
+    // could never resolve, so it's refused up front with no job.
+    it("#743: a recommit pairs the source with the connector type", async () => {
+      const upload = await seedConnectorInstanceWithSlug("file-upload");
+      const uploadPlan = await seedPlanRow(upload.instanceId);
+      const selfSourced = await request(app)
+        .post(
+          `/api/connector-instances/${upload.instanceId}/layout-plan/${uploadPlan}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId: upload.instanceId });
+      expect(selfSourced.status).toBe(400);
+      expect(selfSourced.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+
+      const sheets = await seedConnectorInstanceWithSlug("google-sheets");
+      const sheetsPlan = await seedPlanRow(sheets.instanceId);
+      const session = generateId();
+      await seedPriorLayoutPlanCommitJob(
+        sheets.instanceId,
+        session,
+        sheetsPlan
+      );
+      const sessionSourced = await request(app)
+        .post(
+          `/api/connector-instances/${sheets.instanceId}/layout-plan/${sheetsPlan}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadSessionId: session });
+      expect(sessionSourced.status).toBe(400);
+      expect(sessionSourced.body.code).toBe(
+        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD
+      );
+
+      const own = await request(app)
+        .post(
+          `/api/connector-instances/${sheets.instanceId}/layout-plan/${sheetsPlan}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId: sheets.instanceId });
+      expect(own.status).toBe(202);
     });
   });
 });

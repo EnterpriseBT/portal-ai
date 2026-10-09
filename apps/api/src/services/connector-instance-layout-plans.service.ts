@@ -369,8 +369,7 @@ export class ConnectorInstanceLayoutPlansService {
       // propagates so the route returns 500 with the underlying message.
       if (
         err instanceof ApiError &&
-        (err.code === ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND ||
-          err.code === ApiCode.FILE_UPLOAD_FORBIDDEN)
+        err.code === ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND
       ) {
         return {
           ...base,
@@ -402,8 +401,8 @@ export class ConnectorInstanceLayoutPlansService {
     let prefix: string;
     if (source.kind === "uploadSession") {
       // Side-effect: ensures the cache is populated. Throws
-      // FILE_UPLOAD_SESSION_NOT_FOUND when file_uploads rows are gone
-      // and FILE_UPLOAD_FORBIDDEN on org-mismatch — both routed to the
+      // FILE_UPLOAD_SESSION_NOT_FOUND when file_uploads rows are gone or
+      // belong to another org (#743: one 404 for both), routed to the
       // editable:false branch by the caller.
       await FileUploadSessionService.resolveWorkbook(
         source.uploadSessionId,

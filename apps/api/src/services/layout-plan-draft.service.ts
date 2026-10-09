@@ -458,19 +458,15 @@ export class LayoutPlanDraftService {
       );
     }
     // #743: the route authorizes only the instance in the URL, so the body's
-    // workbook source must be that instance's own: the instance itself, or
-    // the upload session its commits read (what edit-context hands the
-    // editor). Anything else, including another member's session or
-    // instance, gets one answer and nothing is enqueued.
-    const ownSource =
-      workbookSource.kind === "connectorInstance"
-        ? workbookSource.connectorInstanceId === connectorInstanceId
-        : workbookSource.uploadSessionId ===
-          (await DbService.repository.jobs.findLatestUploadSessionIdForConnectorInstance(
-            connectorInstanceId,
-            organizationId
-          ));
-    if (!ownSource) {
+    // workbook source must be that instance's own: the instance itself (a
+    // cloud connector), or an upload session previously committed into it
+    // (file-upload; any of them, not just the latest, since a later commit
+    // may have failed). The connector type rules out a pairing the worker
+    // could never resolve. Anything else, including another member's session
+    // or instance, gets one answer and nothing is enqueued.
+    if (
+      !(await isOwnRecommitSource(instance, organizationId, workbookSource))
+    ) {
       throw new ApiError(
         400,
         ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
@@ -649,6 +645,30 @@ async function resolveWorkbookFromBody(
  * Two roundtrips (instance → definition) is fine on this code path —
  * called once per interpret/commit request, not in a tight loop.
  */
+/** #743: is `source` this instance's own workbook source? */
+async function isOwnRecommitSource(
+  instance: { id: string; connectorDefinitionId: string },
+  organizationId: string,
+  source: LayoutPlanCommitWorkbookSource
+): Promise<boolean> {
+  const slug = (
+    await DbService.repository.connectorDefinitions.findById(
+      instance.connectorDefinitionId
+    )
+  )?.slug;
+  if (source.kind === "connectorInstance") {
+    // A file-upload instance has no workbook of its own to re-read.
+    return slug !== "file-upload" && source.connectorInstanceId === instance.id;
+  }
+  // A cloud connector re-reads itself, never an upload session.
+  if (slug === "google-sheets" || slug === "microsoft-excel") return false;
+  return DbService.repository.jobs.hasUploadSessionForConnectorInstance(
+    instance.id,
+    source.uploadSessionId,
+    organizationId
+  );
+}
+
 async function loadConnectorSlug(connectorInstanceId: string): Promise<string> {
   const instance =
     await DbService.repository.connectorInstances.findById(connectorInstanceId);

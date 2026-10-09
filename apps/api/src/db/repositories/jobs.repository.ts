@@ -251,6 +251,32 @@ export class JobsRepository extends Repository<
    * instead. Order is `created DESC` so the most recent commit wins
    * (covers the case where a connector was committed multiple times).
    */
+  /** #743: has a layout-plan commit into `connectorInstanceId` ever read
+   *  `uploadSessionId`? Any status: the recommit check accepts every session
+   *  the instance was committed from, not only the latest. */
+  async hasUploadSessionForConnectorInstance(
+    connectorInstanceId: string,
+    uploadSessionId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<boolean> {
+    const [row] = await (client as typeof db)
+      .select({ id: jobs.id })
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          eq(jobs.type, "layout_plan_commit" as JobSelect["type"]),
+          sql`${jobs.metadata}->>'connectorInstanceId' = ${connectorInstanceId}`,
+          sql`${jobs.metadata}#>>'{workbookSource,kind}' = 'uploadSession'`,
+          sql`${jobs.metadata}#>>'{workbookSource,uploadSessionId}' = ${uploadSessionId}`,
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
   async findLatestUploadSessionIdForConnectorInstance(
     connectorInstanceId: string,
     organizationId: string,

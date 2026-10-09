@@ -215,8 +215,9 @@ googleSheetsConnectorPublicRouter.get(
  * Resolve a `connectorInstanceId` to an owned `ConnectorInstance` row.
  * Used by every Phase B/D route that operates on a specific instance.
  *
- * - Throws 404 when the row doesn't exist (or has been soft-deleted).
- * - Throws 403 when the row exists but belongs to a different org.
+ * - Throws 404 when the row doesn't exist, has been soft-deleted, is in
+ *   another org or isn't readable (one answer for each, #713/#743).
+ * - Throws 403 when it's readable but a change needs write the caller lacks.
  * - Returns the decrypted-credentials row otherwise.
  */
 async function resolveOwnedInstance(
@@ -377,11 +378,10 @@ googleSheetsConnectorRouter.post(
  *               $ref: '#/components/schemas/SheetSliceResponse'
  *       400:
  *         description: Malformed or missing query params (`GOOGLE_SHEETS_INVALID_PAYLOAD`)
- *       403:
- *         description: Connector instance belongs to another organization (`CONNECTOR_INSTANCE_NOT_FOUND`)
  *       404:
  *         description: >
- *           Unknown connector instance (`CONNECTOR_INSTANCE_NOT_FOUND`), no cached
+ *           Unknown, unreadable or another organization's connector instance
+ *           (`CONNECTOR_INSTANCE_NOT_FOUND`), no cached
  *           workbook (`FILE_UPLOAD_SESSION_NOT_FOUND`), or the rectangle falls
  *           outside the sheet (`FILE_UPLOAD_SLICE_OUT_OF_BOUNDS`)
  *       500:
