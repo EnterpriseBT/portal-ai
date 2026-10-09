@@ -209,7 +209,7 @@ The provider (`providers/Toast.provider.tsx`) is mounted once in `Application.pr
 
 | Rule | Behavior |
 |---|---|
-| Timing | `error` **persists until dismissed**; `success` 4s, `info`/`warning` 6s. Each visible toast runs its own timer. |
+| Timing | `error` **persists until dismissed**; `success` 4s, `info`/`warning` 6s. Each visible toast runs its own timer. A notice whose relevance has a known end passes `autoHideMs` instead (the API rate-limit warning stays up for the wait it names, #747). |
 | Stacking | Up to 3 visible, bottom-right. Beyond that a `+N more` row appears carrying **Dismiss all**. |
 | Dedupe | A raise matching a **currently visible** `(message, severity)` is dropped. |
 | Never | The **system** never auto-dismisses an error to make room. Only the user may discard an unread one. |
