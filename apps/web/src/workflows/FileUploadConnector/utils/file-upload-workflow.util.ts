@@ -22,6 +22,7 @@ import type {
   FileUploadWorkflowState,
   UploadPhase,
 } from "./file-upload-fixtures.util";
+import { useSingleFlight } from "../../../utils/use-single-flight.util";
 
 /**
  * Per-file upload progress shape rendered by the UploadStep.
@@ -210,7 +211,7 @@ export function useFileUploadWorkflow(
     }));
   }, []);
 
-  const startParse = useCallback(async () => {
+  const runStartParse = useCallback(async () => {
     const currentFiles = stage.files;
     if (currentFiles.length === 0) return;
 
@@ -310,6 +311,8 @@ export function useFileUploadWorkflow(
       core.setServerError(toServerErrorFromUnknown(err));
     }
   }, [callbacks, core, stage.files]);
+  // #751: a double-click on Upload joins the running upload and parse.
+  const startParse = useSingleFlight(runStartParse);
 
   const reset = useCallback(() => {
     core.reset();

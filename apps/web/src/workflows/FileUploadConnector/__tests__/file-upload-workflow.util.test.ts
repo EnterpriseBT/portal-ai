@@ -1335,3 +1335,116 @@ describe("useFileUploadWorkflow — binding edits", () => {
     });
   });
 });
+
+// #751: a second activation while a run is in progress (a double-click on
+// Upload, Interpret or Commit) joins that run instead of starting another, so
+// none of its requests repeat.
+describe("useFileUploadWorkflow — single-flight runs (#751)", () => {
+  const pending = <T>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  };
+
+  test("startParse twice while uploading parses once", async () => {
+    const parse = pending<{ workbook: Workbook; uploadSessionId: string }>();
+    const callbacks = makeCallbacks({
+      parseFile: jest
+        .fn<FileUploadWorkflowCallbacks["parseFile"]>()
+        .mockReturnValue(parse.promise),
+    });
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.startParse();
+      second = result.current.startParse();
+    });
+    expect(callbacks.parseFile).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      parse.resolve({ workbook: DEMO_WORKBOOK, uploadSessionId: "sess_test" });
+      await Promise.all([first, second]);
+    });
+    expect(result.current.uploadPhase).toBe("parsed");
+  });
+
+  const parsedWithRegion = async (callbacks: FileUploadWorkflowCallbacks) => {
+    const hook = renderHook(() => useFileUploadWorkflow(callbacks));
+    act(() => hook.result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await hook.result.current.startParse();
+    });
+    act(() =>
+      hook.result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+      })
+    );
+    return hook;
+  };
+
+  test("onInterpret twice while interpreting interprets once", async () => {
+    const interpret =
+      pending<
+        Awaited<ReturnType<FileUploadWorkflowCallbacks["runInterpret"]>>
+      >();
+    const callbacks = makeCallbacks({
+      runInterpret: jest
+        .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
+        .mockReturnValue(interpret.promise),
+    });
+    const { result } = await parsedWithRegion(callbacks);
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.onInterpret();
+      second = result.current.onInterpret();
+    });
+    expect(callbacks.runInterpret).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      interpret.resolve({
+        regions: POST_INTERPRET_REGIONS,
+        plan: STUB_PLAN,
+        overallConfidence: 0.86,
+      });
+      await Promise.all([first, second]);
+    });
+    expect(result.current.step).toBe(2);
+  });
+
+  test("onCommit twice while committing commits once", async () => {
+    const commit = pending<{ connectorInstanceId: string }>();
+    const onCommitSuccess = jest.fn();
+    const callbacks = makeCallbacks({
+      runCommit: jest
+        .fn<FileUploadWorkflowCallbacks["runCommit"]>()
+        .mockReturnValue(commit.promise),
+      onCommitSuccess,
+    });
+    const { result } = await parsedWithRegion(callbacks);
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.onCommit();
+      second = result.current.onCommit();
+    });
+    expect(callbacks.runCommit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      commit.resolve({ connectorInstanceId: "ci_123" });
+      await Promise.all([first, second]);
+    });
+    expect(onCommitSuccess).toHaveBeenCalledTimes(1);
+  });
+});
