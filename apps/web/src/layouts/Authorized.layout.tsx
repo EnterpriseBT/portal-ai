@@ -12,6 +12,7 @@ import { Link } from "@tanstack/react-router";
 import { SidebarNav } from "../components/SidebarNav.component";
 import { useLayout } from "../utils";
 import { SidebarNavToggle } from "../components/SidebarNavToggle.component";
+import { useRateLimitNotice } from "../utils/use-rate-limit-notice.util";
 
 export const AuthorizedLayout = ({
   children,
@@ -19,6 +20,8 @@ export const AuthorizedLayout = ({
   children: React.ReactNode;
 }) => {
   const { isMobileExpanded, isMobile } = useLayout();
+  // #747: one notice when the API bucket is spent, for every page in here.
+  useRateLimitNotice();
   return (
     <Box display="flex" flexDirection="column" height={"100vh"}>
       <AppBar position="static" sx={{ paddingY: 1 }}>

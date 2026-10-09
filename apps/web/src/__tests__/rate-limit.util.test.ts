@@ -10,6 +10,7 @@ import {
 import {
   apiReadPauseRemainingMs,
   isApiRateLimited,
+  onApiRateLimitWindow,
   pauseApiReads,
   resetApiReadPause,
   retryAfterMs,
@@ -105,5 +106,37 @@ describe("rate-limit.util", () => {
       await jest.advanceTimersByTimeAsync(3_000);
       expect(done).toBe(true);
     });
+  });
+});
+
+describe("onApiRateLimitWindow (#747)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    resetApiReadPause();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("hears each new window once, not its extensions", () => {
+    const listener = jest.fn();
+    const unsubscribe = onApiRateLimitWindow(listener);
+
+    pauseApiReads(30_000);
+    pauseApiReads(10_000);
+    pauseApiReads(40_000);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(30_000);
+
+    jest.advanceTimersByTime(40_000);
+    pauseApiReads(5_000);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith(5_000);
+
+    unsubscribe();
+    jest.advanceTimersByTime(5_000);
+    pauseApiReads(5_000);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

@@ -21,6 +21,21 @@ const MAX_RETRY_AFTER_MS = 60_000;
 
 let apiReadsPausedUntil = 0;
 
+type RateLimitWindowListener = (waitMs: number) => void;
+const windowListeners = new Set<RateLimitWindowListener>();
+
+/** Hear each new rate-limit window once, with its wait. Extending a running
+ *  window is not news, so one notice covers every refusal inside it.
+ *  Returns the unsubscribe. */
+export function onApiRateLimitWindow(
+  listener: RateLimitWindowListener
+): () => void {
+  windowListeners.add(listener);
+  return () => {
+    windowListeners.delete(listener);
+  };
+}
+
 /** Whether `error` is the API bucket's refusal. A map-tile or codeless 429
  *  is not: the former is the map's, the latter isn't our limiter's. */
 export function isApiRateLimited(error: unknown): boolean {
@@ -44,7 +59,11 @@ export function retryAfterMs(error: { retryAfterSeconds?: number }): number {
 /** Hold reads for `ms`. A longer pause extends the window; a shorter one
  *  never shortens it. */
 export function pauseApiReads(ms: number): void {
+  const isNewWindow = apiReadPauseRemainingMs() === 0;
   apiReadsPausedUntil = Math.max(apiReadsPausedUntil, Date.now() + ms);
+  if (isNewWindow) {
+    for (const listener of windowListeners) listener(ms);
+  }
 }
 
 /** Milliseconds left in the running pause, 0 when none. */
