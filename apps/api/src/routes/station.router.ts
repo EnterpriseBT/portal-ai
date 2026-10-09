@@ -1,6 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { eq, ilike, and, inArray, type SQL } from "drizzle-orm";
-import type { z } from "zod";
 
 import { StationModelFactory } from "@portalai/core/models";
 import { isBuiltinToolpackSlug } from "@portalai/core/registries";
@@ -27,21 +26,9 @@ import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
-import { describeFirstZodIssue } from "../utils/zod-issue.util.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 
 const logger = createLogger({ module: "station" });
-
-/** #706: a body that fails its schema is a payload error, never a missing
- *  station. The first issue names the problem (an unknown key, or "At least
- *  one field must be provided"); all of them go in `details`. */
-function invalidPayload(error: z.ZodError): ApiError {
-  return new ApiError(
-    400,
-    ApiCode.STATION_INVALID_PAYLOAD,
-    `Invalid station payload: ${describeFirstZodIssue(error.issues, "invalid body")}`,
-    { issues: error.issues }
-  );
-}
 
 export const stationRouter = Router();
 
@@ -482,7 +469,14 @@ stationRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = CreateStationBodySchema.safeParse(req.body);
-      if (!parsed.success) return next(invalidPayload(parsed.error));
+      if (!parsed.success)
+        return next(
+          invalidPayload(
+            ApiCode.STATION_INVALID_PAYLOAD,
+            "Invalid station payload",
+            parsed.error
+          )
+        );
 
       const ctx = req.application!.metadata;
       const { organizationId, userId } = ctx;
@@ -684,7 +678,14 @@ stationRouter.patch(
       const { organizationId, userId } = ctx;
 
       const parsed = UpdateStationBodySchema.safeParse(req.body);
-      if (!parsed.success) return next(invalidPayload(parsed.error));
+      if (!parsed.success)
+        return next(
+          invalidPayload(
+            ApiCode.STATION_INVALID_PAYLOAD,
+            "Invalid station payload",
+            parsed.error
+          )
+        );
 
       // #621: writing a station requires resource.write on it (own via
       // MemberAccess, any via owner/admin, or a read-write grant). #713: one

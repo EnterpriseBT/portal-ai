@@ -52,7 +52,7 @@ export function parseTileCoords(
   if (!isInt(z) || z < 0 || z > 22) {
     throw new ApiError(
       400,
-      ApiCode.MAP_TILE_NOT_FOUND,
+      ApiCode.MAP_TILE_INVALID_REQUEST,
       `Invalid tile zoom: ${zRaw}`
     );
   }
@@ -60,7 +60,7 @@ export function parseTileCoords(
   if (!isInt(x) || x < 0 || x >= max || !isInt(y) || y < 0 || y >= max) {
     throw new ApiError(
       400,
-      ApiCode.MAP_TILE_NOT_FOUND,
+      ApiCode.MAP_TILE_INVALID_REQUEST,
       `Tile coordinates out of range for zoom ${z}: x=${xRaw} y=${yRaw}`
     );
   }
@@ -198,7 +198,7 @@ async function handle(
  *       204: { description: Empty tile (no features in this envelope) }
  *       304: { description: Not modified (ETag match) }
  *       400:
- *         description: Invalid tile coordinates
+ *         description: Invalid tile address, zoom, x/y or blockIndex (MAP_TILE_INVALID_REQUEST)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       404:
  *         description: No renderable tile for this reference (or cross-org)
@@ -221,7 +221,7 @@ portalMapRouter.get(
       return next(
         new ApiError(
           400,
-          ApiCode.MAP_TILE_NOT_FOUND,
+          ApiCode.MAP_TILE_INVALID_REQUEST,
           `Invalid blockIndex: ${req.params.blockIndex}`
         )
       );
@@ -259,7 +259,7 @@ portalMapRouter.get(
  *       204: { description: Empty tile }
  *       304: { description: Not modified (ETag match) }
  *       400:
- *         description: Invalid tile coordinates
+ *         description: Invalid tile address, zoom or x/y (MAP_TILE_INVALID_REQUEST)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorResponse' } } }
  *       404:
  *         description: No renderable tile for this reference (or cross-org)

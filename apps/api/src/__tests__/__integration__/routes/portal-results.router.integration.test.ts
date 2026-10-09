@@ -137,6 +137,17 @@ describe("Portal Results Router", () => {
   // ── POST /api/portal-results ──────────────────────────────────────
 
   describe("POST /api/portal-results (pin result)", () => {
+    it("#742: an invalid body is 400 PORTAL_RESULT_INVALID_PAYLOAD, not PORTAL_RESULT_NOT_FOUND", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({})
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid pin result payload: /);
+    });
+
     it("pins a block from the latest assistant message", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
@@ -947,6 +958,17 @@ describe("Portal Results Router", () => {
         .patch(`/api/portal-results/${generateId()}`)
         .send({ name: "X" })
         .expect(404);
+    });
+
+    it("#742: a missing name is 400 PORTAL_RESULT_INVALID_PAYLOAD", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/portal-results/${generateId()}`)
+        .send({})
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_INVALID_PAYLOAD);
+      expect(res.body.message).toBe("name is required");
     });
   });
 
