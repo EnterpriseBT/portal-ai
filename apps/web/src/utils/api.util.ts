@@ -222,8 +222,9 @@ interface AuthMutationConfig<TData, TVariables> {
   /**
    * #751: drop a call whose request (method, resolved URL, serialized body)
    * is already in flight from this hook, so a double-click, a double Enter or
-   * click then Enter sends once. True by default. Set false only for an
-   * endpoint that must receive identical concurrent requests.
+   * click then Enter sends once. Defaults to true for writes and false for
+   * `GET` (#753: a fresh read must never join a stale one). Set false on a
+   * write-shaped read (a POST refresh) for the same reason.
    */
   dedupeInFlight?: boolean;
 }
@@ -269,6 +270,23 @@ export function requestKey(req: BuiltRequest): string | null {
 }
 
 /**
+ * #753: the key, or null when building the request throws (a `url()` that
+ * reads a missing field, a body `JSON.stringify` can't serialize). Null means
+ * "send undeduplicated", so the same throw happens inside `mutationFn` and
+ * reaches `onError` / `mutation.error` instead of escaping `mutate`.
+ */
+function safeRequestKey<TVariables>(
+  config: Parameters<typeof buildRequest<TVariables>>[0],
+  variables: TVariables
+): string | null {
+  try {
+    return requestKey(buildRequest(config, variables));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Hook that wraps `useMutation` with authenticated fetching via Auth0.
  * Automatically attaches a Bearer token to every request.
  *
@@ -297,8 +315,10 @@ export const useAuthMutation = <TData, TVariables>({
   options,
   mutationOptions,
   onPermissionDenied,
-  dedupeInFlight = true,
+  dedupeInFlight,
 }: AuthMutationConfig<TData, TVariables>) => {
+  const isRead = method.toUpperCase() === "GET";
+  const dedupe = dedupeInFlight ?? !isRead;
   const { fetchWithAuth } = useAuthFetch();
   const queryClient = useQueryClient();
 
@@ -321,6 +341,10 @@ export const useAuthMutation = <TData, TVariables>({
       );
       return response.payload;
     },
+    // #753: a write isn't resent on its own. A network error or 5xx can
+    // arrive after the server applied the write, so a retry would duplicate
+    // it; the user retries explicitly. Reads keep the client's default.
+    ...(isRead ? {} : { retry: false }),
     ...mutationOptions,
     ...(onPermissionDenied
       ? {
@@ -340,19 +364,17 @@ export const useAuthMutation = <TData, TVariables>({
   // and checked synchronously, so a second activation inside the render lag
   // (before `isPending` disables the button) can't send again.
   const inFlight = useRef(new Map<string, Promise<TData>>());
-  const latest = useRef({ mutation, url, body, method, dedupeInFlight });
+  const latest = useRef({ mutation, url, body, method, dedupe });
   // A layout effect, not a render-time write (refs aren't read or written
   // during render): it runs after each commit, before any later input.
   useLayoutEffect(() => {
-    latest.current = { mutation, url, body, method, dedupeInFlight };
+    latest.current = { mutation, url, body, method, dedupe };
   });
 
   type MutateAsync = typeof mutation.mutateAsync;
   const mutateAsync = useCallback<MutateAsync>((variables, callOptions) => {
     const current = latest.current;
-    const key = current.dedupeInFlight
-      ? requestKey(buildRequest(current, variables))
-      : null;
+    const key = current.dedupe ? safeRequestKey(current, variables) : null;
     if (key === null) {
       return current.mutation.mutateAsync(variables, callOptions);
     }

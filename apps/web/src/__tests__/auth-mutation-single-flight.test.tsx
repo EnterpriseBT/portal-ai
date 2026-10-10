@@ -248,3 +248,111 @@ describe("useAuthMutation single-flight (#751)", () => {
     expect(result.current.mutateAsync).toBe(mutateAsync);
   });
 });
+
+// #753: regressions from #751's guard, plus automatic write retries.
+describe("useAuthMutation request guard fixes (#753)", () => {
+  /** A client whose mutations retry by default (once, at once), so a test
+   *  can tell a write that opts out from a read that inherits it. */
+  const renderWith = <V,>(
+    config: Parameters<typeof useAuthMutation<unknown, V>>[0]
+  ) => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: 1, retryDelay: 0 } },
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    return renderHook(() => useAuthMutation<unknown, V>(config), { wrapper });
+  };
+
+  const failingFetch = () => {
+    const fetchMock = jest.fn<typeof fetch>(() =>
+      Promise.reject(new TypeError("Failed to fetch"))
+    );
+    global.fetch = fetchMock;
+    return fetchMock;
+  };
+
+  it("routes a throwing url() to onError instead of throwing from mutate", async () => {
+    deferredFetch();
+    const onError = jest.fn();
+    const { result } = renderWith<{ id?: string }>({
+      url: (v) => `/api/stations/${v.id!.toUpperCase()}`,
+      method: "PATCH",
+      mutationOptions: { onError },
+    });
+
+    expect(() => act(() => result.current.mutate({}))).not.toThrow();
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(result.current.error).toBeInstanceOf(TypeError);
+  });
+
+  it("routes an unserializable body to onError", async () => {
+    deferredFetch();
+    const onError = jest.fn();
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const { result } = renderWith<Record<string, unknown>>({
+      url: "/api/stations",
+      mutationOptions: { onError },
+    });
+
+    expect(() => act(() => result.current.mutate(circular))).not.toThrow();
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not dedupe GET requests (a fresh read never joins a stale one)", async () => {
+    const { fetchMock, pending } = deferredFetch();
+    const { result } = renderWith<{ q: string }>({
+      url: (v) => `/api/search?q=${v.q}`,
+      method: "GET",
+      body: () => undefined,
+    });
+
+    act(() => {
+      result.current.mutate({ q: "a" });
+      result.current.mutate({ q: "a" });
+    });
+    await flush();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    pending.forEach((p) => p.ok({}));
+  });
+
+  it("does not retry a write that failed in transit", async () => {
+    const fetchMock = failingFetch();
+    const { result } = renderWith<{ name: string }>({ url: "/api/stations" });
+
+    act(() => result.current.mutate({ name: "A" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the default retry for a GET-shaped read", async () => {
+    const fetchMock = failingFetch();
+    const { result } = renderWith<{ q: string }>({
+      url: (v) => `/api/search?q=${v.q}`,
+      method: "GET",
+      body: () => undefined,
+    });
+
+    act(() => result.current.mutate({ q: "a" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a caller's explicit retry win for a write", async () => {
+    const fetchMock = failingFetch();
+    const { result } = renderWith<{ name: string }>({
+      url: "/api/stations",
+      mutationOptions: { retry: 1, retryDelay: 0 },
+    });
+
+    act(() => result.current.mutate({ name: "A" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

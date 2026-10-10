@@ -72,5 +72,8 @@ export const portalSql = {
       url: () => `/api/portal-sql/widget-refresh`,
       method: "POST",
       body: (vars) => vars,
+      // #753: a read shaped as a POST. A manual refresh must not join the
+      // auto-refresh already in flight, or it shows the older data.
+      dedupeInFlight: false,
     }),
 };
