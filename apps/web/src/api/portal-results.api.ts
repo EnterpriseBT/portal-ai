@@ -92,6 +92,8 @@ export const portalResults = {
     useAuthMutation<WidgetRefreshResponse, { id: string }>({
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}/refresh`,
       body: () => undefined,
+      // #753: a manual refresh must not join an auto-refresh in flight.
+      dedupeInFlight: false,
       onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 };

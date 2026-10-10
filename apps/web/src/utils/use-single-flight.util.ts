@@ -11,10 +11,16 @@ import { useCallback, useLayoutEffect, useRef } from "react";
  * callers keep their existing dependencies. Run tokens, where a workflow has
  * them, still discard a superseded run's result; this only stops a
  * concurrent duplicate from starting.
+ *
+ * Returns `[run, release]`. #753: `release()` drops the held run, so the
+ * next call starts fresh even while the old one is pending. A workflow's
+ * `reset()` calls it: the run it supersedes discards its result, and a new
+ * run must not join it. Both are stable across renders.
  */
+
 export function useSingleFlight<TArgs extends unknown[], TResult>(
   fn: (...args: TArgs) => Promise<TResult>
-): (...args: TArgs) => Promise<TResult> {
+): [run: (...args: TArgs) => Promise<TResult>, release: () => void] {
   const fnRef = useRef(fn);
   // A layout effect, not a render-time write: it runs after each commit,
   // before any later input.
@@ -24,7 +30,7 @@ export function useSingleFlight<TArgs extends unknown[], TResult>(
 
   const running = useRef<Promise<TResult> | null>(null);
 
-  return useCallback((...args: TArgs) => {
+  const call = useCallback((...args: TArgs) => {
     if (running.current) return running.current;
     const run = fnRef.current(...args).finally(() => {
       if (running.current === run) running.current = null;
@@ -32,4 +38,10 @@ export function useSingleFlight<TArgs extends unknown[], TResult>(
     running.current = run;
     return run;
   }, []);
+
+  const release = useCallback(() => {
+    running.current = null;
+  }, []);
+
+  return [call, release];
 }

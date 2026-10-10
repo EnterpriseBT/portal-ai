@@ -1448,3 +1448,87 @@ describe("useFileUploadWorkflow — single-flight runs (#751)", () => {
     expect(onCommitSuccess).toHaveBeenCalledTimes(1);
   });
 });
+
+// #753: reset() supersedes a running action, so the next one starts at once
+// instead of joining the stale run (whose result the run token discards).
+describe("useFileUploadWorkflow — reset releases single-flight runs (#753)", () => {
+  const pending = <T>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  };
+
+  test("startParse after reset parses the new file while the old parse is pending", async () => {
+    const stale = pending<{ workbook: Workbook; uploadSessionId: string }>();
+    const parseFile = jest
+      .fn<FileUploadWorkflowCallbacks["parseFile"]>()
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce({
+        workbook: DEMO_WORKBOOK,
+        uploadSessionId: "sess_new",
+      });
+    const callbacks = makeCallbacks({ parseFile });
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    act(() => {
+      void result.current.startParse();
+    });
+    act(() => result.current.reset());
+    act(() => result.current.addFiles([SECOND_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+
+    expect(parseFile).toHaveBeenCalledTimes(2);
+    expect(parseFile).toHaveBeenLastCalledWith(
+      [SECOND_FILE],
+      expect.anything()
+    );
+    expect(result.current.uploadPhase).toBe("parsed");
+    stale.resolve({ workbook: DEMO_WORKBOOK, uploadSessionId: "sess_stale" });
+  });
+
+  test("onCommit after reset commits the new plan while the old commit is pending", async () => {
+    const stale = pending<{ connectorInstanceId: string }>();
+    const runCommit = jest
+      .fn<FileUploadWorkflowCallbacks["runCommit"]>()
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce({ connectorInstanceId: "ci_new" });
+    const onCommitSuccess = jest.fn();
+    const callbacks = makeCallbacks({ runCommit, onCommitSuccess });
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+
+    const toReview = async () => {
+      act(() => result.current.addFiles([SAMPLE_FILE]));
+      await act(async () => {
+        await result.current.startParse();
+      });
+      act(() =>
+        result.current.onRegionDraft({
+          sheetId: DEMO_WORKBOOK.sheets[0].id,
+          bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+        })
+      );
+      await act(async () => {
+        await result.current.onInterpret();
+      });
+    };
+
+    await toReview();
+    act(() => {
+      void result.current.onCommit();
+    });
+    act(() => result.current.reset());
+    await toReview();
+    await act(async () => {
+      await result.current.onCommit();
+    });
+
+    expect(runCommit).toHaveBeenCalledTimes(2);
+    expect(onCommitSuccess).toHaveBeenCalledWith("ci_new");
+    stale.resolve({ connectorInstanceId: "ci_stale" });
+  });
+});

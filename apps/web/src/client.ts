@@ -33,7 +33,9 @@ const shouldRetry = (failureCount: number, error: Error): boolean => {
  * #747: reads also retry `429 API_RATE_LIMITED`, the one 4xx whose answer
  * changes with time, after the window the server named. A query stays loading
  * while it waits, so a spent bucket doesn't paint every list as an error.
- * Mutations keep `shouldRetry`: a write is never resent on its own.
+ * Mutations default to `shouldRetry`, but `useAuthMutation` turns retry off
+ * for every write (#753): a write is never resent on its own. Only GET-shaped
+ * imperative reads inherit the retry.
  */
 const shouldRetryQuery = (failureCount: number, error: Error): boolean => {
   if (isApiRateLimited(error)) return failureCount < 3;

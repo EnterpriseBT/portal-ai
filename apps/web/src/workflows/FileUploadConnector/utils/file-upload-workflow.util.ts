@@ -312,12 +312,15 @@ export function useFileUploadWorkflow(
     }
   }, [callbacks, core, stage.files]);
   // #751: a double-click on Upload joins the running upload and parse.
-  const startParse = useSingleFlight(runStartParse);
+  const [startParse, releaseStartParse] = useSingleFlight(runStartParse);
 
   const reset = useCallback(() => {
     core.reset();
+    // #753: a superseded upload discards its result; the next one starts
+    // fresh instead of joining it.
+    releaseStartParse();
     setStage(EMPTY_FILE_UPLOAD_STAGE);
-  }, [core]);
+  }, [core, releaseStartParse]);
 
   const fileProgressMap = useMemo<Map<string, FileUploadProgress>>(
     () => new Map(Object.entries(stage.fileProgress)),
