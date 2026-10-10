@@ -92,9 +92,12 @@ export const DiscoverColumnsResultSchema = z.object({
 export type DiscoverColumnsResult = z.infer<typeof DiscoverColumnsResultSchema>;
 
 /** Request body for the discoverColumns route. */
-export const DiscoverColumnsRequestBodySchema = z.object({
-  forceRefresh: z.boolean().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const DiscoverColumnsRequestBodySchema = z
+  .object({
+    forceRefresh: z.boolean().optional(),
+  })
+  .strict();
 export type DiscoverColumnsRequestBody = z.infer<
   typeof DiscoverColumnsRequestBodySchema
 >;
@@ -108,13 +111,16 @@ export type DiscoverColumnsRequestBody = z.infer<
  * ConnectorInstance / ApiEndpoint. Credentials live for the request
  * duration only.
  */
-export const ProbeEndpointDraftRequestBodySchema = z.object({
-  baseUrl: z.string().url(),
-  auth: ApiAuthConfigSchema,
-  credentials: ApiCredentialsSchema.nullable(),
-  endpoint: ApiEndpointConfigSchema,
-  forceRefresh: z.boolean().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const ProbeEndpointDraftRequestBodySchema = z
+  .object({
+    baseUrl: z.string().url(),
+    auth: ApiAuthConfigSchema,
+    credentials: ApiCredentialsSchema.nullable(),
+    endpoint: ApiEndpointConfigSchema,
+    forceRefresh: z.boolean().optional(),
+  })
+  .strict();
 export type ProbeEndpointDraftRequestBody = z.infer<
   typeof ProbeEndpointDraftRequestBodySchema
 >;
@@ -162,12 +168,15 @@ export type PreviewEndpointPageResponse = z.infer<
  * 200 with a null body), but the key must be present so the route
  * doesn't accidentally invoke the model with an undefined sample.
  */
-export const SuggestTransformRequestBodySchema = z.object({
-  promptHint: z.string().max(2000).optional(),
-  sampleResponse: z.unknown().refine((v) => v !== undefined, {
-    message: "sampleResponse is required",
-  }),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const SuggestTransformRequestBodySchema = z
+  .object({
+    promptHint: z.string().max(2000).optional(),
+    sampleResponse: z.unknown().refine((v) => v !== undefined, {
+      message: "sampleResponse is required",
+    }),
+  })
+  .strict();
 export type SuggestTransformRequestBody = z.infer<
   typeof SuggestTransformRequestBodySchema
 >;
@@ -270,10 +279,13 @@ export type CreateApiEndpointRequestBody = z.infer<
 >;
 
 /** Request body for the patch route — every field optional. */
-export const PatchApiEndpointRequestBodySchema = z.object({
-  label: z.string().min(1).optional(),
-  config: ApiEndpointConfigBaseSchema.partial().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const PatchApiEndpointRequestBodySchema = z
+  .object({
+    label: z.string().min(1).optional(),
+    config: ApiEndpointConfigBaseSchema.partial().optional(),
+  })
+  .strict();
 export type PatchApiEndpointRequestBody = z.infer<
   typeof PatchApiEndpointRequestBodySchema
 >;

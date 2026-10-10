@@ -238,8 +238,9 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
     expect(badSort.status).toBe(400);
     expect(badSort.body.code).toBe(ApiCode.USAGE_LEDGER_INVALID_QUERY);
     expect(badSort.body.message).toMatch(
-      /^Invalid usage-ledger query: sortBy: expected one of /
+      /^Invalid usage-ledger query: sortBy: /
     );
+    expect(badSort.body.details.issues[0].path).toEqual(["sortBy"]);
 
     // #745: a query that fails its schema names the field, with every issue
     // in details.

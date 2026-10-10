@@ -210,6 +210,20 @@ describe("Portal Router", () => {
       expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
       expect(res.body.message).toMatch(/^Invalid portal payload: /);
     });
+
+    // #745: an unknown key is a 400 naming it, not silently dropped.
+    it("#745: returns 400 for an unknown key", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/portals")
+        .send({ stationId: generateId(), stationID: "typo" })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        'Invalid portal payload: Unrecognized key: "stationID"'
+      );
+    });
   });
 
   // ── GET /api/portals ──────────────────────────────────────────────
@@ -790,6 +804,20 @@ describe("Portal Router", () => {
   // ── POST /api/portals/:id/messages ────────────────────────────────
 
   describe("POST /api/portals/:id/messages", () => {
+    // #745: an unknown key is a 400 naming it, not silently dropped.
+    it("#745: returns 400 for an unknown key", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post(`/api/portals/${generateId()}/messages`)
+        .send({ message: "hi", attachments: [] })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        'Invalid message payload: Unrecognized key: "attachments"'
+      );
+    });
+
     it("persists a user message and returns streaming status", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

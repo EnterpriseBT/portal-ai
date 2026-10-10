@@ -807,7 +807,7 @@ describe("Entity Group Member Router", () => {
       expect(res.body.details.issues[0].path).toEqual(["isPrimary"]);
     });
 
-    it("#745: overlap without its query parameters is ENTITY_GROUP_MEMBER_INVALID_PAYLOAD naming the parameter", async () => {
+    it("#745: overlap without its query parameters is ENTITY_GROUP_MEMBER_INVALID_QUERY naming the parameter", async () => {
       const { groupId } = await seedGroupWithInfra();
       const res = await request(app)
         .get(
@@ -816,7 +816,7 @@ describe("Entity Group Member Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(400);
-      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_INVALID_PAYLOAD);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_INVALID_QUERY);
       expect(res.body.message).toMatch(
         /^Invalid entity group member query: targetConnectorEntityId: /
       );

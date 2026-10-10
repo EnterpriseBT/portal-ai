@@ -137,6 +137,20 @@ describe("Portal Results Router", () => {
   // ── POST /api/portal-results ──────────────────────────────────────
 
   describe("POST /api/portal-results (pin result)", () => {
+    // #745: an unknown key is a 400 naming it, not silently dropped.
+    it("#745: returns 400 for an unknown key", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: "p", blockIndex: 0, name: "X", pinned: true })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        'Invalid pin result payload: Unrecognized key: "pinned"'
+      );
+    });
+
     it("#742: an invalid body is 400 PORTAL_RESULT_INVALID_PAYLOAD, not PORTAL_RESULT_NOT_FOUND", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 

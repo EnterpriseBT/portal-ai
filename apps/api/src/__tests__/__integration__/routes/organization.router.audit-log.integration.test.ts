@@ -270,9 +270,8 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
       /^Invalid audit-log query: action: /
     );
     expect(badAction.body.details.issues[0].path).toEqual(["action"]);
-    expect(badSort.body.message).toMatch(
-      /^Invalid audit-log query: sortBy: expected one of /
-    );
+    expect(badSort.body.message).toMatch(/^Invalid audit-log query: sortBy: /);
+    expect(badSort.body.details.issues[0].path).toEqual(["sortBy"]);
   });
 
   it("denies a caller without audit read with 403 PERMISSION_DENIED (#576, #711)", async () => {

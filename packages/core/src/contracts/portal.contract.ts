@@ -97,9 +97,12 @@ export type PortalGetResponsePayload = z.infer<
 
 // ── Create ────────────────────────────────────────────────────────────
 
-export const CreatePortalBodySchema = z.object({
-  stationId: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const CreatePortalBodySchema = z
+  .object({
+    stationId: z.string().min(1),
+  })
+  .strict();
 
 export type CreatePortalBody = z.infer<typeof CreatePortalBodySchema>;
 
@@ -113,9 +116,12 @@ export type PortalCreateResponsePayload = z.infer<
 
 // ── Send Message ──────────────────────────────────────────────────────
 
-export const SendMessageBodySchema = z.object({
-  message: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const SendMessageBodySchema = z
+  .object({
+    message: z.string().min(1),
+  })
+  .strict();
 
 export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 
@@ -196,12 +202,15 @@ export type PortalResultWithIncludes = z.infer<
 
 // ── Pin Result ────────────────────────────────────────────────────────
 
-export const PinResultBodySchema = z.object({
-  portalId: z.string().min(1),
-  messageId: z.string().min(1).optional(),
-  blockIndex: z.number().int().min(0),
-  name: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const PinResultBodySchema = z
+  .object({
+    portalId: z.string().min(1),
+    messageId: z.string().min(1).optional(),
+    blockIndex: z.number().int().min(0),
+    name: z.string().min(1),
+  })
+  .strict();
 
 export type PinResultBody = z.infer<typeof PinResultBodySchema>;
 

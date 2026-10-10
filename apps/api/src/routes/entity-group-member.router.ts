@@ -774,7 +774,7 @@ entityGroupMemberRouter.get(
       if (!queryParsed.success) {
         return next(
           invalidPayload(
-            ApiCode.ENTITY_GROUP_MEMBER_INVALID_PAYLOAD,
+            ApiCode.ENTITY_GROUP_MEMBER_INVALID_QUERY,
             "Invalid entity group member query",
             queryParsed.error
           )

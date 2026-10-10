@@ -1077,7 +1077,7 @@ describe("Entity Group Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(400);
-      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_INVALID_PAYLOAD);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_INVALID_QUERY);
       expect(res.body.message).toMatch(
         /^Invalid entity group resolve query: linkValue: /
       );

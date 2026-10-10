@@ -309,7 +309,7 @@ fileUploadsRouter.get(
       if (!parsed.success) {
         return next(
           invalidPayload(
-            ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD,
+            ApiCode.FILE_UPLOAD_PARSE_INVALID_QUERY,
             "Invalid sheet-slice query",
             parsed.error
           )

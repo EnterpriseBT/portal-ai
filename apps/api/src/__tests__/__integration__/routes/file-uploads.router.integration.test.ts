@@ -579,7 +579,7 @@ describe("File uploads streaming router", () => {
         })
         .set("Authorization", "Bearer test-token");
       expect(res.status).toBe(400);
-      expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD);
+      expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_INVALID_QUERY);
       expect(res.body.message).toMatch(
         /^Invalid sheet-slice query: rowStart: /
       );

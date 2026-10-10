@@ -730,6 +730,34 @@ describe("Column Definition Router", () => {
       expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE);
     });
 
+    // #745: Rule 2 outranks the schema by design, so a body that changes `key`
+    // and is also malformed answers the 422, and nothing is written.
+    it("#745: a key change outranks other invalid fields (422, no write)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const colDef = createColumnDefinition(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDef.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ key: "new_key", label: "", type: "bogus" });
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE);
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(eq(columnDefinitions.id, colDef.id));
+      expect(row.key).toBe(colDef.key);
+      expect(row.label).toBe(colDef.label);
+    });
+
     // 1.T7: PATCH with allowed type transition succeeds (string -> enum)
     it("should allow valid type transition (string -> enum)", async () => {
       const { organizationId } = await seedUserAndOrg(

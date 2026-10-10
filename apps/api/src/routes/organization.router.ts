@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -34,20 +35,23 @@ import {
 import type { MemberRolesSetResponse } from "@portalai/core/contracts";
 import { SeatService } from "../services/seat.service.js";
 import { GroupService } from "../services/group.service.js";
-import {
-  TOOL_USAGE_LEDGER_SORT_KEYS,
-  type ToolUsageLedgerSortBy,
-} from "../db/repositories/tool-usage-ledger.repository.js";
-import {
-  AUDIT_LOG_SORT_KEYS,
-  type AuditLogSortBy,
-} from "../db/repositories/audit-log.repository.js";
+import { TOOL_USAGE_LEDGER_SORT_KEYS } from "../db/repositories/tool-usage-ledger.repository.js";
+import { AUDIT_LOG_SORT_KEYS } from "../db/repositories/audit-log.repository.js";
 import { OrganizationDeleteService } from "../services/organization-delete.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 
 const logger = createLogger({ module: "organization" });
+
+// #745: `sortBy` is checked by the schema against the repository's allow-map,
+// so an unknown key fails like any other field (named, with details.issues).
+const UsageLedgerQuerySchema = UsageLedgerListRequestQuerySchema.extend({
+  sortBy: z.enum(TOOL_USAGE_LEDGER_SORT_KEYS).optional().default("created"),
+});
+const AuditLogQuerySchema = AuditLogListRequestQuerySchema.extend({
+  sortBy: z.enum(AUDIT_LOG_SORT_KEYS).optional().default("created"),
+});
 
 export const organizationRouter = Router();
 
@@ -1342,26 +1346,13 @@ organizationRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = UsageLedgerListRequestQuerySchema.safeParse(req.query);
+      const parsed = UsageLedgerQuerySchema.safeParse(req.query);
       if (!parsed.success) {
         return next(
           invalidPayload(
             ApiCode.USAGE_LEDGER_INVALID_QUERY,
             "Invalid usage-ledger query",
             parsed.error
-          )
-        );
-      }
-      if (
-        !TOOL_USAGE_LEDGER_SORT_KEYS.includes(
-          parsed.data.sortBy as ToolUsageLedgerSortBy
-        )
-      ) {
-        return next(
-          new ApiError(
-            400,
-            ApiCode.USAGE_LEDGER_INVALID_QUERY,
-            `Invalid usage-ledger query: sortBy: expected one of ${TOOL_USAGE_LEDGER_SORT_KEYS.join(", ")}`
           )
         );
       }
@@ -1376,7 +1367,7 @@ organizationRouter.get(
             search: query.search,
             limit: query.limit,
             offset: query.offset,
-            sortBy: query.sortBy as ToolUsageLedgerSortBy,
+            sortBy: query.sortBy,
             sortOrder: query.sortOrder,
           }
         );
@@ -1492,22 +1483,13 @@ organizationRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = AuditLogListRequestQuerySchema.safeParse(req.query);
+      const parsed = AuditLogQuerySchema.safeParse(req.query);
       if (!parsed.success) {
         return next(
           invalidPayload(
             ApiCode.AUDIT_LOG_INVALID_QUERY,
             "Invalid audit-log query",
             parsed.error
-          )
-        );
-      }
-      if (!AUDIT_LOG_SORT_KEYS.includes(parsed.data.sortBy as AuditLogSortBy)) {
-        return next(
-          new ApiError(
-            400,
-            ApiCode.AUDIT_LOG_INVALID_QUERY,
-            `Invalid audit-log query: sortBy: expected one of ${AUDIT_LOG_SORT_KEYS.join(", ")}`
           )
         );
       }
@@ -1530,7 +1512,7 @@ organizationRouter.get(
           outcome: query.outcome,
           limit: query.limit,
           offset: query.offset,
-          sortBy: query.sortBy as AuditLogSortBy,
+          sortBy: query.sortBy,
           sortOrder: query.sortOrder,
         }
       );

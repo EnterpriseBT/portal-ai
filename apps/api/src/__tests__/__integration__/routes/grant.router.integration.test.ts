@@ -308,18 +308,19 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
       .get("/api/grants?resourceType=planet&resourceId=x")
       .set("authorization", "Bearer x");
     expect(badType.status).toBe(400);
+    expect(badType.body.code).toBe(ApiCode.GRANT_INVALID_QUERY);
     expect(badType.body.message).toMatch(
       /^Invalid grant query: resourceType: /
     );
     expect(badType.body.details.issues.length).toBeGreaterThan(0);
 
-    // The resourceId check is hand-written, not a schema failure.
     const noId = await request(app)
       .get("/api/grants?resourceType=station")
       .set("authorization", "Bearer x");
     expect(noId.status).toBe(400);
-    expect(noId.body.message).toBe("resourceId query param is required");
-    expect(noId.body.details).toBeUndefined();
+    expect(noId.body.code).toBe(ApiCode.GRANT_INVALID_QUERY);
+    expect(noId.body.message).toMatch(/^Invalid grant query: resourceId: /);
+    expect(noId.body.details.issues[0].path).toEqual(["resourceId"]);
   });
 
   it("a member can't share a station they don't own (403 share-authority)", async () => {

@@ -13,7 +13,6 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { z } from "zod";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
@@ -27,7 +26,6 @@ import {
 } from "../services/connector-instance-access.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
-  ApiEndpointConfigBaseSchema,
   ColumnDefinitionModelFactory,
   FieldMappingModelFactory,
   type ApiEndpointConfig,
@@ -36,6 +34,7 @@ import {
 import {
   CreateApiEndpointRequestBodySchema,
   DiscoverColumnsRequestBodySchema,
+  PatchApiEndpointRequestBodySchema,
   type CreateApiEndpointColumnDraft,
 } from "@portalai/core/contracts";
 import type { ApiEndpoint } from "../db/repositories/api-endpoints.repository.js";
@@ -52,22 +51,12 @@ export const apiEndpointsRouter = Router({ mergeParams: true });
 
 // ── Validation schemas ────────────────────────────────────────────────
 //
-// `CreateApiEndpointRequestBodySchema` is sourced from
+// The create and patch body schemas are sourced from
 // `@portalai/core/contracts` so the wire shape stays in lockstep with
-// the SDK + swagger + the rest of the codebase.
-
-// #745: an unknown key is a 400 naming it, not silently dropped.
-const PatchApiEndpointRequestBodySchema = z
-  .object({
-    label: z.string().min(1).optional(),
-    // Partial of the *base* shape — refines (e.g. bodyTemplate vs method)
-    // can't survive `.partial()`, so PATCH-time validation accepts any
-    // subset of fields and the route enforces refinements only on full
-    // create payloads. Cross-field consistency on edit is enforced at
-    // the adapter layer (slice 5).
-    config: ApiEndpointConfigBaseSchema.partial().optional(),
-  })
-  .strict();
+// the SDK + swagger + the rest of the codebase. The patch body is a
+// partial of the *base* config shape: refines (e.g. bodyTemplate vs
+// method) can't survive `.partial()`, so cross-field consistency on edit
+// is enforced at the adapter layer.
 
 // ── Pagination flatten / reconstruct helpers ─────────────────────────
 //

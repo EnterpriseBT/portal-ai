@@ -28,6 +28,14 @@ export const ShareGranteeSchema = z.discriminatedUnion("type", [
 ]);
 export type ShareGrantee = z.infer<typeof ShareGranteeSchema>;
 
+/** `GET /api/grants` — who `resourceId` is shared with (#745: one schema, so
+ *  a missing id and a bad type fail the same way). */
+export const GrantListRequestQuerySchema = z.object({
+  resourceType: ShareResourceTypeSchema,
+  resourceId: z.string().min(1),
+});
+export type GrantListRequestQuery = z.infer<typeof GrantListRequestQuerySchema>;
+
 /** `POST /api/grants` — share `resourceId` with `grantee` at `access`. */
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const ShareGrantRequestSchema = z
