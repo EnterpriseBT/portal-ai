@@ -24,7 +24,7 @@ Run **§Preflight** once. After that the sections are independent.
 - [ ] Export the API base and the owner's bearer token, taken from the e2e storageState — backend:
   ```bash
   export API=http://localhost:3001
-  export T=$(node -e 'const s=require("./packages/e2e/.auth/storageState.json");for(const o of s.origins)for(const i of o.localStorage)if(i.name.startsWith("@@auth0spajs@@")&&i.name.endsWith("::openid"))console.log(JSON.parse(i.value).body.access_token)')
+  export T=$(node -e 'const s=require("./packages/e2e/.auth/storageState.json");for(const o of s.origins)for(const i of o.localStorage)if(i.name.startsWith("@@auth0spajs@@")&&i.name.includes("::https://api."))console.log(JSON.parse(i.value).body.access_token)')
   test -n "$T" && echo ok
   ```
 - [ ] Define a probe helper that prints the status, code, message and the first issue path — backend:
