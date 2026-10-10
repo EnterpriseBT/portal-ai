@@ -589,6 +589,20 @@ columnDefinitionRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
+
+      // Rule 2: reject key changes — key is immutable. Checked before the
+      // schema, which is strict (#745) and would otherwise answer an unknown
+      // `key` with a generic 400 instead of this specific 422.
+      if (req.body && typeof req.body === "object" && "key" in req.body) {
+        return next(
+          new ApiError(
+            422,
+            ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE,
+            "Column definition key cannot be changed after creation"
+          )
+        );
+      }
+
       const parsed = ColumnDefinitionUpdateRequestBodySchema.safeParse(
         req.body
       );
@@ -598,17 +612,6 @@ columnDefinitionRouter.patch(
             ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
             "Invalid column definition payload",
             parsed.error
-          )
-        );
-      }
-
-      // Rule 2: reject key changes — key is immutable
-      if ("key" in req.body) {
-        return next(
-          new ApiError(
-            422,
-            ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE,
-            "Column definition key cannot be changed after creation"
           )
         );
       }

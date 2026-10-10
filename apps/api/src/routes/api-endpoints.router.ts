@@ -56,15 +56,18 @@ export const apiEndpointsRouter = Router({ mergeParams: true });
 // `@portalai/core/contracts` so the wire shape stays in lockstep with
 // the SDK + swagger + the rest of the codebase.
 
-const PatchApiEndpointRequestBodySchema = z.object({
-  label: z.string().min(1).optional(),
-  // Partial of the *base* shape — refines (e.g. bodyTemplate vs method)
-  // can't survive `.partial()`, so PATCH-time validation accepts any
-  // subset of fields and the route enforces refinements only on full
-  // create payloads. Cross-field consistency on edit is enforced at
-  // the adapter layer (slice 5).
-  config: ApiEndpointConfigBaseSchema.partial().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+const PatchApiEndpointRequestBodySchema = z
+  .object({
+    label: z.string().min(1).optional(),
+    // Partial of the *base* shape — refines (e.g. bodyTemplate vs method)
+    // can't survive `.partial()`, so PATCH-time validation accepts any
+    // subset of fields and the route enforces refinements only on full
+    // create payloads. Cross-field consistency on edit is enforced at
+    // the adapter layer (slice 5).
+    config: ApiEndpointConfigBaseSchema.partial().optional(),
+  })
+  .strict();
 
 // ── Pagination flatten / reconstruct helpers ─────────────────────────
 //

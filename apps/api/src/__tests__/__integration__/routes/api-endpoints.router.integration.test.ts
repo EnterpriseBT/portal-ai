@@ -397,6 +397,20 @@ describe("PATCH /api/connector-instances/:instanceId/api-endpoints/:entityId", (
     expect(res.body.message).not.toContain('"code":');
     expect(res.body.details.issues[0].path).toEqual(["label"]);
   });
+
+  it("#745: an unknown key is a 400 naming it", async () => {
+    const res = await request(app)
+      .patch(
+        `/api/connector-instances/${restApiInstanceId}/api-endpoints/${generateId()}`
+      )
+      .send({ label: "Renamed", key: "rekeyed" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.REST_API_INVALID_CONFIG);
+    expect(res.body.message).toBe(
+      'Invalid api endpoint patch: Unrecognized key: "key"'
+    );
+  });
 });
 
 describe("DELETE /api/connector-instances/:instanceId/api-endpoints/:entityId", () => {

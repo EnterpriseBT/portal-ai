@@ -627,7 +627,9 @@ describe("Column Definition Router", () => {
       expect(getRes.body.payload.columnDefinition.key).toBe("name");
     });
 
-    it("should ignore a client-supplied system:true and persist system:false", async () => {
+    // #745: the body is strict, so a client-supplied `system` is refused
+    // outright (it used to be dropped); either way nothing is marked system.
+    it("should refuse a client-supplied system:true, creating nothing", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
       const res = await request(app)
@@ -640,8 +642,16 @@ describe("Column Definition Router", () => {
           system: true,
         });
 
-      expect(res.status).toBe(201);
-      expect(res.body.payload.columnDefinition.system).toBe(false);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        'Invalid column definition payload: Unrecognized key: "system"'
+      );
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(eq(columnDefinitions.key, "foo_bar"));
+      expect(rows).toHaveLength(0);
     });
   });
 
@@ -1046,8 +1056,8 @@ describe("Column Definition Router", () => {
       it("should reject request body containing removed fields (required, defaultValue, format, enumValues)", async () => {
         await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-        // Zod strict parsing strips unknown keys, so these are just ignored.
-        // But the important check is that these fields do NOT appear on the created resource.
+        // #745: the body is strict, so the removed fields are refused by
+        // name rather than silently stripped.
         const res = await request(app)
           .post("/api/column-definitions")
           .set("Authorization", "Bearer test-token")
@@ -1061,12 +1071,14 @@ describe("Column Definition Router", () => {
             enumValues: ["a", "b"],
           });
 
-        expect(res.status).toBe(201);
-        const created = res.body.payload.columnDefinition;
-        expect(created).not.toHaveProperty("required");
-        expect(created).not.toHaveProperty("defaultValue");
-        expect(created).not.toHaveProperty("format");
-        expect(created).not.toHaveProperty("enumValues");
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD);
+        expect(res.body.details.issues[0].keys).toEqual([
+          "required",
+          "defaultValue",
+          "format",
+          "enumValues",
+        ]);
       });
 
       it("should accept and persist validationPattern, validationMessage, canonicalFormat", async () => {
@@ -1128,7 +1140,7 @@ describe("Column Definition Router", () => {
     });
 
     describe("PATCH /api/column-definitions/:id", () => {
-      it("should ignore removed fields in request body (required, defaultValue, format, enumValues)", async () => {
+      it("should refuse removed fields in request body (required, defaultValue, format, enumValues)", async () => {
         const { organizationId } = await seedUserAndOrg(
           db as ReturnType<typeof drizzle>,
           AUTH0_ID
@@ -1150,13 +1162,20 @@ describe("Column Definition Router", () => {
             enumValues: ["a"],
           });
 
-        expect(res.status).toBe(200);
-        const updated = res.body.payload.columnDefinition;
-        expect(updated.label).toBe("Updated");
-        expect(updated).not.toHaveProperty("required");
-        expect(updated).not.toHaveProperty("defaultValue");
-        expect(updated).not.toHaveProperty("format");
-        expect(updated).not.toHaveProperty("enumValues");
+        // #745: refused by name, and the label change doesn't half-apply.
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD);
+        expect(res.body.details.issues[0].keys).toEqual([
+          "required",
+          "defaultValue",
+          "format",
+          "enumValues",
+        ]);
+        const [row] = await (db as ReturnType<typeof drizzle>)
+          .select()
+          .from(columnDefinitions)
+          .where(eq(columnDefinitions.id, colDef.id));
+        expect(row.label).toBe(colDef.label);
       });
 
       it("should reject an invalid validationPattern regex on PATCH", async () => {

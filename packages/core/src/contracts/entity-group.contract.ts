@@ -71,10 +71,13 @@ export type EntityGroupGetResponsePayload = z.infer<
 
 // ── Create ────────────────────────────────────────────────────────────
 
-export const EntityGroupCreateRequestBodySchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const EntityGroupCreateRequestBodySchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+  })
+  .strict();
 
 export type EntityGroupCreateRequestBody = z.infer<
   typeof EntityGroupCreateRequestBodySchema
@@ -90,11 +93,13 @@ export type EntityGroupCreateResponsePayload = z.infer<
 
 // ── Update ────────────────────────────────────────────────────────────
 
+// #745: an unknown key is a 400 naming it, not silently dropped.
 export const EntityGroupUpdateRequestBodySchema = z
   .object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
   })
+  .strict()
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
     message: "At least one field must be provided",
   });

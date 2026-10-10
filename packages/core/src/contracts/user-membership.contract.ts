@@ -23,9 +23,12 @@ export type UserMembershipsGetResponse = z.infer<
 >;
 
 /** Request body for `POST /api/organization/switch`. */
-export const OrganizationSwitchRequestSchema = z.object({
-  organizationId: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const OrganizationSwitchRequestSchema = z
+  .object({
+    organizationId: z.string().min(1),
+  })
+  .strict();
 export type OrganizationSwitchRequest = z.infer<
   typeof OrganizationSwitchRequestSchema
 >;

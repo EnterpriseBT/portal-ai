@@ -29,12 +29,15 @@ export const ShareGranteeSchema = z.discriminatedUnion("type", [
 export type ShareGrantee = z.infer<typeof ShareGranteeSchema>;
 
 /** `POST /api/grants` — share `resourceId` with `grantee` at `access`. */
-export const ShareGrantRequestSchema = z.object({
-  resourceType: ShareResourceTypeSchema,
-  resourceId: z.string().min(1),
-  grantee: ShareGranteeSchema,
-  access: GrantAccessSchema,
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const ShareGrantRequestSchema = z
+  .object({
+    resourceType: ShareResourceTypeSchema,
+    resourceId: z.string().min(1),
+    grantee: ShareGranteeSchema,
+    access: GrantAccessSchema,
+  })
+  .strict();
 export type ShareGrantRequest = z.infer<typeof ShareGrantRequestSchema>;
 
 /** One share as the UI sees it — verb-rows grouped per (principal, resource).

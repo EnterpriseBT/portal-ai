@@ -32,11 +32,14 @@ export type PolicyStatementInput = z.infer<typeof PolicyStatementInputSchema>;
 
 /** `POST /api/policies` / `PUT /api/policies/:id` — a custom policy + its
  *  statements (≥1). Re-authoring replaces the statement set. */
-export const PolicyUpsertRequestSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().nullable().optional(),
-  statements: z.array(PolicyStatementInputSchema).min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const PolicyUpsertRequestSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().nullable().optional(),
+    statements: z.array(PolicyStatementInputSchema).min(1),
+  })
+  .strict();
 export type PolicyUpsertRequest = z.infer<typeof PolicyUpsertRequestSchema>;
 
 /** A policy as the UI reads it — its statements inlined. `kind` is `system`
@@ -62,10 +65,13 @@ export type PolicyListResponse = z.infer<typeof PolicyListResponseSchema>;
 
 /** `POST /api/roles` / `PUT /api/roles/:id` — a custom role bundling policies
  *  (the set of attached policy ids). Assignment to members reuses #620. */
-export const RoleUpsertRequestSchema = z.object({
-  name: z.string().min(1),
-  policyIds: z.array(z.string()),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const RoleUpsertRequestSchema = z
+  .object({
+    name: z.string().min(1),
+    policyIds: z.array(z.string()),
+  })
+  .strict();
 export type RoleUpsertRequest = z.infer<typeof RoleUpsertRequestSchema>;
 
 /** A role as the UI reads it — its attached policy ids. `kind` is `system`
@@ -92,11 +98,14 @@ export type RoleListResponse = z.infer<typeof RoleListResponseSchema>;
 
 /** `POST /api/groups` / `PUT /api/groups/:id` — a group's metadata + the
  *  policies it bundles (a member inherits them). Membership is set separately. */
-export const GroupUpsertRequestSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().nullable().optional(),
-  policyIds: z.array(z.string()),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const GroupUpsertRequestSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().nullable().optional(),
+    policyIds: z.array(z.string()),
+  })
+  .strict();
 export type GroupUpsertRequest = z.infer<typeof GroupUpsertRequestSchema>;
 
 /** A group as the UI reads it — its attached policies + a live member count. */
@@ -118,9 +127,12 @@ export const GroupListResponseSchema = z.object({
 export type GroupListResponse = z.infer<typeof GroupListResponseSchema>;
 
 /** `PUT /api/groups/:id/members` — set the group's membership (group-centric). */
-export const GroupMembersSetRequestSchema = z.object({
-  userIds: z.array(z.string()),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const GroupMembersSetRequestSchema = z
+  .object({
+    userIds: z.array(z.string()),
+  })
+  .strict();
 export type GroupMembersSetRequest = z.infer<
   typeof GroupMembersSetRequestSchema
 >;
@@ -135,9 +147,12 @@ export type GroupMembersResponse = z.infer<typeof GroupMembersResponseSchema>;
 
 /** `PUT /api/organization/members/:userId/groups` — set a member's groups
  *  (member-centric, the Members-tab path). */
-export const MemberGroupsSetRequestSchema = z.object({
-  groupIds: z.array(z.string()),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const MemberGroupsSetRequestSchema = z
+  .object({
+    groupIds: z.array(z.string()),
+  })
+  .strict();
 export type MemberGroupsSetRequest = z.infer<
   typeof MemberGroupsSetRequestSchema
 >;

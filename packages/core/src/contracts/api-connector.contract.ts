@@ -249,19 +249,22 @@ export type CreateApiEndpointColumnDraft = z.infer<
 >;
 
 /** Request body for the create route. */
-export const CreateApiEndpointRequestBodySchema = z.object({
-  key: z.string().min(1),
-  label: z.string().min(1),
-  config: ApiEndpointConfigSchema,
-  /**
-   * Optional bulk column-mapping setup. Each entry materializes as a
-   * column_definition (find-or-create by `normalizedKey`) +
-   * field_mapping + wide-table reconcile in the same route handler.
-   * Omit (or send `[]`) to skip — the user can configure mappings
-   * later from the connector detail page.
-   */
-  columns: z.array(CreateApiEndpointColumnDraftSchema).optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const CreateApiEndpointRequestBodySchema = z
+  .object({
+    key: z.string().min(1),
+    label: z.string().min(1),
+    config: ApiEndpointConfigSchema,
+    /**
+     * Optional bulk column-mapping setup. Each entry materializes as a
+     * column_definition (find-or-create by `normalizedKey`) +
+     * field_mapping + wide-table reconcile in the same route handler.
+     * Omit (or send `[]`) to skip — the user can configure mappings
+     * later from the connector detail page.
+     */
+    columns: z.array(CreateApiEndpointColumnDraftSchema).optional(),
+  })
+  .strict();
 export type CreateApiEndpointRequestBody = z.infer<
   typeof CreateApiEndpointRequestBodySchema
 >;
