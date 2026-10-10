@@ -17,7 +17,7 @@ Two routes also skip the schema entirely. `PATCH /api/portals/:id` and `PATCH /a
 | Adopters | `portal.router.ts:102`, `:759`; `portal-results.router.ts:125`; `station.router.ts:474`, `:683` | Every call is `return next(invalidPayload(ApiCode.X_INVALID_PAYLOAD, "Invalid X payload", parsed.error))` |
 | Unit test | `apps/api/src/__tests__/utils/zod-issue.util.test.ts:44` | |
 
-Zod is 3.25 here. The only input value an issue echoes is the caller's own (`received` on an enum mismatch), so widening `details.issues` exposes nothing the caller didn't send.
+Zod is 4.6 here (`apps/api` and `packages/core` both resolve `^4.3.6`). Its issues carry no input values unless `reportInput` is set, which nothing does, so widening `details.issues` exposes only the schema's own paths, expectations and unrecognized key names, all of them the caller's.
 
 ### The guard test
 
