@@ -17,7 +17,6 @@ import {
   GatedButton,
   MetadataList,
   Stack,
-  swallowRepeatClick,
 } from "@portalai/core/ui";
 import type { ActionGate, ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
@@ -326,7 +325,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
             <FormAlert serverError={serverError} />
           </Stack>
         </DialogContent>
-        <DialogActions onClickCapture={swallowRepeatClick}>
+        <DialogActions>
           <Button
             type="button"
             variant="outlined"

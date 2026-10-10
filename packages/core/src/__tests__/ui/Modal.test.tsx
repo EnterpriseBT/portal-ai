@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { Modal } from "../../ui/Modal";
@@ -278,15 +278,12 @@ describe("Modal Component", () => {
     const FormModal = ({
       onSubmit,
       submitDisabled,
-      open = true,
     }: {
       onSubmit: () => void;
       submitDisabled?: boolean;
-      open?: boolean;
     }) => (
       <Modal
         {...defaultProps}
-        open={open}
         title="Form"
         submitDisabled={submitDisabled}
         slotProps={{
@@ -334,67 +331,24 @@ describe("Modal Component", () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
-    // #747: a mutation's pending state renders a macrotask after `mutate()`
-    // (react-query notifies on a timeout), so `submitDisabled` is still false
-    // when a fast second Enter lands. Measured: a double Enter sent two
-    // creates. The modal holds further submits until the dialog disables.
-    it("submits once for two Enters before the dialog re-renders as pending", async () => {
-      const user = userEvent.setup();
-      const onSubmit = jest.fn();
-      render(<FormModal onSubmit={onSubmit} />);
-      await user.type(screen.getByLabelText("Name"), "x{Enter}{Enter}");
-      expect(onSubmit).toHaveBeenCalledTimes(1);
-    });
-
-    it("submits again once a pending submit has finished", async () => {
-      const user = userEvent.setup();
-      const onSubmit = jest.fn();
-      const { rerender } = render(<FormModal onSubmit={onSubmit} />);
-      await user.type(screen.getByLabelText("Name"), "x{Enter}");
-      rerender(<FormModal onSubmit={onSubmit} submitDisabled />);
-      rerender(<FormModal onSubmit={onSubmit} />);
-      await user.type(screen.getByLabelText("Name"), "{Enter}");
-      expect(onSubmit).toHaveBeenCalledTimes(2);
-    });
-
-    // Review: a submit that closes the dialog straight away must not leave the
-    // hold armed for the next time it opens.
-    it("releases the hold when the dialog closes", async () => {
-      const user = userEvent.setup();
-      const onSubmit = jest.fn();
-      const { rerender } = render(<FormModal onSubmit={onSubmit} />);
-      await user.type(screen.getByLabelText("Name"), "x{Enter}");
-      rerender(<FormModal onSubmit={onSubmit} open={false} />);
-      rerender(<FormModal onSubmit={onSubmit} />);
-      await user.type(screen.getByLabelText("Name"), "{Enter}");
-      expect(onSubmit).toHaveBeenCalledTimes(2);
-    });
-
-    // A submit that never disables the dialog (validation failed) must not
-    // lock Enter out: the hold ends on its own.
-    it("submits again after a short hold when the dialog never disabled", async () => {
-      jest.useFakeTimers();
-      try {
-        const user = userEvent.setup({
-          advanceTimers: jest.advanceTimersByTime,
-        });
-        const onSubmit = jest.fn();
-        render(<FormModal onSubmit={onSubmit} />);
-        await user.type(screen.getByLabelText("Name"), "x{Enter}");
-        jest.advanceTimersByTime(500);
-        await user.type(screen.getByLabelText("Name"), "{Enter}");
-        expect(onSubmit).toHaveBeenCalledTimes(2);
-      } finally {
-        jest.useRealTimers();
-      }
-    });
-
     // The dialog validates in its own onSubmit (Zod + field errors), as the
     // visible submit does, so Enter must skip the browser's native `required`
     // check (which shows a different message). That's `formnovalidate` on the
     // default button. jsdom ignores a submitter's formnovalidate (it only
     // reads the form's own novalidate), so this pins the attribute; the
     // behaviour is verified in a real browser.
+    // #751: stopping a duplicate submit isn't Modal's job. The app's request
+    // layer (`useAuthMutation`) drops a request already in flight, whatever
+    // input produced it, so Modal passes every Enter through while its
+    // submit is enabled.
+    it("passes each Enter to onSubmit while submit is enabled", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} />);
+      await user.type(screen.getByLabelText("Name"), "x{Enter}{Enter}");
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+    });
+
     it("the default button skips native validation (formnovalidate)", () => {
       render(<FormModal onSubmit={jest.fn()} />);
       expect(document.querySelector('button[type="submit"]')).toHaveAttribute(
@@ -408,54 +362,6 @@ describe("Modal Component", () => {
       render(<FormModal onSubmit={onSubmit} />);
       await user.click(screen.getByRole("button", { name: "Save" }));
       expect(onSubmit).toHaveBeenCalledTimes(1);
-    });
-
-    // #751: a double-click's second click lands before the mutation's
-    // pending state disables the button (measured: two creates). It carries
-    // `detail` 2, so the actions row swallows it.
-    it("fires the visible action once on a double-click", async () => {
-      const user = userEvent.setup();
-      const onSubmit = jest.fn();
-      render(<FormModal onSubmit={onSubmit} />);
-      await user.dblClick(screen.getByRole("button", { name: "Save" }));
-      expect(onSubmit).toHaveBeenCalledTimes(1);
-    });
-
-    it("lets separate single clicks through", () => {
-      const onSubmit = jest.fn();
-      render(<FormModal onSubmit={onSubmit} />);
-      const save = screen.getByRole("button", { name: "Save" });
-      fireEvent.click(save, { detail: 1 });
-      fireEvent.click(save, { detail: 1 });
-      expect(onSubmit).toHaveBeenCalledTimes(2);
-    });
-
-    it("lets a keyboard activation through (detail 0)", () => {
-      const onSubmit = jest.fn();
-      render(<FormModal onSubmit={onSubmit} />);
-      fireEvent.click(screen.getByRole("button", { name: "Save" }), {
-        detail: 0,
-      });
-      expect(onSubmit).toHaveBeenCalledTimes(1);
-    });
-
-    it("swallows only the repeat, so a double-click on Cancel still closes once", async () => {
-      const user = userEvent.setup();
-      const onClose = jest.fn();
-      render(
-        <Modal
-          open
-          onClose={onClose}
-          title="Form"
-          actions={
-            <button type="button" onClick={onClose}>
-              Cancel
-            </button>
-          }
-        />
-      );
-      await user.dblClick(screen.getByRole("button", { name: "Cancel" }));
-      expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it("adds no submit control to a dialog that isn't a form", () => {

@@ -47,10 +47,6 @@ const formDialogs = files.filter(
 const rawDefaultButtons = files.filter((f) =>
   /<FormDefaultButton\b/.test(f.source)
 );
-// A raw MUI Dialog form renders its own actions row, outside Modal's.
-const rawFormActions = files.filter(
-  (f) => /<form\b/.test(f.source) && /<DialogActions\b/.test(f.source)
-);
 
 describe("dialog forms gate Enter like their submit button (#685)", () => {
   it("finds the form dialogs (so the guard can't pass vacuously)", () => {
@@ -71,28 +67,6 @@ describe("dialog forms gate Enter like their submit button (#685)", () => {
     (_path, source) => {
       const buttons = source.match(/<FormDefaultButton\b[^>]*>/g) ?? [];
       for (const tag of buttons) expect(tag).toMatch(/\bdisabled=\{/);
-    }
-  );
-});
-
-/**
- * #751: a double-click's second click lands before the mutation's pending
- * state disables the submit, so it submitted twice. `Modal` swallows repeat
- * clicks in its actions row; a raw Dialog form's own `DialogActions` must do
- * the same with `swallowRepeatClick` from `@portalai/core/ui`.
- */
-describe("raw dialog forms swallow a double-click's repeat (#751)", () => {
-  it("finds the raw dialog forms (so the guard can't pass vacuously)", () => {
-    expect(rawFormActions.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it.each(rawFormActions.map((f) => [f.path, f.source]))(
-    "%s puts swallowRepeatClick on every DialogActions",
-    (_path, source) => {
-      const rows = source.match(/<DialogActions\b[^>]*>/g) ?? [];
-      for (const tag of rows) {
-        expect(tag).toMatch(/onClickCapture=\{swallowRepeatClick\}/);
-      }
     }
   );
 });

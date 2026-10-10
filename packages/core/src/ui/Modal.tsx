@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import Dialog, { type DialogProps } from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -10,26 +10,6 @@ import OpenInFullIcon from "@mui/icons-material/OpenInFull";
 import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
 
 import { FormDefaultButton } from "./FormDefaultButton.js";
-
-/** How long a submit holds off another when the dialog never disables (a
- *  validation failure, say), so Enter can't be locked out. */
-const SUBMIT_HOLD_MS = 500;
-
-/**
- * #751: swallow the repeat clicks of a double- or triple-click. Put it on a
- * dialog's actions row as `onClickCapture`. A mutation's pending state
- * disables the submit a render after `mutate()`, so a double-click's second
- * click would otherwise submit again: measured as two creates. That click
- * carries `detail` 2; a single click carries 1 and a keyboard activation 0,
- * so both pass. `Modal` applies it to its own actions; a raw `Dialog` form
- * puts it on its `DialogActions`.
- */
-export const swallowRepeatClick = (e: React.MouseEvent): void => {
-  if (e.detail > 1) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-};
 
 export interface ModalProps extends Omit<
   DialogProps,
@@ -80,58 +60,12 @@ export const Modal: React.FC<ModalProps> = ({
     props.slotProps?.paper as { component?: unknown } | undefined
   )?.component;
   const isForm = paperComponent === "form";
-
-  // #747: a submit's pending state reaches `submitDisabled` a render later
-  // (react-query notifies on a timeout), so a fast second Enter would submit
-  // again: measured as two creates from one double Enter. Hold further
-  // submits until the dialog disables, or briefly if it never does.
-  const submitHold = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const releaseSubmitHold = () => {
-    if (submitHold.current !== null) clearTimeout(submitHold.current);
-    submitHold.current = null;
-  };
-  useEffect(() => {
-    if (submitDisabled) releaseSubmitHold();
-  }, [submitDisabled]);
-  // A submit that closed the dialog must not leave the hold armed for the
-  // next time it opens.
-  useEffect(() => {
-    if (!open) releaseSubmitHold();
-  }, [open]);
-  useEffect(() => releaseSubmitHold, []);
-
-  const paperSlot = props.slotProps?.paper as
-    | { onSubmit?: (e: React.FormEvent) => void }
-    | undefined;
-  const paperOnSubmit = paperSlot?.onSubmit;
-  const slotProps =
-    isForm && paperOnSubmit
-      ? {
-          ...props.slotProps,
-          paper: {
-            ...paperSlot,
-            onSubmit: (e: React.FormEvent) => {
-              if (submitHold.current !== null) {
-                e.preventDefault();
-                return;
-              }
-              submitHold.current = setTimeout(
-                releaseSubmitHold,
-                SUBMIT_HOLD_MS
-              );
-              paperOnSubmit(e);
-            },
-          },
-        }
-      : props.slotProps;
-
   return (
     <Dialog
       open={open}
       onClose={onClose}
       fullScreen={maximizable && maximized}
       {...props}
-      slotProps={slotProps}
     >
       {showHeader && (
         <DialogTitle
@@ -171,11 +105,7 @@ export const Modal: React.FC<ModalProps> = ({
         </DialogTitle>
       )}
       <DialogContent>{children}</DialogContent>
-      {actions && (
-        <DialogActions onClickCapture={swallowRepeatClick}>
-          {actions}
-        </DialogActions>
-      )}
+      {actions && <DialogActions>{actions}</DialogActions>}
       {isForm && <FormDefaultButton disabled={submitDisabled} />}
     </Dialog>
   );
