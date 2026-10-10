@@ -713,7 +713,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   };
   // #751: a double-click on Commit joins the running commit, so the
   // instance and its endpoint loop are created once.
-  const onCommit = useSingleFlight(runCommit);
+  const [onCommit] = useSingleFlight(runCommit);
 
   const handleAuthModeChange = (mode: AuthMode) => {
     setAuthMode(mode);

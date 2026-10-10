@@ -23,7 +23,7 @@ describe("useSingleFlight", () => {
   it("gives a concurrent call the running promise; fn runs once", async () => {
     const run = deferred<string>();
     const fn = jest.fn(() => run.promise);
-    const { result } = renderHook(() => useSingleFlight(fn));
+    const { result } = renderHook(() => useSingleFlight(fn)[0]);
 
     const first = result.current();
     const second = result.current();
@@ -36,7 +36,7 @@ describe("useSingleFlight", () => {
 
   it("runs fn again once the previous run has settled", async () => {
     const fn = jest.fn(async () => "ok");
-    const { result } = renderHook(() => useSingleFlight(fn));
+    const { result } = renderHook(() => useSingleFlight(fn)[0]);
 
     await result.current();
     await result.current();
@@ -48,7 +48,7 @@ describe("useSingleFlight", () => {
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValueOnce("ok");
-    const { result } = renderHook(() => useSingleFlight(fn));
+    const { result } = renderHook(() => useSingleFlight(fn)[0]);
 
     await expect(result.current()).rejects.toThrow("boom");
     await expect(result.current()).resolves.toBe("ok");
@@ -59,7 +59,7 @@ describe("useSingleFlight", () => {
     const first = jest.fn(async () => "first");
     const second = jest.fn(async () => "second");
     const { result, rerender } = renderHook(
-      ({ fn }: { fn: () => Promise<string> }) => useSingleFlight(fn),
+      ({ fn }: { fn: () => Promise<string> }) => useSingleFlight(fn)[0],
       { initialProps: { fn: first } }
     );
     const wrapper = result.current;
@@ -72,8 +72,40 @@ describe("useSingleFlight", () => {
 
   it("passes its arguments through", async () => {
     const fn = jest.fn(async (a: number, b: string) => `${a}${b}`);
-    const { result } = renderHook(() => useSingleFlight(fn));
+    const { result } = renderHook(() => useSingleFlight(fn)[0]);
     await expect(result.current(1, "x")).resolves.toBe("1x");
     expect(fn).toHaveBeenCalledWith(1, "x");
+  });
+});
+
+// #753: a workflow reset supersedes the running action. Its result is
+// discarded by the run token, so the next call must start a fresh run, not
+// join the stale one.
+describe("useSingleFlight release (#753)", () => {
+  it("starts a new run after release(), even while the old one is pending", async () => {
+    const stale = deferred<string>();
+    const fn = jest
+      .fn<() => Promise<string>>()
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce("fresh");
+    const { result } = renderHook(() => useSingleFlight(fn));
+    const [run, release] = result.current;
+
+    void run();
+    release();
+    await expect(run()).resolves.toBe("fresh");
+    expect(fn).toHaveBeenCalledTimes(2);
+
+    stale.resolve("stale");
+  });
+
+  it("keeps run and release stable across rerenders", () => {
+    const { result, rerender } = renderHook(() =>
+      useSingleFlight(async () => "ok")
+    );
+    const [run, release] = result.current;
+    rerender();
+    expect(result.current[0]).toBe(run);
+    expect(result.current[1]).toBe(release);
   });
 });

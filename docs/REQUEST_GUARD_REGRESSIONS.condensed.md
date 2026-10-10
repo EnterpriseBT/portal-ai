@@ -22,7 +22,7 @@ Separately, `useAuthMutation` resends writes up to 3 times on network errors and
 
 ## Decision — release on reset; fall back on a throw; reads and writes split by method
 
-- **Superseded runs:** `useSingleFlight`'s wrapper gains a `release()` that drops the held run, so the next call starts fresh. The stale run still discards its own result through its token check. Core `reset()` releases `onInterpret` and `onCommit`, and FileUpload `reset()` releases `startParse`; the Google Sheets and Excel reselects go through `core.reset()`. A `generation` option was rejected: the runs claim their token *inside* the action, so a pre-call generation can't match the running one.
+- **Superseded runs:** `useSingleFlight` returns `[run, release]` (a property on the returned function breaks the React Compiler's no-mutation rule); `release()` drops the held run, so the next call starts fresh. The stale run still discards its own result through its token check. Core `reset()` releases `onInterpret` and `onCommit`, and FileUpload `reset()` releases `startParse`; the Google Sheets and Excel reselects go through `core.reset()`. A `generation` option was rejected: the runs claim their token *inside* the action, so a pre-call generation can't match the running one.
 - **Request-build throws:** `useAuthMutation` computes the key in a `try/catch`. On a throw the key is `null`, so it calls `mutation.mutateAsync` undeduplicated, and the same throw happens inside `mutationFn` and reaches `onError` / `mutation.error`, as before #751.
 - **Reads and writes:**
   - **Reads:** `dedupeInFlight` defaults to `method !== "GET"`, and the two POST reads pass `dedupeInFlight: false`.
@@ -44,7 +44,7 @@ Rejected: the one-shared-submit-guard design (registry plus `useGuardedAction` a
   `__tests__/client.test.ts` is unchanged (`shouldRetry` itself doesn't change).
 
 **Slice 2: release on reset.**
-- **Files:** `utils/use-single-flight.util.ts` (`release`), `use-spreadsheet-workflow.util.ts` and `file-upload-workflow.util.ts` (call it in `reset`).
+- **Files:** `utils/use-single-flight.util.ts` (`[run, release]`), `use-spreadsheet-workflow.util.ts` and `file-upload-workflow.util.ts` (call it in `reset`), `RestApiConnectorWorkflow.component.tsx` (destructure).
 - **Tests:**
   - `__tests__/use-single-flight.test.ts`: after `release()`, a call while the old run is pending starts a new run.
   - `workflows/FileUploadConnector/__tests__/file-upload-workflow.util.test.ts`: `startParse` pending, `reset()`, add a file, `startParse` → `parseFile` called twice. Same for `onCommit` after `reset()`.

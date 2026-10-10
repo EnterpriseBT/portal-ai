@@ -690,7 +690,7 @@ export function useSpreadsheetWorkflow(
     }
   }, [callbacks, state.regions]);
   // #751: a double-click on Interpret joins the running interpret.
-  const onInterpret = useSingleFlight(runInterpret);
+  const [onInterpret, releaseInterpret] = useSingleFlight(runInterpret);
 
   const onSkipToReview = useCallback(() => {
     setState((prev) => {
@@ -723,7 +723,7 @@ export function useSpreadsheetWorkflow(
     }
   }, [callbacks, state.plan]);
   // #751: a double-click on Commit joins the running commit.
-  const onCommit = useSingleFlight(runCommit);
+  const [onCommit, releaseCommit] = useSingleFlight(runCommit);
 
   const goBack = useCallback(() => {
     setState((prev) => {
@@ -735,8 +735,12 @@ export function useSpreadsheetWorkflow(
 
   const reset = useCallback(() => {
     runTokenRef.current += 1;
+    // #753: the superseded interpret or commit discards its result, so the
+    // next one must start fresh rather than join it.
+    releaseInterpret();
+    releaseCommit();
     setState(EMPTY_STATE);
-  }, []);
+  }, [releaseInterpret, releaseCommit]);
 
   return {
     ...state,
