@@ -11,6 +11,11 @@
  * exist today. The allowlist holds the 400s
  * that genuinely are a not-found *reference* inside an otherwise valid
  * request. It only shrinks, and an entry that no longer exists fails too.
+ *
+ * #745 adds the second rule: a request that fails its schema answers through
+ * `invalidPayload`, so the first issue is in the message and every issue is
+ * in `details`. `schemaFailure400s` flags a hand-built 400 in a routes file
+ * that sits in an `if (!x.success)` branch or carries `issues` by hand.
  */
 import { describe, it, expect } from "@jest/globals";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -39,6 +44,90 @@ const ALLOWED: Array<{ file: string; code: string }> = [
     file: "services/connector-instance-access.service.ts",
     code: "MEMBERSHIP_NOT_FOUND",
   },
+];
+
+/** #745: routes still building a schema-failure 400 by hand. Each conversion
+ *  batch deletes its entries; it only shrinks, and is empty when #745 lands. */
+const SCHEMA_FAILURE_ALLOWED: Array<{ file: string; code: string }> = [
+  { file: "routes/api-endpoints.router.ts", code: "REST_API_INVALID_CONFIG" },
+  { file: "routes/billing.router.ts", code: "BILLING_INVALID_PAYLOAD" },
+  {
+    file: "routes/column-definition.router.ts",
+    code: "COLUMN_DEFINITION_INVALID_PAYLOAD",
+  },
+  {
+    file: "routes/connector-entity.router.ts",
+    code: "CONNECTOR_ENTITY_INVALID_PAYLOAD",
+  },
+  {
+    file: "routes/connector-instance-layout-plans.router.ts",
+    code: "LAYOUT_PLAN_INVALID_PAYLOAD",
+  },
+  {
+    file: "routes/connector-instance.router.ts",
+    code: "CONNECTOR_INSTANCE_INVALID_PAYLOAD",
+  },
+  {
+    file: "routes/connector-instance.router.ts",
+    code: "REST_API_INVALID_CONFIG",
+  },
+  {
+    file: "routes/curated-view.router.ts",
+    code: "CURATED_VIEW_INVALID_PAYLOAD",
+  },
+  { file: "routes/curated-view.router.ts", code: "CURATED_VIEW_INVALID_QUERY" },
+  {
+    file: "routes/entity-group-member.router.ts",
+    code: "ENTITY_GROUP_MEMBER_CREATE_FAILED",
+  },
+  {
+    file: "routes/entity-group-member.router.ts",
+    code: "ENTITY_GROUP_MEMBER_FETCH_FAILED",
+  },
+  {
+    file: "routes/entity-group-member.router.ts",
+    code: "ENTITY_GROUP_MEMBER_UPDATE_FAILED",
+  },
+  {
+    file: "routes/entity-group.router.ts",
+    code: "ENTITY_GROUP_INVALID_PAYLOAD",
+  },
+  {
+    file: "routes/entity-record.router.ts",
+    code: "ENTITY_RECORD_INVALID_PAYLOAD",
+  },
+  {
+    file: "routes/entity-record.router.ts",
+    code: "ENTITY_RECORD_INVALID_QUERY",
+  },
+  {
+    file: "routes/entity-tag-assignment.router.ts",
+    code: "ENTITY_TAG_ASSIGNMENT_CREATE_FAILED",
+  },
+  { file: "routes/entity-tag.router.ts", code: "ENTITY_TAG_INVALID_PAYLOAD" },
+  {
+    file: "routes/field-mapping.router.ts",
+    code: "FIELD_MAPPING_INVALID_PAYLOAD",
+  },
+  {
+    file: "routes/file-uploads.router.ts",
+    code: "FILE_UPLOAD_PARSE_INVALID_PAYLOAD",
+  },
+  { file: "routes/grant.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
+  { file: "routes/group.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
+  {
+    file: "routes/layout-plans.router.ts",
+    code: "LAYOUT_PLAN_INVALID_PAYLOAD",
+  },
+  { file: "routes/organization.router.ts", code: "AUDIT_LOG_INVALID_QUERY" },
+  {
+    file: "routes/organization.router.ts",
+    code: "ORGANIZATION_INVALID_PAYLOAD",
+  },
+  { file: "routes/organization.router.ts", code: "USAGE_LEDGER_INVALID_QUERY" },
+  { file: "routes/policy.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
+  { file: "routes/role.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
+  { file: "routes/toolpacks.router.ts", code: "TOOLPACK_INVALID_PAYLOAD" },
 ];
 
 /** The `*_NOT_FOUND` codes an expression can evaluate to: `ApiCode.X`, or
@@ -79,6 +168,78 @@ export function notFound400s(source: string): string[] {
       n.arguments.length >= 1
     ) {
       out.push(...notFoundCodes(n.arguments[0], sf));
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+/** True when `e` contains a `!<x>.success` (through parentheses and compound
+ *  conditions), the way every route spells a failed `safeParse`. */
+function negatesSuccess(e: ts.Node): boolean {
+  if (
+    ts.isPrefixUnaryExpression(e) &&
+    e.operator === ts.SyntaxKind.ExclamationToken
+  ) {
+    let operand: ts.Expression = e.operand;
+    while (ts.isParenthesizedExpression(operand)) operand = operand.expression;
+    if (
+      ts.isPropertyAccessExpression(operand) &&
+      operand.name.text === "success"
+    ) {
+      return true;
+    }
+  }
+  return ts.forEachChild(e, negatesSuccess) ?? false;
+}
+
+/** True when `n` sits in the then-branch of an `if (!x.success)`, without
+ *  crossing into a nested function (a callback is a different scope). */
+function inSchemaFailureBranch(n: ts.Node): boolean {
+  let child: ts.Node = n;
+  for (let p = n.parent; p; child = p, p = p.parent) {
+    if (ts.isFunctionLike(p)) return false;
+    if (
+      ts.isIfStatement(p) &&
+      p.thenStatement === child &&
+      negatesSuccess(p.expression)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** #745: every `new ApiError(400, …)` built by hand for a request that
+ *  failed its schema, so its issues may be missing or its message generic.
+ *  Flags one inside the then-branch of an `if (!x.success)` (R1), or one whose
+ *  details carry `issues` by hand (R2). Such a failure answers through
+ *  `invalidPayload(code, label, parsed.error)` instead. */
+export function schemaFailure400s(
+  source: string
+): Array<{ line: number; code: string }> {
+  const sf = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, true);
+  const out: Array<{ line: number; code: string }> = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      ts.isNewExpression(n) &&
+      n.expression.getText(sf) === "ApiError" &&
+      n.arguments &&
+      n.arguments.length >= 2 &&
+      n.arguments[0].getText(sf) === "400"
+    ) {
+      const details = n.arguments[3];
+      const handIssues =
+        details !== undefined &&
+        ts.isObjectLiteralExpression(details) &&
+        details.properties.some((p) => p.name?.getText(sf) === "issues");
+      if (handIssues || inSchemaFailureBranch(n)) {
+        out.push({
+          line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+          code: n.arguments[1].getText(sf).replace(/^ApiCode\./, ""),
+        });
+      }
     }
     ts.forEachChild(n, visit);
   };
@@ -151,6 +312,97 @@ describe("non-404 4xx never claims a missing object (#742, #743)", () => {
           'new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found");',
           'new ApiError(400, ApiCode.PORTAL_INVALID_PAYLOAD, "bad");',
           'invalidPayload(ApiCode.PORTAL_INVALID_PAYLOAD, "x", e);',
+        ].join("\n")
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("a schema failure answers through invalidPayload (#745)", () => {
+  const routesDir = join(apiSrc, "routes");
+  const found = sourceFiles(routesDir).flatMap((path) =>
+    schemaFailure400s(readFileSync(path, "utf8")).map((f) => ({
+      file: relative(apiSrc, path),
+      ...f,
+    }))
+  );
+
+  it("no route builds a schema-failure 400 by hand outside the allowlist", () => {
+    const offenders = found
+      .filter(
+        (f) =>
+          !SCHEMA_FAILURE_ALLOWED.some(
+            (a) => a.file === f.file && a.code === f.code
+          )
+      )
+      .map((f) => `${f.file}:${f.line}: ${f.code}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("every allowlist entry still exists (the list only shrinks)", () => {
+    for (const a of SCHEMA_FAILURE_ALLOWED) {
+      expect([
+        a,
+        found.some((f) => f.file === a.file && f.code === a.code),
+      ]).toEqual([a, true]);
+    }
+  });
+
+  it("flags a 400 built by hand in a !x.success branch", () => {
+    // Braced, brace-less, and a compound condition.
+    expect(
+      schemaFailure400s(
+        [
+          "if (!parsed.success) {",
+          '  return next(new ApiError(400, ApiCode.GROUP_INVALID_PAYLOAD, "Invalid group payload"));',
+          "}",
+          'if (!body.success) throw new ApiError(400, ApiCode.ROLE_INVALID_PAYLOAD, "bad");',
+          'if (!rt.success || typeof id !== "string") return next(new ApiError(400, ApiCode.GRANT_INVALID_PAYLOAD, "x"));',
+        ].join("\n")
+      )
+    ).toEqual([
+      { line: 2, code: "GROUP_INVALID_PAYLOAD" },
+      { line: 4, code: "ROLE_INVALID_PAYLOAD" },
+      { line: 5, code: "GRANT_INVALID_PAYLOAD" },
+    ]);
+  });
+
+  it("flags the 400 inside a nested block of the failure branch", () => {
+    expect(
+      schemaFailure400s(
+        [
+          "if (!(parsed.success)) {",
+          "  if (strict) {",
+          "    { return next(new ApiError(400, ApiCode.X_INVALID_QUERY, m)); }",
+          "  }",
+          "}",
+        ].join("\n")
+      )
+    ).toEqual([{ line: 3, code: "X_INVALID_QUERY" }]);
+  });
+
+  it("flags a 400 that carries the issues by hand, in any branch", () => {
+    expect(
+      schemaFailure400s(
+        "throw new ApiError(400, ApiCode.REST_API_INVALID_CONFIG, `Invalid: ${m}`, { issues: e.issues });"
+      )
+    ).toEqual([{ line: 1, code: "REST_API_INVALID_CONFIG" }]);
+  });
+
+  it("ignores invalidPayload, non-400s, semantic checks and else branches", () => {
+    expect(
+      schemaFailure400s(
+        [
+          "if (!parsed.success) {",
+          '  return next(invalidPayload(ApiCode.PORTAL_INVALID_PAYLOAD, "Invalid portal payload", parsed.error));',
+          "}",
+          // A response self-check is a 500, not the caller's error.
+          'if (!out.success) throw new ApiError(500, ApiCode.CONFIG_INVALID, "bad config", { issues: out.error.issues });',
+          // A hand-written semantic check is not a schema failure.
+          'if (!name) return next(new ApiError(400, ApiCode.PORTAL_INVALID_PAYLOAD, "name is required"));',
+          'if (!parsed.success) { log(); } else { next(new ApiError(400, ApiCode.X_CONFLICT, "dup")); }',
+          // A callback declared in the branch is a different scope.
+          'if (!p.success) { run(() => new ApiError(400, ApiCode.Y_INVALID_PAYLOAD, "later")); }',
         ].join("\n")
       )
     ).toEqual([]);
