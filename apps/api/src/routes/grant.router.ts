@@ -9,6 +9,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { GrantService } from "../services/grant.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
@@ -77,10 +78,10 @@ grantRouter.post(
       const parsed = ShareGrantRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "Invalid share payload — expected { resourceType, resourceId, grantee, access }"
+            "Invalid grant payload",
+            parsed.error
           )
         );
       }
@@ -147,12 +148,21 @@ grantRouter.get(
       const ctx = req.application!.metadata;
       const rt = ShareResourceTypeSchema.safeParse(req.query.resourceType);
       const resourceId = req.query.resourceId;
-      if (!rt.success || typeof resourceId !== "string" || !resourceId) {
+      if (!rt.success) {
+        return next(
+          invalidPayload(
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "Invalid grant query: resourceType",
+            rt.error
+          )
+        );
+      }
+      if (typeof resourceId !== "string" || !resourceId) {
         return next(
           new ApiError(
             400,
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "resourceType (station|pin) and resourceId query params are required"
+            "resourceId query param is required"
           )
         );
       }

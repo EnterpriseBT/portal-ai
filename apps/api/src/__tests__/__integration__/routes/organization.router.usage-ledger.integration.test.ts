@@ -237,6 +237,21 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
       .set("Authorization", "Bearer test-token");
     expect(badSort.status).toBe(400);
     expect(badSort.body.code).toBe(ApiCode.USAGE_LEDGER_INVALID_QUERY);
+    expect(badSort.body.message).toMatch(
+      /^Invalid usage-ledger query: sortBy: expected one of /
+    );
+
+    // #745: a query that fails its schema names the field, with every issue
+    // in details.
+    const badOrder = await request(app)
+      .get("/api/organization/usage/ledger?sortOrder=sideways")
+      .set("Authorization", "Bearer test-token");
+    expect(badOrder.status).toBe(400);
+    expect(badOrder.body.code).toBe(ApiCode.USAGE_LEDGER_INVALID_QUERY);
+    expect(badOrder.body.message).toMatch(
+      /^Invalid usage-ledger query: sortOrder: /
+    );
+    expect(badOrder.body.details.issues[0].path).toEqual(["sortOrder"]);
   });
 
   // case 16 — org isolation + anon rejection

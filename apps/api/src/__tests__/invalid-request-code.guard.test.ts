@@ -50,7 +50,6 @@ const ALLOWED: Array<{ file: string; code: string }> = [
  *  batch deletes its entries; it only shrinks, and is empty when #745 lands. */
 const SCHEMA_FAILURE_ALLOWED: Array<{ file: string; code: string }> = [
   { file: "routes/api-endpoints.router.ts", code: "REST_API_INVALID_CONFIG" },
-  { file: "routes/billing.router.ts", code: "BILLING_INVALID_PAYLOAD" },
   {
     file: "routes/column-definition.router.ts",
     code: "COLUMN_DEFINITION_INVALID_PAYLOAD",
@@ -113,20 +112,10 @@ const SCHEMA_FAILURE_ALLOWED: Array<{ file: string; code: string }> = [
     file: "routes/file-uploads.router.ts",
     code: "FILE_UPLOAD_PARSE_INVALID_PAYLOAD",
   },
-  { file: "routes/grant.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
-  { file: "routes/group.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
   {
     file: "routes/layout-plans.router.ts",
     code: "LAYOUT_PLAN_INVALID_PAYLOAD",
   },
-  { file: "routes/organization.router.ts", code: "AUDIT_LOG_INVALID_QUERY" },
-  {
-    file: "routes/organization.router.ts",
-    code: "ORGANIZATION_INVALID_PAYLOAD",
-  },
-  { file: "routes/organization.router.ts", code: "USAGE_LEDGER_INVALID_QUERY" },
-  { file: "routes/policy.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
-  { file: "routes/role.router.ts", code: "ORGANIZATION_INVALID_PAYLOAD" },
   { file: "routes/toolpacks.router.ts", code: "TOOLPACK_INVALID_PAYLOAD" },
 ];
 

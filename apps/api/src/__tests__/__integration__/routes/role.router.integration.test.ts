@@ -303,6 +303,19 @@ describe("/api/roles (#622 slice 4)", () => {
     expect(live.map((a) => a.policyId)).toEqual([own]);
   });
 
+  it("#745: a malformed body is a 400 naming the field", async () => {
+    const { orgId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    const res = await auth(request(app).post("/api/roles")).send({
+      name: "R",
+      policyIds: "p1",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    expect(res.body.message).toMatch(/^Invalid role payload: policyIds: /);
+    expect(res.body.details.issues[0].path).toEqual(["policyIds"]);
+  });
+
   it("a system role cannot be edited or deleted", async () => {
     const { orgId } = await seedOrg("owner");
     await entitleOrg(orgId);

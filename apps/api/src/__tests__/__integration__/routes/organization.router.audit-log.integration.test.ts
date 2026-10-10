@@ -265,6 +265,14 @@ describe("GET /api/organization/audit-log (#575 slice 3)", () => {
       .set("Authorization", "Bearer test-token");
     expect(badAction.status).toBe(400);
     expect(badAction.body.code).toBe(ApiCode.AUDIT_LOG_INVALID_QUERY);
+    // #745: a schema failure names the field, with every issue in details.
+    expect(badAction.body.message).toMatch(
+      /^Invalid audit-log query: action: /
+    );
+    expect(badAction.body.details.issues[0].path).toEqual(["action"]);
+    expect(badSort.body.message).toMatch(
+      /^Invalid audit-log query: sortBy: expected one of /
+    );
   });
 
   it("denies a caller without audit read with 403 PERMISSION_DENIED (#576, #711)", async () => {

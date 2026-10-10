@@ -12,6 +12,7 @@ import { ApplicationService } from "../services/application.service.js";
 import { BillingService } from "../services/billing.service.js";
 import { DbService } from "../services/db.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
   BillingCheckoutRequestSchema,
@@ -164,10 +165,10 @@ billingRouter.post(
       const parsed = BillingCheckoutRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.BILLING_INVALID_PAYLOAD,
-            "Invalid checkout payload — expected { tier: string }"
+            "Invalid checkout payload",
+            parsed.error
           )
         );
       }
@@ -249,10 +250,10 @@ billingRouter.post(
       const parsed = BillingPortalRequestSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.BILLING_INVALID_PAYLOAD,
-            "Invalid portal payload — expected { tier?: string }"
+            "Invalid billing portal payload",
+            parsed.error
           )
         );
       }
