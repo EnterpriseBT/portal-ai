@@ -2,6 +2,7 @@ import type {
   PinResultBody,
   PortalResultGetResponsePayload,
   PortalResultListResponsePayload,
+  UpdatePortalResultBody,
   WidgetRefreshResponse,
 } from "@portalai/core/contracts";
 import type { PortalResult } from "@portalai/core/models";
@@ -30,10 +31,6 @@ export interface PortalResultMutationPayload {
   portalResult: PortalResult;
 }
 
-export interface RenamePortalResultBody {
-  name: string;
-}
-
 export const portalResults = {
   list: (
     params?: PortalResultsListParams,
@@ -60,7 +57,7 @@ export const portalResults = {
     }),
 
   rename: (id: string) =>
-    useAuthMutation<PortalResultMutationPayload, RenamePortalResultBody>({
+    useAuthMutation<PortalResultMutationPayload, UpdatePortalResultBody>({
       url: `/api/portal-results/${encodeURIComponent(id)}`,
       method: "PATCH",
       onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },

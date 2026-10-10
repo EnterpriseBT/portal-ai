@@ -968,7 +968,57 @@ describe("Portal Results Router", () => {
         .send({})
         .expect(400);
       expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_INVALID_PAYLOAD);
-      expect(res.body.message).toBe("name is required");
+      expect(res.body.message).toBe(
+        "Invalid pin payload: name: " + res.body.details.issues[0].message
+      );
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
+    });
+
+    // #745: a wrongly typed or unknown key is a 400 naming it.
+    it("returns 400 naming name when it isn't a string", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/portal-results/${generateId()}`)
+        .send({ name: 123 })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid pin payload: name: /);
+    });
+
+    it("returns 400 for an unknown key", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/portal-results/${generateId()}`)
+        .send({ name: "X", portalId: "p" })
+        .expect(400);
+      expect(res.body.details.issues[0].code).toBe("unrecognized_keys");
+    });
+
+    it("stores a trimmed name", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+      const result = createPortalResult(organizationId, station.id, portal.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(result as never);
+
+      const res = await request(app)
+        .patch(`/api/portal-results/${result.id}`)
+        .send({ name: "  Trimmed  " })
+        .expect(200);
+      expect(res.body.payload.portalResult.name).toBe("Trimmed");
     });
   });
 

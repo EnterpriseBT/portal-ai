@@ -1,6 +1,8 @@
 import {
   CreatePortalBodySchema,
   SendMessageBodySchema,
+  UpdatePortalBodySchema,
+  UpdatePortalResultBodySchema,
   PinResultBodySchema,
   PortalMessageResponseSchema,
   PortalBlockTypeSchema,
@@ -77,6 +79,74 @@ describe("SendMessageBodySchema", () => {
 });
 
 // ── PinResultBodySchema ─────────────────────────────────────────────
+
+// #745: the PATCH bodies are contracts, so a wrongly typed or unknown key is
+// a 400 naming it rather than a silent no-op.
+describe("UpdatePortalBodySchema", () => {
+  const firstPath = (body: unknown) => {
+    const r = UpdatePortalBodySchema.safeParse(body);
+    return r.success ? null : r.error.issues[0];
+  };
+
+  it("accepts a rename, an open, or both", () => {
+    expect(UpdatePortalBodySchema.safeParse({ name: "A" }).success).toBe(true);
+    expect(
+      UpdatePortalBodySchema.safeParse({ lastOpened: 1700000000000 }).success
+    ).toBe(true);
+    expect(
+      UpdatePortalBodySchema.safeParse({ name: "A", lastOpened: 0 }).success
+    ).toBe(true);
+  });
+
+  it("trims the name", () => {
+    expect(UpdatePortalBodySchema.parse({ name: "  A  " })).toEqual({
+      name: "A",
+    });
+  });
+
+  it("rejects an empty body", () => {
+    expect(firstPath({})?.message).toBe("At least one field must be provided");
+  });
+
+  it.each([
+    ["a string lastOpened", { lastOpened: "1700000000" }, ["lastOpened"]],
+    ["a negative lastOpened", { lastOpened: -1 }, ["lastOpened"]],
+    ["a fractional lastOpened", { lastOpened: 1.5 }, ["lastOpened"]],
+    ["a numeric name", { name: 123, lastOpened: 1 }, ["name"]],
+    ["a blank name", { name: "   " }, ["name"]],
+  ])("rejects %s, naming the field", (_label, body, path) => {
+    expect(firstPath(body)?.path).toEqual(path);
+  });
+
+  it("rejects an unknown key", () => {
+    expect(firstPath({ name: "A", extra: 1 })?.code).toBe("unrecognized_keys");
+  });
+});
+
+describe("UpdatePortalResultBodySchema", () => {
+  const first = (body: unknown) => {
+    const r = UpdatePortalResultBodySchema.safeParse(body);
+    return r.success ? null : r.error.issues[0];
+  };
+
+  it("accepts a name and trims it", () => {
+    expect(UpdatePortalResultBodySchema.parse({ name: " A " })).toEqual({
+      name: "A",
+    });
+  });
+
+  it.each([
+    ["a numeric name", { name: 123 }],
+    ["a blank name", { name: "  " }],
+    ["a missing name", {}],
+  ])("rejects %s, naming the field", (_label, body) => {
+    expect(first(body)?.path).toEqual(["name"]);
+  });
+
+  it("rejects an unknown key", () => {
+    expect(first({ name: "A", portalId: "p" })?.code).toBe("unrecognized_keys");
+  });
+});
 
 describe("PinResultBodySchema", () => {
   it("should accept valid input", () => {

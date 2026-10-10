@@ -596,7 +596,80 @@ describe("Portal Router", () => {
         .send({})
         .expect(400);
       expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
-      expect(res.body.message).toBe("name or lastOpened is required");
+      expect(res.body.message).toBe(
+        "Invalid portal payload: At least one field must be provided"
+      );
+    });
+
+    // #745: a wrongly typed or unknown key is a 400 naming it. It used to be
+    // ignored, or answered as though it hadn't been sent.
+    it("returns 400 naming lastOpened when it isn't a number", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({ lastOpened: "1700000000" })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid portal payload: lastOpened: /);
+      expect(res.body.details.issues[0].path).toEqual(["lastOpened"]);
+    });
+
+    it("returns 400 rather than dropping a wrongly typed name", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .patch(`/api/portals/${portal.id}`)
+        .send({ name: 123, lastOpened: Date.now() })
+        .expect(400);
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
+
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portals)
+        .where(eq(portals.id, portal.id));
+      expect(row.lastOpened).toBe(portal.lastOpened);
+    });
+
+    it("returns 400 for an unknown key", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({ name: "New Name", extra: 1 })
+        .expect(400);
+      expect(res.body.message).toBe(
+        'Invalid portal payload: Unrecognized key: "extra"'
+      );
+      expect(res.body.details.issues[0].code).toBe("unrecognized_keys");
+    });
+
+    it("stores a trimmed name", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .patch(`/api/portals/${portal.id}`)
+        .send({ name: "  Trimmed  " })
+        .expect(200);
+      expect(res.body.payload.portal.name).toBe("Trimmed");
     });
 
     it("returns 400 when name is empty and lastOpened is absent", async () => {

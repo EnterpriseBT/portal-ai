@@ -93,6 +93,8 @@ import {
   SuggestTransformResponseSchema,
   CreateStationBodySchema,
   UpdateStationBodySchema,
+  UpdatePortalBodySchema,
+  UpdatePortalResultBodySchema,
   StationGetResponsePayloadSchema,
   ObjectCapabilitiesSchema,
   ShareableObjectCapabilitiesSchema,
@@ -556,6 +558,11 @@ const withCapabilitiesRef = (shareable: boolean) => ({
 const stationSchemas: Record<string, unknown> = {
   CreateStationBody: z.toJSONSchema(CreateStationBodySchema, JSON_SCHEMA_OPTS),
   UpdateStationBody: z.toJSONSchema(UpdateStationBodySchema, JSON_SCHEMA_OPTS),
+  UpdatePortalBody: z.toJSONSchema(UpdatePortalBodySchema, JSON_SCHEMA_OPTS),
+  UpdatePortalResultBody: z.toJSONSchema(
+    UpdatePortalResultBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
   StationInstanceWithConnectorInstance: z.toJSONSchema(
     StationInstanceWithConnectorInstanceSchema,
     JSON_SCHEMA_OPTS

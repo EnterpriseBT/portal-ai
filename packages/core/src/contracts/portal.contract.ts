@@ -119,6 +119,33 @@ export const SendMessageBodySchema = z.object({
 
 export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 
+// ── Update Portal ─────────────────────────────────────────────────────
+
+/** #745: PATCH /api/portals/:id renames a portal or records an open. A
+ *  wrongly typed or unknown key is a 400 naming it, not a silent no-op. */
+export const UpdatePortalBodySchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    lastOpened: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .refine((d) => d.name !== undefined || d.lastOpened !== undefined, {
+    message: "At least one field must be provided",
+  });
+
+export type UpdatePortalBody = z.infer<typeof UpdatePortalBodySchema>;
+
+// ── Rename Pin ────────────────────────────────────────────────────────
+
+/** #745: PATCH /api/portal-results/:id renames a pin. */
+export const UpdatePortalResultBodySchema = z
+  .object({ name: z.string().trim().min(1) })
+  .strict();
+
+export type UpdatePortalResultBody = z.infer<
+  typeof UpdatePortalResultBodySchema
+>;
+
 // ── Portal Result List ────────────────────────────────────────────────
 
 /** A pin as the list returns it: `portalName` is present with include=portal. */
