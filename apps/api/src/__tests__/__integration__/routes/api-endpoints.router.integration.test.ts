@@ -192,6 +192,31 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.REST_API_INVALID_CONFIG);
+    // #745: no Zod JSON dump in the message; details carry the issues.
+    expect(res.body.message).not.toMatch(/\[\s*\{/);
+    expect(res.body.message).not.toContain('"code":');
+    expect(res.body.details.issues.length).toBeGreaterThan(0);
+  });
+
+  it("#745: a malformed create body names the field", async () => {
+    const res = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: "x",
+        label: "",
+        config: {
+          path: "/x",
+          method: "GET",
+          recordsPath: "",
+          pagination: { strategy: "none" },
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.REST_API_INVALID_CONFIG);
+    expect(res.body.message).toMatch(/^Invalid api endpoint payload: label: /);
+    expect(res.body.message).not.toMatch(/\[\s*\{/);
+    expect(res.body.details.issues[0].path).toEqual(["label"]);
   });
 
   it("returns 404 when instance isn't a rest-api connector", async () => {
@@ -356,6 +381,21 @@ describe("PATCH /api/connector-instances/:instanceId/api-endpoints/:entityId", (
     expect(res.body.payload.config.path).toBe("/new");
     expect(res.body.payload.config.idField).toBe("uuid");
     expect(res.body.payload.config.method).toBe("GET");
+  });
+
+  it("#745: a malformed patch body names the field, without a Zod JSON dump", async () => {
+    const res = await request(app)
+      .patch(
+        `/api/connector-instances/${restApiInstanceId}/api-endpoints/${generateId()}`
+      )
+      .send({ label: "" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.REST_API_INVALID_CONFIG);
+    expect(res.body.message).toMatch(/^Invalid api endpoint patch: label: /);
+    expect(res.body.message).not.toMatch(/\[\s*\{/);
+    expect(res.body.message).not.toContain('"code":');
+    expect(res.body.details.issues[0].path).toEqual(["label"]);
   });
 });
 

@@ -46,32 +46,9 @@ const ALLOWED: Array<{ file: string; code: string }> = [
   },
 ];
 
-/** #745: routes still building a schema-failure 400 by hand. Each conversion
- *  batch deletes its entries; it only shrinks, and is empty when #745 lands. */
-const SCHEMA_FAILURE_ALLOWED: Array<{ file: string; code: string }> = [
-  { file: "routes/api-endpoints.router.ts", code: "REST_API_INVALID_CONFIG" },
-  {
-    file: "routes/connector-instance-layout-plans.router.ts",
-    code: "LAYOUT_PLAN_INVALID_PAYLOAD",
-  },
-  {
-    file: "routes/connector-instance.router.ts",
-    code: "CONNECTOR_INSTANCE_INVALID_PAYLOAD",
-  },
-  {
-    file: "routes/connector-instance.router.ts",
-    code: "REST_API_INVALID_CONFIG",
-  },
-  {
-    file: "routes/file-uploads.router.ts",
-    code: "FILE_UPLOAD_PARSE_INVALID_PAYLOAD",
-  },
-  {
-    file: "routes/layout-plans.router.ts",
-    code: "LAYOUT_PLAN_INVALID_PAYLOAD",
-  },
-  { file: "routes/toolpacks.router.ts", code: "TOOLPACK_INVALID_PAYLOAD" },
-];
+/** #745: routes that build a schema-failure 400 by hand. It only shrinks,
+ *  and #745 emptied it: a new site converts to invalidPayload instead. */
+const SCHEMA_FAILURE_ALLOWED: Array<{ file: string; code: string }> = [];
 
 /** The `*_NOT_FOUND` codes an expression can evaluate to: `ApiCode.X`, or
  *  either branch of a conditional (code review on #744). */

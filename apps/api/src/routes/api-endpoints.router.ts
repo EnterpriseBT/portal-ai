@@ -16,6 +16,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
@@ -504,17 +505,15 @@ apiEndpointsRouter.post(
       const { organizationId, userId } = req.application!.metadata;
       const instance = await requireRestApiInstance(req, instanceId, "write");
 
-      let body: z.infer<typeof CreateApiEndpointRequestBodySchema>;
-      try {
-        body = CreateApiEndpointRequestBodySchema.parse(req.body);
-      } catch (err) {
-        throw new ApiError(
-          400,
+      const parsedBody = CreateApiEndpointRequestBodySchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        throw invalidPayload(
           ApiCode.REST_API_INVALID_CONFIG,
-          `Invalid api endpoint payload: ${(err as Error).message}`,
-          { issues: (err as z.ZodError).issues }
+          "Invalid api endpoint payload",
+          parsedBody.error
         );
       }
+      const body = parsedBody.data;
 
       await JobLockService.assertConnectorInstanceUnlocked(
         instance.id,
@@ -743,17 +742,15 @@ apiEndpointsRouter.patch(
       const { organizationId, userId } = req.application!.metadata;
       const instance = await requireRestApiInstance(req, instanceId, "write");
 
-      let body: z.infer<typeof PatchApiEndpointRequestBodySchema>;
-      try {
-        body = PatchApiEndpointRequestBodySchema.parse(req.body);
-      } catch (err) {
-        throw new ApiError(
-          400,
+      const parsedBody = PatchApiEndpointRequestBodySchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        throw invalidPayload(
           ApiCode.REST_API_INVALID_CONFIG,
-          `Invalid api endpoint patch: ${(err as Error).message}`,
-          { issues: (err as z.ZodError).issues }
+          "Invalid api endpoint patch",
+          parsedBody.error
         );
       }
+      const body = parsedBody.data;
 
       // #685: the endpoint's entity must be in the caller's org and on the
       // instance in the URL. It was looked up by entity id alone, so another
@@ -1057,17 +1054,17 @@ apiEndpointsRouter.post(
 
       // Parse optional body. Empty body is fine — `forceRefresh`
       // defaults to false.
-      let body: { forceRefresh?: boolean };
-      try {
-        body = DiscoverColumnsRequestBodySchema.parse(req.body ?? {});
-      } catch (err) {
-        throw new ApiError(
-          400,
+      const parsedBody = DiscoverColumnsRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
+      if (!parsedBody.success) {
+        throw invalidPayload(
           ApiCode.REST_API_INVALID_CONFIG,
-          `Invalid discover-columns body: ${(err as Error).message}`,
-          { issues: (err as z.ZodError).issues }
+          "Invalid discover-columns body",
+          parsedBody.error
         );
       }
+      const body = parsedBody.data;
 
       // Load the full instance row (config + decrypted credentials)
       // so the adapter can read `baseUrl` + `auth`. requireRestApiInstance

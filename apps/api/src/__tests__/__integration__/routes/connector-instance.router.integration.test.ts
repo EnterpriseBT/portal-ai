@@ -1099,6 +1099,11 @@ describe("Connector Instance Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid connector instance payload: name: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
     });
 
     it("should return 400 for missing name", async () => {
@@ -1268,6 +1273,11 @@ describe("Connector Instance Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid connector instance payload: name: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
     });
 
     it("should return 404 when connector definition does not exist", async () => {

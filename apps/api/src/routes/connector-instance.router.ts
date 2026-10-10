@@ -12,6 +12,7 @@ import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import {
   connectorDefinitions,
@@ -736,10 +737,10 @@ connectorInstanceRouter.post(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
-            "Invalid connector instance payload"
+            "Invalid connector instance payload",
+            parsed.error
           )
         );
       }
@@ -971,11 +972,10 @@ connectorInstanceRouter.post(
         req.body ?? {}
       );
       if (!parsed.success) {
-        throw new ApiError(
-          400,
+        throw invalidPayload(
           ApiCode.REST_API_INVALID_CONFIG,
-          `Invalid probe-endpoint-draft body`,
-          { issues: parsed.error.issues }
+          "Invalid probe-endpoint-draft body",
+          parsed.error
         );
       }
 
@@ -1067,11 +1067,10 @@ connectorInstanceRouter.post(
         req.body ?? {}
       );
       if (!parsed.success) {
-        throw new ApiError(
-          400,
+        throw invalidPayload(
           ApiCode.REST_API_INVALID_CONFIG,
-          `Invalid preview-endpoint-page body`,
-          { issues: parsed.error.issues }
+          "Invalid preview-endpoint-page body",
+          parsed.error
         );
       }
 
@@ -1173,11 +1172,10 @@ connectorInstanceRouter.post(
         req.body ?? {}
       );
       if (!parsed.success) {
-        throw new ApiError(
-          400,
+        throw invalidPayload(
           ApiCode.REST_API_INVALID_CONFIG,
           "Invalid suggest-transform body",
-          { issues: parsed.error.issues }
+          parsed.error
         );
       }
       const { promptHint, sampleResponse } = parsed.data;
@@ -1583,10 +1581,10 @@ connectorInstanceRouter.patch(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
-            "Invalid connector instance payload"
+            "Invalid connector instance payload",
+            parsed.error
           )
         );
       }

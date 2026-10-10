@@ -230,6 +230,14 @@ describe("File uploads streaming router", () => {
       expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_TOO_LARGE);
     });
 
+    it("#745: a malformed body names the field", async () => {
+      const res = await presign([]);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid presign body: files: /);
+      expect(res.body.details.issues[0].path).toEqual(["files"]);
+    });
+
     it("rejects too many files per session", async () => {
       const files = Array.from({ length: 10 }, (_, i) => ({
         fileName: `file-${i}.csv`,
@@ -274,6 +282,17 @@ describe("File uploads streaming router", () => {
         .from(schema.fileUploads)
         .where(eq(schema.fileUploads.id, uploadId));
       expect(row.status).toBe("uploaded");
+    });
+
+    it("#745: a malformed body names the field", async () => {
+      const res = await request(app)
+        .post("/api/file-uploads/confirm")
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadId: "" });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid confirm body: uploadId: /);
+      expect(res.body.details.issues[0].path).toEqual(["uploadId"]);
     });
 
     it("returns 404 for an unknown uploadId", async () => {
@@ -327,6 +346,19 @@ describe("File uploads streaming router", () => {
   });
 
   describe("POST /api/file-uploads/parse", () => {
+    it("#745: a malformed body names the field", async () => {
+      const res = await request(app)
+        .post("/api/file-uploads/parse")
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadIds: [] });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid parse-session body: uploadIds: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["uploadIds"]);
+    });
+
     async function uploadAndConfirm(
       files: Array<{ fileName: string; bytes: Buffer; contentType?: string }>
     ): Promise<string[]> {
@@ -532,6 +564,26 @@ describe("File uploads streaming router", () => {
       } finally {
         environment.FILE_UPLOAD_INLINE_CELLS_MAX = originalMax;
       }
+    });
+
+    it("#745: a malformed query names the field", async () => {
+      const res = await request(app)
+        .get("/api/file-uploads/sheet-slice")
+        .query({
+          uploadSessionId: "session-x",
+          sheetId: "sheet-x",
+          rowStart: -1,
+          rowEnd: 3,
+          colStart: 0,
+          colEnd: 2,
+        })
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid sheet-slice query: rowStart: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["rowStart"]);
     });
 
     it("rejects slices exceeding the per-request cell cap", async () => {
