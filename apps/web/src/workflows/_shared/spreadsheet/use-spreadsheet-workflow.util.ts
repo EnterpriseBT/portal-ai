@@ -36,6 +36,7 @@ import type {
 import { ApiError } from "../../../utils/api.util";
 import type { ServerError } from "../../../utils/api.util";
 import { serializeLocator } from "../../FileUploadConnector/utils/layout-plan-mapping.util";
+import { useSingleFlight } from "../../../utils/use-single-flight.util";
 
 // ── Shared types ────────────────────────────────────────────────────
 
@@ -656,7 +657,7 @@ export function useSpreadsheetWorkflow(
     []
   );
 
-  const onInterpret = useCallback(async () => {
+  const runInterpret = useCallback(async () => {
     if (state.regions.length === 0) return;
     const token = ++runTokenRef.current;
     setState((prev) => ({
@@ -688,6 +689,8 @@ export function useSpreadsheetWorkflow(
       }));
     }
   }, [callbacks, state.regions]);
+  // #751: a double-click on Interpret joins the running interpret.
+  const onInterpret = useSingleFlight(runInterpret);
 
   const onSkipToReview = useCallback(() => {
     setState((prev) => {
@@ -696,7 +699,7 @@ export function useSpreadsheetWorkflow(
     });
   }, []);
 
-  const onCommit = useCallback(async () => {
+  const runCommit = useCallback(async () => {
     if (!state.plan) return;
     const plan = state.plan;
     const token = ++runTokenRef.current;
@@ -719,6 +722,8 @@ export function useSpreadsheetWorkflow(
       }));
     }
   }, [callbacks, state.plan]);
+  // #751: a double-click on Commit joins the running commit.
+  const onCommit = useSingleFlight(runCommit);
 
   const goBack = useCallback(() => {
     setState((prev) => {

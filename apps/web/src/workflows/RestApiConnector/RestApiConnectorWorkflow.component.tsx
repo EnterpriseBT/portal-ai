@@ -36,6 +36,7 @@ import { EndpointsStep } from "./EndpointsStep.component";
 import type { EndpointDraft } from "./ApiEndpointForm.component";
 import { ProbeReviewStep } from "./ProbeReviewStep.component";
 import { ReviewStep } from "./ReviewStep.component";
+import { useSingleFlight } from "../../utils/use-single-flight.util";
 import {
   EMPTY_CREDENTIALS_DRAFT,
   paginationDraftToConfig,
@@ -591,7 +592,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     return out;
   }, [endpoints, probeStateByKey]);
 
-  const onCommit = async () => {
+  const runCommit = async () => {
     setServerError(null);
     setIsCommitting(true);
     try {
@@ -710,6 +711,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       setIsCommitting(false);
     }
   };
+  // #751: a double-click on Commit joins the running commit, so the
+  // instance and its endpoint loop are created once.
+  const onCommit = useSingleFlight(runCommit);
 
   const handleAuthModeChange = (mode: AuthMode) => {
     setAuthMode(mode);
