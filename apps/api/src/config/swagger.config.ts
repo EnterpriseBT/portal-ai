@@ -754,6 +754,45 @@ const options: swaggerJsdoc.Options = {
               type: "string",
               description: "Error code",
             },
+            details: {
+              type: "object",
+              additionalProperties: true,
+              description:
+                "Optional structured detail. On a 400 *_INVALID_PAYLOAD / *_INVALID_QUERY (a request that failed its schema, #745) the message names the first failing field and `issues` holds every Zod issue. A backoff hint rides in `retryAfterSeconds`.",
+              properties: {
+                issues: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["code", "path", "message"],
+                    additionalProperties: true,
+                    properties: {
+                      code: {
+                        type: "string",
+                        example: "invalid_type",
+                      },
+                      path: {
+                        type: "array",
+                        items: {
+                          oneOf: [{ type: "string" }, { type: "number" }],
+                        },
+                        example: ["lastOpened"],
+                      },
+                      message: {
+                        type: "string",
+                        example:
+                          "Invalid input: expected number, received string",
+                      },
+                    },
+                  },
+                },
+                retryAfterSeconds: {
+                  type: "number",
+                  description:
+                    "Seconds to wait before retrying (also sent as Retry-After)",
+                },
+              },
+            },
           },
         },
         HealthResponse: {

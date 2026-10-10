@@ -258,6 +258,26 @@ describe("swagger spec — portal stream events (#279)", () => {
 // of which return `enabledToolpacks`. It used to declare a REQUIRED
 // `toolPacks` — the *request* body's field name — so a generated client
 // expected a field the API never sends.
+describe("swagger spec — ApiErrorResponse (#745)", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const error = (spec.components?.schemas ?? {})["ApiErrorResponse"] as {
+    required?: string[];
+    properties?: Record<
+      string,
+      { type?: string; properties?: Record<string, { type?: string }> }
+    >;
+  };
+
+  it("documents details.issues, every Zod issue of a schema failure", () => {
+    expect(error.properties?.details?.type).toBe("object");
+    expect(error.properties?.details?.properties?.issues?.type).toBe("array");
+  });
+
+  it("keeps details optional", () => {
+    expect(error.required ?? []).not.toContain("details");
+  });
+});
+
 describe("swagger spec — Station response schema", () => {
   const spec = swaggerSpec as OpenApiSchemaBag;
   const station = (spec.components?.schemas ?? {})["Station"] as {

@@ -21,10 +21,13 @@ export function describeFirstZodIssue(
 }
 
 /**
- * #742: the 400 for a body that fails its schema. It names the domain's
- * `*_INVALID_PAYLOAD` code, never a `*_NOT_FOUND` one (a bad body is not a
- * missing object; `invalid-request-code.guard.test.ts` enforces it). The first
- * issue is in the message, and all of them are in `details`.
+ * #742, #745: the 400 for a request body or query that fails its schema, and
+ * the only way a route answers one. It names the domain's `*_INVALID_PAYLOAD`
+ * (or `*_INVALID_QUERY`) code, never a `*_NOT_FOUND` one: a bad body is not a
+ * missing object. The first issue is in the message, and all of them are in
+ * `details.issues`. Label a body `"Invalid <thing> payload"` and a query
+ * `"Invalid <thing> query"`. `invalid-request-code.guard.test.ts` fails CI on
+ * a schema-failure 400 built by hand, or on a `*_NOT_FOUND` code here.
  */
 export function invalidPayload(
   code: ApiCode,
