@@ -18,6 +18,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { entityRecords, fieldMappings } from "../db/schema/index.js";
 import type { FieldMappingSelect } from "../db/schema/zod.js";
@@ -411,10 +412,10 @@ fieldMappingRouter.post(
       const parsed = FieldMappingCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.FIELD_MAPPING_INVALID_PAYLOAD,
-            "Invalid field mapping payload"
+            "Invalid field mapping payload",
+            parsed.error
           )
         );
       }
@@ -677,10 +678,10 @@ fieldMappingRouter.patch(
       const parsed = FieldMappingUpdateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.FIELD_MAPPING_INVALID_PAYLOAD,
-            "Invalid field mapping payload"
+            "Invalid field mapping payload",
+            parsed.error
           )
         );
       }

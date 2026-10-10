@@ -774,6 +774,58 @@ describe("Entity Group Member Router", () => {
 
   // ── #685: a member id must belong to the URL's group and the caller's org
 
+  // ── #745: schema failures name the field ───────────────────────────
+
+  describe("schema failures (#745)", () => {
+    it("#745: POST with a malformed body is ENTITY_GROUP_MEMBER_INVALID_PAYLOAD naming the field", async () => {
+      const { groupId } = await seedGroupWithInfra();
+      const res = await request(app)
+        .post(`/api/entity-groups/${groupId}/members`)
+        .set("Authorization", "Bearer test-token")
+        .send({ linkFieldMappingId: "x" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid entity group member payload: connectorEntityId: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["connectorEntityId"]);
+    });
+
+    it("#745: PATCH with a malformed body is ENTITY_GROUP_MEMBER_INVALID_PAYLOAD naming the field", async () => {
+      const { groupId } = await seedGroupWithInfra();
+      const res = await request(app)
+        .patch(`/api/entity-groups/${groupId}/members/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ isPrimary: "yes" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid entity group member payload: isPrimary: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["isPrimary"]);
+    });
+
+    it("#745: overlap without its query parameters is ENTITY_GROUP_MEMBER_INVALID_PAYLOAD naming the parameter", async () => {
+      const { groupId } = await seedGroupWithInfra();
+      const res = await request(app)
+        .get(
+          `/api/entity-groups/${groupId}/members/overlap?targetLinkFieldMappingId=x`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid entity group member query: targetConnectorEntityId: /
+      );
+      expect(res.body.details.issues[0].path).toEqual([
+        "targetConnectorEntityId",
+      ]);
+    });
+  });
+
   describe("cross-tenant / wrong-group member ids (#685)", () => {
     async function insertMember(
       organizationId: string,

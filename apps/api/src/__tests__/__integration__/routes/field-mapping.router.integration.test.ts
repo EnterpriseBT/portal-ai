@@ -540,6 +540,11 @@ describe("Field Mapping Router", () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid field mapping payload: connectorEntityId: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["connectorEntityId"]);
     });
 
     it("should return 404 when connector entity does not exist", async () => {
@@ -712,6 +717,22 @@ describe("Field Mapping Router", () => {
   // ── PATCH /api/field-mappings/:id ────────────────────────────────
 
   describe("PATCH /api/field-mappings/:id", () => {
+    it("#745: a malformed body names the field", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ sourceField: "" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid field mapping payload: sourceField: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["sourceField"]);
+    });
+
     it("should return 404 when field mapping does not exist", async () => {
       const { columnDefinitionId } = await seedFullChain(
         db as ReturnType<typeof drizzle>
@@ -1677,6 +1698,10 @@ describe("Field Mapping Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid field mapping payload: normalizedKey: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["normalizedKey"]);
     });
 
     it("should reject duplicate normalizedKey within the same connectorEntityId", async () => {

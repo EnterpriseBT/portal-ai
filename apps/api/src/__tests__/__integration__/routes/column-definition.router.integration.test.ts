@@ -553,6 +553,11 @@ describe("Column Definition Router", () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid column definition payload: key: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["key"]);
     });
 
     it("should return 400 for invalid key format", async () => {
@@ -569,6 +574,10 @@ describe("Column Definition Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid column definition payload: key: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["key"]);
     });
 
     it("should create a column definition successfully", async () => {
@@ -639,6 +648,22 @@ describe("Column Definition Router", () => {
   // ── PATCH /api/column-definitions/:id ────────────────────────────
 
   describe("PATCH /api/column-definitions/:id", () => {
+    it("#745: a malformed body names the field", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ type: "currency" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid column definition payload: type: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["type"]);
+    });
+
     it("should return 404 when column definition does not exist", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 

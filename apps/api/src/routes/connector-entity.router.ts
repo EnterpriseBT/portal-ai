@@ -29,6 +29,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
@@ -534,10 +535,10 @@ connectorEntityRouter.post(
       const parsed = ConnectorEntityCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD,
-            "Invalid connector entity payload"
+            "Invalid connector entity payload",
+            parsed.error
           )
         );
       }
@@ -737,10 +738,10 @@ connectorEntityRouter.patch(
       const parsed = ConnectorEntityPatchRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD,
-            "Invalid connector entity payload"
+            "Invalid connector entity payload",
+            parsed.error
           )
         );
       }

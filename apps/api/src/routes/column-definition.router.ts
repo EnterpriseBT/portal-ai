@@ -22,6 +22,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import {
   ALLOWED_TYPE_TRANSITIONS,
   BLOCKED_TYPES,
@@ -408,10 +409,10 @@ columnDefinitionRouter.post(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
-            "Invalid column definition payload"
+            "Invalid column definition payload",
+            parsed.error
           )
         );
       }
@@ -593,10 +594,10 @@ columnDefinitionRouter.patch(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
-            "Invalid column definition payload"
+            "Invalid column definition payload",
+            parsed.error
           )
         );
       }

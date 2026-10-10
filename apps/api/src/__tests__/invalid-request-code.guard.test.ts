@@ -51,14 +51,6 @@ const ALLOWED: Array<{ file: string; code: string }> = [
 const SCHEMA_FAILURE_ALLOWED: Array<{ file: string; code: string }> = [
   { file: "routes/api-endpoints.router.ts", code: "REST_API_INVALID_CONFIG" },
   {
-    file: "routes/column-definition.router.ts",
-    code: "COLUMN_DEFINITION_INVALID_PAYLOAD",
-  },
-  {
-    file: "routes/connector-entity.router.ts",
-    code: "CONNECTOR_ENTITY_INVALID_PAYLOAD",
-  },
-  {
     file: "routes/connector-instance-layout-plans.router.ts",
     code: "LAYOUT_PLAN_INVALID_PAYLOAD",
   },
@@ -69,44 +61,6 @@ const SCHEMA_FAILURE_ALLOWED: Array<{ file: string; code: string }> = [
   {
     file: "routes/connector-instance.router.ts",
     code: "REST_API_INVALID_CONFIG",
-  },
-  {
-    file: "routes/curated-view.router.ts",
-    code: "CURATED_VIEW_INVALID_PAYLOAD",
-  },
-  { file: "routes/curated-view.router.ts", code: "CURATED_VIEW_INVALID_QUERY" },
-  {
-    file: "routes/entity-group-member.router.ts",
-    code: "ENTITY_GROUP_MEMBER_CREATE_FAILED",
-  },
-  {
-    file: "routes/entity-group-member.router.ts",
-    code: "ENTITY_GROUP_MEMBER_FETCH_FAILED",
-  },
-  {
-    file: "routes/entity-group-member.router.ts",
-    code: "ENTITY_GROUP_MEMBER_UPDATE_FAILED",
-  },
-  {
-    file: "routes/entity-group.router.ts",
-    code: "ENTITY_GROUP_INVALID_PAYLOAD",
-  },
-  {
-    file: "routes/entity-record.router.ts",
-    code: "ENTITY_RECORD_INVALID_PAYLOAD",
-  },
-  {
-    file: "routes/entity-record.router.ts",
-    code: "ENTITY_RECORD_INVALID_QUERY",
-  },
-  {
-    file: "routes/entity-tag-assignment.router.ts",
-    code: "ENTITY_TAG_ASSIGNMENT_CREATE_FAILED",
-  },
-  { file: "routes/entity-tag.router.ts", code: "ENTITY_TAG_INVALID_PAYLOAD" },
-  {
-    file: "routes/field-mapping.router.ts",
-    code: "FIELD_MAPPING_INVALID_PAYLOAD",
   },
   {
     file: "routes/file-uploads.router.ts",
