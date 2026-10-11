@@ -279,6 +279,9 @@ describe("Billing router", () => {
       const res = await request(app).post("/api/billing/checkout").send({});
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.BILLING_INVALID_PAYLOAD);
+      // #745: names the field; every issue is in details.
+      expect(res.body.message).toMatch(/^Invalid checkout payload: tier: /);
+      expect(res.body.details.issues[0].path).toEqual(["tier"]);
     });
   });
 
@@ -339,6 +342,9 @@ describe("Billing router", () => {
         .send({ tier: 5 });
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.BILLING_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid billing portal payload: tier: /
+      );
     });
   });
 });

@@ -25,9 +25,12 @@ export type GoogleSheetsAuthorizeResponsePayload = z.infer<
 
 // ── POST /api/connectors/google-sheets/instances/:id/select-sheet ─────
 
-export const GoogleSheetsSelectSheetRequestBodySchema = z.object({
-  spreadsheetId: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const GoogleSheetsSelectSheetRequestBodySchema = z
+  .object({
+    spreadsheetId: z.string().min(1),
+  })
+  .strict();
 export type GoogleSheetsSelectSheetRequestBody = z.infer<
   typeof GoogleSheetsSelectSheetRequestBodySchema
 >;

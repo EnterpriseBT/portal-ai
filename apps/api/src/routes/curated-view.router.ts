@@ -35,6 +35,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 import {
@@ -507,10 +508,10 @@ curatedViewRouter.post(
       const parsed = CuratedViewCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
-            "Invalid curated view payload"
+            "Invalid curated view payload",
+            parsed.error
           )
         );
       }
@@ -641,10 +642,10 @@ curatedViewRouter.patch(
       const parsed = CuratedViewUpdateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
-            "Invalid curated view payload"
+            "Invalid curated view payload",
+            parsed.error
           )
         );
       }
@@ -927,10 +928,10 @@ curatedViewRouter.post(
       const parsed = CuratedViewAttachRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
-            "Invalid attach payload — expected { stationId }"
+            "Invalid curated view attach payload",
+            parsed.error
           )
         );
       }
@@ -1061,10 +1062,10 @@ curatedViewRouter.get(
       const query = CuratedViewRecordsRequestQuerySchema.safeParse(req.query);
       if (!query.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.CURATED_VIEW_INVALID_QUERY,
-            "Invalid query parameters"
+            "Invalid curated view records query",
+            query.error
           )
         );
       }

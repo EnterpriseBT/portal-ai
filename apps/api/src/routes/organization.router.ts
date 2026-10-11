@@ -1,7 +1,9 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
@@ -33,20 +35,23 @@ import {
 import type { MemberRolesSetResponse } from "@portalai/core/contracts";
 import { SeatService } from "../services/seat.service.js";
 import { GroupService } from "../services/group.service.js";
-import {
-  TOOL_USAGE_LEDGER_SORT_KEYS,
-  type ToolUsageLedgerSortBy,
-} from "../db/repositories/tool-usage-ledger.repository.js";
-import {
-  AUDIT_LOG_SORT_KEYS,
-  type AuditLogSortBy,
-} from "../db/repositories/audit-log.repository.js";
+import { TOOL_USAGE_LEDGER_SORT_KEYS } from "../db/repositories/tool-usage-ledger.repository.js";
+import { AUDIT_LOG_SORT_KEYS } from "../db/repositories/audit-log.repository.js";
 import { OrganizationDeleteService } from "../services/organization-delete.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 
 const logger = createLogger({ module: "organization" });
+
+// #745: `sortBy` is checked by the schema against the repository's allow-map,
+// so an unknown key fails like any other field (named, with details.issues).
+const UsageLedgerQuerySchema = UsageLedgerListRequestQuerySchema.extend({
+  sortBy: z.enum(TOOL_USAGE_LEDGER_SORT_KEYS).optional().default("created"),
+});
+const AuditLogQuerySchema = AuditLogListRequestQuerySchema.extend({
+  sortBy: z.enum(AUDIT_LOG_SORT_KEYS).optional().default("created"),
+});
 
 export const organizationRouter = Router();
 
@@ -323,10 +328,10 @@ organizationRouter.delete(
       const parsed = OrganizationDeleteRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "confirmationName is required"
+            "Invalid organization delete payload",
+            parsed.error
           )
         );
       }
@@ -468,10 +473,10 @@ organizationRouter.put(
       const parsed = MemberRolesSetRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "roleSlugs is required and must be a non-empty array of role slugs"
+            "Invalid member roles payload",
+            parsed.error
           )
         );
       }
@@ -554,10 +559,10 @@ organizationRouter.put(
       const parsed = MemberGroupsSetRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "groupIds is required and must be an array"
+            "Invalid member groups payload",
+            parsed.error
           )
         );
       }
@@ -608,10 +613,10 @@ organizationRouter.post(
       const parsed = InviteCreateRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "email (valid) and role (member|admin) are required"
+            "Invalid invitation payload",
+            parsed.error
           )
         );
       }
@@ -861,10 +866,10 @@ organizationRouter.post(
       const parsed = AcceptInvitationRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "token is required"
+            "Invalid invitation accept payload",
+            parsed.error
           )
         );
       }
@@ -1103,10 +1108,10 @@ organizationRouter.post(
       const parsed = OrganizationSwitchRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "organizationId is required"
+            "Invalid organization switch payload",
+            parsed.error
           )
         );
       }
@@ -1341,18 +1346,13 @@ organizationRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = UsageLedgerListRequestQuerySchema.safeParse(req.query);
-      if (
-        !parsed.success ||
-        !TOOL_USAGE_LEDGER_SORT_KEYS.includes(
-          parsed.data.sortBy as ToolUsageLedgerSortBy
-        )
-      ) {
+      const parsed = UsageLedgerQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.USAGE_LEDGER_INVALID_QUERY,
-            "Invalid usage-ledger query"
+            "Invalid usage-ledger query",
+            parsed.error
           )
         );
       }
@@ -1367,7 +1367,7 @@ organizationRouter.get(
             search: query.search,
             limit: query.limit,
             offset: query.offset,
-            sortBy: query.sortBy as ToolUsageLedgerSortBy,
+            sortBy: query.sortBy,
             sortOrder: query.sortOrder,
           }
         );
@@ -1483,16 +1483,13 @@ organizationRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = AuditLogListRequestQuerySchema.safeParse(req.query);
-      if (
-        !parsed.success ||
-        !AUDIT_LOG_SORT_KEYS.includes(parsed.data.sortBy as AuditLogSortBy)
-      ) {
+      const parsed = AuditLogQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.AUDIT_LOG_INVALID_QUERY,
-            "Invalid audit-log query"
+            "Invalid audit-log query",
+            parsed.error
           )
         );
       }
@@ -1515,7 +1512,7 @@ organizationRouter.get(
           outcome: query.outcome,
           limit: query.limit,
           offset: query.offset,
-          sortBy: query.sortBy as AuditLogSortBy,
+          sortBy: query.sortBy,
           sortOrder: query.sortOrder,
         }
       );

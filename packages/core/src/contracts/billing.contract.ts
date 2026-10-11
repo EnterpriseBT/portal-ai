@@ -45,7 +45,10 @@ export type BillingTiersGetResponse = z.infer<
 >;
 
 /** Request body for `POST /api/billing/checkout` — the tier slug to buy. */
-export const BillingCheckoutRequestSchema = z.object({ tier: z.string() });
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const BillingCheckoutRequestSchema = z
+  .object({ tier: z.string() })
+  .strict();
 export type BillingCheckoutRequest = z.infer<
   typeof BillingCheckoutRequestSchema
 >;
@@ -53,9 +56,12 @@ export type BillingCheckoutRequest = z.infer<
 /** Request body for `POST /api/billing/portal` (#260). No `tier` → Manage
  *  (portal home). A `tier` → open the subscription-update flow to that tier's
  *  price (in-app upgrade/downgrade). */
-export const BillingPortalRequestSchema = z.object({
-  tier: z.string().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const BillingPortalRequestSchema = z
+  .object({
+    tier: z.string().optional(),
+  })
+  .strict();
 export type BillingPortalRequest = z.infer<typeof BillingPortalRequestSchema>;
 
 /** Response payload for `POST /api/billing/checkout` — hosted session URL. */

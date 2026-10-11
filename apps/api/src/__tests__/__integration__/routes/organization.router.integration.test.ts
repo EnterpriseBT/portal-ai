@@ -394,6 +394,22 @@ describe("Organization Router", () => {
       expect(res.body.code).toBe(ApiCode.MEMBERSHIP_NOT_FOUND);
     });
 
+    it("#745: returns 400 naming organizationId for a malformed body", async () => {
+      const owner = createOwner();
+      await provisionTestOrg(owner);
+
+      const res = await request(app)
+        .post("/api/organization/switch")
+        .set("Authorization", "Bearer test-token")
+        .send({ organizationId: 42 });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid organization switch payload: organizationId: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["organizationId"]);
+    });
+
     it("returns 404 when the user does not exist", async () => {
       const res = await request(app)
         .post("/api/organization/switch")
@@ -516,6 +532,11 @@ describe("Organization Router", () => {
         .send({});
       expect(missing.status).toBe(400);
       expect(missing.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+      // #745: the first issue names the field; every issue is in details.
+      expect(missing.body.message).toMatch(
+        /^Invalid organization delete payload: confirmationName: /
+      );
+      expect(missing.body.details.issues.length).toBeGreaterThan(0);
 
       // Case-sensitive: a lowercased name is a mismatch.
       const mismatch = await request(app)

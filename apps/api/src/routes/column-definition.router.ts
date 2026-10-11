@@ -22,6 +22,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import {
   ALLOWED_TYPE_TRANSITIONS,
   BLOCKED_TYPES,
@@ -408,10 +409,10 @@ columnDefinitionRouter.post(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
-            "Invalid column definition payload"
+            "Invalid column definition payload",
+            parsed.error
           )
         );
       }
@@ -588,26 +589,29 @@ columnDefinitionRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const parsed = ColumnDefinitionUpdateRequestBodySchema.safeParse(
-        req.body
-      );
-      if (!parsed.success) {
-        return next(
-          new ApiError(
-            400,
-            ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
-            "Invalid column definition payload"
-          )
-        );
-      }
 
-      // Rule 2: reject key changes — key is immutable
-      if ("key" in req.body) {
+      // Rule 2: reject key changes — key is immutable. Checked before the
+      // schema, which is strict (#745) and would otherwise answer an unknown
+      // `key` with a generic 400 instead of this specific 422.
+      if (req.body && typeof req.body === "object" && "key" in req.body) {
         return next(
           new ApiError(
             422,
             ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE,
             "Column definition key cannot be changed after creation"
+          )
+        );
+      }
+
+      const parsed = ColumnDefinitionUpdateRequestBodySchema.safeParse(
+        req.body
+      );
+      if (!parsed.success) {
+        return next(
+          invalidPayload(
+            ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
+            "Invalid column definition payload",
+            parsed.error
           )
         );
       }

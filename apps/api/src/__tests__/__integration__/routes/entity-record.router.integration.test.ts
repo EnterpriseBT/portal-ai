@@ -470,6 +470,11 @@ describe("Entity Record Router — Sorting", () => {
           .set("Authorization", "Bearer test-token");
         expect(res.status).toBe(400);
         expect(res.body.code).toBe("ENTITY_RECORD_INVALID_QUERY");
+        // #745: the message names the parameter; details carry the issues.
+        expect(res.body.message).toMatch(
+          new RegExp(`^Invalid entity record query: ${param}: `)
+        );
+        expect(res.body.details.issues[0].path).toEqual([param]);
       }
     );
 
@@ -2133,6 +2138,11 @@ describe("Entity Record Router — POST /", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_PAYLOAD);
+    // #745: the message names the field; details carry the issues.
+    expect(res.body.message).toMatch(
+      /^Invalid entity record payload: normalizedData: /
+    );
+    expect(res.body.details.issues[0].path).toEqual(["normalizedData"]);
   });
 
   it("should return 400 for invalid body (normalizedData is not an object)", async () => {
@@ -2148,6 +2158,11 @@ describe("Entity Record Router — POST /", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_PAYLOAD);
+    // #745: the message names the field; details carry the issues.
+    expect(res.body.message).toMatch(
+      /^Invalid entity record payload: normalizedData: /
+    );
+    expect(res.body.details.issues[0].path).toEqual(["normalizedData"]);
   });
 
   it("should return 404 for non-existent connectorEntityId", async () => {
@@ -2466,6 +2481,65 @@ describe("Entity Record Router — Write Capability Deletes", () => {
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_NOT_FOUND);
+    });
+
+    it("#745: a malformed body names the field", async () => {
+      const { connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, generateId()))
+        .set("Authorization", "Bearer test-token")
+        .send({ data: "not-an-object" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid entity record payload: data: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["data"]);
+    });
+
+    it("#745: a body with neither data nor normalizedData stays a semantic 400", async () => {
+      const { connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, generateId()))
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        "At least one of data or normalizedData must be provided"
+      );
+      expect(res.body.details).toBeUndefined();
+    });
+  });
+
+  describe("POST /api/connector-entities/:id/records/import (#745)", () => {
+    it("#745: a malformed body names the field", async () => {
+      const { connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .post(`${recordsUrl(connectorEntityId)}/import`)
+        .set("Authorization", "Bearer test-token")
+        .send({ records: [] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid entity record import payload: records: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["records"]);
     });
   });
 

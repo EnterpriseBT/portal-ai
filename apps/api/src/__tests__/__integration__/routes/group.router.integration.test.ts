@@ -187,6 +187,35 @@ describe("/api/groups (#622 slice 5)", () => {
     ).toBe(true);
   });
 
+  it("#745: a malformed body is a 400 naming the field", async () => {
+    const { orgId } = await seedOrg();
+    await entitleOrg(orgId);
+
+    const create = await auth(request(app).post("/api/groups")).send({
+      name: "G",
+    });
+    expect(create.status).toBe(400);
+    expect(create.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    expect(create.body.message).toMatch(/^Invalid group payload: policyIds: /);
+    expect(create.body.details.issues[0].path).toEqual(["policyIds"]);
+
+    const members = await auth(
+      request(app).put(`/api/groups/${generateId()}/members`)
+    ).send({ userIds: "u1" });
+    expect(members.status).toBe(400);
+    expect(members.body.message).toMatch(
+      /^Invalid group members payload: userIds: /
+    );
+
+    const setGroups = await auth(
+      request(app).put(`/api/organization/members/${generateId()}/groups`)
+    ).send({ groupIds: "g1" });
+    expect(setGroups.status).toBe(400);
+    expect(setGroups.body.message).toMatch(
+      /^Invalid member groups payload: groupIds: /
+    );
+  });
+
   it("member-centric setGroups adds the user to the group", async () => {
     const { orgId } = await seedOrg();
     await entitleOrg(orgId);

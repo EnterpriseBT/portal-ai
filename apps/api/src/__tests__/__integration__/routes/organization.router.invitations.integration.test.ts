@@ -172,6 +172,24 @@ describe("Organization seats routes (#584)", () => {
         .send({ email: "not-an-email", role: "owner" })
     );
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    // #745: names the first failing field, and every issue is in details.
+    expect(res.body.message).toMatch(/^Invalid invitation payload: email: /);
+    expect(
+      res.body.details.issues.map((i: { path: string[] }) => i.path[0])
+    ).toEqual(["email", "role"]);
+  });
+
+  it("#745: accept with a malformed body → 400 naming token", async () => {
+    await seed("owner");
+    const res = await auth(
+      request(app).post("/api/organization/invitations/accept").send({})
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    expect(res.body.message).toMatch(
+      /^Invalid invitation accept payload: token: /
+    );
   });
 
   it("accept: POST /invitations/accept binds the caller to the invited org", async () => {

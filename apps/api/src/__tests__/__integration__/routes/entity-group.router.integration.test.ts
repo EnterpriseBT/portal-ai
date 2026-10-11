@@ -428,6 +428,20 @@ describe("Entity Group Router", () => {
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_DUPLICATE_NAME);
     });
+
+    it("#745: a malformed body names the field", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/entity-groups")
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid entity group payload: name: /);
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
+    });
   });
 
   // ── PATCH /api/entity-groups/:id ────────────────────────────────────
@@ -481,6 +495,27 @@ describe("Entity Group Router", () => {
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_DUPLICATE_NAME);
+    });
+
+    it("#745: a malformed body names the field", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const group = createEntityGroup(organizationId, { name: "bad-patch" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
+
+      const res = await request(app)
+        .patch(`/api/entity-groups/${group.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid entity group payload: name: /);
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
     });
   });
 
@@ -1025,6 +1060,28 @@ describe("Entity Group Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.results).toHaveLength(0);
+    });
+
+    it("#745: a missing linkValue names the parameter", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const group = createEntityGroup(organizationId, { name: "No value" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
+
+      const res = await request(app)
+        .get(`/api/entity-groups/${group.id}/resolve`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_INVALID_QUERY);
+      expect(res.body.message).toMatch(
+        /^Invalid entity group resolve query: linkValue: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["linkValue"]);
     });
   });
 });

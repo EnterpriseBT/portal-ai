@@ -109,16 +109,19 @@ export const CuratedViewKeySchema = z
       "Reserved key — must not be a _meta_* name, _record_id, _connector_entity_id, or source_id",
   });
 
-export const CuratedViewCreateRequestBodySchema = z.object({
-  connectorEntityId: z.string().min(1),
-  key: CuratedViewKeySchema,
-  label: z.string().min(1),
-  description: z.string().nullable().optional(),
-  /** A structured `FilterGroup` (filter.contract.ts); omit for no row filter. */
-  filter: FilterExpressionSchema.nullable().optional(),
-  /** The projection's field-mapping ids; omit/empty = unrestricted (all columns). */
-  fieldMappingIds: z.array(z.string()).optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const CuratedViewCreateRequestBodySchema = z
+  .object({
+    connectorEntityId: z.string().min(1),
+    key: CuratedViewKeySchema,
+    label: z.string().min(1),
+    description: z.string().nullable().optional(),
+    /** A structured `FilterGroup` (filter.contract.ts); omit for no row filter. */
+    filter: FilterExpressionSchema.nullable().optional(),
+    /** The projection's field-mapping ids; omit/empty = unrestricted (all columns). */
+    fieldMappingIds: z.array(z.string()).optional(),
+  })
+  .strict();
 
 export type CuratedViewCreateRequestBody = z.infer<
   typeof CuratedViewCreateRequestBodySchema
@@ -134,12 +137,15 @@ export type CuratedViewCreateResponsePayload = z.infer<
 
 // ── Update ────────────────────────────────────────────────────────────
 
-export const CuratedViewUpdateRequestBodySchema = z.object({
-  label: z.string().min(1).optional(),
-  description: z.string().nullable().optional(),
-  filter: FilterExpressionSchema.nullable().optional(),
-  fieldMappingIds: z.array(z.string()).optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const CuratedViewUpdateRequestBodySchema = z
+  .object({
+    label: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    filter: FilterExpressionSchema.nullable().optional(),
+    fieldMappingIds: z.array(z.string()).optional(),
+  })
+  .strict();
 
 export type CuratedViewUpdateRequestBody = z.infer<
   typeof CuratedViewUpdateRequestBodySchema
@@ -170,9 +176,12 @@ export type CuratedViewDeleteResponsePayload = z.infer<
 
 // ── Attach / detach (station_views) ───────────────────────────────────
 
-export const CuratedViewAttachRequestBodySchema = z.object({
-  stationId: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const CuratedViewAttachRequestBodySchema = z
+  .object({
+    stationId: z.string().min(1),
+  })
+  .strict();
 
 export type CuratedViewAttachRequestBody = z.infer<
   typeof CuratedViewAttachRequestBodySchema
