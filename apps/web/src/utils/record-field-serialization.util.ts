@@ -82,6 +82,35 @@ export function serializeRecordFields(
         break;
       }
 
+      case "geometry": {
+        // #757: the API stores a GeoJSON geometry object or null. Raw text
+        // (including "") is refused there, so parse it here.
+        const str = String(raw ?? "");
+        if (str === "") {
+          data[col.normalizedKey] = null;
+        } else {
+          try {
+            const parsed = JSON.parse(str);
+            if (
+              parsed === null ||
+              typeof parsed !== "object" ||
+              Array.isArray(parsed)
+            ) {
+              errors[col.normalizedKey] =
+                "Value must be a GeoJSON geometry object";
+              data[col.normalizedKey] = null;
+            } else {
+              data[col.normalizedKey] = parsed;
+            }
+          } catch (e) {
+            errors[col.normalizedKey] =
+              `Invalid GeoJSON: ${(e as Error).message}`;
+            data[col.normalizedKey] = null;
+          }
+        }
+        break;
+      }
+
       case "reference-array": {
         const str = String(raw ?? "");
         if (str === "") {
@@ -144,6 +173,7 @@ export function initializeRecordFields(
       switch (col.type) {
         case "json":
         case "array":
+        case "geometry":
           // Deserialize objects/arrays to pretty-printed JSON string
           values[col.normalizedKey] =
             val !== null && typeof val === "object"

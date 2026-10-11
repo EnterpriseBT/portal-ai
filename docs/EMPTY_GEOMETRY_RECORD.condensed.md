@@ -35,10 +35,12 @@
   - import with one bad row → 400, and nothing written;
   - PATCH `geometry: ""` → 400 (was 500), with the row unchanged.
   - Plus `src/__tests__/tools/entity-record-create.tool.test.ts` and `entity-record-update.tool.test.ts`.
+- Found while testing: the import route never set `validationErrors`/`isValid` on the record model, so every import (even a clean one) answered 500. Fixed in this slice, since the all-or-nothing test needs a working import.
 - Run: `cd apps/api && npm run test:unit`, then `AUTH_API_RATE_LIMIT_PER_MIN=1000000 npm run test:integration -- --testPathPattern entity-record`.
 
 **Slice 2 — dialog sends geometry it can write (fix(web)).**
 - Files: `utils/record-field-serialization.util.ts`, `components/DynamicRecordField.component.tsx`.
+- Valid JSON that isn't an object (`5`, `"x"`, `[…]`) is refused client-side too: `Value must be a GeoJSON geometry object`.
 - Tests: `src/__tests__/record-field-serialization.test.ts`:
   - `""` → `null`;
   - GeoJSON text → object;

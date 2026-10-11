@@ -21,6 +21,9 @@ export interface DynamicRecordFieldProps {
   disabled?: boolean;
 }
 
+const GEOMETRY_HELPER_TEXT =
+  'GeoJSON geometry, e.g. {"type":"Point","coordinates":[lng,lat]}';
+
 // ── Component ────────────────────────────────────────────────────────
 
 export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
@@ -45,16 +48,28 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
         setLocalError(undefined);
         return;
       }
+      const isGeometry = column.type === "geometry";
       try {
         const parsed = JSON.parse(raw);
         if (column.type === "array" && !Array.isArray(parsed)) {
           setLocalError("Value must be a JSON array");
           return;
         }
+        if (
+          isGeometry &&
+          (parsed === null ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed))
+        ) {
+          setLocalError("Value must be a GeoJSON geometry object");
+          return;
+        }
         setLocalError(undefined);
         onChange(column.normalizedKey, JSON.stringify(parsed, null, 2));
       } catch (e) {
-        setLocalError(`Invalid JSON: ${(e as Error).message}`);
+        setLocalError(
+          `${isGeometry ? "Invalid GeoJSON" : "Invalid JSON"}: ${(e as Error).message}`
+        );
       }
     },
     [column.normalizedKey, column.type, onChange, onBlur]
@@ -226,6 +241,29 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           required={column.required}
           error={showError}
           helperText={errorText}
+          sx={codeEditorSx}
+          slotProps={{
+            htmlInput: { "aria-invalid": showError },
+          }}
+        />
+      );
+
+    case "geometry":
+      return (
+        <TextField
+          label={column.label}
+          value={value ?? ""}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
+          onBlur={(e) => handleBlurCodeEditor(e.target.value)}
+          fullWidth
+          size="small"
+          multiline
+          minRows={4}
+          disabled={disabled}
+          inputRef={inputRef}
+          required={column.required}
+          error={showError}
+          helperText={errorText || GEOMETRY_HELPER_TEXT}
           sx={codeEditorSx}
           slotProps={{
             htmlInput: { "aria-invalid": showError },
