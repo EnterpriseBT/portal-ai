@@ -49,6 +49,7 @@ import { ObjectAccessService } from "../services/object-access.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
+import { NormalizationService } from "../services/normalization.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
@@ -706,7 +707,11 @@ entityRecordRouter.get(
  *               normalizedData:
  *                 type: object
  *                 additionalProperties: true
- *                 description: Record data mapped through field mappings
+ *                 description: >
+ *                   Record data keyed by normalizedKey. Stored as sent; the
+ *                   record's isValid and validationErrors are computed from
+ *                   the entity's field mappings (required, type, enum,
+ *                   pattern) (#760).
  *               sourceId:
  *                 type: string
  *                 description: Optional source identifier (auto-generated UUID if omitted)
@@ -807,6 +812,12 @@ entityRecordRouter.post(
       }
 
       const { userId, organizationId } = req.application!.metadata;
+      // #760: validity comes from the entity's mappings, as on every other
+      // write path. The values are stored as sent (validate only).
+      const validity = await NormalizationService.normalize(
+        connectorEntityId,
+        parsed.data.normalizedData
+      );
       const factory = new EntityRecordModelFactory();
       const idFactory = new UUIDv4Factory();
       const model = factory.create(userId);
@@ -819,8 +830,8 @@ entityRecordRouter.post(
         checksum: "manual",
         syncedAt: Date.now(),
         origin: "manual",
-        validationErrors: null,
-        isValid: true,
+        validationErrors: validity.validationErrors,
+        isValid: validity.isValid,
       });
 
       const record = await DbService.transaction(async (tx) => {
@@ -910,6 +921,9 @@ entityRecordRouter.post(
  *   post:
  *     tags: [Entity Records]
  *     summary: Bulk-import records onto a connector entity
+ *     description: >
+ *       Each row's normalizedData is stored as sent, with isValid and
+ *       validationErrors computed from the entity's field mappings (#760).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1005,7 +1019,13 @@ entityRecordRouter.post(
         ReturnType<EntityRecordModelFactory["create"]>["parse"]
       >[] = [];
 
-      for (const row of parsed.data.records) {
+      // #760: one mappings load for the whole import.
+      const validities = await NormalizationService.normalizeMany(
+        connectorEntityId,
+        parsed.data.records.map((r) => r.normalizedData)
+      );
+
+      for (const [i, row] of parsed.data.records.entries()) {
         const prev = existingMap.get(row.sourceId);
         if (prev && prev.checksum === row.checksum) {
           unchanged++;
@@ -1031,10 +1051,8 @@ entityRecordRouter.post(
           origin: "sync",
           updated: prev ? now : null,
           updatedBy: prev ? userId : null,
-          // #757: required by the model; without them parse() threw and
-          // every import answered 500.
-          validationErrors: null,
-          isValid: true,
+          validationErrors: validities[i].validationErrors,
+          isValid: validities[i].isValid,
         });
 
         toUpsert.push(model.parse());
@@ -1206,7 +1224,10 @@ entityRecordRouter.post(
  *     summary: Update a single entity record
  *     description: >
  *       Partially updates an entity record's data and/or normalizedData.
- *       Requires write capability on the connector instance.
+ *       The patch is merged into the record's stored data (so a later
+ *       revalidation keeps the edit), and isValid / validationErrors are
+ *       recomputed for the whole merged record (#760). Requires write
+ *       capability on the connector instance.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1343,11 +1364,27 @@ entityRecordRouter.patch(
 
       const { userId } = req.application!.metadata;
 
+      // #760: the patch merges into the stored `data`, which revalidation
+      // rebuilds the record from. Storing only the wide-table columns let
+      // Re-validate All restore the old values. Validity is computed on the
+      // whole merged record, not just the patched keys.
+      const merged = {
+        ...((found!.data ?? {}) as Record<string, unknown>),
+        ...parsed.data.data,
+        ...parsed.data.normalizedData,
+      };
+      const validity = await NormalizationService.normalize(
+        connectorEntityId,
+        merged
+      );
+
       const updated = await DbService.transaction(async (tx) => {
         await DbService.repository.entityRecords.update(
           recordId,
           {
-            ...(parsed.data.data && { data: parsed.data.data }),
+            data: merged,
+            isValid: validity.isValid,
+            validationErrors: validity.validationErrors,
             updatedBy: userId,
           },
           tx
@@ -1356,17 +1393,15 @@ entityRecordRouter.patch(
         // fingerprint — so the validity-filtered totals move too.
         await EntityRecordCountCache.invalidate(connectorEntityId);
         // Partial-merge into the wide table: only the keys present in
-        // the patch are written. Unknown keys (no field mapping) are
-        // silently dropped by `updatePartial`.
-        if (parsed.data.normalizedData) {
-          await DbService.repository.wideTable.updatePartial(
-            connectorEntityId,
-            recordId,
-            parsed.data.normalizedData,
-            {},
-            tx
-          );
-        }
+        // the patch are written, plus `is_valid`. Unknown keys (no field
+        // mapping) are silently dropped by `updatePartial`.
+        await DbService.repository.wideTable.updatePartial(
+          connectorEntityId,
+          recordId,
+          parsed.data.normalizedData ?? {},
+          { isValid: validity.isValid },
+          tx
+        );
         // Read back the hydrated record so the response carries
         // `normalizedData` rebuilt from the wide table.
         const hydrated =
