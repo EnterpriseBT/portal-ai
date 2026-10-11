@@ -216,16 +216,25 @@ describe("DynamicRecordField — JSON/Array code-editor", () => {
     expect(screen.getByPlaceholderText("[]")).toBeInTheDocument();
   });
 
-  it("pretty-prints valid JSON on blur", () => {
+  // #757: reformatting on blur resized the field under the submit button and
+  // swallowed the click that caused the blur.
+  it.each([
+    ["meta", "json" as const, '{"a":1}'],
+    ["geom", "geometry" as const, '{"type":"Point","coordinates":[1,2]}'],
+  ])("leaves valid %s text as typed on blur", (key, type, value) => {
     render(
       <DynamicRecordField
-        column={col("meta", "json")}
-        value='{"a":1}'
+        column={col(key, type)}
+        value={value}
         onChange={noop}
+        touched={true}
       />
     );
-    fireEvent.blur(screen.getByLabelText("Meta"));
-    expect(noop).toHaveBeenCalledWith("meta", '{\n  "a": 1\n}');
+    const field = screen.getByLabelText(key === "meta" ? "Meta" : "Geom");
+    fireEvent.blur(field);
+    expect(noop).not.toHaveBeenCalled();
+    expect(field).toHaveValue(value);
+    expect(field).not.toHaveAttribute("aria-invalid", "true");
   });
 
   it("shows parse error on blur for invalid JSON", () => {

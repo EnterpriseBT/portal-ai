@@ -69,15 +69,17 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           setLocalError(geometryProblem);
           return;
         }
+        // #757: validate only. Reformatting the text here grew the field
+        // between a press and release on the dialog's submit button, so the
+        // click that blurred the field was lost.
         setLocalError(undefined);
-        onChange(column.normalizedKey, JSON.stringify(parsed, null, 2));
       } catch (e) {
         setLocalError(
           `${isGeometry ? "Invalid GeoJSON" : "Invalid JSON"}: ${(e as Error).message}`
         );
       }
     },
-    [column.normalizedKey, column.type, onChange, onBlur]
+    [column.type, onBlur]
   );
 
   const codeEditorSx = {
