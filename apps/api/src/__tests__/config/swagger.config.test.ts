@@ -276,6 +276,13 @@ describe("swagger spec — ApiErrorResponse (#745)", () => {
     );
   });
 
+  it("documents details.rejected and rejectedCount of a refused geometry (#757)", () => {
+    expect(error.properties?.details?.properties?.rejected?.type).toBe("array");
+    expect(error.properties?.details?.properties?.rejectedCount?.type).toBe(
+      "number"
+    );
+  });
+
   it("keeps details optional", () => {
     expect(error.required ?? []).not.toContain("details");
   });

@@ -837,7 +837,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "entity_record_create",
       description:
-        "Creates one or more entity records with auto-normalized data. Accepts 1–100 items.",
+        "Creates one or more entity records with auto-normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -875,7 +875,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "entity_record_update",
       description:
-        "Updates one or more entity records' data and normalized data. Accepts 1–100 items.",
+        "Updates one or more entity records' data and normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written.",
       parameterSchema: objectSchema(
         {
           items: {

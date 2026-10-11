@@ -2945,3 +2945,246 @@ describe("Entity Record Router — Clear-all enqueue (#453)", () => {
     expect(second).toEqual({ deleted: 0 });
   });
 });
+
+// #757: a manual write whose geometry the wide-table audit refuses must not
+// commit an entity_records row with no er__ mirror (invisible to every read).
+describe("Entity Record Router — geometry writes (#757)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  const POINT = { type: "Point", coordinates: [-122.4, 37.8] };
+
+  async function seedGeometryEntity() {
+    const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+    const def = createConnectorDefinition({
+      capabilityFlags: { sync: true, read: true, write: true },
+    });
+    await db.insert(connectorDefinitions).values(def as never);
+    const inst = createConnectorInstance(def.id, organizationId, {
+      enabledCapabilityFlags: { write: true },
+    });
+    await db.insert(connectorInstances).values(inst as never);
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+    for (const [key, type] of [
+      ["name", "string"],
+      ["geom", "geometry"],
+    ] as const) {
+      const colDef = createColumnDef(organizationId, key, type);
+      await db.insert(columnDefinitions).values(colDef as never);
+      await db
+        .insert(fieldMappings)
+        .values(
+          createFieldMapping(organizationId, entity.id, colDef.id, key) as never
+        );
+    }
+    wideTableStatementCache.clear();
+    await wideTableReconcilerService.reconcileEntity(
+      entity.id,
+      db as unknown as DbClient
+    );
+    return { userId, organizationId, connectorEntityId: entity.id };
+  }
+
+  const recordsUrl = (id: string) => `/api/connector-entities/${id}/records`;
+
+  async function countRecords(connectorEntityId: string): Promise<number> {
+    const rows = await db
+      .select()
+      .from(entityRecords)
+      .where(eq(entityRecords.connectorEntityId, connectorEntityId));
+    return rows.length;
+  }
+
+  it("create with an empty-string geometry → 400 naming the field, nothing written", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Empty", geom: "" } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.GEOMETRY_INVALID_ON_IMPORT);
+    expect(res.body.message).toMatch(/geom/);
+    expect(await countRecords(connectorEntityId)).toBe(0);
+  });
+
+  it("create with a non-GeoJSON object → 400, nothing written", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Bad", geom: { foo: 1 } } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.GEOMETRY_INVALID_ON_IMPORT);
+    expect(await countRecords(connectorEntityId)).toBe(0);
+  });
+
+  it("create with a null geometry → 201 and visible in the list", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "NoGeom", geom: null } });
+    expect(res.status).toBe(201);
+
+    const list = await request(app)
+      .get(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+    expect(list.status).toBe(200);
+    expect(list.body.payload.records.map((r: { id: string }) => r.id)).toEqual([
+      res.body.payload.record.id,
+    ]);
+  });
+
+  it("create with a GeoJSON point → 201 and readable", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Pt", geom: POINT } });
+    expect(res.status).toBe(201);
+
+    const got = await request(app)
+      .get(`${recordsUrl(connectorEntityId)}/${res.body.payload.record.id}`)
+      .set("Authorization", "Bearer test-token");
+    expect(got.status).toBe(200);
+    expect(got.body.payload.record.normalizedData.geom).toMatchObject({
+      type: "Point",
+    });
+  });
+
+  it("import of clean rows → 201 and visible (the route used to 500 on every import)", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+
+    const res = await request(app)
+      .post(`${recordsUrl(connectorEntityId)}/import`)
+      .set("Authorization", "Bearer test-token")
+      .send({
+        records: [
+          {
+            sourceId: "good-1",
+            checksum: "c1",
+            data: { name: "Good" },
+            normalizedData: { name: "Good", geom: POINT },
+          },
+          {
+            sourceId: "good-2",
+            checksum: "c2",
+            data: { name: "NoGeom" },
+            normalizedData: { name: "NoGeom", geom: null },
+          },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.payload).toEqual({ created: 2, updated: 0, unchanged: 0 });
+    const list = await request(app)
+      .get(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+    expect(list.body.payload.records).toHaveLength(2);
+  });
+
+  it("import with one bad geometry → 400 naming its sourceId, neither row written", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+
+    const res = await request(app)
+      .post(`${recordsUrl(connectorEntityId)}/import`)
+      .set("Authorization", "Bearer test-token")
+      .send({
+        records: [
+          {
+            sourceId: "good-1",
+            checksum: "c1",
+            data: { name: "Good" },
+            normalizedData: { name: "Good", geom: POINT },
+          },
+          {
+            sourceId: "bad-1",
+            checksum: "c2",
+            data: { name: "Bad" },
+            normalizedData: { name: "Bad", geom: "nope" },
+          },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.GEOMETRY_INVALID_ON_IMPORT);
+    expect(res.body.message).toMatch(/bad-1/);
+    expect(res.body.details.rejectedCount).toBe(1);
+    expect(res.body.details.rejected).toEqual([
+      expect.objectContaining({ sourceId: "bad-1", fields: ["geom"] }),
+    ]);
+    expect(await countRecords(connectorEntityId)).toBe(0);
+  });
+
+  it("PATCH with an empty-string geometry → 400 (not 500), row unchanged", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+    const created = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Pt", geom: POINT } });
+    expect(created.status).toBe(201);
+    const id = created.body.payload.record.id;
+
+    const res = await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Renamed", geom: "" } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.GEOMETRY_INVALID_ON_IMPORT);
+    expect(res.body.message).toMatch(/geom/);
+
+    const got = await request(app)
+      .get(`${recordsUrl(connectorEntityId)}/${id}`)
+      .set("Authorization", "Bearer test-token");
+    expect(got.body.payload.record.normalizedData.name).toBe("Pt");
+    expect(got.body.payload.record.normalizedData.geom).toMatchObject({
+      type: "Point",
+    });
+  });
+
+  it("PATCH with a GeoJSON point and with null both succeed", async () => {
+    const { connectorEntityId } = await seedGeometryEntity();
+    const created = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "A", geom: null } });
+    const id = created.body.payload.record.id;
+
+    const set = await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { geom: POINT } });
+    expect(set.status).toBe(200);
+    expect(set.body.payload.record.normalizedData.geom).toMatchObject({
+      type: "Point",
+    });
+
+    const cleared = await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { geom: null } });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.payload.record.normalizedData.geom ?? null).toBeNull();
+  });
+});

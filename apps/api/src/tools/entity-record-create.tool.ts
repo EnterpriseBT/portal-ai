@@ -13,6 +13,7 @@ import {
 import { NormalizationService } from "../services/normalization.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
+import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
 import {
   projectToWideRow,
   buildMappingsForProjection,
@@ -45,7 +46,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
   slug = "entity_record_create";
   name = "Entity Record Create Tool";
   description =
-    "Creates one or more entity records with auto-normalized data. Accepts 1–100 items.";
+    "Creates one or more entity records with auto-normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written.";
 
   get schema() {
     return InputSchema;
@@ -187,7 +188,10 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
               const stmt = await wideTableStatementCache.get(entityId, tx);
               if (stmt.columns.length === 0) continue;
               const mappings = buildMappingsForProjection(stmt.columns);
-              await DbService.repository.wideTable.upsertMany(
+              // #757: a refused geometry fails the whole call and rolls back
+              // every insert, rather than leaving records with no
+              // wide-table row.
+              const mirrored = await DbService.repository.wideTable.upsertMany(
                 entityId,
                 rows.map((r) =>
                   projectToWideRow(
@@ -204,6 +208,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
                 ),
                 tx
               );
+              assertNoRejectedGeometry(mirrored, { batch: rows.length > 1 });
             }
             return inserted;
           });

@@ -758,7 +758,7 @@ const options: swaggerJsdoc.Options = {
               type: "object",
               additionalProperties: true,
               description:
-                "Optional structured detail. On a 400 *_INVALID_PAYLOAD / *_INVALID_QUERY (a request that failed its schema, #745) the message names the first failing field, `issues` holds the first 20 Zod issues (an unknown-keys list is cut to 20 names), and `issueCount` is the total. A backoff hint rides in `retryAfterSeconds`.",
+                "Optional structured detail. On a 400 *_INVALID_PAYLOAD / *_INVALID_QUERY (a request that failed its schema, #745) the message names the first failing field, `issues` holds the first 20 Zod issues (an unknown-keys list is cut to 20 names), and `issueCount` is the total. On a 400 GEOMETRY_INVALID_ON_IMPORT / GIS_SRID_UNSUPPORTED from a record write (#757), `rejected` lists the first 20 refused records and `rejectedCount` is the total. A backoff hint rides in `retryAfterSeconds`.",
               properties: {
                 issues: {
                   type: "array",
@@ -790,6 +790,35 @@ const options: swaggerJsdoc.Options = {
                   type: "number",
                   description:
                     "Total Zod issues of the schema failure; `issues` holds at most 20 of them.",
+                },
+                rejected: {
+                  type: "array",
+                  description:
+                    "Records whose geometry the write refused (#757); at most 20.",
+                  items: {
+                    type: "object",
+                    required: ["sourceId", "code", "fields"],
+                    properties: {
+                      sourceId: { type: "string", example: "row-17" },
+                      code: {
+                        type: "string",
+                        enum: [
+                          "GEOMETRY_INVALID_ON_IMPORT",
+                          "GIS_SRID_UNSUPPORTED",
+                        ],
+                      },
+                      fields: {
+                        type: "array",
+                        items: { type: "string" },
+                        example: ["geometry"],
+                      },
+                    },
+                  },
+                },
+                rejectedCount: {
+                  type: "number",
+                  description:
+                    "Total records refused; `rejected` holds at most 20 of them.",
                 },
                 retryAfterSeconds: {
                   type: "number",

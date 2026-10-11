@@ -28,6 +28,7 @@ import {
   type GeometryAuditRow,
 } from "../../services/geometry-audit.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
+import { assertNoRejectedGeometry } from "../../utils/wide-table-rejection.util.js";
 import { createLogger } from "../../utils/logger.util.js";
 
 const logger = createLogger({ module: "wide-table-repository" });
@@ -41,7 +42,20 @@ const logger = createLogger({ module: "wide-table-repository" });
  */
 export interface WideTableUpsertResult {
   repaired: number;
-  rejected: Array<{ sourceId: string; reason: string }>;
+  rejected: WideTableRejection[];
+}
+
+/**
+ * One row the geometry audit refused (#316). `code` is the refusal's
+ * `ApiCode`, also the prefix of `reason`; `fields` names the geometry
+ * columns' normalized keys that caused it, so a manual write can say which
+ * field to fix (#757).
+ */
+export interface WideTableRejection {
+  sourceId: string;
+  reason: string;
+  code: ApiCode.GEOMETRY_INVALID_ON_IMPORT | ApiCode.GIS_SRID_UNSUPPORTED;
+  fields: string[];
 }
 
 /**
@@ -67,6 +81,13 @@ export const WIDE_TABLE_CHUNK_SIZE = 500;
  */
 function geoSridSidecarKey(columnName: string): string {
   return `__geo_srid__${columnName}`;
+}
+
+/** Wide-table column name → the normalized key it stores (#757). */
+function normalizedKeyByColumn(
+  columns: ReadonlyArray<{ columnName: string; normalizedKey: string }>
+): Map<string, string> {
+  return new Map(columns.map((c) => [c.columnName, c.normalizedKey]));
 }
 
 export class WideTableRepository {
@@ -237,9 +258,14 @@ export class WideTableRepository {
       .filter((c) => c.pgType.startsWith("geometry"))
       .map((c) => c.columnName);
     let repaired = 0;
-    const rejected: Array<{ sourceId: string; reason: string }> = [];
+    const rejected: WideTableRejection[] = [];
     if (geometryColumns.length > 0) {
-      const prep = await this.auditGeometry(rows, geometryColumns, client);
+      const prep = await this.auditGeometry(
+        rows,
+        geometryColumns,
+        client,
+        normalizedKeyByColumn(stmt.columns)
+      );
       rows = prep.rows;
       repaired = prep.repaired;
       rejected.push(...prep.rejected);
@@ -393,11 +419,12 @@ export class WideTableRepository {
   private async auditGeometry(
     rows: ReadonlyArray<Record<string, unknown>>,
     geometryColumns: string[],
-    client: DbClient
+    client: DbClient,
+    keyByColumn: ReadonlyMap<string, string>
   ): Promise<{
     rows: Array<Record<string, unknown>>;
     repaired: number;
-    rejected: Array<{ sourceId: string; reason: string }>;
+    rejected: WideTableRejection[];
   }> {
     // Shallow-copy rows so normalized geometry values don't mutate the caller's
     // objects. Composite audit key `<rowIndex>:<column>` maps each candidate
@@ -405,10 +432,14 @@ export class WideTableRepository {
     const normalized = rows.map((r) => ({ ...r }));
     const auditRows: GeometryAuditRow[] = [];
     const keyToRowIndex = new Map<string, number>();
-    const unrecognizedRowIndexes = new Set<number>();
-    // Non-4326 SRIDs observed → the row indexes that carry each, so an
-    // unknown SRID can reject exactly those rows.
-    const rowIndexesBySrid = new Map<number, Set<number>>();
+    // Row index → the geometry columns that failed it, per refusal kind.
+    const invalidColsByRow = new Map<number, Set<string>>();
+    const sridColsByRow = new Map<number, Set<string>>();
+    const mark = (m: Map<number, Set<string>>, i: number, col: string) =>
+      m.set(i, (m.get(i) ?? new Set<string>()).add(col));
+    // Non-4326 SRIDs observed → the (row, column) pairs that carry each, so
+    // an unknown SRID can reject exactly those rows.
+    const cellsBySrid = new Map<number, Array<[number, string]>>();
 
     normalized.forEach((row, i) => {
       for (const col of geometryColumns) {
@@ -419,15 +450,15 @@ export class WideTableRepository {
         const srid = extractSourceSrid(v);
         const candidate = toGeoJsonCandidate(v);
         if (candidate === null) {
-          unrecognizedRowIndexes.add(i);
+          mark(invalidColsByRow, i, col);
           continue;
         }
         row[col] = candidate;
         row[geoSridSidecarKey(col)] = srid;
         if (srid !== 4326) {
-          const set = rowIndexesBySrid.get(srid) ?? new Set<number>();
-          set.add(i);
-          rowIndexesBySrid.set(srid, set);
+          const cells = cellsBySrid.get(srid) ?? [];
+          cells.push([i, col]);
+          cellsBySrid.set(srid, cells);
         }
         const key = `${i}:${col}`;
         auditRows.push({ sourceId: key, geoJson: candidate });
@@ -437,19 +468,18 @@ export class WideTableRepository {
 
     // Reject rows whose source SRID PostGIS can't reproject (absent from
     // spatial_ref_sys) — fail-closed, never write mislocated geometry.
-    const unknownSridRowIndexes = new Set<number>();
-    if (rowIndexesBySrid.size > 0) {
+    if (cellsBySrid.size > 0) {
       const sridList = sql.join(
-        [...rowIndexesBySrid.keys()].map((s) => sql`${s}`),
+        [...cellsBySrid.keys()].map((s) => sql`${s}`),
         sql`, `
       );
       const known = (await client.execute(
         sql`SELECT srid FROM spatial_ref_sys WHERE srid IN (${sridList})`
       )) as unknown as Array<{ srid: number }>;
       const knownSrids = new Set(known.map((r) => Number(r.srid)));
-      for (const [srid, indexes] of rowIndexesBySrid) {
+      for (const [srid, cells] of cellsBySrid) {
         if (!knownSrids.has(srid)) {
-          for (const i of indexes) unknownSridRowIndexes.add(i);
+          for (const [i, col] of cells) mark(sridColsByRow, i, col);
         }
       }
     }
@@ -464,27 +494,41 @@ export class WideTableRepository {
       const i = keyToRowIndex.get(key);
       if (i !== undefined) repairedRowIndexes.add(i);
     }
-    const rejectedRowIndexes = new Set<number>(unrecognizedRowIndexes);
     for (const r of audit.rejected) {
       const i = keyToRowIndex.get(r.sourceId);
-      if (i !== undefined) rejectedRowIndexes.add(i);
+      // The audit key is `<rowIndex>:<column>`.
+      if (i !== undefined) {
+        mark(
+          invalidColsByRow,
+          i,
+          r.sourceId.slice(r.sourceId.indexOf(":") + 1)
+        );
+      }
     }
 
+    const fieldsOf = (cols: Set<string>) =>
+      [...cols].map((c) => keyByColumn.get(c) ?? c);
     const outRows: Array<Record<string, unknown>> = [];
-    const rejected: Array<{ sourceId: string; reason: string }> = [];
+    const rejected: WideTableRejection[] = [];
     let repaired = 0;
     normalized.forEach((row, i) => {
       const sourceId = String(row["source_id"] ?? row["entity_record_id"] ?? i);
-      if (unknownSridRowIndexes.has(i)) {
+      const sridCols = sridColsByRow.get(i);
+      if (sridCols) {
         rejected.push({
           sourceId,
+          code: ApiCode.GIS_SRID_UNSUPPORTED,
+          fields: fieldsOf(sridCols),
           reason: `${ApiCode.GIS_SRID_UNSUPPORTED}: source SRID is not in spatial_ref_sys; the row was not written`,
         });
         return;
       }
-      if (rejectedRowIndexes.has(i)) {
+      const invalidCols = invalidColsByRow.get(i);
+      if (invalidCols) {
         rejected.push({
           sourceId,
+          code: ApiCode.GEOMETRY_INVALID_ON_IMPORT,
+          fields: fieldsOf(invalidCols),
           reason: `${ApiCode.GEOMETRY_INVALID_ON_IMPORT}: geometry was unparseable and the row was not written`,
         });
         return;
@@ -508,7 +552,9 @@ export class WideTableRepository {
    * normalizedData keys and don't go through the cache lookup.
    *
    * Silently no-ops if `normalizedDataPatch` is empty and
-   * `metadataPatch` is unset.
+   * `metadataPatch` is unset. Throws a 400 (`GEOMETRY_INVALID_ON_IMPORT` /
+   * `GIS_SRID_UNSUPPORTED`) and writes nothing when a geometry value fails
+   * the audit (#757).
    */
   async updatePartial(
     connectorEntityId: string,
@@ -520,27 +566,52 @@ export class WideTableRepository {
     const stmt = await this.statementCache.get(connectorEntityId, client);
     const setFragments: SQL[] = [];
 
-    for (const [normalizedKey, value] of Object.entries(normalizedDataPatch)) {
-      const refBuilder = stmt.columnRefByNormalizedKey.get(normalizedKey);
-      if (!refBuilder) continue; // unknown key — drop silently
-      // Strip the alias when used in SET (column name only, not "w"."col").
-      const cachedCol = stmt.columns.find(
-        (c) => c.normalizedKey === normalizedKey
+    const cols = Object.entries(normalizedDataPatch).flatMap(
+      ([normalizedKey, value]) => {
+        // Unknown key (no field mapping) — drop silently.
+        const col = stmt.columns.find((c) => c.normalizedKey === normalizedKey);
+        return col ? [{ col, value }] : [];
+      }
+    );
+
+    // #757: geometry gets the same fail-closed audit as `upsertMany` (#316),
+    // so a value PostGIS can't read is a 400 naming the field rather than a
+    // PG error, and an ArcGIS shape or non-4326 SRID is normalized the same
+    // way on both write paths. Nothing is written when the audit refuses.
+    const geometryCols = cols
+      .filter(
+        ({ col, value }) => col.pgType.startsWith("geometry") && value != null
+      )
+      .map(({ col }) => col.columnName);
+    let geometryRow: Record<string, unknown> = {};
+    if (geometryCols.length > 0) {
+      const raw: Record<string, unknown> = { source_id: entityRecordId };
+      for (const { col, value } of cols) raw[col.columnName] = value;
+      const prep = await this.auditGeometry(
+        [raw],
+        geometryCols,
+        client,
+        normalizedKeyByColumn(stmt.columns)
       );
-      if (!cachedCol) continue;
-      // Geometry columns can't take a bound JSON param directly — a GeoJSON
-      // value is converted via ST_GeomFromGeoJSON and stamped to WGS84 (4326),
-      // matching the import write path (#316). Non-geometry columns bind as-is.
-      if (cachedCol.pgType.startsWith("geometry") && value != null) {
+      assertNoRejectedGeometry(prep);
+      geometryRow = prep.rows[0];
+    }
+
+    for (const { col, value } of cols) {
+      // Strip the alias when used in SET (column name only, not "w"."col").
+      const name = sql.raw(`"${col.columnName}"`);
+      if (geometryCols.includes(col.columnName)) {
+        const json = JSON.stringify(geometryRow[col.columnName]);
+        const srid = Number(
+          geometryRow[geoSridSidecarKey(col.columnName)] ?? 4326
+        );
         setFragments.push(
-          sql`${sql.raw(`"${cachedCol.columnName}"`)} = ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
-            value
-          )}), 4326)`
+          srid === 4326
+            ? sql`${name} = ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${json}), 4326))`
+            : sql`${name} = ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(${json}), ${srid}), 4326))`
         );
       } else {
-        setFragments.push(
-          sql`${sql.raw(`"${cachedCol.columnName}"`)} = ${value as never}`
-        );
+        setFragments.push(sql`${name} = ${value as never}`);
       }
     }
     if (metadataPatch.syncedAt !== undefined) {
