@@ -114,6 +114,7 @@ describe("EntityRecordCreateTool", () => {
           sourceId: "s-1",
           code: "GEOMETRY_INVALID_ON_IMPORT",
           fields: ["geom"],
+          problems: [{ code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["geom"] }],
           reason: "GEOMETRY_INVALID_ON_IMPORT: geometry was unparseable",
         },
       ],
@@ -130,6 +131,48 @@ describe("EntityRecordCreateTool", () => {
     await expect(
       mockTransaction.mock.results[0].value as Promise<unknown>
     ).rejects.toThrow(/"geom"/);
+  });
+
+  it("#757: a multi-item refusal names the items, not their sourceIds", async () => {
+    mockNormalizeMany.mockResolvedValueOnce([
+      { normalizedData: { geom: null }, validationErrors: null, isValid: true },
+      { normalizedData: { geom: "" }, validationErrors: null, isValid: true },
+    ]);
+    mockCreateMany.mockImplementationOnce((...args: unknown[]) =>
+      Promise.resolve(
+        (args[0] as any[]).map((m) => ({
+          id: m.id,
+          connectorEntityId: m.connectorEntityId,
+          sourceId: m.sourceId,
+        }))
+      )
+    );
+    mockStatementGet.mockResolvedValueOnce({
+      columns: [{ columnName: "c_geom", normalizedKey: "geom" }],
+    });
+    mockWideTableUpsertMany.mockResolvedValueOnce({
+      repaired: 0,
+      rejected: [
+        {
+          sourceId: "src-b",
+          code: "GEOMETRY_INVALID_ON_IMPORT",
+          fields: ["geom"],
+          problems: [{ code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["geom"] }],
+          reason: "GEOMETRY_INVALID_ON_IMPORT: geometry was unparseable",
+        },
+      ],
+    });
+
+    const result: any = await exec({
+      items: [
+        { connectorEntityId: "ce-1", sourceId: "src-a", data: { geom: null } },
+        { connectorEntityId: "ce-1", sourceId: "src-b", data: { geom: "" } },
+      ],
+    });
+
+    expect(result.error).toMatch(
+      /^1 record carries a geometry that can't be written; nothing was written: items\[1\]\. Field "geom"/
+    );
   });
 
   it("#757: a clean mirror write succeeds", async () => {

@@ -1,5 +1,36 @@
 import type { ResolvedColumn } from "@portalai/core/contracts";
 
+const GEOJSON_GEOMETRY_TYPES = [
+  "Point",
+  "MultiPoint",
+  "LineString",
+  "MultiLineString",
+  "Polygon",
+  "MultiPolygon",
+  "GeometryCollection",
+];
+
+/**
+ * Why a parsed value isn't a GeoJSON geometry, or null when it is (#757).
+ * Mirrors the shape the API's geometry audit accepts, so the field error
+ * shows before the request rather than as a 400 after it. PostGIS still has
+ * the last word on the coordinates themselves.
+ */
+export function geoJsonGeometryError(value: unknown): string | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return "Value must be a GeoJSON geometry object";
+  }
+  const { type } = value as { type?: unknown };
+  if (typeof type !== "string" || !GEOJSON_GEOMETRY_TYPES.includes(type)) {
+    return `GeoJSON "type" must be one of ${GEOJSON_GEOMETRY_TYPES.join(", ")}`;
+  }
+  const member = type === "GeometryCollection" ? "geometries" : "coordinates";
+  if (!Array.isArray((value as Record<string, unknown>)[member])) {
+    return `A GeoJSON ${type} needs a "${member}" array`;
+  }
+  return null;
+}
+
 /**
  * Serialize form values into normalizedData for API submission.
  * Returns { data, errors } — errors is non-empty if fields are invalid.
@@ -84,29 +115,18 @@ export function serializeRecordFields(
 
       case "geometry": {
         // #757: the API stores a GeoJSON geometry object or null. Raw text
-        // (including "") is refused there, so parse it here.
+        // (including "") is refused there, so parse and check it here.
         const str = String(raw ?? "");
-        if (str === "") {
-          data[col.normalizedKey] = null;
-        } else {
-          try {
-            const parsed = JSON.parse(str);
-            if (
-              parsed === null ||
-              typeof parsed !== "object" ||
-              Array.isArray(parsed)
-            ) {
-              errors[col.normalizedKey] =
-                "Value must be a GeoJSON geometry object";
-              data[col.normalizedKey] = null;
-            } else {
-              data[col.normalizedKey] = parsed;
-            }
-          } catch (e) {
-            errors[col.normalizedKey] =
-              `Invalid GeoJSON: ${(e as Error).message}`;
-            data[col.normalizedKey] = null;
-          }
+        data[col.normalizedKey] = null;
+        if (str === "") break;
+        try {
+          const parsed = JSON.parse(str);
+          const problem = geoJsonGeometryError(parsed);
+          if (problem) errors[col.normalizedKey] = problem;
+          else data[col.normalizedKey] = parsed;
+        } catch (e) {
+          errors[col.normalizedKey] =
+            `Invalid GeoJSON: ${(e as Error).message}`;
         }
         break;
       }

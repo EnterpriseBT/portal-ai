@@ -21,12 +21,29 @@ const clip = (s: string): string =>
 const quoteFields = (fields: string[]): string =>
   fields.map((f) => `"${f}"`).join(", ");
 
-const DETAIL: Record<WideTableRejection["code"], string> = {
-  [ApiCode.GEOMETRY_INVALID_ON_IMPORT]:
-    "is not a geometry that can be stored (expected a GeoJSON geometry object or null)",
-  [ApiCode.GIS_SRID_UNSUPPORTED]:
-    "uses a coordinate system (SRID) that isn't supported",
+const DETAIL: Record<
+  WideTableRejection["code"],
+  { one: string; many: string }
+> = {
+  [ApiCode.GEOMETRY_INVALID_ON_IMPORT]: {
+    one: "is not a geometry that can be stored (expected a GeoJSON geometry object or null)",
+    many: "are not geometries that can be stored (expected a GeoJSON geometry object or null)",
+  },
+  [ApiCode.GIS_SRID_UNSUPPORTED]: {
+    one: "uses a coordinate system (SRID) that isn't supported",
+    many: "use a coordinate system (SRID) that isn't supported",
+  },
 };
+
+/** Every problem on one row, so a fix-and-resubmit doesn't uncover another. */
+const describeProblems = (rejection: WideTableRejection): string =>
+  rejection.problems
+    .map(({ code, fields }, i) => {
+      const many = fields.length > 1;
+      const label = `${i === 0 ? "F" : "f"}ield${many ? "s" : ""}`;
+      return `${label} ${quoteFields(fields)} ${many ? DETAIL[code].many : DETAIL[code].one}`;
+    })
+    .join("; ");
 
 /**
  * #757: a manual write never commits a record whose wide-table row the
@@ -39,7 +56,11 @@ const DETAIL: Record<WideTableRejection["code"], string> = {
  */
 export function assertNoRejectedGeometry(
   result: Pick<WideTableUpsertResult, "rejected">,
-  opts: { batch?: boolean } = {}
+  opts: {
+    batch?: boolean;
+    /** Names a refused row in a batch message (default: its quoted sourceId). */
+    describe?: (sourceId: string) => string;
+  } = {}
 ): void {
   const { rejected } = result;
   if (rejected.length === 0) return;
@@ -53,15 +74,18 @@ export function assertNoRejectedGeometry(
 
   let message: string;
   if (opts.batch) {
-    const listed = echoed.map((r) => `"${r.sourceId}"`).join(", ");
+    const name = opts.describe ?? ((id: string) => `"${clip(id)}"`);
+    const listed = rejected
+      .slice(0, MAX_ECHOED_REJECTIONS)
+      .map((r) => name(r.sourceId))
+      .join(", ");
     const more = rejected.length - echoed.length;
     message =
       `${rejected.length} record${rejected.length > 1 ? "s carry" : " carries"} a geometry that can't be written; ` +
       `nothing was written: ${listed}${more > 0 ? ` and ${more} more` : ""}. ` +
-      `Field ${quoteFields(first.fields)} ${DETAIL[first.code]}`;
+      describeProblems(first);
   } else {
-    const fields = first.fields;
-    message = `Field${fields.length > 1 ? "s" : ""} ${quoteFields(fields)} ${DETAIL[first.code]}`;
+    message = describeProblems(first);
   }
 
   throw new ApiError(400, first.code, message, {

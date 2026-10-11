@@ -144,6 +144,33 @@ describe("serializeRecordFields", () => {
     }
   });
 
+  it("returns error for a geometry object without a GeoJSON type", () => {
+    const { data, errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: '{"lat":1,"lng":2}',
+    });
+    expect(errors.geom).toMatch(/^GeoJSON "type" must be one of Point,/);
+    expect(data.geom).toBeNull();
+  });
+
+  it("returns error for a GeoJSON geometry missing its coordinates", () => {
+    const { errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: '{"type":"Point"}',
+    });
+    expect(errors.geom).toBe('A GeoJSON Point needs a "coordinates" array');
+  });
+
+  it("accepts a GeometryCollection with geometries", () => {
+    const geom = {
+      type: "GeometryCollection",
+      geometries: [{ type: "Point", coordinates: [1, 2] }],
+    };
+    const { data, errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: JSON.stringify(geom),
+    });
+    expect(errors).toEqual({});
+    expect(data.geom).toEqual(geom);
+  });
+
   it("serializes array field", () => {
     const { data, errors } = serializeRecordFields([col("tags", "array")], {
       tags: '["a","b"]',

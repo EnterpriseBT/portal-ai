@@ -3,6 +3,8 @@ import React, { useState, useCallback } from "react";
 import { TextField, Checkbox, FormControlLabel, MenuItem } from "@mui/material";
 import type { ResolvedColumn } from "@portalai/core/contracts";
 
+import { geoJsonGeometryError } from "../utils/record-field-serialization.util";
+
 // ── Props ────────────────────────────────────────────────────────────
 
 export interface DynamicRecordFieldProps {
@@ -20,6 +22,11 @@ export interface DynamicRecordFieldProps {
   /** Disable the field (e.g., during submission). */
   disabled?: boolean;
 }
+
+const CODE_EDITOR_PLACEHOLDER: Partial<Record<string, string>> = {
+  json: "{}",
+  array: "[]",
+};
 
 const GEOMETRY_HELPER_TEXT =
   'GeoJSON geometry, e.g. {"type":"Point","coordinates":[lng,lat]}';
@@ -55,13 +62,11 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           setLocalError("Value must be a JSON array");
           return;
         }
-        if (
-          isGeometry &&
-          (parsed === null ||
-            typeof parsed !== "object" ||
-            Array.isArray(parsed))
-        ) {
-          setLocalError("Value must be a GeoJSON geometry object");
+        const geometryProblem = isGeometry
+          ? geoJsonGeometryError(parsed)
+          : null;
+        if (geometryProblem) {
+          setLocalError(geometryProblem);
           return;
         }
         setLocalError(undefined);
@@ -225,29 +230,6 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
 
     case "json":
     case "array":
-      return (
-        <TextField
-          label={column.label}
-          value={value ?? ""}
-          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-          onBlur={(e) => handleBlurCodeEditor(e.target.value)}
-          fullWidth
-          size="small"
-          multiline
-          minRows={4}
-          placeholder={column.type === "json" ? "{}" : "[]"}
-          disabled={disabled}
-          inputRef={inputRef}
-          required={column.required}
-          error={showError}
-          helperText={errorText}
-          sx={codeEditorSx}
-          slotProps={{
-            htmlInput: { "aria-invalid": showError },
-          }}
-        />
-      );
-
     case "geometry":
       return (
         <TextField
@@ -259,11 +241,15 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           size="small"
           multiline
           minRows={4}
+          placeholder={CODE_EDITOR_PLACEHOLDER[column.type]}
           disabled={disabled}
           inputRef={inputRef}
           required={column.required}
           error={showError}
-          helperText={errorText || GEOMETRY_HELPER_TEXT}
+          helperText={
+            errorText ||
+            (column.type === "geometry" ? GEOMETRY_HELPER_TEXT : undefined)
+          }
           sx={codeEditorSx}
           slotProps={{
             htmlInput: { "aria-invalid": showError },

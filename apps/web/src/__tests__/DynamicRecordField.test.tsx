@@ -269,6 +269,22 @@ describe("DynamicRecordField — JSON/Array code-editor", () => {
     ).toBeInTheDocument();
   });
 
+  it("rejects an object without a GeoJSON type on blur", () => {
+    render(
+      <DynamicRecordField
+        column={col("geom", "geometry")}
+        value='{"lat":1,"lng":2}'
+        onChange={noop}
+        touched={true}
+      />
+    );
+    fireEvent.blur(screen.getByLabelText("Geom"));
+    expect(
+      screen.getByText(/^GeoJSON "type" must be one of/)
+    ).toBeInTheDocument();
+    expect(noop).not.toHaveBeenCalled();
+  });
+
   it("clears error when corrected and blurred", () => {
     const { rerender } = render(
       <DynamicRecordField

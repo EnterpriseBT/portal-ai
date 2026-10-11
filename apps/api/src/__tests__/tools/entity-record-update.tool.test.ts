@@ -39,8 +39,8 @@ const mockStatementGet = jest
   .mockResolvedValue({ columns: [] });
 
 const mockWideTableUpdatePartial = jest
-  .fn<(...a: unknown[]) => Promise<void>>()
-  .mockResolvedValue(undefined);
+  .fn<(...a: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -122,6 +122,40 @@ describe("EntityRecordUpdateTool", () => {
     await expect(
       mockTransaction.mock.results[0].value as Promise<unknown>
     ).rejects.toThrow(/"geom"/);
+  });
+
+  it("#757: in a multi-item call the refusal names the item", async () => {
+    mockNormalizeMany.mockResolvedValueOnce([
+      { normalizedData: { geom: null }, validationErrors: null, isValid: true },
+      { normalizedData: { geom: "" }, validationErrors: null, isValid: true },
+    ]);
+    mockStatementGet.mockResolvedValueOnce({
+      columns: [{ columnName: "c_geom", normalizedKey: "geom" }],
+    });
+    mockWideTableUpdatePartial
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(
+        new ApiError(
+          400,
+          ApiCode.GEOMETRY_INVALID_ON_IMPORT,
+          'Field "geom" is not a geometry that can be stored'
+        )
+      );
+
+    const result: any = await exec({
+      items: [
+        { connectorEntityId: "ce-1", entityRecordId: "rec-1", data: {} },
+        {
+          connectorEntityId: "ce-1",
+          entityRecordId: "rec-2",
+          data: { geom: "" },
+        },
+      ],
+    });
+
+    expect(result.error).toBe(
+      'items[1] (record rec-2): Field "geom" is not a geometry that can be stored; nothing was written'
+    );
   });
 
   it("single-item regression — { items: [single] } behaves as before", async () => {

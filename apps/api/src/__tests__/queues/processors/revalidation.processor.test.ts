@@ -14,8 +14,8 @@ const mockEntityRecordsUpdate =
 const mockNormalizeWithMappings = jest.fn<(...args: unknown[]) => unknown>();
 
 const mockWideTableUpdatePartial = jest
-  .fn<(...a: unknown[]) => Promise<void>>()
-  .mockResolvedValue(undefined);
+  .fn<(...a: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
 const mockDbTransaction = jest
   .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
   .mockImplementation((fn) => fn("mock-tx"));
@@ -170,6 +170,35 @@ describe("revalidationProcessor", () => {
       },
       "mock-tx"
     );
+  });
+
+  // #757: updatePartial throws on a refused geometry by default; a geometry
+  // the sync already refused must not fail every later revalidation.
+  it("skips a refused geometry instead of failing the job", async () => {
+    mockFieldMappingsFindMany.mockResolvedValue([]);
+    mockEntityRecordsFindByConnectorEntityId.mockResolvedValue([
+      record("r-1", { geom: "" }),
+    ]);
+    mockNormalizeWithMappings.mockReturnValue({
+      normalizedData: { geom: "" },
+      validationErrors: null,
+      isValid: true,
+    });
+    mockWideTableUpdatePartial.mockResolvedValueOnce([
+      { sourceId: "r-1", code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["geom"] },
+    ]);
+
+    const result = await revalidationProcessor(createMockBullJob());
+
+    expect(mockWideTableUpdatePartial).toHaveBeenCalledWith(
+      "ce-1",
+      "r-1",
+      { geom: "" },
+      { isValid: true },
+      "mock-tx",
+      { onRejectedGeometry: "skip" }
+    );
+    expect(result).toEqual(expect.objectContaining({ total: 1, valid: 1 }));
   });
 
   it("reports progress at expected intervals", async () => {

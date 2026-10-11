@@ -11,6 +11,7 @@ import {
 import { NormalizationService } from "../services/normalization.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
+import { ApiError } from "../services/http.service.js";
 
 const ItemSchema = z.object({
   connectorEntityId: z
@@ -187,13 +188,26 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
                 const idx = idToItemIndex.get(item.entityRecordId);
                 if (idx === undefined) continue;
                 const norm = normResults[idx];
-                await DbService.repository.wideTable.updatePartial(
-                  connectorEntityId,
-                  item.entityRecordId,
-                  norm.normalizedData,
-                  { isValid: norm.isValid },
-                  tx
-                );
+                try {
+                  await DbService.repository.wideTable.updatePartial(
+                    connectorEntityId,
+                    item.entityRecordId,
+                    norm.normalizedData,
+                    { isValid: norm.isValid },
+                    tx
+                  );
+                } catch (err) {
+                  // #757: in a multi-item call, say which item to fix.
+                  if (err instanceof ApiError && items.length > 1) {
+                    throw new ApiError(
+                      err.status ?? 400,
+                      err.code,
+                      `items[${idx}] (record ${item.entityRecordId}): ${err.message}; nothing was written`,
+                      err.details
+                    );
+                  }
+                  throw err;
+                }
               }
             }
             return rowsUpdated;

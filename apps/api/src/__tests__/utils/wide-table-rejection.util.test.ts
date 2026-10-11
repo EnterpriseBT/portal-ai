@@ -16,6 +16,7 @@ const rejection = (
   sourceId,
   code: ApiCode.GEOMETRY_INVALID_ON_IMPORT,
   fields: ["geom"],
+  problems: [{ code: ApiCode.GEOMETRY_INVALID_ON_IMPORT, fields: ["geom"] }],
   reason: "GEOMETRY_INVALID_ON_IMPORT: geometry was unparseable",
   ...over,
 });
@@ -59,7 +60,14 @@ describe("assertNoRejectedGeometry (#757)", () => {
   it("an unsupported SRID keeps its own code", () => {
     const err = thrown(() =>
       assertNoRejectedGeometry({
-        rejected: [rejection("r-1", { code: ApiCode.GIS_SRID_UNSUPPORTED })],
+        rejected: [
+          rejection("r-1", {
+            code: ApiCode.GIS_SRID_UNSUPPORTED,
+            problems: [
+              { code: ApiCode.GIS_SRID_UNSUPPORTED, fields: ["geom"] },
+            ],
+          }),
+        ],
       })
     );
     expect(err.code).toBe(ApiCode.GIS_SRID_UNSUPPORTED);
@@ -91,5 +99,60 @@ describe("assertNoRejectedGeometry (#757)", () => {
     expect(err.message.length).toBeLessThan(400);
     const echoed = (err.details!.rejected as Array<{ sourceId: string }>)[0];
     expect(echoed.sourceId).toBe(`${"x".repeat(MAX_ECHOED_SOURCE_ID_LENGTH)}…`);
+  });
+
+  it("names several fields in the plural", () => {
+    const err = thrown(() =>
+      assertNoRejectedGeometry({
+        rejected: [
+          rejection("r-1", {
+            fields: ["a", "b"],
+            problems: [
+              { code: ApiCode.GEOMETRY_INVALID_ON_IMPORT, fields: ["a", "b"] },
+            ],
+          }),
+        ],
+      })
+    );
+    expect(err.message).toBe(
+      'Fields "a", "b" are not geometries that can be stored (expected a GeoJSON geometry object or null)'
+    );
+  });
+
+  it("names every problem on the row, SRID first", () => {
+    const err = thrown(() =>
+      assertNoRejectedGeometry({
+        rejected: [
+          rejection("r-1", {
+            code: ApiCode.GIS_SRID_UNSUPPORTED,
+            fields: ["a", "b"],
+            problems: [
+              { code: ApiCode.GIS_SRID_UNSUPPORTED, fields: ["a"] },
+              { code: ApiCode.GEOMETRY_INVALID_ON_IMPORT, fields: ["b"] },
+            ],
+          }),
+        ],
+      })
+    );
+    expect(err.code).toBe(ApiCode.GIS_SRID_UNSUPPORTED);
+    expect(err.message).toBe(
+      'Field "a" uses a coordinate system (SRID) that isn\'t supported; field "b" is not a geometry that can be stored (expected a GeoJSON geometry object or null)'
+    );
+  });
+
+  it("a batch can name rows by the caller's own label", () => {
+    const err = thrown(() =>
+      assertNoRejectedGeometry(
+        { rejected: [rejection("uuid-1"), rejection("uuid-2")] },
+        {
+          batch: true,
+          describe: (id) => (id === "uuid-1" ? "items[0]" : "items[3]"),
+        }
+      )
+    );
+    expect(err.message).toMatch(
+      /nothing was written: items\[0\], items\[3\]\./
+    );
+    expect(err.message).not.toMatch(/uuid/);
   });
 });

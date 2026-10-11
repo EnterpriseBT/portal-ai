@@ -56,6 +56,23 @@ export interface WideTableRejection {
   reason: string;
   code: ApiCode.GEOMETRY_INVALID_ON_IMPORT | ApiCode.GIS_SRID_UNSUPPORTED;
   fields: string[];
+  /** Every refusal on the row, SRID first; `code`/`fields` summarize them. */
+  problems: Array<{ code: WideTableRejection["code"]; fields: string[] }>;
+}
+
+/**
+ * The one geometry write expression, shared by `upsertMany` and
+ * `updatePartial` so the two paths store the same geometry (#757). `row` is
+ * an audited row: `row[col]` is shape-normalized GeoJSON and the sidecar
+ * holds its source SRID. Stamp that SRID, reproject to 4326 when it differs
+ * (e.g. an ArcGIS 102100→3857 web-mercator source), then repair.
+ */
+function geometryWriteExpr(row: Record<string, unknown>, col: string): SQL {
+  const srid = Number(row[geoSridSidecarKey(col)] ?? 4326);
+  const json = JSON.stringify(row[col]);
+  return srid === 4326
+    ? sql`ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${json}), 4326))`
+    : sql`ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(${json}), ${srid}), 4326))`;
 }
 
 /**
@@ -370,13 +387,7 @@ export class WideTableRepository {
             if (value === null || value === undefined) {
               return sql`NULL`;
             }
-            const srid = Number(row[geoSridSidecarKey(col)] ?? 4326);
-            const json = JSON.stringify(value);
-            // Stamp the source SRID, reproject to 4326 when it differs (e.g. an
-            // ArcGIS 102100→3857 web-mercator source), then repair.
-            return srid === 4326
-              ? sql`ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${json}), 4326))`
-              : sql`ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(${json}), ${srid}), 4326))`;
+            return geometryWriteExpr(row, col);
           }
           // Default path covers `text`, `numeric`, `boolean`, `date`,
           // and `timestamptz`. Pre-coerce Date instances to their ISO
@@ -506,30 +517,43 @@ export class WideTableRepository {
       }
     }
 
-    const fieldsOf = (cols: Set<string>) =>
+    const fieldsOf = (cols: Iterable<string>) =>
       [...cols].map((c) => keyByColumn.get(c) ?? c);
     const outRows: Array<Record<string, unknown>> = [];
     const rejected: WideTableRejection[] = [];
     let repaired = 0;
     normalized.forEach((row, i) => {
       const sourceId = String(row["source_id"] ?? row["entity_record_id"] ?? i);
-      const sridCols = sridColsByRow.get(i);
-      if (sridCols) {
-        rejected.push({
-          sourceId,
+      // #757: every problem on the row, SRID first, so the caller can name
+      // them all at once rather than one per resubmit.
+      const sridCols = sridColsByRow.get(i) ?? new Set<string>();
+      const invalidCols = [...(invalidColsByRow.get(i) ?? [])].filter(
+        (c) => !sridCols.has(c)
+      );
+      const problems: WideTableRejection["problems"] = [];
+      if (sridCols.size > 0) {
+        problems.push({
           code: ApiCode.GIS_SRID_UNSUPPORTED,
           fields: fieldsOf(sridCols),
-          reason: `${ApiCode.GIS_SRID_UNSUPPORTED}: source SRID is not in spatial_ref_sys; the row was not written`,
         });
-        return;
       }
-      const invalidCols = invalidColsByRow.get(i);
-      if (invalidCols) {
-        rejected.push({
-          sourceId,
+      if (invalidCols.length > 0) {
+        problems.push({
           code: ApiCode.GEOMETRY_INVALID_ON_IMPORT,
           fields: fieldsOf(invalidCols),
-          reason: `${ApiCode.GEOMETRY_INVALID_ON_IMPORT}: geometry was unparseable and the row was not written`,
+        });
+      }
+      if (problems.length > 0) {
+        const { code } = problems[0];
+        rejected.push({
+          sourceId,
+          code,
+          fields: problems.flatMap((p) => p.fields),
+          problems,
+          reason:
+            code === ApiCode.GIS_SRID_UNSUPPORTED
+              ? `${ApiCode.GIS_SRID_UNSUPPORTED}: source SRID is not in spatial_ref_sys; the row was not written`
+              : `${ApiCode.GEOMETRY_INVALID_ON_IMPORT}: geometry was unparseable and the row was not written`,
         });
         return;
       }
@@ -552,21 +576,27 @@ export class WideTableRepository {
    * normalizedData keys and don't go through the cache lookup.
    *
    * Silently no-ops if `normalizedDataPatch` is empty and
-   * `metadataPatch` is unset. Throws a 400 (`GEOMETRY_INVALID_ON_IMPORT` /
-   * `GIS_SRID_UNSUPPORTED`) and writes nothing when a geometry value fails
-   * the audit (#757).
+   * `metadataPatch` is unset.
+   *
+   * A geometry value that fails the audit (#757), by default, throws a 400
+   * (`GEOMETRY_INVALID_ON_IMPORT` / `GIS_SRID_UNSUPPORTED`) and writes
+   * nothing: a user or agent is there to fix it. A background caller passes
+   * `onRejectedGeometry: "skip"` instead (as sync does with `upsertMany`):
+   * the row's geometry columns keep their values, the rest of the patch is
+   * written, and the refusal is returned for the caller to report.
    */
   async updatePartial(
     connectorEntityId: string,
     entityRecordId: string,
     normalizedDataPatch: Record<string, unknown>,
     metadataPatch: { syncedAt?: number; isValid?: boolean } = {},
-    client: DbClient = db
-  ): Promise<void> {
+    client: DbClient = db,
+    opts: { onRejectedGeometry?: "throw" | "skip" } = {}
+  ): Promise<WideTableRejection[]> {
     const stmt = await this.statementCache.get(connectorEntityId, client);
     const setFragments: SQL[] = [];
 
-    const cols = Object.entries(normalizedDataPatch).flatMap(
+    let cols = Object.entries(normalizedDataPatch).flatMap(
       ([normalizedKey, value]) => {
         // Unknown key (no field mapping) — drop silently.
         const col = stmt.columns.find((c) => c.normalizedKey === normalizedKey);
@@ -578,12 +608,13 @@ export class WideTableRepository {
     // so a value PostGIS can't read is a 400 naming the field rather than a
     // PG error, and an ArcGIS shape or non-4326 SRID is normalized the same
     // way on both write paths. Nothing is written when the audit refuses.
-    const geometryCols = cols
+    let geometryCols = cols
       .filter(
         ({ col, value }) => col.pgType.startsWith("geometry") && value != null
       )
       .map(({ col }) => col.columnName);
     let geometryRow: Record<string, unknown> = {};
+    let rejected: WideTableRejection[] = [];
     if (geometryCols.length > 0) {
       const raw: Record<string, unknown> = { source_id: entityRecordId };
       for (const { col, value } of cols) raw[col.columnName] = value;
@@ -593,22 +624,23 @@ export class WideTableRepository {
         client,
         normalizedKeyByColumn(stmt.columns)
       );
-      assertNoRejectedGeometry(prep);
-      geometryRow = prep.rows[0];
+      rejected = prep.rejected;
+      if (rejected.length > 0 && opts.onRejectedGeometry === "skip") {
+        const refused = geometryCols;
+        cols = cols.filter(({ col }) => !refused.includes(col.columnName));
+        geometryCols = [];
+      } else {
+        assertNoRejectedGeometry(prep);
+        geometryRow = prep.rows[0];
+      }
     }
 
     for (const { col, value } of cols) {
       // Strip the alias when used in SET (column name only, not "w"."col").
       const name = sql.raw(`"${col.columnName}"`);
       if (geometryCols.includes(col.columnName)) {
-        const json = JSON.stringify(geometryRow[col.columnName]);
-        const srid = Number(
-          geometryRow[geoSridSidecarKey(col.columnName)] ?? 4326
-        );
         setFragments.push(
-          srid === 4326
-            ? sql`${name} = ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${json}), 4326))`
-            : sql`${name} = ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(${json}), ${srid}), 4326))`
+          sql`${name} = ${geometryWriteExpr(geometryRow, col.columnName)}`
         );
       } else {
         setFragments.push(sql`${name} = ${value as never}`);
@@ -621,13 +653,14 @@ export class WideTableRepository {
       setFragments.push(sql`"is_valid" = ${metadataPatch.isValid}`);
     }
 
-    if (setFragments.length === 0) return;
+    if (setFragments.length === 0) return rejected;
 
     const tableName = `"${this.tableName(connectorEntityId)}"`;
     const setClause = sql.join(setFragments, sql`, `);
     await (client as typeof db).execute(
       sql`UPDATE ${sql.raw(tableName)} SET ${setClause} WHERE "entity_record_id" = ${entityRecordId}`
     );
+    return rejected;
   }
 
   /**

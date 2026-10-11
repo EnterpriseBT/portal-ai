@@ -424,6 +424,9 @@ describe("Wide-table geometry storage (#316)", () => {
     // #757: the refusal names its code and the field's normalized key.
     expect(result.rejected[0].code).toBe("GEOMETRY_INVALID_ON_IMPORT");
     expect(result.rejected[0].fields).toEqual(["boundary"]);
+    expect(result.rejected[0].problems).toEqual([
+      { code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["boundary"] },
+    ]);
 
     const table = `er__${entityId}`;
     const written = (await connection.unsafe(
@@ -560,6 +563,9 @@ describe("Wide-table geometry storage (#316)", () => {
     expect(result.rejected[0].reason).toContain("GIS_SRID_UNSUPPORTED");
     expect(result.rejected[0].code).toBe("GIS_SRID_UNSUPPORTED");
     expect(result.rejected[0].fields).toEqual(["boundary"]);
+    expect(result.rejected[0].problems).toEqual([
+      { code: "GIS_SRID_UNSUPPORTED", fields: ["boundary"] },
+    ]);
 
     const table = `er__${entityId}`;
     const written = (await connection.unsafe(
@@ -666,6 +672,32 @@ describe("Wide-table geometry storage (#316)", () => {
       expect(lng).toBeLessThan(-73);
       expect(lat).toBeGreaterThan(40);
       expect(lat).toBeLessThan(41);
+    });
+
+    it("with onRejectedGeometry: skip, keeps the geometry and writes the rest", async () => {
+      const { repo, erId, read } = await seedOne(POLYGON);
+
+      const refused = await repo.updatePartial(
+        entityId,
+        erId,
+        { boundary: "" },
+        { isValid: false },
+        db,
+        { onRejectedGeometry: "skip" }
+      );
+
+      expect(refused).toHaveLength(1);
+      expect(refused[0]).toMatchObject({
+        sourceId: erId,
+        code: "GEOMETRY_INVALID_ON_IMPORT",
+        fields: ["boundary"],
+      });
+      expect((await read())?.type).toBe("Polygon");
+      const [row] = (await connection.unsafe(
+        `SELECT is_valid FROM "er__${entityId}" WHERE "entity_record_id" = $1`,
+        [erId]
+      )) as unknown as Array<{ is_valid: boolean }>;
+      expect(row.is_valid).toBe(false);
     });
 
     it("writes null as NULL", async () => {

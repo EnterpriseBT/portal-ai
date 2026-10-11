@@ -51,6 +51,7 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
   // 3. Re-run normalization pipeline for each record
   let valid = 0;
   let invalid = 0;
+  let geometryRejected = 0;
   const errorSummary: RevalidationResult["errors"] = [];
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -107,13 +108,17 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
         )
       );
       for (const u of updates) {
-        await DbService.repository.wideTable.updatePartial(
+        // #757: a geometry the audit refuses (one sync already skipped,
+        // say) leaves that column as it is rather than failing the job.
+        const refused = await DbService.repository.wideTable.updatePartial(
           connectorEntityId,
           u.id,
           u.normalizedData,
           { isValid: u.isValid },
-          tx
+          tx,
+          { onRejectedGeometry: "skip" }
         );
+        geometryRejected += refused.length;
       }
     });
 
@@ -131,6 +136,14 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     { jobId, connectorEntityId, total, valid, invalid },
     "Revalidation complete"
   );
+  if (geometryRejected > 0) {
+    // The same geometries the sync that wrote these records refused and
+    // reported (#316); revalidation leaves them as they are.
+    logger.warn(
+      { jobId, connectorEntityId, geometryRejected },
+      "Revalidation left refused geometries unchanged"
+    );
+  }
 
   const result: RevalidationResult = {
     total,

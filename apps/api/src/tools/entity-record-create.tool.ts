@@ -14,6 +14,7 @@ import { NormalizationService } from "../services/normalization.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
+import type { WideTableRejection } from "../db/repositories/wide-table.repository.js";
 import {
   projectToWideRow,
   buildMappingsForProjection,
@@ -178,6 +179,10 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             // columns (the reconciler hasn't run for this entity yet);
             // Phase 2 slice 7's re-sync trigger or the field-mapping
             // routes' reconciliation will populate it.
+            const rejected: WideTableRejection[] = [];
+            const itemIndexBySourceId = new Map(
+              parsedModels.map((m, idx) => [m.sourceId, idx])
+            );
             const byEntity = new Map<string, typeof inserted>();
             for (const row of inserted) {
               const list = byEntity.get(row.connectorEntityId) ?? [];
@@ -188,9 +193,9 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
               const stmt = await wideTableStatementCache.get(entityId, tx);
               if (stmt.columns.length === 0) continue;
               const mappings = buildMappingsForProjection(stmt.columns);
-              // #757: a refused geometry fails the whole call and rolls back
-              // every insert, rather than leaving records with no
-              // wide-table row.
+              // #757: a refused geometry fails the whole call (below) and
+              // rolls back every insert, rather than leaving records with
+              // no wide-table row.
               const mirrored = await DbService.repository.wideTable.upsertMany(
                 entityId,
                 rows.map((r) =>
@@ -208,8 +213,18 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
                 ),
                 tx
               );
-              assertNoRejectedGeometry(mirrored, { batch: rows.length > 1 });
+              rejected.push(...mirrored.rejected);
             }
+            // #757: one refusal for the whole call, naming the items (the
+            // agent never saw a generated sourceId).
+            assertNoRejectedGeometry(
+              { rejected },
+              {
+                batch: items.length > 1,
+                describe: (sourceId) =>
+                  `items[${itemIndexBySourceId.get(sourceId)}]`,
+              }
+            );
             return inserted;
           });
 
