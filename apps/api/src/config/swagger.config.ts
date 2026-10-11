@@ -93,6 +93,8 @@ import {
   SuggestTransformResponseSchema,
   CreateStationBodySchema,
   UpdateStationBodySchema,
+  UpdatePortalBodySchema,
+  UpdatePortalResultBodySchema,
   StationGetResponsePayloadSchema,
   ObjectCapabilitiesSchema,
   ShareableObjectCapabilitiesSchema,
@@ -556,6 +558,11 @@ const withCapabilitiesRef = (shareable: boolean) => ({
 const stationSchemas: Record<string, unknown> = {
   CreateStationBody: z.toJSONSchema(CreateStationBodySchema, JSON_SCHEMA_OPTS),
   UpdateStationBody: z.toJSONSchema(UpdateStationBodySchema, JSON_SCHEMA_OPTS),
+  UpdatePortalBody: z.toJSONSchema(UpdatePortalBodySchema, JSON_SCHEMA_OPTS),
+  UpdatePortalResultBody: z.toJSONSchema(
+    UpdatePortalResultBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
   StationInstanceWithConnectorInstance: z.toJSONSchema(
     StationInstanceWithConnectorInstanceSchema,
     JSON_SCHEMA_OPTS
@@ -746,6 +753,50 @@ const options: swaggerJsdoc.Options = {
             code: {
               type: "string",
               description: "Error code",
+            },
+            details: {
+              type: "object",
+              additionalProperties: true,
+              description:
+                "Optional structured detail. On a 400 *_INVALID_PAYLOAD / *_INVALID_QUERY (a request that failed its schema, #745) the message names the first failing field, `issues` holds the first 20 Zod issues (an unknown-keys list is cut to 20 names), and `issueCount` is the total. A backoff hint rides in `retryAfterSeconds`.",
+              properties: {
+                issues: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["code", "path", "message"],
+                    additionalProperties: true,
+                    properties: {
+                      code: {
+                        type: "string",
+                        example: "invalid_type",
+                      },
+                      path: {
+                        type: "array",
+                        items: {
+                          oneOf: [{ type: "string" }, { type: "number" }],
+                        },
+                        example: ["lastOpened"],
+                      },
+                      message: {
+                        type: "string",
+                        example:
+                          "Invalid input: expected number, received string",
+                      },
+                    },
+                  },
+                },
+                issueCount: {
+                  type: "number",
+                  description:
+                    "Total Zod issues of the schema failure; `issues` holds at most 20 of them.",
+                },
+                retryAfterSeconds: {
+                  type: "number",
+                  description:
+                    "Seconds to wait before retrying (also sent as Retry-After)",
+                },
+              },
             },
           },
         },

@@ -36,6 +36,7 @@ import {
 } from "../utils/filter-sql.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import {
   PermissionService,
@@ -223,10 +224,10 @@ entityRecordRouter.get(
       const query = EntityRecordListRequestQuerySchema.safeParse(req.query);
       if (!query.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_RECORD_INVALID_QUERY,
-            "Invalid query parameters"
+            "Invalid entity record query",
+            query.error
           )
         );
       }
@@ -793,10 +794,10 @@ entityRecordRouter.post(
       const parsed = EntityRecordCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_RECORD_INVALID_PAYLOAD,
-            "Invalid entity record payload"
+            "Invalid entity record payload",
+            parsed.error
           )
         );
       }
@@ -960,10 +961,10 @@ entityRecordRouter.post(
       const parsed = EntityRecordImportRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_RECORD_INVALID_PAYLOAD,
-            "Invalid import payload"
+            "Invalid entity record import payload",
+            parsed.error
           )
         );
       }
@@ -1270,10 +1271,10 @@ entityRecordRouter.patch(
       const parsed = EntityRecordPatchRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_RECORD_INVALID_PAYLOAD,
-            "Invalid entity record payload"
+            "Invalid entity record payload",
+            parsed.error
           )
         );
       }

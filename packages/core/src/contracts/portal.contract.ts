@@ -97,9 +97,12 @@ export type PortalGetResponsePayload = z.infer<
 
 // ── Create ────────────────────────────────────────────────────────────
 
-export const CreatePortalBodySchema = z.object({
-  stationId: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const CreatePortalBodySchema = z
+  .object({
+    stationId: z.string().min(1),
+  })
+  .strict();
 
 export type CreatePortalBody = z.infer<typeof CreatePortalBodySchema>;
 
@@ -113,11 +116,41 @@ export type PortalCreateResponsePayload = z.infer<
 
 // ── Send Message ──────────────────────────────────────────────────────
 
-export const SendMessageBodySchema = z.object({
-  message: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const SendMessageBodySchema = z
+  .object({
+    message: z.string().min(1),
+  })
+  .strict();
 
 export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
+
+// ── Update Portal ─────────────────────────────────────────────────────
+
+/** #745: PATCH /api/portals/:id renames a portal or records an open. A
+ *  wrongly typed or unknown key is a 400 naming it, not a silent no-op. */
+export const UpdatePortalBodySchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    lastOpened: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .refine((d) => d.name !== undefined || d.lastOpened !== undefined, {
+    message: "At least one field must be provided",
+  });
+
+export type UpdatePortalBody = z.infer<typeof UpdatePortalBodySchema>;
+
+// ── Rename Pin ────────────────────────────────────────────────────────
+
+/** #745: PATCH /api/portal-results/:id renames a pin. */
+export const UpdatePortalResultBodySchema = z
+  .object({ name: z.string().trim().min(1) })
+  .strict();
+
+export type UpdatePortalResultBody = z.infer<
+  typeof UpdatePortalResultBodySchema
+>;
 
 // ── Portal Result List ────────────────────────────────────────────────
 
@@ -169,12 +202,15 @@ export type PortalResultWithIncludes = z.infer<
 
 // ── Pin Result ────────────────────────────────────────────────────────
 
-export const PinResultBodySchema = z.object({
-  portalId: z.string().min(1),
-  messageId: z.string().min(1).optional(),
-  blockIndex: z.number().int().min(0),
-  name: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const PinResultBodySchema = z
+  .object({
+    portalId: z.string().min(1),
+    messageId: z.string().min(1).optional(),
+    blockIndex: z.number().int().min(0),
+    name: z.string().min(1),
+  })
+  .strict();
 
 export type PinResultBody = z.infer<typeof PinResultBodySchema>;
 

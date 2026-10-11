@@ -5,11 +5,14 @@ import { EntityRecordSchema } from "../models/entity-record.model.js";
 
 // ── Create ────────────────────────────────────────────────────────────
 
-export const EntityGroupMemberCreateRequestBodySchema = z.object({
-  connectorEntityId: z.string(),
-  linkFieldMappingId: z.string(),
-  isPrimary: z.boolean().optional().default(false),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const EntityGroupMemberCreateRequestBodySchema = z
+  .object({
+    connectorEntityId: z.string(),
+    linkFieldMappingId: z.string(),
+    isPrimary: z.boolean().optional().default(false),
+  })
+  .strict();
 
 export type EntityGroupMemberCreateRequestBody = z.infer<
   typeof EntityGroupMemberCreateRequestBodySchema
@@ -25,11 +28,13 @@ export type EntityGroupMemberCreateResponsePayload = z.infer<
 
 // ── Update ────────────────────────────────────────────────────────────
 
+// #745: an unknown key is a 400 naming it, not silently dropped.
 export const EntityGroupMemberUpdateRequestBodySchema = z
   .object({
     linkFieldMappingId: z.string().optional(),
     isPrimary: z.boolean().optional(),
   })
+  .strict()
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
     message: "At least one field must be provided",
   });

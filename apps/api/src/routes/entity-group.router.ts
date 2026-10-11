@@ -29,6 +29,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { entityGroups } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -416,10 +417,10 @@ entityGroupRouter.post(
       const parsed = EntityGroupCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_GROUP_INVALID_PAYLOAD,
-            "Invalid entity group payload"
+            "Invalid entity group payload",
+            parsed.error
           )
         );
       }
@@ -583,10 +584,10 @@ entityGroupRouter.patch(
       const parsed = EntityGroupUpdateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_GROUP_INVALID_PAYLOAD,
-            "Invalid entity group payload"
+            "Invalid entity group payload",
+            parsed.error
           )
         );
       }
@@ -969,10 +970,10 @@ entityGroupRouter.get(
       );
       if (!queryParsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.ENTITY_GROUP_INVALID_PAYLOAD,
-            "linkValue query parameter is required"
+          invalidPayload(
+            ApiCode.ENTITY_GROUP_INVALID_QUERY,
+            "Invalid entity group resolve query",
+            queryParsed.error
           )
         );
       }

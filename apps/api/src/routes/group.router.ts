@@ -5,8 +5,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { HttpService, ApiError } from "../services/http.service.js";
+import { HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { GroupService } from "../services/group.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
@@ -99,10 +100,10 @@ groupRouter.post(
       const parsed = GroupUpsertRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "Invalid group payload — expected { name, policyIds, description? }"
+            "Invalid group payload",
+            parsed.error
           )
         );
       }
@@ -226,10 +227,10 @@ groupRouter.put(
       const parsed = GroupUpsertRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "Invalid group payload — expected { name, policyIds, description? }"
+            "Invalid group payload",
+            parsed.error
           )
         );
       }
@@ -311,10 +312,10 @@ groupRouter.put(
       const parsed = GroupMembersSetRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "Invalid membership payload — expected { userIds }"
+            "Invalid group members payload",
+            parsed.error
           )
         );
       }

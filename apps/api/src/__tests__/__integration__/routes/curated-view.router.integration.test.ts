@@ -292,6 +292,46 @@ describe("curated-view.router integration", () => {
       label: "Bad",
     });
     expect(res.status).toBe(400);
+    // #745: a schema failure names the field and carries every issue.
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    expect(res.body.message).toMatch(/^Invalid curated view payload: key: /);
+    expect(res.body.details.issues[0].path).toEqual(["key"]);
+  });
+
+  it("#745: PATCH with a malformed body names the field", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "patch_bad_body",
+        label: "V",
+      })
+    ).body.payload.curatedView.id as string;
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "" });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    expect(res.body.message).toMatch(/^Invalid curated view payload: label: /);
+    expect(res.body.details.issues[0].path).toEqual(["label"]);
+  });
+
+  it("#745: attach without a stationId names the field", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "attach_bad_body",
+        label: "V",
+      })
+    ).body.payload.curatedView.id as string;
+    const res = await request(app)
+      .post(`/api/curated-views/${id}/attach`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    expect(res.body.message).toMatch(
+      /^Invalid curated view attach payload: stationId: /
+    );
+    expect(res.body.details.issues[0].path).toEqual(["stationId"]);
   });
 
   it("attach rejects a station outside the caller's org (404)", async () => {
@@ -787,6 +827,8 @@ describe("curated-view.router integration", () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+    // A semantic refusal, not a schema failure: no Zod issues attached.
+    expect(res.body.details).toBeUndefined();
     expect(await viewCount("dup_fm")).toBe(0);
   });
 
@@ -1542,6 +1584,11 @@ describe("curated-view.router integration", () => {
       .query({ [param]: value });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_QUERY);
+    // #745: the message names the parameter; details carry the issues.
+    expect(res.body.message).toMatch(
+      new RegExp(`^Invalid curated view records query: ${param}: `)
+    );
+    expect(res.body.details.issues[0].path).toEqual([param]);
   });
 
   it("#678: filters, search and sort compose", async () => {

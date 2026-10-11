@@ -345,6 +345,34 @@ describe("Entity Tag Assignment Router", () => {
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.ENTITY_TAG_NOT_FOUND);
     });
+
+    it("#745: a body without entityTagId is ENTITY_TAG_ASSIGNMENT_INVALID_PAYLOAD naming the field", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const connInstId = await seedConnectorInstance(
+        db as ReturnType<typeof drizzle>,
+        organizationId
+      );
+
+      const entity = createConnectorEntity(organizationId, connInstId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity as never);
+
+      const res = await request(app)
+        .post(`/api/connector-entities/${entity.id}/tags`)
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_TAG_ASSIGNMENT_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid tag assignment payload: entityTagId: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["entityTagId"]);
+    });
   });
 
   // ── DELETE /api/connector-entities/:id/tags/:assignmentId ─────────

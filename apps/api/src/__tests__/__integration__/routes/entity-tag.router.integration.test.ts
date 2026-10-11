@@ -316,6 +316,9 @@ describe("Entity Tag Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.ENTITY_TAG_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(/^Invalid entity tag payload: name: /);
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
     });
   });
 
@@ -370,6 +373,23 @@ describe("Entity Tag Router", () => {
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(ApiCode.ENTITY_TAG_DUPLICATE_NAME);
+    });
+
+    it("#745: an empty body is refused at the root, with the issue in details", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/entity-tags/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_TAG_INVALID_PAYLOAD);
+      // A root-level issue has no path, so the message has no field segment.
+      expect(res.body.message).toBe(
+        "Invalid entity tag payload: At least one field must be provided"
+      );
+      expect(res.body.details.issues[0].path).toEqual([]);
     });
 
     it("should return 404 for unknown ID", async () => {

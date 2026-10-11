@@ -217,5 +217,24 @@ describe("POST /api/connector-instances/probe-endpoint-draft — validation", ()
       .send({ baseUrl: "https://api.example.com" });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("REST_API_INVALID_CONFIG");
+    // #745: the message names the field; details carry the issues.
+    expect(res.body.message).toMatch(
+      /^Invalid probe-endpoint-draft body: auth: /
+    );
+    expect(res.body.details.issues[0].path).toEqual(["auth"]);
+  });
+});
+
+describe("POST /api/connector-instances/preview-endpoint-page — validation", () => {
+  it("#745: a malformed body names the field", async () => {
+    const res = await request(app)
+      .post("/api/connector-instances/preview-endpoint-page")
+      .send({ ...validBody, baseUrl: "not-a-url" });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("REST_API_INVALID_CONFIG");
+    expect(res.body.message).toMatch(
+      /^Invalid preview-endpoint-page body: baseUrl: /
+    );
+    expect(res.body.details.issues[0].path).toEqual(["baseUrl"]);
   });
 });

@@ -7,14 +7,15 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { HttpService, ApiError } from "../services/http.service.js";
+import { HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { GrantService } from "../services/grant.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import {
   ShareGrantRequestSchema,
-  ShareResourceTypeSchema,
+  GrantListRequestQuerySchema,
   type ShareGrantResponse,
   type GrantListResponse,
 } from "@portalai/core/contracts";
@@ -77,10 +78,10 @@ grantRouter.post(
       const parsed = ShareGrantRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "Invalid share payload — expected { resourceType, resourceId, grantee, access }"
+            "Invalid grant payload",
+            parsed.error
           )
         );
       }
@@ -126,6 +127,12 @@ grantRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/GrantListResponse'
+ *       400:
+ *         description: Malformed query (GRANT_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: Caller can't manage this object's shares
  *         content:
@@ -145,18 +152,18 @@ grantRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const ctx = req.application!.metadata;
-      const rt = ShareResourceTypeSchema.safeParse(req.query.resourceType);
-      const resourceId = req.query.resourceId;
-      if (!rt.success || typeof resourceId !== "string" || !resourceId) {
+      const parsed = GrantListRequestQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "resourceType (station|pin) and resourceId query params are required"
+          invalidPayload(
+            ApiCode.GRANT_INVALID_QUERY,
+            "Invalid grant query",
+            parsed.error
           )
         );
       }
-      const grants = await GrantService.list(ctx, rt.data, resourceId);
+      const { resourceType, resourceId } = parsed.data;
+      const grants = await GrantService.list(ctx, resourceType, resourceId);
       return HttpService.success<GrantListResponse>(res, { grants });
     } catch (error) {
       return next(error);

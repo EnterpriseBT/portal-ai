@@ -14,6 +14,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { entityTags } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -344,10 +345,10 @@ entityTagRouter.post(
       const parsed = EntityTagCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_TAG_INVALID_PAYLOAD,
-            "Invalid entity tag payload"
+            "Invalid entity tag payload",
+            parsed.error
           )
         );
       }
@@ -511,10 +512,10 @@ entityTagRouter.patch(
       const parsed = EntityTagUpdateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ENTITY_TAG_INVALID_PAYLOAD,
-            "Invalid entity tag payload"
+            "Invalid entity tag payload",
+            parsed.error
           )
         );
       }

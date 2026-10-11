@@ -128,14 +128,18 @@ export type ToolpackGetResponsePayload = z.infer<
 
 // ── Register / Update / Refresh / Delete ─────────────────────────────
 
-export const RegisterToolpackBodySchema = z.object({
-  name: z.string().regex(TOOLPACK_SLUG_REGEX),
-  description: z.string().min(1).optional(),
-  endpoints: ToolpackEndpointsSchema,
-  authHeaders: z.record(z.string(), z.string()).optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const RegisterToolpackBodySchema = z
+  .object({
+    name: z.string().regex(TOOLPACK_SLUG_REGEX),
+    description: z.string().min(1).optional(),
+    endpoints: ToolpackEndpointsSchema,
+    authHeaders: z.record(z.string(), z.string()).optional(),
+  })
+  .strict();
 export type RegisterToolpackBody = z.infer<typeof RegisterToolpackBodySchema>;
 
+// #745: an unknown key is a 400 naming it, not silently dropped.
 export const UpdateToolpackBodySchema = z
   .object({
     name: z.string().regex(TOOLPACK_SLUG_REGEX).optional(),
@@ -143,6 +147,7 @@ export const UpdateToolpackBodySchema = z
     endpoints: ToolpackEndpointsSchema.optional(),
     authHeaders: z.record(z.string(), z.string()).optional(),
   })
+  .strict()
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
     message: "At least one field must be provided",
   });

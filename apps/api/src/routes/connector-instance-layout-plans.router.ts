@@ -13,6 +13,7 @@ import type {
 } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
 import { ConnectorInstanceLayoutPlansService } from "../services/connector-instance-layout-plans.service.js";
@@ -113,11 +114,10 @@ connectorInstanceLayoutPlansRouter.post(
       const parsed = InterpretRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
             "Invalid interpret request body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }
@@ -455,11 +455,10 @@ connectorInstanceLayoutPlansRouter.patch(
       const parsed = PatchLayoutPlanBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
             "Invalid patch body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }
@@ -616,11 +615,10 @@ connectorInstanceLayoutPlansRouter.post(
       const parsed = CommitLayoutPlanRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
             "Invalid commit request body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }

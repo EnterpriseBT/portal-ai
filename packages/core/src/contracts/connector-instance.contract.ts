@@ -118,29 +118,32 @@ export type ConnectorInstanceGetResponsePayload = z.infer<
   typeof ConnectorInstanceGetResponseSchema
 >;
 
-export const ConnectorInstanceCreateRequestBodySchema = z.object({
-  connectorDefinitionId: z.string(),
-  organizationId: z.string(),
-  name: z.string().min(1),
-  status: z.enum(["active", "inactive", "error", "pending"]),
-  /**
-   * Per-instance capability overrides. When omitted, the server copies
-   * `definition.capabilityFlags` so the instance inherits whatever the
-   * connector type supports. Callers only send this field when they
-   * want to opt out of one or more capabilities at creation time
-   * (e.g. read-only against a write-capable connector).
-   */
-  enabledCapabilityFlags: z
-    .object({
-      sync: z.boolean().optional(),
-      read: z.boolean().optional(),
-      write: z.boolean().optional(),
-      push: z.boolean().optional(),
-    })
-    .optional(),
-  config: z.record(z.string(), z.unknown()).nullable().optional(),
-  credentials: z.record(z.string(), z.unknown()).nullable().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const ConnectorInstanceCreateRequestBodySchema = z
+  .object({
+    connectorDefinitionId: z.string(),
+    organizationId: z.string(),
+    name: z.string().min(1),
+    status: z.enum(["active", "inactive", "error", "pending"]),
+    /**
+     * Per-instance capability overrides. When omitted, the server copies
+     * `definition.capabilityFlags` so the instance inherits whatever the
+     * connector type supports. Callers only send this field when they
+     * want to opt out of one or more capabilities at creation time
+     * (e.g. read-only against a write-capable connector).
+     */
+    enabledCapabilityFlags: z
+      .object({
+        sync: z.boolean().optional(),
+        read: z.boolean().optional(),
+        write: z.boolean().optional(),
+        push: z.boolean().optional(),
+      })
+      .optional(),
+    config: z.record(z.string(), z.unknown()).nullable().optional(),
+    credentials: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .strict();
 
 export type ConnectorInstanceCreateRequestBody = z.infer<
   typeof ConnectorInstanceCreateRequestBodySchema
@@ -154,18 +157,21 @@ export type ConnectorInstanceCreateResponsePayload = z.infer<
   typeof ConnectorInstanceCreateResponseSchema
 >;
 
-export const ConnectorInstancePatchRequestBodySchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  enabledCapabilityFlags: z
-    .object({
-      sync: z.boolean().optional(),
-      read: z.boolean().optional(),
-      write: z.boolean().optional(),
-      push: z.boolean().optional(),
-    })
-    .nullable()
-    .optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const ConnectorInstancePatchRequestBodySchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    enabledCapabilityFlags: z
+      .object({
+        sync: z.boolean().optional(),
+        read: z.boolean().optional(),
+        write: z.boolean().optional(),
+        push: z.boolean().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .strict();
 
 export type ConnectorInstancePatchRequestBody = z.infer<
   typeof ConnectorInstancePatchRequestBodySchema

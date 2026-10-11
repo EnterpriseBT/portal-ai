@@ -352,6 +352,11 @@ describe("Connector Instance Layout Plans Router", () => {
         .send({});
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid interpret request body: workbook: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["workbook"]);
       expect(mockAnalyze).not.toHaveBeenCalled();
     });
 
@@ -533,6 +538,21 @@ describe("Connector Instance Layout Plans Router", () => {
         .from(connectorInstanceLayoutPlans);
       expect(row.plan.confidence).toEqual(patchedConfidence);
       expect(row.updatedBy).toBe(userId);
+    });
+
+    it("#745: a body that is not an object fails the schema at the root", async () => {
+      const res = await request(app)
+        .patch(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${generateId()}`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send([1, 2]);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      // A root-level issue has no path prefix: "<label>: <issue message>".
+      expect(res.body.message).toMatch(/^Invalid patch body: \S/);
+      expect(res.body.details.issues[0].path).toEqual([]);
     });
 
     it("returns 400 when the merged plan fails schema validation", async () => {
@@ -1737,6 +1757,11 @@ describe("Connector Instance Layout Plans Router", () => {
         .send({});
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid commit request body: uploadSessionId: Exactly one of/
+      );
+      expect(res.body.details.issues[0].path).toEqual(["uploadSessionId"]);
     });
 
     it("returns 404 when the planId does not belong to the connector instance", async () => {

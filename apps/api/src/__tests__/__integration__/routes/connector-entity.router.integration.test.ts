@@ -761,6 +761,11 @@ describe("Connector Entity Router", () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid connector entity payload: connectorInstanceId: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["connectorInstanceId"]);
     });
 
     it("should return 400 for invalid key format", async () => {
@@ -777,6 +782,10 @@ describe("Connector Entity Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid connector entity payload: key: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["key"]);
     });
 
     it("should return 404 when connector instance does not exist", async () => {
@@ -1297,6 +1306,22 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
   // ── PATCH /:id — Update connector entity ───────────────────────────
 
   describe("PATCH /api/connector-entities/:id", () => {
+    it("#745: a malformed body names the field", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/connector-entities/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ label: "" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid connector entity payload: label: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["label"]);
+    });
+
     it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when write is disabled", async () => {
       const { entity } = await seedWithCapabilities({
         definitionWrite: true,

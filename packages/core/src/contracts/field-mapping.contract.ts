@@ -107,19 +107,22 @@ const normalizedKeyBase = z
       "normalizedKey must NOT start with `c_` — the system reserves that prefix for the physical wide-table column name and adds it automatically. Use the base name (e.g. `diameter_avg_km`).",
   });
 
-export const FieldMappingCreateRequestBodySchema = z.object({
-  connectorEntityId: z.string(),
-  columnDefinitionId: z.string(),
-  sourceField: z.string().min(1),
-  isPrimaryKey: z.boolean().optional().default(false),
-  normalizedKey: normalizedKeyBase,
-  required: z.boolean().optional().default(false),
-  defaultValue: nullableString.optional().default(null),
-  format: nullableString.optional().default(null),
-  enumValues: z.array(z.string()).nullable().optional().default(null),
-  refNormalizedKey: nullableString.optional().default(null),
-  refEntityKey: nullableString.optional().default(null),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const FieldMappingCreateRequestBodySchema = z
+  .object({
+    connectorEntityId: z.string(),
+    columnDefinitionId: z.string(),
+    sourceField: z.string().min(1),
+    isPrimaryKey: z.boolean().optional().default(false),
+    normalizedKey: normalizedKeyBase,
+    required: z.boolean().optional().default(false),
+    defaultValue: nullableString.optional().default(null),
+    format: nullableString.optional().default(null),
+    enumValues: z.array(z.string()).nullable().optional().default(null),
+    refNormalizedKey: nullableString.optional().default(null),
+    refEntityKey: nullableString.optional().default(null),
+  })
+  .strict();
 
 export type FieldMappingCreateRequestBody = z.infer<
   typeof FieldMappingCreateRequestBodySchema
@@ -135,18 +138,21 @@ export type FieldMappingCreateResponsePayload = z.infer<
 
 // ── Update ────────────────────────────────────────────────────────────
 
-export const FieldMappingUpdateRequestBodySchema = z.object({
-  sourceField: z.string().min(1),
-  isPrimaryKey: z.boolean().optional(),
-  columnDefinitionId: z.string(),
-  normalizedKey: normalizedKeyBase.optional(),
-  required: z.boolean().optional(),
-  defaultValue: nullableString.optional(),
-  format: nullableString.optional(),
-  enumValues: z.array(z.string()).nullable().optional(),
-  refNormalizedKey: nullableString.optional(),
-  refEntityKey: nullableString.optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const FieldMappingUpdateRequestBodySchema = z
+  .object({
+    sourceField: z.string().min(1),
+    isPrimaryKey: z.boolean().optional(),
+    columnDefinitionId: z.string(),
+    normalizedKey: normalizedKeyBase.optional(),
+    required: z.boolean().optional(),
+    defaultValue: nullableString.optional(),
+    format: nullableString.optional(),
+    enumValues: z.array(z.string()).nullable().optional(),
+    refNormalizedKey: nullableString.optional(),
+    refEntityKey: nullableString.optional(),
+  })
+  .strict();
 
 export type FieldMappingUpdateRequestBody = z.infer<
   typeof FieldMappingUpdateRequestBodySchema

@@ -254,6 +254,18 @@ describe("/api/policies (#622 slice 3)", () => {
     expect(res.body.code).toBe(ApiCode.RBAC_STATEMENT_INVALID);
   });
 
+  it("#745: a malformed body is a 400 naming the field", async () => {
+    const { orgId } = await seedOrg("owner");
+    await entitleOrg(orgId);
+    const res = await auth(request(app).post("/api/policies")).send({
+      name: "P",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    expect(res.body.message).toMatch(/^Invalid policy payload: statements: /);
+    expect(res.body.details.issues[0].path).toEqual(["statements"]);
+  });
+
   it("accepts a valid `view page` grant (the nav-via-policy use case)", async () => {
     const { orgId } = await seedOrg("owner");
     await entitleOrg(orgId);

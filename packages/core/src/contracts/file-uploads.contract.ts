@@ -25,9 +25,12 @@ export const FileUploadPresignFileSchema = z.object({
 });
 export type FileUploadPresignFile = z.infer<typeof FileUploadPresignFileSchema>;
 
-export const FileUploadPresignRequestBodySchema = z.object({
-  files: z.array(FileUploadPresignFileSchema).min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const FileUploadPresignRequestBodySchema = z
+  .object({
+    files: z.array(FileUploadPresignFileSchema).min(1),
+  })
+  .strict();
 export type FileUploadPresignRequestBody = z.infer<
   typeof FileUploadPresignRequestBodySchema
 >;
@@ -49,9 +52,12 @@ export type FileUploadPresignResponsePayload = z.infer<
 
 // ── Phase 2: POST /api/file-uploads/confirm ──────────────────────────────
 
-export const FileUploadConfirmRequestBodySchema = z.object({
-  uploadId: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const FileUploadConfirmRequestBodySchema = z
+  .object({
+    uploadId: z.string().min(1),
+  })
+  .strict();
 export type FileUploadConfirmRequestBody = z.infer<
   typeof FileUploadConfirmRequestBodySchema
 >;
@@ -67,9 +73,12 @@ export type FileUploadConfirmResponsePayload = z.infer<
 
 // ── Phase 3: POST /api/file-uploads/parse (streaming body) ───────────────
 
-export const FileUploadParseSessionRequestBodySchema = z.object({
-  uploadIds: z.array(z.string().min(1)).min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const FileUploadParseSessionRequestBodySchema = z
+  .object({
+    uploadIds: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
 export type FileUploadParseSessionRequestBody = z.infer<
   typeof FileUploadParseSessionRequestBodySchema
 >;

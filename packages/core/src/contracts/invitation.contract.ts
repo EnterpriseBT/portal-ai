@@ -15,21 +15,27 @@ import { RbacKindSchema } from "../models/permission.model.js";
  * Request body for `POST /api/organization/invitations`. You invite at
  * `member` or `admin` — never `owner` (ownership transfer is out of scope).
  */
-export const InviteCreateRequestSchema = z.object({
-  email: z.string().email(),
-  role: OrgRoleSchema.refine((r) => r !== "owner", {
-    message: "Cannot invite a user as owner",
-  }),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const InviteCreateRequestSchema = z
+  .object({
+    email: z.string().email(),
+    role: OrgRoleSchema.refine((r) => r !== "owner", {
+      message: "Cannot invite a user as owner",
+    }),
+  })
+  .strict();
 export type InviteCreateRequest = z.infer<typeof InviteCreateRequestSchema>;
 
 /**
  * Request body for `POST /api/organization/invitations/accept` — the token
  * travels in the body, not the URL.
  */
-export const AcceptInvitationRequestSchema = z.object({
-  token: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const AcceptInvitationRequestSchema = z
+  .object({
+    token: z.string().min(1),
+  })
+  .strict();
 export type AcceptInvitationRequest = z.infer<
   typeof AcceptInvitationRequestSchema
 >;

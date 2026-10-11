@@ -221,6 +221,17 @@ describe("Toolpacks Router", () => {
       expect(JSON.stringify(res.body)).not.toContain("secret");
     });
 
+    it("#745: a malformed body names the field", async () => {
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send({ ...VALID_REGISTER_BODY, name: "Not A Slug!" });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(/^Invalid toolpack payload: name: /);
+      expect(res.body.details.issues[0].path).toEqual(["name"]);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     // Case 92
     it("409s on duplicate name within the same org", async () => {
       mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
@@ -365,6 +376,19 @@ describe("Toolpacks Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.payload.toolpack.tools[0].name).toBe("lookup_v2");
       expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("#745: a malformed body names the field", async () => {
+      const id = await registerSeed();
+      const res = await request(app)
+        .patch(`/api/toolpacks/${id}`)
+        .send({ description: "" });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_INVALID_PAYLOAD);
+      expect(res.body.message).toMatch(
+        /^Invalid toolpack payload: description: /
+      );
+      expect(res.body.details.issues[0].path).toEqual(["description"]);
     });
 
     // Case 99

@@ -15,11 +15,14 @@ import {
 
 // --- Request Schemas ---
 
-export const JobCreateRequestBodySchema = z.object({
-  type: JobTypeEnum,
-  organizationId: z.string(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const JobCreateRequestBodySchema = z
+  .object({
+    type: JobTypeEnum,
+    organizationId: z.string(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
 
 export type JobCreateRequestBody = z.infer<typeof JobCreateRequestBodySchema>;
 

@@ -10,6 +10,7 @@ import type {
 } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FileUploadAccessService } from "../services/file-upload-access.service.js";
 import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
@@ -106,11 +107,10 @@ layoutPlansRouter.post(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
             "Invalid interpret request body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }
@@ -189,11 +189,10 @@ layoutPlansRouter.post(
       const parsed = LayoutPlanCommitDraftRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
             "Invalid commit request body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }

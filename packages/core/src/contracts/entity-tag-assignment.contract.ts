@@ -9,9 +9,12 @@ import { PaginatedResponsePayloadSchema } from "./pagination.contract.js";
 
 // ── Create ────────────────────────────────────────────────────────────
 
-export const EntityTagAssignmentCreateRequestBodySchema = z.object({
-  entityTagId: z.string(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const EntityTagAssignmentCreateRequestBodySchema = z
+  .object({
+    entityTagId: z.string(),
+  })
+  .strict();
 
 export type EntityTagAssignmentCreateRequestBody = z.infer<
   typeof EntityTagAssignmentCreateRequestBodySchema

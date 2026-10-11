@@ -32,6 +32,11 @@ jest.unstable_mockModule("../../../services/seat.service.js", () => ({
 const { PolicyCreateTool, PolicyListTool } =
   await import("../../../tools/rbac/policy.tool.js");
 const { GrantShareTool } = await import("../../../tools/rbac/grant.tool.js");
+const { RoleCreateTool, RoleUpdateTool } =
+  await import("../../../tools/rbac/role.tool.js");
+const { GroupCreateTool, GroupUpdateTool } =
+  await import("../../../tools/rbac/group.tool.js");
+const { PolicyUpdateTool } = await import("../../../tools/rbac/policy.tool.js");
 const { MemberSetRolesTool, MemberListTool } =
   await import("../../../tools/rbac/member.tool.js");
 
@@ -108,6 +113,51 @@ describe("rbac_management tools (#629)", () => {
     })) as { error?: string };
     expect(r.error).toBeDefined();
     expect(policyCreate).not.toHaveBeenCalled();
+  });
+
+  // #745: the tool inputs are the routes' strict contracts (updates extend
+  // them with an id, which keeps strictness), so an extra key the model
+  // invents is refused with a relayable error naming it, not dropped.
+  it.each([
+    [
+      "policy_create",
+      () => new PolicyCreateTool(),
+      { name: "P", statements: validStatements },
+    ],
+    [
+      "policy_update",
+      () => new PolicyUpdateTool(),
+      { id: "p_1", name: "P", statements: validStatements },
+    ],
+    ["role_create", () => new RoleCreateTool(), { name: "R", policyIds: [] }],
+    [
+      "role_update",
+      () => new RoleUpdateTool(),
+      { id: "r_1", name: "R", policyIds: [] },
+    ],
+    ["group_create", () => new GroupCreateTool(), { name: "G", policyIds: [] }],
+    [
+      "group_update",
+      () => new GroupUpdateTool(),
+      { id: "g_1", name: "G", policyIds: [] },
+    ],
+    [
+      "grant_share",
+      () => new GrantShareTool(),
+      {
+        resourceType: "station",
+        resourceId: "st_1",
+        grantee: { type: "team" },
+        access: "read",
+      },
+    ],
+  ])("%s refuses an unknown key, naming it", async (_slug, make, input) => {
+    const r = (await exec(make().build(ctx), { ...input, color: "blue" })) as {
+      error?: string;
+    };
+    expect(r.error).toMatch(/color/);
+    expect(policyCreate).not.toHaveBeenCalled();
+    expect(grantShare).not.toHaveBeenCalled();
   });
 
   it("grant_share routes to GrantService.share with the caller ctx", async () => {

@@ -95,9 +95,12 @@ export const EntityRecordImportRowSchema = z.object({
   checksum: z.string(),
 });
 
-export const EntityRecordImportRequestBodySchema = z.object({
-  records: z.array(EntityRecordImportRowSchema).min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const EntityRecordImportRequestBodySchema = z
+  .object({
+    records: z.array(EntityRecordImportRowSchema).min(1),
+  })
+  .strict();
 
 export type EntityRecordImportRequestBody = z.infer<
   typeof EntityRecordImportRequestBodySchema
@@ -136,10 +139,13 @@ export type EntityRecordDeleteOneResponsePayload = z.infer<
 
 // ── Update single record ────────────────────────────────────────────
 
-export const EntityRecordPatchRequestBodySchema = z.object({
-  data: z.record(z.string(), z.unknown()).optional(),
-  normalizedData: z.record(z.string(), z.unknown()).optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const EntityRecordPatchRequestBodySchema = z
+  .object({
+    data: z.record(z.string(), z.unknown()).optional(),
+    normalizedData: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
 
 export type EntityRecordPatchRequestBody = z.infer<
   typeof EntityRecordPatchRequestBodySchema
@@ -155,10 +161,13 @@ export type EntityRecordPatchResponsePayload = z.infer<
 
 // ── Create single record ─────────────────────────────────────────────
 
-export const EntityRecordCreateRequestBodySchema = z.object({
-  normalizedData: z.record(z.string(), z.unknown()),
-  sourceId: z.string().optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const EntityRecordCreateRequestBodySchema = z
+  .object({
+    normalizedData: z.record(z.string(), z.unknown()),
+    sourceId: z.string().optional(),
+  })
+  .strict();
 
 export type EntityRecordCreateRequestBody = z.infer<
   typeof EntityRecordCreateRequestBodySchema

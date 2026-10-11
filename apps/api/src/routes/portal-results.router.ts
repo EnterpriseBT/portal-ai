@@ -3,6 +3,7 @@ import { eq, and, ilike, type SQL } from "drizzle-orm";
 
 import {
   PinResultBodySchema,
+  UpdatePortalResultBodySchema,
   PortalResultListRequestQuerySchema,
   PINNABLE_BLOCK_TYPES,
   type PortalResultListResponsePayload,
@@ -630,12 +631,7 @@ portalResultsRouter.get(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [name]
- *             properties:
- *               name:
- *                 type: string
- *                 example: Updated Chart Name
+ *             $ref: '#/components/schemas/UpdatePortalResultBody'
  *     responses:
  *       200:
  *         description: Portal result renamed successfully
@@ -653,7 +649,11 @@ portalResultsRouter.get(
  *                     portalResult:
  *                       $ref: '#/components/schemas/PortalResult'
  *       400:
- *         description: Name is required (PORTAL_RESULT_INVALID_PAYLOAD)
+ *         description: >-
+ *           PORTAL_RESULT_INVALID_PAYLOAD. The body failed its schema: a
+ *           missing, blank or wrongly typed name, or an unknown key (#745).
+ *           The message names the first issue; details.issues holds all of
+ *           them.
  *         content:
  *           application/json:
  *             schema:
@@ -680,16 +680,19 @@ portalResultsRouter.patch(
       const ctx = req.application!.metadata;
       const { organizationId, userId } = ctx;
 
-      const { name } = req.body as { name?: string };
-      if (!name || typeof name !== "string" || name.trim() === "") {
+      // #745: a wrongly typed or unknown key is a 400 naming it, not ignored.
+      const parsed = UpdatePortalResultBodySchema.safeParse(req.body);
+      if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.PORTAL_RESULT_INVALID_PAYLOAD,
-            "name is required"
+            "Invalid pin payload",
+            parsed.error
           )
         );
       }
+      // The schema trims, so the stored name is trimmed too.
+      const { name } = parsed.data;
 
       // #621: renaming a pin is a write — own, owner/admin, or a read-write grant.
       // #713: one the caller can't read answers 404, like its GET.

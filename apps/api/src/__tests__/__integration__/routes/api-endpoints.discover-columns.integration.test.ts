@@ -331,6 +331,25 @@ describe("POST .../discover-columns — degradation + error paths", () => {
     expect(res.body.code).toBe(ApiCode.REST_API_AUTH_FAILED);
   });
 
+  it("#745: a malformed body names the field, without a Zod JSON dump", async () => {
+    const entityId = await seedEndpoint();
+
+    const res = await request(app)
+      .post(
+        `/api/connector-instances/${instanceId}/api-endpoints/${entityId}/discover-columns`
+      )
+      .send({ forceRefresh: "yes" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.REST_API_INVALID_CONFIG);
+    expect(res.body.message).toMatch(
+      /^Invalid discover-columns body: forceRefresh: /
+    );
+    expect(res.body.message).not.toMatch(/\[\s*\{/);
+    expect(res.body.message).not.toContain('"code":');
+    expect(res.body.details.issues[0].path).toEqual(["forceRefresh"]);
+  });
+
   it("returns 404 REST_API_ENDPOINT_NOT_FOUND when the entityId doesn't exist", async () => {
     await seedEndpoint(); // unrelated; ensures the instance is healthy
 

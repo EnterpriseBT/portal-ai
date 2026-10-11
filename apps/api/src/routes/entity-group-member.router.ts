@@ -13,6 +13,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
@@ -275,10 +276,10 @@ entityGroupMemberRouter.post(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED,
-            "Invalid entity group member payload"
+          invalidPayload(
+            ApiCode.ENTITY_GROUP_MEMBER_INVALID_PAYLOAD,
+            "Invalid entity group member payload",
+            parsed.error
           )
         );
       }
@@ -489,10 +490,10 @@ entityGroupMemberRouter.patch(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.ENTITY_GROUP_MEMBER_UPDATE_FAILED,
-            "Invalid entity group member payload"
+          invalidPayload(
+            ApiCode.ENTITY_GROUP_MEMBER_INVALID_PAYLOAD,
+            "Invalid entity group member payload",
+            parsed.error
           )
         );
       }
@@ -772,10 +773,10 @@ entityGroupMemberRouter.get(
       );
       if (!queryParsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED,
-            "targetConnectorEntityId and targetLinkFieldMappingId query parameters are required"
+          invalidPayload(
+            ApiCode.ENTITY_GROUP_MEMBER_INVALID_QUERY,
+            "Invalid entity group member query",
+            queryParsed.error
           )
         );
       }

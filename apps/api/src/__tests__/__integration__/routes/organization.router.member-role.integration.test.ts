@@ -186,6 +186,11 @@ describe("PUT /api/organization/members/:userId/roles (#620 set-the-set)", () =>
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    // #745: names the field and carries every issue.
+    expect(res.body.message).toMatch(
+      /^Invalid member roles payload: roleSlugs: /
+    );
+    expect(res.body.details.issues[0].path).toEqual(["roleSlugs"]);
   });
 
   it("blocks removing the owner role from the org's last owner (409)", async () => {

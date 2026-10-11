@@ -99,11 +99,14 @@ export type ConnectorEntityGetResponsePayload = z.infer<
 
 // ── Create ────────────────────────────────────────────────────────────
 
-export const ConnectorEntityCreateRequestBodySchema = z.object({
-  connectorInstanceId: z.string(),
-  key: z.string().regex(/^[a-z][a-z0-9_]*$/),
-  label: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const ConnectorEntityCreateRequestBodySchema = z
+  .object({
+    connectorInstanceId: z.string(),
+    key: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    label: z.string().min(1),
+  })
+  .strict();
 
 export type ConnectorEntityCreateRequestBody = z.infer<
   typeof ConnectorEntityCreateRequestBodySchema
@@ -119,9 +122,12 @@ export type ConnectorEntityCreateResponsePayload = z.infer<
 
 // ── Update ───────────────────────────────────────────────────────────
 
-export const ConnectorEntityPatchRequestBodySchema = z.object({
-  label: z.string().min(1).optional(),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const ConnectorEntityPatchRequestBodySchema = z
+  .object({
+    label: z.string().min(1).optional(),
+  })
+  .strict();
 
 export type ConnectorEntityPatchRequestBody = z.infer<
   typeof ConnectorEntityPatchRequestBodySchema

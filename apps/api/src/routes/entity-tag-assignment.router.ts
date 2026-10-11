@@ -9,6 +9,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
@@ -269,10 +270,10 @@ entityTagAssignmentRouter.post(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED,
-            "Invalid entity tag assignment payload"
+          invalidPayload(
+            ApiCode.ENTITY_TAG_ASSIGNMENT_INVALID_PAYLOAD,
+            "Invalid tag assignment payload",
+            parsed.error
           )
         );
       }

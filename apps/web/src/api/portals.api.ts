@@ -6,6 +6,7 @@ import type {
   PortalCreateResponsePayload,
   CreatePortalBody,
   SendMessageBody,
+  UpdatePortalBody,
 } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
@@ -53,14 +54,15 @@ export const portals = {
     }),
 
   rename: (id: string) =>
-    useAuthMutation<{ portal: { id: string; name: string } }, { name: string }>(
-      {
-        url: `/api/portals/${encodeURIComponent(id)}`,
-        method: "PATCH",
-        // #690: a 403 means the caller's capabilities changed; refetch them.
-        onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
-      }
-    ),
+    useAuthMutation<
+      { portal: { id: string; name: string } },
+      Required<Pick<UpdatePortalBody, "name">>
+    >({
+      url: `/api/portals/${encodeURIComponent(id)}`,
+      method: "PATCH",
+      // #690: a 403 means the caller's capabilities changed; refetch them.
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
+    }),
 
   remove: (id: string) =>
     useAuthMutation<{ id: string }, void>({
@@ -77,7 +79,10 @@ export const portals = {
     }),
 
   touch: (id: string) =>
-    useAuthMutation<{ portal: { id: string } }, { lastOpened: number }>({
+    useAuthMutation<
+      { portal: { id: string } },
+      Required<Pick<UpdatePortalBody, "lastOpened">>
+    >({
       url: `/api/portals/${encodeURIComponent(id)}`,
       method: "PATCH",
       onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },

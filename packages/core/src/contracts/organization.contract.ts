@@ -40,9 +40,12 @@ export type OrganizationGetResponse = z.infer<
  * type-to-confirm gate (#197). The route rejects unless `confirmationName`
  * matches the organization's name (trim-exact, case-sensitive).
  */
-export const OrganizationDeleteRequestSchema = z.object({
-  confirmationName: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const OrganizationDeleteRequestSchema = z
+  .object({
+    confirmationName: z.string().min(1),
+  })
+  .strict();
 
 export type OrganizationDeleteRequest = z.infer<
   typeof OrganizationDeleteRequestSchema
@@ -67,9 +70,12 @@ export type OrganizationDeleteResponse = z.infer<
  * roles and adds/removes to match). `.min(1)` is the ≥1-role guard at the schema
  * edge; the service additionally requires ≥1 *system* role.
  */
-export const MemberRolesSetRequestSchema = z.object({
-  roleSlugs: z.array(z.string().min(1)).min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const MemberRolesSetRequestSchema = z
+  .object({
+    roleSlugs: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
 
 export type MemberRolesSetRequest = z.infer<typeof MemberRolesSetRequestSchema>;
 

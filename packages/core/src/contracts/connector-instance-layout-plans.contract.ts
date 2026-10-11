@@ -78,11 +78,13 @@ export type LayoutPlanResponsePayload = z.infer<
  *     (google-sheets, microsoft-excel) that already own a populated
  *     instance cache under `connector:wb:<slug>:{id}`.
  */
+// #745: an unknown key is a 400 naming it, not silently dropped.
 export const CommitLayoutPlanRequestBodySchema = z
   .object({
     uploadSessionId: z.string().min(1).optional(),
     connectorInstanceId: z.string().min(1).optional(),
   })
+  .strict()
   .refine(
     (v) =>
       (v.uploadSessionId && !v.connectorInstanceId) ||
@@ -159,6 +161,7 @@ export type LayoutPlanCommitResult = z.infer<
  *     instance. Server reads from the connector workbook cache under
  *     `connector:wb:<slug>:{id}`.
  */
+// #745: an unknown key is a 400 naming it, not silently dropped.
 export const LayoutPlanInterpretDraftRequestBodySchema = z
   .object({
     uploadSessionId: z.string().min(1).optional(),
@@ -168,6 +171,7 @@ export const LayoutPlanInterpretDraftRequestBodySchema = z
     driftReport: InterpretInputSchema.shape.driftReport,
     userHints: InterpretInputSchema.shape.userHints,
   })
+  .strict()
   .refine(
     (v) =>
       (v.uploadSessionId && !v.connectorInstanceId) ||
@@ -212,6 +216,7 @@ export type LayoutPlanInterpretDraftResponsePayload = z.infer<
  * instance for this path; the frontend is expected to pass values that
  * match. The file_uploads-committed bookkeeping step is skipped.
  */
+// #745: an unknown key is a 400 naming it, not silently dropped.
 export const LayoutPlanCommitDraftRequestBodySchema = z
   .object({
     connectorDefinitionId: z.string().min(1),
@@ -220,6 +225,7 @@ export const LayoutPlanCommitDraftRequestBodySchema = z
     uploadSessionId: z.string().min(1).optional(),
     connectorInstanceId: z.string().min(1).optional(),
   })
+  .strict()
   .refine(
     (v) =>
       (v.uploadSessionId && !v.connectorInstanceId) ||

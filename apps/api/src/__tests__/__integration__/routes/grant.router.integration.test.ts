@@ -296,6 +296,33 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     expect(res.body.code).toBe(ApiCode.RBAC_GRANTEE_NOT_MEMBER);
   });
 
+  it("#745: a malformed body or query is a 400 naming the field", async () => {
+    await seedOrg("owner");
+    const body = await share({ resourceType: "planet", resourceId: "x" });
+    expect(body.status).toBe(400);
+    expect(body.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    expect(body.body.message).toMatch(/^Invalid grant payload: resourceType: /);
+    expect(body.body.details.issues.length).toBeGreaterThan(0);
+
+    const badType = await request(app)
+      .get("/api/grants?resourceType=planet&resourceId=x")
+      .set("authorization", "Bearer x");
+    expect(badType.status).toBe(400);
+    expect(badType.body.code).toBe(ApiCode.GRANT_INVALID_QUERY);
+    expect(badType.body.message).toMatch(
+      /^Invalid grant query: resourceType: /
+    );
+    expect(badType.body.details.issues.length).toBeGreaterThan(0);
+
+    const noId = await request(app)
+      .get("/api/grants?resourceType=station")
+      .set("authorization", "Bearer x");
+    expect(noId.status).toBe(400);
+    expect(noId.body.code).toBe(ApiCode.GRANT_INVALID_QUERY);
+    expect(noId.body.message).toMatch(/^Invalid grant query: resourceId: /);
+    expect(noId.body.details.issues[0].path).toEqual(["resourceId"]);
+  });
+
   it("a member can't share a station they don't own (403 share-authority)", async () => {
     const { orgId, ownerId, callerId } = await seedOrg("member");
     const station = await addStation(orgId, ownerId); // owner's station

@@ -14,6 +14,7 @@ import type {
 } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FileUploadAccessService } from "../services/file-upload-access.service.js";
 import { FileUploadSessionService } from "../services/file-upload-session.service.js";
@@ -69,11 +70,10 @@ fileUploadsRouter.post(
       const parsed = FileUploadPresignRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD,
             "Invalid presign body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }
@@ -137,11 +137,10 @@ fileUploadsRouter.post(
       const parsed = FileUploadConfirmRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD,
             "Invalid confirm body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }
@@ -208,11 +207,10 @@ fileUploadsRouter.post(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD,
             "Invalid parse-session body",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }
@@ -310,11 +308,10 @@ fileUploadsRouter.get(
       );
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD,
+          invalidPayload(
+            ApiCode.FILE_UPLOAD_PARSE_INVALID_QUERY,
             "Invalid sheet-slice query",
-            { issues: parsed.error.issues }
+            parsed.error
           )
         );
       }

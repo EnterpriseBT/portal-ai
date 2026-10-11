@@ -209,6 +209,11 @@ describe("POST /api/connector-instances/suggest-transform — errors", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("REST_API_INVALID_CONFIG");
+    // #745: the message names the field; details carry the issues.
+    expect(res.body.message).toMatch(
+      /^Invalid suggest-transform body: sampleResponse: /
+    );
+    expect(res.body.details.issues[0].path).toEqual(["sampleResponse"]);
     expect(suggestSpy).not.toHaveBeenCalled();
   });
 

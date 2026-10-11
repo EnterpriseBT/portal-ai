@@ -5,8 +5,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { HttpService, ApiError } from "../services/http.service.js";
+import { HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { RoleService } from "../services/role.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
@@ -102,10 +103,10 @@ roleRouter.post(
       const parsed = RoleUpsertRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "Invalid role payload — expected { name, policyIds }"
+            "Invalid role payload",
+            parsed.error
           )
         );
       }
@@ -241,10 +242,10 @@ roleRouter.put(
       const parsed = RoleUpsertRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.ORGANIZATION_INVALID_PAYLOAD,
-            "Invalid role payload — expected { name, policyIds }"
+            "Invalid role payload",
+            parsed.error
           )
         );
       }

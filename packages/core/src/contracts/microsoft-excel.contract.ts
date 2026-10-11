@@ -53,9 +53,12 @@ export type MicrosoftExcelListWorkbooksResponsePayload = z.infer<
 
 // ── POST /api/connectors/microsoft-excel/instances/:id/select-workbook
 
-export const MicrosoftExcelSelectWorkbookRequestBodySchema = z.object({
-  driveItemId: z.string().min(1),
-});
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const MicrosoftExcelSelectWorkbookRequestBodySchema = z
+  .object({
+    driveItemId: z.string().min(1),
+  })
+  .strict();
 export type MicrosoftExcelSelectWorkbookRequestBody = z.infer<
   typeof MicrosoftExcelSelectWorkbookRequestBodySchema
 >;

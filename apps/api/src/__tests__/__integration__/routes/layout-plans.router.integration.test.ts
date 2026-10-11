@@ -831,6 +831,9 @@ describe("Layout Plans Draft Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(/^Invalid commit request body: plan: /);
+      expect(res.body.details.issues[0].path).toEqual(["plan"]);
     });
 
     it("returns 403 PERMISSION_DENIED and creates nothing when the caller may not create connector instances (#710)", async () => {
@@ -1094,6 +1097,11 @@ describe("Layout Plans Draft Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      // #745: the message names the field; details carry the issues.
+      expect(res.body.message).toMatch(
+        /^Invalid interpret request body: uploadSessionId: Exactly one of/
+      );
+      expect(res.body.details.issues[0].path).toEqual(["uploadSessionId"]);
     });
 
     it("returns 404 when the connector instance does not exist", async () => {

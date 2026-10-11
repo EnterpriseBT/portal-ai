@@ -5,6 +5,7 @@ import {
   PortalListRequestQuerySchema,
   CreatePortalBodySchema,
   SendMessageBodySchema,
+  UpdatePortalBodySchema,
   type PortalListResponsePayload,
   type PortalGetResponsePayload,
   type PortalCreateResponsePayload,
@@ -577,20 +578,16 @@ portalRouter.delete(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *                 example: Updated Portal Name
- *               lastOpened:
- *                 type: number
- *                 description: Unix-ms timestamp of when the portal was last visited
- *                 example: 1713100800000
+ *             $ref: '#/components/schemas/UpdatePortalBody'
  *     responses:
  *       200:
  *         description: Portal updated successfully
  *       400:
- *         description: Invalid payload, neither name nor lastOpened provided (PORTAL_INVALID_PAYLOAD)
+ *         description: >-
+ *           PORTAL_INVALID_PAYLOAD. The body failed its schema: neither name
+ *           nor lastOpened, a wrongly typed field, or an unknown key (#745).
+ *           The message names the first issue; details.issues holds all of
+ *           them.
  *       403:
  *         description: The caller can read the portal but not change it (#685)
  *       404:
@@ -606,23 +603,18 @@ portalRouter.patch(
       const { id } = req.params;
       const { userId } = req.application!.metadata;
 
-      const { name, lastOpened } = req.body as {
-        name?: string;
-        lastOpened?: number;
-      };
-
-      const hasName = name && typeof name === "string" && name.trim() !== "";
-      const hasLastOpened = typeof lastOpened === "number";
-
-      if (!hasName && !hasLastOpened) {
+      // #745: a wrongly typed or unknown key is a 400 naming it, not ignored.
+      const parsed = UpdatePortalBodySchema.safeParse(req.body);
+      if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
+          invalidPayload(
             ApiCode.PORTAL_INVALID_PAYLOAD,
-            "name or lastOpened is required"
+            "Invalid portal payload",
+            parsed.error
           )
         );
       }
+      const { name, lastOpened } = parsed.data;
 
       // #685: renaming or touching the portal writes to it.
       await PortalAccessService.load(req.application!.metadata, id, "write");
@@ -632,10 +624,10 @@ portalRouter.patch(
         updated: now,
         updatedBy: userId,
       };
-      if (hasName) {
-        updates.name = name!.trim();
+      if (name !== undefined) {
+        updates.name = name;
       }
-      if (hasLastOpened) {
+      if (lastOpened !== undefined) {
         updates.lastOpened = lastOpened;
       }
 
