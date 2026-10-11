@@ -758,7 +758,7 @@ const options: swaggerJsdoc.Options = {
               type: "object",
               additionalProperties: true,
               description:
-                "Optional structured detail. On a 400 *_INVALID_PAYLOAD / *_INVALID_QUERY (a request that failed its schema, #745) the message names the first failing field and `issues` holds every Zod issue. A backoff hint rides in `retryAfterSeconds`.",
+                "Optional structured detail. On a 400 *_INVALID_PAYLOAD / *_INVALID_QUERY (a request that failed its schema, #745) the message names the first failing field, `issues` holds the first 20 Zod issues (an unknown-keys list is cut to 20 names), and `issueCount` is the total. A backoff hint rides in `retryAfterSeconds`.",
               properties: {
                 issues: {
                   type: "array",
@@ -785,6 +785,11 @@ const options: swaggerJsdoc.Options = {
                       },
                     },
                   },
+                },
+                issueCount: {
+                  type: "number",
+                  description:
+                    "Total Zod issues of the schema failure; `issues` holds at most 20 of them.",
                 },
                 retryAfterSeconds: {
                   type: "number",

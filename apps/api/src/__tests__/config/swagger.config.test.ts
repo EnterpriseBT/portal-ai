@@ -268,9 +268,12 @@ describe("swagger spec — ApiErrorResponse (#745)", () => {
     >;
   };
 
-  it("documents details.issues, every Zod issue of a schema failure", () => {
+  it("documents details.issues and issueCount of a schema failure", () => {
     expect(error.properties?.details?.type).toBe("object");
     expect(error.properties?.details?.properties?.issues?.type).toBe("array");
+    expect(error.properties?.details?.properties?.issueCount?.type).toBe(
+      "number"
+    );
   });
 
   it("keeps details optional", () => {
