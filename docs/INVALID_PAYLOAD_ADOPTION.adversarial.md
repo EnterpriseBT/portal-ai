@@ -82,7 +82,8 @@ N/A: schema validation is stateless and runs before any read or write. #745 chan
 
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
-| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+| §1 unknown-key amplification | The 400 echoed every unknown key twice (message and `keys`): 4.1 MB of keys answered 12.3 MB, and the full list went into the error log line. The same probe on an array of bad items (`POST /api/file-uploads/presign`, 800 KB body of 400,000 bad entries) answered 51 MB, one issue per item. That route already returned all issues on `main`, but #745 routes about 40 more sites through `invalidPayload` and adds the key echo | med | fixed-in-PR: `invalidPayload` returns at most 20 issues with the total in `details.issueCount`. An unknown-key list is capped at 20 names, each clipped to 64 characters, and the message says "and N more". Re-probed: 717 B, 2.6 KB, and 509 B for a single 4 MB key name |
+| §1 non-object JSON body (pre-existing, outside #745) | `--data '"x"'` / `'null'` → 400 `REQUEST_BODY_INVALID_JSON`, whose message is the body parser's own and quotes a fragment of the body. It only echoes the caller's own input back to them, and the warn log line leaves the message out | low | proposed waive: pre-existing, and the echo goes only to the sender |
 
 ## Sign-off
 
