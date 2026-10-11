@@ -109,6 +109,68 @@ describe("serializeRecordFields", () => {
     expect(errors.meta).toMatch(/Invalid JSON:/);
   });
 
+  // #757: the dialog used to send the raw text, so an empty Geometry
+  // reached the API as "" and the record saved without a wide-table row.
+  it("serializes empty geometry to null", () => {
+    const { data, errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: "",
+    });
+    expect(data.geom).toBeNull();
+    expect(errors).toEqual({});
+  });
+
+  it("parses geometry text to a GeoJSON object", () => {
+    const { data, errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: '{"type":"Point","coordinates":[-122.4,37.8]}',
+    });
+    expect(data.geom).toEqual({ type: "Point", coordinates: [-122.4, 37.8] });
+    expect(errors).toEqual({});
+  });
+
+  it("returns error for geometry text that isn't JSON", () => {
+    const { data, errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: "not json",
+    });
+    expect(errors.geom).toMatch(/^Invalid GeoJSON:/);
+    expect(data.geom).toBeNull();
+  });
+
+  it("returns error for geometry JSON that isn't an object", () => {
+    for (const geom of ['"x"', "5", "[1,2]", "null"]) {
+      const { errors } = serializeRecordFields([col("geom", "geometry")], {
+        geom,
+      });
+      expect(errors.geom).toBe("Value must be a GeoJSON geometry object");
+    }
+  });
+
+  it("returns error for a geometry object without a GeoJSON type", () => {
+    const { data, errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: '{"lat":1,"lng":2}',
+    });
+    expect(errors.geom).toMatch(/^GeoJSON "type" must be one of Point,/);
+    expect(data.geom).toBeNull();
+  });
+
+  it("returns error for a GeoJSON geometry missing its coordinates", () => {
+    const { errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: '{"type":"Point"}',
+    });
+    expect(errors.geom).toBe('A GeoJSON Point needs a "coordinates" array');
+  });
+
+  it("accepts a GeometryCollection with geometries", () => {
+    const geom = {
+      type: "GeometryCollection",
+      geometries: [{ type: "Point", coordinates: [1, 2] }],
+    };
+    const { data, errors } = serializeRecordFields([col("geom", "geometry")], {
+      geom: JSON.stringify(geom),
+    });
+    expect(errors).toEqual({});
+    expect(data.geom).toEqual(geom);
+  });
+
   it("serializes array field", () => {
     const { data, errors } = serializeRecordFields([col("tags", "array")], {
       tags: '["a","b"]',
@@ -233,6 +295,27 @@ describe("initializeRecordFields", () => {
       meta: { a: 1 },
     });
     expect(values.meta).toBe('{\n  "a": 1\n}');
+  });
+
+  it("initializes geometry as empty string", () => {
+    const values = initializeRecordFields([col("geom", "geometry")]);
+    expect(values.geom).toBe("");
+  });
+
+  it("deserializes existing geometry object to pretty-printed JSON", () => {
+    const values = initializeRecordFields([col("geom", "geometry")], {
+      geom: { type: "Point", coordinates: [1, 2] },
+    });
+    expect(values.geom).toBe(
+      JSON.stringify({ type: "Point", coordinates: [1, 2] }, null, 2)
+    );
+  });
+
+  it("deserializes existing null geometry to empty string", () => {
+    const values = initializeRecordFields([col("geom", "geometry")], {
+      geom: null,
+    });
+    expect(values.geom).toBe("");
   });
 
   it("deserializes existing number to string", () => {

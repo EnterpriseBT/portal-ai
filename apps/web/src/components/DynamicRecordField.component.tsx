@@ -3,6 +3,8 @@ import React, { useState, useCallback } from "react";
 import { TextField, Checkbox, FormControlLabel, MenuItem } from "@mui/material";
 import type { ResolvedColumn } from "@portalai/core/contracts";
 
+import { geoJsonGeometryError } from "../utils/record-field-serialization.util";
+
 // ── Props ────────────────────────────────────────────────────────────
 
 export interface DynamicRecordFieldProps {
@@ -20,6 +22,14 @@ export interface DynamicRecordFieldProps {
   /** Disable the field (e.g., during submission). */
   disabled?: boolean;
 }
+
+const CODE_EDITOR_PLACEHOLDER: Partial<Record<string, string>> = {
+  json: "{}",
+  array: "[]",
+};
+
+const GEOMETRY_HELPER_TEXT =
+  'GeoJSON geometry, e.g. {"type":"Point","coordinates":[lng,lat]}';
 
 // ── Component ────────────────────────────────────────────────────────
 
@@ -45,19 +55,31 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
         setLocalError(undefined);
         return;
       }
+      const isGeometry = column.type === "geometry";
       try {
         const parsed = JSON.parse(raw);
         if (column.type === "array" && !Array.isArray(parsed)) {
           setLocalError("Value must be a JSON array");
           return;
         }
+        const geometryProblem = isGeometry
+          ? geoJsonGeometryError(parsed)
+          : null;
+        if (geometryProblem) {
+          setLocalError(geometryProblem);
+          return;
+        }
+        // #757: validate only. Reformatting the text here grew the field
+        // between a press and release on the dialog's submit button, so the
+        // click that blurred the field was lost.
         setLocalError(undefined);
-        onChange(column.normalizedKey, JSON.stringify(parsed, null, 2));
       } catch (e) {
-        setLocalError(`Invalid JSON: ${(e as Error).message}`);
+        setLocalError(
+          `${isGeometry ? "Invalid GeoJSON" : "Invalid JSON"}: ${(e as Error).message}`
+        );
       }
     },
-    [column.normalizedKey, column.type, onChange, onBlur]
+    [column.type, onBlur]
   );
 
   const codeEditorSx = {
@@ -210,6 +232,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
 
     case "json":
     case "array":
+    case "geometry":
       return (
         <TextField
           label={column.label}
@@ -220,12 +243,15 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           size="small"
           multiline
           minRows={4}
-          placeholder={column.type === "json" ? "{}" : "[]"}
+          placeholder={CODE_EDITOR_PLACEHOLDER[column.type]}
           disabled={disabled}
           inputRef={inputRef}
           required={column.required}
           error={showError}
-          helperText={errorText}
+          helperText={
+            errorText ||
+            (column.type === "geometry" ? GEOMETRY_HELPER_TEXT : undefined)
+          }
           sx={codeEditorSx}
           slotProps={{
             htmlInput: { "aria-invalid": showError },

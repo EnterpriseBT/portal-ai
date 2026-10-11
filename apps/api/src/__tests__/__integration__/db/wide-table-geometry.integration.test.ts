@@ -421,6 +421,12 @@ describe("Wide-table geometry storage (#316)", () => {
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].sourceId).toBe(REJECT);
     expect(result.rejected[0].reason).toContain("GEOMETRY_INVALID_ON_IMPORT");
+    // #757: the refusal names its code and the field's normalized key.
+    expect(result.rejected[0].code).toBe("GEOMETRY_INVALID_ON_IMPORT");
+    expect(result.rejected[0].fields).toEqual(["boundary"]);
+    expect(result.rejected[0].problems).toEqual([
+      { code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["boundary"] },
+    ]);
 
     const table = `er__${entityId}`;
     const written = (await connection.unsafe(
@@ -555,6 +561,11 @@ describe("Wide-table geometry storage (#316)", () => {
 
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].reason).toContain("GIS_SRID_UNSUPPORTED");
+    expect(result.rejected[0].code).toBe("GIS_SRID_UNSUPPORTED");
+    expect(result.rejected[0].fields).toEqual(["boundary"]);
+    expect(result.rejected[0].problems).toEqual([
+      { code: "GIS_SRID_UNSUPPORTED", fields: ["boundary"] },
+    ]);
 
     const table = `er__${entityId}`;
     const written = (await connection.unsafe(
@@ -562,5 +573,137 @@ describe("Wide-table geometry storage (#316)", () => {
       [erId]
     )) as unknown as unknown[];
     expect(written).toHaveLength(0);
+  });
+  // #757: updatePartial runs the same audit as upsertMany.
+  describe("updatePartial geometry audit (#757)", () => {
+    async function seedOne(geom: unknown) {
+      await reconciler.reconcileEntity(entityId, db);
+      const stmt = await statementCache.get(entityId, db);
+      const geomCol = stmt.columns[0].columnName;
+      const now = Date.now();
+      const erId = `er-patch-${generateId().slice(0, 8)}`;
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.entityRecords)
+        .values({
+          id: erId,
+          organizationId: orgId,
+          connectorEntityId: entityId,
+          data: {},
+          sourceId: erId,
+          checksum: "chk",
+          syncedAt: now,
+          origin: "manual",
+          validationErrors: null,
+          isValid: true,
+          created: now,
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      const repo = new WideTableRepository(statementCache);
+      await repo.upsertMany(
+        entityId,
+        [
+          {
+            entity_record_id: erId,
+            organization_id: orgId,
+            synced_at: now,
+            is_valid: true,
+            source_id: erId,
+            [geomCol]: geom,
+          },
+        ],
+        db
+      );
+      const read = async () =>
+        (
+          (await connection.unsafe(
+            `${stmt.selectAllSql} WHERE "entity_record_id" = $1`,
+            [erId]
+          )) as unknown as Array<Record<string, unknown>>
+        )[0][geomCol] as { type: string; coordinates: unknown } | null;
+      return { repo, erId, read };
+    }
+
+    it.each([
+      ["an empty string", ""],
+      ["a non-geometry object", { not: "a geometry" }],
+      ["an unknown SRID", { ...POLYGON, spatialReference: { wkid: 987654 } }],
+    ])(
+      "refuses %s with a 400 and leaves the row unchanged",
+      async (_l, bad) => {
+        const { repo, erId, read } = await seedOne(POLYGON);
+
+        await expect(
+          repo.updatePartial(entityId, erId, { boundary: bad }, {}, db)
+        ).rejects.toMatchObject({ status: 400 });
+
+        expect((await read())?.type).toBe("Polygon");
+      }
+    );
+
+    it("normalizes an ArcGIS web-mercator shape like upsertMany does", async () => {
+      const { repo, erId, read } = await seedOne(null);
+      await repo.updatePartial(
+        entityId,
+        erId,
+        {
+          boundary: {
+            rings: [
+              [
+                [-8250000, 4970000],
+                [-8250000, 4980000],
+                [-8240000, 4980000],
+                [-8240000, 4970000],
+                [-8250000, 4970000],
+              ],
+            ],
+            spatialReference: { wkid: 102100 },
+          },
+        },
+        {},
+        db
+      );
+      const geom = (await read()) as { coordinates: number[][][] };
+      const [lng, lat] = geom.coordinates[0][0];
+      expect(lng).toBeGreaterThan(-75);
+      expect(lng).toBeLessThan(-73);
+      expect(lat).toBeGreaterThan(40);
+      expect(lat).toBeLessThan(41);
+    });
+
+    it("with onRejectedGeometry: skip, keeps the geometry and writes the rest", async () => {
+      const { repo, erId, read } = await seedOne(POLYGON);
+
+      const refused = await repo.updatePartial(
+        entityId,
+        erId,
+        { boundary: "" },
+        { isValid: false },
+        db,
+        { onRejectedGeometry: "skip" }
+      );
+
+      expect(refused).toHaveLength(1);
+      expect(refused[0]).toMatchObject({
+        sourceId: erId,
+        code: "GEOMETRY_INVALID_ON_IMPORT",
+        fields: ["boundary"],
+      });
+      expect((await read())?.type).toBe("Polygon");
+      const [row] = (await connection.unsafe(
+        `SELECT is_valid FROM "er__${entityId}" WHERE "entity_record_id" = $1`,
+        [erId]
+      )) as unknown as Array<{ is_valid: boolean }>;
+      expect(row.is_valid).toBe(false);
+    });
+
+    it("writes null as NULL", async () => {
+      const { repo, erId, read } = await seedOne(POLYGON);
+      await repo.updatePartial(entityId, erId, { boundary: null }, {}, db);
+      expect(await read()).toBeNull();
+    });
   });
 });

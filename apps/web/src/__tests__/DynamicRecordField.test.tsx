@@ -139,6 +139,21 @@ describe("DynamicRecordField — rendering by type", () => {
     expect(textarea.tagName).toBe("TEXTAREA");
   });
 
+  it("renders multiline field with a GeoJSON hint for geometry type", () => {
+    render(
+      <DynamicRecordField
+        column={col("geom", "geometry")}
+        value=""
+        onChange={noop}
+      />
+    );
+    const textarea = screen.getByLabelText("Geom");
+    expect(textarea.tagName).toBe("TEXTAREA");
+    expect(
+      screen.getByText(/GeoJSON geometry, e\.g\. \{"type":"Point"/)
+    ).toBeInTheDocument();
+  });
+
   it("renders multiline monospace field for array type", () => {
     render(
       <DynamicRecordField
@@ -201,16 +216,25 @@ describe("DynamicRecordField — JSON/Array code-editor", () => {
     expect(screen.getByPlaceholderText("[]")).toBeInTheDocument();
   });
 
-  it("pretty-prints valid JSON on blur", () => {
+  // #757: reformatting on blur resized the field under the submit button and
+  // swallowed the click that caused the blur.
+  it.each([
+    ["meta", "json" as const, '{"a":1}'],
+    ["geom", "geometry" as const, '{"type":"Point","coordinates":[1,2]}'],
+  ])("leaves valid %s text as typed on blur", (key, type, value) => {
     render(
       <DynamicRecordField
-        column={col("meta", "json")}
-        value='{"a":1}'
+        column={col(key, type)}
+        value={value}
         onChange={noop}
+        touched={true}
       />
     );
-    fireEvent.blur(screen.getByLabelText("Meta"));
-    expect(noop).toHaveBeenCalledWith("meta", '{\n  "a": 1\n}');
+    const field = screen.getByLabelText(key === "meta" ? "Meta" : "Geom");
+    fireEvent.blur(field);
+    expect(noop).not.toHaveBeenCalled();
+    expect(field).toHaveValue(value);
+    expect(field).not.toHaveAttribute("aria-invalid", "true");
   });
 
   it("shows parse error on blur for invalid JSON", () => {
@@ -224,6 +248,50 @@ describe("DynamicRecordField — JSON/Array code-editor", () => {
     );
     fireEvent.blur(screen.getByLabelText("Meta"));
     expect(screen.getByText(/Invalid JSON:/)).toBeInTheDocument();
+  });
+
+  it("shows GeoJSON parse error on blur for invalid geometry", () => {
+    render(
+      <DynamicRecordField
+        column={col("geom", "geometry")}
+        value="not json"
+        onChange={noop}
+        touched={true}
+      />
+    );
+    fireEvent.blur(screen.getByLabelText("Geom"));
+    expect(screen.getByText(/Invalid GeoJSON:/)).toBeInTheDocument();
+  });
+
+  it("rejects non-object geometry JSON on blur", () => {
+    render(
+      <DynamicRecordField
+        column={col("geom", "geometry")}
+        value="[1,2]"
+        onChange={noop}
+        touched={true}
+      />
+    );
+    fireEvent.blur(screen.getByLabelText("Geom"));
+    expect(
+      screen.getByText("Value must be a GeoJSON geometry object")
+    ).toBeInTheDocument();
+  });
+
+  it("rejects an object without a GeoJSON type on blur", () => {
+    render(
+      <DynamicRecordField
+        column={col("geom", "geometry")}
+        value='{"lat":1,"lng":2}'
+        onChange={noop}
+        touched={true}
+      />
+    );
+    fireEvent.blur(screen.getByLabelText("Geom"));
+    expect(
+      screen.getByText(/^GeoJSON "type" must be one of/)
+    ).toBeInTheDocument();
+    expect(noop).not.toHaveBeenCalled();
   });
 
   it("clears error when corrected and blurred", () => {

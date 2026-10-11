@@ -37,8 +37,11 @@ const mockFindEntityById = jest
   .mockResolvedValue({ id: "ce-1", key: "customers", label: "My Entity" });
 
 const mockWideTableUpsertMany = jest
-  .fn<(...a: unknown[]) => Promise<void>>()
-  .mockResolvedValue(undefined);
+  .fn<(...a: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue({ repaired: 0, rejected: [] });
+const mockStatementGet = jest
+  .fn<(...a: unknown[]) => Promise<{ columns: unknown[] }>>()
+  .mockResolvedValue({ columns: [] });
 
 const mockCountMappings = jest
   .fn<(ids: string[]) => Promise<number>>()
@@ -62,11 +65,7 @@ jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
 jest.unstable_mockModule(
   "../../services/wide-table-statement.cache.js",
   () => ({
-    wideTableStatementCache: {
-      get: jest
-        .fn<(...a: unknown[]) => Promise<{ columns: unknown[] }>>()
-        .mockResolvedValue({ columns: [] }),
-    },
+    wideTableStatementCache: { get: mockStatementGet },
     WIDE_TABLE_METADATA_COLUMNS: [
       "entity_record_id",
       "organization_id",
@@ -104,6 +103,89 @@ const exec = (input: { items: ItemInput[] }) =>
   );
 
 describe("EntityRecordCreateTool", () => {
+  it("#757: a geometry the wide table refuses fails the call, naming the field", async () => {
+    mockStatementGet.mockResolvedValueOnce({
+      columns: [{ columnName: "c_geom", normalizedKey: "geom" }],
+    });
+    mockWideTableUpsertMany.mockResolvedValueOnce({
+      repaired: 0,
+      rejected: [
+        {
+          sourceId: "s-1",
+          code: "GEOMETRY_INVALID_ON_IMPORT",
+          fields: ["geom"],
+          problems: [{ code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["geom"] }],
+          reason: "GEOMETRY_INVALID_ON_IMPORT: geometry was unparseable",
+        },
+      ],
+    });
+
+    const result: any = await exec({
+      items: [{ connectorEntityId: "ce-1", data: { geom: "" } }],
+    });
+
+    expect(result.success).toBeUndefined();
+    expect(result.error).toMatch(/"geom"/);
+    // The throw happens inside the transaction callback, so it rolls back.
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    await expect(
+      mockTransaction.mock.results[0].value as Promise<unknown>
+    ).rejects.toThrow(/"geom"/);
+  });
+
+  it("#757: a multi-item refusal names the items, not their sourceIds", async () => {
+    mockNormalizeMany.mockResolvedValueOnce([
+      { normalizedData: { geom: null }, validationErrors: null, isValid: true },
+      { normalizedData: { geom: "" }, validationErrors: null, isValid: true },
+    ]);
+    mockCreateMany.mockImplementationOnce((...args: unknown[]) =>
+      Promise.resolve(
+        (args[0] as any[]).map((m) => ({
+          id: m.id,
+          connectorEntityId: m.connectorEntityId,
+          sourceId: m.sourceId,
+        }))
+      )
+    );
+    mockStatementGet.mockResolvedValueOnce({
+      columns: [{ columnName: "c_geom", normalizedKey: "geom" }],
+    });
+    mockWideTableUpsertMany.mockResolvedValueOnce({
+      repaired: 0,
+      rejected: [
+        {
+          sourceId: "src-b",
+          code: "GEOMETRY_INVALID_ON_IMPORT",
+          fields: ["geom"],
+          problems: [{ code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["geom"] }],
+          reason: "GEOMETRY_INVALID_ON_IMPORT: geometry was unparseable",
+        },
+      ],
+    });
+
+    const result: any = await exec({
+      items: [
+        { connectorEntityId: "ce-1", sourceId: "src-a", data: { geom: null } },
+        { connectorEntityId: "ce-1", sourceId: "src-b", data: { geom: "" } },
+      ],
+    });
+
+    expect(result.error).toMatch(
+      /^1 record carries a geometry that can't be written; nothing was written: items\[1\]\. Field "geom"/
+    );
+  });
+
+  it("#757: a clean mirror write succeeds", async () => {
+    mockStatementGet.mockResolvedValueOnce({
+      columns: [{ columnName: "c_geom", normalizedKey: "geom" }],
+    });
+    const result: any = await exec({
+      items: [{ connectorEntityId: "ce-1", data: { Name: "Jane" } }],
+    });
+    expect(result.success).toBe(true);
+    expect(mockWideTableUpsertMany).toHaveBeenCalledTimes(1);
+  });
+
   it("single-item regression — { items: [single] } produces same result", async () => {
     const result: any = await exec({
       items: [{ connectorEntityId: "ce-1", data: { Name: "Jane" } }],

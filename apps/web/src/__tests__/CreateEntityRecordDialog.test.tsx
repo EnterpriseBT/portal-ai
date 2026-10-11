@@ -64,6 +64,18 @@ const columns: ResolvedColumn[] = [
     canonicalFormat: null,
     format: null,
   },
+  {
+    key: "location",
+    normalizedKey: "location",
+    label: "Location",
+    type: "geometry",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
 ];
 
 const defaultProps = {
@@ -167,6 +179,42 @@ describe("CreateEntityRecordDialog — submission", () => {
     });
     await userEvent.click(screen.getByText("Create"));
     expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+
+  // #757: an empty Geometry used to submit "", which the API saved as a
+  // record no read could find.
+  it("submits an empty Geometry as null", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await userEvent.type(screen.getByLabelText(/Name/), "Alice");
+    await userEvent.click(screen.getByText("Create"));
+    expect(defaultProps.onSubmit).toHaveBeenCalledWith({
+      normalizedData: expect.objectContaining({ location: null }),
+    });
+  });
+
+  it("submits typed GeoJSON as an object", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await userEvent.type(screen.getByLabelText(/Name/), "Alice");
+    fireEvent.change(screen.getByLabelText("Location"), {
+      target: { value: '{"type":"Point","coordinates":[-122.4,37.8]}' },
+    });
+    await userEvent.click(screen.getByText("Create"));
+    expect(defaultProps.onSubmit).toHaveBeenCalledWith({
+      normalizedData: expect.objectContaining({
+        location: { type: "Point", coordinates: [-122.4, 37.8] },
+      }),
+    });
+  });
+
+  it("does not call onSubmit when Geometry isn't GeoJSON", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await userEvent.type(screen.getByLabelText(/Name/), "Alice");
+    fireEvent.change(screen.getByLabelText("Location"), {
+      target: { value: "not json" },
+    });
+    await userEvent.click(screen.getByText("Create"));
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText(/Invalid GeoJSON:/)).toBeInTheDocument();
   });
 
   it("serializes boolean false correctly (not null)", async () => {

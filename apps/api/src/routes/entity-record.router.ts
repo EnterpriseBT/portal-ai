@@ -47,6 +47,7 @@ import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { JobsService } from "../services/jobs.service.js";
@@ -728,7 +729,10 @@ entityRecordRouter.get(
  *                     record:
  *                       $ref: '#/components/schemas/EntityRecord'
  *       400:
- *         description: Invalid request body
+ *         description: >
+ *           Invalid request body (`ENTITY_RECORD_INVALID_PAYLOAD`), or a
+ *           geometry that can't be written (`GEOMETRY_INVALID_ON_IMPORT` /
+ *           `GIS_SRID_UNSUPPORTED`, #757), in which case no record is created
  *         content:
  *           application/json:
  *             schema:
@@ -830,7 +834,9 @@ entityRecordRouter.post(
         await EntityRecordCountCache.invalidate(connectorEntityId);
         const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
         const mappings = buildMappingsForProjection(stmt.columns);
-        await DbService.repository.wideTable.upsertMany(
+        // #757: a refused geometry throws, rolling back the insert above, so
+        // a record never exists without its wide-table row.
+        const mirrored = await DbService.repository.wideTable.upsertMany(
           connectorEntityId,
           [
             projectToWideRow(
@@ -847,6 +853,7 @@ entityRecordRouter.post(
           ],
           tx
         );
+        assertNoRejectedGeometry(mirrored);
         // Return the hydrated shape so the response carries
         // `normalizedData` rebuilt from the wide table.
         return {
@@ -924,7 +931,16 @@ entityRecordRouter.post(
  *             schema:
  *               $ref: '#/components/schemas/EntityRecordImportResponsePayload'
  *       400:
- *         description: Body failed schema validation (`ENTITY_RECORD_INVALID_PAYLOAD`)
+ *         description: >
+ *           Body failed schema validation (`ENTITY_RECORD_INVALID_PAYLOAD`), or a
+ *           row carries a geometry that can't be written
+ *           (`GEOMETRY_INVALID_ON_IMPORT` / `GIS_SRID_UNSUPPORTED`, #757). The
+ *           import is all-or-nothing: no row is written, and
+ *           `details.rejected` names the refused rows.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Import failed (`ENTITY_RECORD_IMPORT_FAILED`)
  */
@@ -1015,6 +1031,10 @@ entityRecordRouter.post(
           origin: "sync",
           updated: prev ? now : null,
           updatedBy: prev ? userId : null,
+          // #757: required by the model; without them parse() threw and
+          // every import answered 500.
+          validationErrors: null,
+          isValid: true,
         });
 
         toUpsert.push(model.parse());
@@ -1028,11 +1048,15 @@ entityRecordRouter.post(
           );
           const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
           const mappings = buildMappingsForProjection(stmt.columns);
-          await DbService.repository.wideTable.upsertMany(
+          // #757: all or nothing. One refused geometry fails the import and
+          // rolls back every row, rather than committing records that have
+          // no wide-table row.
+          const mirrored = await DbService.repository.wideTable.upsertMany(
             connectorEntityId,
             toUpsert.map((r) => projectToWideRow(r, mappings)),
             tx
           );
+          assertNoRejectedGeometry(mirrored, { batch: true });
         }).catch((error) => {
           if (error instanceof ApiError) throw error;
           throw new ApiError(
@@ -1229,6 +1253,15 @@ entityRecordRouter.post(
  *                   properties:
  *                     record:
  *                       $ref: '#/components/schemas/EntityRecord'
+ *       400:
+ *         description: >
+ *           Invalid request body (`ENTITY_RECORD_INVALID_PAYLOAD`), or a
+ *           geometry that can't be written (`GEOMETRY_INVALID_ON_IMPORT` /
+ *           `GIS_SRID_UNSUPPORTED`, #757), in which case nothing changes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Entity record not found
  *         content:

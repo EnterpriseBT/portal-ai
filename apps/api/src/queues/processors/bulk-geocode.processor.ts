@@ -218,10 +218,11 @@ export const bulkGeocodeProcessor: TypedJobProcessor<"bulk_geocode"> = async (
           address: r[sourceKey],
         }));
       },
-      writeGeometry: (entityId, recordId, targetKey, point) =>
-        wideTableRepo.updatePartial(entityId, recordId, {
+      writeGeometry: async (entityId, recordId, targetKey, point) => {
+        await wideTableRepo.updatePartial(entityId, recordId, {
           [targetKey]: point,
-        }),
+        });
+      },
       provider,
       cacheGet: (address) => cacheGet(provider.name, address),
       cacheSet: (address, hit) => cacheSet(provider.name, address, hit),
