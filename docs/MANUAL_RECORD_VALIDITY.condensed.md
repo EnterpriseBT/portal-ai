@@ -60,9 +60,9 @@ The first cut validated only, storing values as sent. Code review (PR #762) show
 
 ## Smoke (manual, against your dev stack)
 
-1. On an entity with a required `name` mapping, use **Create** with Name blank. The record shows as invalid in the list's **Valid** column, and the invalid filter finds it.
-2. On a required field with a default value (set one on the field mapping), create a record with that field blank. It stores the default and is valid.
-3. Edit the step-1 record and fill in Name. It becomes valid without a re-validate.
+1. On an entity with a required `name` mapping, `curl` create `{"normalizedData":{"name":""}}`. (The Create dialog enforces required fields, so a blank one reaches the API only through the API itself, import, or the agent.) The response has `isValid: false` with `validationErrors` naming `name`; the list's **Valid** column shows it invalid, and `?isValid=false` returns it.
+2. On a required field with a default value (set one on the field mapping), `curl` create with that field `""`. It stores the default and is valid; `data` keeps `""`.
+3. In the app, edit the step-1 record and fill in Name. It becomes valid without a re-validate.
 4. Edit a valid record's Name from "Before" to "After", then run **Re-validate All** and wait for it to finish. The record still reads "After".
 5. `curl` import of two rows, one with `name` blank. Both are written (201/200), and only the blank one has `isValid: false` with `validationErrors` naming `name`.
 6. `curl` PATCH with `"location":"nope"` on an entity that has a geometry mapping. It still returns 400 `GEOMETRY_INVALID_ON_IMPORT` (#757).
