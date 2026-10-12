@@ -2859,13 +2859,17 @@ describe("Entity Record Router — Clear-all enqueue (#453)", () => {
       (res.body.details?.runningJobs as Array<{ id: string }>).map((j) => j.id)
     ).toContain(clearJobId);
 
-    // Resync exclusion (#453 review decision): the exact guard the sync
-    // route calls must see the clear job via its JOB_LOCK_KEYS entry.
+    // Resync exclusion (#453 review decision): the clear holds the whole
+    // connector, so a sync (an instance-scoped job) is refused (#769).
     await expect(
-      JobLockService.assertConnectorInstanceUnlocked(
-        inst!.connectorInstanceId,
-        seeded.organizationId
-      )
+      JobLockService.enqueueExclusive(seeded.userId, {
+        organizationId: seeded.organizationId,
+        type: "connector_sync",
+        metadata: {
+          connectorInstanceId: inst!.connectorInstanceId,
+          organizationId: seeded.organizationId,
+        },
+      })
     ).rejects.toMatchObject({ code: ApiCode.ENTITY_LOCKED_BY_JOB });
   });
 

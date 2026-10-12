@@ -42,10 +42,11 @@ describe("JobsService.create — lost-execution field (#464)", () => {
     mockAdd.mockClear();
   });
 
+  // A job type that locks nothing, so plain `create` accepts it (#769).
   const params = {
     organizationId: "org-1",
-    type: "connector_sync" as const,
-    metadata: { connectorInstanceId: "ci-1" },
+    type: "system_check" as const,
+    metadata: {},
   };
 
   it("validates and persists a new job with lostExecutions: 0", async () => {
@@ -109,5 +110,24 @@ describe("JobsService.insertRow / dispatch (#769)", () => {
     ).toEqual([]);
     expect(mockAdd).toHaveBeenCalledTimes(1);
     expect(job.bullJobId).toBe("bull-1");
+  });
+});
+
+describe("JobsService.create refuses a job that locks scopes (#769)", () => {
+  beforeEach(() => {
+    mockJobsCreate.mockClear();
+    mockAdd.mockClear();
+  });
+
+  it("a scoped job must start through JobLockService.enqueueExclusive", async () => {
+    await expect(
+      JobsService.create("user-1", {
+        organizationId: "org-1",
+        type: "revalidation",
+        metadata: { connectorEntityId: "ce-1" },
+      })
+    ).rejects.toThrow(/enqueueExclusive/);
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockAdd).not.toHaveBeenCalled();
   });
 });

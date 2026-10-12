@@ -1619,7 +1619,7 @@ entityRecordRouter.delete(
  *               properties:
  *                 job: { $ref: '#/components/schemas/Job' }
  *       409:
- *         description: A non-terminal job locks the connector instance (`ENTITY_LOCKED_BY_JOB`) or a revalidation is active (`REVALIDATION_ACTIVE`)
+ *         description: A running job holds this entity or its connector (`ENTITY_LOCKED_BY_JOB`, #769); `details.runningJobs` names it
  *       422:
  *         description: Write capability disabled on the connector instance
  *         content:

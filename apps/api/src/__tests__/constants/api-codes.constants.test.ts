@@ -9,7 +9,6 @@ import {
 // default recommendation string so consumers can default cheaply.
 
 const NEW_CODES_PHASE_1: ApiCode[] = [
-  ApiCode.BULK_JOB_TARGET_LOCKED,
   ApiCode.BULK_JOB_EXPRESSION_INVALID,
   ApiCode.BULK_JOB_MAX_RECORDS_EXCEEDED,
   ApiCode.BULK_JOB_BATCH_TIMEOUT,

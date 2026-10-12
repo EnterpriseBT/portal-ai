@@ -50,6 +50,14 @@ export class JobsService {
    * `insertRow` + `dispatch`.
    */
   static async create(userId: string, params: JobCreateRequestBody) {
+    // #769: a job that locks scopes starts only through
+    // JobLockService.enqueueExclusive, which checks for a conflicting job
+    // under the scopes' advisory locks. Creating one here would skip that.
+    if (jobLockScopes(params.type, params.metadata).length > 0) {
+      throw new Error(
+        `JobsService.create: "${params.type}" locks scopes; start it with JobLockService.enqueueExclusive`
+      );
+    }
     return JobsService.dispatch(await JobsService.insertRow(userId, params));
   }
 

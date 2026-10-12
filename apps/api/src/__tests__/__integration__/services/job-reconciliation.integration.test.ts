@@ -21,6 +21,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 
+import { DbService } from "../../../services/db.service.js";
 import * as schema from "../../../db/schema/index.js";
 import {
   generateId,
@@ -32,7 +33,6 @@ import {
   STRANDED_JOB_REASON,
 } from "../../../services/job-reconciliation.service.js";
 import { JobEventsService } from "../../../services/job-events.service.js";
-import { JobLockService } from "../../../services/job-lock.service.js";
 import { closeJobsQueue } from "../../../queues/jobs.queue.js";
 import { closeRedis } from "../../../utils/redis.util.js";
 
@@ -71,6 +71,7 @@ describe("JobReconciliationService — integration (#391)", () => {
       status: "active",
       progress: 30,
       metadata: { connectorInstanceId: `ci-${id}`, organizationId },
+      lockScopes: [`instance:ci-${id}`],
       result: null,
       error: null,
       startedAt: STALE(),
@@ -104,8 +105,9 @@ describe("JobReconciliationService — integration (#391)", () => {
     ).connectorInstanceId;
 
     // The lock is held before the sweep…
-    const before = await JobLockService.findRunningForConnectorInstance(
-      instanceId,
+    // #769: by its lock scope (the instance row isn't seeded here).
+    const before = await DbService.repository.jobs.findRunningByScopeKeys(
+      [`instance:${instanceId}`],
       organizationId
     );
     expect(before.map((j) => j.id)).toContain(id);
@@ -119,8 +121,8 @@ describe("JobReconciliationService — integration (#391)", () => {
     expect(row.completedAt).not.toBeNull();
 
     // …and released after.
-    const after = await JobLockService.findRunningForConnectorInstance(
-      instanceId,
+    const after = await DbService.repository.jobs.findRunningByScopeKeys(
+      [`instance:${instanceId}`],
       organizationId
     );
     expect(after).toEqual([]);

@@ -243,7 +243,6 @@ export enum ApiCode {
   FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND = "FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND",
 
   // Revalidation
-  REVALIDATION_ACTIVE = "REVALIDATION_ACTIVE",
   REVALIDATION_ENQUEUE_FAILED = "REVALIDATION_ENQUEUE_FAILED",
 
   // Entity Records
@@ -727,8 +726,6 @@ export enum ApiCode {
   CONNECTOR_ENTITY_KEY_CONFLICT = "CONNECTOR_ENTITY_KEY_CONFLICT",
 
   // Large-data-ops — bulk writes (#85)
-  /** A non-terminal `bulk_transform` job already locks the target entity. 409. */
-  BULK_JOB_TARGET_LOCKED = "BULK_JOB_TARGET_LOCKED",
   /** EXPLAIN of the user expression / source filter failed against PG. 400. */
   BULK_JOB_EXPRESSION_INVALID = "BULK_JOB_EXPRESSION_INVALID",
   /** Agent's `keyField` doesn't match any wide-column on the source. 400. */
@@ -848,8 +845,6 @@ export enum ApiCode {
 export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
   [ApiCode.ENTITY_LOCKED_BY_JOB]:
     "Wait for the running job to finish, or cancel it from Jobs.",
-  [ApiCode.BULK_JOB_TARGET_LOCKED]:
-    "Wait for the running bulk job to finish, or cancel it before retrying.",
   [ApiCode.BULK_JOB_EXPRESSION_INVALID]:
     "Fix the type / column mismatch in your expression and retry.",
   [ApiCode.BULK_JOB_KEY_FIELD_INVALID]:

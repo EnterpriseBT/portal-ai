@@ -25,7 +25,7 @@ import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { wideTableResyncService } from "../../../services/wide-table-resync.service.js";
 import { SyncService } from "../../../services/sync.service.js";
 import { ConnectorAdapterRegistry } from "../../../adapters/adapter.registry.js";
-import { JobsService } from "../../../services/jobs.service.js";
+import { JobLockService } from "../../../services/job-lock.service.js";
 import {
   generateId,
   teardownOrg,
@@ -200,7 +200,8 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
 
     // Pre-seed an in-flight `connector_sync` job for this instance so
     // the trigger sees it and skips.
-    await JobsService.create(userId, {
+    // #769: a scoped job starts through enqueueExclusive.
+    await JobLockService.enqueueExclusive(userId, {
       type: "connector_sync",
       organizationId,
       metadata: {

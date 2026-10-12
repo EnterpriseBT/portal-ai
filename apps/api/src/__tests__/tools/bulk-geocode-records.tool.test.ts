@@ -99,7 +99,7 @@ describe("BulkGeocodeRecordsTool (#315)", () => {
       assertUnlocked: async () => {
         throw new ApiError(
           409,
-          ApiCode.BULK_JOB_TARGET_LOCKED,
+          ApiCode.ENTITY_LOCKED_BY_JOB,
           "entity is locked by a running job"
         );
       },
@@ -107,7 +107,7 @@ describe("BulkGeocodeRecordsTool (#315)", () => {
       createJob,
     });
     const out = await run(t, { ...baseInput, acknowledgeCost: true });
-    expect(out).toMatchObject({ code: ApiCode.BULK_JOB_TARGET_LOCKED });
+    expect(out).toMatchObject({ code: ApiCode.ENTITY_LOCKED_BY_JOB });
     expect(createJob).not.toHaveBeenCalled();
   });
 });

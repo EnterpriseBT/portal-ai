@@ -95,39 +95,6 @@ export class JobsRepository extends Repository<
   }
 
   /**
-   * Find every non-terminal job whose metadata references the given
-   * connector instance id. Covers `connector_sync` and both kinds of
-   * `layout_plan_commit` — all three carry `metadata.connectorInstanceId`.
-   *
-   * Used by the entity-lock convention (see `JobLockService` and
-   * CLAUDE.md §"Async Job State & Data Locking"): mutations targeting
-   * a connector instance reject with 409 ENTITY_LOCKED_BY_JOB while
-   * any of these jobs are still active, and the connector-instance
-   * detail view surfaces them in a status chip.
-   */
-  async findRunningForConnectorInstance(
-    connectorInstanceId: string,
-    organizationId: string,
-    client: DbClient = db
-  ): Promise<JobSelect[]> {
-    return (await (client as typeof db)
-      .select()
-      .from(this.table)
-      .where(
-        and(
-          eq(jobs.organizationId, organizationId),
-          inArray(jobs.type, lockingTypes("connectorInstanceId")),
-          inArray(
-            jobs.status,
-            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
-          ),
-          sql`${jobs.metadata}->>'connectorInstanceId' = ${connectorInstanceId}`,
-          this.notDeleted()
-        )
-      )) as JobSelect[];
-  }
-
-  /**
    * Find every non-terminal job for an organization, regardless of
    * type — unlike the per-entity lock finders this is not filtered to
    * locking job types, because org deletion (#197) must account for
@@ -216,54 +183,6 @@ export class JobsRepository extends Repository<
           ),
           sql`${jobs.metadata}->>'userId' = ${userId}`,
           ownerCond,
-          this.notDeleted()
-        )
-      )) as JobSelect[];
-  }
-
-  /**
-   * Find every non-terminal job whose metadata's lock-set overlaps the
-   * given connector entity ids. Today this covers `bulk_transform`
-   * (`metadata.targetConnectorEntityIds: string[]`); future job types
-   * that lock at the entity level extend this query.
-   *
-   * Slice 3 (#99): generalized from a single entity id to an array.
-   * The SQL uses PG's JSONB array-overlap operator (`?|`): a row
-   * matches when its metadata's `targetConnectorEntityIds` JSON array
-   * shares at least one element with the requested set. Returns `[]`
-   * when `connectorEntityIds` is empty (the predicate against an empty
-   * `text[]` is always false; short-circuit to skip the DB hit).
-   *
-   * Used by `JobLockService.assertConnectorEntityUnlocked` to surface
-   * entity-level locks alongside the existing instance-level path.
-   */
-  async findRunningByTargetEntityIds(
-    connectorEntityIds: string[],
-    organizationId: string,
-    client: DbClient = db
-  ): Promise<JobSelect[]> {
-    if (connectorEntityIds.length === 0) return [];
-    // postgres.js doesn't auto-bind a JS array as a PG array literal,
-    // so build the `text[]` via `sql.join` so each element binds as
-    // its own parameter (`ARRAY[$n, $n+1, …]::text[]`). The `?|`
-    // operator then matches rows whose JSONB array on the left
-    // overlaps the requested set on the right.
-    const entityIdsSql = sql.join(
-      connectorEntityIds.map((id) => sql`${id}`),
-      sql`, `
-    );
-    return (await (client as typeof db)
-      .select()
-      .from(this.table)
-      .where(
-        and(
-          eq(jobs.organizationId, organizationId),
-          inArray(jobs.type, lockingTypes("targetConnectorEntityIds")),
-          inArray(
-            jobs.status,
-            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
-          ),
-          sql`${jobs.metadata}->'targetConnectorEntityIds' ?| ARRAY[${entityIdsSql}]::text[]`,
           this.notDeleted()
         )
       )) as JobSelect[];

@@ -711,7 +711,7 @@ describe("entity_record_clear schemas (#453)", () => {
   });
 
   it("metadata rejects a missing connectorInstanceId", () => {
-    // The instance id is the lock key (JOB_LOCK_KEYS) — a clear job that
+    // The instance id is the lock scope (JOB_LOCK_SCOPES, #769) — a clear job that
     // cannot lock its instance must never be mintable.
     const { connectorInstanceId: _omitted, ...rest } = METADATA;
     expect(EntityRecordClearMetadataSchema.safeParse(rest).success).toBe(false);

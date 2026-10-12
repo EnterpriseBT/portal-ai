@@ -26,9 +26,13 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
     repository: {
       connectorInstances: { findById: mockInstancesFindById },
       connectorDefinitions: { findById: mockDefinitionsFindById },
-      jobs: { findRunningForConnectorInstance: mockFindRunning },
     },
   },
+}));
+
+// #769: the superseded pass names the holder from the job lock model.
+jest.unstable_mockModule("../../../services/job-lock.service.js", () => ({
+  JobLockService: { findRunning: mockFindRunning },
 }));
 
 jest.unstable_mockModule("../../../services/sync-lock.service.js", () => ({
@@ -44,6 +48,7 @@ const { connectorSyncProcessor } =
 
 const JOB_ID = "job-7d39dc22";
 const INSTANCE_ID = "inst-c0c9e751";
+const HOLDS = `instance:${INSTANCE_ID}`;
 
 function bullJob(): BullJob<{
   jobId: string;
@@ -162,8 +167,8 @@ describe("connectorSyncProcessor — sync ownership lock (#460)", () => {
   it("names the holder in supersededBy when a sibling job is running", async () => {
     lockRefused();
     mockFindRunning.mockResolvedValue([
-      { id: JOB_ID, type: "connector_sync" },
-      { id: "job-other", type: "connector_sync" },
+      { id: JOB_ID, type: "connector_sync", lockScopes: [HOLDS] },
+      { id: "job-other", type: "connector_sync", lockScopes: [HOLDS] },
     ]);
 
     const result = await connectorSyncProcessor(bullJob() as never);
@@ -172,9 +177,22 @@ describe("connectorSyncProcessor — sync ownership lock (#460)", () => {
     expect(result).toMatchObject({ supersededBy: "job-other" });
   });
 
+  it("an entity-level job isn't the sync lock's holder (#769)", async () => {
+    lockRefused();
+    mockFindRunning.mockResolvedValue([
+      { id: "job-reval", type: "revalidation", lockScopes: ["entity:e1"] },
+    ]);
+
+    const result = await connectorSyncProcessor(bullJob() as never);
+
+    expect(result).not.toHaveProperty("supersededBy");
+  });
+
   it("omits supersededBy when no sibling job can be identified", async () => {
     lockRefused();
-    mockFindRunning.mockResolvedValue([{ id: JOB_ID, type: "connector_sync" }]);
+    mockFindRunning.mockResolvedValue([
+      { id: JOB_ID, type: "connector_sync", lockScopes: [HOLDS] },
+    ]);
 
     const result = await connectorSyncProcessor(bullJob() as never);
 

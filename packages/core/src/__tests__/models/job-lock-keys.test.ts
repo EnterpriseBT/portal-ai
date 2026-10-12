@@ -1,58 +1,28 @@
 import { JOB_LOCK_KEYS, jobTypesLocking } from "../../models/job.model.js";
 
-// #121 child F (gate 4): the lock queries derive their job-type filter from
-// this registry. These assert it reproduces today's hardcoded filters and
-// preserves the false-lock avoidance an integration test depends on.
+// #121 child F (gate 4): the portal chat lock. Since #769 entity and
+// connector locks are JOB_LOCK_SCOPES (job-lock-scopes.test.ts); this
+// registry only says which jobs lock a portal's chat input.
 
-describe("JOB_LOCK_KEYS / jobTypesLocking", () => {
-  const types = (field: Parameters<typeof jobTypesLocking>[0]) =>
-    jobTypesLocking(field)
-      .map((t) => t.type)
-      .sort();
-
-  it("connectorInstanceId locks == connector_sync + entity_record_clear + layout_plan_commit", () => {
-    // entity_record_clear joined in #453: a running clear must exclude
-    // syncs/imports/other clears across the whole instance.
-    expect(types("connectorInstanceId")).toEqual([
-      "connector_sync",
-      "entity_record_clear",
-      "layout_plan_commit",
-    ]);
-  });
-
-  it("entity_record_clear declares the instance-id metadata key", () => {
-    expect(jobTypesLocking("connectorInstanceId")).toContainEqual({
-      type: "entity_record_clear",
-      metadataKey: "connectorInstanceId",
-    });
-  });
-
+describe("JOB_LOCK_KEYS / jobTypesLocking (portal chat lock)", () => {
   it("portalId locks == bulk_transform + bulk_geocode", () => {
-    expect(types("portalId").sort()).toEqual(
-      ["bulk_geocode", "bulk_transform"].sort()
-    );
-  });
-
-  it("targetConnectorEntityIds locks == bulk_transform + bulk_geocode", () => {
-    // connector_sync carries connectorInstanceId but NOT
-    // targetConnectorEntityIds, so it must not appear here — this is the
-    // false-lock avoidance the repository integration test relies on.
-    expect(types("targetConnectorEntityIds").sort()).toEqual(
-      ["bulk_geocode", "bulk_transform"].sort()
-    );
-    expect(types("targetConnectorEntityIds")).not.toContain("connector_sync");
+    expect(
+      jobTypesLocking("portalId")
+        .map((t) => t.type)
+        .sort()
+    ).toEqual(["bulk_geocode", "bulk_transform"]);
   });
 
   it("exposes the metadata key each locking type uses", () => {
-    expect(jobTypesLocking("targetConnectorEntityIds")).toContainEqual({
+    expect(jobTypesLocking("portalId")).toContainEqual({
       type: "bulk_transform",
-      metadataKey: "targetConnectorEntityIds",
+      metadataKey: "portalId",
     });
   });
 
-  it("read-only / non-locking job types declare no lock keys", () => {
-    expect(JOB_LOCK_KEYS.sql_query).toBeUndefined();
-    expect(JOB_LOCK_KEYS.file_upload_parse).toBeUndefined();
-    expect(JOB_LOCK_KEYS.system_check).toBeUndefined();
+  it("declares nothing but the portal lock (#769)", () => {
+    for (const keys of Object.values(JOB_LOCK_KEYS)) {
+      expect(Object.keys(keys ?? {})).toEqual(["portalId"]);
+    }
   });
 });
