@@ -119,8 +119,25 @@ describe("JobDetailView", () => {
 
     render(<JobDetailView jobId="job-1" />);
     expect(
-      screen.getByRole("heading", { name: "system_check" })
+      screen.getByRole("heading", { name: "System check" })
     ).toBeInTheDocument();
+  });
+
+  it("#769: names the type by its label in the title, breadcrumb and Type field", () => {
+    const job = makeJob({ type: "bulk_geocode" });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+
+    render(<JobDetailView jobId="job-1" />);
+    expect(
+      screen.getByRole("heading", { name: "Geocoding" })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Geocoding").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText("bulk_geocode")).not.toBeInTheDocument();
   });
 
   it("should display status badge", () => {
