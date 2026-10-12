@@ -1017,4 +1017,330 @@ describe("WideTableRepository integration tests", () => {
       })
     ).rejects.toThrow(/unknown columns/);
   });
+
+  // ── #761 — batch partial update ─────────────────────────────────
+
+  describe("updateMany (#761)", () => {
+    const TYPED = [
+      ["s", "string"],
+      ["n", "number"],
+      ["b", "boolean"],
+      ["d", "date"],
+      ["dt", "datetime"],
+      ["refs", "reference-array"],
+      ["j", "json"],
+    ] as const;
+
+    /** A sibling entity with one column of every non-geometry type. */
+    async function seedTypedEntity() {
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      const now = Date.now();
+      const typedId = generateId();
+      await dbTyped.insert(schema.connectorEntities).values({
+        id: typedId,
+        organizationId: orgId,
+        connectorInstanceId: (
+          await dbTyped.select().from(schema.connectorEntities).limit(1)
+        )[0]!.connectorInstanceId,
+        key: `typed_${typedId.slice(0, 8)}`,
+        label: "Typed",
+        created: now,
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      for (const [i, [key, type]] of TYPED.entries()) {
+        const cdId = generateId();
+        await dbTyped.insert(schema.columnDefinitions).values({
+          id: cdId,
+          organizationId: orgId,
+          key: `${key}_${typedId.slice(0, 8)}`,
+          label: key,
+          type,
+          description: null,
+          validationPattern: null,
+          validationMessage: null,
+          canonicalFormat: null,
+          system: false,
+          created: now,
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+        await dbTyped.insert(schema.fieldMappings).values({
+          id: generateId(),
+          organizationId: orgId,
+          connectorEntityId: typedId,
+          columnDefinitionId: cdId,
+          sourceField: key,
+          isPrimaryKey: false,
+          normalizedKey: key,
+          required: false,
+          defaultValue: null,
+          format: null,
+          enumValues: null,
+          refNormalizedKey: null,
+          refEntityKey: null,
+          created: now + i,
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      }
+      await reconciler.reconcileEntity(typedId, db);
+      const stmt = await statementCache.get(typedId, db);
+      const col = new Map(
+        stmt.columns.map((c) => [c.normalizedKey, c.columnName])
+      );
+
+      /** Records with empty wide rows. */
+      async function seedRows(n: number): Promise<string[]> {
+        const ids: string[] = [];
+        for (let i = 0; i < n; i++) {
+          const id = generateId();
+          await dbTyped.insert(schema.entityRecords).values({
+            id,
+            organizationId: orgId,
+            connectorEntityId: typedId,
+            sourceId: `typed-${id}`,
+            isValid: true,
+            validationErrors: null,
+            normalizedData: {},
+            syncedAt: now,
+            data: {},
+            checksum: `c-${id}`,
+            origin: "sync",
+            created: now,
+            createdBy: "test-system",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never);
+          ids.push(id);
+        }
+        for (let i = 0; i < ids.length; i += 500) {
+          await repo.upsertMany(
+            typedId,
+            ids.slice(i, i + 500).map((id) => ({
+              entity_record_id: id,
+              organization_id: orgId,
+              synced_at: now,
+              is_valid: true,
+              source_id: `typed-${id}`,
+            })),
+            db
+          );
+        }
+        return ids;
+      }
+
+      async function read(): Promise<Map<string, Record<string, unknown>>> {
+        const rows = (await repo.selectAll(typedId, db)) as Array<
+          Record<string, unknown>
+        >;
+        return new Map(rows.map((r) => [r.entity_record_id as string, r]));
+      }
+
+      return { typedId, col, seedRows, read };
+    }
+
+    const VALUES = {
+      s: "hello",
+      n: 42.5,
+      b: true,
+      d: "2026-10-12",
+      dt: "2026-10-12T15:17:18.000Z",
+      refs: ["a", "b"],
+      j: { nested: ["x", 1] },
+    };
+
+    it("stores every column type as upsertMany does", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        const [viaUpsert, viaUpdate] = await seedRows(2);
+        await repo.upsertMany(
+          typedId,
+          [
+            {
+              entity_record_id: viaUpsert,
+              organization_id: orgId,
+              synced_at: 1,
+              is_valid: true,
+              source_id: `typed-${viaUpsert}`,
+              ...Object.fromEntries(
+                Object.entries(VALUES).map(([k, v]) => [col.get(k)!, v])
+              ),
+            },
+          ],
+          db
+        );
+        await repo.updateMany(
+          typedId,
+          [{ entityRecordId: viaUpdate, normalizedData: VALUES }],
+          db
+        );
+
+        const rows = await read();
+        for (const k of Object.keys(VALUES)) {
+          expect([k, rows.get(viaUpdate)![col.get(k)!]]).toEqual([
+            k,
+            rows.get(viaUpsert)![col.get(k)!],
+          ]);
+        }
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    });
+
+    it("writes each row its own values, and only the keys it sends", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        const [a, b] = await seedRows(2);
+        await repo.updateMany(
+          typedId,
+          [
+            { entityRecordId: a, normalizedData: { s: "A", n: 1 } },
+            { entityRecordId: b, normalizedData: { s: "B" } },
+          ],
+          db
+        );
+        await repo.updateMany(
+          typedId,
+          [
+            { entityRecordId: a, normalizedData: { n: 2 }, isValid: false },
+            { entityRecordId: b, normalizedData: { s: "B2" }, syncedAt: 7 },
+          ],
+          db
+        );
+
+        const rows = await read();
+        expect(rows.get(a)).toMatchObject({
+          [col.get("s")!]: "A",
+          [col.get("n")!]: "2",
+          is_valid: false,
+        });
+        expect(rows.get(b)).toMatchObject({
+          [col.get("s")!]: "B2",
+          [col.get("n")!]: null,
+          is_valid: true,
+          synced_at: "7",
+        });
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    });
+
+    it("writes null as NULL and drops unknown keys", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        const [a] = await seedRows(1);
+        await repo.updateMany(
+          typedId,
+          [{ entityRecordId: a, normalizedData: VALUES }],
+          db
+        );
+        await repo.updateMany(
+          typedId,
+          [
+            {
+              entityRecordId: a,
+              normalizedData: { s: null, refs: null, j: null, nope: 1 },
+            },
+          ],
+          db
+        );
+
+        const row = (await read()).get(a)!;
+        expect(row[col.get("s")!]).toBeNull();
+        expect(row[col.get("refs")!]).toBeNull();
+        expect(row[col.get("j")!]).toBeNull();
+        expect(row[col.get("n")!]).toBe("42.5");
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    });
+
+    it("writes a batch over one chunk, every row to its own value", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        const ids = await seedRows(1_200);
+        await repo.updateMany(
+          typedId,
+          ids.map((id, i) => ({
+            entityRecordId: id,
+            normalizedData: { n: i },
+            isValid: i % 2 === 0,
+          })),
+          db
+        );
+
+        const rows = await read();
+        ids.forEach((id, i) => {
+          expect(rows.get(id)![col.get("n")!]).toBe(String(i));
+          expect(rows.get(id)!.is_valid).toBe(i % 2 === 0);
+        });
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    }, 60_000);
+
+    it("two updates for one record merge in order, the later winning", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        const [a] = await seedRows(1);
+        await repo.updateMany(
+          typedId,
+          [
+            { entityRecordId: a, normalizedData: { s: "first", n: 1 } },
+            {
+              entityRecordId: a,
+              normalizedData: { s: "second" },
+              isValid: false,
+            },
+          ],
+          db
+        );
+
+        expect((await read()).get(a)).toMatchObject({
+          [col.get("s")!]: "second",
+          [col.get("n")!]: "1",
+          is_valid: false,
+        });
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    });
+
+    it("splits a chunk whose text[] cells would pass Postgres's bind limit", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        // 500 rows × 150 elements = 75,000 parameters in one statement.
+        const ids = await seedRows(500);
+        const refs = Array.from({ length: 150 }, (_, i) => `ref-${i}`);
+        await repo.updateMany(
+          typedId,
+          ids.map((id) => ({ entityRecordId: id, normalizedData: { refs } })),
+          db
+        );
+
+        const rows = await read();
+        for (const id of ids) {
+          expect(rows.get(id)![col.get("refs")!]).toHaveLength(150);
+        }
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    }, 60_000);
+
+    it("an empty call is a no-op", async () => {
+      await expect(repo.updateMany(entityId, [], db)).resolves.toEqual([]);
+    });
+  });
 });

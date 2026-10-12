@@ -705,5 +705,89 @@ describe("Wide-table geometry storage (#316)", () => {
       await repo.updatePartial(entityId, erId, { boundary: null }, {}, db);
       expect(await read()).toBeNull();
     });
+
+    // #761: the batch form audits a chunk at once and keeps each row's
+    // refusal to that row.
+    const ARCGIS = {
+      rings: [
+        [
+          [-8250000, 4970000],
+          [-8250000, 4980000],
+          [-8240000, 4980000],
+          [-8240000, 4970000],
+          [-8250000, 4970000],
+        ],
+      ],
+      spatialReference: { wkid: 102100 },
+    };
+    const isValidOf = async (erId: string) =>
+      (
+        (await connection.unsafe(
+          `SELECT is_valid FROM "er__${entityId}" WHERE "entity_record_id" = $1`,
+          [erId]
+        )) as unknown as Array<{ is_valid: boolean }>
+      )[0].is_valid;
+
+    it("updateMany with skip: a refused row keeps its geometry, the rest are written", async () => {
+      const a = await seedOne(POLYGON);
+      const b = await seedOne(POLYGON);
+      const c = await seedOne(null);
+
+      const refused = await a.repo.updateMany(
+        entityId,
+        [
+          { entityRecordId: a.erId, normalizedData: { boundary: null } },
+          {
+            entityRecordId: b.erId,
+            normalizedData: { boundary: "" },
+            isValid: false,
+          },
+          { entityRecordId: c.erId, normalizedData: { boundary: ARCGIS } },
+        ],
+        db,
+        { onRejectedGeometry: "skip" }
+      );
+
+      expect(refused).toEqual([
+        expect.objectContaining({
+          sourceId: b.erId,
+          code: "GEOMETRY_INVALID_ON_IMPORT",
+          fields: ["boundary"],
+        }),
+      ]);
+      expect(await a.read()).toBeNull();
+      expect((await b.read())?.type).toBe("Polygon");
+      expect(await isValidOf(b.erId)).toBe(false);
+      const [lng] = ((await c.read()) as { coordinates: number[][][] })
+        .coordinates[0][0];
+      expect(lng).toBeGreaterThan(-75);
+      expect(lng).toBeLessThan(-73);
+    });
+
+    it("updateMany by default refuses the whole call: a 400, no row changed", async () => {
+      const a = await seedOne(POLYGON);
+      const b = await seedOne(POLYGON);
+
+      await expect(
+        a.repo.updateMany(
+          entityId,
+          [
+            {
+              entityRecordId: a.erId,
+              normalizedData: { boundary: null },
+              isValid: false,
+            },
+            { entityRecordId: b.erId, normalizedData: { boundary: "" } },
+          ],
+          db
+        )
+      ).rejects.toMatchObject({
+        status: 400,
+        code: "GEOMETRY_INVALID_ON_IMPORT",
+      });
+
+      expect((await a.read())?.type).toBe("Polygon");
+      expect(await isValidOf(a.erId)).toBe(true);
+    });
   });
 });
