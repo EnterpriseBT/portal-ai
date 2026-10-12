@@ -213,13 +213,24 @@ describe("revalidationProcessor", () => {
       expect.any(String)
     );
     // #765: the skips are on the result, not only in the log.
-    expect(RevalidationResultSchema.parse(result)).toMatchObject({
-      geometryRejected: 2,
-      geometryRejections: [
+    expect(RevalidationResultSchema.parse(result).geometryRejected).toEqual({
+      count: 2,
+      omitted: 0,
+      records: [
         { recordId: "r-1", fields: ["geom"] },
         { recordId: "r-2", fields: ["geom"] },
       ],
     });
+    // The log names the same records, for whoever reads it.
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        records: [
+          { recordId: "r-1", fields: ["geom"] },
+          { recordId: "r-2", fields: ["geom"] },
+        ],
+      }),
+      expect.any(String)
+    );
   });
 
   it("#765: names at most 50 refused records, counting them all", async () => {
@@ -241,20 +252,40 @@ describe("revalidationProcessor", () => {
       }))
     );
 
-    const result = RevalidationResultSchema.parse(
-      await revalidationProcessor(createMockBullJob())
-    );
+    try {
+      const result = RevalidationResultSchema.parse(
+        await revalidationProcessor(createMockBullJob())
+      );
 
-    expect(result.geometryRejected).toBe(120);
-    expect(result.geometryRejections).toHaveLength(50);
-    expect(result.geometryRejections?.[0]).toEqual({
-      recordId: "r-0",
-      fields: ["geom"],
-    });
-    mockWideTableUpdateMany.mockReset().mockResolvedValue([]);
+      expect(result.geometryRejected?.count).toBe(120);
+      expect(result.geometryRejected?.omitted).toBe(70);
+      expect(result.geometryRejected?.records).toHaveLength(50);
+      expect(result.geometryRejected?.records[0]).toEqual({
+        recordId: "r-0",
+        fields: ["geom"],
+      });
+    } finally {
+      mockWideTableUpdateMany.mockReset().mockResolvedValue([]);
+    }
   });
 
-  it("#765: a clean run carries no geometry keys", async () => {
+  it("#765: the schema refuses a list over the cap", () => {
+    const records = Array.from({ length: 51 }, (_, i) => ({
+      recordId: `r-${i}`,
+      fields: ["geom"],
+    }));
+    expect(
+      RevalidationResultSchema.safeParse({
+        total: 51,
+        valid: 51,
+        invalid: 0,
+        errors: [],
+        geometryRejected: { count: 51, omitted: 0, records },
+      }).success
+    ).toBe(false);
+  });
+
+  it("#765: a clean run carries no geometry key", async () => {
     mockFieldMappingsFindMany.mockResolvedValue([]);
     mockEntityRecordsFindByConnectorEntityId.mockResolvedValue([record("r-1")]);
     mockNormalizeWithMappings.mockReturnValue({
@@ -266,7 +297,6 @@ describe("revalidationProcessor", () => {
     const result = await revalidationProcessor(createMockBullJob());
 
     expect(result).not.toHaveProperty("geometryRejected");
-    expect(result).not.toHaveProperty("geometryRejections");
   });
 
   // #761: one batched wide-table write per batch, not one per record.

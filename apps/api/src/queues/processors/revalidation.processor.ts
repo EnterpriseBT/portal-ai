@@ -1,6 +1,9 @@
 import { eq } from "drizzle-orm";
 
-import type { RevalidationResult } from "@portalai/core/models";
+import {
+  REVALIDATION_MAX_GEOMETRY_REJECTIONS,
+  type RevalidationResult,
+} from "@portalai/core/models";
 
 import type { TypedJobProcessor } from "../jobs.worker.js";
 import { DbService } from "../../services/db.service.js";
@@ -13,9 +16,6 @@ const logger = createLogger({ module: "revalidation-processor" });
 
 /** Batch size for updating records to avoid memory spikes. */
 const BATCH_SIZE = 100;
-
-/** #765: how many refused records the result names; the count covers all. */
-const MAX_GEOMETRY_REJECTIONS = 50;
 
 export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
   bullJob
@@ -56,8 +56,8 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
   let invalid = 0;
   let geometryRejected = 0;
   const geometryRejections: NonNullable<
-    RevalidationResult["geometryRejections"]
-  > = [];
+    RevalidationResult["geometryRejected"]
+  >["records"] = [];
   const errorSummary: RevalidationResult["errors"] = [];
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -126,7 +126,8 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
       );
       geometryRejected += refused.length;
       for (const r of refused) {
-        if (geometryRejections.length >= MAX_GEOMETRY_REJECTIONS) break;
+        if (geometryRejections.length >= REVALIDATION_MAX_GEOMETRY_REJECTIONS)
+          break;
         // A wide-table rejection's sourceId is the record id here.
         geometryRejections.push({ recordId: r.sourceId, fields: r.fields });
       }
@@ -150,7 +151,12 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     // The same geometries the sync that wrote these records refused and
     // reported (#316); revalidation leaves them as they are.
     logger.warn(
-      { jobId, connectorEntityId, geometryRejected },
+      {
+        jobId,
+        connectorEntityId,
+        geometryRejected,
+        records: geometryRejections,
+      },
       "Revalidation left refused geometries unchanged"
     );
   }
@@ -161,7 +167,15 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     invalid,
     errors: errorSummary,
     // #765: the degradation goes on the result, not only in the log.
-    ...(geometryRejected > 0 ? { geometryRejected, geometryRejections } : {}),
+    ...(geometryRejected > 0
+      ? {
+          geometryRejected: {
+            count: geometryRejected,
+            omitted: geometryRejected - geometryRejections.length,
+            records: geometryRejections,
+          },
+        }
+      : {}),
   };
   return result;
 };
