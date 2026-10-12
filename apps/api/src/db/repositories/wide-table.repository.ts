@@ -162,6 +162,34 @@ function wideValueExpr(
   return sql`${bound}`;
 }
 
+/** Every wide-table column's Postgres type: the metadata columns, then the mapped ones. */
+function wideColumnPgTypes(
+  columns: ReadonlyArray<{ columnName: string; pgType: string }>
+): Map<string, string> {
+  return new Map<string, string>([
+    ["entity_record_id", "text"],
+    ["organization_id", "text"],
+    ["synced_at", "bigint"],
+    ["is_valid", "boolean"],
+    ["source_id", "text"],
+    ...columns.map((c) => [c.columnName, c.pgType] as const),
+  ]);
+}
+
+/**
+ * Bind parameters per statement in `updateMany` (#761), well under
+ * PostgreSQL's 65,535. A row's cost varies with its text[] cells, so the
+ * row-count chunk alone can't bound it.
+ */
+export const WIDE_TABLE_MAX_BIND_PARAMS = 30_000;
+
+/** Upper bound on the parameters `wideValueExpr` binds for one cell. */
+function bindCost(value: unknown, pgType: string): number {
+  if (pgType === "text[]") return Array.isArray(value) ? value.length : 0;
+  // A geometry binds its GeoJSON and, off 4326, its SRID.
+  return pgType.startsWith("geometry") ? 2 : 1;
+}
+
 /**
  * Rows / ids per statement for every chunked wide-table builder.
  *
@@ -399,15 +427,7 @@ export class WideTableRepository {
     const insertColList = colsInOrder.map((c) => `"${c}"`).join(", ");
 
     // Per-column type info so we can format Postgres arrays correctly.
-    // Metadata columns have known types; data columns come from the cache.
-    const pgTypeByColumn = new Map<string, string>([
-      ["entity_record_id", "text"],
-      ["organization_id", "text"],
-      ["synced_at", "bigint"],
-      ["is_valid", "boolean"],
-      ["source_id", "text"],
-      ...stmt.columns.map((c) => [c.columnName, c.pgType] as const),
-    ]);
+    const pgTypeByColumn = wideColumnPgTypes(stmt.columns);
 
     const setClauses =
       colsInOrder
@@ -624,7 +644,10 @@ export class WideTableRepository {
    * keys it carries (unknown keys are dropped), plus `synced_at` / `is_valid`
    * when given. Rows are chunked at `WIDE_TABLE_CHUNK_SIZE`; a chunk costs one
    * geometry audit and one `UPDATE … FROM (VALUES …)` per distinct set of
-   * written columns, instead of a round trip or two per row.
+   * written columns, instead of a round trip or two per row. Rows that
+   * write different keys therefore take separate statements: a caller whose
+   * rows share their keys (revalidation writes every mapped column) gets one
+   * per chunk. Two updates for one record merge in order, later keys winning.
    *
    * A geometry value that fails the audit (#757), by default, throws a 400
    * (`GEOMETRY_INVALID_ON_IMPORT` / `GIS_SRID_UNSUPPORTED`) before anything
@@ -643,25 +666,31 @@ export class WideTableRepository {
     if (rows.length === 0) return [];
     const stmt = await this.statementCache.get(connectorEntityId, client);
     const columnByKey = new Map(stmt.columns.map((c) => [c.normalizedKey, c]));
-    const pgTypeByColumn = new Map<string, string>([
-      ["synced_at", "bigint"],
-      ["is_valid", "boolean"],
-      ...stmt.columns.map((c) => [c.columnName, c.pgType] as const),
-    ]);
+    const pgTypeByColumn = wideColumnPgTypes(stmt.columns);
     const isGeometry = (columnName: string) =>
       pgTypeByColumn.get(columnName)?.startsWith("geometry") ?? false;
 
-    // Each row as wide-table cells: column name → value.
-    const prepared = rows.map((r) => {
-      const cells: Record<string, unknown> = {};
+    // Each row as wide-table cells: column name → value. Two updates for one
+    // record merge in order, so the later one wins key by key, as separate
+    // calls would (one VALUES list can't update a row twice).
+    const byId = new Map<
+      string,
+      { entityRecordId: string; cells: Record<string, unknown> }
+    >();
+    for (const r of rows) {
+      const entry = byId.get(r.entityRecordId) ?? {
+        entityRecordId: r.entityRecordId,
+        cells: {},
+      };
       for (const [key, value] of Object.entries(r.normalizedData)) {
         const col = columnByKey.get(key);
-        if (col) cells[col.columnName] = value;
+        if (col) entry.cells[col.columnName] = value;
       }
-      if (r.syncedAt !== undefined) cells["synced_at"] = r.syncedAt;
-      if (r.isValid !== undefined) cells["is_valid"] = r.isValid;
-      return { entityRecordId: r.entityRecordId, cells };
-    });
+      if (r.syncedAt !== undefined) entry.cells["synced_at"] = r.syncedAt;
+      if (r.isValid !== undefined) entry.cells["is_valid"] = r.isValid;
+      byId.set(r.entityRecordId, entry);
+    }
+    const prepared = [...byId.values()];
 
     // #757: geometry gets the same fail-closed audit as `upsertMany` (#316),
     // one audit per chunk. Every chunk is audited before any is written, so a
@@ -729,18 +758,41 @@ export class WideTableRepository {
       for (const { cols, rows: groupRows } of groups.values()) {
         // A VALUES list has no target column to take types from, so every
         // value is cast to its column's type.
-        const tuples = groupRows.map((p) => {
+        const quoted = cols.map((c) => `"${c}"`);
+        const setClause = quoted.map((q) => `${q} = v.${q}`).join(", ");
+        const flush = async (tuples: SQL[]) => {
+          if (tuples.length === 0) return;
+          await (client as typeof db).execute(
+            sql`UPDATE ${tableName} AS w SET ${sql.raw(setClause)} FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v("entity_record_id", ${sql.raw(quoted.join(", "))}) WHERE w."entity_record_id" = v."entity_record_id"`
+          );
+        };
+        // A text[] cell binds one parameter per element, so a row's cost
+        // varies; split the statement before it nears Postgres's bind limit.
+        let tuples: SQL[] = [];
+        let params = 0;
+        for (const p of groupRows) {
+          const cost =
+            1 +
+            cols.reduce(
+              (n, c) =>
+                n + bindCost(p.cells[c], pgTypeByColumn.get(c) ?? "text"),
+              0
+            );
+          if (params + cost > WIDE_TABLE_MAX_BIND_PARAMS) {
+            await flush(tuples);
+            tuples = [];
+            params = 0;
+          }
           const values = cols.map((c) => {
             const pgType = pgTypeByColumn.get(c) ?? "text";
             return sql`CAST(${wideValueExpr(p.cells, c, pgType)} AS ${sql.raw(pgType)})`;
           });
-          return sql`(${sql`${p.entityRecordId}`}, ${sql.join(values, sql`, `)})`;
-        });
-        const quoted = cols.map((c) => `"${c}"`);
-        const setClause = quoted.map((q) => `${q} = v.${q}`).join(", ");
-        await (client as typeof db).execute(
-          sql`UPDATE ${tableName} AS w SET ${sql.raw(setClause)} FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v("entity_record_id", ${sql.raw(quoted.join(", "))}) WHERE w."entity_record_id" = v."entity_record_id"`
-        );
+          tuples.push(
+            sql`(${sql`${p.entityRecordId}`}, ${sql.join(values, sql`, `)})`
+          );
+          params += cost;
+        }
+        await flush(tuples);
       }
     }
     return rejected;

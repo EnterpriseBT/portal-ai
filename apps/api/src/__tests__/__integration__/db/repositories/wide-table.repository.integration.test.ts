@@ -1291,6 +1291,54 @@ describe("WideTableRepository integration tests", () => {
       }
     }, 60_000);
 
+    it("two updates for one record merge in order, the later winning", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        const [a] = await seedRows(1);
+        await repo.updateMany(
+          typedId,
+          [
+            { entityRecordId: a, normalizedData: { s: "first", n: 1 } },
+            {
+              entityRecordId: a,
+              normalizedData: { s: "second" },
+              isValid: false,
+            },
+          ],
+          db
+        );
+
+        expect((await read()).get(a)).toMatchObject({
+          [col.get("s")!]: "second",
+          [col.get("n")!]: "1",
+          is_valid: false,
+        });
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    });
+
+    it("splits a chunk whose text[] cells would pass Postgres's bind limit", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        // 500 rows × 150 elements = 75,000 parameters in one statement.
+        const ids = await seedRows(500);
+        const refs = Array.from({ length: 150 }, (_, i) => `ref-${i}`);
+        await repo.updateMany(
+          typedId,
+          ids.map((id) => ({ entityRecordId: id, normalizedData: { refs } })),
+          db
+        );
+
+        const rows = await read();
+        for (const id of ids) {
+          expect(rows.get(id)![col.get("refs")!]).toHaveLength(150);
+        }
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    }, 60_000);
+
     it("an empty call is a no-op", async () => {
       await expect(repo.updateMany(entityId, [], db)).resolves.toEqual([]);
     });
