@@ -97,14 +97,13 @@ function wideValueExpr(
 ): SQL {
   const v = row[col];
   const value = v === undefined ? null : v;
-  // postgres-js doesn't auto-serialize JS arrays as Postgres
-  // array literals when bound as a single parameter. Build an
-  // ARRAY[...]-style expression so each element binds as its
-  // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`). Date
-  // items go through `toISOString()` rather than `String()`
-  // so the bound array elements are locale-independent
-  // ISO 8601 strings (Date.toString() is locale-aware and
-  // reads garbage in non-UTC environments).
+  // A text[] cell binds as ONE parameter: the elements as a JSON array,
+  // unpacked in order on the server (#766). Binding each element on its own
+  // (`ARRAY[$1, $2, …]`) made a statement's parameter count grow with array
+  // length, so 500 rows of 150 references passed PostgreSQL's 65,535 limit.
+  // postgres-js won't bind a JS array as a Postgres array, hence the JSON.
+  // Date items go through `toISOString()` rather than `String()` so they're
+  // locale-independent ISO 8601 strings.
   if (pgType === "text[]") {
     if (value === null || value === undefined) {
       return sql`NULL::text[]`;
@@ -112,14 +111,12 @@ function wideValueExpr(
     if (!Array.isArray(value) || value.length === 0) {
       return sql`ARRAY[]::text[]`;
     }
-    const items = sql.join(
-      value.map(
-        (item) =>
-          sql`${item instanceof Date ? item.toISOString() : String(item)}`
-      ),
-      sql`, `
+    const items = JSON.stringify(
+      value.map((item) =>
+        item instanceof Date ? item.toISOString() : String(item)
+      )
     );
-    return sql`ARRAY[${items}]::text[]`;
+    return sql`ARRAY(SELECT e FROM jsonb_array_elements_text(${items}::jsonb) WITH ORDINALITY AS t(e, n) ORDER BY n)`;
   }
   if (pgType === "jsonb") {
     // The bound parameter goes over the wire as text and is
@@ -177,45 +174,6 @@ function wideColumnPgTypes(
 }
 
 /**
- * Bind parameters per wide-table write statement (#761, #766), well under
- * PostgreSQL's 65,535. A row's cost varies with its text[] cells (one
- * parameter per element), so the row-count chunk alone can't bound it.
- */
-export const WIDE_TABLE_MAX_BIND_PARAMS = 30_000;
-
-/** Upper bound on the parameters `wideValueExpr` binds for one cell. */
-function bindCost(value: unknown, pgType: string): number {
-  if (pgType === "text[]") return Array.isArray(value) ? value.length : 0;
-  // A geometry binds its GeoJSON and, off 4326, its SRID.
-  return pgType.startsWith("geometry") ? 2 : 1;
-}
-
-/**
- * Split rows into runs whose summed `costOf` stays within
- * `WIDE_TABLE_MAX_BIND_PARAMS`, in order: one statement per run. A single row
- * over the budget still gets a run of its own (it can't be split; Postgres
- * refuses it if it really passes the limit).
- */
-function* budgetedRuns<T>(
-  rows: ReadonlyArray<T>,
-  costOf: (row: T) => number
-): Generator<T[]> {
-  let run: T[] = [];
-  let params = 0;
-  for (const row of rows) {
-    const cost = costOf(row);
-    if (run.length > 0 && params + cost > WIDE_TABLE_MAX_BIND_PARAMS) {
-      yield run;
-      run = [];
-      params = 0;
-    }
-    run.push(row);
-    params += cost;
-  }
-  if (run.length > 0) yield run;
-}
-
-/**
  * Rows / ids per statement for every chunked wide-table builder.
  *
  * Named for the table rather than for `upsertMany` because #436 extended it
@@ -224,9 +182,9 @@ function* budgetedRuns<T>(
  * statement is serialised, so any unbounded list overflows the V8 stack.
  * Keeping each statement's AST shallow is the remedy in all four cases.
  *
- * It bounds rows, not bind parameters: a text[] cell binds one parameter per
- * element, so the write paths also split at `WIDE_TABLE_MAX_BIND_PARAMS`
- * (#766: 500 rows of 150 references passed PostgreSQL's 65,535 limit).
+ * 500 also keeps the bind count comfortably under PostgreSQL's 65,535 limit:
+ * every cell binds at most two parameters (a geometry's GeoJSON and SRID; a
+ * text[] array is one, #766), so 500 rows × ~50 columns stays near 25k.
  */
 export const WIDE_TABLE_CHUNK_SIZE = 500;
 
@@ -467,28 +425,21 @@ export class WideTableRepository {
       // literal, not EXCLUDED.
       `, "deleted" = NULL`;
 
-    const costOf = (row: Record<string, unknown>) =>
-      colsInOrder.reduce(
-        (n, col) => n + bindCost(row[col], pgTypeByColumn.get(col) ?? "text"),
-        0
-      );
     for (let i = 0; i < rows.length; i += WIDE_TABLE_CHUNK_SIZE) {
       const chunk = rows.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
-      for (const run of budgetedRuns(chunk, costOf)) {
-        const tuples = run.map((row) => {
-          const valueExprs = colsInOrder.map((col) =>
-            wideValueExpr(row, col, pgTypeByColumn.get(col) ?? "text")
-          );
-          return sql`(${sql.join(valueExprs, sql`, `)})`;
-        });
+      const tuples = chunk.map((row) => {
+        const valueExprs = colsInOrder.map((col) =>
+          wideValueExpr(row, col, pgTypeByColumn.get(col) ?? "text")
+        );
+        return sql`(${sql.join(valueExprs, sql`, `)})`;
+      });
 
-        const statement = sql`INSERT INTO ${sql.raw(tableName)} (${sql.raw(insertColList)}) VALUES ${sql.join(
-          tuples,
-          sql`, `
-        )} ON CONFLICT ("entity_record_id") DO UPDATE SET ${sql.raw(setClauses)}`;
+      const statement = sql`INSERT INTO ${sql.raw(tableName)} (${sql.raw(insertColList)}) VALUES ${sql.join(
+        tuples,
+        sql`, `
+      )} ON CONFLICT ("entity_record_id") DO UPDATE SET ${sql.raw(setClauses)}`;
 
-        await (client as typeof db).execute(statement);
-      }
+      await (client as typeof db).execute(statement);
     }
 
     return { repaired, rejected };
@@ -793,24 +744,16 @@ export class WideTableRepository {
         // value is cast to its column's type.
         const quoted = cols.map((c) => `"${c}"`);
         const setClause = quoted.map((q) => `${q} = v.${q}`).join(", ");
-        const costOf = (p: (typeof groupRows)[number]) =>
-          1 +
-          cols.reduce(
-            (n, c) => n + bindCost(p.cells[c], pgTypeByColumn.get(c) ?? "text"),
-            0
-          );
-        for (const run of budgetedRuns(groupRows, costOf)) {
-          const tuples = run.map((p) => {
-            const values = cols.map((c) => {
-              const pgType = pgTypeByColumn.get(c) ?? "text";
-              return sql`CAST(${wideValueExpr(p.cells, c, pgType)} AS ${sql.raw(pgType)})`;
-            });
-            return sql`(${sql`${p.entityRecordId}`}, ${sql.join(values, sql`, `)})`;
+        const tuples = groupRows.map((p) => {
+          const values = cols.map((c) => {
+            const pgType = pgTypeByColumn.get(c) ?? "text";
+            return sql`CAST(${wideValueExpr(p.cells, c, pgType)} AS ${sql.raw(pgType)})`;
           });
-          await (client as typeof db).execute(
-            sql`UPDATE ${tableName} AS w SET ${sql.raw(setClause)} FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v("entity_record_id", ${sql.raw(quoted.join(", "))}) WHERE w."entity_record_id" = v."entity_record_id"`
-          );
-        }
+          return sql`(${sql`${p.entityRecordId}`}, ${sql.join(values, sql`, `)})`;
+        });
+        await (client as typeof db).execute(
+          sql`UPDATE ${tableName} AS w SET ${sql.raw(setClause)} FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v("entity_record_id", ${sql.raw(quoted.join(", "))}) WHERE w."entity_record_id" = v."entity_record_id"`
+        );
       }
     }
     return rejected;
