@@ -39,7 +39,7 @@ The schema enforces the cap and whole, non-negative counts. One object, rather t
 
 ## Smoke (manual, against your dev stack)
 
-1. On an entity with a geometry mapping, give one record a geometry the audit refuses in its stored `data`, e.g. set `data.geometry` to `"nope"` through `psql`, since every API write path refuses it (#757). Run **Re-validate All**. On **Jobs → that job**, the result shows `geometryRejected: { count: 1, omitted: 0, records: [{ recordId: <id>, fields: ["geometry"] }] }`, and the job reads completed.
+1. On an entity with a geometry mapping, give one record a value the normalizer accepts but the geometry audit refuses, in its stored `data`. Set `data.geometry` to `{"not": "a geometry"}` through `psql`, since every API write path refuses it (#757). A string like `"nope"` doesn't work: the normalizer turns it into null with a validation error, and a null geometry is never audited. Run **Re-validate All**. On **Jobs → that job**, the result shows `geometryRejected: { count: 1, omitted: 0, records: [{ recordId: <id>, fields: ["geometry"] }] }` and the job reads completed. The record's wide-table geometry is unchanged, and the warn log names the record.
 2. Run **Re-validate All** on an entity with no refused geometries. The result has no `geometryRejected` key.
 
 ## Out of scope
