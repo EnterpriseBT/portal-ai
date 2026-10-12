@@ -80,6 +80,16 @@ export const RevalidationResultSchema = z.object({
       errors: z.array(z.object({ field: z.string(), error: z.string() })),
     })
   ),
+  /**
+   * #765: records whose geometry the audit refused (#757), so revalidation
+   * left it as the sync stored it. Absent on a clean run. The job still
+   * completes (the data is correct); this says what was skipped.
+   */
+  geometryRejected: z.number().optional(),
+  /** The first `MAX_GEOMETRY_REJECTIONS` of them, naming the fields. */
+  geometryRejections: z
+    .array(z.object({ recordId: z.string(), fields: z.array(z.string()) }))
+    .optional(),
 });
 export type RevalidationResult = z.infer<typeof RevalidationResultSchema>;
 

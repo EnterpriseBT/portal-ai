@@ -14,6 +14,9 @@ const logger = createLogger({ module: "revalidation-processor" });
 /** Batch size for updating records to avoid memory spikes. */
 const BATCH_SIZE = 100;
 
+/** #765: how many refused records the result names; the count covers all. */
+const MAX_GEOMETRY_REJECTIONS = 50;
+
 export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
   bullJob
 ) => {
@@ -52,6 +55,9 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
   let valid = 0;
   let invalid = 0;
   let geometryRejected = 0;
+  const geometryRejections: NonNullable<
+    RevalidationResult["geometryRejections"]
+  > = [];
   const errorSummary: RevalidationResult["errors"] = [];
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -119,6 +125,11 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
         { onRejectedGeometry: "skip" }
       );
       geometryRejected += refused.length;
+      for (const r of refused) {
+        if (geometryRejections.length >= MAX_GEOMETRY_REJECTIONS) break;
+        // A wide-table rejection's sourceId is the record id here.
+        geometryRejections.push({ recordId: r.sourceId, fields: r.fields });
+      }
     });
 
     // Progress: 20-90 range spread across batches
@@ -149,6 +160,8 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     valid,
     invalid,
     errors: errorSummary,
+    // #765: the degradation goes on the result, not only in the log.
+    ...(geometryRejected > 0 ? { geometryRejected, geometryRejections } : {}),
   };
   return result;
 };

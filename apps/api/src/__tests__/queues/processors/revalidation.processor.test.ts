@@ -71,6 +71,7 @@ jest.unstable_mockModule(
 
 const { revalidationProcessor } =
   await import("../../../queues/processors/revalidation.processor.js");
+const { RevalidationResultSchema } = await import("@portalai/core/models");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -211,6 +212,61 @@ describe("revalidationProcessor", () => {
       expect.objectContaining({ geometryRejected: 2 }),
       expect.any(String)
     );
+    // #765: the skips are on the result, not only in the log.
+    expect(RevalidationResultSchema.parse(result)).toMatchObject({
+      geometryRejected: 2,
+      geometryRejections: [
+        { recordId: "r-1", fields: ["geom"] },
+        { recordId: "r-2", fields: ["geom"] },
+      ],
+    });
+  });
+
+  it("#765: names at most 50 refused records, counting them all", async () => {
+    mockFieldMappingsFindMany.mockResolvedValue([]);
+    mockEntityRecordsFindByConnectorEntityId.mockResolvedValue(
+      Array.from({ length: 120 }, (_, i) => record(`r-${i}`, { geom: "" }))
+    );
+    mockNormalizeWithMappings.mockReturnValue({
+      normalizedData: { geom: "" },
+      validationErrors: null,
+      isValid: true,
+    });
+    // Batches of 100 and 20, every record refused.
+    mockWideTableUpdateMany.mockImplementation(async (...args: unknown[]) =>
+      (args[1] as Array<{ entityRecordId: string }>).map((r) => ({
+        sourceId: r.entityRecordId,
+        code: "GEOMETRY_INVALID_ON_IMPORT",
+        fields: ["geom"],
+      }))
+    );
+
+    const result = RevalidationResultSchema.parse(
+      await revalidationProcessor(createMockBullJob())
+    );
+
+    expect(result.geometryRejected).toBe(120);
+    expect(result.geometryRejections).toHaveLength(50);
+    expect(result.geometryRejections?.[0]).toEqual({
+      recordId: "r-0",
+      fields: ["geom"],
+    });
+    mockWideTableUpdateMany.mockReset().mockResolvedValue([]);
+  });
+
+  it("#765: a clean run carries no geometry keys", async () => {
+    mockFieldMappingsFindMany.mockResolvedValue([]);
+    mockEntityRecordsFindByConnectorEntityId.mockResolvedValue([record("r-1")]);
+    mockNormalizeWithMappings.mockReturnValue({
+      normalizedData: { name: "Alice" },
+      validationErrors: null,
+      isValid: true,
+    });
+
+    const result = await revalidationProcessor(createMockBullJob());
+
+    expect(result).not.toHaveProperty("geometryRejected");
+    expect(result).not.toHaveProperty("geometryRejections");
   });
 
   // #761: one batched wide-table write per batch, not one per record.
