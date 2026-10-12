@@ -751,6 +751,94 @@ export function jobTypesLocking(
     .map(([type, keys]) => ({ type, metadataKey: keys[field] as string }));
 }
 
+// --- Lock scopes (#769) ---
+
+/**
+ * What a running job makes read-only (CLAUDE.md §"Async Job State & Data
+ * Locking"). A job locks scopes: one connector entity, or a whole connector
+ * instance (all its entities). Every object that resolves into a locked scope
+ * refuses writes: an entity's records, field mappings and the entity itself;
+ * an instance and everything under it; a column definition through every
+ * entity that maps it. Read-dependencies count: a bulk transform locks its
+ * source as well as its targets, since an edit mid-run would make its output
+ * inconsistent.
+ *
+ * Scopes are computed once, when the job row is created, and stored in
+ * `jobs.lock_scopes` as `lockScopeKey` strings.
+ */
+export type LockScopeKind = "connectorEntity" | "connectorInstance";
+export interface LockScope {
+  kind: LockScopeKind;
+  id: string;
+}
+
+/** `entity:<id>` / `instance:<id>`: the stored and advisory-locked form. */
+export function lockScopeKey(scope: LockScope): string {
+  return `${scope.kind === "connectorEntity" ? "entity" : "instance"}:${scope.id}`;
+}
+
+type Metadata = Record<string, unknown>;
+const str = (m: Metadata, key: string): string[] =>
+  typeof m[key] === "string" && (m[key] as string).length > 0
+    ? [m[key] as string]
+    : [];
+const strs = (m: Metadata, key: string): string[] =>
+  Array.isArray(m[key])
+    ? (m[key] as unknown[]).filter(
+        (v): v is string => typeof v === "string" && v.length > 0
+      )
+    : [];
+const instance = (ids: string[]): LockScope[] =>
+  ids.map((id) => ({ kind: "connectorInstance", id }));
+const entities = (ids: string[]): LockScope[] =>
+  [...new Set(ids)].map((id) => ({ kind: "connectorEntity", id }));
+
+/**
+ * Exhaustive over `JobType`, so a new job type fails type-check until it says
+ * what it locks (`[]` when it writes no entity data).
+ */
+export const JOB_LOCK_SCOPES: {
+  [T in JobType]: (metadata: Metadata) => LockScope[];
+} = {
+  connector_sync: (m) => instance(str(m, "connectorInstanceId")),
+  layout_plan_commit: (m) => instance(str(m, "connectorInstanceId")),
+  entity_record_clear: (m) => instance(str(m, "connectorInstanceId")),
+  revalidation: (m) => entities(str(m, "connectorEntityId")),
+  bulk_geocode: (m) => entities(str(m, "connectorEntityId")),
+  bulk_transform: (m) =>
+    entities([
+      ...strs(m, "targetConnectorEntityIds"),
+      ...str(m, "sourceConnectorEntityId"),
+    ]),
+  file_upload_parse: () => [],
+  sql_query: () => [],
+  dissolve_precompute: () => [],
+  system_check: () => [],
+};
+
+export function jobLockScopes(type: JobType, metadata: unknown): LockScope[] {
+  const m =
+    typeof metadata === "object" && metadata !== null
+      ? (metadata as Metadata)
+      : {};
+  return JOB_LOCK_SCOPES[type](m);
+}
+
+/**
+ * A running job as lock surfaces report it: the 409's `details.runningJobs`
+ * and the running-jobs endpoints. `lockScopes` lets a caller say whether the
+ * job holds this entity or the whole connector.
+ */
+export const RunningJobSummarySchema = z.object({
+  id: z.string(),
+  type: JobTypeEnum,
+  status: JobStatusEnum,
+  startedAt: z.number().nullable(),
+  created: z.number(),
+  lockScopes: z.array(z.string()),
+});
+export type RunningJobSummary = z.infer<typeof RunningJobSummarySchema>;
+
 // --- Schema ---
 
 /**
@@ -788,6 +876,10 @@ export const JobSchema = CoreSchema.extend({
   // (#464). No Zod default — mirrors `attempts`: the DB column's default fills
   // inserts, and every selected row carries a concrete value.
   lostExecutions: z.number(),
+  // The `lockScopeKey`s this job locks while non-terminal (#769), from
+  // `jobLockScopes` at creation. No Zod default, like `lostExecutions`: the
+  // creation site sets it, and the DB column defaults to '{}'.
+  lockScopes: z.array(z.string()),
 });
 
 export type Job = z.infer<typeof JobSchema>;

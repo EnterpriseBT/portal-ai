@@ -39,6 +39,7 @@ function buildValidJob(overrides: Partial<Job> = {}): Partial<Job> {
     attempts: 0,
     maxAttempts: 3,
     lostExecutions: 0,
+    lockScopes: [],
     progressDetail: null,
     ...overrides,
   };
@@ -107,6 +108,12 @@ describe("JobSchema", () => {
   it("should reject a job missing lostExecutions (#464)", () => {
     const { lostExecutions: _omit, ...withoutLostExecutions } = buildValidJob();
     const result = JobSchema.safeParse(withoutLostExecutions);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject a job missing lockScopes (#769)", () => {
+    const { lockScopes: _omit, ...withoutLockScopes } = buildValidJob();
+    const result = JobSchema.safeParse(withoutLockScopes);
     expect(result.success).toBe(false);
   });
 });
@@ -278,6 +285,7 @@ describe("JobModelFactory", () => {
         attempts: 0,
         maxAttempts: 3,
         lostExecutions: 0,
+        lockScopes: [],
         progressDetail: null,
         updated: null,
         updatedBy: null,

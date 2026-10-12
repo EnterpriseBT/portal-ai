@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -36,34 +38,52 @@ export const jobTypeEnum = pgEnum("job_type", [
  * Each row represents an async background job tracked by the system
  * and processed via BullMQ.
  */
-export const jobs = pgTable("jobs", {
-  ...baseColumns,
-  organizationId: text("organization_id").notNull(),
-  type: jobTypeEnum("type").notNull(),
-  status: jobStatusEnum("status").notNull().default("pending"),
-  progress: integer("progress").notNull().default(0),
-  // Structured progress (#458): cumulative records processed + the known
-  // total (null = genuinely unknown). NULL for jobs that never report one.
-  // `progress` stays the coarse percent; surfaces prefer this when present.
-  progressDetail: jsonb("progress_detail").$type<{
-    processed: number;
-    total: number | null;
-  }>(),
-  metadata: jsonb("metadata")
-    .notNull()
-    .default({})
-    .$type<Record<string, unknown>>(),
-  result: jsonb("result").$type<Record<string, unknown>>(),
-  error: text("error"),
-  startedAt: bigint("started_at", { mode: "number" }),
-  completedAt: bigint("completed_at", { mode: "number" }),
-  bullJobId: text("bull_job_id"),
-  attempts: integer("attempts").notNull().default(0),
-  maxAttempts: integer("max_attempts").notNull().default(3),
-  // Executions lost to process death and silently re-delivered by BullMQ
-  // (#464). BullMQ does not increment `attempts` on a stall re-delivery, so a
-  // job that ran twice would otherwise read `attempts: 1` with no other trace
-  // an execution was redone. The resuming execution detects a still-`active`
-  // row at its start and increments this.
-  lostExecutions: integer("lost_executions").notNull().default(0),
-});
+export const jobs = pgTable(
+  "jobs",
+  {
+    ...baseColumns,
+    organizationId: text("organization_id").notNull(),
+    type: jobTypeEnum("type").notNull(),
+    status: jobStatusEnum("status").notNull().default("pending"),
+    progress: integer("progress").notNull().default(0),
+    // Structured progress (#458): cumulative records processed + the known
+    // total (null = genuinely unknown). NULL for jobs that never report one.
+    // `progress` stays the coarse percent; surfaces prefer this when present.
+    progressDetail: jsonb("progress_detail").$type<{
+      processed: number;
+      total: number | null;
+    }>(),
+    metadata: jsonb("metadata")
+      .notNull()
+      .default({})
+      .$type<Record<string, unknown>>(),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+    error: text("error"),
+    startedAt: bigint("started_at", { mode: "number" }),
+    completedAt: bigint("completed_at", { mode: "number" }),
+    bullJobId: text("bull_job_id"),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    // Executions lost to process death and silently re-delivered by BullMQ
+    // (#464). BullMQ does not increment `attempts` on a stall re-delivery, so a
+    // job that ran twice would otherwise read `attempts: 1` with no other trace
+    // an execution was redone. The resuming execution detects a still-`active`
+    // row at its start and increments this.
+    lostExecutions: integer("lost_executions").notNull().default(0),
+    // The scopes this job locks while non-terminal (#769), as `lockScopeKey`
+    // strings ("entity:<id>" / "instance:<id>"), written once at creation
+    // from core's `jobLockScopes`. Lock checks overlap-match it.
+    lockScopes: text("lock_scopes")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+  },
+  (table) => [
+    // Only live jobs lock, so only live rows are indexed.
+    index("jobs_lock_scopes_live_idx")
+      .using("gin", table.lockScopes)
+      .where(
+        sql`${table.status} IN ('pending', 'active', 'awaiting_confirmation', 'stalled')`
+      ),
+  ]
+);
