@@ -75,6 +75,23 @@ export class EntityRecordsRepository extends Repository<
     super(entityRecords);
   }
 
+  /**
+   * #760: read a live record and lock its row until `client`'s transaction
+   * ends, so a read-merge-write of `data` can't lose a concurrent edit.
+   */
+  async findByIdForUpdate(
+    id: string,
+    client: DbClient
+  ): Promise<EntityRecordSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(entityRecords)
+      .where(and(eq(entityRecords.id, id), isNull(entityRecords.deleted)))
+      .limit(1)
+      .for("update");
+    return row as EntityRecordSelect | undefined;
+  }
+
   /** Find all records for a given connector entity (soft-delete aware). */
   async findByConnectorEntityId(
     connectorEntityId: string,

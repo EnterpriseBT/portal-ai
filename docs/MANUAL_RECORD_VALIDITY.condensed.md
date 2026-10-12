@@ -12,46 +12,63 @@
 | Import | `entity-record.router.ts:1036` | same hardcode per row; the wide row takes `isValid` from the model (`:1056`). No in-repo caller |
 | PATCH | `entity-record.router.ts:1347` | updates `data` only when the body has `data`. The web edit dialog sends only `normalizedData`, so `data` goes stale |
 | Revalidation | `revalidation.processor.ts:64` | re-normalizes from `record.data` and writes the result to the wide table, so a stale `data` overwrites the edit |
-| Agent tools | `entity-record-update.tool.ts:126` | merge the patch over the existing `data`, run `normalizeMany`, and store `data`, `isValid` and `validationErrors`. This is the behaviour to match |
+| Agent tools | `entity-record-update.tool.ts:126` | merged and normalized their own way (read outside the transaction, and keys merged as given), a second copy of the PATCH logic |
 | Normalizer | `normalization.service.ts:72` | per field: required → coerce → enum/pattern. A failing field becomes `null` with an error; geometry goes through `coerceJson` |
 
-## Decision — validate only, or store the normalizer's output
+## Decision — store the normalizer's output, through one write model
 
-- **Store the normalizer's output** (the tools' behaviour). Values are coerced and canonicalized, and a failing field is stored as `null`. But a geometry that isn't JSON (`"nope"`) would become a NULL geometry on an invalid record instead of #757's 400, which would quietly undo that fix on the REST routes.
-- **Validate only.** Run the normalizer to get `isValid` and `validationErrors`, and store exactly the values the routes store today.
+The first cut validated only, storing values as sent. Code review (PR #762) showed why that's wrong: the normalizer fills in defaults and converts types *before* it judges a record. So a required `status` with a default of `open`, patched to `""`, came out valid while `""` was stored, and Re-validate All later changed the value anyway.
 
-**Decision: validate only.** It fixes the reported bug without changing a single stored value, and it keeps #757's 400 for a geometry that can't be stored. Values may still drift between the routes and revalidation (revalidation coerces), but that predates this bug, and closing it means changing what create stores. That's out of scope.
+**Decision: every manual write stores the normalizer's output**, the same values a revalidation would store, through a new `RecordWriteService` (`services/record-write.service.ts`). The REST create, import and PATCH routes and both agent record tools use it, so the UI and the agent can no longer disagree.
+- **`normalize(mappings, rows, opts)`.** It runs `normalizeWithMappings` and refuses a geometry the normalizer couldn't parse (`""`, `"nope"`: a value was sent, but the result is `null`) with #757's 400 `GEOMETRY_INVALID_ON_IMPORT`, before anything is written. A parseable value that isn't a geometry is still refused by the wide-table audit. So #757's contract is unchanged.
+- **`mergePatch(mappings, data, patch)`.** A `normalizedData` key is written under the key the record already holds. A synced record holds its source field (`"Full Name"`), so a later sync of that field still wins. A raw `data` patch merges as given.
+- **`patchRecord(tx, …)`.** In this order:
+  1. lock the row (`findByIdForUpdate`, `SELECT … FOR UPDATE`) so a concurrent edit can't be lost;
+  2. read the mappings in the same transaction;
+  3. merge, normalize, and write `data`, `isValid` and `validationErrors` to `entity_records`;
+  4. write every mapped column and `is_valid` to the wide row, which is skipped before the reconciler has run.
+- **Import** normalizes only the rows whose checksum changed, with one load of the mappings.
 
-**Normalizer input.** Each route validates the same values it writes:
-- **create:** the body's `normalizedData`, which is also its `data`;
-- **import:** each changed row's `normalizedData`, run through one `normalizeMany` so the mappings load once;
-- **PATCH:** the merged record (below).
+`data` keeps what the caller sent (create: the body; import: each row's `data`; PATCH: the merged record), so revalidation rebuilds the same record.
 
-**PATCH keeps `data` in step.** `merged = { ...existing.data, ...body.data, ...body.normalizedData }`, then `merged` is stored as `data`, with its validity on `entity_records` and `is_valid` on the wide row. The normalizer reads `normalizedKey` before `sourceField`, so for a synced record the edited key wins on every later revalidation. That holds until the next sync replaces `data`, the same as edits made through `entity_record_update`. A PATCH carrying only `data` still writes the wide row's `is_valid`. The wide-table write stays partial: only the keys the patch sent.
-
-## Plan — 1 slice
+## Plan — 1 slice (+ review fixes)
 
 **Files**
-- Edit `apps/api/src/routes/entity-record.router.ts` to change the create, import and PATCH handlers as above, plus the OpenAPI descriptions of `isValid`/`validationErrors` on those three routes.
+- New: `apps/api/src/services/record-write.service.ts`.
+- Edit:
+  - `normalization.service.ts`: `loadMappings(id, client)`, and the mapping type exported;
+  - `entity-records.repository.ts`: `findByIdForUpdate`;
+  - `entity-record.router.ts`: create, import and PATCH, plus their OpenAPI text;
+  - `tools/entity-record-create.tool.ts` and `tools/entity-record-update.tool.ts`.
 
-**Tests** (`npm run test:integration` from `apps/api`, filtered to the files; `AUTH_API_RATE_LIMIT_PER_MIN=1000000`)
-- `src/__tests__/__integration__/routes/entity-record.router.integration.test.ts`:
-  - **Create:** a required field left blank → `isValid: false` with `validationErrors` naming it, and the wide row's `is_valid` is false. A valid record → true.
-  - **Import:** a valid row and an invalid row → each stored with its own validity.
-  - **PATCH:** blank a required field → false; fill it in → true. A `normalizedData`-only patch → the stored `data` carries the new value.
-  - **#757 unchanged:** a PATCH with geometry `"nope"` still answers 400.
-- `src/__tests__/__integration__/routes/revalidation.integration.test.ts`: PATCH a value, run revalidation, and the record keeps the edited value. This is the revert regression.
+**Tests** (`npm run test:unit` / `npm run test:integration` from `apps/api`, filtered to the files; `AUTH_API_RATE_LIMIT_PER_MIN=1000000`)
+- `src/__tests__/services/record-write.service.test.ts`:
+  - defaults applied, and validity taken from the output;
+  - a blank required field makes the record invalid, not refused;
+  - `""` and `"nope"` geometries are refused with the 400, and a batch refusal names the rows;
+  - merge rules: an existing key, a synced source field, and a raw `data` patch.
+- `entity-record.router.integration.test.ts` (#760 suite):
+  - validity on create, import and PATCH, both ways, computed on the whole record;
+  - create stores the normalized values;
+  - PATCH keeps `data` in step;
+  - **the row lock**: with transaction A holding the lock, B waits, and both edits survive. This test fails without the lock;
+  - **the edit survives a real `revalidationProcessor` run**;
+  - a refused PATCH leaves `data` and validity unchanged.
+
+  The #757 geometry suite still passes.
+- Tool unit tests mock `RecordWriteService`; the merge and normalize behaviour lives in the service tests.
 
 ## Smoke (manual, against your dev stack)
 
 1. On an entity with a required `name` mapping, use **Create** with Name blank. The record shows as invalid in the list's **Valid** column, and the invalid filter finds it.
-2. Edit it and fill in Name. It becomes valid without a re-validate.
-3. Edit a valid record's Name from "Before" to "After", then run **Re-validate All** and wait for it to finish. The record still reads "After".
-4. `curl` import of two rows, one with `name` blank. Both are written (201/200), and only the blank one has `isValid: false` with `validationErrors` naming `name`.
-5. `curl` PATCH with `"location":"nope"` on an entity that has a geometry mapping. It still returns 400 `GEOMETRY_INVALID_ON_IMPORT` (#757).
+2. On a required field with a default value (set one on the field mapping), create a record with that field blank. It stores the default and is valid.
+3. Edit the step-1 record and fill in Name. It becomes valid without a re-validate.
+4. Edit a valid record's Name from "Before" to "After", then run **Re-validate All** and wait for it to finish. The record still reads "After".
+5. `curl` import of two rows, one with `name` blank. Both are written (201/200), and only the blank one has `isValid: false` with `validationErrors` naming `name`.
+6. `curl` PATCH with `"location":"nope"` on an entity that has a geometry mapping. It still returns 400 `GEOMETRY_INVALID_ON_IMPORT` (#757).
 
 ## Out of scope
 
-- Storing the normalizer's coerced values on the REST routes (the drift between route-written and revalidated values): it changes stored data and would undo #757's refusal; it needs a decision of its own.
+- Records whose `data` already drifted from the wide table before this fix (an in-app edit made before it): the next edit merges onto the old `data`. Any Re-validate All since then already reverted those edits, and there is no production data that needs a backfill.
 - Import's `data` and `normalizedData` disagreeing: the client sends both, and revalidation trusts `data`. This predates the bug, and import has no in-repo caller.
 - Batching revalidation's wide-table writes: #761.

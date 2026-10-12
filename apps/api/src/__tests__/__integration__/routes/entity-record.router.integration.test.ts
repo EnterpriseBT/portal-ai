@@ -3297,7 +3297,7 @@ describe("Entity Record Router — validity on manual writes (#760)", () => {
     expect(await wideIsValid(connectorEntityId, record.id)).toBe(true);
   });
 
-  it("create stores the values it was sent (validate only)", async () => {
+  it("create stores the normalized values, as a revalidation would", async () => {
     const { connectorEntityId } = await seedRequiredEntity();
 
     const record = await create(connectorEntityId, { name: "", note: "x" });
@@ -3305,10 +3305,13 @@ describe("Entity Record Router — validity on manual writes (#760)", () => {
     const got = await request(app)
       .get(`${recordsUrl(connectorEntityId)}/${record.id}`)
       .set("Authorization", "Bearer test-token");
+    // A required field that fails is stored null, with the error recorded;
+    // the value as sent stays in `data`.
     expect(got.body.payload.record.normalizedData).toMatchObject({
-      name: "",
+      name: null,
       note: "x",
     });
+    expect((await stored(record.id)).data).toEqual({ name: "", note: "x" });
   });
 
   it("import stores each row with its own validity", async () => {
@@ -3405,6 +3408,41 @@ describe("Entity Record Router — validity on manual writes (#760)", () => {
       name: "After",
       note: "n",
     });
+  });
+
+  it("a concurrent edit waits for the row lock, so neither edit is lost", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+    const record = await create(connectorEntityId, { name: "a", note: "b" });
+    const { DbService } = await import("../../../services/db.service.js");
+    const { RecordWriteService } =
+      await import("../../../services/record-write.service.js");
+    const patch = (tx: unknown, normalizedData: Record<string, unknown>) =>
+      RecordWriteService.patchRecord(tx as never, {
+        connectorEntityId,
+        recordId: record.id,
+        patch: { normalizedData },
+        userId: "u",
+      });
+
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let bDone = false;
+    let b!: Promise<unknown>;
+    const a = DbService.transaction(async (tx) => {
+      await patch(tx, { name: "X" });
+      // A holds its row lock while B starts its own edit.
+      b = DbService.transaction((tx2) => patch(tx2, { note: "Y" })).then(
+        () => (bDone = true)
+      );
+      await new Promise((r) => setTimeout(r, 300));
+      expect(bDone).toBe(false);
+      release();
+    });
+    await held;
+    await a;
+    await b;
+
+    expect((await stored(record.id)).data).toEqual({ name: "X", note: "Y" });
   });
 
   it("an edit survives Re-validate All (it used to revert to the old value)", async () => {

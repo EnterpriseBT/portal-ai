@@ -8,10 +8,9 @@ import {
   assertStationScope,
   assertWriteCapability,
 } from "../utils/resolve-capabilities.util.js";
-import { NormalizationService } from "../services/normalization.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
-import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { ApiError } from "../services/http.service.js";
+import { RecordWriteService } from "../services/record-write.service.js";
 
 const ItemSchema = z.object({
   connectorEntityId: z
@@ -85,13 +84,8 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             };
           }
 
-          // Verify each record exists and belongs to its entity, and capture
-          // the existing raw `data` so partial updates are merged (not replaced).
-          // `data` and `normalizedData` are JSONB columns — writing them
-          // replaces the entire blob, so we must merge with the existing value.
-          const existingDataByIndex = new Array<Record<string, unknown>>(
-            items.length
-          );
+          // Verify each record exists and belongs to its entity, so a bad id
+          // is reported per item before anything is written.
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
             const existing = await DbService.repository.entityRecords.findById(
@@ -105,11 +99,6 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
                 index: i,
                 error: "Record not found or does not belong to entity",
               });
-            } else {
-              existingDataByIndex[i] = (existing.data ?? {}) as Record<
-                string,
-                unknown
-              >;
             }
           }
 
@@ -121,103 +110,40 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             };
           }
 
-          // Merge partial updates over existing raw data so the full record is
-          // re-normalized (otherwise absent fields would be coerced to null).
-          const mergedDataByIndex = items.map((item, idx) => ({
-            ...existingDataByIndex[idx],
-            ...item.data,
-          }));
-
-          // Normalize per group using the merged data
-          type NormResult = {
-            normalizedData: Record<string, unknown>;
-            validationErrors: any;
-            isValid: boolean;
-          };
-          const normResults: NormResult[] = new Array(items.length);
-
-          for (const [connectorEntityId, groupItems] of groups) {
-            const dataArray = groupItems.map(
-              (item) => mergedDataByIndex[items.indexOf(item)]
-            );
-            const results = await NormalizationService.normalizeMany(
-              connectorEntityId,
-              dataArray
-            );
-            for (let i = 0; i < groupItems.length; i++) {
-              normResults[items.indexOf(groupItems[i])] = results[
-                i
-              ] as NormResult;
-            }
-          }
-
           // ── Phase 2: Execute ───────────────────────────────────────
-          const payloads = items.map((item, idx) => {
-            const norm = normResults[idx];
-            return {
-              id: item.entityRecordId,
-              data: {
-                data: mergedDataByIndex[idx],
-                normalizedData: norm.normalizedData,
-                validationErrors: norm.validationErrors,
-                isValid: norm.isValid,
-                updated: Date.now(),
-                updatedBy: userId,
-              },
-            };
-          });
-
-          const updated = await Repository.transaction(async (tx) => {
-            const rowsUpdated =
-              await DbService.repository.entityRecords.updateMany(payloads, tx);
-            // Partial-merge into the wide table per entity, scoped to
-            // the keys each payload supplied (PATCH semantics). Skip
-            // when the reconciler hasn't run yet for this entity (no
-            // live data columns) — the post-Phase-2 re-sync trigger
-            // refills the wide table from source.
-            const idToItemIndex = new Map(
-              items.map((it, idx) => [it.entityRecordId, idx])
-            );
-            for (const [connectorEntityId, groupItems] of groups) {
-              const stmt = await wideTableStatementCache.get(
-                connectorEntityId,
-                tx
-              );
-              if (stmt.columns.length === 0) continue;
-              for (const item of groupItems) {
-                const idx = idToItemIndex.get(item.entityRecordId);
-                if (idx === undefined) continue;
-                const norm = normResults[idx];
-                try {
-                  await DbService.repository.wideTable.updatePartial(
-                    connectorEntityId,
-                    item.entityRecordId,
-                    norm.normalizedData,
-                    { isValid: norm.isValid },
-                    tx
+          // #760: the same write as PATCH /records/:id. Each item merges into
+          // the record's stored `data` under a row lock, and the normalized
+          // values and validity land on both stores. One transaction: a
+          // refused item rolls back every item.
+          await Repository.transaction(async (tx) => {
+            for (const [idx, item] of items.entries()) {
+              try {
+                await RecordWriteService.patchRecord(tx, {
+                  connectorEntityId: item.connectorEntityId,
+                  recordId: item.entityRecordId,
+                  patch: { normalizedData: item.data },
+                  userId,
+                });
+              } catch (err) {
+                // #757: in a multi-item call, say which item to fix.
+                if (err instanceof ApiError && items.length > 1) {
+                  throw new ApiError(
+                    err.status ?? 400,
+                    err.code,
+                    `items[${idx}] (record ${item.entityRecordId}): ${err.message}; nothing was written`,
+                    err.details
                   );
-                } catch (err) {
-                  // #757: in a multi-item call, say which item to fix.
-                  if (err instanceof ApiError && items.length > 1) {
-                    throw new ApiError(
-                      err.status ?? 400,
-                      err.code,
-                      `items[${idx}] (record ${item.entityRecordId}): ${err.message}; nothing was written`,
-                      err.details
-                    );
-                  }
-                  throw err;
                 }
+                throw err;
               }
             }
-            return rowsUpdated;
           });
 
           return {
             success: true,
             operation: "updated" as const,
             entity: "record",
-            count: updated.length,
+            count: items.length,
             items: items.map((item) => ({
               entityId: item.entityRecordId,
               summary: { fields: Object.keys(item.data) },

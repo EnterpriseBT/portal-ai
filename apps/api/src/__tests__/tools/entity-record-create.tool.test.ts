@@ -8,11 +8,20 @@ const mockAssertStationScope = jest
 const mockAssertWriteCapability = jest
   .fn<(...a: unknown[]) => Promise<void>>()
   .mockResolvedValue(undefined);
-const mockNormalizeMany = jest
+const MAPPINGS = [{ normalizedKey: "name" }];
+const mockLoadMappings = jest
   .fn<(...a: unknown[]) => Promise<unknown[]>>()
-  .mockResolvedValue([
-    { normalizedData: { name: "Jane" }, validationErrors: null, isValid: true },
-  ]);
+  .mockResolvedValue(MAPPINGS);
+// #760: the tool normalizes through the shared write model.
+const mockNormalize = jest
+  .fn<(...a: unknown[]) => unknown[]>()
+  .mockImplementation((_mappings, rows) =>
+    (rows as unknown[]).map(() => ({
+      normalizedData: { name: "Jane" },
+      validationErrors: null,
+      isValid: true,
+    }))
+  );
 const mockCreateMany = jest
   .fn<(...a: unknown[]) => Promise<unknown[]>>()
   .mockImplementation((...args: unknown[]) => {
@@ -30,7 +39,10 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertWriteCapability: mockAssertWriteCapability,
 }));
 jest.unstable_mockModule("../../services/normalization.service.js", () => ({
-  NormalizationService: { normalizeMany: mockNormalizeMany },
+  NormalizationService: { loadMappings: mockLoadMappings },
+}));
+jest.unstable_mockModule("../../services/record-write.service.js", () => ({
+  RecordWriteService: { normalize: mockNormalize },
 }));
 const mockFindEntityById = jest
   .fn<(...a: unknown[]) => Promise<unknown>>()
@@ -134,7 +146,7 @@ describe("EntityRecordCreateTool", () => {
   });
 
   it("#757: a multi-item refusal names the items, not their sourceIds", async () => {
-    mockNormalizeMany.mockResolvedValueOnce([
+    mockNormalize.mockReturnValueOnce([
       { normalizedData: { geom: null }, validationErrors: null, isValid: true },
       { normalizedData: { geom: "" }, validationErrors: null, isValid: true },
     ]);
@@ -175,6 +187,21 @@ describe("EntityRecordCreateTool", () => {
     );
   });
 
+  it("#760: a geometry the normalizer can't parse is refused naming the item", async () => {
+    await exec({
+      items: [
+        { connectorEntityId: "ce-1", sourceId: "src-a", data: {} },
+        { connectorEntityId: "ce-1", sourceId: "src-b", data: {} },
+      ],
+    });
+    const opts = mockNormalize.mock.calls[0][2] as {
+      batch: boolean;
+      describe: (id: string) => string;
+    };
+    expect(opts.batch).toBe(true);
+    expect(opts.describe("src-b")).toBe("items[1]");
+  });
+
   it("#757: a clean mirror write succeeds", async () => {
     mockStatementGet.mockResolvedValueOnce({
       columns: [{ columnName: "c_geom", normalizedKey: "geom" }],
@@ -194,7 +221,12 @@ describe("EntityRecordCreateTool", () => {
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].entityId).toBe("rec-1");
-    expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [{ Name: "Jane" }]);
+    expect(mockLoadMappings).toHaveBeenCalledWith("ce-1");
+    expect(mockNormalize).toHaveBeenCalledWith(
+      MAPPINGS,
+      [{ sourceId: expect.any(String), input: { Name: "Jane" } }],
+      expect.objectContaining({ batch: false })
+    );
     expect(mockCreateMany).toHaveBeenCalledWith(
       [
         expect.objectContaining({
@@ -208,7 +240,7 @@ describe("EntityRecordCreateTool", () => {
   });
 
   it("bulk create — 3 items persisted in single createMany call", async () => {
-    mockNormalizeMany.mockResolvedValueOnce([
+    mockNormalize.mockReturnValueOnce([
       { normalizedData: { name: "A" }, validationErrors: null, isValid: true },
       { normalizedData: { name: "B" }, validationErrors: null, isValid: true },
       { normalizedData: { name: "C" }, validationErrors: null, isValid: true },
@@ -232,19 +264,19 @@ describe("EntityRecordCreateTool", () => {
     expect(result.items).toHaveLength(3);
     expect(mockAssertStationScope).toHaveBeenCalledTimes(1);
     expect(mockAssertWriteCapability).toHaveBeenCalledTimes(1);
-    expect(mockNormalizeMany).toHaveBeenCalledTimes(1);
-    expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [
-      { Name: "A" },
-      { Name: "B" },
-      { Name: "C" },
-    ]);
+    expect(mockNormalize).toHaveBeenCalledTimes(1);
+    expect(
+      (mockNormalize.mock.calls[0][1] as Array<{ input: unknown }>).map(
+        (r) => r.input
+      )
+    ).toEqual([{ Name: "A" }, { Name: "B" }, { Name: "C" }]);
     expect(mockCreateMany).toHaveBeenCalledTimes(1);
     expect((mockCreateMany.mock.calls[0] as unknown[])[0]).toHaveLength(3);
   });
 
   it("bulk create — mixed connectorEntityIds groups correctly", async () => {
-    mockNormalizeMany
-      .mockResolvedValueOnce([
+    mockNormalize
+      .mockReturnValueOnce([
         {
           normalizedData: { name: "A" },
           validationErrors: null,
@@ -256,7 +288,7 @@ describe("EntityRecordCreateTool", () => {
           isValid: true,
         },
       ])
-      .mockResolvedValueOnce([
+      .mockReturnValueOnce([
         {
           normalizedData: { name: "C" },
           validationErrors: null,
@@ -288,7 +320,7 @@ describe("EntityRecordCreateTool", () => {
     expect(result.count).toBe(3);
     expect(mockAssertStationScope).toHaveBeenCalledTimes(2);
     expect(mockAssertWriteCapability).toHaveBeenCalledTimes(2);
-    expect(mockNormalizeMany).toHaveBeenCalledTimes(2);
+    expect(mockNormalize).toHaveBeenCalledTimes(2);
   });
 
   it("validation failure — scope check fails, nothing written", async () => {
@@ -320,7 +352,7 @@ describe("EntityRecordCreateTool", () => {
   });
 
   it("auto-generates sourceId per item when omitted", async () => {
-    mockNormalizeMany.mockResolvedValueOnce([
+    mockNormalize.mockReturnValueOnce([
       { normalizedData: { a: 1 }, validationErrors: null, isValid: true },
       { normalizedData: { b: 2 }, validationErrors: null, isValid: true },
     ]);
@@ -348,7 +380,7 @@ describe("EntityRecordCreateTool", () => {
   });
 
   it("sets origin portal and checksum manual on all items", async () => {
-    mockNormalizeMany.mockResolvedValueOnce([
+    mockNormalize.mockReturnValueOnce([
       { normalizedData: {}, validationErrors: null, isValid: true },
       { normalizedData: {}, validationErrors: null, isValid: true },
     ]);
