@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 
 import type {
+  RunningJobSummary,
   ColumnDefinitionGetResponsePayload,
   ColumnDefinitionUpdateRequestBody,
   FieldMappingCreateRequestBody,
@@ -38,10 +39,13 @@ import { toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { fieldMappingRowGates } from "../utils/entity-actions.util";
 import { columnDefinitionActionGates } from "../utils/column-definition-actions.util";
+import { jobLockReason } from "../utils/running-job-label.util";
+import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { TYPE_COLOR } from "../utils/column-definition-form.util";
 import { useStorage } from "../utils/storage.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
+import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
 import { EditColumnDefinitionDialog } from "../components/EditColumnDefinitionDialog.component";
@@ -97,6 +101,28 @@ export const ColumnDefinitionDetailView: React.FC<
   );
   const impactQuery = sdk.columnDefinitions.impact(columnDefinitionId, {
     enabled: deleteDialogOpen,
+  });
+
+  // #769: jobs running on any entity that maps this column definition. While
+  // any runs, editing or deleting it (and its entities' mappings) is paused;
+  // each job's SSE terminal event refreshes the list.
+  const runningJobsQuery =
+    sdk.columnDefinitions.runningJobs(columnDefinitionId);
+  const runningJobs = useMemo(
+    () => runningJobsQuery.data?.runningJobs ?? [],
+    [runningJobsQuery.data]
+  );
+  useRunningJobSubscriptions(
+    runningJobs,
+    useCallback(() => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.columnDefinitions.runningJobs(columnDefinitionId),
+      });
+    }, [queryClient, columnDefinitionId])
+  );
+  const lockedReason = jobLockReason(runningJobs, {
+    kind: "columnDefinition",
+    id: columnDefinitionId,
   });
 
   const handleDelete = useCallback(() => {
@@ -207,9 +233,14 @@ export const ColumnDefinitionDetailView: React.FC<
               const gates = columnDefinitionActionGates({
                 capabilities: cd.capabilities,
                 system: cd.system,
+                lockedReason,
               });
               return (
                 <Stack spacing={4}>
+                  <ConnectorInstanceLockAlertUI
+                    runningJobs={runningJobs}
+                    paused="Editing or deleting this column definition and changing its field mappings"
+                  />
                   <PageHeader
                     breadcrumbs={[
                       { label: "Dashboard", href: "/" },
@@ -359,6 +390,7 @@ export const ColumnDefinitionDetailView: React.FC<
                                 return (
                                   <FieldMappingTable
                                     fieldMappings={mappings.fieldMappings}
+                                    runningJobs={runningJobs}
                                     onEdit={(fm) => setEditingFieldMapping(fm)}
                                     onDelete={(fm) =>
                                       setDeletingFieldMapping(fm)
@@ -474,12 +506,15 @@ type FieldMappingRow =
 
 interface FieldMappingTableProps {
   fieldMappings: FieldMappingRow[];
+  /** #769: the page's running jobs; each row is locked by its entity's. */
+  runningJobs: RunningJobSummary[];
   onEdit?: (fm: FieldMappingWithConnectorEntity) => void;
   onDelete?: (fm: FieldMappingWithConnectorEntity) => void;
 }
 
 const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   fieldMappings,
+  runningJobs,
   onEdit,
   onDelete,
 }) => {
@@ -546,11 +581,23 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
             render: (_value: unknown, row: Record<string, unknown>) => {
               const fm = fieldMappings.find((f) => f.id === row.id);
               if (!fm) return null;
+              // #769: the jobs holding this row's entity or its connector.
+              const instanceId = fm.connectorEntity?.connectorInstanceId;
+              const rowJobs = runningJobs.filter(
+                (j) =>
+                  j.lockScopes.includes(`entity:${fm.connectorEntityId}`) ||
+                  (instanceId !== undefined &&
+                    j.lockScopes.includes(`instance:${instanceId}`))
+              );
               const gates = fieldMappingRowGates({
                 capabilities: fm.capabilities,
                 isWriteEnabled:
                   fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
                     ?.write === true,
+                lockedReason: jobLockReason(rowJobs, {
+                  kind: "connectorEntity",
+                  id: fm.connectorEntityId,
+                }),
               });
               return (
                 <Stack direction="row" spacing={0.5}>
@@ -584,7 +631,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
             },
           }
         : null,
-    [onEdit, onDelete, fieldMappings]
+    [onEdit, onDelete, fieldMappings, runningJobs]
   );
 
   const [columnConfig, setColumnConfig] = useColumnConfig(dataColumns, {

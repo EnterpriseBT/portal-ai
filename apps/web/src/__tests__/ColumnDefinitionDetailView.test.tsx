@@ -12,6 +12,8 @@ type ListQuery = UseQueryResult<FieldMappingListResponsePayload, ApiError>;
 
 let currentGetQuery: Partial<GetQuery> = {};
 let currentFieldMappingListQuery: Partial<ListQuery> = {};
+// #769: jobs running on entities that map the column definition.
+let currentRunningJobs: unknown[] = [];
 const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
 
 const noopSearch = () => ({
@@ -39,6 +41,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       update: () => noopMutation,
       delete: () => noopMutation,
       impact: () => ({ data: null, isLoading: false }),
+      runningJobs: () => ({
+        data: { runningJobs: currentRunningJobs },
+        isLoading: false,
+      }),
       search: noopSearch,
     },
     connectorEntities: {
@@ -54,7 +60,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
     },
   },
   queryKeys: {
-    columnDefinitions: { root: ["columnDefinitions"] },
+    columnDefinitions: {
+      root: ["columnDefinitions"],
+      runningJobs: (id: string) => ["columnDefinitions", "runningJobs", id],
+    },
     fieldMappings: { root: ["fieldMappings"] },
   },
 }));
@@ -125,6 +134,7 @@ describe("ColumnDefinitionDetailView", () => {
   beforeEach(() => {
     currentGetQuery = {};
     currentFieldMappingListQuery = {};
+    currentRunningJobs = [];
     currentResourcePermissions = {
       field_mapping: { write: true, create: true },
     };
@@ -505,6 +515,43 @@ describe("ColumnDefinitionDetailView", () => {
           "true"
         );
       }
+    });
+
+    const runningJob = (lockScopes: string[]) => ({
+      id: "job-1",
+      type: "revalidation",
+      status: "active",
+      startedAt: Date.now(),
+      created: Date.now(),
+      lockScopes,
+    });
+
+    it("#769: a job on a mapping's entity disables the page's and that row's actions, naming it", () => {
+      setupWithCapability({ write: true });
+      currentRunningJobs = [runningJob(["entity:ce-1"])];
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
+      for (const label of ["Edit field mapping", "Delete field mapping"]) {
+        expect(screen.getByLabelText(label)).toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+      }
+      expect(screen.getByText("Revalidation is running")).toBeInTheDocument();
+    });
+
+    it("#769: a job on another entity leaves this row's actions enabled", () => {
+      setupWithCapability({ write: true });
+      currentRunningJobs = [runningJob(["entity:ce-other"])];
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.getByLabelText("Edit field mapping")).not.toHaveAttribute(
+        "aria-disabled"
+      );
     });
 
     it("shows field mapping edit/delete buttons when write is enabled", () => {

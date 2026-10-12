@@ -24,7 +24,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { FormAlert } from "../components/FormAlert.component";
-import { connectorLockReason } from "../utils/running-job-label.util";
+import { jobLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { RegionEditorUI } from "../modules/RegionEditor";
 import { serverErrorMessage } from "../utils/permission-denied.util";
@@ -414,7 +414,10 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       });
     }, [queryClient])
   );
-  const commitBlockedReason = connectorLockReason(runningJobs);
+  const commitBlockedReason = jobLockReason(runningJobs, {
+    kind: "connectorInstance",
+    id: connectorInstanceId,
+  });
 
   const {
     mutateAsync: recommitMutate,

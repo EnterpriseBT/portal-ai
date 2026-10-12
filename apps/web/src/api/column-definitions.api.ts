@@ -16,6 +16,7 @@ import type {
   ColumnDefinitionListResponsePayload,
   ColumnDefinitionUpdateRequestBody,
   ColumnDefinitionUpdateResponsePayload,
+  ConnectorInstanceRunningJobsResponse,
 } from "@portalai/core/contracts";
 import type { ColumnDefinition } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
@@ -152,6 +153,24 @@ export const columnDefinitions = {
     useAuthQuery<ColumnDefinitionImpactResponsePayload>(
       queryKeys.columnDefinitions.impact(id),
       buildUrl(`${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}/impact`),
+      undefined,
+      options
+    ),
+
+  /**
+   * #769: running jobs on any entity that maps this column definition (or
+   * that entity's connector). While non-empty, editing or deleting it, and
+   * its entities' field mappings, answer 409 ENTITY_LOCKED_BY_JOB.
+   */
+  runningJobs: (
+    id: string,
+    options?: QueryOptions<ConnectorInstanceRunningJobsResponse>
+  ) =>
+    useAuthQuery<ConnectorInstanceRunningJobsResponse>(
+      queryKeys.columnDefinitions.runningJobs(id),
+      buildUrl(
+        `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}/running-jobs`
+      ),
       undefined,
       options
     ),

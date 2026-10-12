@@ -1,27 +1,16 @@
+import { JOB_TYPE_LABELS, type JobType } from "@portalai/core/models";
 import type { RunningJobSummary } from "@portalai/core/contracts";
 
 /**
- * Map a job's `type` to the human-readable phrase used both in the
- * connector-instance lock alert and in the disabled-button tooltips.
- * Keep these in lockstep so the user sees one consistent name for
- * the work they're racing.
+ * Map a job's `type` to the human-readable phrase used in lock alerts and
+ * disabled-action tooltips, from core's `JOB_TYPE_LABELS` (#769), which the
+ * API's 409 message uses too, so the user sees one name for the work.
  *
- * Falls back to the raw type string for unknown / future job types
- * so the UI never shows an empty label.
+ * Falls back to the raw type string for an unknown job type, so the UI never
+ * shows an empty label.
  */
 export function runningJobLabel(job: Pick<RunningJobSummary, "type">): string {
-  switch (job.type) {
-    case "layout_plan_commit":
-      return "Import";
-    case "connector_sync":
-      return "Sync";
-    case "file_upload_parse":
-      return "File parse";
-    case "revalidation":
-      return "Revalidation";
-    default:
-      return job.type;
-  }
+  return JOB_TYPE_LABELS[job.type as JobType] ?? job.type;
 }
 
 /**
@@ -41,15 +30,40 @@ export function joinRunningJobLabels(
   return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
 }
 
+/** The page a lock reason is shown on (#769). */
+export type LockedObject =
+  | { kind: "connectorEntity"; id: string }
+  | { kind: "connectorInstance"; id: string }
+  | { kind: "columnDefinition"; id: string };
+
 /**
- * #689: the reason a running job gives every action it blocks on a
- * connector instance, or `null` when nothing is running. One sentence, so
- * the tooltips, the flags and the layout-plan Commit all name the job alike.
+ * #689, #769: the reason running jobs give every action they block on a page,
+ * or `null` when nothing is running. One sentence, so the tooltips, the flags
+ * and the layout-plan Commit all name the job alike, and it says where the
+ * job runs: this entity, this connector, one of its entities, or an entity
+ * that uses the column definition. `jobs` comes from that page's running-jobs
+ * endpoint, so every job in it already blocks the page.
  */
-export function connectorLockReason(
-  jobs: Pick<RunningJobSummary, "type">[]
+export function jobLockReason(
+  jobs: Pick<RunningJobSummary, "type" | "lockScopes">[],
+  here: LockedObject
 ): string | null {
-  return jobs.length > 0
-    ? `${joinRunningJobLabels(jobs)} is running on this connector — try again when it finishes.`
-    : null;
+  if (jobs.length === 0) return null;
+  const holds = (key: string) => jobs.some((j) => j.lockScopes?.includes(key));
+  let where: string;
+  switch (here.kind) {
+    case "connectorEntity":
+      where = holds(`entity:${here.id}`) ? "this entity" : "this connector";
+      break;
+    case "connectorInstance":
+      where = holds(`instance:${here.id}`)
+        ? "this connector"
+        : "one of this connector's entities";
+      break;
+    case "columnDefinition":
+      where = "an entity that uses this column definition";
+      break;
+  }
+  const many = jobs.length > 1;
+  return `${joinRunningJobLabels(jobs)} ${many ? "are" : "is"} running on ${where} — try again when ${many ? "they finish" : "it finishes"}.`;
 }

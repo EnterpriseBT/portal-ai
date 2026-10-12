@@ -30,6 +30,11 @@ export interface ConnectorInstanceLockAlertUIProps {
    * (lists each running job by its human-readable label + age).
    */
   runningJobs: RunningJobSummary[];
+  /**
+   * #769: what the jobs pause on this page, as a sentence subject ("Sync,
+   * rename, … are paused"). Defaults to the connector page's actions.
+   */
+  paused?: string;
 }
 
 /**
@@ -53,7 +58,10 @@ export interface ConnectorInstanceLockAlertUIProps {
  */
 export const ConnectorInstanceLockAlertUI: React.FC<
   ConnectorInstanceLockAlertUIProps
-> = ({ runningJobs }) => {
+> = ({
+  runningJobs,
+  paused = "Sync, rename, delete, plan edits, and creating new entities",
+}) => {
   if (runningJobs.length === 0) return null;
   const phrase = joinRunningJobLabels(runningJobs);
   const isPlural = runningJobs.length > 1;
@@ -85,8 +93,8 @@ export const ConnectorInstanceLockAlertUI: React.FC<
           );
         })}
         <Typography variant="body2" component="div" sx={{ mt: 1 }}>
-          Sync, rename, delete, plan edits, and creating new entities are paused
-          until {isPlural ? "these jobs finish" : "this job finishes"}.
+          {paused} are paused until{" "}
+          {isPlural ? "these jobs finish" : "this job finishes"}.
           {anyStale
             ? " The view refreshes automatically as job status changes."
             : ` The view will refresh automatically when ${isPlural ? "they're done" : "it's done"}.`}

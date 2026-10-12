@@ -14,15 +14,22 @@ export const SYSTEM_READONLY_REASON = "System column definitions are read-only";
 export function columnDefinitionActionGates({
   capabilities,
   system,
+  lockedReason = null,
 }: {
   capabilities: ObjectCapabilities;
   system: boolean;
+  /** #769: a running job holds an entity that maps it (`jobLockReason`). */
+  lockedReason?: string | null;
 }): { edit: ActionGate; delete: ActionGate } {
   return {
     edit: decideActionGate({
       allowed: capabilities.write,
-      blocked: system ? SYSTEM_READONLY_REASON : null,
+      // A system row can never be edited; that reason outlasts any job.
+      blocked: system ? SYSTEM_READONLY_REASON : lockedReason,
     }),
-    delete: decideActionGate({ allowed: capabilities.delete && !system }),
+    delete: decideActionGate({
+      allowed: capabilities.delete && !system,
+      blocked: lockedReason,
+    }),
   };
 }
