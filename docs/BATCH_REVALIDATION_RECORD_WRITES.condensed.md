@@ -18,8 +18,10 @@
 | | revalidation | per record |
 |---|---|---|
 | before #761 | 336.8 s | 0.846 ms |
-| after #761 (= before #764) | _re-measuring on main_ | |
-| after #764 | _slice 1_ | |
+| after #761 (= before #764), re-measured on main | 207.4 s | 0.521 ms |
+| after #764 | 55.4 s (−73%) | 0.139 ms |
+
+Same valid/invalid counts in every run (358,164 / 39,796). From before #761, revalidation is 6× faster (336.8 s → 55.4 s).
 
 ## Decision — `bulkUpdateValidity`, one statement per batch
 

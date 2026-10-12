@@ -9,8 +9,9 @@ const mockFieldMappingsFindMany =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const mockEntityRecordsFindByConnectorEntityId =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockEntityRecordsUpdate =
-  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockEntityRecordsBulkUpdateValidity = jest
+  .fn<(...args: unknown[]) => Promise<number>>()
+  .mockResolvedValue(0);
 const mockNormalizeWithMappings = jest.fn<(...args: unknown[]) => unknown>();
 
 const mockWideTableUpdateMany = jest
@@ -27,7 +28,7 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
       fieldMappings: { findMany: mockFieldMappingsFindMany },
       entityRecords: {
         findByConnectorEntityId: mockEntityRecordsFindByConnectorEntityId,
-        update: mockEntityRecordsUpdate,
+        bulkUpdateValidity: mockEntityRecordsBulkUpdateValidity,
       },
       wideTable: { updateMany: mockWideTableUpdateMany },
     },
@@ -100,7 +101,6 @@ function record(id: string, data: Record<string, unknown> = { name: "Alice" }) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockEntityRecordsUpdate.mockResolvedValue({});
 });
 
 // ---------------------------------------------------------------------------
@@ -171,13 +171,8 @@ describe("revalidationProcessor", () => {
     const bullJob = createMockBullJob();
     await revalidationProcessor(bullJob);
 
-    expect(mockEntityRecordsUpdate).toHaveBeenCalledWith(
-      "r-1",
-      {
-        normalizedData: { name: "Alice" },
-        validationErrors: null,
-        isValid: true,
-      },
+    expect(mockEntityRecordsBulkUpdateValidity).toHaveBeenCalledWith(
+      [{ id: "r-1", validationErrors: null, isValid: true }],
       "mock-tx"
     );
   });
@@ -237,6 +232,12 @@ describe("revalidationProcessor", () => {
       mockWideTableUpdateMany.mock.calls.map((c) => (c[1] as unknown[]).length)
     ).toEqual([100, 100, 50]);
     expect(mockDbTransaction).toHaveBeenCalledTimes(3);
+    // #764: the entity_records half is batched the same way.
+    expect(
+      mockEntityRecordsBulkUpdateValidity.mock.calls.map(
+        (c) => (c[0] as unknown[]).length
+      )
+    ).toEqual([100, 100, 50]);
     expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 

@@ -239,6 +239,38 @@ export class EntityRecordsRepository extends Repository<
   }
 
   /**
+   * Write `validation_errors` and `is_valid` for many records (#764): one
+   * `UPDATE … FROM (VALUES …)` per `BULK_CHUNK_SIZE` chunk, instead of one
+   * `update()` per record. Revalidation calls it once per batch.
+   *
+   * Like `update()`, a soft-deleted record is left alone. Unlike it, nothing
+   * is returned but the count, so no row (and no `data` JSONB) comes back.
+   */
+  async bulkUpdateValidity(
+    rows: ReadonlyArray<{
+      id: string;
+      validationErrors: EntityRecordSelect["validationErrors"];
+      isValid: boolean;
+    }>,
+    client: DbClient = db
+  ): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < rows.length; i += BULK_CHUNK_SIZE) {
+      const tuples = rows
+        .slice(i, i + BULK_CHUNK_SIZE)
+        .map(
+          (r) =>
+            sql`(${r.id}, CAST(${r.validationErrors === null ? null : JSON.stringify(r.validationErrors)} AS jsonb), CAST(${r.isValid} AS boolean))`
+        );
+      const result = await (client as typeof db).execute(
+        sql`UPDATE entity_records AS r SET validation_errors = v.ve, is_valid = v.iv FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v(id, ve, iv) WHERE r.id = v.id AND r.deleted IS NULL`
+      );
+      total += (result as unknown as { count: number }).count;
+    }
+    return total;
+  }
+
+  /**
    * Resurrect previously soft-deleted rows by id and stamp them with new
    * data. Used by the commit/sync pipeline when a `(connector_entity_id,
    * source_id)` reappears in the source after a prior soft-delete (e.g.
