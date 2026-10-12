@@ -94,18 +94,16 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     // so the wide-table state remains coherent with the transactional
     // row's `is_valid` flag.
     await DbService.transaction(async (tx) => {
-      await Promise.all(
-        updates.map((u) =>
-          DbService.repository.entityRecords.update(
-            u.id,
-            {
-              normalizedData: u.normalizedData,
-              validationErrors: u.validationErrors,
-              isValid: u.isValid,
-            } as never,
-            tx
-          )
-        )
+      // #764: one batched entity_records write per batch, not one per
+      // record. (`normalized_data` is no longer a column: the normalized
+      // values live in the wide table, written below.)
+      await DbService.repository.entityRecords.bulkUpdateValidity(
+        updates.map((u) => ({
+          id: u.id,
+          validationErrors: u.validationErrors,
+          isValid: u.isValid,
+        })),
+        tx
       );
       // #761: one batched wide-table write per batch, not one per record.
       // #757: a geometry the audit refuses (one sync already skipped, say)

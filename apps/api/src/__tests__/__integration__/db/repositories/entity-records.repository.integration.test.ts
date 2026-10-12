@@ -650,4 +650,94 @@ describe("EntityRecordsRepository Integration Tests", () => {
     // regardless of estimates — a migration, deliberately not in this
     // ticket's scope.
   });
+
+  // ── bulkUpdateValidity (#764) ──────────────────────────────────────
+
+  describe("bulkUpdateValidity (#764)", () => {
+    const ERRORS = [{ field: "name", error: "Required field is missing" }];
+
+    it("writes each row its own errors and flag, and nothing else", async () => {
+      const a = makeRecord(entityAId, { data: { name: "" } });
+      const b = makeRecord(entityAId, {
+        isValid: false,
+        validationErrors: ERRORS,
+      });
+      await insertRecord(a);
+      await insertRecord(b);
+      const before = await readRow(a.id!);
+
+      const n = await repo.bulkUpdateValidity(
+        [
+          { id: a.id!, validationErrors: ERRORS, isValid: false },
+          { id: b.id!, validationErrors: null, isValid: true },
+        ],
+        db
+      );
+
+      expect(n).toBe(2);
+      const rowA = await readRow(a.id!);
+      expect(rowA).toMatchObject({ validationErrors: ERRORS, isValid: false });
+      expect(rowA?.data).toEqual(before?.data);
+      expect(rowA?.updated).toBe(before?.updated);
+      const rowB = await readRow(b.id!);
+      expect(rowB?.validationErrors).toBeNull();
+      expect(rowB?.isValid).toBe(true);
+    });
+
+    it("leaves a soft-deleted record alone and doesn't count it", async () => {
+      const gone = makeRecord(entityAId, { deleted: 1, deletedBy: "u" });
+      const live = makeRecord(entityAId);
+      await insertRecord(gone);
+      await insertRecord(live);
+
+      const n = await repo.bulkUpdateValidity(
+        [
+          { id: gone.id!, validationErrors: ERRORS, isValid: false },
+          { id: live.id!, validationErrors: ERRORS, isValid: false },
+        ],
+        db
+      );
+
+      expect(n).toBe(1);
+      expect((await readRow(gone.id!))?.isValid).toBe(true);
+      expect((await readRow(live.id!))?.isValid).toBe(false);
+    });
+
+    it("writes a batch over one chunk, every row to its own value", async () => {
+      const records = Array.from({ length: 1_200 }, () =>
+        makeRecord(entityAId)
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.entityRecords)
+        .values(records as never);
+
+      const n = await repo.bulkUpdateValidity(
+        records.map((r, i) => ({
+          id: r.id!,
+          validationErrors:
+            i % 2 === 0 ? [{ field: `f${i}`, error: "bad" }] : null,
+          isValid: i % 2 !== 0,
+        })),
+        db
+      );
+
+      expect(n).toBe(1_200);
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.entityRecords)
+        .where(eq(schema.entityRecords.connectorEntityId, entityAId));
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      records.forEach((r, i) => {
+        const row = byId.get(r.id!)!;
+        expect(row.isValid).toBe(i % 2 !== 0);
+        expect(row.validationErrors).toEqual(
+          i % 2 === 0 ? [{ field: `f${i}`, error: "bad" }] : null
+        );
+      });
+    }, 60_000);
+
+    it("an empty call is a no-op", async () => {
+      await expect(repo.bulkUpdateValidity([], db)).resolves.toBe(0);
+    });
+  });
 });

@@ -239,6 +239,46 @@ export class EntityRecordsRepository extends Repository<
   }
 
   /**
+   * Write `validation_errors` and `is_valid` for many records (#764): one
+   * `UPDATE … FROM (VALUES …)` per `BULK_CHUNK_SIZE` chunk, instead of one
+   * `update()` per record. Revalidation calls it once per batch.
+   *
+   * Like `update()`, a soft-deleted record is left alone. Unlike it, nothing
+   * is returned but the count, so no row (and no `data` JSONB) comes back.
+   *
+   * `is_valid` is part of the record-count cache's fingerprint, and this
+   * method doesn't know the rows' entities: the caller invalidates
+   * `EntityRecordCountCache` once it's done, as revalidation does at the end
+   * of its run (once, rather than once per batch).
+   */
+  async bulkUpdateValidity(
+    rows: ReadonlyArray<{
+      id: string;
+      validationErrors: EntityRecordSelect["validationErrors"];
+      isValid: boolean;
+    }>,
+    client: DbClient = db
+  ): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < rows.length; i += BULK_CHUNK_SIZE) {
+      const tuples = rows
+        .slice(i, i + BULK_CHUNK_SIZE)
+        .map(
+          (r) =>
+            sql`(${r.id}, CAST(${r.validationErrors === null ? null : JSON.stringify(r.validationErrors)} AS jsonb), CAST(${r.isValid} AS boolean))`
+        );
+      // Names come from the table definition, so a rename fails type-check
+      // rather than a running job. SET targets take the bare column name.
+      const col = (c: { name: string }) => sql.identifier(c.name);
+      const result = await (client as typeof db).execute(
+        sql`UPDATE ${entityRecords} SET ${col(entityRecords.validationErrors)} = v.ve, ${col(entityRecords.isValid)} = v.iv FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v(id, ve, iv) WHERE ${entityRecords.id} = v.id AND ${entityRecords.deleted} IS NULL`
+      );
+      total += Number(result.count);
+    }
+    return total;
+  }
+
+  /**
    * Resurrect previously soft-deleted rows by id and stamp them with new
    * data. Used by the commit/sync pipeline when a `(connector_entity_id,
    * source_id)` reappears in the source after a prior soft-delete (e.g.
