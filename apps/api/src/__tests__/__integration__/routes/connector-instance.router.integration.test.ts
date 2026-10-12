@@ -1709,6 +1709,7 @@ describe("Connector Instance Router", () => {
         bullJobId: null,
         attempts: 1,
         maxAttempts: 3,
+        lockScopes: [`instance:${instanceId}`],
         created: now,
         createdBy: "SYSTEM_TEST",
         updated: null,
@@ -1767,6 +1768,8 @@ describe("Connector Instance Router", () => {
         bullJobId: null,
         attempts: 0,
         maxAttempts: 3,
+        // #769: both seeded types lock the whole connector.
+        lockScopes: [`instance:${instance.id}`],
         created: now,
         createdBy: "SYSTEM_TEST",
         updated: null,
@@ -1809,9 +1812,9 @@ describe("Connector Instance Router", () => {
     // generic lock so the response carries the in-flight jobId for
     // the UI's latch-on path). The
     // layout_plan_commit-blocks-sync case isn't covered at the route
-    // level here because it requires a sync-eligible plan fixture;
-    // `JobLockService` unit tests + `assertConnectorInstanceUnlocked`
-    // being called from the route together prove the path.
+    // level here because it requires a sync-eligible plan fixture; the
+    // sync goes through `JobLockService.enqueueExclusive`, whose conflict
+    // cases are in job-lock.integration.test.ts (#769).
 
     it("releases the lock when the job completes — DELETE succeeds again", async () => {
       const { instanceId, jobId } = await seedLockedInstance();

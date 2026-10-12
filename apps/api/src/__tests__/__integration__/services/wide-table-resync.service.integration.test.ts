@@ -217,7 +217,10 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
 
     // Mark the pre-seeded job completed so the second run sees no
     // active sync and re-enqueues the instance.
-    const existing = await SyncService.findActiveSyncJob(instanceId);
+    const existing = await SyncService.findActiveSyncJob(
+      instanceId,
+      organizationId
+    );
     expect(existing).not.toBeNull();
     await (db as ReturnType<typeof drizzle>)
       .update(schema.jobs)

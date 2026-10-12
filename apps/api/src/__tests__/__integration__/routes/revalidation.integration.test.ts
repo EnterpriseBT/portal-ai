@@ -611,7 +611,7 @@ describe("Revalidation — Column Definition Mutation Guards", () => {
       .send({ label: "Updated Name" });
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("DELETE /column-definitions/:id returns 409 when revalidation active for an entity using it", async () => {
@@ -628,7 +628,7 @@ describe("Revalidation — Column Definition Mutation Guards", () => {
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("allows PATCH when no revalidation is active", async () => {
@@ -1043,5 +1043,176 @@ describe("Job locks on record and field-mapping writes (#769)", () => {
       .from(jobs)
       .where(eq(jobs.type, "revalidation"));
     expect(revalidations).toHaveLength(0);
+  });
+});
+
+// #769: the rest of the write paths. A job on an entity locks its connector's
+// writes too, and a column definition through every entity that maps it.
+describe("Job locks on entity, connector and column-definition writes (#769)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  async function seedJob(
+    organizationId: string,
+    type: JobType,
+    metadata: Record<string, unknown>
+  ) {
+    const id = generateId();
+    await db.insert(jobs).values({
+      id,
+      organizationId,
+      type,
+      status: "active",
+      progress: 0,
+      metadata,
+      attempts: 1,
+      maxAttempts: 3,
+      lockScopes: jobLockScopes(type, metadata).map(lockScopeKey),
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return id;
+  }
+
+  async function seed() {
+    const stack = await seedFullStack(db);
+    const [entity] = await db
+      .select()
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, stack.connectorEntityId));
+    return { ...stack, connectorInstanceId: entity!.connectorInstanceId };
+  }
+
+  const auth = (r: request.Test) => r.set("Authorization", "Bearer test-token");
+
+  it("an entity job refuses an edit to the entity", async () => {
+    const { organizationId, connectorEntityId } = await seed();
+    await seedJob(organizationId, "bulk_geocode", {
+      connectorEntityId,
+      targetConnectorEntityIds: [connectorEntityId],
+    });
+
+    const res = await auth(
+      request(app).patch(`/api/connector-entities/${connectorEntityId}`)
+    ).send({ label: "Renamed" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+    expect(res.body.message).toMatch(/^Geocoding is running on this entity/);
+  });
+
+  it("a job on one of a connector's entities refuses editing or deleting the connector", async () => {
+    const { organizationId, connectorEntityId, connectorInstanceId } =
+      await seed();
+    await seedJob(organizationId, "revalidation", { connectorEntityId });
+
+    const patch = await auth(
+      request(app).patch(`/api/connector-instances/${connectorInstanceId}`)
+    ).send({ name: "Renamed" });
+    expect(patch.status).toBe(409);
+    expect(patch.body.message).toMatch(
+      /^Revalidation is running on one of this connector's entities/
+    );
+
+    const del = await auth(
+      request(app).delete(`/api/connector-instances/${connectorInstanceId}`)
+    );
+    expect(del.status).toBe(409);
+    const [inst] = await db
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.id, connectorInstanceId));
+    expect(inst!.deleted).toBeNull();
+  });
+
+  it("a new entity is refused while a sibling entity is locked", async () => {
+    const { organizationId, connectorEntityId, connectorInstanceId } =
+      await seed();
+    await seedJob(organizationId, "revalidation", { connectorEntityId });
+
+    const res = await auth(request(app).post("/api/connector-entities")).send({
+      connectorInstanceId,
+      key: "sibling",
+      label: "Sibling",
+    });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("a sync on a mapped entity's connector refuses a column-definition edit", async () => {
+    const { organizationId, connectorInstanceId, columnDefinitionId } =
+      await seed();
+    await seedJob(organizationId, "connector_sync", { connectorInstanceId });
+
+    const res = await auth(
+      request(app).patch(`/api/column-definitions/${columnDefinitionId}`)
+    ).send({ label: "Renamed" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(
+      /^Sync is running on an entity that uses this column definition/
+    );
+  });
+
+  it("every running-jobs endpoint lists a revalidation that covers it", async () => {
+    const {
+      organizationId,
+      connectorEntityId,
+      connectorInstanceId,
+      columnDefinitionId,
+    } = await seed();
+    const jobId = await seedJob(organizationId, "revalidation", {
+      connectorEntityId,
+    });
+
+    for (const url of [
+      `/api/connector-entities/${connectorEntityId}/running-jobs`,
+      `/api/connector-instances/${connectorInstanceId}/running-jobs`,
+      `/api/column-definitions/${columnDefinitionId}/running-jobs`,
+    ]) {
+      const res = await auth(request(app).get(url));
+      expect(res.status).toBe(200);
+      expect(res.body.payload.runningJobs).toEqual([
+        expect.objectContaining({
+          id: jobId,
+          type: "revalidation",
+          lockScopes: [`entity:${connectorEntityId}`],
+        }),
+      ]);
+    }
+  });
+
+  it("the column-definition running-jobs endpoint is empty when nothing runs", async () => {
+    const { columnDefinitionId } = await seed();
+    const res = await auth(
+      request(app).get(
+        `/api/column-definitions/${columnDefinitionId}/running-jobs`
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.payload.runningJobs).toEqual([]);
+  });
+
+  it("the column-definition running-jobs endpoint answers 404 for an unknown id", async () => {
+    await seed();
+    const res = await auth(
+      request(app).get(`/api/column-definitions/${generateId()}/running-jobs`)
+    );
+    expect(res.status).toBe(404);
   });
 });

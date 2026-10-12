@@ -34,6 +34,7 @@ import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
+import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 
@@ -647,9 +648,6 @@ columnDefinitionRouter.patch(
         );
       }
 
-      // Block if a revalidation job is active for any entity using this column definition
-      await RevalidationService.assertNoActiveJobForColumnDefinition(id);
-
       // Rule 3: validate type transitions
       if (parsed.data.type && parsed.data.type !== existing.type) {
         const oldType = existing.type;
@@ -737,22 +735,31 @@ columnDefinitionRouter.patch(
 
       const { userId } = req.application!.metadata;
 
-      const columnDefinition = await DbService.repository.columnDefinitions
-        .update(id, {
-          ...parsed.data,
-          updated: Date.now(),
-          updatedBy: userId,
-        } as never)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.COLUMN_DEFINITION_UPDATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to update column definition"
-          );
-        });
+      // #769: refused while a running job holds any entity that maps this
+      // column definition (or its connector).
+      const columnDefinition = await JobLockService.withUnlocked(
+        { kind: "columnDefinition", id },
+        { organizationId: req.application!.metadata.organizationId },
+        (tx) =>
+          DbService.repository.columnDefinitions.update(
+            id,
+            {
+              ...parsed.data,
+              updated: Date.now(),
+              updatedBy: userId,
+            } as never,
+            tx
+          )
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.COLUMN_DEFINITION_UPDATE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to update column definition"
+        );
+      });
 
       logger.info({ id }, "Column definition updated");
 
@@ -792,17 +799,14 @@ columnDefinitionRouter.patch(
           ...new Set(affectedMappings.map((m) => m.connectorEntityId)),
         ];
 
+        // #769: after the edit commits; a job holding an entity by then is
+        // logged, not thrown.
         for (const entityId of affectedEntityIds) {
-          await RevalidationService.enqueue(
+          await RevalidationService.enqueueAfterEdit(
             entityId,
             organizationId,
             userId
-          ).catch((err) => {
-            logger.warn(
-              { id, entityId, err },
-              "Failed to enqueue revalidation after column definition update"
-            );
-          });
+          );
         }
       }
 
@@ -960,6 +964,102 @@ columnDefinitionRouter.get(
 
 /**
  * @openapi
+ * /api/column-definitions/{id}/running-jobs:
+ *   get:
+ *     tags:
+ *       - Column Definitions
+ *     summary: List running jobs that block changes to this column definition
+ *     description: |
+ *       #769: every non-terminal job whose lock scopes cover an entity that
+ *       maps this column definition (or that entity's connector). Changing
+ *       or deleting the column definition answers 409 ENTITY_LOCKED_BY_JOB
+ *       while this list is non-empty. Drives the column-definition page's
+ *       disabled actions.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Column definition ID
+ *     responses:
+ *       200:
+ *         description: Running jobs (possibly empty)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/RunningJobsResponse'
+ *       404:
+ *         description: Column definition not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+columnDefinitionRouter.get(
+  "/:id/running-jobs",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const ctx = req.application!.metadata;
+
+      const existing =
+        await DbService.repository.columnDefinitions.findById(id);
+      // Gated like the detail: org scope + object read, else 404.
+      if (
+        !existing ||
+        existing.organizationId !== ctx.organizationId ||
+        !(await PermissionService.loadSet(ctx)).can("resource.read", {
+          type: "column_definition",
+          id,
+          createdBy: existing.createdBy,
+        })
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
+        );
+      }
+
+      const runningJobs = await JobLockService.findRunning(
+        [{ kind: "columnDefinition", id }],
+        ctx.organizationId
+      );
+      return HttpService.success(res, { runningJobs });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch running jobs for column definition"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.COLUMN_DEFINITION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch running jobs"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/column-definitions/{id}:
  *   delete:
  *     tags:
@@ -1046,25 +1146,32 @@ columnDefinitionRouter.delete(
         );
       }
 
-      // Block if a revalidation job is active for any entity using this column definition
-      await RevalidationService.assertNoActiveJobForColumnDefinition(id);
-
+      // #769: a running job is the reason to report first, as before; the
+      // write below re-checks atomically.
+      await JobLockService.assertNoneRunning(
+        { kind: "columnDefinition", id },
+        { organizationId: req.application!.metadata.organizationId }
+      );
       await ColumnDefinitionValidationService.validateDelete(id);
 
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.columnDefinitions
-        .softDelete(id, userId)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.COLUMN_DEFINITION_DELETE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to delete column definition"
-          );
-        });
+      // #769: refused while a running job holds any entity that maps it.
+      await JobLockService.withUnlocked(
+        { kind: "columnDefinition", id },
+        { organizationId: req.application!.metadata.organizationId },
+        (tx) =>
+          DbService.repository.columnDefinitions.softDelete(id, userId, tx)
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.COLUMN_DEFINITION_DELETE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to delete column definition"
+        );
+      });
 
       logger.info({ id }, "Column definition soft-deleted");
 

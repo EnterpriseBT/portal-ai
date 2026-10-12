@@ -637,8 +637,8 @@ connectorInstanceRouter.get(
         );
       }
 
-      const runningJobs = await JobLockService.findRunningForConnectorInstance(
-        id,
+      const runningJobs = await JobLockService.findRunning(
+        [{ kind: "connectorInstance", id }],
         organizationId
       );
       return HttpService.success(res, { runningJobs });
@@ -1430,75 +1430,79 @@ connectorInstanceRouter.delete(
           )
       );
 
-      await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
-
-      await DbService.transaction(async (tx) => {
-        // Hard-delete station_instances join rows (unlink from stations)
-        await DbService.repository.stationInstances.hardDeleteByConnectorInstanceId(
-          id,
-          tx
-        );
-
-        // Find all connector entities for this instance
-        const entities =
-          await DbService.repository.connectorEntities.findByConnectorInstanceId(
+      // #769: refused while a running job holds the connector or any of its
+      // entities.
+      await JobLockService.withUnlocked(
+        { kind: "connectorInstance", id },
+        { organizationId },
+        async (tx) => {
+          // Hard-delete station_instances join rows (unlink from stations)
+          await DbService.repository.stationInstances.hardDeleteByConnectorInstanceId(
             id,
             tx
           );
-        const entityIds = entities.map((e) => e.id);
 
-        if (entityIds.length > 0) {
-          // Soft-delete leaf records first, then entities
-          await Promise.all([
-            DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(
-              entityIds,
-              userId,
+          // Find all connector entities for this instance
+          const entities =
+            await DbService.repository.connectorEntities.findByConnectorInstanceId(
+              id,
               tx
-            ),
-            DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(
-              entityIds,
-              userId,
-              tx
-            ),
-            DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(
-              entityIds,
-              userId,
-              tx
-            ),
-            DbService.repository.entityRecords.softDeleteByConnectorEntityIds(
-              entityIds,
-              userId,
-              tx
-            ),
-          ]);
+            );
+          const entityIds = entities.map((e) => e.id);
 
-          // #423: the cascade above is an UPDATE, so the
-          // `entity_records → er__<id>` ON DELETE CASCADE never fires and the
-          // wide table keeps a full projected copy of an instance that is
-          // gone — 200K rows for the entity that surfaced this. Every other
-          // delete path already cleans the wide side (#327); this one did not.
-          // `dropTable` also clears the entity's `wide_table_columns` catalog
-          // rows and invalidates its cached statement. Ordering is free here,
-          // unlike reset/organization-delete where the FK parents are
-          // hard-deleted — this cascade only soft-deletes them.
-          for (const entityId of entityIds) {
-            await wideTableReconcilerService.dropTable(entityId, tx);
+          if (entityIds.length > 0) {
+            // Soft-delete leaf records first, then entities
+            await Promise.all([
+              DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(
+                entityIds,
+                userId,
+                tx
+              ),
+              DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(
+                entityIds,
+                userId,
+                tx
+              ),
+              DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(
+                entityIds,
+                userId,
+                tx
+              ),
+              DbService.repository.entityRecords.softDeleteByConnectorEntityIds(
+                entityIds,
+                userId,
+                tx
+              ),
+            ]);
+
+            // #423: the cascade above is an UPDATE, so the
+            // `entity_records → er__<id>` ON DELETE CASCADE never fires and the
+            // wide table keeps a full projected copy of an instance that is
+            // gone — 200K rows for the entity that surfaced this. Every other
+            // delete path already cleans the wide side (#327); this one did not.
+            // `dropTable` also clears the entity's `wide_table_columns` catalog
+            // rows and invalidates its cached statement. Ordering is free here,
+            // unlike reset/organization-delete where the FK parents are
+            // hard-deleted — this cascade only soft-deletes them.
+            for (const entityId of entityIds) {
+              await wideTableReconcilerService.dropTable(entityId, tx);
+            }
+
+            await DbService.repository.connectorEntities.softDeleteByConnectorInstanceId(
+              id,
+              userId,
+              tx
+            );
           }
 
-          await DbService.repository.connectorEntities.softDeleteByConnectorInstanceId(
+          // Soft-delete the connector instance itself
+          await DbService.repository.connectorInstances.softDelete(
             id,
             userId,
             tx
           );
         }
-
-        // Soft-delete the connector instance itself
-        await DbService.repository.connectorInstances.softDelete(
-          id,
-          userId,
-          tx
-        );
-      });
+      );
 
       logger.info({ id }, "Connector instance deleted");
       return HttpService.success(res, { id });
@@ -1605,8 +1609,6 @@ connectorInstanceRouter.patch(
           )
       );
 
-      await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
-
       // Validate enabledCapabilityFlags against the definition's ceiling
       if (parsed.data.enabledCapabilityFlags) {
         const definition =
@@ -1661,9 +1663,13 @@ connectorInstanceRouter.patch(
         updateData.enabledCapabilityFlags = parsed.data.enabledCapabilityFlags;
       }
 
-      const updated = await DbService.repository.connectorInstances.update(
-        id,
-        updateData
+      // #769: refused while a running job holds the connector or any of its
+      // entities.
+      const updated = await JobLockService.withUnlocked(
+        { kind: "connectorInstance", id },
+        { organizationId },
+        (tx) =>
+          DbService.repository.connectorInstances.update(id, updateData, tx)
       );
 
       logger.info({ id }, "Connector instance updated");
@@ -1905,17 +1911,14 @@ connectorInstanceRouter.post(
 
       // Single-flight: refuse if a sync is already running for this
       // instance. The 409 carries the in-flight jobId so the UI can
-      // latch onto its SSE stream instead of erroring. Kept ahead of
-      // the generic `assertConnectorInstanceUnlocked` below so the
-      // sync-specific code stays available for the UI's latch-on path
-      // (the generic lock would otherwise short-circuit it with the
+      // latch onto its SSE stream instead of erroring. Kept ahead of the
+      // enqueue so the sync-specific code stays available for the UI's
+      // latch-on path (the job lock would otherwise answer it with the
       // less-actionable ENTITY_LOCKED_BY_JOB).
-      await SyncService.assertNoActiveSyncJob(id);
+      await SyncService.assertNoActiveSyncJob(id, organizationId);
 
-      // Generic entity lock — refuse if any other non-terminal job
-      // (commit, future job types) is in flight against this instance.
-      await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
-
+      // #769: enqueued exclusively, so any other job holding the connector
+      // or one of its entities refuses it with ENTITY_LOCKED_BY_JOB.
       const job = await SyncService.enqueueSync(id, organizationId, userId);
 
       logger.info(

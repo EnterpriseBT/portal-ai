@@ -2109,6 +2109,24 @@ const options: swaggerJsdoc.Options = {
             status: { type: "string" },
             startedAt: { type: ["integer", "null"] },
             created: { type: "integer", description: "Epoch ms" },
+            lockScopes: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                'The scopes the job locks (#769): "entity:<id>" / "instance:<id>". Present on the connector, entity and column-definition running-jobs lists and in 409 ENTITY_LOCKED_BY_JOB details.',
+            },
+          },
+        },
+        RunningJobsResponse: {
+          type: "object",
+          required: ["runningJobs"],
+          description:
+            "Non-terminal jobs whose lock scopes cover the object (#769). Empty when it's free to change.",
+          properties: {
+            runningJobs: {
+              type: "array",
+              items: { $ref: "#/components/schemas/RunningJob" },
+            },
           },
         },
         PortalRunningJobsResponse: {

@@ -18,7 +18,6 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
 import { ConnectorInstanceLayoutPlansService } from "../services/connector-instance-layout-plans.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
-import { JobsService } from "../services/jobs.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -121,11 +120,6 @@ connectorInstanceLayoutPlansRouter.post(
           )
         );
       }
-
-      await JobLockService.assertConnectorInstanceUnlocked(
-        connectorInstanceId,
-        organizationId
-      );
 
       const payload = await ConnectorInstanceLayoutPlansService.interpret(
         connectorInstanceId,
@@ -463,11 +457,6 @@ connectorInstanceLayoutPlansRouter.patch(
         );
       }
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        connectorInstanceId,
-        organizationId
-      );
-
       const payload = await ConnectorInstanceLayoutPlansService.patch(
         connectorInstanceId,
         planId,
@@ -640,7 +629,9 @@ connectorInstanceLayoutPlansRouter.post(
         planId,
         workbookSource
       );
-      const job = await JobsService.create(userId, {
+      // #769: refused while any job holds the connector or one of its
+      // entities.
+      const job = await JobLockService.enqueueExclusive(userId, {
         organizationId,
         type: "layout_plan_commit",
         metadata: prepared.metadata,

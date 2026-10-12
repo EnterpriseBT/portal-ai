@@ -18,6 +18,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { ConnectorInstanceAccessService } from "./connector-instance-access.service.js";
 import { DbService } from "./db.service.js";
+import { JobLockService } from "./job-lock.service.js";
 import { GoogleAccessTokenCacheService } from "./google-access-token-cache.service.js";
 import { GoogleAuthError, GoogleAuthService } from "./google-auth.service.js";
 import { googleSheetsToWorkbook } from "./google-sheets-workbook.service.js";
@@ -194,6 +195,13 @@ export class GoogleSheetsConnectorService {
     input: SelectSheetInput,
     fetchFn: FetchFn = fetch
   ): Promise<SelectSheetResult> {
+    // #769: fail fast before the fetch; the config write re-checks
+    // atomically.
+    await JobLockService.assertNoneRunning(
+      { kind: "connectorInstance", id: input.connectorInstanceId },
+      { organizationId: input.organizationId }
+    );
+
     const accessToken = await GoogleAccessTokenCacheService.getOrRefresh(
       input.connectorInstanceId
     );
@@ -239,16 +247,24 @@ export class GoogleSheetsConnectorService {
       throw err;
     }
 
-    await DbService.repository.connectorInstances.update(
-      input.connectorInstanceId,
-      {
-        config: {
-          spreadsheetId: input.spreadsheetId,
-          title,
-          fetchedAt: Date.now(),
-        },
-        updatedBy: input.userId,
-      }
+    // #769: a sync reads this config, so the write is refused while a job
+    // holds the connector.
+    await JobLockService.withUnlocked(
+      { kind: "connectorInstance", id: input.connectorInstanceId },
+      { organizationId: input.organizationId },
+      (tx) =>
+        DbService.repository.connectorInstances.update(
+          input.connectorInstanceId,
+          {
+            config: {
+              spreadsheetId: input.spreadsheetId,
+              title,
+              fetchedAt: Date.now(),
+            },
+            updatedBy: input.userId,
+          },
+          tx
+        )
     );
 
     const inlineCellsMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;

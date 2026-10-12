@@ -16,7 +16,9 @@
 
 import { isNull } from "drizzle-orm";
 
+import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
+import { ApiError } from "./http.service.js";
 import { SyncService } from "./sync.service.js";
 import { ConnectorAdapterRegistry } from "../adapters/adapter.registry.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -72,11 +74,8 @@ export const wideTableResyncService = {
           skippedUnsupported.push(inst.id);
           continue;
         }
-        const active = await SyncService.findActiveSyncJob(inst.id);
-        if (active) {
-          skippedInFlight.push(inst.id);
-          continue;
-        }
+        // #769: refused while any job holds the connector or one of its
+        // entities; that's in flight, not a failure.
         const job = await SyncService.enqueueSync(
           inst.id,
           inst.organizationId,
@@ -84,6 +83,13 @@ export const wideTableResyncService = {
         );
         triggered.push(job.id);
       } catch (err) {
+        if (
+          err instanceof ApiError &&
+          err.code === ApiCode.ENTITY_LOCKED_BY_JOB
+        ) {
+          skippedInFlight.push(inst.id);
+          continue;
+        }
         failed.push({
           instanceId: inst.id,
           error: err instanceof Error ? err.message : String(err),

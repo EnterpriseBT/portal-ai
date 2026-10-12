@@ -51,6 +51,45 @@ describe("route authorization guard (#685, #692)", () => {
     expect(vague).toEqual([]);
   });
 
+  // #769: every write path says what a running job would make read-only, so
+  // a new route can't skip the job lock by omission.
+  const mutating = (route: string) => !route.startsWith("GET ");
+
+  it("classifies every mutating route's job lock (#769)", () => {
+    const missing = Object.entries(ROUTE_AUTHORIZATION)
+      .filter(([r, a]) => mutating(r) && !a.locks)
+      .map(([r]) => r);
+    expect(missing).toEqual([]);
+  });
+
+  it("gives job locks only to mutating routes (#769)", () => {
+    const onReads = Object.entries(ROUTE_AUTHORIZATION)
+      .filter(([r, a]) => !mutating(r) && a.locks)
+      .map(([r]) => r);
+    expect(onReads).toEqual([]);
+  });
+
+  it("records a real reason for every route that locks nothing (#769)", () => {
+    const vague = Object.entries(ROUTE_AUTHORIZATION)
+      .filter(
+        ([, a]) =>
+          a.locks && "none" in a.locks && a.locks.none.trim().length < 10
+      )
+      .map(([r]) => r);
+    expect(vague).toEqual([]);
+  });
+
+  it("bites: a mutating route without a job-lock classification is reported (#769)", () => {
+    const probe: typeof ROUTE_AUTHORIZATION = {
+      ...ROUTE_AUTHORIZATION,
+      "PATCH /api/__unlocked_probe/{id}": { kind: "authorized", by: "probe" },
+    };
+    const missing = Object.entries(probe)
+      .filter(([r, a]) => mutating(r) && !a.locks)
+      .map(([r]) => r);
+    expect(missing).toEqual(["PATCH /api/__unlocked_probe/{id}"]);
+  });
+
   it("bites: an unclassified route is reported, a read as much as a write", () => {
     const withExtra = new Set([
       ...registered,

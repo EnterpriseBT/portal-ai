@@ -24,6 +24,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { ConnectorInstanceAccessService } from "./connector-instance-access.service.js";
 import { DbService } from "./db.service.js";
+import { JobLockService } from "./job-lock.service.js";
 import { MicrosoftAccessTokenCacheService } from "./microsoft-access-token-cache.service.js";
 import {
   MicrosoftAuthError,
@@ -265,6 +266,13 @@ export class MicrosoftExcelConnectorService {
   static async selectWorkbook(
     input: SelectWorkbookInput
   ): Promise<SelectWorkbookResult> {
+    // #769: fail fast before the fetch; the config write re-checks
+    // atomically.
+    await JobLockService.assertNoneRunning(
+      { kind: "connectorInstance", id: input.connectorInstanceId },
+      { organizationId: input.organizationId }
+    );
+
     const accessToken = await MicrosoftAccessTokenCacheService.getOrRefresh(
       input.connectorInstanceId
     );
@@ -332,16 +340,24 @@ export class MicrosoftExcelConnectorService {
       throw err;
     }
 
-    await DbService.repository.connectorInstances.update(
-      input.connectorInstanceId,
-      {
-        config: {
-          driveItemId: input.driveItemId,
-          name: head.name,
-          fetchedAt: Date.now(),
-        },
-        updatedBy: input.userId,
-      }
+    // #769: a sync reads this config, so the write is refused while a job
+    // holds the connector.
+    await JobLockService.withUnlocked(
+      { kind: "connectorInstance", id: input.connectorInstanceId },
+      { organizationId: input.organizationId },
+      (tx) =>
+        DbService.repository.connectorInstances.update(
+          input.connectorInstanceId,
+          {
+            config: {
+              driveItemId: input.driveItemId,
+              name: head.name,
+              fetchedAt: Date.now(),
+            },
+            updatedBy: input.userId,
+          },
+          tx
+        )
     );
 
     const title = stripXlsxExtension(head.name);

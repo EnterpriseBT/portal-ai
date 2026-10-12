@@ -264,6 +264,28 @@ export class JobLockService {
   }
 
   /**
+   * Refuse early, with the same 409, when a running job locks the targets
+   * (#769). A pre-flight only, for work worth skipping before it starts (a
+   * model call, a large parse): it isn't atomic with anything, so the write
+   * itself must still go through `withUnlocked`.
+   */
+  static async assertNoneRunning(
+    target: LockTarget | LockTarget[],
+    ctx: { organizationId: string }
+  ): Promise<void> {
+    const targets = Array.isArray(target) ? target : [target];
+    const keys = await JobLockService.resolveScopeKeys(
+      targets,
+      ctx.organizationId
+    );
+    const running = await DbService.repository.jobs.findRunningByScopeKeys(
+      keys,
+      ctx.organizationId
+    );
+    if (running.length > 0) throw lockedError(running, targets, keys);
+  }
+
+  /**
    * Run a write only if no running job locks its targets (#769). Opens a
    * transaction, takes a shared advisory lock on every scope key the targets
    * resolve to, refuses with `409 ENTITY_LOCKED_BY_JOB` (naming the job) if a
