@@ -846,6 +846,8 @@ export enum ApiCode {
  * Added under #85 for the large-data-ops error envelope work.
  */
 export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
+  [ApiCode.ENTITY_LOCKED_BY_JOB]:
+    "Wait for the running job to finish, or cancel it from Jobs.",
   [ApiCode.BULK_JOB_TARGET_LOCKED]:
     "Wait for the running bulk job to finish, or cancel it before retrying.",
   [ApiCode.BULK_JOB_EXPRESSION_INVALID]:

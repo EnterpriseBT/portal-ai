@@ -532,6 +532,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
       status: string;
       startedAt: number | null;
       created: number;
+      lockScopes: string[];
     }>,
     clearRecordsDialogOpen: false,
     onOpenClearRecordsDialog: jest.fn(),
@@ -570,6 +571,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
             status: "active",
             startedAt: Date.now(),
             created: Date.now(),
+            lockScopes: ["instance:ci-1"],
           },
         ]}
       />

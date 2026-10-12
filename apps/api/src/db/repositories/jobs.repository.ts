@@ -5,7 +5,7 @@
  * such as lookup by organization, status, and BullMQ job ID.
  */
 
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, arrayOverlaps, inArray, sql } from "drizzle-orm";
 import { jobTypesLocking } from "@portalai/core/models";
 import { jobs } from "../schema/index.js";
 import { db } from "../client.js";
@@ -22,9 +22,9 @@ const lockingTypes = (field: Parameters<typeof jobTypesLocking>[0]) =>
  * Job statuses that mean the worker still owns the entity referenced
  * in `metadata`. Mirrors the inverse of `TERMINAL_JOB_STATUSES` in
  * `@portalai/core/models/job.model.ts` (`completed` / `failed` /
- * `cancelled`). `stalled` is intentionally excluded — Bull surfaces it
- * mid-recovery and the job will either resume or fail; while it's
- * pending recovery the entity is still owned.
+ * `cancelled`). `stalled` is included: Bull surfaces it mid-recovery and
+ * the job will either resume or fail, and while it's pending recovery the
+ * entity is still owned (#769: every non-terminal status locks).
  */
 export const NON_TERMINAL_JOB_STATUSES = [
   "pending",
@@ -62,6 +62,36 @@ export class JobsRepository extends Repository<
       .where(and(eq(jobs.bullJobId, bullJobId), this.notDeleted()))
       .limit(1);
     return row;
+  }
+
+  /**
+   * Non-terminal jobs in the org whose `lock_scopes` overlap any of `keys`
+   * (#769): the jobs that lock an object resolving to those scope keys. Every
+   * non-terminal status locks, `stalled` included. Served by the partial GIN
+   * index on live rows; oldest first, so a refusal names the job that started
+   * first.
+   */
+  async findRunningByScopeKeys(
+    keys: string[],
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    if (keys.length === 0) return [];
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          inArray(
+            jobs.status,
+            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
+          ),
+          arrayOverlaps(jobs.lockScopes, keys),
+          this.notDeleted()
+        )
+      )
+      .orderBy(jobs.created, jobs.id)) as JobSelect[];
   }
 
   /**

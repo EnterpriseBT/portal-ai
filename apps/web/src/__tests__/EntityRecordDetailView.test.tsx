@@ -424,6 +424,7 @@ describe("EntityRecordDetailViewUI", () => {
             status: "active",
             startedAt: Date.now(),
             created: Date.now(),
+            lockScopes: ["instance:ci-1"],
           },
         ]}
       />

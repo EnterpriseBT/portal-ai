@@ -201,6 +201,10 @@ export type ConnectorInstanceImpact = z.infer<
  * `@portalai/core/models/job.model.ts` but are kept loose here so
  * the contract stays usable without pulling the full job-model
  * machinery into every consumer.
+ *
+ * `lockScopes` (#769) are the `lockScopeKey`s the job holds ("entity:<id>" /
+ * "instance:<id>"), so a caller can say whether it holds this entity or the
+ * whole connector.
  */
 export const RunningJobSummarySchema = z.object({
   id: z.string().min(1),
@@ -208,6 +212,7 @@ export const RunningJobSummarySchema = z.object({
   status: z.string().min(1),
   startedAt: z.number().nullable(),
   created: z.number(),
+  lockScopes: z.array(z.string()),
 });
 export type RunningJobSummary = z.infer<typeof RunningJobSummarySchema>;
 

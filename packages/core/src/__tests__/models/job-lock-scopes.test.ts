@@ -1,10 +1,11 @@
 import {
   JOB_LOCK_SCOPES,
+  JOB_TYPE_LABELS,
   JobTypeEnum,
-  RunningJobSummarySchema,
   jobLockScopes,
   lockScopeKey,
 } from "../../models/job.model.js";
+import { RunningJobSummarySchema } from "../../contracts/connector-instance.contract.js";
 
 // #769: what each job type makes read-only while it runs. A job locks scopes
 // (one connector entity, or a whole connector instance); every object that
@@ -83,6 +84,13 @@ describe("JOB_LOCK_SCOPES / jobLockScopes (#769)", () => {
   it("metadata missing an id locks nothing rather than locking undefined", () => {
     expect(jobLockScopes("revalidation", {})).toEqual([]);
     expect(jobLockScopes("connector_sync", null)).toEqual([]);
+  });
+
+  it("every job type has a label", () => {
+    for (const type of JobTypeEnum.options) {
+      expect(JOB_TYPE_LABELS[type].length).toBeGreaterThan(0);
+    }
+    expect(JOB_TYPE_LABELS.connector_sync).toBe("Sync");
   });
 
   it("lockScopeKey prefixes the kind", () => {

@@ -54,6 +54,16 @@ export const SEAT_LOCK_NAMESPACE = 0x5345_4154;
  */
 export const UPGRADE_LOCK_NAMESPACE = 0x5550_4752;
 
+/**
+ * Advisory-lock namespace for job scope locks (#769), keyed by
+ * `lockScopeKey` ("entity:<id>" / "instance:<id>"). Transaction-scoped: a
+ * write takes it shared before checking for a running job, and an enqueue
+ * takes it exclusive while it checks and inserts the job row, so a write
+ * and a job start on the same scope can't interleave. Distinct from every
+ * other namespace. `0x4a4f_424c` is ASCII "JOBL".
+ */
+export const JOB_LOCK_NAMESPACE = 0x4a4f_424c;
+
 export type SyncLockOutcome<T> =
   | { acquired: true; value: T }
   | { acquired: false };

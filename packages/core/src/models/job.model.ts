@@ -751,6 +751,26 @@ export function jobTypesLocking(
     .map(([type, keys]) => ({ type, metadataKey: keys[field] as string }));
 }
 
+// --- Labels ---
+
+/**
+ * The name a user sees for each job type: in lock refusals ("Sync is running
+ * on this connector"), lock alerts and disabled-action tooltips (#769).
+ * Exhaustive, so a new job type fails type-check until it has a name.
+ */
+export const JOB_TYPE_LABELS: Record<JobType, string> = {
+  system_check: "System check",
+  revalidation: "Revalidation",
+  entity_record_clear: "Delete records",
+  connector_sync: "Sync",
+  file_upload_parse: "File parse",
+  layout_plan_commit: "Import",
+  bulk_transform: "Bulk transform",
+  bulk_geocode: "Geocoding",
+  sql_query: "Query",
+  dissolve_precompute: "Map precompute",
+};
+
 // --- Lock scopes (#769) ---
 
 /**
@@ -823,21 +843,6 @@ export function jobLockScopes(type: JobType, metadata: unknown): LockScope[] {
       : {};
   return JOB_LOCK_SCOPES[type](m);
 }
-
-/**
- * A running job as lock surfaces report it: the 409's `details.runningJobs`
- * and the running-jobs endpoints. `lockScopes` lets a caller say whether the
- * job holds this entity or the whole connector.
- */
-export const RunningJobSummarySchema = z.object({
-  id: z.string(),
-  type: JobTypeEnum,
-  status: JobStatusEnum,
-  startedAt: z.number().nullable(),
-  created: z.number(),
-  lockScopes: z.array(z.string()),
-});
-export type RunningJobSummary = z.infer<typeof RunningJobSummarySchema>;
 
 // --- Schema ---
 
