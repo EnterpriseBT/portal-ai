@@ -1,9 +1,10 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 
+import { db } from "../db/client.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
-import { fieldMappings } from "../db/schema/index.js";
+import { connectorEntities, fieldMappings } from "../db/schema/index.js";
 import {
   Repository,
   type DbClient,
@@ -132,6 +133,43 @@ export class FieldMappingValidationService {
         `Cannot delete field mapping: the connector entity has ${recordCount} record${recordCount !== 1 ? "s" : ""}. Delete the records first.`
       );
     }
+  }
+
+  /**
+   * #769: the entities a write to these mappings touches, for the job lock:
+   * each mapping's own, plus (when it references one) the entity its
+   * counterpart lives on, since deleting a reference mapping also clears the
+   * counterpart (`executeDelete`). Org-scoped; ids only.
+   */
+  static async lockEntityIds(
+    mappings: Array<{
+      organizationId: string;
+      connectorEntityId: string;
+      refEntityKey: string | null;
+    }>,
+    client: DbClient = db
+  ): Promise<string[]> {
+    const ids = new Set(mappings.map((m) => m.connectorEntityId));
+    const byOrg = new Map<string, Set<string>>();
+    for (const m of mappings) {
+      if (!m.refEntityKey) continue;
+      const keys = byOrg.get(m.organizationId) ?? new Set<string>();
+      byOrg.set(m.organizationId, keys.add(m.refEntityKey));
+    }
+    for (const [organizationId, keys] of byOrg) {
+      const rows = await (client as typeof db)
+        .select({ id: connectorEntities.id })
+        .from(connectorEntities)
+        .where(
+          and(
+            eq(connectorEntities.organizationId, organizationId),
+            inArray(connectorEntities.key, [...keys]),
+            isNull(connectorEntities.deleted)
+          )
+        );
+      for (const r of rows) ids.add(r.id);
+    }
+    return [...ids];
   }
 
   /**

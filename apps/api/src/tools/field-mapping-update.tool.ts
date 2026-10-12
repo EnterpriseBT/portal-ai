@@ -206,7 +206,9 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
             const changed = REVALIDATION_FIELDS.some(
               (field) =>
                 (item as Record<string, unknown>)[field] !== undefined &&
-                (item as Record<string, unknown>)[field] !== existing?.[field]
+                // By value: enumValues is an array.
+                JSON.stringify((item as Record<string, unknown>)[field]) !==
+                  JSON.stringify(existing?.[field])
             );
             if (changed && existing) revalidate.add(existing.connectorEntityId);
           }

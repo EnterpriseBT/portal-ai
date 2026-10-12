@@ -648,6 +648,13 @@ columnDefinitionRouter.patch(
         );
       }
 
+      // #769: refuse before the type-transition checks and conversions read
+      // the mapped entities' data; the write below re-checks atomically.
+      await JobLockService.assertNoneRunning(
+        { kind: "columnDefinition", id },
+        { organizationId: req.application!.metadata.organizationId }
+      );
+
       // Rule 3: validate type transitions
       if (parsed.data.type && parsed.data.type !== existing.type) {
         const oldType = existing.type;

@@ -14,16 +14,24 @@ const mockWithUnlocked =
       fn: (tx: unknown) => Promise<unknown>
     ) => Promise<unknown>
   >();
-const mockFieldMappingFindById = jest.fn<(id: string) => Promise<unknown>>();
+const mockFieldMappingFindMany =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockLockEntityIds = jest.fn<(m: unknown[]) => Promise<string[]>>();
 
 jest.unstable_mockModule("../../services/job-lock.service.js", () => ({
   JobLockService: { withUnlocked: mockWithUnlocked },
 }));
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
-    repository: { fieldMappings: { findById: mockFieldMappingFindById } },
+    repository: { fieldMappings: { findMany: mockFieldMappingFindMany } },
   },
 }));
+jest.unstable_mockModule(
+  "../../services/field-mapping-validation.service.js",
+  () => ({
+    FieldMappingValidationService: { lockEntityIds: mockLockEntityIds },
+  })
+);
 
 const { wrapWithLockGate } =
   await import("../../services/lock-gate.service.js");
@@ -54,7 +62,8 @@ const locked = () =>
 beforeEach(() => {
   mockWithUnlocked.mockReset();
   mockWithUnlocked.mockImplementation(async (_t, _c, fn) => fn("tx"));
-  mockFieldMappingFindById.mockReset();
+  mockFieldMappingFindMany.mockReset();
+  mockLockEntityIds.mockReset();
 });
 
 describe("wrapWithLockGate (#769)", () => {
@@ -105,12 +114,12 @@ describe("wrapWithLockGate (#769)", () => {
     ]);
   });
 
-  it("resolves a field mapping id to its entity, in the caller's org", async () => {
-    mockFieldMappingFindById.mockImplementation(async (id) =>
-      id === "fm-1"
-        ? { id, connectorEntityId: "e9", organizationId: "org-1" }
-        : { id, connectorEntityId: "eX", organizationId: "other-org" }
-    );
+  it("resolves field mapping ids to their entities (and counterparts') in one query", async () => {
+    const mappings = [
+      { id: "fm-1", connectorEntityId: "e9", organizationId: "org-1" },
+    ];
+    mockFieldMappingFindMany.mockResolvedValue(mappings);
+    mockLockEntityIds.mockResolvedValue(["e9", "e-counterpart"]);
     const tools: Record<string, Tool> = {
       t: { execute: async () => "ok" },
     };
@@ -128,9 +137,11 @@ describe("wrapWithLockGate (#769)", () => {
       {}
     );
 
-    // Another org's mapping resolves to nothing: the tool's own check fails it.
+    expect(mockFieldMappingFindMany).toHaveBeenCalledTimes(1);
+    expect(mockLockEntityIds).toHaveBeenCalledWith(mappings);
     expect(mockWithUnlocked.mock.calls[0][0]).toEqual([
       { kind: "fieldMapping", connectorEntityId: "e9" },
+      { kind: "fieldMapping", connectorEntityId: "e-counterpart" },
     ]);
   });
 
@@ -219,5 +230,61 @@ describe("wrapWithLockGate (#769)", () => {
 
     expect(inner).toHaveBeenCalledTimes(2);
     expect(mockWithUnlocked).not.toHaveBeenCalled();
+  });
+
+  it("holds at most two lock-gated calls per org at once; the rest wait their turn", async () => {
+    let running = 0;
+    let peak = 0;
+    const releases: Array<() => void> = [];
+    mockWithUnlocked.mockImplementation(async (_t, _c, fn) => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise<void>((r) => releases.push(r));
+      running--;
+      return fn("tx");
+    });
+    const tools: Record<string, Tool> = { t: { execute: async () => "ok" } };
+    wrapWithLockGate(tools, ctx, () =>
+      auth({
+        target: "record",
+        itemsArg: "items",
+        idField: "connectorEntityId",
+      })
+    );
+
+    const calls = [1, 2, 3].map(() =>
+      tools.t.execute!({ items: [{ connectorEntityId: "e1" }] }, {})
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    expect(peak).toBe(2);
+    while (releases.length > 0) {
+      releases.shift()!();
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    await expect(Promise.all(calls)).resolves.toEqual(["ok", "ok", "ok"]);
+    expect(peak).toBe(2);
+  });
+
+  it("a call that can't be admitted is a typed TOOL_WRITE_BUSY result", async () => {
+    const inner = jest.fn(async () => "ok");
+    const tools: Record<string, Tool> = { t: { execute: inner } };
+    wrapWithLockGate(tools, ctx, () =>
+      auth({
+        target: "record",
+        itemsArg: "items",
+        idField: "connectorEntityId",
+      })
+    );
+    const ac = new AbortController();
+    ac.abort();
+
+    const out = (await tools.t.execute!(
+      { items: [{ connectorEntityId: "e1" }] },
+      { abortSignal: ac.signal }
+    )) as { error: { code: string } };
+
+    expect(out.error.code).toBe(ApiCode.TOOL_WRITE_BUSY);
+    expect(inner).not.toHaveBeenCalled();
   });
 });

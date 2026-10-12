@@ -813,8 +813,9 @@ fieldMappingRouter.patch(
       const needsRevalidation = REVALIDATION_FIELDS.some(
         (field) =>
           field in parsed.data &&
-          (parsed.data as Record<string, unknown>)[field] !==
-            (existing as Record<string, unknown>)[field]
+          // By value: enumValues is an array (#769 review).
+          JSON.stringify((parsed.data as Record<string, unknown>)[field]) !==
+            JSON.stringify((existing as Record<string, unknown>)[field])
       );
 
       // Reconcile the wide table. Most PATCHes don't change the wide-table
@@ -1091,12 +1092,16 @@ fieldMappingRouter.delete(
 
       await FieldMappingValidationService.validateDelete(id);
 
-      // #769: refused while a running job locks the entity or its connector.
+      // #769: refused while a running job locks the entity or its connector,
+      // or the entity of the counterpart mapping the delete also clears.
+      const lockEntityIds = await FieldMappingValidationService.lockEntityIds([
+        mappingToDelete,
+      ]);
       const result = await JobLockService.withUnlocked(
-        {
-          kind: "fieldMapping",
-          connectorEntityId: mappingToDelete.connectorEntityId,
-        },
+        lockEntityIds.map((connectorEntityId) => ({
+          kind: "fieldMapping" as const,
+          connectorEntityId,
+        })),
         { organizationId },
         (tx) => FieldMappingValidationService.executeDelete(id, userId, tx)
       ).catch((error) => {

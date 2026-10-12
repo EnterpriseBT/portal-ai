@@ -986,6 +986,13 @@ entityRecordRouter.post(
         }
       );
 
+      // #769: refuse a locked entity before parsing and diffing the batch;
+      // the write below re-checks atomically.
+      await JobLockService.assertNoneRunning(
+        { kind: "record", connectorEntityId },
+        { organizationId: req.application!.metadata.organizationId }
+      );
+
       const parsed = EntityRecordImportRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(

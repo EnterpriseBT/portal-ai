@@ -15,6 +15,8 @@ const mockFindById = jest.fn<() => Promise<unknown>>().mockResolvedValue({
   sourceField: "Name",
   columnDefinitionId: "cd-1",
   isPrimaryKey: false,
+  required: false,
+  enumValues: ["a", "b"],
 });
 const mockUpdate = jest
   .fn<() => Promise<unknown>>()
@@ -49,6 +51,14 @@ jest.unstable_mockModule(
   })
 );
 
+// #769: a change to how a mapping normalizes queues a revalidation.
+const mockEnqueueAfterEdit = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+jest.unstable_mockModule("../../services/revalidation.service.js", () => ({
+  RevalidationService: { enqueueAfterEdit: mockEnqueueAfterEdit },
+}));
+
 const { FieldMappingUpdateTool } =
   await import("../../tools/field-mapping-update.tool.js");
 
@@ -73,6 +83,20 @@ const exec = (input: { items: Item[] }) =>
   );
 
 describe("FieldMappingUpdateTool", () => {
+  it("#769: re-sending the same enumValues queues no revalidation", async () => {
+    await exec({ items: [{ fieldMappingId: "fm-1", enumValues: ["a", "b"] }] });
+    expect(mockEnqueueAfterEdit).not.toHaveBeenCalled();
+  });
+
+  it("#769: a change that affects validity queues one for the entity", async () => {
+    await exec({ items: [{ fieldMappingId: "fm-1", required: true }] });
+    expect(mockEnqueueAfterEdit).toHaveBeenCalledWith(
+      "ce-1",
+      "org-1",
+      "user-1"
+    );
+  });
+
   it("single-item regression — updates sourceField", async () => {
     const result: any = await exec({
       items: [{ fieldMappingId: "fm-1", sourceField: "Full Name" }],

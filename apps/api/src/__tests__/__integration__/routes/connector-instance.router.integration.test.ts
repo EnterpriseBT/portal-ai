@@ -1726,6 +1726,43 @@ describe("Connector Instance Router", () => {
       expect(res.body.code).toBe(ApiCode.SYNC_ALREADY_RUNNING);
       expect(res.body.details?.jobId).toBe(inFlightJobId);
     });
+
+    it("#769: a sync that wins a race past the pre-check still reads as SYNC_ALREADY_RUNNING", async () => {
+      const { instanceId, organizationId } = await seedSyncFixture({});
+      const inFlightJobId = generateId();
+      await (db as ReturnType<typeof drizzle>).insert(schema.jobs).values({
+        id: inFlightJobId,
+        organizationId,
+        type: "connector_sync",
+        status: "pending",
+        progress: 0,
+        metadata: { connectorInstanceId: instanceId, organizationId },
+        attempts: 0,
+        maxAttempts: 3,
+        lockScopes: [`instance:${instanceId}`],
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      // Two clicks: this request's pre-check ran before the other committed,
+      // so only the exclusive enqueue sees it.
+      const { SyncService } = await import("../../../services/sync.service.js");
+      const spy = jest
+        .spyOn(SyncService, "assertNoActiveSyncJob")
+        .mockResolvedValueOnce(undefined);
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token");
+      spy.mockRestore();
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.SYNC_ALREADY_RUNNING);
+      expect(res.body.details?.jobId).toBe(inFlightJobId);
+    });
   });
 
   // ── Entity-lock convention (CLAUDE.md §"Async Job State") ────────

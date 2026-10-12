@@ -14,6 +14,7 @@ import { invalidPayload } from "../utils/zod-issue.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FileUploadAccessService } from "../services/file-upload-access.service.js";
 import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
+import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
@@ -204,17 +205,36 @@ layoutPlansRouter.post(
           req.application!.metadata
         );
       }
+      // #769: a commit into an existing connector is refused while any job
+      // holds it or one of its entities. Checked before preparing, which
+      // writes the new plan.
+      if (parsed.data.connectorInstanceId) {
+        await JobLockService.assertNoneRunning(
+          { kind: "connectorInstance", id: parsed.data.connectorInstanceId },
+          { organizationId }
+        );
+      }
       const prepared = await LayoutPlanDraftService.prepareDraftCommit(
         organizationId,
         userId,
         parsed.data
       );
-      // #769: a commit into an existing connector is refused while any job
-      // holds it or one of its entities.
       const job = await JobLockService.enqueueExclusive(userId, {
         organizationId,
         type: "layout_plan_commit",
         metadata: prepared.metadata,
+      }).catch(async (err) => {
+        // A job started between the check and the enqueue: undo what
+        // preparing wrote, so the connector keeps one current plan.
+        await DbService.repository.connectorInstanceLayoutPlans
+          .hardDelete(prepared.planId)
+          .catch(() => undefined);
+        if (!prepared.metadata.isExistingInstance) {
+          await DbService.repository.connectorInstances
+            .hardDelete(prepared.connectorInstanceId)
+            .catch(() => undefined);
+        }
+        throw err;
       });
 
       logger.info(

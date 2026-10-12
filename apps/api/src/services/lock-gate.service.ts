@@ -1,8 +1,16 @@
+import { and, eq, inArray } from "drizzle-orm";
+
 import type { ToolAuthorization, ToolLock } from "@portalai/core/models";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { fieldMappings } from "../db/schema/index.js";
+import { FieldMappingValidationService } from "./field-mapping-validation.service.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
+import {
+  AdmissionGate,
+  GateRejectedError,
+} from "../utils/admission-gate.util.js";
 import { JobLockService, type LockTarget } from "./job-lock.service.js";
 import type { GateableTool } from "./cost-gate.service.js";
 
@@ -22,8 +30,30 @@ import type { GateableTool } from "./cost-gate.service.js";
  * on job success, so a refusal is never charged).
  *
  * The held lock uses one pooled connection for the length of the call, on
- * top of whatever the tool uses; agent calls are low-concurrency.
+ * top of whatever the tool uses, and the API's pool is 10 connections shared
+ * with the workers. So a `target` call runs through `LOCK_GATE_ADMISSION`:
+ * at most 3 at once per process (2 per org), the rest waiting up to 30s; one
+ * that can't be admitted is a typed `TOOL_WRITE_BUSY` result.
  */
+
+export const LOCK_GATE_ADMISSION_OPTIONS = {
+  concurrency: 3,
+  perKeyLimit: 2,
+  maxQueue: 50,
+  maxWaitMs: 30_000,
+};
+const LOCK_GATE_ADMISSION = new AdmissionGate(LOCK_GATE_ADMISSION_OPTIONS);
+
+/** The typed result a call the admission gate couldn't seat returns. */
+export function writeBusy(): { error: { code: ApiCode; message: string } } {
+  return {
+    error: {
+      code: ApiCode.TOOL_WRITE_BUSY,
+      message:
+        "Too many changes are running at once. Try the change again in a moment.",
+    },
+  };
+}
 
 /** The typed result a refused tool call returns. */
 export function lockRefusal(err: ApiError): {
@@ -65,16 +95,19 @@ async function targetsFor(
 ): Promise<LockTarget[]> {
   let ids = [...new Set(itemIds(input, lock.itemsArg, lock.idField))];
   if (lock.resolve === "fieldMappingEntity") {
-    const mappings = await Promise.all(
-      ids.map((id) => DbService.repository.fieldMappings.findById(id))
-    );
-    ids = [
-      ...new Set(
-        mappings.flatMap((m) =>
-          m && m.organizationId === organizationId ? [m.connectorEntityId] : []
-        )
-      ),
-    ];
+    // One query for the batch (up to 100 items), org-scoped; a mapping that
+    // references another entity also locks that one (a delete clears its
+    // counterpart there).
+    const mappings =
+      ids.length === 0
+        ? []
+        : await DbService.repository.fieldMappings.findMany(
+            and(
+              inArray(fieldMappings.id, ids),
+              eq(fieldMappings.organizationId, organizationId)
+            )
+          );
+    ids = await FieldMappingValidationService.lockEntityIds(mappings);
   }
   return ids.map((id): LockTarget => {
     switch (lock.target) {
@@ -102,11 +135,16 @@ export function wrapWithLockGate(
         if ("enqueues" in lock) return await original(input, options);
         const targets = await targetsFor(lock, input, ctx.organizationId);
         if (targets.length === 0) return await original(input, options);
-        return await JobLockService.withUnlocked(targets, ctx, async () =>
-          original(input, options)
+        const signal = (options as { abortSignal?: AbortSignal } | undefined)
+          ?.abortSignal;
+        return await LOCK_GATE_ADMISSION.run(ctx.organizationId, signal, () =>
+          JobLockService.withUnlocked(targets, ctx, async () =>
+            original(input, options)
+          )
         );
       } catch (err) {
         if (isLockRefusal(err)) return lockRefusal(err);
+        if (err instanceof GateRejectedError) return writeBusy();
         throw err;
       }
     };

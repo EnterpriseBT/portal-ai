@@ -16,6 +16,7 @@ import * as schema from "../../../db/schema/index.js";
 import { JobLockService } from "../../../services/job-lock.service.js";
 import { JobsService } from "../../../services/jobs.service.js";
 import { wrapWithLockGate } from "../../../services/lock-gate.service.js";
+import { FieldMappingValidationService } from "../../../services/field-mapping-validation.service.js";
 import { EntityRecordUpdateTool } from "../../../tools/entity-record-update.tool.js";
 import { FieldMappingUpdateTool } from "../../../tools/field-mapping-update.tool.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -325,6 +326,15 @@ describe("JobLockService (#769)", () => {
       ).toEqual([]);
     });
 
+    it("a summary shows only the scopes the caller asked about (#692)", async () => {
+      await job("bulk_transform", [`entity:${E1}`, `entity:${E3}`]);
+      const [summary] = await JobLockService.findRunning(
+        [{ kind: "connectorEntity", id: E1 }],
+        orgId
+      );
+      expect(summary.lockScopes).toEqual([`entity:${E1}`]);
+    });
+
     it("a job in another org never shows up", async () => {
       await job("revalidation", [`entity:${E1}`], "active", otherOrgId);
       expect(
@@ -333,6 +343,42 @@ describe("JobLockService (#769)", () => {
           orgId
         )
       ).toEqual([]);
+    });
+  });
+
+  describe("FieldMappingValidationService.lockEntityIds", () => {
+    it("adds the entity a reference mapping's counterpart lives on", async () => {
+      const [e3] = await db
+        .select()
+        .from(schema.connectorEntities)
+        .where(eq(schema.connectorEntities.id, E3));
+      const ids = await FieldMappingValidationService.lockEntityIds(
+        [
+          {
+            organizationId: orgId,
+            connectorEntityId: E1,
+            refEntityKey: e3.key,
+          },
+          { organizationId: orgId, connectorEntityId: E2, refEntityKey: null },
+        ],
+        db as never
+      );
+      expect(sorted(ids)).toEqual(sorted([E1, E2, E3]));
+    });
+
+    it("an unknown or other-org key adds nothing", async () => {
+      expect(
+        await FieldMappingValidationService.lockEntityIds(
+          [
+            {
+              organizationId: otherOrgId,
+              connectorEntityId: E1,
+              refEntityKey: "nope",
+            },
+          ],
+          db as never
+        )
+      ).toEqual([E1]);
     });
   });
 
@@ -605,6 +651,60 @@ describe("JobLockService (#769)", () => {
           metadata: { connectorEntityId: E1, organizationId: orgId },
         };
       }
+    });
+
+    it("an entity job doesn't wait on a write to a sibling entity", async () => {
+      const held = gate();
+      const inside = gate();
+      const write = JobLockService.withUnlocked(
+        { kind: "record", connectorEntityId: E2 },
+        ctx(),
+        async () => {
+          inside.open();
+          await held.opened;
+        }
+      );
+      await inside.opened;
+
+      // E1 and E2 share I1: the revalidation takes I1 only shared, so the
+      // open write on E2 doesn't hold it up.
+      const enqueue = JobLockService.enqueueExclusive("user-1", {
+        organizationId: orgId,
+        type: "revalidation",
+        metadata: { connectorEntityId: E1, organizationId: orgId },
+      });
+      expect(await settledWithin(enqueue, 400)).toBe(true);
+
+      held.open();
+      await write;
+      await expect(enqueue).resolves.toMatchObject({
+        lockScopes: [`entity:${E1}`],
+      });
+    });
+
+    it("an instance job still waits on a write to any of its entities", async () => {
+      const held = gate();
+      const inside = gate();
+      const write = JobLockService.withUnlocked(
+        { kind: "record", connectorEntityId: E2 },
+        ctx(),
+        async () => {
+          inside.open();
+          await held.opened;
+        }
+      );
+      await inside.opened;
+
+      const enqueue = JobLockService.enqueueExclusive("user-1", {
+        organizationId: orgId,
+        type: "connector_sync",
+        metadata: { connectorInstanceId: I1 },
+      });
+      expect(await settledWithin(enqueue, 400)).toBe(false);
+
+      held.open();
+      await write;
+      await enqueue;
     });
 
     it("a write waits for a job that's being enqueued, then sees it", async () => {

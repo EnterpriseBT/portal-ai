@@ -799,6 +799,8 @@ export enum ApiCode {
    *  returns this as a typed tool result (never a throw) so the agent relays
    *  it to the user. Fail-closed. */
   TOOL_PERMISSION_DENIED = "TOOL_PERMISSION_DENIED",
+  /** #769: too many lock-gated agent writes are running in this process. */
+  TOOL_WRITE_BUSY = "TOOL_WRITE_BUSY",
 
   // Tool usage ledger (#179)
   /** Malformed itemized-usage query (unknown sortBy / bad pagination). 400. */
@@ -843,6 +845,8 @@ export enum ApiCode {
  * Added under #85 for the large-data-ops error envelope work.
  */
 export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
+  [ApiCode.TOOL_WRITE_BUSY]:
+    "Too many changes are running at once. Try the change again in a moment.",
   [ApiCode.ENTITY_LOCKED_BY_JOB]:
     "Wait for the running job to finish, or cancel it from Jobs.",
   [ApiCode.BULK_JOB_EXPRESSION_INVALID]:

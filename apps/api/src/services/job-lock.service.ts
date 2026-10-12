@@ -63,14 +63,20 @@ export interface RunningJobSummary {
   lockScopes: string[];
 }
 
-function toSummary(row: JobSelect): RunningJobSummary {
+/**
+ * A running job as the lock surfaces report it. `lockScopes` is narrowed to
+ * the keys the caller asked about (`visible`): a job's scopes come from its
+ * metadata, which is its creator's (#692), so a reader learns only that it
+ * holds what they're looking at, never its other entities.
+ */
+function toSummary(row: JobSelect, visible: string[]): RunningJobSummary {
   return {
     id: row.id,
     type: row.type,
     status: row.status,
     startedAt: row.startedAt,
     created: row.created,
-    lockScopes: row.lockScopes,
+    lockScopes: row.lockScopes.filter((k) => visible.includes(k)),
   };
 }
 
@@ -127,23 +133,30 @@ function lockedError(
     {
       recommendation:
         ApiCodeDefaultRecommendation[ApiCode.ENTITY_LOCKED_BY_JOB],
-      details: { runningJobs: running.map(toSummary) },
+      details: { runningJobs: running.map((r) => toSummary(r, keys)) },
     }
   );
 }
 
+type LockMode = "shared" | "exclusive";
+
 /** Take a transaction-scoped advisory lock on each key, in sorted order so
- *  two lockers never deadlock on each other's keys. */
+ *  two lockers never deadlock on each other's keys. A key asked for in both
+ *  modes is taken exclusive. */
 async function lockKeys(
   tx: DbClient,
-  keys: string[],
-  mode: "shared" | "exclusive"
+  keys: string[] | Map<string, LockMode>,
+  mode: LockMode = "shared"
 ): Promise<void> {
-  const fn =
-    mode === "shared"
-      ? "pg_advisory_xact_lock_shared"
-      : "pg_advisory_xact_lock";
-  for (const key of [...new Set(keys)].sort()) {
+  const modes =
+    keys instanceof Map
+      ? keys
+      : new Map(keys.map((k): [string, LockMode] => [k, mode]));
+  for (const key of [...modes.keys()].sort()) {
+    const fn =
+      modes.get(key) === "exclusive"
+        ? "pg_advisory_xact_lock"
+        : "pg_advisory_xact_lock_shared";
     await (tx as typeof db).execute(
       sql`SELECT ${sql.raw(fn)}(${JOB_LOCK_NAMESPACE}::int, hashtext(${key}))`
     );
@@ -276,7 +289,7 @@ export class JobLockService {
         organizationId,
         client
       )
-    ).map(toSummary);
+    ).map((r) => toSummary(r, keys));
   }
 
   /**
@@ -359,17 +372,28 @@ export class JobLockService {
         : { kind: "connectorInstance", id: s.id }
     );
     const outcome = await DbService.transaction(async (tx) => {
-      const keys = [
-        ...new Set([
-          ...declared,
-          ...(await JobLockService.resolveScopeKeys(
-            targets,
-            params.organizationId,
-            tx
-          )),
-        ]),
-      ];
-      await lockKeys(tx, keys, "exclusive");
+      // The job's own scopes are taken exclusive. An instance job also takes
+      // its entities exclusive (it writes them all); an entity job takes its
+      // instance only shared, so it conflicts with instance-wide jobs and
+      // writes to its own entity, not with work on sibling entities.
+      const modes = new Map<string, LockMode>();
+      for (const target of targets) {
+        const resolved = await JobLockService.resolveScopeKeys(
+          [target],
+          params.organizationId,
+          tx
+        );
+        for (const key of resolved) {
+          const mode: LockMode =
+            target.kind === "connectorInstance" || key.startsWith("entity:")
+              ? "exclusive"
+              : "shared";
+          if (modes.get(key) !== "exclusive") modes.set(key, mode);
+        }
+      }
+      for (const key of declared) modes.set(key, "exclusive");
+      const keys = [...modes.keys()];
+      await lockKeys(tx, modes);
       const running = await DbService.repository.jobs.findRunningByScopeKeys(
         keys,
         params.organizationId,
@@ -411,6 +435,6 @@ export class JobLockService {
       await DbService.repository.jobs.findRunningForOrganization(
         organizationId
       );
-    return rows.map(toSummary);
+    return rows.map((r) => toSummary(r, []));
   }
 }

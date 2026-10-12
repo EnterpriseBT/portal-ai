@@ -1918,8 +1918,28 @@ connectorInstanceRouter.post(
       await SyncService.assertNoActiveSyncJob(id, organizationId);
 
       // #769: enqueued exclusively, so any other job holding the connector
-      // or one of its entities refuses it with ENTITY_LOCKED_BY_JOB.
-      const job = await SyncService.enqueueSync(id, organizationId, userId);
+      // or one of its entities refuses it with ENTITY_LOCKED_BY_JOB. A sync
+      // that won the race with this one (two clicks) is still reported as
+      // SYNC_ALREADY_RUNNING with its jobId, so the UI latches onto it.
+      const job = await SyncService.enqueueSync(
+        id,
+        organizationId,
+        userId
+      ).catch((err) => {
+        const running =
+          err instanceof ApiError && err.code === ApiCode.ENTITY_LOCKED_BY_JOB
+            ? ((err.details as { runningJobs?: { id: string; type: string }[] })
+                ?.runningJobs ?? [])
+            : [];
+        const sync = running.find((j) => j.type === "connector_sync");
+        if (!sync) throw err;
+        throw new ApiError(
+          409,
+          ApiCode.SYNC_ALREADY_RUNNING,
+          `A sync is already running for this connector instance (job ${sync.id}).`,
+          { jobId: sync.id }
+        );
+      });
 
       logger.info(
         { connectorInstanceId: id, jobId: job.id },
