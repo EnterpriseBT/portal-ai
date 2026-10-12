@@ -1020,7 +1020,7 @@ describe("WideTableRepository integration tests", () => {
 
   // ── #761 — batch partial update ─────────────────────────────────
 
-  describe("updateMany (#761)", () => {
+  describe("typed columns: updateMany (#761), upsertMany (#766)", () => {
     const TYPED = [
       ["s", "string"],
       ["n", "number"],
@@ -1327,6 +1327,34 @@ describe("WideTableRepository integration tests", () => {
         await repo.updateMany(
           typedId,
           ids.map((id) => ({ entityRecordId: id, normalizedData: { refs } })),
+          db
+        );
+
+        const rows = await read();
+        for (const id of ids) {
+          expect(rows.get(id)![col.get("refs")!]).toHaveLength(150);
+        }
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    }, 60_000);
+
+    it("#766: upsertMany splits a chunk whose text[] cells would pass Postgres's bind limit", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        // 500 rows × (5 metadata + 150 elements) = 77,500 parameters.
+        const ids = await seedRows(500);
+        const refs = Array.from({ length: 150 }, (_, i) => `ref-${i}`);
+        await repo.upsertMany(
+          typedId,
+          ids.map((id) => ({
+            entity_record_id: id,
+            organization_id: orgId,
+            synced_at: 2,
+            is_valid: true,
+            source_id: `typed-${id}`,
+            [col.get("refs")!]: refs,
+          })),
           db
         );
 

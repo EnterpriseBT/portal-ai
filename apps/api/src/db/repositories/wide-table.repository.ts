@@ -177,9 +177,9 @@ function wideColumnPgTypes(
 }
 
 /**
- * Bind parameters per statement in `updateMany` (#761), well under
- * PostgreSQL's 65,535. A row's cost varies with its text[] cells, so the
- * row-count chunk alone can't bound it.
+ * Bind parameters per wide-table write statement (#761, #766), well under
+ * PostgreSQL's 65,535. A row's cost varies with its text[] cells (one
+ * parameter per element), so the row-count chunk alone can't bound it.
  */
 export const WIDE_TABLE_MAX_BIND_PARAMS = 30_000;
 
@@ -191,6 +191,31 @@ function bindCost(value: unknown, pgType: string): number {
 }
 
 /**
+ * Split rows into runs whose summed `costOf` stays within
+ * `WIDE_TABLE_MAX_BIND_PARAMS`, in order: one statement per run. A single row
+ * over the budget still gets a run of its own (it can't be split; Postgres
+ * refuses it if it really passes the limit).
+ */
+function* budgetedRuns<T>(
+  rows: ReadonlyArray<T>,
+  costOf: (row: T) => number
+): Generator<T[]> {
+  let run: T[] = [];
+  let params = 0;
+  for (const row of rows) {
+    const cost = costOf(row);
+    if (run.length > 0 && params + cost > WIDE_TABLE_MAX_BIND_PARAMS) {
+      yield run;
+      run = [];
+      params = 0;
+    }
+    run.push(row);
+    params += cost;
+  }
+  if (run.length > 0) yield run;
+}
+
+/**
  * Rows / ids per statement for every chunked wide-table builder.
  *
  * Named for the table rather than for `upsertMany` because #436 extended it
@@ -199,8 +224,9 @@ function bindCost(value: unknown, pgType: string): number {
  * statement is serialised, so any unbounded list overflows the V8 stack.
  * Keeping each statement's AST shallow is the remedy in all four cases.
  *
- * 500 also keeps the bind count comfortably under PostgreSQL's 65k limit —
- * 500 rows × ~50 columns = 25k params worst-case on the `upsertMany` path.
+ * It bounds rows, not bind parameters: a text[] cell binds one parameter per
+ * element, so the write paths also split at `WIDE_TABLE_MAX_BIND_PARAMS`
+ * (#766: 500 rows of 150 references passed PostgreSQL's 65,535 limit).
  */
 export const WIDE_TABLE_CHUNK_SIZE = 500;
 
@@ -441,21 +467,28 @@ export class WideTableRepository {
       // literal, not EXCLUDED.
       `, "deleted" = NULL`;
 
+    const costOf = (row: Record<string, unknown>) =>
+      colsInOrder.reduce(
+        (n, col) => n + bindCost(row[col], pgTypeByColumn.get(col) ?? "text"),
+        0
+      );
     for (let i = 0; i < rows.length; i += WIDE_TABLE_CHUNK_SIZE) {
       const chunk = rows.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
-      const tuples = chunk.map((row) => {
-        const valueExprs = colsInOrder.map((col) =>
-          wideValueExpr(row, col, pgTypeByColumn.get(col) ?? "text")
-        );
-        return sql`(${sql.join(valueExprs, sql`, `)})`;
-      });
+      for (const run of budgetedRuns(chunk, costOf)) {
+        const tuples = run.map((row) => {
+          const valueExprs = colsInOrder.map((col) =>
+            wideValueExpr(row, col, pgTypeByColumn.get(col) ?? "text")
+          );
+          return sql`(${sql.join(valueExprs, sql`, `)})`;
+        });
 
-      const statement = sql`INSERT INTO ${sql.raw(tableName)} (${sql.raw(insertColList)}) VALUES ${sql.join(
-        tuples,
-        sql`, `
-      )} ON CONFLICT ("entity_record_id") DO UPDATE SET ${sql.raw(setClauses)}`;
+        const statement = sql`INSERT INTO ${sql.raw(tableName)} (${sql.raw(insertColList)}) VALUES ${sql.join(
+          tuples,
+          sql`, `
+        )} ON CONFLICT ("entity_record_id") DO UPDATE SET ${sql.raw(setClauses)}`;
 
-      await (client as typeof db).execute(statement);
+        await (client as typeof db).execute(statement);
+      }
     }
 
     return { repaired, rejected };
@@ -760,39 +793,24 @@ export class WideTableRepository {
         // value is cast to its column's type.
         const quoted = cols.map((c) => `"${c}"`);
         const setClause = quoted.map((q) => `${q} = v.${q}`).join(", ");
-        const flush = async (tuples: SQL[]) => {
-          if (tuples.length === 0) return;
+        const costOf = (p: (typeof groupRows)[number]) =>
+          1 +
+          cols.reduce(
+            (n, c) => n + bindCost(p.cells[c], pgTypeByColumn.get(c) ?? "text"),
+            0
+          );
+        for (const run of budgetedRuns(groupRows, costOf)) {
+          const tuples = run.map((p) => {
+            const values = cols.map((c) => {
+              const pgType = pgTypeByColumn.get(c) ?? "text";
+              return sql`CAST(${wideValueExpr(p.cells, c, pgType)} AS ${sql.raw(pgType)})`;
+            });
+            return sql`(${sql`${p.entityRecordId}`}, ${sql.join(values, sql`, `)})`;
+          });
           await (client as typeof db).execute(
             sql`UPDATE ${tableName} AS w SET ${sql.raw(setClause)} FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v("entity_record_id", ${sql.raw(quoted.join(", "))}) WHERE w."entity_record_id" = v."entity_record_id"`
           );
-        };
-        // A text[] cell binds one parameter per element, so a row's cost
-        // varies; split the statement before it nears Postgres's bind limit.
-        let tuples: SQL[] = [];
-        let params = 0;
-        for (const p of groupRows) {
-          const cost =
-            1 +
-            cols.reduce(
-              (n, c) =>
-                n + bindCost(p.cells[c], pgTypeByColumn.get(c) ?? "text"),
-              0
-            );
-          if (params + cost > WIDE_TABLE_MAX_BIND_PARAMS) {
-            await flush(tuples);
-            tuples = [];
-            params = 0;
-          }
-          const values = cols.map((c) => {
-            const pgType = pgTypeByColumn.get(c) ?? "text";
-            return sql`CAST(${wideValueExpr(p.cells, c, pgType)} AS ${sql.raw(pgType)})`;
-          });
-          tuples.push(
-            sql`(${sql`${p.entityRecordId}`}, ${sql.join(values, sql`, `)})`
-          );
-          params += cost;
         }
-        await flush(tuples);
       }
     }
     return rejected;
