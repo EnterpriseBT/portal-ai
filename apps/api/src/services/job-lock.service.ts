@@ -65,9 +65,10 @@ export interface RunningJobSummary {
 
 /**
  * A running job as the lock surfaces report it. `lockScopes` is narrowed to
- * the keys the caller asked about (`visible`): a job's scopes come from its
- * metadata, which is its creator's (#692), so a reader learns only that it
- * holds what they're looking at, never its other entities.
+ * `visible`, the scope keys of the objects the caller named (`namedKeys`): a
+ * job's scopes come from its metadata, which is its creator's (#692), so a
+ * reader learns only whether it holds the very object they asked about, never
+ * other entities or connectors (which they may not be able to read).
  */
 function toSummary(row: JobSelect, visible: string[]): RunningJobSummary {
   return {
@@ -102,6 +103,25 @@ type _SameKinds = [LockTarget["kind"]] extends [LockTargetKind]
 const _sameKinds: _SameKinds = true;
 void _sameKinds;
 
+/** The scope key of each object the caller named: an entity (directly, or
+ *  as a record's or mapping's), or a connector. A column definition names no
+ *  scope of its own. */
+function namedKeys(targets: LockTarget[]): string[] {
+  return targets.flatMap((t) => {
+    switch (t.kind) {
+      case "record":
+      case "fieldMapping":
+        return [entityKey(t.connectorEntityId)];
+      case "connectorEntity":
+        return [entityKey(t.id)];
+      case "connectorInstance":
+        return [instanceKey(t.id)];
+      case "columnDefinition":
+        return [];
+    }
+  });
+}
+
 const entityKey = (id: string) => lockScopeKey({ kind: "connectorEntity", id });
 const instanceKey = (id: string) =>
   lockScopeKey({ kind: "connectorInstance", id });
@@ -133,7 +153,9 @@ function lockedError(
     {
       recommendation:
         ApiCodeDefaultRecommendation[ApiCode.ENTITY_LOCKED_BY_JOB],
-      details: { runningJobs: running.map((r) => toSummary(r, keys)) },
+      details: {
+        runningJobs: running.map((r) => toSummary(r, namedKeys(targets))),
+      },
     }
   );
 }
@@ -289,7 +311,7 @@ export class JobLockService {
         organizationId,
         client
       )
-    ).map((r) => toSummary(r, keys));
+    ).map((r) => toSummary(r, namedKeys(targets)));
   }
 
   /**

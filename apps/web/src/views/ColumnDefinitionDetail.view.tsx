@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useMemo } from "react";
 
 import type {
-  RunningJobSummary,
   ColumnDefinitionGetResponsePayload,
   ColumnDefinitionUpdateRequestBody,
   FieldMappingCreateRequestBody,
@@ -390,7 +389,7 @@ export const ColumnDefinitionDetailView: React.FC<
                                 return (
                                   <FieldMappingTable
                                     fieldMappings={mappings.fieldMappings}
-                                    runningJobs={runningJobs}
+                                    lockedReason={lockedReason}
                                     onEdit={(fm) => setEditingFieldMapping(fm)}
                                     onDelete={(fm) =>
                                       setDeletingFieldMapping(fm)
@@ -506,15 +505,19 @@ type FieldMappingRow =
 
 interface FieldMappingTableProps {
   fieldMappings: FieldMappingRow[];
-  /** #769: the page's running jobs; each row is locked by its entity's. */
-  runningJobs: RunningJobSummary[];
+  /**
+   * #769: why the page's jobs lock the rows. A column definition's running
+   * jobs name no entity (a reader mustn't learn which entities others' jobs
+   * hold), so a job on any entity that maps it locks every row.
+   */
+  lockedReason: string | null;
   onEdit?: (fm: FieldMappingWithConnectorEntity) => void;
   onDelete?: (fm: FieldMappingWithConnectorEntity) => void;
 }
 
 const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   fieldMappings,
-  runningJobs,
+  lockedReason,
   onEdit,
   onDelete,
 }) => {
@@ -581,23 +584,12 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
             render: (_value: unknown, row: Record<string, unknown>) => {
               const fm = fieldMappings.find((f) => f.id === row.id);
               if (!fm) return null;
-              // #769: the jobs holding this row's entity or its connector.
-              const instanceId = fm.connectorEntity?.connectorInstanceId;
-              const rowJobs = runningJobs.filter(
-                (j) =>
-                  j.lockScopes.includes(`entity:${fm.connectorEntityId}`) ||
-                  (instanceId !== undefined &&
-                    j.lockScopes.includes(`instance:${instanceId}`))
-              );
               const gates = fieldMappingRowGates({
                 capabilities: fm.capabilities,
                 isWriteEnabled:
                   fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
                     ?.write === true,
-                lockedReason: jobLockReason(rowJobs, {
-                  kind: "connectorEntity",
-                  id: fm.connectorEntityId,
-                }),
+                lockedReason,
               });
               return (
                 <Stack direction="row" spacing={0.5}>
@@ -631,7 +623,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
             },
           }
         : null,
-    [onEdit, onDelete, fieldMappings, runningJobs]
+    [onEdit, onDelete, fieldMappings, lockedReason]
   );
 
   const [columnConfig, setColumnConfig] = useColumnConfig(dataColumns, {

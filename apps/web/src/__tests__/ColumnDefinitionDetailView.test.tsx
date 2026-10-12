@@ -526,9 +526,10 @@ describe("ColumnDefinitionDetailView", () => {
       lockScopes,
     });
 
-    it("#769: a job on a mapping's entity disables the page's and that row's actions, naming it", () => {
+    it("#769: a job on an entity that maps it disables the page's and the rows' actions, naming it", () => {
       setupWithCapability({ write: true });
-      currentRunningJobs = [runningJob(["entity:ce-1"])];
+      // Summaries here carry no scopes: a reader learns no other entity ids.
+      currentRunningJobs = [runningJob([])];
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
       expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute(
@@ -542,16 +543,6 @@ describe("ColumnDefinitionDetailView", () => {
         );
       }
       expect(screen.getByText("Revalidation is running")).toBeInTheDocument();
-    });
-
-    it("#769: a job on another entity leaves this row's actions enabled", () => {
-      setupWithCapability({ write: true });
-      currentRunningJobs = [runningJob(["entity:ce-other"])];
-      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
-
-      expect(screen.getByLabelText("Edit field mapping")).not.toHaveAttribute(
-        "aria-disabled"
-      );
     });
 
     it("shows field mapping edit/delete buttons when write is enabled", () => {

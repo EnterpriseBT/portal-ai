@@ -1180,18 +1180,23 @@ describe("Job locks on entity, connector and column-definition writes (#769)", (
       connectorEntityId,
     });
 
-    for (const url of [
-      `/api/connector-entities/${connectorEntityId}/running-jobs`,
-      `/api/connector-instances/${connectorInstanceId}/running-jobs`,
-      `/api/column-definitions/${columnDefinitionId}/running-jobs`,
-    ]) {
+    // A summary carries only the scopes the URL names: an instance or column
+    // definition page learns that a job runs, not which entity it holds.
+    for (const [url, lockScopes] of [
+      [
+        `/api/connector-entities/${connectorEntityId}/running-jobs`,
+        [`entity:${connectorEntityId}`],
+      ],
+      [`/api/connector-instances/${connectorInstanceId}/running-jobs`, []],
+      [`/api/column-definitions/${columnDefinitionId}/running-jobs`, []],
+    ] as const) {
       const res = await auth(request(app).get(url));
       expect(res.status).toBe(200);
       expect(res.body.payload.runningJobs).toEqual([
         expect.objectContaining({
           id: jobId,
           type: "revalidation",
-          lockScopes: [`entity:${connectorEntityId}`],
+          lockScopes,
         }),
       ]);
     }

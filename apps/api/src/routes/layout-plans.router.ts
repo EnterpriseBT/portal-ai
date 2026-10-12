@@ -225,7 +225,15 @@ layoutPlansRouter.post(
         metadata: prepared.metadata,
       }).catch(async (err) => {
         // A job started between the check and the enqueue: undo what
-        // preparing wrote, so the connector keeps one current plan.
+        // preparing wrote, so the connector keeps one current plan. Only for
+        // that refusal, which rolls back before any job row exists; a failure
+        // to queue after commit leaves a job row that points at the plan.
+        if (
+          !(err instanceof ApiError) ||
+          err.code !== ApiCode.ENTITY_LOCKED_BY_JOB
+        ) {
+          throw err;
+        }
         await DbService.repository.connectorInstanceLayoutPlans
           .hardDelete(prepared.planId)
           .catch(() => undefined);
