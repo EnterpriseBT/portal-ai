@@ -107,19 +107,20 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
           )
         )
       );
-      for (const u of updates) {
-        // #757: a geometry the audit refuses (one sync already skipped,
-        // say) leaves that column as it is rather than failing the job.
-        const refused = await DbService.repository.wideTable.updatePartial(
-          connectorEntityId,
-          u.id,
-          u.normalizedData,
-          { isValid: u.isValid },
-          tx,
-          { onRejectedGeometry: "skip" }
-        );
-        geometryRejected += refused.length;
-      }
+      // #761: one batched wide-table write per batch, not one per record.
+      // #757: a geometry the audit refuses (one sync already skipped, say)
+      // leaves that column as it is rather than failing the job.
+      const refused = await DbService.repository.wideTable.updateMany(
+        connectorEntityId,
+        updates.map((u) => ({
+          entityRecordId: u.id,
+          normalizedData: u.normalizedData,
+          isValid: u.isValid,
+        })),
+        tx,
+        { onRejectedGeometry: "skip" }
+      );
+      geometryRejected += refused.length;
     });
 
     // Progress: 20-90 range spread across batches

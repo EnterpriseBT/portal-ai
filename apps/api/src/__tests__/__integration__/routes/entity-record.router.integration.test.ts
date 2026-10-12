@@ -3484,3 +3484,105 @@ describe("Entity Record Router — validity on manual writes (#760)", () => {
     expect(row.validationErrors).toBeNull();
   });
 });
+
+// #761: the per-record wide-table write bound jsonb and text[] values raw, so
+// a PATCH (which writes every mapped column since #760) or a revalidation on
+// an entity with an array, json or reference-array column failed.
+describe("Entity Record Router — array and json columns (#761)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  async function seedTypedEntity() {
+    const { organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+    const def = createConnectorDefinition({
+      capabilityFlags: { sync: true, read: true, write: true },
+    });
+    await db.insert(connectorDefinitions).values(def as never);
+    const inst = createConnectorInstance(def.id, organizationId, {
+      enabledCapabilityFlags: { write: true },
+    });
+    await db.insert(connectorInstances).values(inst as never);
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+    for (const [key, type] of [
+      ["name", "string"],
+      ["tags", "array"],
+      ["refs", "reference-array"],
+      ["meta", "json"],
+    ] as const) {
+      const colDef = createColumnDef(organizationId, key, type);
+      await db.insert(columnDefinitions).values(colDef as never);
+      await db
+        .insert(fieldMappings)
+        .values(
+          createFieldMapping(organizationId, entity.id, colDef.id, key) as never
+        );
+    }
+    wideTableStatementCache.clear();
+    await wideTableReconcilerService.reconcileEntity(
+      entity.id,
+      db as unknown as DbClient
+    );
+    return { connectorEntityId: entity.id };
+  }
+
+  const recordsUrl = (id: string) => `/api/connector-entities/${id}/records`;
+  const VALUES = {
+    name: "Ada",
+    tags: ["a", "b"],
+    refs: ["r1", "r2"],
+    meta: { k: 1 },
+  };
+
+  async function read(connectorEntityId: string, recordId: string) {
+    const got = await request(app)
+      .get(`${recordsUrl(connectorEntityId)}/${recordId}`)
+      .set("Authorization", "Bearer test-token")
+      .expect(200);
+    return got.body.payload.record.normalizedData as Record<string, unknown>;
+  }
+
+  it("a PATCH writes, and a revalidation keeps, every column", async () => {
+    const { connectorEntityId } = await seedTypedEntity();
+    const created = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: VALUES })
+      .expect(201);
+    const id = created.body.payload.record.id as string;
+
+    await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Grace", tags: ["c"] } })
+      .expect(200);
+    expect(await read(connectorEntityId, id)).toMatchObject({
+      ...VALUES,
+      name: "Grace",
+      tags: ["c"],
+    });
+
+    await revalidationProcessor({
+      data: { jobId: generateId(), type: "revalidation", connectorEntityId },
+      updateProgress: async () => undefined,
+    } as never);
+    expect(await read(connectorEntityId, id)).toMatchObject({
+      ...VALUES,
+      name: "Grace",
+      tags: ["c"],
+    });
+  });
+});

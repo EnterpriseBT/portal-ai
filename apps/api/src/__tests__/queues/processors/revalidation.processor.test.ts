@@ -13,7 +13,7 @@ const mockEntityRecordsUpdate =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockNormalizeWithMappings = jest.fn<(...args: unknown[]) => unknown>();
 
-const mockWideTableUpdatePartial = jest
+const mockWideTableUpdateMany = jest
   .fn<(...a: unknown[]) => Promise<unknown[]>>()
   .mockResolvedValue([]);
 const mockDbTransaction = jest
@@ -29,7 +29,7 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
         findByConnectorEntityId: mockEntityRecordsFindByConnectorEntityId,
         update: mockEntityRecordsUpdate,
       },
-      wideTable: { updatePartial: mockWideTableUpdatePartial },
+      wideTable: { updateMany: mockWideTableUpdateMany },
     },
   },
 }));
@@ -38,6 +38,16 @@ jest.unstable_mockModule("../../../services/normalization.service.js", () => ({
   NormalizationService: {
     normalizeWithMappings: mockNormalizeWithMappings,
   },
+}));
+
+const mockLogger = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+};
+jest.unstable_mockModule("../../../utils/logger.util.js", () => ({
+  createLogger: () => mockLogger,
 }));
 
 jest.unstable_mockModule("../../../db/schema/index.js", () => ({
@@ -172,33 +182,62 @@ describe("revalidationProcessor", () => {
     );
   });
 
-  // #757: updatePartial throws on a refused geometry by default; a geometry
-  // the sync already refused must not fail every later revalidation.
-  it("skips a refused geometry instead of failing the job", async () => {
+  // #757: the wide-table write throws on a refused geometry by default; a
+  // geometry the sync already refused must not fail every later revalidation.
+  it("skips a refused geometry instead of failing the job, and logs the count", async () => {
     mockFieldMappingsFindMany.mockResolvedValue([]);
     mockEntityRecordsFindByConnectorEntityId.mockResolvedValue([
       record("r-1", { geom: "" }),
+      record("r-2", { geom: "" }),
     ]);
     mockNormalizeWithMappings.mockReturnValue({
       normalizedData: { geom: "" },
       validationErrors: null,
       isValid: true,
     });
-    mockWideTableUpdatePartial.mockResolvedValueOnce([
+    mockWideTableUpdateMany.mockResolvedValueOnce([
       { sourceId: "r-1", code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["geom"] },
+      { sourceId: "r-2", code: "GEOMETRY_INVALID_ON_IMPORT", fields: ["geom"] },
     ]);
 
     const result = await revalidationProcessor(createMockBullJob());
 
-    expect(mockWideTableUpdatePartial).toHaveBeenCalledWith(
+    expect(mockWideTableUpdateMany).toHaveBeenCalledWith(
       "ce-1",
-      "r-1",
-      { geom: "" },
-      { isValid: true },
+      [
+        { entityRecordId: "r-1", normalizedData: { geom: "" }, isValid: true },
+        { entityRecordId: "r-2", normalizedData: { geom: "" }, isValid: true },
+      ],
       "mock-tx",
       { onRejectedGeometry: "skip" }
     );
-    expect(result).toEqual(expect.objectContaining({ total: 1, valid: 1 }));
+    expect(result).toEqual(expect.objectContaining({ total: 2, valid: 2 }));
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ geometryRejected: 2 }),
+      expect.any(String)
+    );
+  });
+
+  // #761: one batched wide-table write per batch, not one per record.
+  it("writes the wide table once per batch of 100", async () => {
+    mockFieldMappingsFindMany.mockResolvedValue([]);
+    mockEntityRecordsFindByConnectorEntityId.mockResolvedValue(
+      Array.from({ length: 250 }, (_, i) => record(`r-${i}`))
+    );
+    mockNormalizeWithMappings.mockReturnValue({
+      normalizedData: { name: "Alice" },
+      validationErrors: null,
+      isValid: true,
+    });
+
+    await revalidationProcessor(createMockBullJob());
+
+    expect(mockWideTableUpdateMany).toHaveBeenCalledTimes(3);
+    expect(
+      mockWideTableUpdateMany.mock.calls.map((c) => (c[1] as unknown[]).length)
+    ).toEqual([100, 100, 50]);
+    expect(mockDbTransaction).toHaveBeenCalledTimes(3);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 
   it("reports progress at expected intervals", async () => {

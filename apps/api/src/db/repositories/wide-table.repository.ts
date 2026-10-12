@@ -45,6 +45,14 @@ export interface WideTableUpsertResult {
   rejected: WideTableRejection[];
 }
 
+/** One row of a `updateMany` call (#761): the keys to write, by normalizedKey. */
+export interface WidePartialUpdate {
+  entityRecordId: string;
+  normalizedData: Record<string, unknown>;
+  syncedAt?: number;
+  isValid?: boolean;
+}
+
 /**
  * One row the geometry audit refused (#316). `code` is the refusal's
  * `ApiCode`, also the prefix of `reason`; `fields` names the geometry
@@ -73,6 +81,85 @@ function geometryWriteExpr(row: Record<string, unknown>, col: string): SQL {
   return srid === 4326
     ? sql`ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${json}), 4326))`
     : sql`ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(${json}), ${srid}), 4326))`;
+}
+
+/**
+ * One wide-table cell as a SQL value, by the column's Postgres type. Shared
+ * by `upsertMany` and `updateMany` so both write paths encode a value the
+ * same way (#761: the per-record update bound jsonb and text[] values raw,
+ * and Postgres refused them). A geometry cell must come from an audited row
+ * (`auditGeometry`), which carries the shape-normalized GeoJSON and its SRID.
+ */
+function wideValueExpr(
+  row: Record<string, unknown>,
+  col: string,
+  pgType: string
+): SQL {
+  const v = row[col];
+  const value = v === undefined ? null : v;
+  // postgres-js doesn't auto-serialize JS arrays as Postgres
+  // array literals when bound as a single parameter. Build an
+  // ARRAY[...]-style expression so each element binds as its
+  // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`). Date
+  // items go through `toISOString()` rather than `String()`
+  // so the bound array elements are locale-independent
+  // ISO 8601 strings (Date.toString() is locale-aware and
+  // reads garbage in non-UTC environments).
+  if (pgType === "text[]") {
+    if (value === null || value === undefined) {
+      return sql`NULL::text[]`;
+    }
+    if (!Array.isArray(value) || value.length === 0) {
+      return sql`ARRAY[]::text[]`;
+    }
+    const items = sql.join(
+      value.map(
+        (item) =>
+          sql`${item instanceof Date ? item.toISOString() : String(item)}`
+      ),
+      sql`, `
+    );
+    return sql`ARRAY[${items}]::text[]`;
+  }
+  if (pgType === "jsonb") {
+    // The bound parameter goes over the wire as text and is
+    // then cast to `jsonb`, so the text must be valid JSON.
+    // A bare JS string like `"Language"` would bind as
+    // `Language` (no quotes) and the cast fails with
+    // `invalid input syntax for type json | Token "Language" is invalid`.
+    // `JSON.stringify` produces the right encoding for every
+    // JS value — strings → quoted strings, arrays/objects →
+    // structural JSON, numbers/booleans → as-is, Dates →
+    // ISO 8601 string (via Date.toJSON).
+    if (value === null || value === undefined) {
+      return sql`NULL::jsonb`;
+    }
+    return sql`${JSON.stringify(value)}::jsonb`;
+  }
+  if (pgType.startsWith("geometry")) {
+    // #316: `value` is already shape-normalized GeoJSON (or null for an
+    // absent geometry) — auditGeometry ran upstream. Rejected rows
+    // (unparseable or unknown-SRID) never reach here.
+    if (value === null || value === undefined) {
+      return sql`NULL`;
+    }
+    return geometryWriteExpr(row, col);
+  }
+  // Default path covers `text`, `numeric`, `boolean`, `date`,
+  // and `timestamptz`. Pre-coerce Date instances to their ISO
+  // string form so postgres-js's wire encoder never ends up
+  // calling `Buffer.byteLength` on a Date
+  // (`ERR_INVALID_ARG_TYPE: Received an instance of Date`,
+  // observed during sync of a Google Sheets connector whose
+  // date-formatted cells flow through to typed columns).
+  // Postgres implicitly casts ISO strings to date / timestamptz
+  // / text columns, so the coercion is loss-free for the
+  // columns we currently support; numeric / boolean columns
+  // receiving a Date would have failed downstream anyway, so
+  // the change only affects the failure shape (server-side
+  // type error instead of a Node-side `ERR_INVALID_ARG_TYPE`).
+  const bound = value instanceof Date ? value.toISOString() : value;
+  return sql`${bound}`;
 }
 
 /**
@@ -337,74 +424,9 @@ export class WideTableRepository {
     for (let i = 0; i < rows.length; i += WIDE_TABLE_CHUNK_SIZE) {
       const chunk = rows.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
       const tuples = chunk.map((row) => {
-        const valueExprs = colsInOrder.map((col) => {
-          const v = row[col];
-          const value = v === undefined ? null : v;
-          const pgType = pgTypeByColumn.get(col) ?? "text";
-          // postgres-js doesn't auto-serialize JS arrays as Postgres
-          // array literals when bound as a single parameter. Build an
-          // ARRAY[...]-style expression so each element binds as its
-          // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`). Date
-          // items go through `toISOString()` rather than `String()`
-          // so the bound array elements are locale-independent
-          // ISO 8601 strings (Date.toString() is locale-aware and
-          // reads garbage in non-UTC environments).
-          if (pgType === "text[]") {
-            if (value === null || value === undefined) {
-              return sql`NULL::text[]`;
-            }
-            if (!Array.isArray(value) || value.length === 0) {
-              return sql`ARRAY[]::text[]`;
-            }
-            const items = sql.join(
-              value.map(
-                (item) =>
-                  sql`${item instanceof Date ? item.toISOString() : String(item)}`
-              ),
-              sql`, `
-            );
-            return sql`ARRAY[${items}]::text[]`;
-          }
-          if (pgType === "jsonb") {
-            // The bound parameter goes over the wire as text and is
-            // then cast to `jsonb`, so the text must be valid JSON.
-            // A bare JS string like `"Language"` would bind as
-            // `Language` (no quotes) and the cast fails with
-            // `invalid input syntax for type json | Token "Language" is invalid`.
-            // `JSON.stringify` produces the right encoding for every
-            // JS value — strings → quoted strings, arrays/objects →
-            // structural JSON, numbers/booleans → as-is, Dates →
-            // ISO 8601 string (via Date.toJSON).
-            if (value === null || value === undefined) {
-              return sql`NULL::jsonb`;
-            }
-            return sql`${JSON.stringify(value)}::jsonb`;
-          }
-          if (pgType.startsWith("geometry")) {
-            // #316: `value` is already shape-normalized GeoJSON (or null for an
-            // absent geometry) — auditGeometry ran upstream. Rejected rows
-            // (unparseable or unknown-SRID) never reach here.
-            if (value === null || value === undefined) {
-              return sql`NULL`;
-            }
-            return geometryWriteExpr(row, col);
-          }
-          // Default path covers `text`, `numeric`, `boolean`, `date`,
-          // and `timestamptz`. Pre-coerce Date instances to their ISO
-          // string form so postgres-js's wire encoder never ends up
-          // calling `Buffer.byteLength` on a Date
-          // (`ERR_INVALID_ARG_TYPE: Received an instance of Date`,
-          // observed during sync of a Google Sheets connector whose
-          // date-formatted cells flow through to typed columns).
-          // Postgres implicitly casts ISO strings to date / timestamptz
-          // / text columns, so the coercion is loss-free for the
-          // columns we currently support; numeric / boolean columns
-          // receiving a Date would have failed downstream anyway, so
-          // the change only affects the failure shape (server-side
-          // type error instead of a Node-side `ERR_INVALID_ARG_TYPE`).
-          const bound = value instanceof Date ? value.toISOString() : value;
-          return sql`${bound}`;
-        });
+        const valueExprs = colsInOrder.map((col) =>
+          wideValueExpr(row, col, pgTypeByColumn.get(col) ?? "text")
+        );
         return sql`(${sql.join(valueExprs, sql`, `)})`;
       });
 
@@ -565,25 +587,15 @@ export class WideTableRepository {
   }
 
   /**
-   * Partial update of a single wide-table row. Only the supplied
-   * `normalizedKey` entries are written; columns not in the patch
-   * retain their previous values. Use this from the REST PATCH path
-   * where the user is updating a few keys, not replacing the whole
-   * row (which is `upsertMany`'s semantics).
+   * Partial update of a single wide-table row: `updateMany` with one row.
+   * Only the supplied `normalizedKey` entries are written; columns not in
+   * the patch keep their values. Use this from the REST PATCH path, where the
+   * user updates a few keys rather than replacing the whole row (which is
+   * `upsertMany`'s semantics).
    *
-   * Metadata columns (`synced_at`, `is_valid`) may also be supplied
-   * via `metadataPatch` — these are typed differently from the
-   * normalizedData keys and don't go through the cache lookup.
-   *
-   * Silently no-ops if `normalizedDataPatch` is empty and
-   * `metadataPatch` is unset.
-   *
-   * A geometry value that fails the audit (#757), by default, throws a 400
-   * (`GEOMETRY_INVALID_ON_IMPORT` / `GIS_SRID_UNSUPPORTED`) and writes
-   * nothing: a user or agent is there to fix it. A background caller passes
-   * `onRejectedGeometry: "skip"` instead (as sync does with `upsertMany`):
-   * the row's geometry columns keep their values, the rest of the patch is
-   * written, and the refusal is returned for the caller to report.
+   * Metadata columns (`synced_at`, `is_valid`) may also be supplied via
+   * `metadataPatch`. A geometry the audit refuses (#757) is handled as
+   * `updateMany` describes.
    */
   async updatePartial(
     connectorEntityId: string,
@@ -593,73 +605,144 @@ export class WideTableRepository {
     client: DbClient = db,
     opts: { onRejectedGeometry?: "throw" | "skip" } = {}
   ): Promise<WideTableRejection[]> {
-    const stmt = await this.statementCache.get(connectorEntityId, client);
-    const setFragments: SQL[] = [];
-
-    let cols = Object.entries(normalizedDataPatch).flatMap(
-      ([normalizedKey, value]) => {
-        // Unknown key (no field mapping) — drop silently.
-        const col = stmt.columns.find((c) => c.normalizedKey === normalizedKey);
-        return col ? [{ col, value }] : [];
-      }
+    return this.updateMany(
+      connectorEntityId,
+      [
+        {
+          entityRecordId,
+          normalizedData: normalizedDataPatch,
+          ...metadataPatch,
+        },
+      ],
+      client,
+      opts
     );
+  }
+
+  /**
+   * Partial update of many wide-table rows (#761). Each row writes only the
+   * keys it carries (unknown keys are dropped), plus `synced_at` / `is_valid`
+   * when given. Rows are chunked at `WIDE_TABLE_CHUNK_SIZE`; a chunk costs one
+   * geometry audit and one `UPDATE … FROM (VALUES …)` per distinct set of
+   * written columns, instead of a round trip or two per row.
+   *
+   * A geometry value that fails the audit (#757), by default, throws a 400
+   * (`GEOMETRY_INVALID_ON_IMPORT` / `GIS_SRID_UNSUPPORTED`) before anything
+   * in the call is written: a user or agent is there to fix it. A background
+   * caller passes `onRejectedGeometry: "skip"` instead (as sync does with
+   * `upsertMany`): that row's geometry columns keep their values, the rest of
+   * its patch is written, and the refusal is returned for the caller to
+   * report.
+   */
+  async updateMany(
+    connectorEntityId: string,
+    rows: ReadonlyArray<WidePartialUpdate>,
+    client: DbClient = db,
+    opts: { onRejectedGeometry?: "throw" | "skip" } = {}
+  ): Promise<WideTableRejection[]> {
+    if (rows.length === 0) return [];
+    const stmt = await this.statementCache.get(connectorEntityId, client);
+    const columnByKey = new Map(stmt.columns.map((c) => [c.normalizedKey, c]));
+    const pgTypeByColumn = new Map<string, string>([
+      ["synced_at", "bigint"],
+      ["is_valid", "boolean"],
+      ...stmt.columns.map((c) => [c.columnName, c.pgType] as const),
+    ]);
+    const isGeometry = (columnName: string) =>
+      pgTypeByColumn.get(columnName)?.startsWith("geometry") ?? false;
+
+    // Each row as wide-table cells: column name → value.
+    const prepared = rows.map((r) => {
+      const cells: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(r.normalizedData)) {
+        const col = columnByKey.get(key);
+        if (col) cells[col.columnName] = value;
+      }
+      if (r.syncedAt !== undefined) cells["synced_at"] = r.syncedAt;
+      if (r.isValid !== undefined) cells["is_valid"] = r.isValid;
+      return { entityRecordId: r.entityRecordId, cells };
+    });
 
     // #757: geometry gets the same fail-closed audit as `upsertMany` (#316),
-    // so a value PostGIS can't read is a 400 naming the field rather than a
-    // PG error, and an ArcGIS shape or non-4326 SRID is normalized the same
-    // way on both write paths. Nothing is written when the audit refuses.
-    let geometryCols = cols
-      .filter(
-        ({ col, value }) => col.pgType.startsWith("geometry") && value != null
-      )
-      .map(({ col }) => col.columnName);
-    let geometryRow: Record<string, unknown> = {};
-    let rejected: WideTableRejection[] = [];
-    if (geometryCols.length > 0) {
-      const raw: Record<string, unknown> = { source_id: entityRecordId };
-      for (const { col, value } of cols) raw[col.columnName] = value;
-      const prep = await this.auditGeometry(
-        [raw],
-        geometryCols,
-        client,
-        normalizedKeyByColumn(stmt.columns)
-      );
-      rejected = prep.rejected;
-      if (rejected.length > 0 && opts.onRejectedGeometry === "skip") {
-        const refused = geometryCols;
-        cols = cols.filter(({ col }) => !refused.includes(col.columnName));
-        geometryCols = [];
-      } else {
-        assertNoRejectedGeometry(prep);
-        geometryRow = prep.rows[0];
-      }
-    }
-
-    for (const { col, value } of cols) {
-      // Strip the alias when used in SET (column name only, not "w"."col").
-      const name = sql.raw(`"${col.columnName}"`);
-      if (geometryCols.includes(col.columnName)) {
-        setFragments.push(
-          sql`${name} = ${geometryWriteExpr(geometryRow, col.columnName)}`
+    // one audit per chunk. Every chunk is audited before any is written, so a
+    // refusal in "throw" mode leaves the whole call unwritten.
+    const geometryColumns = stmt.columns
+      .filter((c) => isGeometry(c.columnName))
+      .map((c) => c.columnName);
+    const rejected: WideTableRejection[] = [];
+    if (geometryColumns.length > 0) {
+      const keyByColumn = normalizedKeyByColumn(stmt.columns);
+      for (let i = 0; i < prepared.length; i += WIDE_TABLE_CHUNK_SIZE) {
+        const chunk = prepared
+          .slice(i, i + WIDE_TABLE_CHUNK_SIZE)
+          .filter((p) => geometryColumns.some((c) => p.cells[c] != null));
+        if (chunk.length === 0) continue;
+        const prep = await this.auditGeometry(
+          chunk.map((p) => ({ source_id: p.entityRecordId, ...p.cells })),
+          geometryColumns,
+          client,
+          keyByColumn
         );
-      } else {
-        setFragments.push(sql`${name} = ${value as never}`);
+        rejected.push(...prep.rejected);
+        // Audited cells carry the normalized GeoJSON and its SRID sidecar.
+        const audited = new Map(
+          prep.rows.map((row) => [row["source_id"] as string, row])
+        );
+        for (const p of chunk) {
+          const row = audited.get(p.entityRecordId);
+          if (row) {
+            const { source_id: _sourceId, ...cells } = row;
+            p.cells = cells;
+          } else {
+            // Refused: keep the row's geometry as it is ("skip" mode).
+            for (const c of geometryColumns) {
+              if (p.cells[c] != null) delete p.cells[c];
+            }
+          }
+        }
+      }
+      if (rejected.length > 0 && opts.onRejectedGeometry !== "skip") {
+        assertNoRejectedGeometry({ rejected }, { batch: rows.length > 1 });
       }
     }
-    if (metadataPatch.syncedAt !== undefined) {
-      setFragments.push(sql`"synced_at" = ${metadataPatch.syncedAt}`);
-    }
-    if (metadataPatch.isValid !== undefined) {
-      setFragments.push(sql`"is_valid" = ${metadataPatch.isValid}`);
-    }
 
-    if (setFragments.length === 0) return rejected;
-
-    const tableName = `"${this.tableName(connectorEntityId)}"`;
-    const setClause = sql.join(setFragments, sql`, `);
-    await (client as typeof db).execute(
-      sql`UPDATE ${sql.raw(tableName)} SET ${setClause} WHERE "entity_record_id" = ${entityRecordId}`
-    );
+    const tableName = sql.raw(`"${this.tableName(connectorEntityId)}"`);
+    const columnOrder = [
+      "synced_at",
+      "is_valid",
+      ...stmt.columns.map((c) => c.columnName),
+    ];
+    for (let i = 0; i < prepared.length; i += WIDE_TABLE_CHUNK_SIZE) {
+      // Rows that write the same columns share one statement.
+      const groups = new Map<
+        string,
+        { cols: string[]; rows: typeof prepared }
+      >();
+      for (const p of prepared.slice(i, i + WIDE_TABLE_CHUNK_SIZE)) {
+        const cols = columnOrder.filter((c) => c in p.cells);
+        if (cols.length === 0) continue;
+        const key = cols.join(",");
+        const group = groups.get(key) ?? { cols, rows: [] };
+        group.rows.push(p);
+        groups.set(key, group);
+      }
+      for (const { cols, rows: groupRows } of groups.values()) {
+        // A VALUES list has no target column to take types from, so every
+        // value is cast to its column's type.
+        const tuples = groupRows.map((p) => {
+          const values = cols.map((c) => {
+            const pgType = pgTypeByColumn.get(c) ?? "text";
+            return sql`CAST(${wideValueExpr(p.cells, c, pgType)} AS ${sql.raw(pgType)})`;
+          });
+          return sql`(${sql`${p.entityRecordId}`}, ${sql.join(values, sql`, `)})`;
+        });
+        const quoted = cols.map((c) => `"${c}"`);
+        const setClause = quoted.map((q) => `${q} = v.${q}`).join(", ");
+        await (client as typeof db).execute(
+          sql`UPDATE ${tableName} AS w SET ${sql.raw(setClause)} FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v("entity_record_id", ${sql.raw(quoted.join(", "))}) WHERE w."entity_record_id" = v."entity_record_id"`
+        );
+      }
+    }
     return rejected;
   }
 
