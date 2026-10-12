@@ -16,6 +16,12 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { and, eq } from "drizzle-orm";
+import {
+  jobLockScopes,
+  lockScopeKey,
+  type JobType,
+} from "@portalai/core/models";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -45,6 +51,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { RevalidationService } =
+  await import("../../../services/revalidation.service.js");
 
 const {
   connectorDefinitions,
@@ -219,6 +227,8 @@ function createActiveRevalidationJob(
     bullJobId: null,
     attempts: 1,
     maxAttempts: 3,
+    // #769: as enqueueExclusive writes it; the lock check reads this.
+    lockScopes: [`entity:${connectorEntityId}`],
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -376,7 +386,7 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
       .send({ normalizedData: { name: "Alice" } });
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("PATCH /:recordId returns 409 when revalidation active", async () => {
@@ -406,7 +416,7 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
       .send({ normalizedData: { name: "Bob" } });
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("DELETE /:recordId returns 409 when revalidation active", async () => {
@@ -435,7 +445,7 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("DELETE / (clear all) returns 409 when revalidation active", async () => {
@@ -453,7 +463,7 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("POST /import returns 409 when revalidation active", async () => {
@@ -481,7 +491,7 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
       });
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("allows mutations when no revalidation job is active", async () => {
@@ -550,7 +560,7 @@ describe("Revalidation — Field Mapping Mutation Guards", () => {
       .send({ sourceField: "new_name", columnDefinitionId });
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 
   it("DELETE /field-mappings/:id returns 409 when revalidation active", async () => {
@@ -567,7 +577,7 @@ describe("Revalidation — Field Mapping Mutation Guards", () => {
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe(ApiCode.REVALIDATION_ACTIVE);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
   });
 });
 
@@ -782,5 +792,256 @@ describe("Entity Record Router — isValid Filter", () => {
     expect(res.status).toBe(200);
     expect(res.body.payload.total).toBe(1);
     expect(res.body.payload.records[0].normalizedData.name).toBe("Alice");
+  });
+});
+
+// #769: one lock model. Any running job whose scope covers an entity refuses
+// writes to its records and field mappings, not only a revalidation.
+describe("Job locks on record and field-mapping writes (#769)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  const recordsUrl = (id: string) => `/api/connector-entities/${id}/records`;
+
+  /** A running job row with the scopes job creation would give it. */
+  async function seedJob(
+    organizationId: string,
+    type: JobType,
+    metadata: Record<string, unknown>,
+    status = "active"
+  ) {
+    const id = generateId();
+    await db.insert(jobs).values({
+      id,
+      organizationId,
+      type,
+      status,
+      progress: 0,
+      metadata,
+      attempts: 1,
+      maxAttempts: 3,
+      lockScopes: jobLockScopes(type, metadata).map(lockScopeKey),
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return id;
+  }
+
+  async function instanceOf(connectorEntityId: string) {
+    const [row] = await db
+      .select()
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, connectorEntityId));
+    return row!.connectorInstanceId;
+  }
+
+  const createRecord = (connectorEntityId: string) =>
+    request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Alice" } });
+
+  it("a sync on the connector refuses a record create, naming it", async () => {
+    const { organizationId, connectorEntityId } = await seedFullStack(db);
+    const jobId = await seedJob(organizationId, "connector_sync", {
+      connectorInstanceId: await instanceOf(connectorEntityId),
+    });
+
+    const res = await createRecord(connectorEntityId);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+    expect(res.body.message).toMatch(/^Sync is running on this connector/);
+    expect(res.body.details.runningJobs[0].id).toBe(jobId);
+  });
+
+  it("a bulk transform locks its source entity, not only its targets", async () => {
+    const { organizationId, connectorEntityId } = await seedFullStack(db);
+    await seedJob(organizationId, "bulk_transform", {
+      sourceConnectorEntityId: connectorEntityId,
+      targetConnectorEntityIds: ["some-other-entity"],
+    });
+
+    const res = await createRecord(connectorEntityId);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(
+      /^Bulk transform is running on this entity/
+    );
+  });
+
+  it("a bulk geocode refuses a field-mapping delete", async () => {
+    const { organizationId, connectorEntityId, fieldMappingId } =
+      await seedFullStack(db);
+    await seedJob(organizationId, "bulk_geocode", {
+      connectorEntityId,
+      targetConnectorEntityIds: [connectorEntityId],
+    });
+
+    const res = await request(app)
+      .delete(`/api/field-mappings/${fieldMappingId}`)
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+    const [mapping] = await db
+      .select()
+      .from(fieldMappings)
+      .where(eq(fieldMappings.id, fieldMappingId));
+    expect(mapping!.deleted).toBeNull();
+  });
+
+  it("a field-mapping create is refused while the entity is locked", async () => {
+    const { organizationId, connectorEntityId } = await seedFullStack(db);
+    await seedJob(organizationId, "revalidation", { connectorEntityId });
+    const colDef = createColumnDef(organizationId, "email", "string");
+    await db.insert(columnDefinitions).values(colDef as never);
+
+    const res = await request(app)
+      .post("/api/field-mappings")
+      .set("Authorization", "Bearer test-token")
+      .send({
+        connectorEntityId,
+        columnDefinitionId: colDef.id,
+        sourceField: "email",
+        normalizedKey: "email",
+      });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("every non-terminal status locks; once the job finishes the write goes through", async () => {
+    const { organizationId, connectorEntityId } = await seedFullStack(db);
+    for (const status of [
+      "pending",
+      "active",
+      "awaiting_confirmation",
+      "stalled",
+    ]) {
+      const id = await seedJob(
+        organizationId,
+        "revalidation",
+        { connectorEntityId },
+        status
+      );
+      expect((await createRecord(connectorEntityId)).status).toBe(409);
+      await db
+        .update(jobs)
+        .set({ status: "completed" } as never)
+        .where(eq(jobs.id, id));
+    }
+    expect((await createRecord(connectorEntityId)).status).toBe(201);
+  });
+
+  it("an import is refused even when none of its rows changed", async () => {
+    const { organizationId, connectorEntityId } = await seedFullStack(db);
+    const body = {
+      records: [
+        {
+          data: { name: "Alice" },
+          normalizedData: { name: "Alice" },
+          sourceId: "s1",
+          checksum: "c1",
+        },
+      ],
+    };
+    const first = await request(app)
+      .post(`${recordsUrl(connectorEntityId)}/import`)
+      .set("Authorization", "Bearer test-token")
+      .send(body);
+    expect(first.status).toBe(201);
+
+    await seedJob(organizationId, "revalidation", { connectorEntityId });
+    const again = await request(app)
+      .post(`${recordsUrl(connectorEntityId)}/import`)
+      .set("Authorization", "Bearer test-token")
+      .send(body);
+
+    expect(again.status).toBe(409);
+  });
+
+  it("Re-validate All is refused during a bulk transform on the entity", async () => {
+    const { organizationId, connectorEntityId } = await seedFullStack(db);
+    await seedJob(organizationId, "bulk_transform", {
+      sourceConnectorEntityId: connectorEntityId,
+      targetConnectorEntityIds: [connectorEntityId],
+    });
+
+    const res = await request(app)
+      .post(`${recordsUrl(connectorEntityId)}/revalidate`)
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(409);
+    const revalidations = await db
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, "revalidation"),
+          eq(jobs.organizationId, organizationId)
+        )
+      );
+    expect(revalidations).toHaveLength(0);
+  });
+
+  it("a field-mapping change that affects validity queues a revalidation after it commits", async () => {
+    const { organizationId, fieldMappingId, columnDefinitionId } =
+      await seedFullStack(db);
+
+    const res = await request(app)
+      .patch(`/api/field-mappings/${fieldMappingId}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ sourceField: "name", columnDefinitionId, required: true });
+
+    expect(res.status).toBe(200);
+    const [queued] = await db
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, "revalidation"),
+          eq(jobs.organizationId, organizationId)
+        )
+      );
+    expect(queued?.lockScopes).toEqual([
+      `entity:${res.body.payload.fieldMapping.connectorEntityId}`,
+    ]);
+  });
+
+  it("the post-edit revalidation logs, not throws, when a job holds the entity by then", async () => {
+    const { organizationId, connectorEntityId, userId } =
+      await seedFullStack(db);
+    await seedJob(organizationId, "bulk_geocode", {
+      connectorEntityId,
+      targetConnectorEntityIds: [connectorEntityId],
+    });
+
+    await expect(
+      RevalidationService.enqueueAfterEdit(
+        connectorEntityId,
+        organizationId,
+        userId
+      )
+    ).resolves.toBeUndefined();
+    const revalidations = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, "revalidation"));
+    expect(revalidations).toHaveLength(0);
   });
 });

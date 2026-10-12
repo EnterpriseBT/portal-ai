@@ -14,6 +14,11 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import type { FilterExpression } from "@portalai/core/contracts";
+import {
+  jobLockScopes,
+  lockScopeKey,
+  type JobType,
+} from "@portalai/core/models";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
@@ -2737,6 +2742,8 @@ describe("Entity Record Router — Clear-all enqueue (#453)", () => {
       attempts: 1,
       maxAttempts: 3,
       lostExecutions: 0,
+      // #769: the scopes the lock check reads, as job creation writes them.
+      lockScopes: jobLockScopes(type as JobType, metadata).map(lockScopeKey),
       created: now,
       createdBy: "SYSTEM_TEST",
       updated: null,
