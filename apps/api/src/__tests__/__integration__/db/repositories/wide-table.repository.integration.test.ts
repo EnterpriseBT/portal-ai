@@ -1020,7 +1020,7 @@ describe("WideTableRepository integration tests", () => {
 
   // ── #761 — batch partial update ─────────────────────────────────
 
-  describe("updateMany (#761)", () => {
+  describe("typed columns: updateMany (#761), upsertMany (#766)", () => {
     const TYPED = [
       ["s", "string"],
       ["n", "number"],
@@ -1318,22 +1318,104 @@ describe("WideTableRepository integration tests", () => {
       }
     });
 
-    it("splits a chunk whose text[] cells would pass Postgres's bind limit", async () => {
+    it("#766: updateMany writes text[] cells whose elements would pass Postgres's bind limit", async () => {
       const { typedId, col, seedRows, read } = await seedTypedEntity();
       try {
         // 500 rows × 150 elements = 75,000 parameters in one statement.
         const ids = await seedRows(500);
-        const refs = Array.from({ length: 150 }, (_, i) => `ref-${i}`);
+        const refsOf = (id: string) =>
+          Array.from({ length: 150 }, (_, i) => `${id}-${i}`);
         await repo.updateMany(
           typedId,
-          ids.map((id) => ({ entityRecordId: id, normalizedData: { refs } })),
+          ids.map((id) => ({
+            entityRecordId: id,
+            normalizedData: { refs: refsOf(id) },
+          })),
           db
         );
 
         const rows = await read();
         for (const id of ids) {
-          expect(rows.get(id)![col.get("refs")!]).toHaveLength(150);
+          expect(rows.get(id)![col.get("refs")!]).toEqual(refsOf(id));
         }
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    }, 60_000);
+
+    it("#766: upsertMany writes text[] cells whose elements would pass Postgres's bind limit", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        // 500 rows × (5 metadata + 150 elements) = 77,500 parameters.
+        const ids = await seedRows(500);
+        const refsOf = (id: string) =>
+          Array.from({ length: 150 }, (_, i) => `${id}-${i}`);
+        await repo.upsertMany(
+          typedId,
+          ids.map((id) => ({
+            entity_record_id: id,
+            organization_id: orgId,
+            synced_at: 2,
+            is_valid: true,
+            source_id: `typed-${id}`,
+            [col.get("refs")!]: refsOf(id),
+          })),
+          db
+        );
+
+        const rows = await read();
+        for (const id of ids) {
+          expect(rows.get(id)![col.get("refs")!]).toEqual(refsOf(id));
+        }
+      } finally {
+        await reconciler.dropTable(typedId, db).catch(() => undefined);
+      }
+    }, 60_000);
+
+    it("#766: a text[] cell keeps every element exactly, in order", async () => {
+      const { typedId, col, seedRows, read } = await seedTypedEntity();
+      try {
+        const [viaUpsert, viaUpdate, huge] = await seedRows(3);
+        const awkward = [
+          "plain",
+          'with "quotes"',
+          "comma, inside",
+          "{braces}",
+          "back\\slash",
+          "naïve ✓",
+          "",
+          "null",
+          "  spaced  ",
+        ];
+        await repo.upsertMany(
+          typedId,
+          [
+            {
+              entity_record_id: viaUpsert,
+              organization_id: orgId,
+              synced_at: 1,
+              is_valid: true,
+              source_id: `typed-${viaUpsert}`,
+              [col.get("refs")!]: awkward,
+            },
+          ],
+          db
+        );
+        // One row past the old per-element limit on its own.
+        const many = Array.from({ length: 70_000 }, (_, i) => `r${i}`);
+        await repo.updateMany(
+          typedId,
+          [
+            { entityRecordId: viaUpdate, normalizedData: { refs: awkward } },
+            { entityRecordId: huge, normalizedData: { refs: many } },
+          ],
+          db
+        );
+
+        const rows = await read();
+        expect(rows.get(viaUpsert)![col.get("refs")!]).toEqual(awkward);
+        expect(rows.get(viaUpdate)![col.get("refs")!]).toEqual(awkward);
+        expect(rows.get(huge)![col.get("refs")!]).toEqual(many);
       } finally {
         await reconciler.dropTable(typedId, db).catch(() => undefined);
       }
