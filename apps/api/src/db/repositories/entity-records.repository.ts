@@ -245,6 +245,11 @@ export class EntityRecordsRepository extends Repository<
    *
    * Like `update()`, a soft-deleted record is left alone. Unlike it, nothing
    * is returned but the count, so no row (and no `data` JSONB) comes back.
+   *
+   * `is_valid` is part of the record-count cache's fingerprint, and this
+   * method doesn't know the rows' entities: the caller invalidates
+   * `EntityRecordCountCache` once it's done, as revalidation does at the end
+   * of its run (once, rather than once per batch).
    */
   async bulkUpdateValidity(
     rows: ReadonlyArray<{
@@ -262,10 +267,13 @@ export class EntityRecordsRepository extends Repository<
           (r) =>
             sql`(${r.id}, CAST(${r.validationErrors === null ? null : JSON.stringify(r.validationErrors)} AS jsonb), CAST(${r.isValid} AS boolean))`
         );
+      // Names come from the table definition, so a rename fails type-check
+      // rather than a running job. SET targets take the bare column name.
+      const col = (c: { name: string }) => sql.identifier(c.name);
       const result = await (client as typeof db).execute(
-        sql`UPDATE entity_records AS r SET validation_errors = v.ve, is_valid = v.iv FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v(id, ve, iv) WHERE r.id = v.id AND r.deleted IS NULL`
+        sql`UPDATE ${entityRecords} SET ${col(entityRecords.validationErrors)} = v.ve, ${col(entityRecords.isValid)} = v.iv FROM (VALUES ${sql.join(tuples, sql`, `)}) AS v(id, ve, iv) WHERE ${entityRecords.id} = v.id AND ${entityRecords.deleted} IS NULL`
       );
-      total += (result as unknown as { count: number }).count;
+      total += Number(result.count);
     }
     return total;
   }
