@@ -14,7 +14,6 @@ import {
   assertNoFramingAliases,
   parsePortalSqlExpression,
 } from "../services/portal-sql-parse.util.js";
-import { JobsService } from "../services/jobs.service.js";
 import { ToolService } from "../services/tools.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import {
@@ -350,9 +349,13 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           // of write targets, not just `primaryTargetId`. A locked
           // entity anywhere in the set surfaces in the 409 details so
           // the agent (and UI) see every blocked target at once.
-          await JobLockService.assertConnectorEntityUnlocked(
-            targetConnectorEntityIds,
-            organizationId
+          // #769: a pre-check before the source scan; the enqueue below
+          // re-checks atomically, and also locks the source entity.
+          await JobLockService.assertNoneRunning(
+            [...targetConnectorEntityIds, parsed.sourceConnectorEntityId].map(
+              (id) => ({ kind: "connectorEntity" as const, id })
+            ),
+            { organizationId }
           );
 
           // Step 2a — validate keyField exists on the source's wide
@@ -723,7 +726,7 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           // processor (organizationId + portalId so the worker hook
           // in slice 3 can notify the right portal on terminal).
           const batchSize = parsed.batchSize ?? 1_000;
-          const job = await JobsService.create(userId, {
+          const job = await JobLockService.enqueueExclusive(userId, {
             organizationId,
             type: "bulk_transform",
             metadata: {

@@ -4,6 +4,7 @@ import {
   PermissionResourceTypeSchema,
   type PermissionResourceType,
 } from "./permission.model.js";
+import { JobTypeEnum, LockTargetKindSchema } from "./job.model.js";
 
 /**
  * Tool capability metadata — the single declared source from which the
@@ -318,6 +319,29 @@ export function customToolCapabilityError(
  *   bulk scan is admin-only. One check, zero per-row work (O(1) in permission
  *   queries): a member cannot bulk-mutate an entity they don't wholly own.
  */
+/**
+ * #769: what a write tool changes, for the job lock. The lock gate refuses
+ * the call (a typed `ENTITY_LOCKED_BY_JOB` result) while a running job holds
+ * any item's target, and holds the scopes shared for the whole call.
+ *
+ * - `target` — each item of `itemsArg` names a target by `idField`: an entity
+ *   id for `record` / `fieldMapping` (the item's own entity), an object id
+ *   otherwise. `resolve: "fieldMappingEntity"` reads the entity from a field
+ *   mapping id first.
+ * - `enqueues` — the tool starts this scoped job through
+ *   `JobLockService.enqueueExclusive`, which refuses it itself.
+ */
+export const ToolLockSchema = z.union([
+  z.object({
+    target: LockTargetKindSchema,
+    itemsArg: z.string(),
+    idField: z.string(),
+    resolve: z.literal("fieldMappingEntity").optional(),
+  }),
+  z.object({ enqueues: JobTypeEnum }),
+]);
+export type ToolLock = z.infer<typeof ToolLockSchema>;
+
 export const ToolAuthorizationSchema = z
   .object({
     verb: z.enum(["write", "delete"]),
@@ -329,6 +353,8 @@ export const ToolAuthorizationSchema = z
     itemsArg: z.string().optional(),
     /** `batch`: the id key within each item. */
     idField: z.string().optional(),
+    /** #769: what the job lock checks for this tool. */
+    lock: ToolLockSchema,
   })
   .refine(
     (a) =>

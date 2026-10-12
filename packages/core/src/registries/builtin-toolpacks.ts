@@ -1748,6 +1748,7 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     verb: "write",
     resourceType: "entity_record",
     mode: "create",
+    lock: { target: "record", itemsArg: "items", idField: "connectorEntityId" },
   },
   entity_record_update: {
     verb: "write",
@@ -1755,6 +1756,7 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     mode: "batch",
     itemsArg: "items",
     idField: "entityRecordId",
+    lock: { target: "record", itemsArg: "items", idField: "connectorEntityId" },
   },
   entity_record_delete: {
     verb: "delete",
@@ -1762,11 +1764,17 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     mode: "batch",
     itemsArg: "items",
     idField: "entityRecordId",
+    lock: { target: "record", itemsArg: "items", idField: "connectorEntityId" },
   },
   connector_entity_create: {
     verb: "write",
     resourceType: "entity",
     mode: "create",
+    lock: {
+      target: "connectorInstance",
+      itemsArg: "items",
+      idField: "connectorInstanceId",
+    },
   },
   connector_entity_update: {
     verb: "write",
@@ -1774,6 +1782,11 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     mode: "batch",
     itemsArg: "items",
     idField: "connectorEntityId",
+    lock: {
+      target: "connectorEntity",
+      itemsArg: "items",
+      idField: "connectorEntityId",
+    },
   },
   connector_entity_delete: {
     verb: "delete",
@@ -1781,11 +1794,21 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     mode: "batch",
     itemsArg: "items",
     idField: "connectorEntityId",
+    lock: {
+      target: "connectorEntity",
+      itemsArg: "items",
+      idField: "connectorEntityId",
+    },
   },
   field_mapping_create: {
     verb: "write",
     resourceType: "field_mapping",
     mode: "create",
+    lock: {
+      target: "fieldMapping",
+      itemsArg: "items",
+      idField: "connectorEntityId",
+    },
   },
   field_mapping_update: {
     verb: "write",
@@ -1793,6 +1816,12 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     mode: "batch",
     itemsArg: "items",
     idField: "fieldMappingId",
+    lock: {
+      target: "fieldMapping",
+      itemsArg: "items",
+      idField: "fieldMappingId",
+      resolve: "fieldMappingEntity",
+    },
   },
   field_mapping_delete: {
     verb: "delete",
@@ -1800,6 +1829,12 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     mode: "batch",
     itemsArg: "items",
     idField: "fieldMappingId",
+    lock: {
+      target: "fieldMapping",
+      itemsArg: "items",
+      idField: "fieldMappingId",
+      resolve: "fieldMappingEntity",
+    },
   },
   // Unbounded scans over an entity — self-scope via visibilityPredicate (slice
   // 2b); the gate does not pre-flight them.
@@ -1807,11 +1842,13 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     verb: "write",
     resourceType: "entity_record",
     mode: "bulk",
+    lock: { enqueues: "bulk_geocode" },
   },
   transform_entity_records: {
     verb: "write",
     resourceType: "entity_record",
     mode: "bulk",
+    lock: { enqueues: "bulk_transform" },
   },
 };
 

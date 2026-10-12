@@ -792,6 +792,20 @@ export interface LockScope {
   id: string;
 }
 
+/**
+ * The kinds of object a write names for the lock check (#769): records and
+ * field mappings by their entity; entities, connectors and column
+ * definitions by their own id. The API's `LockTarget` is built on these.
+ */
+export const LockTargetKindSchema = z.enum([
+  "record",
+  "fieldMapping",
+  "connectorEntity",
+  "connectorInstance",
+  "columnDefinition",
+]);
+export type LockTargetKind = z.infer<typeof LockTargetKindSchema>;
+
 /** `entity:<id>` / `instance:<id>`: the stored and advisory-locked form. */
 export function lockScopeKey(scope: LockScope): string {
   return `${scope.kind === "connectorEntity" ? "entity" : "instance"}:${scope.id}`;

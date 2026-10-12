@@ -22,6 +22,7 @@ import {
   jobLockScopes,
   lockScopeKey,
   type JobType,
+  type LockTargetKind,
 } from "@portalai/core/models";
 import type { JobCreateRequestBody } from "@portalai/core/contracts";
 
@@ -79,6 +80,16 @@ export type LockTarget =
   | { kind: "connectorEntity"; id: string }
   | { kind: "connectorInstance"; id: string }
   | { kind: "columnDefinition"; id: string };
+
+// The kinds stay in step with core's LockTargetKindSchema, which the tool
+// registry's `lock.target` uses.
+type _SameKinds = [LockTarget["kind"]] extends [LockTargetKind]
+  ? [LockTargetKind] extends [LockTarget["kind"]]
+    ? true
+    : never
+  : never;
+const _sameKinds: _SameKinds = true;
+void _sameKinds;
 
 const entityKey = (id: string) => lockScopeKey({ kind: "connectorEntity", id });
 const instanceKey = (id: string) =>

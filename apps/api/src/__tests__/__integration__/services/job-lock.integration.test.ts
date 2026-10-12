@@ -10,9 +10,14 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 
+import { TOOL_AUTHORIZATION } from "@portalai/core/registries";
+
 import * as schema from "../../../db/schema/index.js";
 import { JobLockService } from "../../../services/job-lock.service.js";
 import { JobsService } from "../../../services/jobs.service.js";
+import { wrapWithLockGate } from "../../../services/lock-gate.service.js";
+import { EntityRecordUpdateTool } from "../../../tools/entity-record-update.tool.js";
+import { FieldMappingUpdateTool } from "../../../tools/field-mapping-update.tool.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
@@ -34,6 +39,7 @@ describe("JobLockService (#769)", () => {
   // Two instances: I1 holds E1 and E2, I2 holds E3. Column definition C is
   // mapped on E1 and E3.
   let I1: string, I2: string, E1: string, E2: string, E3: string, C: string;
+  let M3: string;
 
   const now = () => Date.now();
   const base = () => ({
@@ -80,8 +86,9 @@ describe("JobLockService (#769)", () => {
     connectorEntityId: string,
     columnDefinitionId: string
   ) {
+    const id = generateId();
     await db.insert(schema.fieldMappings).values({
-      id: generateId(),
+      id,
       organizationId: orgId,
       connectorEntityId,
       columnDefinitionId,
@@ -96,6 +103,7 @@ describe("JobLockService (#769)", () => {
       refEntityKey: null,
       ...base(),
     } as never);
+    return id;
   }
 
   /** A job row as `enqueueExclusive` would leave it, without queueing it. */
@@ -165,7 +173,7 @@ describe("JobLockService (#769)", () => {
       ...base(),
     } as never);
     await mapping(E1, C);
-    await mapping(E3, C);
+    M3 = await mapping(E3, C);
 
     jest
       .spyOn(JobsService, "dispatch")
@@ -481,6 +489,68 @@ describe("JobLockService (#769)", () => {
           onSameJob: "reuse",
         })
       ).rejects.toMatchObject({ status: 409 });
+    });
+  });
+
+  describe("tool lock gate", () => {
+    const run = async (
+      tools: Record<string, { execute?: unknown }>,
+      name: string,
+      input: unknown
+    ) =>
+      (tools[name].execute as (i: unknown, o: unknown) => Promise<unknown>)(
+        input,
+        {
+          toolCallId: "t",
+          messages: [],
+          abortSignal: new AbortController().signal,
+        }
+      );
+
+    it("an agent record update is refused with a typed result naming the job", async () => {
+      const jobId = await job("revalidation", [`entity:${E1}`]);
+      const tools = {
+        entity_record_update: new EntityRecordUpdateTool().build(
+          "station-1",
+          "user-1"
+        ),
+      };
+      wrapWithLockGate(tools as never, ctx(), (n) => TOOL_AUTHORIZATION[n]);
+
+      const out = (await run(tools, "entity_record_update", {
+        items: [{ connectorEntityId: E1, entityRecordId: "r-1", data: {} }],
+      })) as {
+        error: { code: string; message: string; runningJobs: { id: string }[] };
+      };
+
+      expect(out.error.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+      expect(out.error.message).toMatch(
+        /^Revalidation is running on this entity/
+      );
+      expect(out.error.runningJobs.map((j) => j.id)).toEqual([jobId]);
+    });
+
+    it("a field-mapping update is refused through the mapping's entity", async () => {
+      await job("bulk_geocode", [`entity:${E3}`]);
+      const tools = {
+        field_mapping_update: new FieldMappingUpdateTool().build(
+          "station-1",
+          orgId,
+          "user-1"
+        ),
+      };
+      wrapWithLockGate(tools as never, ctx(), (n) => TOOL_AUTHORIZATION[n]);
+
+      const out = (await run(tools, "field_mapping_update", {
+        items: [{ fieldMappingId: M3, sourceField: "renamed" }],
+      })) as { error: { code: string } };
+
+      expect(out.error.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+      const [row] = await db
+        .select()
+        .from(schema.fieldMappings)
+        .where(eq(schema.fieldMappings.id, M3));
+      expect(row.sourceField).toBe("name");
     });
   });
 
