@@ -10,7 +10,11 @@ import {
   assertStationScope,
   assertWriteCapability,
 } from "../utils/resolve-capabilities.util.js";
-import { NormalizationService } from "../services/normalization.service.js";
+import {
+  NormalizationService,
+  type NormalizationResult,
+} from "../services/normalization.service.js";
+import { RecordWriteService } from "../services/record-write.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
@@ -117,25 +121,27 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             };
           }
 
-          // Normalize per group
-          type NormResult = {
-            normalizedData: Record<string, unknown>;
-            validationErrors: any;
-            isValid: boolean;
-          };
-          const normResults: NormResult[] = new Array(items.length);
+          // Normalize per group (#760: through the shared write model, so a
+          // geometry that can't be parsed is refused, naming the item).
+          const sourceIds = items.map((item) => item.sourceId ?? uuidv4());
+          const normResults: NormalizationResult[] = new Array(items.length);
 
           for (const [connectorEntityId, groupItems] of groups) {
-            const dataArray = groupItems.map((item) => item.data);
-            const results = await NormalizationService.normalizeMany(
-              connectorEntityId,
-              dataArray
+            const indexes = groupItems.map((item) => items.indexOf(item));
+            const results = RecordWriteService.normalize(
+              await NormalizationService.loadMappings(connectorEntityId),
+              indexes.map((i) => ({
+                sourceId: sourceIds[i],
+                input: items[i].data,
+              })),
+              {
+                batch: items.length > 1,
+                describe: (id) => `items[${sourceIds.indexOf(id)}]`,
+              }
             );
-            for (let i = 0; i < groupItems.length; i++) {
-              normResults[items.indexOf(groupItems[i])] = results[
-                i
-              ] as NormResult;
-            }
+            indexes.forEach((itemIndex, i) => {
+              normResults[itemIndex] = results[i];
+            });
           }
 
           // Build models
@@ -148,7 +154,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
               connectorEntityId: item.connectorEntityId,
               data: item.data,
               normalizedData: norm.normalizedData,
-              sourceId: item.sourceId ?? uuidv4(),
+              sourceId: sourceIds[idx],
               checksum: "manual",
               syncedAt: Date.now(),
               origin: "portal",

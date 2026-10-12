@@ -23,6 +23,7 @@ import {
 import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { JobLockService } from "../../../services/job-lock.service.js";
 import { entityRecordClearProcessor } from "../../../queues/processors/entity-record-clear.processor.js";
+import { revalidationProcessor } from "../../../queues/processors/revalidation.processor.js";
 import { wideTableRepo } from "../../../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
 import {
@@ -3186,5 +3187,300 @@ describe("Entity Record Router — geometry writes (#757)", () => {
       .send({ normalizedData: { geom: null } });
     expect(cleared.status).toBe(200);
     expect(cleared.body.payload.record.normalizedData.geom ?? null).toBeNull();
+  });
+});
+
+describe("Entity Record Router — validity on manual writes (#760)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  // `name` is required; `note` and `geom` are optional.
+  async function seedRequiredEntity() {
+    const { organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+    const def = createConnectorDefinition({
+      capabilityFlags: { sync: true, read: true, write: true },
+    });
+    await db.insert(connectorDefinitions).values(def as never);
+    const inst = createConnectorInstance(def.id, organizationId, {
+      enabledCapabilityFlags: { write: true },
+    });
+    await db.insert(connectorInstances).values(inst as never);
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+    for (const [key, type] of [
+      ["name", "string"],
+      ["note", "string"],
+      ["geom", "geometry"],
+    ] as const) {
+      const colDef = createColumnDef(organizationId, key, type);
+      await db.insert(columnDefinitions).values(colDef as never);
+      await db.insert(fieldMappings).values({
+        ...createFieldMapping(organizationId, entity.id, colDef.id, key),
+        required: key === "name",
+      } as never);
+    }
+    wideTableStatementCache.clear();
+    await wideTableReconcilerService.reconcileEntity(
+      entity.id,
+      db as unknown as DbClient
+    );
+    return { connectorEntityId: entity.id };
+  }
+
+  const recordsUrl = (id: string) => `/api/connector-entities/${id}/records`;
+
+  async function stored(recordId: string) {
+    const [row] = await db
+      .select()
+      .from(entityRecords)
+      .where(eq(entityRecords.id, recordId));
+    return row;
+  }
+
+  async function wideIsValid(connectorEntityId: string, recordId: string) {
+    const rows = await db.execute(
+      sql`SELECT is_valid FROM ${sql.raw(`"er__${connectorEntityId}"`)} WHERE entity_record_id = ${recordId}`
+    );
+    return (rows as unknown as Array<{ is_valid: boolean }>)[0]?.is_valid;
+  }
+
+  async function create(
+    connectorEntityId: string,
+    normalizedData: Record<string, unknown>
+  ) {
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData });
+    expect(res.status).toBe(201);
+    return res.body.payload.record as {
+      id: string;
+      isValid: boolean;
+      validationErrors: Array<{ field: string }> | null;
+    };
+  }
+
+  it("create with a required field blank → invalid, naming the field", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+
+    const record = await create(connectorEntityId, { name: "", note: "x" });
+
+    expect(record.isValid).toBe(false);
+    expect(record.validationErrors).toEqual([
+      expect.objectContaining({ field: "name" }),
+    ]);
+    const row = await stored(record.id);
+    expect(row.isValid).toBe(false);
+    expect(await wideIsValid(connectorEntityId, record.id)).toBe(false);
+  });
+
+  it("create with every required field set → valid", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+
+    const record = await create(connectorEntityId, { name: "Ada" });
+
+    expect(record.isValid).toBe(true);
+    expect(record.validationErrors).toBeNull();
+    expect(await wideIsValid(connectorEntityId, record.id)).toBe(true);
+  });
+
+  it("create stores the normalized values, as a revalidation would", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+
+    const record = await create(connectorEntityId, { name: "", note: "x" });
+
+    const got = await request(app)
+      .get(`${recordsUrl(connectorEntityId)}/${record.id}`)
+      .set("Authorization", "Bearer test-token");
+    // A required field that fails is stored null, with the error recorded;
+    // the value as sent stays in `data`.
+    expect(got.body.payload.record.normalizedData).toMatchObject({
+      name: null,
+      note: "x",
+    });
+    expect((await stored(record.id)).data).toEqual({ name: "", note: "x" });
+  });
+
+  it("import stores each row with its own validity", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+
+    const res = await request(app)
+      .post(`${recordsUrl(connectorEntityId)}/import`)
+      .set("Authorization", "Bearer test-token")
+      .send({
+        records: [
+          {
+            sourceId: "ok",
+            checksum: "c1",
+            data: { name: "Ada" },
+            normalizedData: { name: "Ada" },
+          },
+          {
+            sourceId: "blank",
+            checksum: "c2",
+            data: { name: "" },
+            normalizedData: { name: "" },
+          },
+        ],
+      });
+    expect(res.status).toBe(201);
+
+    const rows = await db
+      .select()
+      .from(entityRecords)
+      .where(eq(entityRecords.connectorEntityId, connectorEntityId));
+    const bySource = Object.fromEntries(rows.map((r) => [r.sourceId, r]));
+    expect(bySource.ok.isValid).toBe(true);
+    expect(bySource.ok.validationErrors).toBeNull();
+    expect(bySource.blank.isValid).toBe(false);
+    expect(bySource.blank.validationErrors).toEqual([
+      expect.objectContaining({ field: "name" }),
+    ]);
+    expect(await wideIsValid(connectorEntityId, bySource.blank.id)).toBe(false);
+  });
+
+  it("PATCH recomputes validity both ways", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+    const record = await create(connectorEntityId, { name: "Ada" });
+    const url = `${recordsUrl(connectorEntityId)}/${record.id}`;
+
+    const blanked = await request(app)
+      .patch(url)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "" } });
+    expect(blanked.status).toBe(200);
+    expect(blanked.body.payload.record.isValid).toBe(false);
+    expect((await stored(record.id)).validationErrors).toEqual([
+      expect.objectContaining({ field: "name" }),
+    ]);
+    expect(await wideIsValid(connectorEntityId, record.id)).toBe(false);
+
+    const filled = await request(app)
+      .patch(url)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Grace" } });
+    expect(filled.status).toBe(200);
+    expect(filled.body.payload.record.isValid).toBe(true);
+    expect((await stored(record.id)).validationErrors).toBeNull();
+    expect(await wideIsValid(connectorEntityId, record.id)).toBe(true);
+  });
+
+  it("PATCH validates the whole record, not just the patched keys", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+    const record = await create(connectorEntityId, { name: "" });
+
+    // Patching only `note` leaves the blank required `name` in place.
+    const res = await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${record.id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { note: "hi" } });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.record.isValid).toBe(false);
+  });
+
+  it("PATCH keeps the stored data in step with the edit", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+    const record = await create(connectorEntityId, {
+      name: "Before",
+      note: "n",
+    });
+
+    await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${record.id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "After" } })
+      .expect(200);
+
+    expect((await stored(record.id)).data).toEqual({
+      name: "After",
+      note: "n",
+    });
+  });
+
+  it("a concurrent edit waits for the row lock, so neither edit is lost", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+    const record = await create(connectorEntityId, { name: "a", note: "b" });
+    const { DbService } = await import("../../../services/db.service.js");
+    const { RecordWriteService } =
+      await import("../../../services/record-write.service.js");
+    const patch = (tx: unknown, normalizedData: Record<string, unknown>) =>
+      RecordWriteService.patchRecord(tx as never, {
+        connectorEntityId,
+        recordId: record.id,
+        patch: { normalizedData },
+        userId: "u",
+      });
+
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let bDone = false;
+    let b!: Promise<unknown>;
+    const a = DbService.transaction(async (tx) => {
+      await patch(tx, { name: "X" });
+      // A holds its row lock while B starts its own edit.
+      b = DbService.transaction((tx2) => patch(tx2, { note: "Y" })).then(
+        () => (bDone = true)
+      );
+      await new Promise((r) => setTimeout(r, 300));
+      expect(bDone).toBe(false);
+      release();
+    });
+    await held;
+    await a;
+    await b;
+
+    expect((await stored(record.id)).data).toEqual({ name: "X", note: "Y" });
+  });
+
+  it("an edit survives Re-validate All (it used to revert to the old value)", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+    const record = await create(connectorEntityId, { name: "Before" });
+
+    await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${record.id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "After" } })
+      .expect(200);
+
+    await revalidationProcessor({
+      data: { jobId: generateId(), type: "revalidation", connectorEntityId },
+      updateProgress: async () => undefined,
+    } as never);
+
+    const got = await request(app)
+      .get(`${recordsUrl(connectorEntityId)}/${record.id}`)
+      .set("Authorization", "Bearer test-token");
+    expect(got.body.payload.record.normalizedData.name).toBe("After");
+  });
+
+  it("a refused PATCH leaves data and validity as they were", async () => {
+    const { connectorEntityId } = await seedRequiredEntity();
+    const record = await create(connectorEntityId, { name: "Ada" });
+
+    // #757's geometry refusal throws inside the write's transaction.
+    const res = await request(app)
+      .patch(`${recordsUrl(connectorEntityId)}/${record.id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "", geom: "nope" } });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.GEOMETRY_INVALID_ON_IMPORT);
+
+    const row = await stored(record.id);
+    expect(row.data).toEqual({ name: "Ada" });
+    expect(row.isValid).toBe(true);
+    expect(row.validationErrors).toBeNull();
   });
 });

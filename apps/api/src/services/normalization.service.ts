@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import type { ColumnDataType } from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
+import { db } from "../db/client.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
 import { fieldMappings } from "../db/schema/index.js";
 import type {
   FieldMappingSelect,
@@ -22,7 +24,7 @@ export interface NormalizationResult {
   isValid: boolean;
 }
 
-type MappingWithColumnDef = FieldMappingSelect & {
+export type MappingWithColumnDef = FieldMappingSelect & {
   columnDefinition: ColumnDefinitionSelect | null;
 };
 
@@ -33,16 +35,29 @@ type MappingWithColumnDef = FieldMappingSelect & {
  */
 export class NormalizationService {
   /**
+   * An entity's field mappings with their column definitions. Pass a write's
+   * transaction as `client` so the rules are read in the same transaction as
+   * the write (#760).
+   */
+  static async loadMappings(
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<MappingWithColumnDef[]> {
+    return (await DbService.repository.fieldMappings.findMany(
+      eq(fieldMappings.connectorEntityId, connectorEntityId),
+      { include: ["columnDefinition"] },
+      client
+    )) as unknown as MappingWithColumnDef[];
+  }
+
+  /**
    * Normalize data for a connector entity. Fetches field mappings internally.
    */
   static async normalize(
     connectorEntityId: string,
     data: Record<string, unknown>
   ): Promise<NormalizationResult> {
-    const mappings = (await DbService.repository.fieldMappings.findMany(
-      eq(fieldMappings.connectorEntityId, connectorEntityId),
-      { include: ["columnDefinition"] }
-    )) as unknown as MappingWithColumnDef[];
+    const mappings = await NormalizationService.loadMappings(connectorEntityId);
 
     return NormalizationService.normalizeWithMappings(mappings, data);
   }
@@ -55,10 +70,7 @@ export class NormalizationService {
     connectorEntityId: string,
     dataItems: Record<string, unknown>[]
   ): Promise<NormalizationResult[]> {
-    const mappings = (await DbService.repository.fieldMappings.findMany(
-      eq(fieldMappings.connectorEntityId, connectorEntityId),
-      { include: ["columnDefinition"] }
-    )) as unknown as MappingWithColumnDef[];
+    const mappings = await NormalizationService.loadMappings(connectorEntityId);
 
     return dataItems.map((data) =>
       NormalizationService.normalizeWithMappings(mappings, data)

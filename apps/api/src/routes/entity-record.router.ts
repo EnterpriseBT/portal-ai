@@ -49,6 +49,8 @@ import { ObjectAccessService } from "../services/object-access.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
+import { NormalizationService } from "../services/normalization.service.js";
+import { RecordWriteService } from "../services/record-write.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
@@ -706,7 +708,12 @@ entityRecordRouter.get(
  *               normalizedData:
  *                 type: object
  *                 additionalProperties: true
- *                 description: Record data mapped through field mappings
+ *                 description: >
+ *                   Record data keyed by normalizedKey, normalized through
+ *                   the entity's field mappings (defaults, type coercion,
+ *                   required/enum/pattern checks) as a revalidation would.
+ *                   The record stores the normalized values with isValid and
+ *                   validationErrors; `data` keeps the values as sent (#760).
  *               sourceId:
  *                 type: string
  *                 description: Optional source identifier (auto-generated UUID if omitted)
@@ -807,20 +814,27 @@ entityRecordRouter.post(
       }
 
       const { userId, organizationId } = req.application!.metadata;
-      const factory = new EntityRecordModelFactory();
       const idFactory = new UUIDv4Factory();
+      const sourceId = parsed.data.sourceId ?? idFactory.generate();
+      // #760: store the normalizer's output and its validity, as every other
+      // write path does. `data` keeps the values as sent.
+      const [normalized] = RecordWriteService.normalize(
+        await NormalizationService.loadMappings(connectorEntityId),
+        [{ sourceId, input: parsed.data.normalizedData }]
+      );
+      const factory = new EntityRecordModelFactory();
       const model = factory.create(userId);
       model.update({
         organizationId,
         connectorEntityId,
         data: parsed.data.normalizedData,
-        normalizedData: parsed.data.normalizedData,
-        sourceId: parsed.data.sourceId ?? idFactory.generate(),
+        normalizedData: normalized.normalizedData,
+        sourceId,
         checksum: "manual",
         syncedAt: Date.now(),
         origin: "manual",
-        validationErrors: null,
-        isValid: true,
+        validationErrors: normalized.validationErrors,
+        isValid: normalized.isValid,
       });
 
       const record = await DbService.transaction(async (tx) => {
@@ -910,6 +924,11 @@ entityRecordRouter.post(
  *   post:
  *     tags: [Entity Records]
  *     summary: Bulk-import records onto a connector entity
+ *     description: >
+ *       Each changed row's normalizedData is normalized through the
+ *       entity's field mappings and stored with its isValid and
+ *       validationErrors (#760). A geometry that can't be parsed fails the
+ *       whole import.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1005,36 +1024,51 @@ entityRecordRouter.post(
         ReturnType<EntityRecordModelFactory["create"]>["parse"]
       >[] = [];
 
-      for (const row of parsed.data.records) {
+      const changed = parsed.data.records.filter((row) => {
         const prev = existingMap.get(row.sourceId);
         if (prev && prev.checksum === row.checksum) {
           unchanged++;
-          continue;
+          return false;
         }
-
         if (prev) {
           updated++;
         } else {
           created++;
         }
+        return true;
+      });
 
+      // #760: normalize only the rows that will be written, with one load of
+      // the mappings; a geometry that can't be parsed fails the import.
+      const normalized =
+        changed.length > 0
+          ? RecordWriteService.normalize(
+              await NormalizationService.loadMappings(connectorEntityId),
+              changed.map((row) => ({
+                sourceId: row.sourceId,
+                input: row.normalizedData,
+              })),
+              { batch: true }
+            )
+          : [];
+
+      for (const [i, row] of changed.entries()) {
+        const prev = existingMap.get(row.sourceId);
         const model = factory.create(userId);
         model.update({
           id: prev?.id ?? model.toJSON().id,
           organizationId,
           connectorEntityId,
           data: row.data,
-          normalizedData: row.normalizedData,
+          normalizedData: normalized[i].normalizedData,
           sourceId: row.sourceId,
           checksum: row.checksum,
           syncedAt: now,
           origin: "sync",
           updated: prev ? now : null,
           updatedBy: prev ? userId : null,
-          // #757: required by the model; without them parse() threw and
-          // every import answered 500.
-          validationErrors: null,
-          isValid: true,
+          validationErrors: normalized[i].validationErrors,
+          isValid: normalized[i].isValid,
         });
 
         toUpsert.push(model.parse());
@@ -1206,7 +1240,11 @@ entityRecordRouter.post(
  *     summary: Update a single entity record
  *     description: >
  *       Partially updates an entity record's data and/or normalizedData.
- *       Requires write capability on the connector instance.
+ *       The patch is merged into the record's stored data (so a later
+ *       revalidation keeps the edit), the whole merged record is normalized
+ *       through the entity's field mappings, and the normalized values are
+ *       stored with isValid / validationErrors (#760). Requires write
+ *       capability on the connector instance.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1344,29 +1382,15 @@ entityRecordRouter.patch(
       const { userId } = req.application!.metadata;
 
       const updated = await DbService.transaction(async (tx) => {
-        await DbService.repository.entityRecords.update(
+        // #760: merge into the stored `data` (which revalidation rebuilds
+        // the record from) under a row lock, and store the normalized values
+        // and validity of the whole merged record.
+        await RecordWriteService.patchRecord(tx, {
+          connectorEntityId,
           recordId,
-          {
-            ...(parsed.data.data && { data: parsed.data.data }),
-            updatedBy: userId,
-          },
-          tx
-        );
-        // A patch can flip `isValid`, which is part of the count
-        // fingerprint — so the validity-filtered totals move too.
-        await EntityRecordCountCache.invalidate(connectorEntityId);
-        // Partial-merge into the wide table: only the keys present in
-        // the patch are written. Unknown keys (no field mapping) are
-        // silently dropped by `updatePartial`.
-        if (parsed.data.normalizedData) {
-          await DbService.repository.wideTable.updatePartial(
-            connectorEntityId,
-            recordId,
-            parsed.data.normalizedData,
-            {},
-            tx
-          );
-        }
+          patch: parsed.data,
+          userId,
+        });
         // Read back the hydrated record so the response carries
         // `normalizedData` rebuilt from the wide table.
         const hydrated =
