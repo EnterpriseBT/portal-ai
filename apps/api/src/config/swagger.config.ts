@@ -655,7 +655,7 @@ const options: swaggerJsdoc.Options = {
       title: "Portals AI API Documentation",
       version: "1.0.0",
       description:
-        "API documentation for the Portals AI application. This API provides endpoints for health checks and protected resources with Auth0 JWT authentication.",
+        "API documentation for the Portals AI application. This API provides endpoints for health checks and protected resources with Auth0 JWT authentication. Request bodies are `application/json`; any other content type on a POST, PUT or PATCH body is refused with `415 REQUEST_UNSUPPORTED_MEDIA_TYPE`.",
       contact: {
         name: "API Support",
       },

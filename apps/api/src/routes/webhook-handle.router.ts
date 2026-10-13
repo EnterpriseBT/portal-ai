@@ -193,6 +193,10 @@ webhookHandleRouter.get(
  *         description: Token invalid or expired
  *       403:
  *         description: Token scoped to a different session/org or not a write token
+ *       415:
+ *         description: >
+ *           REQUEST_UNSUPPORTED_MEDIA_TYPE — the body isn't
+ *           `application/json` (#775)
  */
 webhookHandleRouter.post(
   "/handle/:sessionId",

@@ -13,22 +13,12 @@ import type {
   ConnectorInstanceListWithDefinitionResponsePayload,
   ConnectorInstancePatchRequestBody,
   ConnectorInstanceRunningJobsResponse,
+  TestConnectionRequestBody,
 } from "@portalai/core/contracts";
 
 /** Response shape from `POST /api/connector-instances/:id/sync`. */
 export interface ConnectorInstanceSyncResponsePayload {
   jobId: string;
-}
-
-/**
- * Body shape for `POST /api/connector-instances/:id/test-connection`.
- * Adapter-specific — REST API reads `endpointEntityId`; other adapters
- * may ignore it or interpret different keys. The shape is intentionally
- * loose; the route forwards the body verbatim to the adapter.
- */
-export interface TestConnectionRequestBody {
-  endpointEntityId?: string;
-  [key: string]: unknown;
 }
 
 /**

@@ -66,8 +66,6 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use("/api/webhooks", webhookRouter);
 
 app.use(express.json({ limit: environment.REQUEST_JSON_LIMIT_BYTES }));
-// #775: a body express.json() skipped would reach routes as `{}`; refuse it.
-app.use(jsonBodyOnly);
 app.use(
   cors({
     origin: environment.CORS_ORIGIN,
@@ -87,6 +85,9 @@ app.use(
     ],
   })
 );
+// #775: a body express.json() skipped would reach routes as `{}`; refuse
+// it. After cors() so a cross-origin caller can read the 415.
+app.use(jsonBodyOnly);
 
 app.use("/api/docs", swaggerRouter);
 app.use("/api/health", healthRouter);

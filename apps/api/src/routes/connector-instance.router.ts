@@ -1859,6 +1859,18 @@ connectorInstanceRouter.post(
         );
       }
 
+      // #775: strict, so an unknown key is a 400 naming it rather than a
+      // parameter the adapter silently ignores. Checked after the read
+      // check (404 first) and before any adapter work.
+      const parsed = TestConnectionRequestBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        throw invalidPayload(
+          ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
+          "Invalid test-connection payload",
+          parsed.error
+        );
+      }
+
       const { instance, slug, adapter } = await SyncService.resolveAdapter(
         id,
         organizationId
@@ -1869,17 +1881,6 @@ connectorInstanceRouter.post(
           404,
           ApiCode.TEST_CONNECTION_NOT_SUPPORTED,
           `Connector type "${slug}" does not support test-connection`
-        );
-      }
-
-      // #775: strict, so an unknown key is a 400 naming it rather than a
-      // parameter the adapter silently ignores.
-      const parsed = TestConnectionRequestBodySchema.safeParse(req.body ?? {});
-      if (!parsed.success) {
-        throw invalidPayload(
-          ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
-          "Invalid test-connection payload",
-          parsed.error
         );
       }
 
@@ -1945,12 +1946,10 @@ connectorInstanceRouter.post(
         req.body ?? {}
       );
       if (!parsed.success) {
-        return next(
-          invalidPayload(
-            ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
-            "Invalid sync payload",
-            parsed.error
-          )
+        throw invalidPayload(
+          ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
+          "Invalid sync payload",
+          parsed.error
         );
       }
 
