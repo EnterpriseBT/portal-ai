@@ -53,3 +53,20 @@
 - Ordering the running-sync check before eligibility. With this fix a file upload refuses with a 400 before it would reach `SYNC_ALREADY_RUNNING`, which is correct: it can never have a sync running.
 - `ConnectorAdapterRegistry.get` and the sync processor: an unregistered slug inside an accepted job is a real failure, so a plain `Error` there is right.
 - Giving file upload an adapter (re-upload as "sync"): that would be a feature, not this bug.
+
+## Adversarial
+
+Probes against the dev API, with the fixture's File Upload — CSV connector (`29c3dcef…`) and two probe rows: a file-upload connector in another org, and a soft-deleted one in the fixture org. Skipped categories: boundary inputs and injection (the routes take no input beyond the id), and UI (the page shows no Sync button).
+
+- [ ] **Cross-org.** Sync and test-connection on another org's file-upload id → 404 `CONNECTOR_INSTANCE_NOT_FOUND`, with no `SYNC_NOT_SUPPORTED` and no slug, so nothing tells the caller that the connector exists or what type it is. — backend
+- [ ] **Missing and soft-deleted.** A nonexistent id, and a soft-deleted file-upload connector, on sync and test-connection → 404 `CONNECTOR_INSTANCE_NOT_FOUND`. — backend
+- [ ] **Permission before capability.** As a member without write on the connector, sync → 403 `PERMISSION_DENIED` (not the 400). Test-connection only needs read, so the member gets 404 `TEST_CONNECTION_NOT_SUPPORTED`. — backend
+- [ ] **Parallel clicks.** Ten concurrent syncs on the file-upload connector → ten 400s, and `jobs` gains no `connector_sync` row. — backend
+- [ ] **A body that pretends to be another type.** Sync with `{"force":true,"slug":"google-sheets"}` → still 400 `SYNC_NOT_SUPPORTED` for `file-upload`. The type comes from the stored definition, never the body. — backend
+
+### Findings
+
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| Parallel clicks / smoke step 1 | Each 400 still logs `Failed to enqueue sync job` at error level (same as the code-review finding) | low | fixed-in-PR: the sync and test-connection catches log only unexpected failures |
+| Body pretending to be another type | The sync route accepts and ignores an unknown body (no strict schema). The type can't be overridden; pre-existing, and not from this change | low | |
