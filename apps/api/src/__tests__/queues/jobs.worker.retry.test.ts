@@ -183,6 +183,31 @@ describe("jobs worker — retry-aware terminal state (#441)", () => {
     expect(lastNonActive()![1]).toBe("failed");
   });
 
+  // #777: a type with no processor was thrown before the worker's try, so
+  // no catch wrote the row: it stayed `pending`, holding its locks, until
+  // BullMQ dropped the failed entry (30 days) and the sweep reaped it.
+  it("writes failed for a job type with no processor, and doesn't retry it", async () => {
+    build(async () => "ok");
+    const orphan = {
+      data: { jobId: "job-1", type: "no_such_type" },
+      attemptsMade: 0,
+      opts: { attempts: 3 },
+    } as unknown as BullJob;
+
+    const run = captured!(orphan);
+    await expect(run).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(run).rejects.toThrow(
+      "No processor registered for job type: no_such_type"
+    );
+
+    expect(openingCall()).toBeUndefined();
+    expect(lastNonActive()).toEqual([
+      "job-1",
+      "failed",
+      { error: "No processor registered for job type: no_such_type" },
+    ]);
+  });
+
   // ── 3. attempt record + stale error ───────────────────────────────
 
   it("clears the previous attempt's error and records the attempt number", async () => {

@@ -377,9 +377,15 @@ describe("dissolve-precompute processor (#472)", () => {
     // A dissolve_precompute job enqueued before #643 carries no userId; job data
     // is cast, not re-validated on read, so the processor must fail loudly rather
     // than resolve an empty scope and silently delete the owner's rows.
-    await expect(
-      runProcessor("pr-whatever", orgId, undefined as unknown as string)
-    ).rejects.toThrow(/missing userId/);
+    // #777: and terminally — a retry can't add the missing userId.
+    const { UnrecoverableError } = await import("bullmq");
+    const run = runProcessor(
+      "pr-whatever",
+      orgId,
+      undefined as unknown as string
+    );
+    await expect(run).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(run).rejects.toThrow(/missing userId/);
   });
 
   it("#660: a pin whose stored pipeline reads a raw er__ table fails terminally and writes nothing", async () => {

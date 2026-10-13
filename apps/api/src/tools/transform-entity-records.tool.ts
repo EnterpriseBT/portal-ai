@@ -745,8 +745,7 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
               // org-toolpack scan (#85 Phase 4 webhook bulkDispatch
               // wiring) can resolve the same tool the pre-flight just
               // resolved. Without it the worker uses "" and the lookup
-              // fails — pre-flight passes but the worker throws
-              // BULK_DISPATCH_TOOL_NOT_FOUND.
+              // fails — pre-flight passes but the worker fails the job.
               stationId,
             },
           });

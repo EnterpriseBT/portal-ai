@@ -486,8 +486,9 @@ export const dissolvePrecomputeProcessor: TypedJobProcessor<
   // resolving an empty scope and silently deleting the owner's rows / writing
   // nothing. (New jobs can't reach here without it — model.parse() rejects at
   // create; migration 0117 truncates the pre-#643 cache so nothing is lost.)
+  // #777: terminally, since a retry can't add the missing userId.
   if (!userId) {
-    throw new Error(
+    throw new UnrecoverableError(
       "dissolve_precompute job is missing userId (pre-#643 metadata); refusing to run with an empty scope"
     );
   }

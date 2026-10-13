@@ -1,6 +1,6 @@
+import { UnrecoverableError } from "bullmq";
+
 import type { TypedJobProcessor } from "../jobs.worker.js";
-import { ApiCode } from "../../constants/api-codes.constants.js";
-import { ApiError } from "../../services/http.service.js";
 import { BulkTransformService } from "../../services/bulk-transform.service.js";
 import { JobEventsService } from "../../services/job-events.service.js";
 import { ToolService } from "../../services/tools.service.js";
@@ -157,14 +157,14 @@ async function runToolDispatchLoop(
   // transform_entity_records.tool. A missing stationId was a
   // silent footgun: the worker would call lookupBulkDispatchable
   // with stationId="" and the org-toolpack scan would find no
-  // attached packs → BULK_DISPATCH_TOOL_NOT_FOUND, even though the
+  // attached packs → "not bulk-dispatchable", even though the
   // tool's pre-flight (with the real stationId) had just succeeded.
   // Fail fast if the metadata didn't carry it.
   const stationId = (bullJob.data as { stationId?: string }).stationId;
+  // #777: neither this nor the lookup below can be fixed by a retry, and the
+  // job holds its target and source entities while it retries.
   if (!stationId) {
-    throw new ApiError(
-      500,
-      ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
+    throw new UnrecoverableError(
       "bulk_transform job is missing `stationId` in metadata — re-enqueue from a current portal session."
     );
   }
@@ -176,9 +176,7 @@ async function runToolDispatchLoop(
     opts.userId
   );
   if (!lookup) {
-    throw new ApiError(
-      400,
-      ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
+    throw new UnrecoverableError(
       `Tool '${opts.toolRef}' is not bulk-dispatchable on this station`
     );
   }

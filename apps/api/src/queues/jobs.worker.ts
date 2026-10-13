@@ -141,11 +141,17 @@ export const createJobsWorker = (
     async (bullJob) => {
       const { jobId, type } = bullJob.data;
       const processor = processors[type];
-      if (!processor) {
-        throw new Error(`No processor registered for job type: ${type}`);
-      }
-
       const JobEventsService = await getJobEventsService();
+      if (!processor) {
+        // #777: this runs before the try below, so no catch writes the row.
+        // Left alone it stayed `pending` and held its locks until BullMQ
+        // dropped the failed entry (30 days) and the stranded-job sweep
+        // reaped it. Only a deploy mismatch reaches here (the processor map
+        // is exhaustive over JobType), and no retry fixes that.
+        const error = `No processor registered for job type: ${type}`;
+        await JobEventsService.transition(jobId, "failed", { error });
+        throw new UnrecoverableError(error);
+      }
 
       // A row still `active` at the top of a NEW execution means a prior
       // execution set it active (JobEventsService stamps `startedAt` on the

@@ -1,5 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
-import type { Job as BullJob } from "bullmq";
+import { UnrecoverableError, type Job as BullJob } from "bullmq";
 
 // ── Mocks (must precede the dynamic import) ──────────────────────────
 
@@ -83,7 +83,6 @@ jest.unstable_mockModule("../../../services/cost-gate.service.js", () => ({
 
 const { bulkTransformProcessor } =
   await import("../../../queues/processors/bulk-transform.processor.js");
-const { ApiCode } = await import("../../../constants/api-codes.constants.js");
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -357,26 +356,38 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
     expect(result.recordsProcessed).toBe(2_000);
   });
 
-  it("throws BULK_DISPATCH_TOOL_NOT_FOUND when the tool isn't bulk-dispatchable", async () => {
-    // ToolService.lookupBulkDispatchable mock returns null by default.
-    const job = makeJob({
-      expression: {
-        kind: "tool",
-        ref: "compute_distance_to_nearest_hospital",
-        writes: [
-          {
-            targetConnectorEntityId: "ce-target",
-            column: "c_distance_km",
-            valueFrom: { kind: "tool_result" },
-          },
-        ],
+  // #777: neither can be fixed by a retry, and the job locks its target and
+  // source entities while it retries, so both fail on the first attempt.
+  const toolExpression = {
+    kind: "tool",
+    ref: "compute_distance_to_nearest_hospital",
+    writes: [
+      {
+        targetConnectorEntityId: "ce-target",
+        column: "c_distance_km",
+        valueFrom: { kind: "tool_result" },
       },
-    });
+    ],
+  };
 
-    await expect(bulkTransformProcessor(job)).rejects.toMatchObject({
-      code: ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
-    });
+  it("fails terminally when the tool isn't bulk-dispatchable", async () => {
+    // ToolService.lookupBulkDispatchable mock returns null by default.
+    const job = makeJob({ expression: toolExpression, stationId: "st-1" });
+
+    const run = bulkTransformProcessor(job);
+    await expect(run).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(run).rejects.toThrow(
+      "Tool 'compute_distance_to_nearest_hospital' is not bulk-dispatchable on this station"
+    );
+    expect(mockLookupBulkDispatchable).toHaveBeenCalled();
     expect(mockRunBatch).not.toHaveBeenCalled();
+  });
+
+  it("fails terminally when the job metadata has no stationId", async () => {
+    const run = bulkTransformProcessor(makeJob({ expression: toolExpression }));
+    await expect(run).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(run).rejects.toThrow(/missing `stationId`/);
+    expect(mockCountSourceRows).not.toHaveBeenCalled();
   });
 
   it("returns immediately with zero counts when source has no rows", async () => {
@@ -731,9 +742,10 @@ describe("bulkTransformProcessor — charge on job success (#183)", () => {
 
   it("does NOT commit when the job fails (failed jobs are free)", async () => {
     // Tool-kind job whose tool isn't bulk-dispatchable → the loop throws
-    // BULK_DISPATCH_TOOL_NOT_FOUND before the commit line.
+    // before the commit line.
     const job = makeJob({
       userId: "user-1",
+      stationId: "st-1",
       expression: {
         kind: "tool",
         ref: "not_dispatchable",
@@ -747,9 +759,9 @@ describe("bulkTransformProcessor — charge on job success (#183)", () => {
       },
     });
 
-    await expect(bulkTransformProcessor(job)).rejects.toMatchObject({
-      code: ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
-    });
+    await expect(bulkTransformProcessor(job)).rejects.toThrow(
+      "Tool 'not_dispatchable' is not bulk-dispatchable on this station"
+    );
     expect(mockCommitCharge).not.toHaveBeenCalled();
   });
 });
