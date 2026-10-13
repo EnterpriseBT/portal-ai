@@ -223,6 +223,8 @@ export const connectorInstances = {
       url: (vars) =>
         `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(vars.instanceId)}/sync`,
       method: "POST",
+      // #775: the id is a URL variable, not a body; the route refuses any key.
+      body: () => undefined,
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorInstances.root],
       },

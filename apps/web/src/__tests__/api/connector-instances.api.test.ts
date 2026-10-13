@@ -42,6 +42,20 @@ describe("connector-instances.api", () => {
     });
   });
 
+  describe("syncForInstance", () => {
+    it("puts the id in the URL and sends no body (#775)", () => {
+      connectorInstances.syncForInstance();
+      const config = mockUseAuthMutation.mock.calls[0][0] as {
+        url: (vars: { instanceId: string }) => string;
+        body: (vars: { instanceId: string }) => unknown;
+      };
+      expect(config.url({ instanceId: "ci/1" })).toBe(
+        "/api/connector-instances/ci%2F1/sync"
+      );
+      expect(config.body({ instanceId: "ci/1" })).toBeUndefined();
+    });
+  });
+
   // #689: a 403 on an instance write refetches the instance so the page's
   // gates re-render from fresh capabilities.
   describe("onPermissionDenied", () => {

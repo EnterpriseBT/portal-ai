@@ -25,6 +25,7 @@ import {
   type ConnectorInstanceGetResponsePayload,
   ConnectorInstanceCreateRequestBodySchema,
   ConnectorInstancePatchRequestBodySchema,
+  ConnectorInstanceSyncRequestBodySchema,
   PreviewEndpointPageRequestBodySchema,
   ProbeEndpointDraftRequestBodySchema,
   SuggestTransformRequestBodySchema,
@@ -1730,11 +1731,19 @@ connectorInstanceRouter.patch(
  *         schema:
  *           type: string
  *         description: Connector instance ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ConnectorInstanceSyncRequestBody'
  *     responses:
  *       202:
  *         description: Sync job enqueued
  *       400:
- *         description: Connector type does not support sync
+ *         description: >
+ *           CONNECTOR_INSTANCE_INVALID_PAYLOAD (the body carries a key; the
+ *           route takes none), or the connector type does not support sync
  *       404:
  *         description: Instance not found, or eligibility prerequisites missing
  *       409:
@@ -1890,6 +1899,20 @@ connectorInstanceRouter.post(
     try {
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
+
+      // #775: the route takes no body; an unknown key is a 400 naming it.
+      const parsed = ConnectorInstanceSyncRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
+      if (!parsed.success) {
+        return next(
+          invalidPayload(
+            ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
+            "Invalid sync payload",
+            parsed.error
+          )
+        );
+      }
 
       // #630: a sync mutates the instance's records — gate on object write (a
       // member may sync only an instance they created).

@@ -1721,6 +1721,39 @@ describe("Connector Instance Router", () => {
       expect(meta.connectorInstanceId).toBe(instanceId);
     });
 
+    // #775: the route takes no body. An unknown key is refused by name, not
+    // silently ignored.
+    it("returns 400 naming an unknown body key and enqueues nothing", async () => {
+      const { instanceId, organizationId } = await seedSyncFixture({});
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token")
+        .send({ force: true, slug: "file-upload" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+      expect(res.body.message).toContain("force");
+
+      const jobs = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.organizationId, organizationId));
+      expect(jobs).toHaveLength(0);
+    });
+
+    it("accepts an empty JSON object body", async () => {
+      const { instanceId } = await seedSyncFixture({});
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(202);
+      expect(typeof res.body.payload.jobId).toBe("string");
+    });
+
     it("returns 409 SYNC_ALREADY_RUNNING when a sync is already in flight", async () => {
       const { instanceId, organizationId } = await seedSyncFixture({});
 

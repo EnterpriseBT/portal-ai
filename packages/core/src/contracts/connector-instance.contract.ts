@@ -177,6 +177,14 @@ export type ConnectorInstancePatchRequestBody = z.infer<
   typeof ConnectorInstancePatchRequestBodySchema
 >;
 
+// #775: a sync takes no body. Strict, so a key a caller believes does
+// something (`force`) is a 400 naming it rather than silently ignored.
+export const ConnectorInstanceSyncRequestBodySchema = z.object({}).strict();
+
+export type ConnectorInstanceSyncRequestBody = z.infer<
+  typeof ConnectorInstanceSyncRequestBodySchema
+>;
+
 export const ConnectorInstanceImpactResponseSchema = z.object({
   connectorEntities: z.number(),
   entityRecords: z.number(),

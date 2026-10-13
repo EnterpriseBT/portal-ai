@@ -7,6 +7,7 @@ import {
   ApiEndpointListResponsePayloadSchema,
   ApiEndpointWireSchema,
   ColumnBindingSchema,
+  ConnectorInstanceSyncRequestBodySchema,
   CreateApiEndpointRequestBodySchema,
   DeleteApiEndpointResponsePayloadSchema,
   DiscoverColumnsRequestBodySchema,
@@ -249,6 +250,10 @@ const restApiConnectorSchemas: Record<string, unknown> = {
   ),
   DiscoverColumnsRequestBody: z.toJSONSchema(
     DiscoverColumnsRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ConnectorInstanceSyncRequestBody: z.toJSONSchema(
+    ConnectorInstanceSyncRequestBodySchema,
     JSON_SCHEMA_OPTS
   ),
   TestConnectionRequestBody: z.toJSONSchema(
