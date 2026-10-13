@@ -15,7 +15,7 @@ const useTestConnectionMock = jest.fn(() => ({
   isPending: false,
 }));
 
-jest.unstable_mockModule("../../../api/sdk", () => ({
+jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     connectorInstances: {
       testConnection: useTestConnectionMock,
@@ -24,10 +24,9 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
   queryKeys: {},
 }));
 
-const { render, screen, waitFor } =
-  await import("../../../__tests__/test-utils");
+const { render, screen, waitFor } = await import("./test-utils");
 const { EndpointTestDialog, EndpointTestDialogUI } =
-  await import("../EndpointTestDialog.component");
+  await import("../components/EndpointTestDialog.component");
 
 beforeEach(() => {
   mutateAsyncMock.mockReset();
@@ -73,8 +72,7 @@ describe("EndpointTestDialogUI", () => {
     expect(preview.textContent).toMatch(/"id": 1/);
   });
 
-  it("renders FormAlert + edit-endpoint button on failure", async () => {
-    const onEditEndpoint = jest.fn();
+  it("renders FormAlert with the failure's code and details", () => {
     render(
       <EndpointTestDialogUI
         open
@@ -88,7 +86,6 @@ describe("EndpointTestDialogUI", () => {
         }}
         serverError={null}
         onClose={jest.fn()}
-        onEditEndpoint={onEditEndpoint}
       />
     );
     expect(screen.getByTestId("endpoint-test-failure")).toBeInTheDocument();
@@ -96,25 +93,7 @@ describe("EndpointTestDialogUI", () => {
       screen.getByText(/REST_API_RECORDS_PATH_NOT_ARRAY/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/expected array/i)).toBeInTheDocument();
-    const editButton = screen.getByRole("button", { name: /edit endpoint/i });
-    await userEvent.click(editButton);
-    expect(onEditEndpoint).toHaveBeenCalled();
-  });
-
-  it("hides the edit-endpoint link when onEditEndpoint is not provided", () => {
-    render(
-      <EndpointTestDialogUI
-        open
-        endpointLabel="Users"
-        isPending={false}
-        result={{ ok: false, code: "X", message: "y" }}
-        serverError={null}
-        onClose={jest.fn()}
-      />
-    );
-    expect(
-      screen.queryByRole("button", { name: /edit endpoint/i })
-    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/failure details/i)).toBeInTheDocument();
   });
 
   it("calls onClose when the Close button is clicked", async () => {
@@ -193,6 +172,83 @@ describe("EndpointTestDialog", () => {
         endpointEntityId: "ent-b",
       })
     );
+  });
+
+  // #780: in StrictMode the open effect runs twice and the second call is
+  // deduped onto the first's promise, while React Query's observer has
+  // dropped that mutation, so the hook's isPending never clears. The dialog
+  // must render from the promise, not from isPending.
+  it("shows the result even when the mutation's isPending never clears", async () => {
+    useTestConnectionMock.mockImplementation(() => ({
+      mutateAsync: mutateAsyncMock,
+      isPending: true,
+    }));
+    mutateAsyncMock.mockResolvedValue({ ok: true, sample: [{ id: 1 }] });
+
+    render(
+      <EndpointTestDialog
+        open
+        instanceId="inst-1"
+        endpointEntityId="ent-users"
+        endpointLabel="Users"
+        onClose={jest.fn()}
+      />
+    );
+
+    expect(
+      await screen.findByTestId("endpoint-test-success")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/calling endpoint/i)).not.toBeInTheDocument();
+  });
+
+  it("ignores an earlier run's result that arrives after a newer run", async () => {
+    let resolveA: (v: unknown) => void = () => {};
+    mutateAsyncMock
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveA = resolve))
+      )
+      .mockResolvedValueOnce({ ok: true, sample: [{ id: "b" }] });
+
+    const { rerender } = render(
+      <EndpointTestDialog
+        open
+        instanceId="inst-1"
+        endpointEntityId="ent-a"
+        endpointLabel="A"
+        onClose={jest.fn()}
+      />
+    );
+    await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalledTimes(1));
+    rerender(
+      <EndpointTestDialog
+        open
+        instanceId="inst-1"
+        endpointEntityId="ent-b"
+        endpointLabel="B"
+        onClose={jest.fn()}
+      />
+    );
+    expect(await screen.findByText(/returned 1 record/i)).toBeInTheDocument();
+
+    resolveA({ ok: false, code: "LATE", message: "stale run" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText(/stale run/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/sample records/i).textContent).toMatch(/"b"/);
+  });
+
+  it("re-runs the test each time it is reopened", async () => {
+    mutateAsyncMock.mockResolvedValue({ ok: true, sample: [] });
+    const props = {
+      instanceId: "inst-1",
+      endpointEntityId: "ent-users",
+      endpointLabel: "Users",
+      onClose: jest.fn(),
+    };
+    const { rerender } = render(<EndpointTestDialog open {...props} />);
+    await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalledTimes(1));
+    rerender(<EndpointTestDialog open={false} {...props} />);
+    rerender(<EndpointTestDialog open {...props} />);
+    await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalledTimes(2));
   });
 
   it("does not fire the mutation when closed", () => {

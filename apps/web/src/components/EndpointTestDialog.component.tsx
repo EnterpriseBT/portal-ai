@@ -1,13 +1,12 @@
 /**
- * Per-endpoint dry-run dialog rendered from `EndpointsStep` (and any
- * future surface that wants to test a saved endpoint, e.g. the
- * connector-instance detail view).
+ * Per-endpoint dry-run dialog for a saved endpoint, opened from its
+ * entity card on the connector-instance detail view (#780).
  *
  * Calls `POST /api/connector-instances/:id/test-connection` via the
  * `sdk.connectorInstances.testConnection` mutation. The response is a
  * `TestConnectionResult` — `ok: true` carries the first 5 records as a
  * preview; `ok: false` carries an error code + message + details for
- * the user to act on (typically "edit the endpoint and try again").
+ * the user to act on.
  */
 
 import React, { useEffect, useState } from "react";
@@ -22,10 +21,10 @@ import {
 } from "@portalai/core/ui";
 import type { TestConnectionRequestBody } from "@portalai/core/contracts";
 
-import { sdk } from "../../api/sdk";
-import type { TestConnectionResult } from "../../api/connector-instances.api";
-import { toServerError, type ServerError } from "../../utils/api.util";
-import { FormAlert } from "../../components/FormAlert.component";
+import { sdk } from "../api/sdk";
+import type { TestConnectionResult } from "../api/connector-instances.api";
+import { toServerError, type ServerError } from "../utils/api.util";
+import { FormAlert } from "./FormAlert.component";
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
@@ -36,13 +35,6 @@ export interface EndpointTestDialogUIProps {
   result: TestConnectionResult | null;
   serverError: ServerError | null;
   onClose: () => void;
-  /**
-   * Called when the user clicks "Edit endpoint" on a failure result.
-   * The parent typically closes this dialog and re-opens the endpoint
-   * form pre-populated with the failing endpoint. Optional — when
-   * unset, the link is hidden.
-   */
-  onEditEndpoint?: () => void;
 }
 
 export const EndpointTestDialogUI: React.FC<EndpointTestDialogUIProps> = ({
@@ -52,7 +44,6 @@ export const EndpointTestDialogUI: React.FC<EndpointTestDialogUIProps> = ({
   result,
   serverError,
   onClose,
-  onEditEndpoint,
 }) => (
   <Modal
     open={open}
@@ -144,16 +135,6 @@ export const EndpointTestDialogUI: React.FC<EndpointTestDialogUIProps> = ({
               {JSON.stringify(result.details, null, 2)}
             </Stack>
           ) : null}
-          {onEditEndpoint ? (
-            <Button
-              type="button"
-              variant="text"
-              onClick={onEditEndpoint}
-              aria-label="Edit endpoint to fix the failure"
-            >
-              Edit endpoint
-            </Button>
-          ) : null}
         </Stack>
       ) : null}
     </Stack>
@@ -168,7 +149,6 @@ export interface EndpointTestDialogProps {
   endpointEntityId: string;
   endpointLabel: string;
   onClose: () => void;
-  onEditEndpoint?: () => void;
 }
 
 export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
@@ -177,23 +157,38 @@ export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
   endpointEntityId,
   endpointLabel,
   onClose,
-  onEditEndpoint,
 }) => {
-  const { mutateAsync, isPending } =
-    sdk.connectorInstances.testConnection(instanceId);
+  const { mutateAsync } = sdk.connectorInstances.testConnection(instanceId);
+  const [isPending, setIsPending] = useState(false);
   const [result, setResult] = useState<TestConnectionResult | null>(null);
   const [serverError, setServerError] = useState<ServerError | null>(null);
 
-  // Fire the test on each open. Resets prior state so re-opening for a
-  // different endpoint doesn't show stale results.
+  // Fire the test on each open, resetting the previous run. Pending is
+  // tracked here rather than read from the mutation: in StrictMode the open
+  // effect runs twice, the second call gets the first's in-flight promise
+  // (#751), and React Query's observer has dropped that mutation on the
+  // simulated unmount, so its `isPending` never clears. Results arriving
+  // after close or a re-run are ignored.
   useEffect(() => {
     if (!open) return;
+    let current = true;
     setResult(null);
     setServerError(null);
+    setIsPending(true);
     const body: TestConnectionRequestBody = { endpointEntityId };
-    void mutateAsync(body)
-      .then((res) => setResult(res))
-      .catch((err) => setServerError(toServerError(err as never)));
+    mutateAsync(body)
+      .then((res) => {
+        if (current) setResult(res);
+      })
+      .catch((err) => {
+        if (current) setServerError(toServerError(err as never));
+      })
+      .finally(() => {
+        if (current) setIsPending(false);
+      });
+    return () => {
+      current = false;
+    };
     // We intentionally don't include `mutateAsync` in deps — it's a
     // stable mutation handle and including it triggers a re-fire loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,7 +202,6 @@ export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
       result={result}
       serverError={serverError}
       onClose={onClose}
-      onEditEndpoint={onEditEndpoint}
     />
   );
 };

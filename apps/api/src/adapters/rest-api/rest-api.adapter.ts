@@ -1211,6 +1211,22 @@ function stableStringify(v: unknown): string {
  * caught and projected into `{ ok: false, code, message, details? }`;
  * any other exception bubbles up to the route's generic handler.
  */
+/**
+ * The result for an endpoint that isn't on the instance. Also returned by
+ * the test-connection route for one the caller can't read (#780), so an
+ * unreadable endpoint is indistinguishable from an absent one.
+ */
+export function endpointNotFoundResult(
+  endpointEntityId: string,
+  instanceId: string
+): TestConnectionResult {
+  return {
+    ok: false,
+    code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+    message: `Endpoint ${endpointEntityId} not configured on instance ${instanceId}`,
+  };
+}
+
 async function testConnection(
   instance: ConnectorInstance,
   params: TestConnectionParams
@@ -1227,11 +1243,7 @@ async function testConnection(
   const endpoint =
     await DbService.repository.apiEndpoints.findByEntityId(endpointEntityId);
   if (!endpoint || endpoint.entity.connectorInstanceId !== instance.id) {
-    return {
-      ok: false,
-      code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
-      message: `Endpoint ${endpointEntityId} not configured on instance ${instance.id}`,
-    };
+    return endpointNotFoundResult(endpointEntityId, instance.id);
   }
 
   try {

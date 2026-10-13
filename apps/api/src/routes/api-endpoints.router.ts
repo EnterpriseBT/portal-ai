@@ -18,6 +18,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { DbService } from "../services/db.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import {
@@ -308,8 +309,21 @@ apiEndpointsRouter.get(
       const rows = await DbService.repository.apiEndpoints.findByInstance(
         instance.id
       );
+      // #780: each endpoint is an entity with its own read permission; list
+      // only the ones the caller can read, like the entity list does.
+      const permissions = await PermissionService.loadSet(
+        req.application!.metadata
+      );
       return HttpService.success(res, {
-        endpoints: rows.map(toWire),
+        endpoints: rows
+          .filter((row) =>
+            permissions.can("resource.read", {
+              type: "entity",
+              id: row.entity.id,
+              createdBy: row.entity.createdBy,
+            })
+          )
+          .map(toWire),
       });
     } catch (error) {
       return next(
@@ -392,10 +406,19 @@ apiEndpointsRouter.get(
       // entity id alone, so this returned another org's endpoint config).
       const found =
         await DbService.repository.apiEndpoints.findByEntityId(entityId);
+      // #780: and readable by the caller (unreadable == absent).
       if (
         !found ||
         found.entity.organizationId !== organizationId ||
-        found.entity.connectorInstanceId !== instance.id
+        found.entity.connectorInstanceId !== instance.id ||
+        !(await PermissionService.loadSet(req.application!.metadata)).can(
+          "resource.read",
+          {
+            type: "entity",
+            id: found.entity.id,
+            createdBy: found.entity.createdBy,
+          }
+        )
       ) {
         throw new ApiError(
           404,

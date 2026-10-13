@@ -52,7 +52,10 @@ import {
   redactInstances,
 } from "../services/connector-instances.service.js";
 import { SyncService } from "../services/sync.service.js";
-import { restApiAdapter } from "../adapters/rest-api/rest-api.adapter.js";
+import {
+  endpointNotFoundResult,
+  restApiAdapter,
+} from "../adapters/rest-api/rest-api.adapter.js";
 import jsonata from "jsonata";
 import { truncateForPrompt } from "../adapters/rest-api/jsonata-suggest.prompt.js";
 import { getJsonataSuggester } from "../adapters/rest-api/jsonata-suggest.haiku.js";
@@ -1765,7 +1768,9 @@ connectorInstanceRouter.patch(
  *       instance's adapter implements it (REST API today). Read-only —
  *       enqueues no job and writes no records. Returns the adapter's
  *       `TestConnectionResult` verbatim as the 200 body; `ok: false`
- *       indicates a successful check that itself reported failure.
+ *       indicates a successful check that itself reported failure. An
+ *       endpoint the caller can't read (#780) answers exactly like one that
+ *       isn't on the instance: `ok: false`, REST_API_ENDPOINT_NOT_FOUND.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1844,11 +1849,15 @@ connectorInstanceRouter.post(
           )
         );
       }
+      const permissions = await PermissionService.loadSet(
+        req.application!.metadata
+      );
       if (
-        !(await PermissionService.loadSet(req.application!.metadata)).can(
-          "resource.read",
-          { type: "connector_instance", id, createdBy: existing.createdBy }
-        )
+        !permissions.can("resource.read", {
+          type: "connector_instance",
+          id,
+          createdBy: existing.createdBy,
+        })
       ) {
         return next(
           new ApiError(
@@ -1882,6 +1891,33 @@ connectorInstanceRouter.post(
           ApiCode.TEST_CONNECTION_NOT_SUPPORTED,
           `Connector type "${slug}" does not support test-connection`
         );
+      }
+
+      // #780: an endpoint is an entity with its own read permission, and the
+      // test returns its live records. One the caller can't read is answered
+      // exactly as one that isn't on the instance.
+      const { endpointEntityId } = parsed.data;
+      if (endpointEntityId) {
+        const entity =
+          await DbService.repository.connectorEntities.findById(
+            endpointEntityId
+          );
+        if (
+          entity &&
+          entity.organizationId === organizationId &&
+          entity.connectorInstanceId === id &&
+          !permissions.can("resource.read", {
+            type: "entity",
+            id: entity.id,
+            createdBy: entity.createdBy,
+          })
+        ) {
+          return HttpService.success(
+            res,
+            endpointNotFoundResult(endpointEntityId, id),
+            200
+          );
+        }
       }
 
       const result = await adapter.testConnection(

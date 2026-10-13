@@ -38,6 +38,8 @@ import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSy
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
 import { jobLockReason } from "../utils/running-job-label.util";
 import { connectorInstanceActionGates } from "../utils/connector-instance-actions.util";
+import { decideActionGate } from "../utils/action-gate.util";
+import { isTestableEndpointEntity } from "../utils/endpoint-testability.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
@@ -51,6 +53,7 @@ import DataResult from "../components/DataResult.component";
 import { DeleteConnectorInstanceDialog } from "../components/DeleteConnectorInstanceDialog.component";
 import { EditConnectorInstanceDialog } from "../components/EditConnectorInstanceDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
+import { EndpointTestDialog } from "../components/EndpointTestDialog.component";
 import {
   usePagination,
   PaginationToolbar,
@@ -110,6 +113,14 @@ export const ConnectorInstanceView = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [createEntityOpen, setCreateEntityOpen] = useState(false);
+  // #780: the entity whose REST endpoint the Test dialog dry-runs. Kept
+  // after close so the dialog stays mounted and fades out; `testOpen`
+  // drives it, and each open re-runs the test.
+  const [testingEndpoint, setTestingEndpoint] = useState<{
+    entityId: string;
+    label: string;
+  } | null>(null);
+  const [testOpen, setTestOpen] = useState(false);
 
   const createEntityMutation = sdk.connectorEntities.create();
   const deleteMutation = sdk.connectorInstances.delete(connectorInstanceId);
@@ -247,6 +258,23 @@ export const ConnectorInstanceView = ({
     connectorInstanceId,
     definitionSlug
   );
+  // #780: one query for the instance's own endpoints, fetched only for a
+  // REST API connector; `isTestableEndpointEntity` decides from it.
+  const isRestApi = definitionSlug === "rest-api";
+  const endpointsQuery = sdk.apiConnector.endpoints.list(connectorInstanceId, {
+    enabled: isRestApi,
+  });
+  const endpointEntityIds = useMemo(
+    () =>
+      new Set((endpointsQuery.data?.endpoints ?? []).map((ep) => ep.entity.id)),
+    [endpointsQuery.data]
+  );
+  const isTestableEntity = (entityId: string) =>
+    isTestableEndpointEntity(entityId, {
+      isRestApi,
+      endpointsFailed: endpointsQuery.isError,
+      endpointEntityIds,
+    });
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {
@@ -587,6 +615,22 @@ export const ConnectorInstanceView = ({
                                         <ConnectorEntityCardUI
                                           key={entity.id}
                                           connectorEntity={entity}
+                                          onTestEndpoint={
+                                            isTestableEntity(entity.id)
+                                              ? () => {
+                                                  setTestingEndpoint({
+                                                    entityId: entity.id,
+                                                    label: entity.label,
+                                                  });
+                                                  setTestOpen(true);
+                                                }
+                                              : undefined
+                                          }
+                                          // The route checks read on the
+                                          // entity as well as the instance.
+                                          testEndpointGate={decideActionGate({
+                                            allowed: entity.capabilities.read,
+                                          })}
                                         />
                                       )
                                     )}
@@ -617,6 +661,16 @@ export const ConnectorInstanceView = ({
                     onConfirm={handleRename}
                     isPending={renameMutation.isPending}
                   />
+
+                  {testingEndpoint ? (
+                    <EndpointTestDialog
+                      open={testOpen}
+                      instanceId={connectorInstanceId}
+                      endpointEntityId={testingEndpoint.entityId}
+                      endpointLabel={testingEndpoint.label}
+                      onClose={() => setTestOpen(false)}
+                    />
+                  ) : null}
 
                   <CreateConnectorEntityDialog
                     open={createEntityOpen}

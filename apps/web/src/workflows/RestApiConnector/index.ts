@@ -12,13 +12,7 @@ export {
   EndpointsStep,
   EndpointsStepUI,
   type EndpointsStepUIProps,
-  type EndpointRow,
 } from "./EndpointsStep.component";
-export {
-  EndpointTestDialog,
-  EndpointTestDialogUI,
-  type EndpointTestDialogUIProps,
-} from "./EndpointTestDialog.component";
 export {
   ApiEndpointForm,
   ApiEndpointFormUI,
