@@ -6,6 +6,7 @@ import type {
 import type {
   PublicAccountInfo,
   ResolvedColumn,
+  TestConnectionRequestBody,
 } from "@portalai/core/contracts";
 
 // ── Query / Result types ────────────────────────────────────────────
@@ -116,14 +117,11 @@ export interface DiscoveredColumn {
 }
 
 /**
- * Free-shape parameters for `ConnectorAdapter.testConnection`. The
- * shared route forwards `req.body` verbatim — each adapter reads the
- * keys it cares about (the REST API adapter reads `endpointEntityId`).
+ * Parameters for `ConnectorAdapter.testConnection`: the route's body,
+ * parsed against the strict `TestConnectionRequestBodySchema` (#775).
+ * An adapter that needs another key adds it to that schema.
  */
-export interface TestConnectionParams {
-  endpointEntityId?: string;
-  [key: string]: unknown;
-}
+export type TestConnectionParams = TestConnectionRequestBody;
 
 /**
  * Outcome of `ConnectorAdapter.testConnection`. The route returns this

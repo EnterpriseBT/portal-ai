@@ -301,16 +301,16 @@ export type DeleteApiEndpointResponsePayload = z.infer<
 // ── testConnection contracts ────────────────────────────────────────
 
 /**
- * Body forwarded to `ConnectorAdapter.testConnection` — adapter-
- * specific; the REST API adapter reads `endpointEntityId`. The
- * schema accepts unknown extra keys so other adapters can interpret
- * different shapes in the future.
+ * Body forwarded to `ConnectorAdapter.testConnection`. The REST API
+ * adapter, the only one that implements it, reads `endpointEntityId`.
+ * Strict (#775): an unknown key is a 400 naming it, not a parameter
+ * silently dropped. An adapter that needs another key adds it here.
  */
 export const TestConnectionRequestBodySchema = z
   .object({
     endpointEntityId: z.string().optional(),
   })
-  .catchall(z.unknown());
+  .strict();
 export type TestConnectionRequestBody = z.infer<
   typeof TestConnectionRequestBodySchema
 >;

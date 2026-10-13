@@ -26,6 +26,7 @@ import {
   ConnectorInstanceCreateRequestBodySchema,
   ConnectorInstancePatchRequestBodySchema,
   ConnectorInstanceSyncRequestBodySchema,
+  TestConnectionRequestBodySchema,
   PreviewEndpointPageRequestBodySchema,
   ProbeEndpointDraftRequestBodySchema,
   SuggestTransformRequestBodySchema,
@@ -51,7 +52,6 @@ import {
   redactInstances,
 } from "../services/connector-instances.service.js";
 import { SyncService } from "../services/sync.service.js";
-import type { TestConnectionParams } from "../adapters/adapter.interface.js";
 import { restApiAdapter } from "../adapters/rest-api/rest-api.adapter.js";
 import jsonata from "jsonata";
 import { truncateForPrompt } from "../adapters/rest-api/jsonata-suggest.prompt.js";
@@ -1799,6 +1799,14 @@ connectorInstanceRouter.patch(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/TestConnectionResult'
+ *       400:
+ *         description: >
+ *           CONNECTOR_INSTANCE_INVALID_PAYLOAD — the body carries a key
+ *           the schema doesn't define (#775)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: >
  *           CONNECTOR_INSTANCE_NOT_FOUND (no such instance for this org)
@@ -1864,8 +1872,21 @@ connectorInstanceRouter.post(
         );
       }
 
-      const params = (req.body ?? {}) as TestConnectionParams;
-      const result = await adapter.testConnection(instance as never, params);
+      // #775: strict, so an unknown key is a 400 naming it rather than a
+      // parameter the adapter silently ignores.
+      const parsed = TestConnectionRequestBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        throw invalidPayload(
+          ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
+          "Invalid test-connection payload",
+          parsed.error
+        );
+      }
+
+      const result = await adapter.testConnection(
+        instance as never,
+        parsed.data
+      );
 
       return HttpService.success(res, result, 200);
     } catch (error) {
@@ -1900,20 +1921,6 @@ connectorInstanceRouter.post(
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
 
-      // #775: the route takes no body; an unknown key is a 400 naming it.
-      const parsed = ConnectorInstanceSyncRequestBodySchema.safeParse(
-        req.body ?? {}
-      );
-      if (!parsed.success) {
-        return next(
-          invalidPayload(
-            ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
-            "Invalid sync payload",
-            parsed.error
-          )
-        );
-      }
-
       // #630: a sync mutates the instance's records — gate on object write (a
       // member may sync only an instance they created).
       // #713: one the caller can't read answers 404, like its GET.
@@ -1930,6 +1937,22 @@ connectorInstanceRouter.post(
             "Connector instance not found"
           )
       );
+
+      // #775: the route takes no body; an unknown key is a 400 naming it.
+      // Checked after the access check, so a caller who can't read the
+      // instance hears only its 404, whatever the body.
+      const parsed = ConnectorInstanceSyncRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
+      if (!parsed.success) {
+        return next(
+          invalidPayload(
+            ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
+            "Invalid sync payload",
+            parsed.error
+          )
+        );
+      }
 
       // Resolve adapter, run ownership + adapter eligibility checks in one
       // pass. Predictable refusals (no plan, rowPosition, sync-not-supported)

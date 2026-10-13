@@ -13,6 +13,7 @@ import { webhookHandleRouter } from "./routes/webhook-handle.router.js";
 import { publicSiteRouter } from "./routes/public-site.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
+import { jsonBodyOnly } from "./middleware/json-body-only.middleware.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
 import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import {
@@ -65,6 +66,8 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use("/api/webhooks", webhookRouter);
 
 app.use(express.json({ limit: environment.REQUEST_JSON_LIMIT_BYTES }));
+// #775: a body express.json() skipped would reach routes as `{}`; refuse it.
+app.use(jsonBodyOnly);
 app.use(
   cors({
     origin: environment.CORS_ORIGIN,

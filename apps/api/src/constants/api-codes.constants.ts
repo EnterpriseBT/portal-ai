@@ -26,6 +26,8 @@ export enum ApiCode {
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",
   REQUEST_BODY_INVALID_JSON = "REQUEST_BODY_INVALID_JSON",
+  /** A request body that isn't application/json, which no route reads (#775). 415. */
+  REQUEST_UNSUPPORTED_MEDIA_TYPE = "REQUEST_UNSUPPORTED_MEDIA_TYPE",
   /** Per-user fixed-window limit exceeded on the authenticated API
    *  (#574). Keyed by the Auth0 subject; fail-open on a Redis outage. 429. */
   API_RATE_LIMITED = "API_RATE_LIMITED",

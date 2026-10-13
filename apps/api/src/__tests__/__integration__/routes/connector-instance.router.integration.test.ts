@@ -1742,6 +1742,36 @@ describe("Connector Instance Router", () => {
       expect(jobs).toHaveLength(0);
     });
 
+    it("answers 404 for an unknown instance whatever the body", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${generateId()}/sync`)
+        .set("Authorization", "Bearer test-token")
+        .send({ force: true });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+    });
+
+    it("refuses a form-encoded body with 415 and enqueues nothing", async () => {
+      const { instanceId, organizationId } = await seedSyncFixture({});
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token")
+        .type("form")
+        .send("force=true");
+
+      expect(res.status).toBe(415);
+      expect(res.body.code).toBe(ApiCode.REQUEST_UNSUPPORTED_MEDIA_TYPE);
+      const jobs = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.organizationId, organizationId));
+      expect(jobs).toHaveLength(0);
+    });
+
     it("accepts an empty JSON object body", async () => {
       const { instanceId } = await seedSyncFixture({});
 
