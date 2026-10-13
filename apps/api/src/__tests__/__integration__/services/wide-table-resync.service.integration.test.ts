@@ -133,26 +133,36 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
       })),
     } as unknown as Parameters<typeof ConnectorAdapterRegistry.register>[1];
 
+    // #772: a connector type with no adapter at all (file upload) is
+    // unsupported too, not a failure.
+    const noAdapterDefId = await seedDef();
+
     const getSpy = jest
-      .spyOn(ConnectorAdapterRegistry, "get")
+      .spyOn(ConnectorAdapterRegistry, "find")
       .mockImplementation((slug: string) => {
         const def = slug.startsWith("resync-conn-");
         if (!def) {
           throw new Error(`unexpected slug ${slug}`);
         }
+        if (slug === noAdapterSlug) return undefined;
         const isSandbox = slug === sandboxSlug;
         return isSandbox ? sandboxAdapter : syncCapableAdapter;
       });
 
     // Pull the seeded slugs back so the mock can branch deterministically.
-    const sandboxRow = await (db as ReturnType<typeof drizzle>)
-      .select()
-      .from(schema.connectorDefinitions)
-      .where(eq(schema.connectorDefinitions.id, sandboxDefId));
-    const sandboxSlug = sandboxRow[0]!.slug;
+    const slugOf = async (id: string) =>
+      (
+        await (db as ReturnType<typeof drizzle>)
+          .select()
+          .from(schema.connectorDefinitions)
+          .where(eq(schema.connectorDefinitions.id, id))
+      )[0]!.slug;
+    const sandboxSlug = await slugOf(sandboxDefId);
+    const noAdapterSlug = await slugOf(noAdapterDefId);
 
     const liveSyncId = await seedInstance(syncCapableDefId);
     const sandboxId = await seedInstance(sandboxDefId);
+    const noAdapterId = await seedInstance(noAdapterDefId);
     // Soft-deleted instances are skipped entirely.
     const _softDeletedId = await seedInstance(syncCapableDefId, {
       deleted: Date.now(),
@@ -164,7 +174,9 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
       await wideTableResyncService.resyncAllConnectorInstances(userId);
 
     expect(report.triggered).toHaveLength(1);
-    expect(report.skippedUnsupported).toEqual([sandboxId]);
+    expect([...report.skippedUnsupported].sort()).toEqual(
+      [sandboxId, noAdapterId].sort()
+    );
     expect(report.skippedInFlight).toEqual([]);
     expect(report.failed).toEqual([]);
 
@@ -195,7 +207,7 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
       })),
     } as unknown as Parameters<typeof ConnectorAdapterRegistry.register>[1];
     const getSpy = jest
-      .spyOn(ConnectorAdapterRegistry, "get")
+      .spyOn(ConnectorAdapterRegistry, "find")
       .mockReturnValue(adapter);
 
     // Pre-seed an in-flight `connector_sync` job for this instance so

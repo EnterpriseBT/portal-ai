@@ -1639,6 +1639,37 @@ describe("Connector Instance Router", () => {
       expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
     });
 
+    // #772: file upload has no adapter. That is "can't sync", not a 500.
+    it("returns 400 SYNC_NOT_SUPPORTED for a connector type with no adapter", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ slug: "file-upload" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const inst = createConnectorInstance(def.id, organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(inst as never);
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${inst.id}/sync`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.SYNC_NOT_SUPPORTED);
+      expect(res.body.message).toBe(
+        'Connector type "file-upload" does not support sync'
+      );
+      const jobRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.organizationId, organizationId));
+      expect(jobRows).toHaveLength(0);
+    });
+
     it("returns 404 when the instance has no committed plan", async () => {
       const { instanceId } = await seedSyncFixture({ withPlan: false });
 

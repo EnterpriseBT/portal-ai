@@ -1847,7 +1847,7 @@ connectorInstanceRouter.post(
         organizationId
       );
 
-      if (!adapter.testConnection) {
+      if (!adapter?.testConnection) {
         throw new ApiError(
           404,
           ApiCode.TEST_CONNECTION_NOT_SUPPORTED,

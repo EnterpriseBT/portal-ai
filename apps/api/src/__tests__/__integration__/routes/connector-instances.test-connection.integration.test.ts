@@ -214,6 +214,20 @@ describe("POST /api/connector-instances/:id/test-connection — route guards", (
     expect(res.body.code).toBe(ApiCode.TEST_CONNECTION_NOT_SUPPORTED);
   });
 
+  // #772: a connector type with no adapter (file upload) can't test either.
+  it("returns 404 TEST_CONNECTION_NOT_SUPPORTED when the connector type has no adapter", async () => {
+    const fileUploadDefId = generateId();
+    await seedDefinition("file-upload", fileUploadDefId);
+    const fileUploadInstanceId = await seedInstance(fileUploadDefId);
+
+    const res = await request(app)
+      .post(`/api/connector-instances/${fileUploadInstanceId}/test-connection`)
+      .send({});
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.TEST_CONNECTION_NOT_SUPPORTED);
+  });
+
   it("returns 404 CONNECTOR_INSTANCE_NOT_FOUND when the instance doesn't exist", async () => {
     const res = await request(app)
       .post(`/api/connector-instances/${generateId()}/test-connection`)
