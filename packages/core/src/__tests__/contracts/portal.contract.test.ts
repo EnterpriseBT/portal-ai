@@ -104,6 +104,10 @@ describe("UpdatePortalBodySchema", () => {
     });
   });
 
+  it("rejects a blank name with the message the rename dialog shows", () => {
+    expect(firstPath({ name: "   " })?.message).toBe("Name is required");
+  });
+
   it("rejects an empty body", () => {
     expect(firstPath({})?.message).toBe("At least one field must be provided");
   });

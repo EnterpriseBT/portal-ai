@@ -21,11 +21,21 @@ export const DeleteCuratedViewDialog: React.FC<
 
   return (
     <Modal
+      submitDisabled={!!isPending}
       open
       onClose={onClose}
       title="Delete view"
       maxWidth="xs"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            onConfirm();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

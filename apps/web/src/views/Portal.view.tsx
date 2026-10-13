@@ -1,16 +1,8 @@
 import React, { useState, useCallback } from "react";
 
 import type { PortalGetResponsePayload } from "@portalai/core/contracts";
-import {
-  Box,
-  Button,
-  GatedButton,
-  Modal,
-  PageHeader,
-  Stack,
-} from "@portalai/core/ui";
+import { Box, GatedButton, PageHeader } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import TextField from "@mui/material/TextField";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,13 +10,11 @@ import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
-import { FormAlert } from "../components/FormAlert.component";
 import { PortalHeaderMeta } from "../components/PortalHeaderMeta.component";
 import { PortalSession } from "../components/PortalSession.component";
+import { RenamePortalDialog } from "../components/RenamePortalDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { toServerError, type ServerError } from "../utils/api.util";
-import { focusFirstInvalidField } from "../utils/form-validation.util";
-import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
 
 // ── Portal data item component ──────────────────────────────────────
@@ -37,84 +27,6 @@ interface PortalDataItemProps {
 const PortalDataItem: React.FC<PortalDataItemProps> = ({ id, children }) => {
   const res = sdk.portals.get(id);
   return <>{children(res)}</>;
-};
-
-// ── Rename dialog ───────────────────────────────────────────────────
-
-interface RenamePortalDialogProps {
-  open: boolean;
-  onClose: () => void;
-  currentName: string;
-  onSubmit: (name: string) => void;
-  isPending: boolean;
-  serverError?: ServerError | null;
-}
-
-const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
-  open,
-  onClose,
-  currentName,
-  onSubmit,
-  isPending,
-  serverError,
-}) => {
-  const [name, setName] = useState(currentName);
-  const [error, setError] = useState("");
-  const nameRef = useDialogAutoFocus(open);
-
-  const handleSubmit = () => {
-    if (!name.trim()) {
-      setError("Name is required");
-      requestAnimationFrame(() => focusFirstInvalidField());
-      return;
-    }
-    if (name.trim() === currentName) {
-      onClose();
-      return;
-    }
-    onSubmit(name.trim());
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Rename Portal"
-      maxWidth="sm"
-      fullWidth
-      actions={
-        <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={isPending}
-          >
-            {isPending ? "Saving..." : "Save"}
-          </Button>
-        </Stack>
-      }
-    >
-      <Stack spacing={2} sx={{ pt: 1 }}>
-        <TextField
-          inputRef={nameRef}
-          label="Name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-            if (error) setError("");
-          }}
-          error={!!error}
-          helperText={error}
-          required
-          fullWidth
-        />
-        <FormAlert serverError={serverError ?? null} />
-      </Stack>
-    </Modal>
-  );
 };
 
 // ── Portal view ─────────────────────────────────────────────────────
@@ -216,7 +128,12 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                         size="small"
                         variant="contained"
                         startIcon={<EditIcon />}
-                        onClick={() => setRenameOpen(true)}
+                        onClick={() => {
+                          // A failed rename's error belongs to that attempt,
+                          // not the next opening.
+                          renameMutation.reset();
+                          setRenameOpen(true);
+                        }}
                         gate={decideActionGate({
                           allowed: item.portal.capabilities.write,
                         })}

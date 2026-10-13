@@ -131,7 +131,7 @@ export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
  *  wrongly typed or unknown key is a 400 naming it, not a silent no-op. */
 export const UpdatePortalBodySchema = z
   .object({
-    name: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1, "Name is required").optional(),
     lastOpened: z.number().int().nonnegative().optional(),
   })
   .strict()
