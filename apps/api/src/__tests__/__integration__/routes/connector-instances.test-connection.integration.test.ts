@@ -226,6 +226,9 @@ describe("POST /api/connector-instances/:id/test-connection — route guards", (
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe(ApiCode.TEST_CONNECTION_NOT_SUPPORTED);
+    expect(res.body.message).toBe(
+      'Connector type "file-upload" does not support test-connection'
+    );
   });
 
   it("returns 404 CONNECTOR_INSTANCE_NOT_FOUND when the instance doesn't exist", async () => {

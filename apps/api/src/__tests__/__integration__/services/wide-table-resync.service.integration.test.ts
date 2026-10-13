@@ -137,7 +137,7 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
     // unsupported too, not a failure.
     const noAdapterDefId = await seedDef();
 
-    const getSpy = jest
+    const findSpy = jest
       .spyOn(ConnectorAdapterRegistry, "find")
       .mockImplementation((slug: string) => {
         const def = slug.startsWith("resync-conn-");
@@ -191,7 +191,7 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
     const meta = jobs[0]!.metadata as Record<string, unknown>;
     expect(meta.connectorInstanceId).toBe(liveSyncId);
 
-    getSpy.mockRestore();
+    findSpy.mockRestore();
   });
 
   // ── Case 50 — skips in-flight + idempotent re-run ────────────────
@@ -206,7 +206,7 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
         connectorEntityIds: [],
       })),
     } as unknown as Parameters<typeof ConnectorAdapterRegistry.register>[1];
-    const getSpy = jest
+    const findSpy = jest
       .spyOn(ConnectorAdapterRegistry, "find")
       .mockReturnValue(adapter);
 
@@ -249,6 +249,6 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
     expect(second.triggered).toHaveLength(1);
     expect(second.skippedInFlight).toEqual([]);
 
-    getSpy.mockRestore();
+    findSpy.mockRestore();
   });
 });

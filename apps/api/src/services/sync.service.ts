@@ -31,7 +31,7 @@ export class SyncService {
    * Resolve the adapter for a connector instance. Throws 404 if the
    * instance doesn't exist (or doesn't belong to the requesting org)
    * and 500 if the definition is missing. Used by the sync route's
-   * pre-flight + the redactor's `syncEligible` field.
+   * pre-flight and the test-connection route.
    *
    * `adapter` is undefined for a connector type with no adapter (file
    * upload): it has no capabilities, so each caller refuses it the way it

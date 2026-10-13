@@ -1842,7 +1842,7 @@ connectorInstanceRouter.post(
         );
       }
 
-      const { instance, adapter } = await SyncService.resolveAdapter(
+      const { instance, slug, adapter } = await SyncService.resolveAdapter(
         id,
         organizationId
       );
@@ -1851,7 +1851,7 @@ connectorInstanceRouter.post(
         throw new ApiError(
           404,
           ApiCode.TEST_CONNECTION_NOT_SUPPORTED,
-          `Adapter for instance ${id} does not implement testConnection`
+          `Connector type "${slug}" does not support test-connection`
         );
       }
 
@@ -1860,10 +1860,14 @@ connectorInstanceRouter.post(
 
       return HttpService.success(res, result, 200);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to run test-connection"
-      );
+      // A refusal (an ApiError) is logged by the app's error handler; only
+      // an unexpected failure is this route's to report (#772).
+      if (!(error instanceof ApiError)) {
+        logger.error(
+          { error: error instanceof Error ? error.message : "Unknown error" },
+          "Failed to run test-connection"
+        );
+      }
       return next(
         error instanceof ApiError
           ? error
@@ -1948,10 +1952,14 @@ connectorInstanceRouter.post(
 
       return HttpService.success(res, { jobId: job.id }, 202);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to enqueue sync job"
-      );
+      // A refusal (an ApiError) is logged by the app's error handler; only
+      // an unexpected failure is this route's to report (#772).
+      if (!(error instanceof ApiError)) {
+        logger.error(
+          { error: error instanceof Error ? error.message : "Unknown error" },
+          "Failed to enqueue sync job"
+        );
+      }
       return next(
         error instanceof ApiError
           ? error
