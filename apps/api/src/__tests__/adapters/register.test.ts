@@ -21,7 +21,7 @@ describe("registerAdapters", () => {
 
   it("microsoft-excel adapter exposes syncInstance + assertSyncEligibility", () => {
     registerAdapters();
-    const adapter = ConnectorAdapterRegistry.get("microsoft-excel");
+    const adapter = ConnectorAdapterRegistry.find("microsoft-excel")!;
     expect(typeof adapter.syncInstance).toBe("function");
     expect(typeof adapter.assertSyncEligibility).toBe("function");
     expect(typeof adapter.toPublicAccountInfo).toBe("function");
@@ -29,7 +29,7 @@ describe("registerAdapters", () => {
 
   it("rest-api adapter exposes syncInstance + testConnection + toPublicAccountInfo", () => {
     registerAdapters();
-    const adapter = ConnectorAdapterRegistry.get("rest-api");
+    const adapter = ConnectorAdapterRegistry.find("rest-api")!;
     expect(typeof adapter.syncInstance).toBe("function");
     expect(typeof adapter.testConnection).toBe("function");
     expect(typeof adapter.toPublicAccountInfo).toBe("function");

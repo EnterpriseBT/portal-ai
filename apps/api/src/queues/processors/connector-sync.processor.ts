@@ -1,3 +1,5 @@
+import { UnrecoverableError } from "bullmq";
+
 import type { TypedJobProcessor } from "../jobs.worker.js";
 import { ConnectorAdapterRegistry } from "../../adapters/adapter.registry.js";
 import { DbService } from "../../services/db.service.js";
@@ -62,24 +64,36 @@ export const connectorSyncProcessor: TypedJobProcessor<
 
   logger.info({ jobId, connectorInstanceId }, "connector_sync started");
 
+  // #774: a missing connector, definition, adapter or syncInstance is a fact
+  // about stored state that no retry can change. A plain error would retry
+  // through the whole budget while the job holds the connector's lock (#441,
+  // #769), refusing every write to it for a sync that can never run. A
+  // failing read throws from findById itself and stays retryable.
   const instance =
     await DbService.repository.connectorInstances.findById(connectorInstanceId);
   if (!instance) {
-    throw new Error(`Connector instance not found: ${connectorInstanceId}`);
+    throw new UnrecoverableError(
+      `Connector instance not found: ${connectorInstanceId}`
+    );
   }
 
   const definition = await DbService.repository.connectorDefinitions.findById(
     instance.connectorDefinitionId
   );
   if (!definition) {
-    throw new Error(
+    throw new UnrecoverableError(
       `Connector definition not found: ${instance.connectorDefinitionId}`
     );
   }
 
-  const adapter = ConnectorAdapterRegistry.get(definition.slug);
+  const adapter = ConnectorAdapterRegistry.find(definition.slug);
+  if (!adapter) {
+    throw new UnrecoverableError(
+      `No connector adapter registered for slug "${definition.slug}"`
+    );
+  }
   if (!adapter.syncInstance) {
-    throw new Error(
+    throw new UnrecoverableError(
       `Adapter ${definition.slug} does not implement syncInstance`
     );
   }
