@@ -18,8 +18,6 @@ const LOOSE: Record<string, string> = {
   InterpretRequestBodySchema:
     "alias of the parser's own InterpretInputSchema; strict would change the parser",
   PatchLayoutPlanBodySchema: "a z.record: every key is data",
-  TestConnectionRequestBodySchema:
-    "catchall by design: each adapter reads its own keys",
   GoogleSheetsSelectSheetRequestSchema:
     "SDK input (path id + body), never parsed on the wire",
   GoogleSheetsSheetSliceRequestSchema:
