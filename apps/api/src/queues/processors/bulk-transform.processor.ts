@@ -176,8 +176,10 @@ async function runToolDispatchLoop(
     opts.userId
   );
   if (!lookup) {
+    // Null also covers a toolpack that isn't enabled on the station or that
+    // the org's plan doesn't include, so the message names all three.
     throw new UnrecoverableError(
-      `Tool '${opts.toolRef}' is not bulk-dispatchable on this station`
+      `Tool '${opts.toolRef}' isn't available for bulk dispatch on this station: its toolpack isn't enabled here or included in the plan, or the tool isn't bulk-dispatchable`
     );
   }
 

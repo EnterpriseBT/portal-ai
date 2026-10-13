@@ -759,7 +759,6 @@ export enum ApiCode {
   // by the reads track without re-declaration.
 
   // Large-data-ops — tool dispatch (#85, Phase 4)
-  /** `expression.ref` doesn't resolve to a tool in the station's tools. */
   /** Tool exists but didn't declare `bulkDispatch` metadata. */
   BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE = "BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE",
   /** `acknowledgeCost: true` was set but server-side enforcement rejected — either no prior

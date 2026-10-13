@@ -142,16 +142,6 @@ export const createJobsWorker = (
       const { jobId, type } = bullJob.data;
       const processor = processors[type];
       const JobEventsService = await getJobEventsService();
-      if (!processor) {
-        // #777: this runs before the try below, so no catch writes the row.
-        // Left alone it stayed `pending` and held its locks until BullMQ
-        // dropped the failed entry (30 days) and the stranded-job sweep
-        // reaped it. Only a deploy mismatch reaches here (the processor map
-        // is exhaustive over JobType), and no retry fixes that.
-        const error = `No processor registered for job type: ${type}`;
-        await JobEventsService.transition(jobId, "failed", { error });
-        throw new UnrecoverableError(error);
-      }
 
       // A row still `active` at the top of a NEW execution means a prior
       // execution set it active (JobEventsService stamps `startedAt` on the
@@ -188,6 +178,15 @@ export const createJobsWorker = (
         ...lostExecutionsPatch,
       });
       try {
+        // #777: checked inside the try so the catch writes the row. Thrown
+        // before it, nothing did: the row stayed `pending` and held its locks
+        // until BullMQ dropped the failed entry (30 days) and the stranded-job
+        // sweep reaped it. Only a deploy mismatch reaches here (the processor
+        // map is exhaustive over JobType), and it stays retryable: mid-rollout
+        // a retry can land on a new worker that has the processor.
+        if (!processor) {
+          throw new Error(`No processor registered for job type: ${type}`);
+        }
         const result = await processor(bullJob);
         // #410: a batch job whose every item failed must not report
         // `completed`. Every item's work sits inside a per-item try/catch, so

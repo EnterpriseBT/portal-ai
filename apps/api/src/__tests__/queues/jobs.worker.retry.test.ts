@@ -185,26 +185,41 @@ describe("jobs worker — retry-aware terminal state (#441)", () => {
 
   // #777: a type with no processor was thrown before the worker's try, so
   // no catch wrote the row: it stayed `pending`, holding its locks, until
-  // BullMQ dropped the failed entry (30 days) and the sweep reaped it.
-  it("writes failed for a job type with no processor, and doesn't retry it", async () => {
-    build(async () => "ok");
-    const orphan = {
+  // BullMQ dropped the failed entry (30 days) and the sweep reaped it. It
+  // now goes through the catch like any failure, and stays retryable: during
+  // a rollout a retry can land on a worker that has the processor.
+  const orphan = (attemptsMade: number) =>
+    ({
       data: { jobId: "job-1", type: "no_such_type" },
-      attemptsMade: 0,
+      attemptsMade,
       opts: { attempts: 3 },
-    } as unknown as BullJob;
+    }) as unknown as BullJob;
+  const NO_PROCESSOR = "No processor registered for job type: no_such_type";
 
-    const run = captured!(orphan);
-    await expect(run).rejects.toBeInstanceOf(UnrecoverableError);
-    await expect(run).rejects.toThrow(
-      "No processor registered for job type: no_such_type"
-    );
+  it("writes pending for a job type with no processor while budget remains", async () => {
+    build(async () => "ok");
 
-    expect(openingCall()).toBeUndefined();
+    const run = captured!(orphan(0));
+    await expect(run).rejects.toThrow(NO_PROCESSOR);
+    await expect(run).rejects.not.toBeInstanceOf(UnrecoverableError);
+
+    expect(openingCall()![2]).toMatchObject({ attempts: 1 });
+    expect(lastNonActive()).toEqual([
+      "job-1",
+      "pending",
+      { error: NO_PROCESSOR },
+    ]);
+  });
+
+  it("writes failed for a job type with no processor once the budget is spent", async () => {
+    build(async () => "ok");
+
+    await expect(captured!(orphan(2))).rejects.toThrow(NO_PROCESSOR);
+
     expect(lastNonActive()).toEqual([
       "job-1",
       "failed",
-      { error: "No processor registered for job type: no_such_type" },
+      { error: NO_PROCESSOR },
     ]);
   });
 

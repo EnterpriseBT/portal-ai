@@ -7,7 +7,7 @@
 - `bulk_transform` whose tool is no longer bulk-dispatchable;
 - `dissolve_precompute` without `userId`.
 
-For those, the cost is seconds of lock and a misleading "retrying" status. The fourth case is much worse than the ticket says. The worker's **no processor registered** check (`jobs.worker.ts:144–146`) runs *before* the worker's `try`, so no catch writes the row. The `failed` handler then sees `pending` and treats it as handled (`jobs.worker.ts:313–315`), so the row stays `pending` and keeps its locks. The reconciliation sweep only reaps a row once its BullMQ entry is gone (`job-reconciliation.service.ts:79–80`), and `removeOnFail` keeps that entry **30 days** (`jobs.queue.ts:35`). `apps/api` only.
+For those, the cost is seconds of lock and a misleading "retrying" status. The fourth case is much worse than the ticket says, and it isn't about retrying. The worker's **no processor registered** check (`jobs.worker.ts:144–146`) runs *before* the worker's `try`, so no catch writes the row. The `failed` handler then sees `pending` and treats it as handled (`jobs.worker.ts:313–315`), so the row stays `pending` and keeps its locks. The reconciliation sweep only reaps a row once its BullMQ entry is gone (`job-reconciliation.service.ts:79–80`), and `removeOnFail` keeps that entry **30 days** (`jobs.queue.ts:35`). `apps/api` only.
 
 ## Current shape
 
@@ -35,23 +35,22 @@ For those, the cost is seconds of lock and a misleading "retrying" status. The f
 ## Decision 2 — the no-processor case
 
 - **A.** Throw `UnrecoverableError` only. This doesn't help: the row is still never written.
-- **B.** Write `failed` (with the reason) before throwing `UnrecoverableError`, so the row is terminal and the locks release at once. Also type the map `Record<JobType, JobProcessor>`, so a `JobType` with no processor fails type-check, and the runtime branch is reached only from a deploy mismatch (an old worker picking up a new type).
+- **B.** Write `failed` before throwing `UnrecoverableError`. Code review found this was wrong for a rolling deploy. Old and new workers take jobs from the same queue during a rollout, so a retry of a new-type job that landed on an old worker can reach a new one, and B throws that recovery away. It also needs its own write, log and cancelled-job handling apart from the catch.
+- **C.** Move the check inside the worker's `try` and throw a plain error. The catch writes `pending` while retries remain and `failed` once they're spent, like any failure. It records the attempt and logs the standard line. Also type the map `Record<JobType, JobProcessor>`, so a `JobType` with no processor fails type-check, and only a deploy mismatch reaches the runtime branch.
 
-**Decision: B.** The type makes the bug unreachable within one build. The runtime write covers the mismatch. A retry can't fix a mismatch either, because the backoff (~6s in total) is far shorter than a rollout.
+**Decision: C.** The stranding came from the throw skipping the catch, not from the retry. Retrying is right for the one case that can still reach the branch.
 
 ## Plan — one slice
 
 **Files**
 - Edit `bulk-transform.processor.ts:165,179`: throw `UnrecoverableError` with the same messages. The error code goes away, but these throws only ever set the job's `error` text, never an HTTP answer.
 - Edit `dissolve-precompute.processor.ts:490`: throw `UnrecoverableError`.
-- Edit `jobs.worker.ts:144–146`:
-  - in the no-processor branch, `transition(jobId, "failed", { error })`, then throw `UnrecoverableError`;
-  - the `JobEventsService` lookup moves above the check.
+- Edit `jobs.worker.ts:144–146`: move the no-processor check inside the `try`, keeping the plain `Error`.
 - Edit `processors/index.ts:21`: `Record<JobType, JobProcessor>`.
 
 **Tests** (failing first; `npm run test:unit -- --testPathPattern …` from `apps/api`)
 - `src/__tests__/queues/processors/bulk-transform.processor.test.ts`: missing `stationId`, and a null lookup → `UnrecoverableError` with the message, and no source rows are counted.
-- `src/__tests__/queues/jobs.worker.retry.test.ts`: an unknown type writes `failed` with `No processor registered for job type: <t>` and throws `UnrecoverableError`.
+- `src/__tests__/queues/jobs.worker.retry.test.ts`: an unknown type opens the attempt, writes `pending` with `No processor registered for job type: <t>` while budget remains, and `failed` once it's spent.
 - `dissolve-precompute`'s missing-`userId` path is integration-tested only (`src/__tests__/__integration__/queues/dissolve-precompute.processor.integration.test.ts`): add the case there (`AUTH_API_RATE_LIMIT_PER_MIN=1000000 npm run test:integration -- --testPathPattern dissolve-precompute`).
 - Then `npm run type-check`, `npm run lint` (api).
 

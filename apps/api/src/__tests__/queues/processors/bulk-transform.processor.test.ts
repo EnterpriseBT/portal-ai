@@ -377,7 +377,7 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
     const run = bulkTransformProcessor(job);
     await expect(run).rejects.toBeInstanceOf(UnrecoverableError);
     await expect(run).rejects.toThrow(
-      "Tool 'compute_distance_to_nearest_hospital' is not bulk-dispatchable on this station"
+      `Tool 'compute_distance_to_nearest_hospital' isn't available for bulk dispatch on this station`
     );
     expect(mockLookupBulkDispatchable).toHaveBeenCalled();
     expect(mockRunBatch).not.toHaveBeenCalled();
@@ -760,7 +760,7 @@ describe("bulkTransformProcessor — charge on job success (#183)", () => {
     });
 
     await expect(bulkTransformProcessor(job)).rejects.toThrow(
-      "Tool 'not_dispatchable' is not bulk-dispatchable on this station"
+      `Tool 'not_dispatchable' isn't available for bulk dispatch on this station`
     );
     expect(mockCommitCharge).not.toHaveBeenCalled();
   });
