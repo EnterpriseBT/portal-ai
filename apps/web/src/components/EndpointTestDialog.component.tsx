@@ -158,21 +158,37 @@ export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
   endpointLabel,
   onClose,
 }) => {
-  const { mutateAsync, isPending } =
-    sdk.connectorInstances.testConnection(instanceId);
+  const { mutateAsync } = sdk.connectorInstances.testConnection(instanceId);
+  const [isPending, setIsPending] = useState(false);
   const [result, setResult] = useState<TestConnectionResult | null>(null);
   const [serverError, setServerError] = useState<ServerError | null>(null);
 
-  // Fire the test on each open. Resets prior state so re-opening for a
-  // different endpoint doesn't show stale results.
+  // Fire the test on each open, resetting the previous run. Pending is
+  // tracked here rather than read from the mutation: in StrictMode the open
+  // effect runs twice, the second call gets the first's in-flight promise
+  // (#751), and React Query's observer has dropped that mutation on the
+  // simulated unmount, so its `isPending` never clears. Results arriving
+  // after close or a re-run are ignored.
   useEffect(() => {
     if (!open) return;
+    let current = true;
     setResult(null);
     setServerError(null);
+    setIsPending(true);
     const body: TestConnectionRequestBody = { endpointEntityId };
-    void mutateAsync(body)
-      .then((res) => setResult(res))
-      .catch((err) => setServerError(toServerError(err as never)));
+    mutateAsync(body)
+      .then((res) => {
+        if (current) setResult(res);
+      })
+      .catch((err) => {
+        if (current) setServerError(toServerError(err as never));
+      })
+      .finally(() => {
+        if (current) setIsPending(false);
+      });
+    return () => {
+      current = false;
+    };
     // We intentionally don't include `mutateAsync` in deps — it's a
     // stable mutation handle and including it triggers a re-fire loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
