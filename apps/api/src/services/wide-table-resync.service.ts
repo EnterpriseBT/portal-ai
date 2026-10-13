@@ -11,7 +11,8 @@
  * no longer has an active sync job and re-enqueues it. Instances with
  * an in-flight sync are reported under `skippedInFlight`; instances
  * whose adapter doesn't implement `syncInstance` (the sandbox connector,
- * for example) land in `skippedUnsupported`.
+ * for example), or that have no adapter (file upload), land in
+ * `skippedUnsupported`.
  */
 
 import { isNull } from "drizzle-orm";
@@ -69,8 +70,9 @@ export const wideTableResyncService = {
           });
           continue;
         }
-        const adapter = ConnectorAdapterRegistry.get(def.slug);
-        if (!adapter.syncInstance) {
+        // #772: no adapter at all (file upload) is unsupported, not failed.
+        const adapter = ConnectorAdapterRegistry.find(def.slug);
+        if (!adapter?.syncInstance) {
           skippedUnsupported.push(inst.id);
           continue;
         }

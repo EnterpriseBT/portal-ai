@@ -31,7 +31,11 @@ export class SyncService {
    * Resolve the adapter for a connector instance. Throws 404 if the
    * instance doesn't exist (or doesn't belong to the requesting org)
    * and 500 if the definition is missing. Used by the sync route's
-   * pre-flight + the redactor's `syncEligible` field.
+   * pre-flight and the test-connection route.
+   *
+   * `adapter` is undefined for a connector type with no adapter (file
+   * upload): it has no capabilities, so each caller refuses it the way it
+   * refuses an adapter without the method it needs (#772).
    */
   static async resolveAdapter(
     connectorInstanceId: string,
@@ -39,7 +43,7 @@ export class SyncService {
   ): Promise<{
     instance: ConnectorInstanceSelect;
     slug: string;
-    adapter: ConnectorAdapter;
+    adapter: ConnectorAdapter | undefined;
   }> {
     const instance =
       await DbService.repository.connectorInstances.findById(
@@ -62,7 +66,7 @@ export class SyncService {
         "Connector definition not found"
       );
     }
-    const adapter = ConnectorAdapterRegistry.get(definition.slug);
+    const adapter = ConnectorAdapterRegistry.find(definition.slug);
     return { instance, slug: definition.slug, adapter };
   }
 
@@ -129,7 +133,7 @@ export class SyncService {
       connectorInstanceId,
       organizationId
     );
-    if (!adapter.syncInstance) {
+    if (!adapter?.syncInstance) {
       throw new ApiError(
         400,
         ApiCode.SYNC_NOT_SUPPORTED,
