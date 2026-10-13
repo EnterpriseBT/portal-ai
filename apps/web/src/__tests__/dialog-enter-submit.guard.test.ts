@@ -12,6 +12,12 @@
  * `<form>` that renders `FormDefaultButton` passes it `disabled`. This asserts
  * over the source because the omission is silent at runtime: a dialog without
  * the prop works on the happy path and duplicates on a double Enter.
+ *
+ * #758: a submitting `Modal` with no form paper at all had nothing for Enter
+ * to submit, and the checks above never looked at it because they start from
+ * the form paper. A file that renders `<FormAlert>` beside a `<Modal>` is a
+ * submitting dialog (the Form & Dialog Pattern requires the alert on every
+ * mutating dialog), so each of its Modals must be a form.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -44,6 +50,23 @@ const files = sourceFiles(webSrc).map((path) => ({
 const formDialogs = files.filter(
   (f) => /<Modal\b/.test(f.source) && /component:\s*"form"/.test(f.source)
 );
+// Comments are stripped first so a doc comment naming `<FormAlert>` doesn't
+// make a wizard look like a submitting dialog.
+const withoutComments = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+// A Modal that renders a FormAlert but submits nothing. Each entry says why;
+// a new entry needs one as good.
+const EXEMPT: Record<string, string> = {
+  "components/EndpointTestDialog.component.tsx":
+    "result viewer: the test request fires on open and Close is its only action",
+};
+
+const submittingDialogs = files.filter((f) => {
+  const code = withoutComments(f.source);
+  return /<Modal\b/.test(code) && /<FormAlert\b/.test(code);
+});
+
 const rawDefaultButtons = files.filter((f) =>
   /<FormDefaultButton\b/.test(f.source)
 );
@@ -61,6 +84,25 @@ describe("dialog forms gate Enter like their submit button (#685)", () => {
       expect(gates.length).toBeGreaterThanOrEqual(forms.length);
     }
   );
+
+  it("finds the submitting dialogs (so the guard can't pass vacuously)", () => {
+    expect(submittingDialogs.length).toBeGreaterThanOrEqual(30);
+  });
+
+  it("exempts only files that still exist and still match", () => {
+    const matched = new Set(submittingDialogs.map((f) => f.path));
+    for (const path of Object.keys(EXEMPT)) expect(matched).toContain(path);
+  });
+
+  it.each(
+    submittingDialogs
+      .filter((f) => !(f.path in EXEMPT))
+      .map((f) => [f.path, withoutComments(f.source)])
+  )("%s gives every Modal a form paper (#758)", (_path, code) => {
+    const modals = code.match(/<Modal\b/g) ?? [];
+    const forms = code.match(/component:\s*"form"/g) ?? [];
+    expect(forms.length).toBeGreaterThanOrEqual(modals.length);
+  });
 
   it.each(rawDefaultButtons.map((f) => [f.path, f.source]))(
     "%s passes disabled to FormDefaultButton",
