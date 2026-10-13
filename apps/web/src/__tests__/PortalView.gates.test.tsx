@@ -5,7 +5,8 @@
 import { jest } from "@jest/globals";
 
 const mockPortalsGet = jest.fn();
-const mockTouchMutateAsync = jest.fn<() => Promise<unknown>>();
+const mockTouchMutateAsync =
+  jest.fn<(vars: { lastOpened: number }) => Promise<unknown>>();
 const mutation = () => ({ mutate: jest.fn(), isPending: false, error: null });
 const loading = () => ({
   data: undefined,
@@ -106,6 +107,50 @@ describe("PortalView gates (#690)", () => {
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ["portals"] })
     );
+  });
+
+  // #783: StrictMode re-runs the effect with its refs intact; so does a
+  // dependency flip. Re-running it later (clock moved on) must reuse the
+  // visit's timestamp, so the single-flight guard can join the calls
+  // (emulated by a shared promise), and refresh the list once per request.
+  it("re-running the touch effect reuses the visit's timestamp and refreshes once", async () => {
+    const now = jest.spyOn(Date, "now");
+    now.mockReturnValue(1_000);
+    mockPortalsGet.mockReturnValue(
+      portalResult({ read: true, write: true, delete: true })
+    );
+    const shared = Promise.resolve({ portal: { id: "portal-1" } });
+    mockTouchMutateAsync.mockReturnValue(shared);
+    const queryClient = new QueryClient();
+    const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+    const { rerender } = render(<PortalView portalId="portal-1" />, {
+      queryClient,
+    });
+    await waitFor(() => expect(mockTouchMutateAsync).toHaveBeenCalledTimes(1));
+
+    now.mockReturnValue(2_000);
+    mockPortalsGet.mockReturnValue(
+      portalResult({ read: true, write: false, delete: true })
+    );
+    rerender(<PortalView portalId="portal-1" />);
+    mockPortalsGet.mockReturnValue(
+      portalResult({ read: true, write: true, delete: true })
+    );
+    rerender(<PortalView portalId="portal-1" />);
+    await waitFor(() => expect(mockTouchMutateAsync).toHaveBeenCalledTimes(2));
+    await shared;
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(
+      mockTouchMutateAsync.mock.calls.map(([vars]) => vars.lastOpened)
+    ).toEqual([1_000, 1_000]);
+    expect(
+      invalidate.mock.calls.filter(
+        ([arg]) =>
+          JSON.stringify(arg) === JSON.stringify({ queryKey: ["portals"] })
+      )
+    ).toHaveLength(1);
+    now.mockRestore();
   });
 
   it("a read-only caller sees no Rename or Delete, and nothing is written", async () => {

@@ -219,7 +219,8 @@ describe("useAuthMutation single-flight (#751)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     await act(async () => pending[0].ok({ id: "s1" }));
-    await waitFor(() => expect(onResult).toHaveBeenCalledWith({ id: "s1" }));
+    // Both StrictMode runs' promises settle: the joined one included.
+    await waitFor(() => expect(onResult).toHaveBeenCalledTimes(2));
     expect(
       onResult.mock.calls.every(([r]) => (r as { id: string }).id === "s1")
     ).toBe(true);
