@@ -299,7 +299,7 @@ Long-running work runs on the shared `jobs` queue (`apps/api/src/queues/`) — f
 
 ### When you add a new long-running job
 
-1. Add the JobType + per-type metadata/result schemas to `packages/core/src/models/job.model.ts`, its `JOB_TYPE_LABELS` name, and its `JOB_LOCK_SCOPES` entry (`[]` when it writes no entity data); type-check fails until both exist. The metadata's JSDoc states the scopes.
+1. Add the JobType + per-type metadata/result schemas to `packages/core/src/models/job.model.ts`, its `JOB_TYPE_LABELS` name, its `JOB_LOCK_SCOPES` entry (`[]` when it writes no entity data), and its processor in `apps/api/src/queues/processors/index.ts`; type-check fails until all three exist (#777). The metadata's JSDoc states the scopes. A processor throws `UnrecoverableError` for a condition no retry can change (missing metadata, a missing row), and a plain error for anything a retry could fix.
 2. A job with scopes starts through `JobLockService.enqueueExclusive` (the 409 path); its enqueue route declares `locks: { enqueues: … }` in the route map.
 3. Every entity-detail view that could surface this job adds it to its lock-state query (or extends an existing aggregate query that returns "running jobs for this entity").
 4. The processor's terminal payload (the `result` field) carries enough information for the SSE consumer to refresh its caches without a full refetch loop — same as `file_upload_parse` does today.

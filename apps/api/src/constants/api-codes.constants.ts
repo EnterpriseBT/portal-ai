@@ -759,8 +759,6 @@ export enum ApiCode {
   // by the reads track without re-declaration.
 
   // Large-data-ops — tool dispatch (#85, Phase 4)
-  /** `expression.ref` doesn't resolve to a tool in the station's tools. */
-  BULK_DISPATCH_TOOL_NOT_FOUND = "BULK_DISPATCH_TOOL_NOT_FOUND",
   /** Tool exists but didn't declare `bulkDispatch` metadata. */
   BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE = "BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE",
   /** `acknowledgeCost: true` was set but server-side enforcement rejected — either no prior
@@ -891,8 +889,6 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "The background scan failed. Fix the SQL or narrow the query, then retry.",
   [ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID]:
     "Server rejected the acknowledgement. Either no prior cost rejection exists for this exact operation (call without `acknowledgeCost` first), or the user hasn't replied since the rejection (wait for their message, then retry).",
-  [ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND]:
-    "The named tool isn't available in this station. Verify the tool name and that its toolpack is enabled.",
   [ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE]:
     "The tool exists but isn't bulk-dispatchable. Add a `bulkDispatch` metadata block to its toolpack descriptor.",
   [ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED]:

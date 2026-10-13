@@ -32,11 +32,6 @@ const ALLOWED: Array<{ file: string; code: string }> = [
     file: "routes/field-mapping.router.ts",
     code: "FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND",
   },
-  // A bulk job names a tool that isn't bulk-dispatchable on the station.
-  {
-    file: "queues/processors/bulk-transform.processor.ts",
-    code: "BULK_DISPATCH_TOOL_NOT_FOUND",
-  },
   // 403 "you aren't a member of this organization": the caller's own
   // membership is what's missing, not an object they asked for.
   { file: "services/application.service.ts", code: "MEMBERSHIP_NOT_FOUND" },
