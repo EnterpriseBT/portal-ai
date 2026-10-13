@@ -1149,6 +1149,62 @@ describe("Layout Plans Draft Router", () => {
   });
 
   describe("POST /api/layout-plans/commit — connectorInstanceId path", () => {
+    it("#769: is refused while a job holds the connector, writing no plan", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const ciId = await seedPendingConnectorInstance(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        { definitionId: connectorDefinitionId, slug: "google-sheets" }
+      );
+      await (db as Db).insert(schema.jobs).values({
+        id: `job-${ciId}`,
+        organizationId,
+        type: "connector_sync",
+        status: "active",
+        progress: 0,
+        metadata: { connectorInstanceId: ciId, organizationId },
+        attempts: 1,
+        maxAttempts: 3,
+        lockScopes: [`instance:${ciId}`],
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      const plansFor = async () =>
+        (db as Db)
+          .select()
+          .from(connectorInstanceLayoutPlans)
+          .where(eq(connectorInstanceLayoutPlans.connectorInstanceId, ciId));
+      const before = (await plansFor()).length;
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "GS commit",
+          plan: makePlan(emailId, nameId),
+          connectorInstanceId: ciId,
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+      expect((await plansFor()).length).toBe(before);
+    });
+
     it("flips the pending instance to active without creating a new one", async () => {
       const emailId = await seedColumnDefinition(
         db as Db,

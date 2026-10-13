@@ -58,6 +58,13 @@ jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
 // Need to mock the schema import used by the service for eq()
 jest.unstable_mockModule("../../db/schema/index.js", () => ({
   fieldMappings: { id: "field_mappings.id" },
+  // #769: lockEntityIds looks the counterpart's entity up by key.
+  connectorEntities: {
+    id: "connector_entities.id",
+    key: "connector_entities.key",
+    organizationId: "connector_entities.organization_id",
+    deleted: "connector_entities.deleted",
+  },
 }));
 
 const { FieldMappingValidationService } =

@@ -22,6 +22,7 @@ import { JobDataItem } from "../components/Job.component";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { sdk } from "../api/sdk";
 import { formatJobProgress } from "../utils/job-progress.util";
+import { runningJobLabel } from "../utils/running-job-label.util";
 import { decideActionGate } from "../utils/action-gate.util";
 
 const dates = new DateFactory("UTC");
@@ -76,10 +77,10 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                       breadcrumbs={[
                         { label: "Dashboard", href: "/" },
                         { label: "Jobs", href: "/jobs" },
-                        { label: job.type },
+                        { label: runningJobLabel(job) },
                       ]}
                       onNavigate={(href) => navigate({ to: href })}
-                      title={job.type}
+                      title={runningJobLabel(job)}
                       icon={<Icon name={IconName.Work} />}
                       primaryAction={
                         !isTerminal && cancelGate.kind !== "hide" ? (
@@ -108,7 +109,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                             ),
                           },
                           { label: "Job ID", value: job.id, variant: "mono" },
-                          { label: "Type", value: job.type },
+                          { label: "Type", value: runningJobLabel(job) },
                           {
                             label: "Progress",
                             value: progressDisplay.label,

@@ -46,7 +46,7 @@ import { EditEntityRecordDialog } from "../components/EditEntityRecordDialog.com
 import { EntityRecordFieldValue } from "../components/EntityRecordFieldValue.component";
 import { EntityRecordMetadata } from "../components/EntityRecordMetadata.component";
 import { entityRecordActionGates } from "../utils/entity-actions.util";
-import { connectorLockReason } from "../utils/running-job-label.util";
+import { jobLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { useCapabilities } from "../utils/use-capabilities.util";
@@ -285,7 +285,10 @@ export const EntityRecordDetailViewUI: React.FC<
     capabilities: record.capabilities,
     canRevalidate,
     isWriteEnabled: isWriteEnabled === true,
-    lockedReason: connectorLockReason(runningJobs),
+    lockedReason: jobLockReason(runningJobs, {
+      kind: "connectorEntity",
+      id: entity.id,
+    }),
     isUpdating: isUpdating === true,
     isDeleting: isDeleting === true,
     isRevalidating: isRevalidating === true,
@@ -332,7 +335,10 @@ export const EntityRecordDetailViewUI: React.FC<
         />
 
         {runningJobs.length > 0 && (
-          <ConnectorInstanceLockAlertUI runningJobs={runningJobs} />
+          <ConnectorInstanceLockAlertUI
+            runningJobs={runningJobs}
+            paused="Editing, deleting, and re-validating this record"
+          />
         )}
 
         <PageGrid columns={{ xs: 1, md: 2 }}>

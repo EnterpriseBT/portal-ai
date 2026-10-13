@@ -14,6 +14,11 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import type { FilterExpression } from "@portalai/core/contracts";
+import {
+  jobLockScopes,
+  lockScopeKey,
+  type JobType,
+} from "@portalai/core/models";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
@@ -2737,6 +2742,8 @@ describe("Entity Record Router — Clear-all enqueue (#453)", () => {
       attempts: 1,
       maxAttempts: 3,
       lostExecutions: 0,
+      // #769: the scopes the lock check reads, as job creation writes them.
+      lockScopes: jobLockScopes(type as JobType, metadata).map(lockScopeKey),
       created: now,
       createdBy: "SYSTEM_TEST",
       updated: null,
@@ -2852,13 +2859,17 @@ describe("Entity Record Router — Clear-all enqueue (#453)", () => {
       (res.body.details?.runningJobs as Array<{ id: string }>).map((j) => j.id)
     ).toContain(clearJobId);
 
-    // Resync exclusion (#453 review decision): the exact guard the sync
-    // route calls must see the clear job via its JOB_LOCK_KEYS entry.
+    // Resync exclusion (#453 review decision): the clear holds the whole
+    // connector, so a sync (an instance-scoped job) is refused (#769).
     await expect(
-      JobLockService.assertConnectorInstanceUnlocked(
-        inst!.connectorInstanceId,
-        seeded.organizationId
-      )
+      JobLockService.enqueueExclusive(seeded.userId, {
+        organizationId: seeded.organizationId,
+        type: "connector_sync",
+        metadata: {
+          connectorInstanceId: inst!.connectorInstanceId,
+          organizationId: seeded.organizationId,
+        },
+      })
     ).rejects.toMatchObject({ code: ApiCode.ENTITY_LOCKED_BY_JOB });
   });
 

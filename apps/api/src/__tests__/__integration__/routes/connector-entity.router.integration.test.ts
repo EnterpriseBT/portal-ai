@@ -11,6 +11,11 @@ import { Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import {
+  jobLockScopes,
+  lockScopeKey,
+  type JobType,
+} from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -1427,6 +1432,8 @@ describe("GET /api/connector-entities/:id/running-jobs (#453)", () => {
       attempts: 1,
       maxAttempts: 3,
       lostExecutions: 0,
+      // #769: as job creation writes them; the lock reads these.
+      lockScopes: jobLockScopes(type as JobType, metadata).map(lockScopeKey),
       created: now,
       createdBy: "SYSTEM_TEST",
       updated: null,

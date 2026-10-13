@@ -12,7 +12,7 @@ const logger = createLogger({ module: "entity-record-clear-processor" });
  * ran inline before #453 moved it off-request (a 400K-row clear measured
  * 66s; 1.5M-row entities are a real target). The route's guards (write
  * capability, instance job lock, revalidation) run before enqueue, and
- * the job's `JOB_LOCK_KEYS` entry locks the whole connector instance
+ * the job's `JOB_LOCK_SCOPES` entry locks the whole connector instance
  * while this runs, so a resync cannot race the clear.
  *
  * Deliberately NO `SyncLockService` advisory lock (#460/#461): those

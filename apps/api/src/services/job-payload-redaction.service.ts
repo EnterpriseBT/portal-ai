@@ -30,13 +30,22 @@ export class JobPayloadRedactionService {
     return JobControlService.canControl(ctx, set, job);
   }
 
-  /** The job with `metadata` emptied and `result` nulled unless visible. */
+  /**
+   * The job with `metadata` emptied and `result` nulled unless visible. Its
+   * `lockScopes` (#769) are copied from the metadata's entity and connector
+   * ids, so they're emptied too.
+   */
   static redact<T extends JobLike>(
     ctx: PermissionContext,
     set: PermissionSet,
     job: T
   ): T {
     if (this.canSeePayload(ctx, set, job)) return job;
-    return { ...job, metadata: {}, result: null };
+    return {
+      ...job,
+      metadata: {},
+      result: null,
+      ...("lockScopes" in job ? { lockScopes: [] } : {}),
+    };
   }
 }

@@ -37,4 +37,29 @@ describe("columnDefinitionActionGates", () => {
       columnDefinitionActionGates({ capabilities: none, system: true }).edit
     ).toEqual({ kind: "hide" });
   });
+
+  it("#769: disables Edit and Delete while a job holds an entity that maps it", () => {
+    const reason =
+      "Revalidation is running on an entity that uses this column definition — try again when it finishes.";
+    expect(
+      columnDefinitionActionGates({
+        capabilities: all,
+        system: false,
+        lockedReason: reason,
+      })
+    ).toEqual({
+      edit: { kind: "disable", reason },
+      delete: { kind: "disable", reason },
+    });
+  });
+
+  it("#769: a system row keeps its read-only reason over a job's", () => {
+    expect(
+      columnDefinitionActionGates({
+        capabilities: all,
+        system: true,
+        lockedReason: "Sync is running",
+      }).edit
+    ).toEqual({ kind: "disable", reason: SYSTEM_READONLY_REASON });
+  });
 });

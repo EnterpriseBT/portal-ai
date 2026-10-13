@@ -39,6 +39,7 @@ function buildValidJob(overrides: Partial<Job> = {}): Partial<Job> {
     attempts: 0,
     maxAttempts: 3,
     lostExecutions: 0,
+    lockScopes: [],
     progressDetail: null,
     ...overrides,
   };
@@ -107,6 +108,12 @@ describe("JobSchema", () => {
   it("should reject a job missing lostExecutions (#464)", () => {
     const { lostExecutions: _omit, ...withoutLostExecutions } = buildValidJob();
     const result = JobSchema.safeParse(withoutLostExecutions);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject a job missing lockScopes (#769)", () => {
+    const { lockScopes: _omit, ...withoutLockScopes } = buildValidJob();
+    const result = JobSchema.safeParse(withoutLockScopes);
     expect(result.success).toBe(false);
   });
 });
@@ -278,6 +285,7 @@ describe("JobModelFactory", () => {
         attempts: 0,
         maxAttempts: 3,
         lostExecutions: 0,
+        lockScopes: [],
         progressDetail: null,
         updated: null,
         updatedBy: null,
@@ -703,7 +711,7 @@ describe("entity_record_clear schemas (#453)", () => {
   });
 
   it("metadata rejects a missing connectorInstanceId", () => {
-    // The instance id is the lock key (JOB_LOCK_KEYS) — a clear job that
+    // The instance id is the lock scope (JOB_LOCK_SCOPES, #769) — a clear job that
     // cannot lock its instance must never be mintable.
     const { connectorInstanceId: _omitted, ...rest } = METADATA;
     expect(EntityRecordClearMetadataSchema.safeParse(rest).success).toBe(false);

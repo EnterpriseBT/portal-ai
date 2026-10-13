@@ -52,7 +52,6 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { NormalizationService } from "../services/normalization.service.js";
 import { RecordWriteService } from "../services/record-write.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
-import { JobsService } from "../services/jobs.service.js";
 import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
 import type { EntityRecordHydratedListItem } from "../db/repositories/entity-records.repository.js";
 import {
@@ -796,11 +795,6 @@ entityRecordRouter.post(
       });
 
       await assertWriteCapability(connectorEntityId);
-      await JobLockService.assertConnectorInstanceUnlocked(
-        entity.connectorInstanceId,
-        req.application!.metadata.organizationId
-      );
-      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -837,44 +831,49 @@ entityRecordRouter.post(
         isValid: normalized.isValid,
       });
 
-      const record = await DbService.transaction(async (tx) => {
-        const parsed_ = model.parse();
-        const inserted = await DbService.repository.entityRecords.create(
-          parsed_,
-          tx
-        );
-        // #433: `create`/`update`/`softDelete` are generic base methods, so
-        // the repository's own invalidation hook doesn't see them.
-        await EntityRecordCountCache.invalidate(connectorEntityId);
-        const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
-        const mappings = buildMappingsForProjection(stmt.columns);
-        // #757: a refused geometry throws, rolling back the insert above, so
-        // a record never exists without its wide-table row.
-        const mirrored = await DbService.repository.wideTable.upsertMany(
-          connectorEntityId,
-          [
-            projectToWideRow(
-              {
-                id: inserted.id,
-                organizationId: inserted.organizationId,
-                sourceId: inserted.sourceId,
-                syncedAt: inserted.syncedAt,
-                isValid: inserted.isValid,
-                normalizedData: parsed_.normalizedData,
-              },
-              mappings
-            ),
-          ],
-          tx
-        );
-        assertNoRejectedGeometry(mirrored);
-        // Return the hydrated shape so the response carries
-        // `normalizedData` rebuilt from the wide table.
-        return {
-          ...inserted,
-          normalizedData: parsed_.normalizedData,
-        };
-      }).catch((error) => {
+      // #769: refused while a running job locks this entity or its connector.
+      const record = await JobLockService.withUnlocked(
+        { kind: "record", connectorEntityId },
+        { organizationId },
+        async (tx) => {
+          const parsed_ = model.parse();
+          const inserted = await DbService.repository.entityRecords.create(
+            parsed_,
+            tx
+          );
+          // #433: `create`/`update`/`softDelete` are generic base methods, so
+          // the repository's own invalidation hook doesn't see them.
+          await EntityRecordCountCache.invalidate(connectorEntityId);
+          const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
+          const mappings = buildMappingsForProjection(stmt.columns);
+          // #757: a refused geometry throws, rolling back the insert above, so
+          // a record never exists without its wide-table row.
+          const mirrored = await DbService.repository.wideTable.upsertMany(
+            connectorEntityId,
+            [
+              projectToWideRow(
+                {
+                  id: inserted.id,
+                  organizationId: inserted.organizationId,
+                  sourceId: inserted.sourceId,
+                  syncedAt: inserted.syncedAt,
+                  isValid: inserted.isValid,
+                  normalizedData: parsed_.normalizedData,
+                },
+                mappings
+              ),
+            ],
+            tx
+          );
+          assertNoRejectedGeometry(mirrored);
+          // Return the hydrated shape so the response carries
+          // `normalizedData` rebuilt from the wide table.
+          return {
+            ...inserted,
+            normalizedData: parsed_.normalizedData,
+          };
+        }
+      ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
           500,
@@ -987,11 +986,12 @@ entityRecordRouter.post(
         }
       );
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        entity.connectorInstanceId,
-        req.application!.metadata.organizationId
+      // #769: refuse a locked entity before parsing and diffing the batch;
+      // the write below re-checks atomically.
+      await JobLockService.assertNoneRunning(
+        { kind: "record", connectorEntityId },
+        { organizationId: req.application!.metadata.organizationId }
       );
-      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordImportRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1074,8 +1074,14 @@ entityRecordRouter.post(
         toUpsert.push(model.parse());
       }
 
-      if (toUpsert.length > 0) {
-        await DbService.transaction(async (tx) => {
+      // #769: refused while a running job locks this entity or its connector,
+      // even when nothing changed, so an import never appears to succeed
+      // mid-job.
+      await JobLockService.withUnlocked(
+        { kind: "record", connectorEntityId },
+        { organizationId: req.application!.metadata.organizationId },
+        async (tx) => {
+          if (toUpsert.length === 0) return;
           await DbService.repository.entityRecords.upsertManyBySourceId(
             toUpsert,
             tx
@@ -1091,15 +1097,15 @@ entityRecordRouter.post(
             tx
           );
           assertNoRejectedGeometry(mirrored, { batch: true });
-        }).catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ENTITY_RECORD_IMPORT_FAILED,
-            error instanceof Error ? error.message : "Failed to import records"
-          );
-        });
-      }
+        }
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_RECORD_IMPORT_FAILED,
+          error instanceof Error ? error.message : "Failed to import records"
+        );
+      });
 
       logger.info(
         { connectorEntityId, created, updated, unchanged },
@@ -1191,12 +1197,8 @@ entityRecordRouter.post(
 
       const { userId, organizationId } = req.application!.metadata;
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        entity.connectorInstanceId,
-        organizationId
-      );
-
-      // Prevent duplicate revalidation — returns existing job if one is active
+      // #769: refused while another job holds the entity or its connector; a
+      // revalidation already running on it is returned instead.
       const job = await RevalidationService.enqueue(
         connectorEntityId,
         organizationId,
@@ -1333,11 +1335,6 @@ entityRecordRouter.patch(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
-      await JobLockService.assertConnectorInstanceUnlocked(
-        entity.connectorInstanceId,
-        req.application!.metadata.organizationId
-      );
-      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordPatchRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1381,26 +1378,31 @@ entityRecordRouter.patch(
 
       const { userId } = req.application!.metadata;
 
-      const updated = await DbService.transaction(async (tx) => {
-        // #760: merge into the stored `data` (which revalidation rebuilds
-        // the record from) under a row lock, and store the normalized values
-        // and validity of the whole merged record.
-        await RecordWriteService.patchRecord(tx, {
-          connectorEntityId,
-          recordId,
-          patch: parsed.data,
-          userId,
-        });
-        // Read back the hydrated record so the response carries
-        // `normalizedData` rebuilt from the wide table.
-        const hydrated =
-          await DbService.repository.entityRecords.findHydratedById(
-            recordId,
+      // #769: refused while a running job locks this entity or its connector.
+      const updated = await JobLockService.withUnlocked(
+        { kind: "record", connectorEntityId },
+        { organizationId: req.application!.metadata.organizationId },
+        async (tx) => {
+          // #760: merge into the stored `data` (which revalidation rebuilds
+          // the record from) under a row lock, and store the normalized values
+          // and validity of the whole merged record.
+          await RecordWriteService.patchRecord(tx, {
             connectorEntityId,
-            tx
-          );
-        return hydrated;
-      }).catch((error) => {
+            recordId,
+            patch: parsed.data,
+            userId,
+          });
+          // Read back the hydrated record so the response carries
+          // `normalizedData` rebuilt from the wide table.
+          const hydrated =
+            await DbService.repository.entityRecords.findHydratedById(
+              recordId,
+              connectorEntityId,
+              tx
+            );
+          return hydrated;
+        }
+      ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
           500,
@@ -1509,11 +1511,6 @@ entityRecordRouter.delete(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
-      await JobLockService.assertConnectorInstanceUnlocked(
-        entity.connectorInstanceId,
-        req.application!.metadata.organizationId
-      );
-      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       // #599: RBAC delete gate — a member may delete only records they
       // created; owner/admin any.
@@ -1536,23 +1533,28 @@ entityRecordRouter.delete(
 
       const { userId } = req.application!.metadata;
 
-      await DbService.transaction(async (tx) => {
-        await DbService.repository.entityRecords.softDelete(
-          recordId,
-          userId,
-          tx
-        );
-        await EntityRecordCountCache.invalidate(connectorEntityId);
-        // #450: mark the wide row deleted (not physically delete) in the SAME
-        // tx as the record soft-delete, so the session view can filter locally
-        // and no orphan window exists.
-        await DbService.repository.wideTable.markDeletedByEntityRecordIds(
-          connectorEntityId,
-          [recordId],
-          Date.now(),
-          tx
-        );
-      }).catch((error) => {
+      // #769: refused while a running job locks this entity or its connector.
+      await JobLockService.withUnlocked(
+        { kind: "record", connectorEntityId },
+        { organizationId: req.application!.metadata.organizationId },
+        async (tx) => {
+          await DbService.repository.entityRecords.softDelete(
+            recordId,
+            userId,
+            tx
+          );
+          await EntityRecordCountCache.invalidate(connectorEntityId);
+          // #450: mark the wide row deleted (not physically delete) in the SAME
+          // tx as the record soft-delete, so the session view can filter locally
+          // and no orphan window exists.
+          await DbService.repository.wideTable.markDeletedByEntityRecordIds(
+            connectorEntityId,
+            [recordId],
+            Date.now(),
+            tx
+          );
+        }
+      ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
           500,
@@ -1624,7 +1626,7 @@ entityRecordRouter.delete(
  *               properties:
  *                 job: { $ref: '#/components/schemas/Job' }
  *       409:
- *         description: A non-terminal job locks the connector instance (`ENTITY_LOCKED_BY_JOB`) or a revalidation is active (`REVALIDATION_ACTIVE`)
+ *         description: A running job holds this entity or its connector (`ENTITY_LOCKED_BY_JOB`, #769); `details.runningJobs` names it
  *       422:
  *         description: Write capability disabled on the connector instance
  *         content:
@@ -1652,25 +1654,21 @@ entityRecordRouter.delete(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
-      await JobLockService.assertConnectorInstanceUnlocked(
-        entity.connectorInstanceId,
-        req.application!.metadata.organizationId
-      );
       // #599: clearing every record is a class-level delete — owner/admin only.
       await PermissionService.check(
         req.application!.metadata,
         "resource.delete",
         { type: "entity_record" }
       );
-      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const { userId, organizationId } = req.application!.metadata;
       // #453: the clear runs off-request as an `entity_record_clear` job —
       // a 400K-row clear measured 66s and 1.5M-row entities are a real
-      // target, so the work cannot live inside an HTTP request. The job's
-      // JOB_LOCK_KEYS entry locks the whole instance while it runs, which
-      // is also what makes a duplicate DELETE hit the 409 guard above.
-      const job = await JobsService.create(userId, {
+      // target, so the work cannot live inside an HTTP request. The
+      // job locks the whole instance while it runs (#769: enqueued
+      // exclusively, so it's refused while any job holds the entity or its
+      // connector, and a duplicate DELETE is refused by the first).
+      const job = await JobLockService.enqueueExclusive(userId, {
         organizationId,
         type: "entity_record_clear",
         metadata: {

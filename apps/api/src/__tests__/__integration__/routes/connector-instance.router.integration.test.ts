@@ -1709,6 +1709,7 @@ describe("Connector Instance Router", () => {
         bullJobId: null,
         attempts: 1,
         maxAttempts: 3,
+        lockScopes: [`instance:${instanceId}`],
         created: now,
         createdBy: "SYSTEM_TEST",
         updated: null,
@@ -1720,6 +1721,43 @@ describe("Connector Instance Router", () => {
       const res = await request(app)
         .post(`/api/connector-instances/${instanceId}/sync`)
         .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.SYNC_ALREADY_RUNNING);
+      expect(res.body.details?.jobId).toBe(inFlightJobId);
+    });
+
+    it("#769: a sync that wins a race past the pre-check still reads as SYNC_ALREADY_RUNNING", async () => {
+      const { instanceId, organizationId } = await seedSyncFixture({});
+      const inFlightJobId = generateId();
+      await (db as ReturnType<typeof drizzle>).insert(schema.jobs).values({
+        id: inFlightJobId,
+        organizationId,
+        type: "connector_sync",
+        status: "pending",
+        progress: 0,
+        metadata: { connectorInstanceId: instanceId, organizationId },
+        attempts: 0,
+        maxAttempts: 3,
+        lockScopes: [`instance:${instanceId}`],
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      // Two clicks: this request's pre-check ran before the other committed,
+      // so only the exclusive enqueue sees it.
+      const { SyncService } = await import("../../../services/sync.service.js");
+      const spy = jest
+        .spyOn(SyncService, "assertNoActiveSyncJob")
+        .mockResolvedValueOnce(undefined);
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token");
+      spy.mockRestore();
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(ApiCode.SYNC_ALREADY_RUNNING);
@@ -1767,6 +1805,8 @@ describe("Connector Instance Router", () => {
         bullJobId: null,
         attempts: 0,
         maxAttempts: 3,
+        // #769: both seeded types lock the whole connector.
+        lockScopes: [`instance:${instance.id}`],
         created: now,
         createdBy: "SYSTEM_TEST",
         updated: null,
@@ -1809,9 +1849,9 @@ describe("Connector Instance Router", () => {
     // generic lock so the response carries the in-flight jobId for
     // the UI's latch-on path). The
     // layout_plan_commit-blocks-sync case isn't covered at the route
-    // level here because it requires a sync-eligible plan fixture;
-    // `JobLockService` unit tests + `assertConnectorInstanceUnlocked`
-    // being called from the route together prove the path.
+    // level here because it requires a sync-eligible plan fixture; the
+    // sync goes through `JobLockService.enqueueExclusive`, whose conflict
+    // cases are in job-lock.integration.test.ts (#769).
 
     it("releases the lock when the job completes — DELETE succeeds again", async () => {
       const { instanceId, jobId } = await seedLockedInstance();

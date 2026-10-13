@@ -48,6 +48,7 @@ const makeJob = (overrides: Partial<Job> = {}): Job => ({
   attempts: 1,
   maxAttempts: 3,
   lostExecutions: 0,
+  lockScopes: [],
   created: 1710000000000,
   createdBy: "user-1",
   updated: 1710000060000,
@@ -101,7 +102,7 @@ describe("JobsView", () => {
     const job1 = makeJob({ id: "job-1", type: "system_check" });
     const job2 = makeJob({
       id: "job-2",
-      type: "revalidation",
+      type: "entity_record_clear",
       status: "pending",
     });
 
@@ -113,8 +114,10 @@ describe("JobsView", () => {
     } as Partial<ListQuery>;
 
     render(<JobsView />);
-    expect(screen.getByText("system_check")).toBeInTheDocument();
-    expect(screen.getByText("revalidation")).toBeInTheDocument();
+    // #769: the type's label, not the raw string.
+    expect(screen.getByText("System check")).toBeInTheDocument();
+    expect(screen.getByText("Delete records")).toBeInTheDocument();
+    expect(screen.queryByText("entity_record_clear")).not.toBeInTheDocument();
   });
 
   it("should show loading state", () => {

@@ -4,7 +4,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockFindEntityById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockAssertConnectorEntityUnlocked = jest
+const mockAssertNoneRunning = jest
   .fn<(...args: unknown[]) => Promise<void>>()
   .mockResolvedValue();
 const mockAssertStationScope = jest
@@ -22,7 +22,7 @@ type JobsCreateParams = {
   type: string;
   metadata?: Record<string, unknown>;
 };
-const mockJobsCreate = jest
+const mockEnqueueExclusive = jest
   .fn<(userId: string, params: JobsCreateParams) => Promise<{ id: string }>>()
   .mockResolvedValue({ id: "job-created-1" });
 
@@ -36,7 +36,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 
 jest.unstable_mockModule("../../services/job-lock.service.js", () => ({
   JobLockService: {
-    assertConnectorEntityUnlocked: mockAssertConnectorEntityUnlocked,
+    assertNoneRunning: mockAssertNoneRunning,
+    enqueueExclusive: mockEnqueueExclusive,
   },
 }));
 
@@ -56,12 +57,6 @@ jest.unstable_mockModule("../../services/bulk-transform.service.js", () => ({
     runBatch: jest.fn(),
     explainExpression: mockExplain,
     canCastConstant: mockCanCastConstant,
-  },
-}));
-
-jest.unstable_mockModule("../../services/jobs.service.js", () => ({
-  JobsService: {
-    create: mockJobsCreate,
   },
 }));
 
@@ -185,11 +180,11 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFindEntityById.mockReset();
-    mockAssertConnectorEntityUnlocked.mockReset().mockResolvedValue(undefined);
+    mockAssertNoneRunning.mockReset().mockResolvedValue(undefined);
     mockAssertStationScope.mockReset().mockResolvedValue(undefined);
     mockCountSourceRows.mockReset().mockResolvedValue(100);
     mockExplain.mockReset().mockResolvedValue(undefined);
-    mockJobsCreate.mockReset().mockResolvedValue({ id: "job-created-1" });
+    mockEnqueueExclusive.mockReset().mockResolvedValue({ id: "job-created-1" });
     // Reset the wide-table cache + cast-check mocks so per-target
     // `.mockResolvedValueOnce` / `.mockImplementation` calls in slice-2
     // tests don't leak forward; restore the broad default that the
@@ -220,8 +215,8 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
 
     expect(result.jobId).toBe("job-created-1");
     expect(result.expectedRecords).toBe(100);
-    expect(mockJobsCreate).toHaveBeenCalledTimes(1);
-    expect(mockJobsCreate.mock.calls[0][1].type).toBe("bulk_transform");
+    expect(mockEnqueueExclusive).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueExclusive.mock.calls[0][1].type).toBe("bulk_transform");
   });
 
   it("rejects when the source entity isn't found", async () => {
@@ -230,7 +225,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     );
     const result = (await exec()) as { code: string };
     expect(result.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("rejects when the target entity isn't found", async () => {
@@ -243,17 +238,21 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
   });
 
-  it("rejects when the target is locked", async () => {
-    mockAssertConnectorEntityUnlocked.mockRejectedValueOnce(
+  it("rejects when a running job holds a target or the source (#769)", async () => {
+    mockAssertNoneRunning.mockRejectedValueOnce(
       new ApiError(
         409,
-        ApiCode.BULK_JOB_TARGET_LOCKED,
-        "Locked by an in-flight bulk job"
+        ApiCode.ENTITY_LOCKED_BY_JOB,
+        "Revalidation is running on this entity."
       )
     );
     const result = (await exec()) as { code: string };
-    expect(result.code).toBe(ApiCode.BULK_JOB_TARGET_LOCKED);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(result.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
+    const targets = (mockAssertNoneRunning.mock.calls[0] as unknown[])[0] as {
+      id: string;
+    }[];
+    expect(targets.map((t) => t.id)).toContain("ce-source");
   });
 
   it("rejects expression.kind === 'tool' when the tool isn't bulk-dispatchable", async () => {
@@ -268,7 +267,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
       },
     })) as { code: string };
     expect(result.code).toBe(ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("accepts expression.kind === 'tool' when bulkDispatch is declared", async () => {
@@ -296,7 +295,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.jobId).toBe("job-created-1");
     // ETA: 50_000 * 200ms / (10 * 1000) = 1000s
     expect(result.estimatedSeconds).toBe(1_000);
-    expect(mockJobsCreate).toHaveBeenCalled();
+    expect(mockEnqueueExclusive).toHaveBeenCalled();
   });
 
   it("rejects costHint expensive without acknowledgeCost AND records the pending acknowledgement", async () => {
@@ -323,7 +322,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     // be validated against it. Without this side effect, the agent
     // could never escape the gate.
     expect(mockRecordRejection).toHaveBeenCalledTimes(1);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("accepts costHint expensive when acknowledgeCost passes server validation", async () => {
@@ -348,7 +347,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     })) as { jobId?: string };
 
     expect(result.jobId).toBe("job-created-1");
-    expect(mockJobsCreate).toHaveBeenCalled();
+    expect(mockEnqueueExclusive).toHaveBeenCalled();
     expect(mockValidateAck).toHaveBeenCalledTimes(1);
   });
 
@@ -377,7 +376,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
       ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID
     );
     expect(result.details?.reason).toBe("missing");
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("rejects acknowledgeCost when validation returns stale (agent retried same turn)", async () => {
@@ -405,7 +404,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
       ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID
     );
     expect(result.details?.reason).toBe("stale");
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("threads sourceFilter.whereSqlFragment into the job metadata", async () => {
@@ -434,7 +433,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
       },
     });
 
-    const metadata = mockJobsCreate.mock.calls[0][1].metadata as Record<
+    const metadata = mockEnqueueExclusive.mock.calls[0][1].metadata as Record<
       string,
       unknown
     >;
@@ -455,7 +454,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     );
     const result = (await exec()) as { code: string };
     expect(result.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("#660: rejects an expression with a sub-select (cross-tenant read) before EXPLAIN or enqueue", async () => {
@@ -468,7 +467,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     } as never)) as { code: string; message?: string };
     expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
     expect(mockExplain).not.toHaveBeenCalled();
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("#660: rejects a sourceFilter.whereSqlFragment with a sub-select, for either expression kind", async () => {
@@ -488,7 +487,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
       },
     })) as { code: string };
     expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -505,7 +504,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
       expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
       expect(result.message).toMatch(/reserved/);
       expect(mockExplain).not.toHaveBeenCalled();
-      expect(mockJobsCreate).not.toHaveBeenCalled();
+      expect(mockEnqueueExclusive).not.toHaveBeenCalled();
     }
   );
 
@@ -533,21 +532,21 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.code).toBe(ApiCode.PORTAL_SQL_FORBIDDEN);
     expect(result.message).toMatch(/single condition/);
     expect(mockExplain).not.toHaveBeenCalled();
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("rejects when EXPLAIN fails (BULK_JOB_EXPRESSION_INVALID)", async () => {
     mockExplain.mockRejectedValueOnce(new Error("syntax error at AS"));
     const result = (await exec()) as { code: string };
     expect(result.code).toBe(ApiCode.BULK_JOB_EXPRESSION_INVALID);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("rejects when source has more rows than MAX_BULK_RECORDS", async () => {
     mockCountSourceRows.mockResolvedValueOnce(10_000_000);
     const result = (await exec()) as { code: string };
     expect(result.code).toBe(ApiCode.BULK_JOB_MAX_RECORDS_EXCEEDED);
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   // Case 2.5 — declared SQL alias that no writes[] entry references.
@@ -597,7 +596,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.code).toBe(ApiCode.BULK_JOB_EXPRESSION_INVALID);
     expect(result.details?.unreferencedAliases).toEqual(["asteroid_id"]);
     expect(result.message).toContain("asteroid_id");
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   // Case 2.2 — valid multi-write across two targets succeeds; the
@@ -662,7 +661,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     })) as { jobId?: string };
 
     expect(result.jobId).toBe("job-created-1");
-    const metadata = mockJobsCreate.mock.calls[0][1].metadata as {
+    const metadata = mockEnqueueExclusive.mock.calls[0][1].metadata as {
       targetConnectorEntityIds: string[];
     };
     expect(metadata.targetConnectorEntityIds).toEqual(
@@ -721,7 +720,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.details?.write?.targetConnectorEntityId).toBe(TARGET_B);
     expect(result.details?.write?.column).toBe("c_zombie");
     expect(result.message).toContain("c_zombie");
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   // Case 2.4 — sql_alias write references an alias that isn't declared
@@ -754,7 +753,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.code).toBe(ApiCode.BULK_JOB_EXPRESSION_INVALID);
     expect(result.details?.alias).toBe("square_meters");
     expect(result.message).toContain("square_meters");
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   // Case 2.6 — constant value that can't cast to the target column's
@@ -792,7 +791,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.code).toBe(ApiCode.BULK_JOB_EXPRESSION_INVALID);
     expect(result.details?.pgType).toBe("bigint");
     expect(result.message).toContain("bigint");
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   // Case 2.7 — source_column write references a column that doesn't
@@ -830,7 +829,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
 
     expect(result.code).toBe(ApiCode.BULK_JOB_EXPRESSION_INVALID);
     expect(result.message).toContain("c_zombie");
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("rejects when keyField is not a wide-column on the source", async () => {
@@ -848,12 +847,12 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.details?.availableColumns).toEqual(
       expect.arrayContaining(["c_id", "c_diameter_km_min"])
     );
-    expect(mockJobsCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
   });
 
   it("threads portalId + organizationId + stationId + userId into the job metadata", async () => {
     await exec();
-    const metadata = mockJobsCreate.mock.calls[0][1].metadata as Record<
+    const metadata = mockEnqueueExclusive.mock.calls[0][1].metadata as Record<
       string,
       unknown
     >;

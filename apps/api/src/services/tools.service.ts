@@ -26,6 +26,7 @@ import {
   PermissionService,
   type PermissionContext,
 } from "./permission.service.js";
+import { wrapWithLockGate } from "./lock-gate.service.js";
 import { wrapWithPermissionGate } from "./permission-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
@@ -913,6 +914,17 @@ export class ToolService {
         for (const name of writeGated) delete tools[name];
       }
     }
+
+    // #769 job lock: every write tool runs inside JobLockService.withUnlocked
+    // for its items' targets (or enqueues exclusively), and a running job in
+    // scope refuses it with a typed ENTITY_LOCKED_BY_JOB result. Applied
+    // first, so it sits inside the permission gate (an unauthorized caller
+    // never learns a job is running) and the cost gate.
+    wrapWithLockGate(
+      tools as unknown as Record<string, GateableTool>,
+      { organizationId },
+      (name) => TOOL_AUTHORIZATION[name]
+    );
 
     // #629 per-caller tool-authorization gate: authorize every write the agent
     // attempts against the caller's RBAC (roles ∪ grants ∪ groups), per object,

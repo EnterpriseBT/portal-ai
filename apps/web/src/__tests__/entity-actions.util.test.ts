@@ -195,6 +195,19 @@ describe("entityRecordActionGates", () => {
 });
 
 describe("fieldMappingRowGates", () => {
+  it("#769: disables Edit and Delete while a job holds the mapping's entity", () => {
+    expect(
+      fieldMappingRowGates({
+        capabilities: { read: true, write: true, delete: true },
+        isWriteEnabled: true,
+        lockedReason: LOCK,
+      })
+    ).toEqual({
+      edit: { kind: "disable", reason: LOCK },
+      delete: { kind: "disable", reason: LOCK },
+    });
+  });
+
   it("allows Edit and Delete from the row's capabilities", () => {
     expect(
       fieldMappingRowGates({

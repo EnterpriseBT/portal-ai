@@ -1,6 +1,14 @@
-import { JobModelFactory, TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import {
+  JobModelFactory,
+  TERMINAL_JOB_STATUSES,
+  jobLockScopes,
+  lockScopeKey,
+} from "@portalai/core/models";
 import type { JobCreateRequestBody } from "@portalai/core/contracts";
 
+import { db } from "../db/client.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
+import type { JobSelect } from "../db/schema/zod.js";
 import { getJobsQueue } from "../queues/jobs.queue.js";
 import { DbService } from "./db.service.js";
 import { JobEventsService } from "./job-events.service.js";
@@ -38,9 +46,32 @@ function resolveMaxAttempts(type: string): number {
 
 export class JobsService {
   /**
-   * Create a new job record in PostgreSQL and enqueue it via BullMQ.
+   * Create a new job record in PostgreSQL and enqueue it via BullMQ:
+   * `insertRow` + `dispatch`.
    */
   static async create(userId: string, params: JobCreateRequestBody) {
+    // #769: a job that locks scopes starts only through
+    // JobLockService.enqueueExclusive, which checks for a conflicting job
+    // under the scopes' advisory locks. Creating one here would skip that.
+    if (jobLockScopes(params.type, params.metadata).length > 0) {
+      throw new Error(
+        `JobsService.create: "${params.type}" locks scopes; start it with JobLockService.enqueueExclusive`
+      );
+    }
+    return JobsService.dispatch(await JobsService.insertRow(userId, params));
+  }
+
+  /**
+   * Insert a job row (status `pending`) on `client`, without queueing it.
+   * Stores the scopes the job locks while non-terminal (#769), so a caller
+   * holding the scopes' advisory locks can insert the row in its own
+   * transaction and `dispatch` after commit.
+   */
+  static async insertRow(
+    userId: string,
+    params: JobCreateRequestBody,
+    client: DbClient = db
+  ) {
     const maxAttempts = resolveMaxAttempts(params.type);
     const factory = new JobModelFactory();
     const model = factory.create(userId);
@@ -64,22 +95,27 @@ export class JobsService {
       // 0, but this model is validated against the full JobSchema (#464) before
       // the insert, so the field must be set here too (#464).
       lostExecutions: 0,
+      lockScopes: jobLockScopes(params.type, params.metadata).map(lockScopeKey),
       maxAttempts,
     });
 
-    // 1. Create DB record
-    const job = await DbService.repository.jobs.create(model.parse());
+    return DbService.repository.jobs.create(model.parse(), client);
+  }
 
-    // 2. Enqueue BullMQ job
+  /**
+   * Queue an inserted job on BullMQ and record its `bullJobId`. A failure
+   * marks the row `failed` and throws `JOB_ENQUEUE_FAILED`.
+   */
+  static async dispatch(job: JobSelect) {
     try {
       const bullJob = await getJobsQueue().add(
-        params.type,
+        job.type,
         {
           jobId: job.id,
-          type: params.type,
-          ...params.metadata,
+          type: job.type,
+          ...(job.metadata as Record<string, unknown>),
         },
-        { attempts: maxAttempts }
+        { attempts: job.maxAttempts }
       );
 
       // 3. Store BullMQ reference
@@ -88,7 +124,7 @@ export class JobsService {
       });
 
       logger.info(
-        { jobId: job.id, type: params.type },
+        { jobId: job.id, type: job.type },
         "Job created and enqueued"
       );
       return { ...job, bullJobId: bullJob.id ?? null };

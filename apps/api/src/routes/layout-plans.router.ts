@@ -14,7 +14,8 @@ import { invalidPayload } from "../utils/zod-issue.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FileUploadAccessService } from "../services/file-upload-access.service.js";
 import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
-import { JobsService } from "../services/jobs.service.js";
+import { DbService } from "../services/db.service.js";
+import { JobLockService } from "../services/job-lock.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -204,15 +205,44 @@ layoutPlansRouter.post(
           req.application!.metadata
         );
       }
+      // #769: a commit into an existing connector is refused while any job
+      // holds it or one of its entities. Checked before preparing, which
+      // writes the new plan.
+      if (parsed.data.connectorInstanceId) {
+        await JobLockService.assertNoneRunning(
+          { kind: "connectorInstance", id: parsed.data.connectorInstanceId },
+          { organizationId }
+        );
+      }
       const prepared = await LayoutPlanDraftService.prepareDraftCommit(
         organizationId,
         userId,
         parsed.data
       );
-      const job = await JobsService.create(userId, {
+      const job = await JobLockService.enqueueExclusive(userId, {
         organizationId,
         type: "layout_plan_commit",
         metadata: prepared.metadata,
+      }).catch(async (err) => {
+        // A job started between the check and the enqueue: undo what
+        // preparing wrote, so the connector keeps one current plan. Only for
+        // that refusal, which rolls back before any job row exists; a failure
+        // to queue after commit leaves a job row that points at the plan.
+        if (
+          !(err instanceof ApiError) ||
+          err.code !== ApiCode.ENTITY_LOCKED_BY_JOB
+        ) {
+          throw err;
+        }
+        await DbService.repository.connectorInstanceLayoutPlans
+          .hardDelete(prepared.planId)
+          .catch(() => undefined);
+        if (!prepared.metadata.isExistingInstance) {
+          await DbService.repository.connectorInstances
+            .hardDelete(prepared.connectorInstanceId)
+            .catch(() => undefined);
+        }
+        throw err;
       });
 
       logger.info(

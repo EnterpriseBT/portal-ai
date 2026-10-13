@@ -9,6 +9,7 @@ import {
   assertWriteCapability,
 } from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
+import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -62,6 +63,16 @@ const InputSchema = z.object({
     .max(100)
     .describe("Field mappings to update (1–100)"),
 });
+
+/** The fields whose change alters what a revalidation computes (as the
+ *  field-mapping PATCH route). */
+const REVALIDATION_FIELDS = [
+  "format",
+  "required",
+  "enumValues",
+  "defaultValue",
+  "normalizedKey",
+] as const;
 
 export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_update";
@@ -182,6 +193,31 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
                 "reconcileEntity failed after field_mapping_update"
               );
             }
+          }
+
+          // #769: like the route, a change to how a mapping normalizes queues
+          // a revalidation of its entity. Not awaited: the lock gate holds
+          // the entity's scope until this call returns, and the enqueue needs
+          // it exclusively, so it waits for the gate's commit and then runs
+          // (logging, not throwing, if a job holds the entity by then).
+          const revalidate = new Set<string>();
+          for (const item of items) {
+            const existing = mappings[item.fieldMappingId];
+            const changed = REVALIDATION_FIELDS.some(
+              (field) =>
+                (item as Record<string, unknown>)[field] !== undefined &&
+                // By value: enumValues is an array.
+                JSON.stringify((item as Record<string, unknown>)[field]) !==
+                  JSON.stringify(existing?.[field])
+            );
+            if (changed && existing) revalidate.add(existing.connectorEntityId);
+          }
+          for (const entityId of revalidate) {
+            void RevalidationService.enqueueAfterEdit(
+              entityId,
+              organizationId,
+              userId
+            );
           }
 
           return {

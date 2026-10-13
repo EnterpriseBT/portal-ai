@@ -702,43 +702,20 @@ export const JOB_TYPE_SCHEMAS: {
   },
 };
 
-// --- Entity-lock registry (#121 child F, gate 4) ---
+// --- Portal chat lock (#121 child F, gate 4) ---
 
 /**
- * Which `metadata` keys a job type uses to declare the entities it locks
- * while non-terminal (CLAUDE.md §"Async Job State & Data Locking"). The lock
- * queries (`JobsRepository.findRunning*`) derive their job-type filter from
- * this registry instead of hardcoding `inArray(jobs.type, […])`, so a new
- * locking job type becomes config-only — declare its key here and the lock
- * checks cover it, with no repository edit.
- *
- * Each field names the `metadata` key holding the locked id(s):
- *  - `targetConnectorEntityIds` — a `string[]` of connector-entity ids;
- *    matched by JSONB array-overlap (a job locks any entity it overlaps).
- *  - `connectorInstanceId` — a single connector-instance id (equality).
- *  - `portalId` — a single portal id (equality; locks the chat input).
- *
- * Job types absent here lock nothing (system_check, revalidation,
- * file_upload_parse, sql_query — read-only or non-locking).
+ * Which `metadata` key a job type uses to lock a portal's chat input while
+ * it runs (a bulk job reports into the portal that started it). Entity and
+ * connector locks are `JOB_LOCK_SCOPES` (#769), not this.
  */
 export interface JobLockKeys {
-  targetConnectorEntityIds?: string;
-  connectorInstanceId?: string;
   portalId?: string;
 }
 
 export const JOB_LOCK_KEYS: Partial<Record<JobType, JobLockKeys>> = {
-  connector_sync: { connectorInstanceId: "connectorInstanceId" },
-  entity_record_clear: { connectorInstanceId: "connectorInstanceId" },
-  layout_plan_commit: { connectorInstanceId: "connectorInstanceId" },
-  bulk_transform: {
-    targetConnectorEntityIds: "targetConnectorEntityIds",
-    portalId: "portalId",
-  },
-  bulk_geocode: {
-    targetConnectorEntityIds: "targetConnectorEntityIds",
-    portalId: "portalId",
-  },
+  bulk_transform: { portalId: "portalId" },
+  bulk_geocode: { portalId: "portalId" },
 };
 
 /** Job types that declare a lock under the given `JobLockKeys` field, with
@@ -749,6 +726,113 @@ export function jobTypesLocking(
   return (Object.entries(JOB_LOCK_KEYS) as Array<[JobType, JobLockKeys]>)
     .filter(([, keys]) => keys[field] != null)
     .map(([type, keys]) => ({ type, metadataKey: keys[field] as string }));
+}
+
+// --- Labels ---
+
+/**
+ * The name a user sees for each job type: in lock refusals ("Sync is running
+ * on this connector"), lock alerts and disabled-action tooltips (#769).
+ * Exhaustive, so a new job type fails type-check until it has a name.
+ */
+export const JOB_TYPE_LABELS: Record<JobType, string> = {
+  system_check: "System check",
+  revalidation: "Revalidation",
+  entity_record_clear: "Delete records",
+  connector_sync: "Sync",
+  file_upload_parse: "File parse",
+  layout_plan_commit: "Import",
+  bulk_transform: "Bulk transform",
+  bulk_geocode: "Geocoding",
+  sql_query: "Query",
+  dissolve_precompute: "Map precompute",
+};
+
+// --- Lock scopes (#769) ---
+
+/**
+ * What a running job makes read-only (CLAUDE.md §"Async Job State & Data
+ * Locking"). A job locks scopes: one connector entity, or a whole connector
+ * instance (all its entities). Every object that resolves into a locked scope
+ * refuses writes: an entity's records, field mappings and the entity itself;
+ * an instance and everything under it; a column definition through every
+ * entity that maps it. Read-dependencies count: a bulk transform locks its
+ * source as well as its targets, since an edit mid-run would make its output
+ * inconsistent.
+ *
+ * Scopes are computed once, when the job row is created, and stored in
+ * `jobs.lock_scopes` as `lockScopeKey` strings.
+ */
+export type LockScopeKind = "connectorEntity" | "connectorInstance";
+export interface LockScope {
+  kind: LockScopeKind;
+  id: string;
+}
+
+/**
+ * The kinds of object a write names for the lock check (#769): records and
+ * field mappings by their entity; entities, connectors and column
+ * definitions by their own id. The API's `LockTarget` is built on these.
+ */
+export const LockTargetKindSchema = z.enum([
+  "record",
+  "fieldMapping",
+  "connectorEntity",
+  "connectorInstance",
+  "columnDefinition",
+]);
+export type LockTargetKind = z.infer<typeof LockTargetKindSchema>;
+
+/** `entity:<id>` / `instance:<id>`: the stored and advisory-locked form. */
+export function lockScopeKey(scope: LockScope): string {
+  return `${scope.kind === "connectorEntity" ? "entity" : "instance"}:${scope.id}`;
+}
+
+type Metadata = Record<string, unknown>;
+const str = (m: Metadata, key: string): string[] =>
+  typeof m[key] === "string" && (m[key] as string).length > 0
+    ? [m[key] as string]
+    : [];
+const strs = (m: Metadata, key: string): string[] =>
+  Array.isArray(m[key])
+    ? (m[key] as unknown[]).filter(
+        (v): v is string => typeof v === "string" && v.length > 0
+      )
+    : [];
+const instance = (ids: string[]): LockScope[] =>
+  ids.map((id) => ({ kind: "connectorInstance", id }));
+const entities = (ids: string[]): LockScope[] =>
+  [...new Set(ids)].map((id) => ({ kind: "connectorEntity", id }));
+
+/**
+ * Exhaustive over `JobType`, so a new job type fails type-check until it says
+ * what it locks (`[]` when it writes no entity data).
+ */
+export const JOB_LOCK_SCOPES: {
+  [T in JobType]: (metadata: Metadata) => LockScope[];
+} = {
+  connector_sync: (m) => instance(str(m, "connectorInstanceId")),
+  layout_plan_commit: (m) => instance(str(m, "connectorInstanceId")),
+  entity_record_clear: (m) => instance(str(m, "connectorInstanceId")),
+  revalidation: (m) => entities(str(m, "connectorEntityId")),
+  bulk_geocode: (m) => entities(str(m, "connectorEntityId")),
+  bulk_transform: (m) =>
+    entities([
+      ...strs(m, "targetConnectorEntityIds"),
+      ...str(m, "sourceConnectorEntityId"),
+    ]),
+  file_upload_parse: () => [],
+  sql_query: () => [],
+  dissolve_precompute: () => [],
+  system_check: () => [],
+};
+
+export function jobLockScopes(type: JobType, metadata: unknown): LockScope[] {
+  const m =
+    typeof metadata === "object" && metadata !== null
+      ? (metadata as Metadata)
+      : {};
+  return JOB_LOCK_SCOPES[type](m);
 }
 
 // --- Schema ---
@@ -788,6 +872,10 @@ export const JobSchema = CoreSchema.extend({
   // (#464). No Zod default — mirrors `attempts`: the DB column's default fills
   // inserts, and every selected row carries a concrete value.
   lostExecutions: z.number(),
+  // The `lockScopeKey`s this job locks while non-terminal (#769), from
+  // `jobLockScopes` at creation. No Zod default, like `lostExecutions`: the
+  // creation site sets it, and the DB column defaults to '{}'.
+  lockScopes: z.array(z.string()),
 });
 
 export type Job = z.infer<typeof JobSchema>;

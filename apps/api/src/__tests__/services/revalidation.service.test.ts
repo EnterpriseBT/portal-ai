@@ -4,214 +4,74 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockJobsFindMany = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockFieldMappingsFindByColumnDefinitionId =
-  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockJobsServiceCreate =
+const mockEnqueueExclusive =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
-jest.unstable_mockModule("../../services/db.service.js", () => ({
-  DbService: {
-    repository: {
-      jobs: { findMany: mockJobsFindMany },
-      fieldMappings: {
-        findByColumnDefinitionId: mockFieldMappingsFindByColumnDefinitionId,
-      },
-    },
-  },
-}));
-
-jest.unstable_mockModule("../../services/jobs.service.js", () => ({
-  JobsService: { create: mockJobsServiceCreate },
-}));
-
-jest.unstable_mockModule("../../db/schema/index.js", () => ({
-  jobs: { type: "type", status: "status" },
+// #769: whether a job conflicts is the lock model's call, covered by
+// job-lock.integration.test; here it's the boundary.
+jest.unstable_mockModule("../../services/job-lock.service.js", () => ({
+  JobLockService: { enqueueExclusive: mockEnqueueExclusive },
 }));
 
 const { RevalidationService } =
   await import("../../services/revalidation.service.js");
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function activeJob(
-  connectorEntityId: string,
-  overrides: Record<string, unknown> = {}
-) {
-  return {
-    id: "job-active-1",
-    type: "revalidation",
-    status: "active",
-    metadata: { connectorEntityId, organizationId: "org-1" },
-    ...overrides,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-
-beforeEach(() => {
-  jest.clearAllMocks();
-});
-
-// ---------------------------------------------------------------------------
-// Tests — findActiveJob
-// ---------------------------------------------------------------------------
-
-describe("RevalidationService.findActiveJob", () => {
-  it("returns null when no active jobs exist", async () => {
-    mockJobsFindMany.mockResolvedValue([]);
-
-    const result = await RevalidationService.findActiveJob("ce-1");
-
-    expect(result).toBeNull();
-  });
-
-  it("returns the job when a pending revalidation job exists for the entity", async () => {
-    const job = activeJob("ce-1", { status: "pending" });
-    mockJobsFindMany.mockResolvedValue([job]);
-
-    const result = await RevalidationService.findActiveJob("ce-1");
-
-    expect(result).toEqual(job);
-  });
-
-  it("returns the job when an active revalidation job exists for the entity", async () => {
-    const job = activeJob("ce-1", { status: "active" });
-    mockJobsFindMany.mockResolvedValue([job]);
-
-    const result = await RevalidationService.findActiveJob("ce-1");
-
-    expect(result).toEqual(job);
-  });
-
-  it("returns null when active jobs belong to a different entity", async () => {
-    mockJobsFindMany.mockResolvedValue([activeJob("ce-other")]);
-
-    const result = await RevalidationService.findActiveJob("ce-1");
-
-    expect(result).toBeNull();
-  });
-
-  it("returns null when only completed/failed/cancelled jobs exist", async () => {
-    // These statuses won't be returned by the findMany query (filtered by ACTIVE_STATUSES),
-    // so the mock returns an empty array to simulate that.
-    mockJobsFindMany.mockResolvedValue([]);
-
-    const result = await RevalidationService.findActiveJob("ce-1");
-
-    expect(result).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests — assertNoActiveJob
-// ---------------------------------------------------------------------------
-
-describe("RevalidationService.assertNoActiveJob", () => {
-  it("resolves when no active job exists", async () => {
-    mockJobsFindMany.mockResolvedValue([]);
-
-    await expect(
-      RevalidationService.assertNoActiveJob("ce-1")
-    ).resolves.toBeUndefined();
-  });
-
-  it("throws 409 REVALIDATION_ACTIVE when active job exists", async () => {
-    mockJobsFindMany.mockResolvedValue([activeJob("ce-1")]);
-
-    await expect(
-      RevalidationService.assertNoActiveJob("ce-1")
-    ).rejects.toMatchObject({
-      status: 409,
-      code: "REVALIDATION_ACTIVE",
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests — assertNoActiveJobForColumnDefinition
-// ---------------------------------------------------------------------------
-
-describe("RevalidationService.assertNoActiveJobForColumnDefinition", () => {
-  it("resolves when no entities use the column definition", async () => {
-    mockFieldMappingsFindByColumnDefinitionId.mockResolvedValue([]);
-
-    await expect(
-      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1")
-    ).resolves.toBeUndefined();
-  });
-
-  it("resolves when entities exist but no active revalidation jobs", async () => {
-    mockFieldMappingsFindByColumnDefinitionId.mockResolvedValue([
-      { connectorEntityId: "ce-1" },
-      { connectorEntityId: "ce-2" },
-    ]);
-    mockJobsFindMany.mockResolvedValue([]);
-
-    await expect(
-      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1")
-    ).resolves.toBeUndefined();
-  });
-
-  it("throws when an entity using the column def has an active revalidation job", async () => {
-    mockFieldMappingsFindByColumnDefinitionId.mockResolvedValue([
-      { connectorEntityId: "ce-1" },
-    ]);
-    mockJobsFindMany.mockResolvedValue([activeJob("ce-1")]);
-
-    await expect(
-      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1")
-    ).rejects.toMatchObject({
-      status: 409,
-      code: "REVALIDATION_ACTIVE",
-    });
-  });
-
-  it("deduplicates entity IDs when multiple mappings point to the same entity", async () => {
-    mockFieldMappingsFindByColumnDefinitionId.mockResolvedValue([
-      { connectorEntityId: "ce-1" },
-      { connectorEntityId: "ce-1" },
-    ]);
-    mockJobsFindMany.mockResolvedValue([]);
-
-    await RevalidationService.assertNoActiveJobForColumnDefinition("cd-1");
-
-    // findMany should only be called once for the deduplicated entity
-    expect(mockJobsFindMany).toHaveBeenCalledTimes(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests — enqueue
-// ---------------------------------------------------------------------------
-
 describe("RevalidationService.enqueue", () => {
-  it("creates a new job when none is active", async () => {
-    mockJobsFindMany.mockResolvedValue([]);
-    const newJob = { id: "job-new", type: "revalidation", status: "pending" };
-    mockJobsServiceCreate.mockResolvedValue(newJob);
-
-    const result = await RevalidationService.enqueue("ce-1", "org-1", "user-1");
-
-    expect(result).toEqual(newJob);
-    expect(mockJobsServiceCreate).toHaveBeenCalledWith("user-1", {
-      type: "revalidation",
-      organizationId: "org-1",
-      metadata: { connectorEntityId: "ce-1", organizationId: "org-1" },
-    });
+  beforeEach(() => {
+    mockEnqueueExclusive.mockReset();
   });
 
-  it("returns existing job when one is already active (idempotent)", async () => {
-    const existing = activeJob("ce-1");
-    mockJobsFindMany.mockResolvedValue([existing]);
+  // #769: the lock model decides conflicts; a revalidation already running on
+  // the entity comes back through `onSameJob: "reuse"`.
+  it("enqueues exclusively, reusing a running revalidation on the entity", async () => {
+    const job = { id: "job-new", type: "revalidation", status: "pending" };
+    mockEnqueueExclusive.mockResolvedValue(job);
 
     const result = await RevalidationService.enqueue("ce-1", "org-1", "user-1");
 
-    expect(result).toEqual(existing);
-    expect(mockJobsServiceCreate).not.toHaveBeenCalled();
+    expect(result).toEqual(job);
+    expect(mockEnqueueExclusive).toHaveBeenCalledWith(
+      "user-1",
+      {
+        type: "revalidation",
+        organizationId: "org-1",
+        metadata: { connectorEntityId: "ce-1", organizationId: "org-1" },
+      },
+      { onSameJob: "reuse" }
+    );
+  });
+
+  it("lets a lock refusal through to the caller", async () => {
+    mockEnqueueExclusive.mockRejectedValue(
+      Object.assign(new Error("Sync is running on this connector."), {
+        status: 409,
+      })
+    );
+
+    await expect(
+      RevalidationService.enqueue("ce-1", "org-1", "user-1")
+    ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("RevalidationService.enqueueAfterEdit (#769)", () => {
+  beforeEach(() => {
+    mockEnqueueExclusive.mockReset();
+  });
+
+  it("swallows a refusal: the edit has already committed", async () => {
+    mockEnqueueExclusive.mockRejectedValue(new Error("locked"));
+
+    await expect(
+      RevalidationService.enqueueAfterEdit("ce-1", "org-1", "user-1")
+    ).resolves.toBeUndefined();
+  });
+
+  it("enqueues when nothing holds the entity", async () => {
+    mockEnqueueExclusive.mockResolvedValue({ id: "j" });
+
+    await RevalidationService.enqueueAfterEdit("ce-1", "org-1", "user-1");
+
+    expect(mockEnqueueExclusive).toHaveBeenCalledTimes(1);
   });
 });

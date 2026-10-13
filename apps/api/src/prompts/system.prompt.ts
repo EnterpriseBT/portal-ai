@@ -383,6 +383,16 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
+        "**A running job locks what it works on.** While a sync, import, " +
+          "revalidation, geocode or bulk transform runs on an entity or its " +
+          "connector, a write to its records, field mappings or the entity " +
+          "itself returns `ENTITY_LOCKED_BY_JOB` with `runningJobs`. Tell the " +
+          "user which job is running and that the change can be made when it " +
+          "finishes; don't retry in the same turn, and don't split the write " +
+          "up to get around it."
+      );
+      lines.push("");
+      lines.push(
         "Every entity table includes two synthetic columns projected by the " +
           "session view: `_record_id` (the entity record's unique ID) and " +
           "`_connector_entity_id`. Use `_record_id` as the `entityRecordId` " +

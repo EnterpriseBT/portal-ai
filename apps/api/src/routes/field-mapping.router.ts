@@ -455,11 +455,6 @@ fieldMappingRouter.post(
       // Assert write capability on the parent connector instance
       await assertWriteCapability(parsed.data.connectorEntityId);
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        connectorEntity.connectorInstanceId,
-        req.application!.metadata.organizationId
-      );
-
       // Verify column definition exists, in the caller's org (#685)
       const columnDefinition =
         await DbService.repository.columnDefinitions.findById(
@@ -477,11 +472,6 @@ fieldMappingRouter.post(
           )
         );
       }
-
-      // Block if a revalidation job is active for the target entity
-      await RevalidationService.assertNoActiveJob(
-        parsed.data.connectorEntityId
-      );
 
       // Check for duplicate mapping (same entity + column definition)
       const duplicate = await DbService.repository.fieldMappings.findMany(
@@ -530,18 +520,24 @@ fieldMappingRouter.post(
         refEntityKey: parsed.data.refEntityKey,
       });
 
-      const fieldMapping = await DbService.repository.fieldMappings
-        .create(model.parse())
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.FIELD_MAPPING_CREATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to create field mapping"
-          );
-        });
+      // #769: refused while a running job locks the entity or its connector.
+      const fieldMapping = await JobLockService.withUnlocked(
+        {
+          kind: "fieldMapping",
+          connectorEntityId: parsed.data.connectorEntityId,
+        },
+        { organizationId },
+        (tx) => DbService.repository.fieldMappings.create(model.parse(), tx)
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.FIELD_MAPPING_CREATE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to create field mapping"
+        );
+      });
 
       logger.info(
         {
@@ -707,14 +703,6 @@ fieldMappingRouter.patch(
       // Assert write capability on the parent connector instance
       await assertWriteCapability(existing.connectorEntityId);
 
-      await JobLockService.assertConnectorEntityUnlocked(
-        [existing.connectorEntityId],
-        req.application!.metadata.organizationId
-      );
-
-      // Block if a revalidation job is active for this mapping's entity
-      await RevalidationService.assertNoActiveJob(existing.connectorEntityId);
-
       // Validate normalizedKey uniqueness if changed
       if (
         parsed.data.normalizedKey &&
@@ -784,22 +772,33 @@ fieldMappingRouter.patch(
 
       const { userId } = req.application!.metadata;
 
-      const fieldMapping = await DbService.repository.fieldMappings
-        .update(id, {
-          ...parsed.data,
-          updated: Date.now(),
-          updatedBy: userId,
-        } as never)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.FIELD_MAPPING_UPDATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to update field mapping"
-          );
-        });
+      // #769: refused while a running job locks the entity or its connector.
+      const fieldMapping = await JobLockService.withUnlocked(
+        {
+          kind: "fieldMapping",
+          connectorEntityId: existing.connectorEntityId,
+        },
+        { organizationId: req.application!.metadata.organizationId },
+        (tx) =>
+          DbService.repository.fieldMappings.update(
+            id,
+            {
+              ...parsed.data,
+              updated: Date.now(),
+              updatedBy: userId,
+            } as never,
+            tx
+          )
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.FIELD_MAPPING_UPDATE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to update field mapping"
+        );
+      });
 
       logger.info({ id }, "Field mapping updated");
 
@@ -814,23 +813,10 @@ fieldMappingRouter.patch(
       const needsRevalidation = REVALIDATION_FIELDS.some(
         (field) =>
           field in parsed.data &&
-          (parsed.data as Record<string, unknown>)[field] !==
-            (existing as Record<string, unknown>)[field]
+          // By value: enumValues is an array (#769 review).
+          JSON.stringify((parsed.data as Record<string, unknown>)[field]) !==
+            JSON.stringify((existing as Record<string, unknown>)[field])
       );
-
-      if (needsRevalidation) {
-        const { organizationId } = req.application!.metadata;
-        await RevalidationService.enqueue(
-          existing.connectorEntityId,
-          organizationId,
-          userId
-        ).catch((err) => {
-          logger.warn(
-            { id, err },
-            "Failed to enqueue revalidation after field mapping update"
-          );
-        });
-      }
 
       // Reconcile the wide table. Most PATCHes don't change the wide-table
       // shape (the reconciler short-circuits when desired = actual), but
@@ -857,6 +843,17 @@ fieldMappingRouter.patch(
               ? error.message
               : "Failed to reconcile wide table"
           )
+        );
+      }
+
+      // #769: after the edit commits, and after the wide table matches it,
+      // so the revalidation reads the new mapping and writes the reconciled
+      // columns. A job holding the entity by then is logged, not thrown.
+      if (needsRevalidation) {
+        await RevalidationService.enqueueAfterEdit(
+          existing.connectorEntityId,
+          req.application!.metadata.organizationId,
+          userId
         );
       }
 
@@ -1090,24 +1087,23 @@ fieldMappingRouter.delete(
           )
       );
 
-      // Assert write capability on the parent connector instance, then block
-      // if a job holds the entity or a revalidation is active for it.
+      // Assert write capability on the parent connector instance.
       await assertWriteCapability(mappingToDelete.connectorEntityId);
-
-      await JobLockService.assertConnectorEntityUnlocked(
-        [mappingToDelete.connectorEntityId],
-        organizationId
-      );
-
-      await RevalidationService.assertNoActiveJob(
-        mappingToDelete.connectorEntityId
-      );
 
       await FieldMappingValidationService.validateDelete(id);
 
-      const result = await FieldMappingValidationService.executeDelete(
-        id,
-        userId
+      // #769: refused while a running job locks the entity or its connector,
+      // or the entity of the counterpart mapping the delete also clears.
+      const lockEntityIds = await FieldMappingValidationService.lockEntityIds([
+        mappingToDelete,
+      ]);
+      const result = await JobLockService.withUnlocked(
+        lockEntityIds.map((connectorEntityId) => ({
+          kind: "fieldMapping" as const,
+          connectorEntityId,
+        })),
+        { organizationId },
+        (tx) => FieldMappingValidationService.executeDelete(id, userId, tx)
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(

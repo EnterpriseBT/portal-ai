@@ -151,11 +151,14 @@ export function entityRecordActionGates({
 export function fieldMappingRowGates({
   capabilities,
   isWriteEnabled,
+  lockedReason = null,
 }: {
   capabilities: ObjectCapabilities;
   isWriteEnabled: boolean;
+  /** #769: a running job holds the mapping's entity or its connector. */
+  lockedReason?: string | null;
 }): { edit: ActionGate; delete: ActionGate } {
-  const blocked = isWriteEnabled ? null : WRITES_DISABLED_REASON;
+  const blocked = isWriteEnabled ? lockedReason : WRITES_DISABLED_REASON;
   return {
     edit: decideActionGate({ allowed: capabilities.write, blocked }),
     delete: decideActionGate({ allowed: capabilities.delete, blocked }),

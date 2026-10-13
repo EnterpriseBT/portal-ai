@@ -18,6 +18,7 @@ import { JobModel } from "@portalai/core/models";
 import type { Job, JobProgressDetail, JobStatus } from "@portalai/core/models";
 import { DateFactory } from "@portalai/core/utils";
 import { formatJobProgress } from "../utils/job-progress.util";
+import { runningJobLabel } from "../utils/running-job-label.util";
 import type { JobStreamState } from "../api/jobs.api";
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
@@ -86,7 +87,7 @@ export const JobCard = ({
 
   return (
     <DetailCard
-      title={job.type}
+      title={runningJobLabel(job)}
       onClick={() => router.navigate({ to: `/jobs/${job.id}` })}
     >
       <Stack

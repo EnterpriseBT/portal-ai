@@ -36,7 +36,7 @@ import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLoc
 import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
 import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
-import { connectorLockReason } from "../utils/running-job-label.util";
+import { jobLockReason } from "../utils/running-job-label.util";
 import { connectorInstanceActionGates } from "../utils/connector-instance-actions.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { HighlightedCode } from "../components/HighlightedCode.component";
@@ -218,7 +218,10 @@ export const ConnectorInstanceView = ({
       subs.clear();
     };
   }, [connectorInstanceId]);
-  const lockedReason = connectorLockReason(runningJobs);
+  const lockedReason = jobLockReason(runningJobs, {
+    kind: "connectorInstance",
+    id: connectorInstanceId,
+  });
   const syncState = useConnectorInstanceSync(connectorInstanceId);
   // When the user kicks off a sync from inside this view, refetch
   // the runningJobs list so the lock alert appears immediately

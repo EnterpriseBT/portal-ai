@@ -87,4 +87,21 @@ describe("JobControlService (#689)", () => {
       }
     }
   });
+
+  it("#769: a reader who can't see the payload doesn't see its lock scopes either", () => {
+    const job = {
+      createdBy: "someone-else",
+      metadata: { sourceConnectorEntityId: "src" },
+      result: null,
+      lockScopes: ["entity:src", "entity:t1"],
+    };
+    const member = forRole("member");
+    expect(
+      JobPayloadRedactionService.redact(member.ctx, member.set, job).lockScopes
+    ).toEqual([]);
+    const owner = forRole("owner");
+    expect(
+      JobPayloadRedactionService.redact(owner.ctx, owner.set, job).lockScopes
+    ).toEqual(["entity:src", "entity:t1"]);
+  });
 });

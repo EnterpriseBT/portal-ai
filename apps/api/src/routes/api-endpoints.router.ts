@@ -507,66 +507,67 @@ apiEndpointsRouter.post(
       }
       const body = parsedBody.data;
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        instance.id,
-        organizationId
-      );
-
       const flattened = flattenPaginationForTable(body.config.pagination);
-      const result = await DbService.repository.apiEndpoints
-        .createWithEntity(
-          {
-            organizationId: instance.organizationId,
-            connectorInstanceId: instance.id,
-            key: body.key,
-            label: body.label,
-            config: {
-              path: body.config.path,
-              method: body.config.method,
-              recordsPath: body.config.recordsPath ?? "",
-              transform: body.config.transform ?? null,
-              idField: body.config.idField ?? null,
-              headers: body.config.headers ?? null,
-              queryParams: body.config.queryParams ?? null,
-              bodyTemplate: body.config.bodyTemplate ?? null,
-              totalCount: body.config.totalCount ?? null,
-              pagination: flattened.pagination,
-              paginationConfig: flattened.paginationConfig,
+      // #769: refused while a running job holds the connector or any of its
+      // entities.
+      const result = await JobLockService.withUnlocked(
+        { kind: "connectorInstance", id: instance.id },
+        { organizationId },
+        (tx) =>
+          DbService.repository.apiEndpoints.createWithEntity(
+            {
+              organizationId: instance.organizationId,
+              connectorInstanceId: instance.id,
+              key: body.key,
+              label: body.label,
+              config: {
+                path: body.config.path,
+                method: body.config.method,
+                recordsPath: body.config.recordsPath ?? "",
+                transform: body.config.transform ?? null,
+                idField: body.config.idField ?? null,
+                headers: body.config.headers ?? null,
+                queryParams: body.config.queryParams ?? null,
+                bodyTemplate: body.config.bodyTemplate ?? null,
+                totalCount: body.config.totalCount ?? null,
+                pagination: flattened.pagination,
+                paginationConfig: flattened.paginationConfig,
+              },
             },
-          },
-          userId
-        )
-        .catch(
-          (
-            err: Error & {
-              code?: string;
-              constraint_name?: string;
-              cause?: unknown;
-            }
-          ) => {
-            // Drizzle wraps the postgres-driver error inside `err.cause`.
-            // The driver populates `.code` (SQLSTATE) and `.constraint_name`.
-            const cause = err.cause as
-              | { code?: string; constraint_name?: string; message?: string }
-              | undefined;
-            const code = cause?.code ?? err.code;
-            const constraint = cause?.constraint_name ?? err.constraint_name;
-            const message = cause?.message ?? err.message ?? "";
-            const isOrgKeyConflict =
-              code === "23505" &&
-              (constraint === "connector_entities_org_key_unique" ||
-                message.includes("connector_entities_org_key_unique"));
-            if (isOrgKeyConflict) {
-              throw new ApiError(
-                409,
-                ApiCode.CONNECTOR_ENTITY_KEY_CONFLICT,
-                `An entity with key "${body.key}" already exists for this organization`,
-                { key: body.key }
-              );
-            }
-            throw err;
+            userId,
+            tx
+          )
+      ).catch(
+        (
+          err: Error & {
+            code?: string;
+            constraint_name?: string;
+            cause?: unknown;
           }
-        );
+        ) => {
+          // Drizzle wraps the postgres-driver error inside `err.cause`.
+          // The driver populates `.code` (SQLSTATE) and `.constraint_name`.
+          const cause = err.cause as
+            | { code?: string; constraint_name?: string; message?: string }
+            | undefined;
+          const code = cause?.code ?? err.code;
+          const constraint = cause?.constraint_name ?? err.constraint_name;
+          const message = cause?.message ?? err.message ?? "";
+          const isOrgKeyConflict =
+            code === "23505" &&
+            (constraint === "connector_entities_org_key_unique" ||
+              message.includes("connector_entities_org_key_unique"));
+          if (isOrgKeyConflict) {
+            throw new ApiError(
+              409,
+              ApiCode.CONNECTOR_ENTITY_KEY_CONFLICT,
+              `An entity with key "${body.key}" already exists for this organization`,
+              { key: body.key }
+            );
+          }
+          throw err;
+        }
+      );
 
       // Provision the wide-table partition for the new connector_entity.
       // The reconciler owns DDL on `er__<id>` tables; calling
@@ -761,34 +762,50 @@ apiEndpointsRouter.patch(
         );
       }
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        instance.id,
-        organizationId
+      // #769: refused while a running job holds the entity or its
+      // connector. The label and the config change together or not at all.
+      const updated = await JobLockService.withUnlocked(
+        { kind: "connectorEntity", id: entityId },
+        { organizationId },
+        async (tx) => {
+          // Update the entity row's label if provided (separate from config).
+          if (
+            body.label !== undefined &&
+            body.label !== existing.entity.label
+          ) {
+            await DbService.repository.connectorEntities.update(
+              entityId,
+              {
+                label: body.label,
+                updated: Date.now(),
+                updatedBy: userId,
+              },
+              tx
+            );
+          }
+          // Update the config row if any config fields were sent.
+          if (!body.config || Object.keys(body.config).length === 0) {
+            return undefined;
+          }
+          const { pagination, ...rest } = body.config;
+          const patch = {
+            ...rest,
+            ...(pagination !== undefined
+              ? flattenPaginationForTable(pagination as PaginationConfig)
+              : {}),
+          };
+          return (
+            (await DbService.repository.apiEndpoints.updateConfig(
+              entityId,
+              patch as never,
+              userId,
+              tx
+            )) ?? null
+          );
+        }
       );
 
-      // Update the entity row's label if provided (separate from config).
-      if (body.label !== undefined && body.label !== existing.entity.label) {
-        await DbService.repository.connectorEntities.update(entityId, {
-          label: body.label,
-          updated: Date.now(),
-          updatedBy: userId,
-        });
-      }
-
-      // Update the config row if any config fields were sent.
-      if (body.config && Object.keys(body.config).length > 0) {
-        const { pagination, ...rest } = body.config;
-        const patch = {
-          ...rest,
-          ...(pagination !== undefined
-            ? flattenPaginationForTable(pagination as PaginationConfig)
-            : {}),
-        };
-        const updated = await DbService.repository.apiEndpoints.updateConfig(
-          entityId,
-          patch as never,
-          userId
-        );
+      if (updated !== undefined) {
         if (!updated) {
           throw new ApiError(
             404,
@@ -907,14 +924,16 @@ apiEndpointsRouter.delete(
         );
       }
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        instance.id,
-        organizationId
-      );
-
-      const ok = await DbService.repository.apiEndpoints.softDeleteWithEntity(
-        entityId,
-        userId
+      // #769: refused while a running job holds the entity or its connector.
+      const ok = await JobLockService.withUnlocked(
+        { kind: "connectorEntity", id: entityId },
+        { organizationId },
+        (tx) =>
+          DbService.repository.apiEndpoints.softDeleteWithEntity(
+            entityId,
+            userId,
+            tx
+          )
       );
       if (!ok) {
         throw new ApiError(

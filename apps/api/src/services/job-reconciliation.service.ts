@@ -24,7 +24,7 @@ export interface StrandedSweepSummary {
  * (#391). Without it, only the worker (which needs the BullMQ entry to
  * exist) and an explicit user cancel ever reach a terminal status — so a
  * FLUSHALL / ElastiCache node replacement leaves rows `active` forever,
- * holding their JOB_LOCK_KEYS entity locks and promising completion that
+ * holding their JOB_LOCK_SCOPES entity locks and promising completion that
  * will never come.
  *
  * The stranded predicate is a CONJUNCTION, and both halves are load-bearing:

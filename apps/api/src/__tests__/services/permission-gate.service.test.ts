@@ -14,9 +14,18 @@ import type { ToolAuthorization } from "@portalai/core/models";
 const ctx = { organizationId: "org-1", userId: "u-1" };
 
 const tool = (execute: GateableTool["execute"]): GateableTool => ({ execute });
+// #769: every entry carries a job lock; the permission gate ignores it.
 const authIs =
-  (a: ToolAuthorization | undefined) => (): ToolAuthorization | undefined =>
-    a;
+  (a: Omit<ToolAuthorization, "lock"> | undefined) =>
+  (): ToolAuthorization | undefined =>
+    a && {
+      ...a,
+      lock: {
+        target: "record",
+        itemsArg: "items",
+        idField: "connectorEntityId",
+      },
+    };
 
 describe("wrapWithPermissionGate (#629)", () => {
   let can: jest.Mock;

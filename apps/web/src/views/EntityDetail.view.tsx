@@ -46,7 +46,7 @@ import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
 import { ClearEntityRecordsDialog } from "../components/ClearEntityRecordsDialog.component";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
-import { connectorLockReason } from "../utils/running-job-label.util";
+import { jobLockReason } from "../utils/running-job-label.util";
 import {
   entityDetailActionGates,
   type RecordPermissions,
@@ -264,7 +264,10 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
     capabilities: entity.capabilities,
     recordPermissions,
     isWriteEnabled: isWriteEnabled === true,
-    lockedReason: connectorLockReason(runningJobs ?? []),
+    lockedReason: jobLockReason(runningJobs ?? [], {
+      kind: "connectorEntity",
+      id: entity.id,
+    }),
     isUpdating: isUpdating === true,
     isDeleting: isDeleting === true,
     isClearingRecords: isClearingRecords === true,
@@ -449,7 +452,10 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
 
         {/* Running-job lock notice (#453 / Async Job State rules) */}
         {isLockedByJob && (
-          <ConnectorInstanceLockAlertUI runningJobs={runningJobs ?? []} />
+          <ConnectorInstanceLockAlertUI
+            runningJobs={runningJobs ?? []}
+            paused="Editing this entity, changing its records, and re-validating"
+          />
         )}
 
         {/* Data table */}

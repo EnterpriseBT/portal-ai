@@ -78,6 +78,12 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 jest.unstable_mockModule("../../services/permission-gate.service.js", () => ({
   wrapWithPermissionGate: jest.fn(),
 }));
+// #769: the lock gate has its own suite (lock-gate.service.test); here it's a
+// spy so the guards below can assert it's applied, and in which order.
+const mockWrapWithLockGate = jest.fn();
+jest.unstable_mockModule("../../services/lock-gate.service.js", () => ({
+  wrapWithLockGate: mockWrapWithLockGate,
+}));
 jest.unstable_mockModule("../../services/permission.service.js", () => ({
   PermissionService: {
     loadSet: jest.fn<() => Promise<unknown>>().mockResolvedValue({}),
@@ -1058,6 +1064,68 @@ describe("buildAnalyticsTools()", () => {
       expect(ALL_TOOL_CAPABILITIES[name]?.writes.length ?? 0).toBeGreaterThan(
         0
       );
+    }
+  });
+
+  it("#769: every built tool goes through the lock gate, inside the permission gate", async () => {
+    setupStationMocks(["entity_management", "data_query"]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
+    ]);
+    mockWrapWithLockGate.mockClear();
+    const { wrapWithPermissionGate } =
+      await import("../../services/permission-gate.service.js");
+    const permissionGate = wrapWithPermissionGate as unknown as jest.Mock;
+    permissionGate.mockClear();
+    const { TOOL_AUTHORIZATION } = await import("@portalai/core/registries");
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+
+    expect(mockWrapWithLockGate).toHaveBeenCalledTimes(1);
+    const [gated, ctx, authFor] = mockWrapWithLockGate.mock.calls[0] as [
+      Record<string, unknown>,
+      { organizationId: string },
+      (name: string) => unknown,
+    ];
+    expect(Object.keys(gated).sort()).toEqual(Object.keys(tools).sort());
+    expect(ctx).toEqual({ organizationId: ORG_ID });
+    expect(authFor("entity_record_update")).toBe(
+      TOOL_AUTHORIZATION.entity_record_update
+    );
+    // Applied first, so it wraps innermost: the permission check runs before
+    // the lock check, and an unauthorized caller never learns a job runs.
+    expect(mockWrapWithLockGate.mock.invocationCallOrder[0]).toBeLessThan(
+      permissionGate.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("#769: every write tool declares a job lock that matches its input", async () => {
+    const { TOOL_AUTHORIZATION, ALL_TOOL_CAPABILITIES } =
+      await import("@portalai/core/registries");
+    const { jobLockScopes } = await import("@portalai/core/models");
+    for (const [name, auth] of Object.entries(TOOL_AUTHORIZATION)) {
+      expect([name, auth.lock]).toEqual([name, expect.any(Object)]);
+      if ("enqueues" in auth.lock) {
+        // An enqueuing tool starts a job that actually locks something.
+        expect(ALL_TOOL_CAPABILITIES[name]?.resultKind).toBe("progress");
+        expect(
+          jobLockScopes(auth.lock.enqueues, {
+            connectorEntityId: "e",
+            targetConnectorEntityIds: ["e"],
+            sourceConnectorEntityId: "s",
+          }).length
+        ).toBeGreaterThan(0);
+      } else {
+        expect(auth.lock.itemsArg).toBe("items");
+      }
     }
   });
 

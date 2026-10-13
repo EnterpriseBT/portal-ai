@@ -5,7 +5,7 @@ describe("ApiErrorSchema", () => {
     const parsed = ApiErrorSchema.parse({
       success: false,
       message: "Entity locked.",
-      code: "BULK_JOB_TARGET_LOCKED",
+      code: "ENTITY_LOCKED_BY_JOB",
       recommendation: "Wait for the running job to finish.",
     });
     expect(parsed.recommendation).toBe("Wait for the running job to finish.");

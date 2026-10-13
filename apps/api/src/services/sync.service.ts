@@ -10,27 +10,21 @@
  * future Microsoft Excel, SQL/database, and others.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
-
 import type { ConnectorSyncMetadata, JobType } from "@portalai/core/models";
 
 import type { ConnectorAdapter } from "../adapters/adapter.interface.js";
 import { ConnectorAdapterRegistry } from "../adapters/adapter.registry.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
-import { jobs } from "../db/schema/index.js";
 import type { ConnectorInstanceSelect } from "../db/schema/zod.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
-import { JobsService } from "./jobs.service.js";
+import { JobLockService } from "./job-lock.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "sync-service" });
 
 /** BullMQ job type for per-instance syncs. Same value across all connectors. */
 const CONNECTOR_SYNC_JOB_TYPE: JobType = "connector_sync";
-
-/** Non-terminal statuses that indicate a sync job is still running. */
-const ACTIVE_SYNC_STATUSES = ["pending", "active"] as const;
 
 export class SyncService {
   /**
@@ -73,22 +67,23 @@ export class SyncService {
   }
 
   /**
-   * Find an in-flight sync job for the given connector instance, or null.
-   * Filters by `connector_sync` type + `pending`/`active` status, then
-   * matches the metadata's `connectorInstanceId`.
+   * The in-flight sync on a connector instance, or null (#769: any
+   * non-terminal status, from the job lock model).
    */
-  static async findActiveSyncJob(connectorInstanceId: string) {
-    const activeJobs = await DbService.repository.jobs.findMany(
-      and(
-        eq(jobs.type, CONNECTOR_SYNC_JOB_TYPE),
-        inArray(jobs.status, [...ACTIVE_SYNC_STATUSES])
-      )
+  static async findActiveSyncJob(
+    connectorInstanceId: string,
+    organizationId: string
+  ) {
+    const running = await JobLockService.findRunning(
+      [{ kind: "connectorInstance", id: connectorInstanceId }],
+      organizationId
     );
     return (
-      activeJobs.find((j) => {
-        const meta = j.metadata as Record<string, unknown>;
-        return meta.connectorInstanceId === connectorInstanceId;
-      }) ?? null
+      running.find(
+        (j) =>
+          j.type === CONNECTOR_SYNC_JOB_TYPE &&
+          j.lockScopes.includes(`instance:${connectorInstanceId}`)
+      ) ?? null
     );
   }
 
@@ -98,8 +93,14 @@ export class SyncService {
    * jobId in `details` so the frontend can latch onto its SSE stream
    * instead of blocking the user.
    */
-  static async assertNoActiveSyncJob(connectorInstanceId: string) {
-    const existing = await SyncService.findActiveSyncJob(connectorInstanceId);
+  static async assertNoActiveSyncJob(
+    connectorInstanceId: string,
+    organizationId: string
+  ) {
+    const existing = await SyncService.findActiveSyncJob(
+      connectorInstanceId,
+      organizationId
+    );
     if (existing) {
       throw new ApiError(
         409,
@@ -172,7 +173,9 @@ export class SyncService {
       organizationId,
       userId,
     };
-    const job = await JobsService.create(userId, {
+    // #769: refused with 409 ENTITY_LOCKED_BY_JOB while any job holds the
+    // connector or one of its entities.
+    const job = await JobLockService.enqueueExclusive(userId, {
       type: CONNECTOR_SYNC_JOB_TYPE,
       organizationId,
       metadata: metadata as unknown as Record<string, unknown>,

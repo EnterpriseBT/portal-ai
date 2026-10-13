@@ -532,6 +532,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
       status: string;
       startedAt: number | null;
       created: number;
+      lockScopes: string[];
     }>,
     clearRecordsDialogOpen: false,
     onOpenClearRecordsDialog: jest.fn(),
@@ -570,6 +571,7 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
             status: "active",
             startedAt: Date.now(),
             created: Date.now(),
+            lockScopes: ["instance:ci-1"],
           },
         ]}
       />
@@ -577,6 +579,33 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
     expect(clearButton()).toHaveAttribute("aria-disabled", "true");
     // The lock alert names the running work — the "why" behind the disable.
     expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("#769: a revalidation on the entity disables it, saying it runs on this entity", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        {...clearProps}
+        runningJobs={[
+          {
+            id: "job-2",
+            type: "revalidation",
+            status: "active",
+            startedAt: Date.now(),
+            created: Date.now(),
+            lockScopes: [`entity:${stubEntity.id}`],
+          },
+        ]}
+      />
+    );
+    expect(clearButton()).toHaveAttribute("aria-disabled", "true");
+    expect(clearButton()).toHaveAttribute(
+      "title",
+      "Revalidation is running on this entity — try again when it finishes."
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Editing this entity, changing its records, and re-validating are paused"
+    );
   });
 
   it("disables the action when the instance lacks write capability (case 29)", () => {

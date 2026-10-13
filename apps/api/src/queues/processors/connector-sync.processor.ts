@@ -1,6 +1,7 @@
 import type { TypedJobProcessor } from "../jobs.worker.js";
 import { ConnectorAdapterRegistry } from "../../adapters/adapter.registry.js";
 import { DbService } from "../../services/db.service.js";
+import { JobLockService } from "../../services/job-lock.service.js";
 import { SyncLockService } from "../../services/sync-lock.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 
@@ -22,12 +23,17 @@ async function identifyHolder(
   selfJobId: string
 ): Promise<string | undefined> {
   try {
-    const running =
-      await DbService.repository.jobs.findRunningForConnectorInstance(
-        connectorInstanceId,
-        organizationId
-      );
-    return running.find((j) => j.id !== selfJobId)?.id;
+    // #769: a job that holds the whole connector (a sync or import), as the
+    // sync lock's holder would.
+    const running = await JobLockService.findRunning(
+      [{ kind: "connectorInstance", id: connectorInstanceId }],
+      organizationId
+    );
+    return running.find(
+      (j) =>
+        j.id !== selfJobId &&
+        j.lockScopes.includes(`instance:${connectorInstanceId}`)
+    )?.id;
   } catch (err) {
     logger.warn(
       { event: "connector-sync.superseded-holder-lookup-failed", err },

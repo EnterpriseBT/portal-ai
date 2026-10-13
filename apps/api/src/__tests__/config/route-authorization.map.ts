@@ -1,3 +1,7 @@
+import type { JobType } from "@portalai/core/models";
+
+import type { LockTarget } from "../../services/job-lock.service.js";
+
 /**
  * #685: how every mutation route (POST/PATCH/PUT/DELETE) and every SSE route
  * is authorized. #692 added every GET route: reads were never inventoried, and
@@ -11,106 +15,145 @@
  * route `authorized` to make the test pass.
  */
 
-export type RouteAuthorization =
+/**
+ * #769: what a mutating route changes, for the job lock. `target` names the
+ * object class it writes through `JobLockService.withUnlocked`; `enqueues`
+ * names the scoped job it starts through `enqueueExclusive`; `none` records
+ * why no running job reads or writes what it changes. Required on every
+ * non-GET route.
+ */
+export type RouteLocks =
+  | { target: LockTarget["kind"] }
+  | { enqueues: JobType }
+  | { none: string };
+
+export type RouteAuthorization = (
   | { kind: "authorized"; by: string }
-  | { kind: "exempt"; reason: string };
+  | { kind: "exempt"; reason: string }
+) & { locks?: RouteLocks };
 
 export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "DELETE /api/column-definitions/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete column_definition",
+    locks: { target: "columnDefinition" },
   },
   "DELETE /api/connector-entities/{connectorEntityId}/records": {
     kind: "authorized",
     by: "entity in org + class resource.write/delete entity_record",
+    locks: { enqueues: "entity_record_clear" },
   },
   "DELETE /api/connector-entities/{connectorEntityId}/records/{recordId}": {
     kind: "authorized",
     by: "entity in org + record on it + read, else 404 (#713) + per-object resource.write/delete entity_record",
+    locks: { target: "record" },
   },
   "DELETE /api/connector-entities/{connectorEntityId}/tags/{assignmentId}": {
     kind: "authorized",
     by: "entity in org + readable + write entity; tag readable; assignment on the entity (#685)",
+    locks: { none: "tag assignments; no job reads or writes them" },
   },
   "DELETE /api/connector-entities/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685)",
+    locks: { target: "connectorEntity" },
   },
   "DELETE /api/connector-instances/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete connector_instance",
+    locks: { target: "connectorInstance" },
   },
   "DELETE /api/connector-instances/{instanceId}/api-endpoints/{entityId}": {
     kind: "authorized",
     by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+    locks: { target: "connectorEntity" },
   },
   "DELETE /api/curated-views/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete curated_view",
+    locks: { none: "curated views; no job reads or writes them" },
   },
   "DELETE /api/curated-views/{id}/attach/{stationId}": {
     kind: "authorized",
     by: "loadWritableStation (org + read + write station) + view readable (StationAttachmentService)",
+    locks: { none: "station attachments; no job reads or writes them" },
   },
   "DELETE /api/entity-groups/{entityGroupId}/members/{memberId}": {
     kind: "authorized",
     by: "group in org + readable + write entity_group; member on the group (#685)",
+    locks: { none: "entity groups; no job reads or writes them" },
   },
   "DELETE /api/entity-groups/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity_group",
+    locks: { none: "entity groups; no job reads or writes them" },
   },
   "DELETE /api/entity-tags/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete tag",
+    locks: { none: "tags; no job reads or writes them" },
   },
   "DELETE /api/field-mappings/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685)",
+    locks: { target: "fieldMapping" },
   },
   "DELETE /api/grants/{id}": {
     kind: "authorized",
     by: "GrantService: object in org + resource.share + granter boundary (#621)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "DELETE /api/groups/{id}": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "DELETE /api/organization/members/{userId}": {
     kind: "authorized",
     by: "SeatService member.remove + last-owner guard",
+    locks: { none: "membership; no job reads or writes it" },
   },
   "DELETE /api/organization/{id}": {
     kind: "authorized",
     by: "caller's org + org.delete",
+    locks: {
+      none: "OrganizationDeleteService refuses while any job in the org runs",
+    },
   },
   "DELETE /api/policies/{id}": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "DELETE /api/portal-results/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
+    locks: { none: "pins; no scoped job writes them" },
   },
   "DELETE /api/portals/{id}": {
     kind: "authorized",
     by: "PortalAccessService.load write/delete (#685)",
+    locks: { none: "portals; no scoped job writes them" },
   },
   "DELETE /api/portals/{id}/messages": {
     kind: "authorized",
     by: "PortalAccessService.load write (#685)",
+    locks: { none: "portal messages; no scoped job writes them" },
   },
   "DELETE /api/roles/{id}": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "DELETE /api/stations/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete station",
+    locks: { none: "stations; no job reads or writes them" },
   },
   "DELETE /api/toolpacks/{id}": {
     kind: "authorized",
     by: "org scope + per-object resource.write/delete toolpack (#685)",
+    locks: { none: "toolpacks; no job reads or writes them" },
   },
   "GET /api/billing/tiers": {
     kind: "authorized",
@@ -123,6 +166,10 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "GET /api/column-definitions/{id}": {
     kind: "authorized",
     by: "org scope + per-object resource.read column_definition (404)",
+  },
+  "GET /api/column-definitions/{id}/running-jobs": {
+    kind: "authorized",
+    by: "org scope + read, else 404 (like the detail); lists the jobs locking entities that map it (#769)",
   },
   "GET /api/column-definitions/{id}/impact": {
     kind: "authorized",
@@ -461,319 +508,397 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "PATCH /api/column-definitions/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete column_definition",
+    locks: { target: "columnDefinition" },
   },
   "PATCH /api/connector-entities/{connectorEntityId}/records/{recordId}": {
     kind: "authorized",
     by: "entity in org + record on it + read, else 404 (#713) + per-object resource.write/delete entity_record",
+    locks: { target: "record" },
   },
   "PATCH /api/connector-entities/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685)",
+    locks: { target: "connectorEntity" },
   },
   "PATCH /api/connector-instances/{connectorInstanceId}/layout-plan/{planId}": {
     kind: "authorized",
     by: "ConnectorInstanceAccessService.load write (#685)",
+    locks: { target: "connectorInstance" },
   },
   "PATCH /api/connector-instances/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete connector_instance",
+    locks: { target: "connectorInstance" },
   },
   "PATCH /api/connector-instances/{instanceId}/api-endpoints/{entityId}": {
     kind: "authorized",
     by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+    locks: { target: "connectorEntity" },
   },
   "PATCH /api/curated-views/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete curated_view",
+    locks: { none: "curated views; no job reads or writes them" },
   },
   "PATCH /api/entity-groups/{entityGroupId}/members/{memberId}": {
     kind: "authorized",
     by: "group in org + readable + write entity_group; member on the group (#685)",
+    locks: { none: "entity groups; no job reads or writes them" },
   },
   "PATCH /api/entity-groups/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity_group",
+    locks: { none: "entity groups; no job reads or writes them" },
   },
   "PATCH /api/entity-tags/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete tag",
+    locks: { none: "tags; no job reads or writes them" },
   },
   "PATCH /api/field-mappings/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685)",
+    locks: { target: "fieldMapping" },
   },
   "PATCH /api/organization/{id}": {
     kind: "authorized",
     by: "caller's org + class resource.write station for the default station, station readable (#685)",
+    locks: { none: "org settings; no job reads or writes them" },
   },
   "PATCH /api/portal-results/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
+    locks: { none: "pins; no scoped job writes them" },
   },
   "PATCH /api/portals/{id}": {
     kind: "authorized",
     by: "PortalAccessService.load write/delete (#685)",
+    locks: { none: "portals; no scoped job writes them" },
   },
   "PATCH /api/stations/{id}": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete station",
+    locks: { none: "stations; no job reads or writes them" },
   },
   "PATCH /api/toolpacks/{id}": {
     kind: "authorized",
     by: "org scope + per-object resource.write/delete toolpack (#685)",
+    locks: { none: "toolpacks; no job reads or writes them" },
   },
   "POST /api/billing/checkout": {
     kind: "authorized",
     by: "BillingService billing.manage",
+    locks: { none: "billing; no job reads or writes it" },
   },
   "POST /api/billing/portal": {
     kind: "authorized",
     by: "BillingService billing.manage",
+    locks: { none: "billing; no job reads or writes it" },
   },
   "POST /api/column-definitions": {
     kind: "authorized",
     by: "class resource.write column_definition (owner/admin) (#685)",
+    locks: { none: "a new column definition is mapped by no entity yet" },
   },
   "POST /api/connector-entities": {
     kind: "authorized",
     by: "instance in org + readable, owned create resource.write entity (#685)",
+    locks: { target: "connectorInstance" },
   },
   "POST /api/connector-entities/{connectorEntityId}/records": {
     kind: "authorized",
     by: "entity in org + readable, owned create resource.write entity_record (#685)",
+    locks: { target: "record" },
   },
   "POST /api/connector-entities/{connectorEntityId}/records/import": {
     kind: "authorized",
     by: "entity in org + class resource.write/delete entity_record",
+    locks: { target: "record" },
   },
   "POST /api/connector-entities/{connectorEntityId}/records/revalidate": {
     kind: "authorized",
     by: "entity in org + class resource.write/delete entity_record",
+    locks: { enqueues: "revalidation" },
   },
   "POST /api/connector-entities/{connectorEntityId}/tags": {
     kind: "authorized",
     by: "entity in org + readable + write entity; tag readable; assignment on the entity (#685)",
+    locks: { none: "tag assignments; no job reads or writes them" },
   },
   "POST /api/connector-entities/{id}/rows-by-id": {
     kind: "authorized",
     by: "org scope + per-object resource.read entity (read-only)",
+    locks: { none: "a read sent as POST; writes nothing" },
   },
   "POST /api/connector-instances": {
     kind: "authorized",
     by: "caller's org (body org refused) + owned create resource.write connector_instance (#685)",
+    locks: { none: "a new connector; no job can hold it yet" },
   },
   "POST /api/connector-instances/preview-endpoint-page": {
     kind: "authorized",
     by: "owned create resource.write connector_instance (#685)",
+    locks: { none: "an upstream preview; writes nothing" },
   },
   "POST /api/connector-instances/probe-endpoint-draft": {
     kind: "authorized",
     by: "owned create resource.write connector_instance (#685)",
+    locks: { none: "an upstream probe; writes nothing" },
   },
   "POST /api/connector-instances/suggest-transform": {
     kind: "authorized",
     by: "owned create resource.write connector_instance (#685)",
+    locks: { none: "a model suggestion; writes nothing" },
   },
   "POST /api/connector-instances/{connectorInstanceId}/layout-plan/interpret": {
     kind: "authorized",
     by: "ConnectorInstanceAccessService.load write (#685)",
+    locks: { target: "connectorInstance" },
   },
   "POST /api/connector-instances/{connectorInstanceId}/layout-plan/{planId}/commit":
     {
       kind: "authorized",
       by: "ConnectorInstanceAccessService.load write (#685)",
+      locks: { enqueues: "layout_plan_commit" },
     },
   "POST /api/connector-instances/{id}/sync": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete connector_instance",
+    locks: { enqueues: "connector_sync" },
   },
   "POST /api/connector-instances/{id}/test-connection": {
     kind: "authorized",
     by: "org scope + per-object resource.read connector_instance (no state change)",
+    locks: { none: "an upstream connection check; writes nothing" },
   },
   "POST /api/connector-instances/{instanceId}/api-endpoints": {
     kind: "authorized",
     by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+    locks: { target: "connectorInstance" },
   },
   "POST /api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns":
     {
       kind: "authorized",
       by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+      locks: { none: "an upstream column sample; writes nothing" },
     },
   "POST /api/connectors/google-sheets/authorize": {
     kind: "authorized",
     by: "reconnect needs ConnectorInstanceAccessService write (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710)",
+    locks: { none: "starts OAuth; writes no connector data" },
   },
   "POST /api/connectors/google-sheets/instances/{id}/select-sheet": {
     kind: "authorized",
     by: "resolveOwnedInstance \u2192 ConnectorInstanceAccessService write (#685)",
+    locks: { target: "connectorInstance" },
   },
   "POST /api/connectors/microsoft-excel/authorize": {
     kind: "authorized",
     by: "reconnect needs ConnectorInstanceAccessService write (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710)",
+    locks: { none: "starts OAuth; writes no connector data" },
   },
   "POST /api/connectors/microsoft-excel/instances/{id}/select-workbook": {
     kind: "authorized",
     by: "resolveOwnedInstance \u2192 ConnectorInstanceAccessService write (#685)",
+    locks: { target: "connectorInstance" },
   },
   "POST /api/curated-views": {
     kind: "authorized",
     by: "class resource.write curated_view (owner/admin)",
+    locks: { none: "curated views; no job reads or writes them" },
   },
   "POST /api/curated-views/{id}/attach": {
     kind: "authorized",
     by: "loadWritableStation (org + read + write station) + view readable (StationAttachmentService)",
+    locks: { none: "station attachments; no job reads or writes them" },
   },
   "POST /api/entity-groups": {
     kind: "authorized",
     by: "class resource.write entity_group (owner/admin) (#685)",
+    locks: { none: "entity groups; no job reads or writes them" },
   },
   "POST /api/entity-groups/{entityGroupId}/members": {
     kind: "authorized",
     by: "group in org + readable + write entity_group; member on the group (#685)",
+    locks: { none: "entity groups; no job reads or writes them" },
   },
   "POST /api/entity-tags": {
     kind: "authorized",
     by: "class resource.write tag (owner/admin) (#685)",
+    locks: { none: "tags; no job reads or writes them" },
   },
   "POST /api/field-mappings": {
     kind: "authorized",
     by: "entity in org + readable, column definition in org, owned create resource.write field_mapping (#685)",
+    locks: { target: "fieldMapping" },
   },
   "POST /api/file-uploads/confirm": {
     kind: "authorized",
     by: "FileUploadAccessService.assertOwnUploads (#685)",
+    locks: { none: "upload sessions; no scoped job reads them" },
   },
   "POST /api/file-uploads/parse": {
     kind: "authorized",
     by: "FileUploadAccessService.assertOwnUploads (#685)",
+    locks: { none: "starts a file parse, which locks nothing" },
   },
   "POST /api/file-uploads/presign": {
     kind: "authorized",
     by: "creates uploads in the caller's org, owned by the caller",
+    locks: { none: "upload sessions; no scoped job reads them" },
   },
   "POST /api/grants": {
     kind: "authorized",
     by: "GrantService: object in org + resource.share + granter boundary (#621)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "POST /api/groups": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "POST /api/jobs/{id}/cancel": {
     kind: "authorized",
     by: "org scope + creator, else class resource.delete job",
+    locks: { none: "cancelling a job releases its lock" },
   },
   "POST /api/layout-plans/commit": {
     kind: "authorized",
     by: "source writable: own upload session (FileUploadAccessService) or ConnectorInstanceAccessService (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710)",
+    locks: { enqueues: "layout_plan_commit" },
   },
   "POST /api/layout-plans/interpret": {
     kind: "authorized",
     by: "source readable/writable: own upload session (FileUploadAccessService) or ConnectorInstanceAccessService (#685)",
+    locks: { none: "a draft interpret; writes no connector" },
   },
   "POST /api/organization/invitations": {
     kind: "authorized",
     by: "SeatService member.invite, org-scoped",
+    locks: { none: "membership; no job reads or writes it" },
   },
   "POST /api/organization/invitations/accept": {
     kind: "exempt",
     reason:
       "bearer invitation token (hashed, single use); the token is the authorization",
+    locks: { none: "membership; no job reads or writes it" },
   },
   "POST /api/organization/invitations/{id}/resend": {
     kind: "authorized",
     by: "SeatService member.invite, org-scoped",
+    locks: { none: "membership; no job reads or writes it" },
   },
   "POST /api/organization/invitations/{id}/revoke": {
     kind: "authorized",
     by: "SeatService member.invite, org-scoped",
+    locks: { none: "membership; no job reads or writes it" },
   },
   "POST /api/organization/switch": {
     kind: "authorized",
     by: "the caller's own membership row only (ApplicationService.switchOrganization)",
+    locks: { none: "the caller's active org; no job reads it" },
   },
   "POST /api/policies": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "POST /api/portal-results": {
     kind: "authorized",
     by: "owned create resource.write pin + source portal via PortalAccessService (#621, #685)",
+    locks: { none: "pins; no scoped job writes them" },
   },
   "POST /api/portal-results/{id}/refresh": {
     kind: "authorized",
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
+    locks: { none: "starts a query, which locks nothing" },
   },
   "POST /api/portal-sql/widget-refresh": {
     kind: "authorized",
     by: "message's portal via PortalAccessService; SQL re-runs as the caller (#685)",
+    locks: { none: "starts a query, which locks nothing" },
   },
   "POST /api/portals": {
     kind: "authorized",
     by: "station readable by the caller + owned create resource.write portal (#685)",
+    locks: { none: "portals; no scoped job writes them" },
   },
   "POST /api/portals/{id}/messages": {
     kind: "authorized",
     by: "PortalAccessService.load write (#685); the portal's station in org + readable, else 404 STATION_NOT_FOUND (#699)",
+    locks: { none: "runs the agent, whose write tools are lock-gated" },
   },
   "POST /api/roles": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "POST /api/stations": {
     kind: "authorized",
     by: "owned create resource.write station",
+    locks: { none: "stations; no job reads or writes them" },
   },
   "POST /api/toolpacks": {
     kind: "authorized",
     by: "class resource.write toolpack, then the customToolpacks entitlement (#685)",
+    locks: { none: "toolpacks; no job reads or writes them" },
   },
   "POST /api/toolpacks/{id}/refresh": {
     kind: "authorized",
     by: "org scope + per-object resource.write/delete toolpack (#685)",
+    locks: { none: "toolpacks; no job reads or writes them" },
   },
   "POST /api/toolpacks/{id}/rotate-signing-secret": {
     kind: "authorized",
     by: "org scope + per-object resource.write/delete toolpack (#685)",
+    locks: { none: "toolpacks; no job reads or writes them" },
   },
   "POST /api/webhook/handle/{sessionId}": {
     kind: "exempt",
     reason:
       "custom-tool runtime: scoped write token bound to the handle, fail-closed; the staged handle carries the token's user (#694)",
+    locks: { none: "an inbound webhook; writes no connector data" },
   },
   "POST /api/webhooks/aws-marketplace": {
     kind: "exempt",
     reason:
       "public: SNS X.509 signature verified; the grant re-reads the entitlement from AWS",
+    locks: { none: "billing webhook; no job reads or writes it" },
   },
   "POST /api/webhooks/stripe": {
     kind: "exempt",
     reason:
       "public: Stripe signature verified over the raw body (constructEvent)",
+    locks: { none: "billing webhook; no job reads or writes it" },
   },
   "PUT /api/groups/{id}": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "PUT /api/groups/{id}/members": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "PUT /api/organization/members/{userId}/groups": {
     kind: "authorized",
     by: "GroupService gate + assertMembers",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "PUT /api/organization/members/{userId}/roles": {
     kind: "authorized",
     by: "SeatService member.role.assign",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "PUT /api/policies/{id}": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
   "PUT /api/roles/{id}": {
     kind: "authorized",
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
+    locks: { none: "RBAC; no job reads or writes it" },
   },
 };

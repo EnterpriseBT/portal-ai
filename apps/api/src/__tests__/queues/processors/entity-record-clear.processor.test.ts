@@ -6,7 +6,7 @@
  * affected-row count. It deliberately takes NO advisory lock (#460/#461):
  * it deletes everything rather than reaping by watermark, so a stall
  * re-delivered second pass double-soft-deletes idempotently — the
- * instance-level job lock (JOB_LOCK_KEYS) is what excludes syncs.
+ * instance-level job lock (JOB_LOCK_SCOPES) is what excludes syncs.
  */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { Job as BullJob } from "bullmq";

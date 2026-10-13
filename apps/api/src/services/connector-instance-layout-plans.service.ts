@@ -24,6 +24,7 @@ import type { LayoutPlanCommitWorkbookSource } from "@portalai/core/models";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
+import { JobLockService } from "./job-lock.service.js";
 import { FileUploadSessionService } from "./file-upload-session.service.js";
 import { GoogleSheetsConnectorService } from "./google-sheets-connector.service.js";
 import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
@@ -79,6 +80,13 @@ export class ConnectorInstanceLayoutPlansService {
       organizationId
     );
 
+    // #769: fail fast before the model call; the write below re-checks
+    // atomically.
+    await JobLockService.assertNoneRunning(
+      { kind: "connectorInstance", id: connectorInstanceId },
+      { organizationId }
+    );
+
     let plan: LayoutPlan;
     try {
       plan = await LayoutPlanInterpretService.analyze(
@@ -92,41 +100,47 @@ export class ConnectorInstanceLayoutPlansService {
     }
 
     const planId = SystemUtilities.id.v4.generate();
-    await DbService.transaction(async (tx) => {
-      const current =
-        await DbService.repository.connectorInstanceLayoutPlans.findCurrentByConnectorInstanceId(
-          connectorInstanceId,
+    // #769: a sync or import reads the plan, so its write is refused while a
+    // job holds the connector.
+    await JobLockService.withUnlocked(
+      { kind: "connectorInstance", id: connectorInstanceId },
+      { organizationId },
+      async (tx) => {
+        const current =
+          await DbService.repository.connectorInstanceLayoutPlans.findCurrentByConnectorInstanceId(
+            connectorInstanceId,
+            tx
+          );
+
+        await DbService.repository.connectorInstanceLayoutPlans.create(
+          {
+            id: planId,
+            connectorInstanceId,
+            planVersion: plan.planVersion,
+            revisionTag: null,
+            plan,
+            interpretationTrace: null,
+            supersededBy: null,
+            created: Date.now(),
+            createdBy: userId,
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
           tx
         );
 
-      await DbService.repository.connectorInstanceLayoutPlans.create(
-        {
-          id: planId,
-          connectorInstanceId,
-          planVersion: plan.planVersion,
-          revisionTag: null,
-          plan,
-          interpretationTrace: null,
-          supersededBy: null,
-          created: Date.now(),
-          createdBy: userId,
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        },
-        tx
-      );
-
-      if (current) {
-        await DbService.repository.connectorInstanceLayoutPlans.supersede(
-          current.id,
-          planId,
-          userId,
-          tx
-        );
+        if (current) {
+          await DbService.repository.connectorInstanceLayoutPlans.supersede(
+            current.id,
+            planId,
+            userId,
+            tx
+          );
+        }
       }
-    });
+    );
 
     return { planId, plan, interpretationTrace: null };
   }
@@ -211,13 +225,23 @@ export class ConnectorInstanceLayoutPlansService {
       );
     }
 
-    const updated =
-      await DbService.repository.connectorInstanceLayoutPlans.update(planId, {
-        plan: validated.data,
-        planVersion: validated.data.planVersion,
-        updated: Date.now(),
-        updatedBy: userId,
-      });
+    // #769: refused while a job holds the connector (a sync or import reads
+    // the plan).
+    const updated = await JobLockService.withUnlocked(
+      { kind: "connectorInstance", id: connectorInstanceId },
+      { organizationId },
+      (tx) =>
+        DbService.repository.connectorInstanceLayoutPlans.update(
+          planId,
+          {
+            plan: validated.data,
+            planVersion: validated.data.planVersion,
+            updated: Date.now(),
+            updatedBy: userId,
+          },
+          tx
+        )
+    );
 
     if (!updated) {
       throw new ApiError(

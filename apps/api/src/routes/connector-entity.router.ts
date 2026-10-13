@@ -382,12 +382,12 @@ connectorEntityRouter.get(
  *     tags: [Connector Entities]
  *     summary: List non-terminal jobs that would block mutations against this entity
  *     description: |
- *       Union of the instance-level locks (`connector_sync`,
- *       `layout_plan_commit`, `entity_record_clear`) and the entity-targeted
- *       locks (`bulk_transform`, `bulk_geocode`) — exactly the set the 409
- *       `ENTITY_LOCKED_BY_JOB` guard would reject (#453). Drives the entity
- *       view's disabled actions + lock alert. Empty array means the entity is
- *       free to mutate.
+ *       Every non-terminal job whose lock scopes cover this entity or its
+ *       connector (#769): a sync, import or clear on the connector, and a
+ *       revalidation, bulk geocode or bulk transform (target or source) on the
+ *       entity. Exactly the set the 409 `ENTITY_LOCKED_BY_JOB` guard rejects
+ *       on. Drives the entity view's disabled actions and lock alert. Empty
+ *       means the entity is free to change.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -398,6 +398,16 @@ connectorEntityRouter.get(
  *     responses:
  *       200:
  *         description: List of running jobs (possibly empty)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/RunningJobsResponse'
  *       404:
  *         description: Connector entity not found
  */
@@ -435,9 +445,8 @@ connectorEntityRouter.get(
         );
       }
 
-      const runningJobs = await JobLockService.findRunningForConnectorEntity(
-        id,
-        entity.connectorInstanceId,
+      const runningJobs = await JobLockService.findRunning(
+        [{ kind: "connectorEntity", id }],
         organizationId
       );
       return HttpService.success(res, { runningJobs });
@@ -572,11 +581,6 @@ connectorEntityRouter.post(
       const { userId, organizationId } = caller;
       set.check("resource.write", { type: "entity", createdBy: userId });
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        parsed.data.connectorInstanceId,
-        organizationId
-      );
-
       const factory = new ConnectorEntityModelFactory();
       const model = factory.create(userId);
       model.update({
@@ -586,18 +590,22 @@ connectorEntityRouter.post(
         label: parsed.data.label,
       });
 
-      const connectorEntity = await DbService.repository.connectorEntities
-        .create(model.parse())
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.CONNECTOR_ENTITY_CREATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to create connector entity"
-          );
-        });
+      // #769: refused while a running job holds the connector or any of its
+      // entities.
+      const connectorEntity = await JobLockService.withUnlocked(
+        { kind: "connectorInstance", id: parsed.data.connectorInstanceId },
+        { organizationId },
+        (tx) => DbService.repository.connectorEntities.create(model.parse(), tx)
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.CONNECTOR_ENTITY_CREATE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to create connector entity"
+        );
+      });
 
       // Provision the wide-table for this entity. The reconciler is the
       // only path that emits DDL against `er__<id>` tables; calling
@@ -752,7 +760,7 @@ connectorEntityRouter.patch(
       // #599: RBAC write gate (in addition to connector capability) — a member
       // may edit only entities they created; owner/admin any.
       // #713: one the caller can't read answers 404, like its GET.
-      const existing = ObjectAccessService.loadForVerb(
+      ObjectAccessService.loadForVerb(
         await PermissionService.loadSet(req.application!.metadata),
         req.application!.metadata.organizationId,
         "entity",
@@ -770,26 +778,29 @@ connectorEntityRouter.patch(
 
       const { userId, organizationId } = req.application!.metadata;
 
-      await JobLockService.assertConnectorInstanceUnlocked(
-        existing.connectorInstanceId,
-        organizationId
-      );
-
-      const updated = await DbService.repository.connectorEntities
-        .update(id, {
-          ...(parsed.data.label && { label: parsed.data.label }),
-          updatedBy: userId,
-        })
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.CONNECTOR_ENTITY_UPDATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to update connector entity"
-          );
-        });
+      // #769: refused while a running job holds the entity or its connector.
+      const updated = await JobLockService.withUnlocked(
+        { kind: "connectorEntity", id },
+        { organizationId },
+        (tx) =>
+          DbService.repository.connectorEntities.update(
+            id,
+            {
+              ...(parsed.data.label && { label: parsed.data.label }),
+              updatedBy: userId,
+            },
+            tx
+          )
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.CONNECTOR_ENTITY_UPDATE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to update connector entity"
+        );
+      });
 
       logger.info({ id }, "Connector entity updated");
 
@@ -1038,12 +1049,13 @@ connectorEntityRouter.delete(
           )
       );
 
-      await JobLockService.assertConnectorEntityUnlocked([id], organizationId);
       await ConnectorEntityValidationService.validateDelete(id);
 
-      const cascaded = await ConnectorEntityValidationService.executeDelete(
-        id,
-        userId
+      // #769: refused while a running job holds the entity or its connector.
+      const cascaded = await JobLockService.withUnlocked(
+        { kind: "connectorEntity", id },
+        { organizationId },
+        (tx) => ConnectorEntityValidationService.executeDelete(id, userId, tx)
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(

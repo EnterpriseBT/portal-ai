@@ -112,6 +112,17 @@ jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   },
 }));
 
+// #769: the job lock is covered by its own suites; here it lets the write run.
+jest.unstable_mockModule("../../services/job-lock.service.js", () => ({
+  JobLockService: {
+    assertNoneRunning: jest.fn(async () => undefined),
+    withUnlocked: jest.fn(
+      async (_t: unknown, _c: unknown, fn: (tx: unknown) => unknown) =>
+        fn("mock-tx")
+    ),
+  },
+}));
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {

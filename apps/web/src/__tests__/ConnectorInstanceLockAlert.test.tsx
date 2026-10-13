@@ -17,6 +17,7 @@ function job(overrides: Partial<RunningJobSummary> = {}): RunningJobSummary {
     status: "active",
     startedAt: 1_700_000_000_000,
     created: 1_700_000_000_000,
+    lockScopes: ["instance:ci-1"],
     ...overrides,
   };
 }

@@ -5,6 +5,7 @@ import {
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
+import { JOB_TYPE_LABELS } from "@portalai/core/models";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -47,10 +48,11 @@ export const JobsView = () => {
         type: "multi-select",
         field: "type",
         label: "Type",
-        options: [
-          { label: "System Check", value: "system_check" },
-          { label: "Revalidation", value: "revalidation" },
-        ],
+        // #769: every job type, by the same name the app shows elsewhere.
+        options: Object.entries(JOB_TYPE_LABELS).map(([value, label]) => ({
+          label,
+          value,
+        })),
       },
     ],
   });

@@ -107,6 +107,9 @@ export const queryKeys = {
       [...queryKeys.columnDefinitions.root, "get", id] as const,
     impact: (id: string) =>
       [...queryKeys.columnDefinitions.root, "impact", id] as const,
+    /** #769: jobs running on any entity that maps the column definition. */
+    runningJobs: (id: string) =>
+      [...queryKeys.columnDefinitions.root, "runningJobs", id] as const,
   },
   fieldMappings: {
     root: ["fieldMappings"] as const,

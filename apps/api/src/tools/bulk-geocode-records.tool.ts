@@ -13,7 +13,6 @@ import {
 } from "../services/cost-acknowledgement.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { BulkTransformService } from "../services/bulk-transform.service.js";
-import { JobsService } from "../services/jobs.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "bulk-geocode-records.tool" });
@@ -115,14 +114,21 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
       deps.countRecords ??
       ((entityId: string, orgId: string) =>
         BulkTransformService.countSourceRows(entityId, orgId));
+    // #769: a pre-check before counting rows; the enqueue re-checks
+    // atomically and is what actually refuses a racing job.
     const assertUnlocked =
       deps.assertUnlocked ??
       ((ids: string[], orgId: string) =>
-        JobLockService.assertConnectorEntityUnlocked(ids, orgId));
+        JobLockService.assertNoneRunning(
+          ids.map((id) => ({ kind: "connectorEntity" as const, id })),
+          { organizationId: orgId }
+        ));
     const createJob =
       deps.createJob ??
       ((uid: string, params) =>
-        JobsService.create(uid, params) as Promise<{ id: string }>);
+        JobLockService.enqueueExclusive(uid, params) as Promise<{
+          id: string;
+        }>);
     const recordRejection =
       deps.recordRejection ??
       ((pid: string, sig: string, at: number) =>
