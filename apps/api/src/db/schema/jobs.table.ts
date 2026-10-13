@@ -82,8 +82,6 @@ export const jobs = pgTable(
     // Only live jobs lock, so only live rows are indexed.
     index("jobs_lock_scopes_live_idx")
       .using("gin", table.lockScopes)
-      .where(
-        sql`${table.status} IN ('pending', 'active', 'awaiting_confirmation', 'stalled')`
-      ),
+      .where(sql`${table.status} NOT IN ('completed', 'failed', 'cancelled')`),
   ]
 );

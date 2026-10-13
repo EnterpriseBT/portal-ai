@@ -68,7 +68,7 @@ export class JobsRepository extends Repository<
    * Non-terminal jobs in the org whose `lock_scopes` overlap any of `keys`
    * (#769): the jobs that lock an object resolving to those scope keys. Every
    * non-terminal status locks, `stalled` included. Served by the partial GIN
-   * index on live rows; oldest first, so a refusal names the job that started
+   * index on live rows (`status NOT IN` the terminal statuses); oldest first, so a refusal names the job that started
    * first.
    */
   async findRunningByScopeKeys(
@@ -83,10 +83,9 @@ export class JobsRepository extends Repository<
       .where(
         and(
           eq(jobs.organizationId, organizationId),
-          inArray(
-            jobs.status,
-            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
-          ),
+          // The partial index's own predicate, as literals, so the planner
+          // can prove it for a prepared (generic) plan too.
+          sql`${jobs.status} NOT IN ('completed', 'failed', 'cancelled')`,
           arrayOverlaps(jobs.lockScopes, keys),
           this.notDeleted()
         )
