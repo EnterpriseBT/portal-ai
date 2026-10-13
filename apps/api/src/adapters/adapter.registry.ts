@@ -5,7 +5,13 @@ import type { ConnectorAdapter } from "./adapter.interface.js";
  *
  * Usage:
  *   ConnectorAdapterRegistry.register("sandbox", sandboxAdapter);
- *   const adapter = ConnectorAdapterRegistry.get("sandbox");
+ *   const adapter = ConnectorAdapterRegistry.find("sandbox");
+ *
+ * There is deliberately no throwing lookup (#774). A missing adapter means a
+ * connector type with no capabilities (file upload), and each caller decides
+ * what that means for it: a request refuses with its own 4xx, the sync worker
+ * fails the job without retrying. A plain `Error` thrown from here became a
+ * 500 in a request path (#772).
  */
 export class ConnectorAdapterRegistry {
   private static readonly adapters = new Map<string, ConnectorAdapter>();
@@ -15,19 +21,10 @@ export class ConnectorAdapterRegistry {
     this.adapters.set(slug, adapter);
   }
 
-  /** Retrieve the adapter for a connector definition slug. Throws if not found. */
-  static get(slug: string): ConnectorAdapter {
-    const adapter = this.adapters.get(slug);
-    if (!adapter) {
-      throw new Error(`No connector adapter registered for slug "${slug}"`);
-    }
-    return adapter;
-  }
-
   /**
    * Retrieve the adapter for a slug, returning `undefined` if none is
-   * registered. Used by the redaction serializer where an unregistered
-   * slug is a valid state (defaults to `EMPTY_ACCOUNT_INFO`).
+   * registered. An unregistered slug is a valid state: the connector type
+   * has no adapter and so no capabilities.
    */
   static find(slug: string): ConnectorAdapter | undefined {
     return this.adapters.get(slug);

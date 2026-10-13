@@ -116,9 +116,12 @@ async function runBulkTransformTerminalHook(
  * with it, and it needs no enum change — a `pgEnum` + Zod enum + migration for
  * a wording improvement is not the trade.
  *
- * `UnrecoverableError` is exempt. BullMQ throws it on stall-limit exhaustion,
- * which VOIDS the remaining budget rather than consuming one attempt, so it is
- * final on arrival however low `attemptsMade` is.
+ * `UnrecoverableError` is exempt: it is final on arrival however low
+ * `attemptsMade` is. It has two sources. BullMQ throws it on stall-limit
+ * exhaustion, which VOIDS the remaining budget rather than consuming one
+ * attempt. A processor throws it for a condition no retry can change (a
+ * connector with no adapter, #774), so the job fails on its first attempt and
+ * releases its lock instead of holding it through the whole budget.
  */
 function statusForFailedAttempt(
   bullJob: BullJob,
@@ -312,7 +315,9 @@ export const createJobsWorker = (
       if (handled) return;
 
       const reason = jobErrorText(err);
-      // A stall-limit exhaustion (UnrecoverableError) carries a specific,
+      // A processor's own UnrecoverableError (#774) went through the catch
+      // above and returned at `handled`, so the one that reaches here is
+      // BullMQ's. A stall-limit exhaustion (UnrecoverableError) carries a specific,
       // self-explanatory reason ("job stalled more than allowable limit"), so
       // record it verbatim. Wrapping it produced the self-contradictory
       // "Attempt ended without recording a reason (job stalled more than

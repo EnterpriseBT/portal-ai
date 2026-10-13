@@ -10,13 +10,13 @@
  * production path again.
  */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
-import type { Job as BullJob } from "bullmq";
+import { UnrecoverableError, type Job as BullJob } from "bullmq";
 
 const mockInstancesFindById = jest.fn<(...a: unknown[]) => Promise<unknown>>();
 const mockDefinitionsFindById =
   jest.fn<(...a: unknown[]) => Promise<unknown>>();
 const mockSyncInstance = jest.fn<(...a: unknown[]) => Promise<unknown>>();
-const mockRegistryGet = jest.fn<(...a: unknown[]) => unknown>();
+const mockRegistryFind = jest.fn<(...a: unknown[]) => unknown>();
 const mockFindRunning = jest.fn<(...a: unknown[]) => Promise<unknown[]>>();
 const mockWithInstanceLock =
   jest.fn<(id: string, fn: () => Promise<unknown>) => Promise<unknown>>();
@@ -40,7 +40,7 @@ jest.unstable_mockModule("../../../services/sync-lock.service.js", () => ({
 }));
 
 jest.unstable_mockModule("../../../adapters/adapter.registry.js", () => ({
-  ConnectorAdapterRegistry: { get: mockRegistryGet },
+  ConnectorAdapterRegistry: { find: mockRegistryFind },
 }));
 
 const { connectorSyncProcessor } =
@@ -79,7 +79,7 @@ beforeEach(() => {
   mockSyncInstance.mockResolvedValue({
     recordCounts: { created: 1, updated: 0, unchanged: 0, deleted: 0 },
   });
-  mockRegistryGet.mockReturnValue({ syncInstance: mockSyncInstance });
+  mockRegistryFind.mockReturnValue({ syncInstance: mockSyncInstance });
   mockFindRunning.mockResolvedValue([]);
   // Default: the lock is granted, so existing cases behave as before.
   mockWithInstanceLock.mockImplementation(async (_id, fn) => ({
@@ -120,6 +120,56 @@ describe("connectorSyncProcessor — jobId threading (#439)", () => {
       id: INSTANCE_ID,
     });
     expect(mockSyncInstance.mock.calls[0][1]).toBe("user-1");
+  });
+});
+
+// #774: a sync whose prerequisites are gone can never succeed. A plain error
+// would retry it through the whole budget while it holds the connector's
+// lock, so each of these fails the job on its first attempt.
+describe("connectorSyncProcessor — a sync that can never run (#774)", () => {
+  async function expectUnrecoverable(message: string) {
+    const err = await connectorSyncProcessor(bullJob() as never).then(
+      () => undefined,
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(UnrecoverableError);
+    expect((err as Error).message).toBe(message);
+    expect(mockWithInstanceLock).not.toHaveBeenCalled();
+    expect(mockSyncInstance).not.toHaveBeenCalled();
+  }
+
+  it("fails a sync whose connector is gone", async () => {
+    mockInstancesFindById.mockResolvedValue(undefined);
+    await expectUnrecoverable(`Connector instance not found: ${INSTANCE_ID}`);
+  });
+
+  it("fails a sync whose connector definition is gone", async () => {
+    mockDefinitionsFindById.mockResolvedValue(undefined);
+    await expectUnrecoverable("Connector definition not found: def-1");
+  });
+
+  it("fails a sync for a connector type with no adapter", async () => {
+    mockRegistryFind.mockReturnValue(undefined);
+    await expectUnrecoverable(
+      'No connector adapter registered for slug "rest-api"'
+    );
+  });
+
+  it("fails a sync for an adapter without syncInstance", async () => {
+    mockRegistryFind.mockReturnValue({});
+    await expectUnrecoverable(
+      "Adapter rest-api does not implement syncInstance"
+    );
+  });
+
+  it("leaves a failing read retryable", async () => {
+    mockInstancesFindById.mockRejectedValue(new Error("connection reset"));
+    const err = await connectorSyncProcessor(bullJob() as never).then(
+      () => undefined,
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(UnrecoverableError);
   });
 });
 

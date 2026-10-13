@@ -40,14 +40,14 @@ describe("ConnectorAdapterRegistry", () => {
     ConnectorAdapterRegistry.clear();
   });
 
-  // ── get ──────────────────────────────────────────────────────────
+  // ── find ─────────────────────────────────────────────────────────
 
-  describe("get", () => {
+  describe("find", () => {
     it("returns the correct adapter for a registered slug", () => {
       const csvAdapter = createStubAdapter();
       ConnectorAdapterRegistry.register("csv", csvAdapter);
 
-      expect(ConnectorAdapterRegistry.get("csv")).toBe(csvAdapter);
+      expect(ConnectorAdapterRegistry.find("csv")).toBe(csvAdapter);
     });
 
     it("returns different adapters for different slugs", () => {
@@ -57,14 +57,12 @@ describe("ConnectorAdapterRegistry", () => {
       ConnectorAdapterRegistry.register("csv", csvAdapter);
       ConnectorAdapterRegistry.register("airtable", airtableAdapter);
 
-      expect(ConnectorAdapterRegistry.get("csv")).toBe(csvAdapter);
-      expect(ConnectorAdapterRegistry.get("airtable")).toBe(airtableAdapter);
+      expect(ConnectorAdapterRegistry.find("csv")).toBe(csvAdapter);
+      expect(ConnectorAdapterRegistry.find("airtable")).toBe(airtableAdapter);
     });
 
-    it("throws for an unregistered slug", () => {
-      expect(() => ConnectorAdapterRegistry.get("unknown")).toThrow(
-        'No connector adapter registered for slug "unknown"'
-      );
+    it("returns undefined for an unregistered slug", () => {
+      expect(ConnectorAdapterRegistry.find("unknown")).toBeUndefined();
     });
   });
 
@@ -78,7 +76,7 @@ describe("ConnectorAdapterRegistry", () => {
       ConnectorAdapterRegistry.register("csv", first);
       ConnectorAdapterRegistry.register("csv", second);
 
-      expect(ConnectorAdapterRegistry.get("csv")).toBe(second);
+      expect(ConnectorAdapterRegistry.find("csv")).toBe(second);
     });
   });
 
