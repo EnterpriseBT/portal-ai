@@ -46,9 +46,12 @@ export const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
       requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
+    // `name` is optional in the PATCH contract, but this dialog always sends
+    // one; never fall back to a blank rename.
+    const trimmed = result.data.name;
+    if (trimmed === undefined) return;
     setErrors({});
     // The schema trims, so a whitespace-only edit reads as unchanged.
-    const trimmed = result.data.name ?? "";
     if (trimmed === currentName) {
       onClose();
       return;

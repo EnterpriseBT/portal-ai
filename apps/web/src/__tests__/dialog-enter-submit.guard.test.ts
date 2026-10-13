@@ -51,9 +51,13 @@ const formDialogs = files.filter(
   (f) => /<Modal\b/.test(f.source) && /component:\s*"form"/.test(f.source)
 );
 // Comments are stripped first so a doc comment naming `<FormAlert>` doesn't
-// make a wizard look like a submitting dialog.
+// make a wizard look like a submitting dialog. A block comment only counts
+// where it opens a line or a JSX expression, so a string like "image/*"
+// can't swallow the code up to the next `*/`.
 const withoutComments = (source: string) =>
-  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  source
+    .replace(/(^[ \t]*|\{)\/\*[\s\S]*?\*\//gm, "$1")
+    .replace(/^\s*\/\/.*$/gm, "");
 
 // A Modal that renders a FormAlert but submits nothing. Each entry says why;
 // a new entry needs one as good.
@@ -87,6 +91,15 @@ describe("dialog forms gate Enter like their submit button (#685)", () => {
 
   it("finds the submitting dialogs (so the guard can't pass vacuously)", () => {
     expect(submittingDialogs.length).toBeGreaterThanOrEqual(30);
+  });
+
+  it("ignores a /* inside a string", () => {
+    const code = withoutComments(
+      'accept="image/*"\n<Modal\n/** doc */\nslotProps={{ paper: { component: "form" } }}'
+    );
+    expect(code).toMatch(/<Modal\b/);
+    expect(code).toMatch(/component:\s*"form"/);
+    expect(code).not.toMatch(/doc/);
   });
 
   it("exempts only files that still exist and still match", () => {

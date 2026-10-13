@@ -128,7 +128,12 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                         size="small"
                         variant="contained"
                         startIcon={<EditIcon />}
-                        onClick={() => setRenameOpen(true)}
+                        onClick={() => {
+                          // A failed rename's error belongs to that attempt,
+                          // not the next opening.
+                          renameMutation.reset();
+                          setRenameOpen(true);
+                        }}
                         gate={decideActionGate({
                           allowed: item.portal.capabilities.write,
                         })}
