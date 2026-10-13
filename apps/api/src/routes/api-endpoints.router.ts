@@ -19,6 +19,7 @@ import { invalidPayload } from "../utils/zod-issue.util.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import {
@@ -785,6 +786,23 @@ apiEndpointsRouter.patch(
         );
       }
 
+      // #782: and write on the endpoint's entity, which has its own
+      // permissions: unreadable answers the 404 above, readable but not writable is a 403. Checked before
+      // the job lock, so a refusal never takes it.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "entity",
+        existing.entity,
+        "write",
+        () =>
+          new ApiError(
+            404,
+            ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+            `Api endpoint for entity ${entityId} not found`
+          )
+      );
+
       // #769: refused while a running job holds the entity or its
       // connector. The label and the config change together or not at all.
       const updated = await JobLockService.withUnlocked(
@@ -946,6 +964,23 @@ apiEndpointsRouter.delete(
           `Api endpoint for entity ${entityId} not found`
         );
       }
+
+      // #782: and delete on the endpoint's entity, which has its own
+      // permissions: unreadable answers the 404 above, readable but not deletable is a 403. Checked before
+      // the job lock, so a refusal never takes it.
+      ObjectAccessService.loadForVerb(
+        await PermissionService.loadSet(req.application!.metadata),
+        organizationId,
+        "entity",
+        existing.entity,
+        "delete",
+        () =>
+          new ApiError(
+            404,
+            ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+            `Api endpoint for entity ${entityId} not found`
+          )
+      );
 
       // #769: refused while a running job holds the entity or its connector.
       const ok = await JobLockService.withUnlocked(
@@ -1115,7 +1150,19 @@ apiEndpointsRouter.post(
 
       const endpoint =
         await DbService.repository.apiEndpoints.findByEntityId(entityId);
-      if (!endpoint || endpoint.entity.connectorInstanceId !== instanceId) {
+      // #782: the sample is the entity's live data, so the caller must be
+      // able to read the entity itself. Unreadable answers like absent, and
+      // nothing is fetched upstream.
+      if (
+        !endpoint ||
+        endpoint.entity.connectorInstanceId !== instanceId ||
+        !ObjectAccessService.readableInOrg(
+          await PermissionService.loadSet(req.application!.metadata),
+          req.application!.metadata.organizationId,
+          "entity",
+          endpoint.entity
+        )
+      ) {
         throw new ApiError(
           404,
           ApiCode.REST_API_ENDPOINT_NOT_FOUND,
