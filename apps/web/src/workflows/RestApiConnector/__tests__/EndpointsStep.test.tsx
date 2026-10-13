@@ -5,14 +5,12 @@ import userEvent from "@testing-library/user-event";
 import { render, screen } from "../../../__tests__/test-utils";
 
 import { EndpointsStepUI } from "../EndpointsStep.component";
-import type {
-  EndpointsStepUIProps,
-  EndpointRow,
-} from "../EndpointsStep.component";
+import type { EndpointsStepUIProps } from "../EndpointsStep.component";
+import type { EndpointDraft } from "../ApiEndpointForm.component";
 
 import { EMPTY_PAGINATION_DRAFT } from "../utils/rest-api-validation.util";
 
-const ROW: EndpointRow = {
+const ROW: EndpointDraft = {
   key: "users",
   label: "Users",
   path: "/users",
@@ -32,75 +30,46 @@ function makeProps(
     endpoints: [ROW],
     onAdd: jest.fn(),
     onEdit: jest.fn(),
-    onTest: jest.fn(),
     onRemove: jest.fn(),
     errors: {},
     serverError: null,
-    instanceId: undefined,
     ...overrides,
   };
 }
 
-describe("EndpointsStepUI — Test button", () => {
-  it("renders a Test button next to each endpoint", () => {
+// #780: the create workflow never holds a saved endpoint, so it offers no
+// Test button. A saved endpoint is tested from its entity card instead.
+describe("EndpointsStepUI — row actions", () => {
+  it("renders no Test button", () => {
     render(<EndpointsStepUI {...makeProps()} />);
     expect(
-      screen.getByRole("button", { name: /test endpoint users/i })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /test endpoint/i })
+    ).not.toBeInTheDocument();
   });
 
-  it("disables the Test button when the row has no entityId (workflow draft mode)", () => {
-    render(<EndpointsStepUI {...makeProps()} />);
-    expect(
-      screen.getByRole("button", { name: /test endpoint users/i })
-    ).toBeDisabled();
-  });
-
-  it("disables the Test button when entityId is set but instanceId is not", () => {
+  it("calls onEdit with the row index", async () => {
+    const onEdit = jest.fn();
     render(
       <EndpointsStepUI
         {...makeProps({
-          endpoints: [{ ...ROW, entityId: "ent-users" }],
-        })}
-      />
-    );
-    expect(
-      screen.getByRole("button", { name: /test endpoint users/i })
-    ).toBeDisabled();
-  });
-
-  it("enables the Test button when both instanceId and entityId are present", () => {
-    render(
-      <EndpointsStepUI
-        {...makeProps({
-          endpoints: [{ ...ROW, entityId: "ent-users" }],
-          instanceId: "inst-1",
-        })}
-      />
-    );
-    expect(
-      screen.getByRole("button", { name: /test endpoint users/i })
-    ).toBeEnabled();
-  });
-
-  it("calls onTest with the row index when the user clicks the enabled Test button", async () => {
-    const onTest = jest.fn();
-    render(
-      <EndpointsStepUI
-        {...makeProps({
-          endpoints: [
-            { ...ROW, key: "users", entityId: "ent-users" },
-            { ...ROW, key: "posts", label: "Posts", entityId: "ent-posts" },
-          ],
-          instanceId: "inst-1",
-          onTest,
+          endpoints: [ROW, { ...ROW, key: "posts", label: "Posts" }],
+          onEdit,
         })}
       />
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /test endpoint posts/i })
+      screen.getByRole("button", { name: /edit endpoint posts/i })
     );
-    expect(onTest).toHaveBeenCalledWith(1);
+    expect(onEdit).toHaveBeenCalledWith(1);
+  });
+
+  it("calls onRemove with the row index", async () => {
+    const onRemove = jest.fn();
+    render(<EndpointsStepUI {...makeProps({ onRemove })} />);
+    await userEvent.click(
+      screen.getByRole("button", { name: /remove endpoint users/i })
+    );
+    expect(onRemove).toHaveBeenCalledWith(0);
   });
 });
 

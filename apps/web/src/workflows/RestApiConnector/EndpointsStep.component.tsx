@@ -3,18 +3,14 @@
  * button that opens `ApiEndpointForm` in a modal. Phase 4 will
  * decorate each row with a probe-driven column-preview chip.
  *
- * Phase 2 (slice 6): each row gains a Test button. The button is
- * functional only when the row has an `entityId` (i.e. the endpoint
- * has been persisted) AND the step is given an `instanceId`. In the
- * create-mode workflow neither is set, so the button shows as disabled
- * with a tooltip explaining the constraint. Edit-mode workflows and
- * the connector-instance detail view can pass the missing context to
- * enable it.
+ * There is no Test button here (#780): the workflow only creates the
+ * connector at Commit, so a saved endpoint never exists in this step.
+ * A draft is dry-run with the form's Preview response; a saved endpoint
+ * is tested from its entity card on the connector's detail page.
  */
 
 import React, { useState } from "react";
 
-import Tooltip from "@mui/material/Tooltip";
 import { Button, IconButton, Stack, Typography } from "@portalai/core/ui";
 import type { IconName } from "@portalai/core/ui";
 
@@ -25,47 +21,25 @@ import {
   ApiEndpointForm,
   type EndpointDraft,
 } from "./ApiEndpointForm.component";
-import { EndpointTestDialog } from "./EndpointTestDialog.component";
-
-// ── Endpoint row shape ───────────────────────────────────────────────
-
-/**
- * A row in the endpoints list. The base shape is the user-facing draft
- * (`EndpointDraft`). When the endpoint has been persisted, the row
- * carries the connector_entity row id so the Test button can target it
- * through the test-connection route.
- */
-export interface EndpointRow extends EndpointDraft {
-  entityId?: string;
-}
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 export interface EndpointsStepUIProps {
-  endpoints: EndpointRow[];
+  endpoints: EndpointDraft[];
   onAdd: () => void;
   onEdit: (index: number) => void;
-  onTest: (index: number) => void;
   onRemove: (index: number) => void;
   errors: FormErrors;
   serverError: ServerError | null;
-  /**
-   * Connector instance ID — required for the Test button to be
-   * functional. Undefined in the create-mode workflow; set in
-   * edit-mode and on the detail-view consumer.
-   */
-  instanceId?: string;
 }
 
 export const EndpointsStepUI: React.FC<EndpointsStepUIProps> = ({
   endpoints,
   onAdd,
   onEdit,
-  onTest,
   onRemove,
   errors,
   serverError,
-  instanceId,
 }) => (
   <Stack spacing={2}>
     <FormAlert serverError={serverError} />
@@ -82,19 +56,6 @@ export const EndpointsStepUI: React.FC<EndpointsStepUIProps> = ({
     ) : (
       <Stack spacing={1}>
         {endpoints.map((ep, i) => {
-          const canTest = !!instanceId && !!ep.entityId;
-          const testButton = (
-            <Button
-              type="button"
-              size="small"
-              variant="outlined"
-              onClick={() => onTest(i)}
-              disabled={!canTest}
-              aria-label={`Test endpoint ${ep.key}`}
-            >
-              Test
-            </Button>
-          );
           return (
             <Stack
               key={`${ep.key}-${i}`}
@@ -115,13 +76,6 @@ export const EndpointsStepUI: React.FC<EndpointsStepUIProps> = ({
                   {ep.recordsPath ? ` → ${ep.recordsPath}` : ""}
                 </Typography>
               </Stack>
-              {canTest ? (
-                testButton
-              ) : (
-                <Tooltip title="Save the connector first to test endpoints">
-                  <span>{testButton}</span>
-                </Tooltip>
-              )}
               <Button
                 type="button"
                 size="small"
@@ -153,12 +107,10 @@ export const EndpointsStepUI: React.FC<EndpointsStepUIProps> = ({
 // ── Container ────────────────────────────────────────────────────────
 
 export interface EndpointsStepProps {
-  endpoints: EndpointRow[];
-  onChange: (endpoints: EndpointRow[]) => void;
+  endpoints: EndpointDraft[];
+  onChange: (endpoints: EndpointDraft[]) => void;
   errors: FormErrors;
   serverError: ServerError | null;
-  /** When set, the Test button on rows with `entityId` becomes functional. */
-  instanceId?: string;
   /**
    * Preview callback the workflow container supplies. Fires the
    * preview-endpoint-page SDK call against the current draft +
@@ -189,13 +141,11 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
   onChange,
   errors,
   serverError,
-  instanceId,
   onPreview,
   onSuggest,
 }) => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [testingIndex, setTestingIndex] = useState<number | null>(null);
 
   const onAdd = () => {
     setEditingIndex(null);
@@ -205,21 +155,13 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
     setEditingIndex(index);
     setFormOpen(true);
   };
-  const onTest = (index: number) => {
-    setTestingIndex(index);
-  };
   const onRemove = (index: number) => {
     onChange(endpoints.filter((_, i) => i !== index));
   };
   const onSubmitDraft = (draft: EndpointDraft) => {
     if (editingIndex !== null) {
       const next = [...endpoints];
-      // Preserve the existing entityId on edit so the Test button stays
-      // functional for persisted endpoints.
-      next[editingIndex] = {
-        ...draft,
-        entityId: endpoints[editingIndex].entityId,
-      };
+      next[editingIndex] = draft;
       onChange(next);
     } else {
       onChange([...endpoints, draft]);
@@ -228,19 +170,15 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
     setEditingIndex(null);
   };
 
-  const testingRow = testingIndex !== null ? endpoints[testingIndex] : null;
-
   return (
     <>
       <EndpointsStepUI
         endpoints={endpoints}
         onAdd={onAdd}
         onEdit={onEdit}
-        onTest={onTest}
         onRemove={onRemove}
         errors={errors}
         serverError={serverError}
-        instanceId={instanceId}
       />
       <ApiEndpointForm
         open={formOpen}
@@ -253,15 +191,6 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
         onPreview={onPreview}
         onSuggest={onSuggest}
       />
-      {testingRow && testingRow.entityId && instanceId ? (
-        <EndpointTestDialog
-          open={testingIndex !== null}
-          instanceId={instanceId}
-          endpointEntityId={testingRow.entityId}
-          endpointLabel={testingRow.label}
-          onClose={() => setTestingIndex(null)}
-        />
-      ) : null}
     </>
   );
 };

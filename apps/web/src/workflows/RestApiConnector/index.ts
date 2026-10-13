@@ -12,7 +12,6 @@ export {
   EndpointsStep,
   EndpointsStepUI,
   type EndpointsStepUIProps,
-  type EndpointRow,
 } from "./EndpointsStep.component";
 export {
   EndpointTestDialog,

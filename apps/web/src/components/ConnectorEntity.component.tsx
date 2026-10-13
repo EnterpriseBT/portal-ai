@@ -13,6 +13,8 @@ import {
   CardContent,
   DataTable,
   type DataTableColumn,
+  GatedButton,
+  type ActionGate,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -99,10 +101,17 @@ export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
 
 export interface ConnectorEntityCardUIProps {
   connectorEntity: ConnectorEntityWithMappings;
+  /** Opens the endpoint Test dialog (#780). Set only for an entity backed
+   *  by a REST API endpoint; when unset, no Test action renders. */
+  onTestEndpoint?: () => void;
+  /** Gate for the Test action. Omitted = allow. */
+  testEndpointGate?: ActionGate;
 }
 
 export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
   connectorEntity: entity,
+  onTestEndpoint,
+  testEndpointGate,
 }) => {
   const [expanded, setExpanded] = React.useState(false);
   const mappings = entity.fieldMappings ?? [];
@@ -157,6 +166,19 @@ export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
               <OpenInNewIcon fontSize="small" />
               <Typography variant="body2">View Records</Typography>
             </Link>
+            {onTestEndpoint ? (
+              <GatedButton
+                type="button"
+                size="small"
+                variant="outlined"
+                gate={testEndpointGate}
+                onClick={onTestEndpoint}
+                aria-label={`Test endpoint ${entity.key}`}
+                sx={{ ml: "auto" }}
+              >
+                Test endpoint
+              </GatedButton>
+            ) : null}
           </Stack>
           <FieldMappingTableUI fieldMappings={mappings} />
         </Box>

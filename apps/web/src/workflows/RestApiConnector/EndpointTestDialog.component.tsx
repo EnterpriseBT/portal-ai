@@ -1,7 +1,6 @@
 /**
- * Per-endpoint dry-run dialog rendered from `EndpointsStep` (and any
- * future surface that wants to test a saved endpoint, e.g. the
- * connector-instance detail view).
+ * Per-endpoint dry-run dialog for a saved endpoint, opened from its
+ * entity card on the connector-instance detail view (#780).
  *
  * Calls `POST /api/connector-instances/:id/test-connection` via the
  * `sdk.connectorInstances.testConnection` mutation. The response is a
