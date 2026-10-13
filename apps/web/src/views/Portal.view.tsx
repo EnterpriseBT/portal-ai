@@ -140,16 +140,28 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
 
   // Update lastOpened when the portal view is visited, only for a caller who
   // may write it (#690: an owner/admin viewing someone else's portal doesn't).
+  // #783: an effect reads the promise, not per-call callbacks. Under
+  // StrictMode the effect runs twice: one timestamp per visit makes the second
+  // run's body identical, so it joins the first request (one PATCH), and the
+  // list is refreshed once per request. The refresh still runs after leaving
+  // the page, so the dashboard shows the new lastOpened.
+  const openedAt = React.useRef<{ portalId: string; at: number } | null>(null);
+  const touchRequest = React.useRef<Promise<unknown> | null>(null);
   React.useEffect(() => {
     if (!canWrite) return;
-    touchMutation.mutate(
-      { lastOpened: DateFactory.now() },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-        },
-      }
-    );
+    if (openedAt.current?.portalId !== portalId) {
+      openedAt.current = { portalId, at: DateFactory.now() };
+    }
+    const request = touchMutation.mutateAsync({
+      lastOpened: openedAt.current.at,
+    });
+    if (touchRequest.current === request) return;
+    touchRequest.current = request;
+    request
+      .then(() =>
+        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root })
+      )
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit; touchMutation and queryClient are stable enough and re-running on their identity would re-touch
   }, [portalId, canWrite]);
 
