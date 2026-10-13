@@ -34,7 +34,7 @@ The `.catchall` existed for adapters that might read other keys. None does, so i
 
 ## Decision 3 — a non-JSON body is a 415, app-wide
 
-Options: refuse per route, or once after `express.json()`. Per route can't tell "no body" from "a body nobody parsed". **Decision: a global `jsonBodyOnly` middleware** right after `express.json()`: a body (non-zero `Content-Length` or any `Transfer-Encoding`) that isn't `application/json` is `415 REQUEST_UNSUPPORTED_MEDIA_TYPE`. No route takes multipart (uploads are presigned S3), and no client (web, CLIs) sends anything else. It runs before auth, like the existing body-parser 400/413.
+Options: refuse per route, or once after `express.json()`. Per route can't tell "no body" from "a body nobody parsed". **Decision: a global `jsonBodyOnly` middleware** after `express.json()` and `cors()` (so the SPA can read the 415): a POST, PUT or PATCH body (non-zero `Content-Length` or any `Transfer-Encoding`) that isn't `application/json` is `415 REQUEST_UNSUPPORTED_MEDIA_TYPE`. No GET or DELETE route reads a body, so those are left alone. The message echoes only the media type, capped at 100 characters. `CUSTOM_TOOLPACK_INTEGRATION.md` and the `webhook/handle` OpenAPI block name the 415, since toolpack authors post there. No route takes multipart (uploads are presigned S3), and no client (web, CLIs) sends anything else. It runs before auth, like the existing body-parser 400/413.
 
 ## Plan — one slice, plus a review follow-up
 
@@ -49,6 +49,7 @@ Options: refuse per route, or once after `express.json()`. Per route can't tell 
 - `apps/api/src/__tests__/__integration__/routes/connector-instance.router.integration.test.ts`, in the `POST …/sync` describe: `{"force":true,"slug":"file-upload"}` → `400 CONNECTOR_INSTANCE_INVALID_PAYLOAD` whose message names `force`, with no job row created; an explicit `{}` → `202` (the existing no-body case already covers a missing body); an unknown instance with a bad body → `404`; a form-encoded body → `415`, no job.
 - `connector-instances.test-connection.integration.test.ts`: an unknown key → `400` naming it; an unknown instance with a bad body → `404`.
 - `app.integration.test.ts`: form, text, multipart and untyped bodies → `415`; a bodiless POST and `application/json; charset=utf-8` pass.
+- `__tests__/middleware/json-body-only.middleware.test.ts`: PUT/PATCH, `+json`, chunked bodies → `415`; `Content-Length: 0` with a type, and GET/DELETE bodies, pass; the echoed type is capped.
 - `apps/web/src/__tests__/api/connector-instances.api.test.ts`: `syncForInstance`'s config `body({instanceId: "ci-1"})` is `undefined`.
 - The core sweep (`strict-request-bodies.test.ts`) covers the new schema automatically.
 - Run: `npm run test:unit` (core, web), `npm run test:integration -- --testPathPattern connector-instance.router` (api), `type-check`, `lint`, `format:check`.
