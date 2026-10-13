@@ -28,6 +28,7 @@ describe("connector-instances.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci-1/sync",
         method: "POST",
+        body: expect.any(Function),
         onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
@@ -37,8 +38,19 @@ describe("connector-instances.api", () => {
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci%2Fwith%2Fslashes/sync",
         method: "POST",
+        body: expect.any(Function),
         onPermissionDenied: { invalidate: expect.any(Function) },
       });
+    });
+  });
+
+  describe("sync body", () => {
+    it("sends no body whatever it is called with (#775)", () => {
+      connectorInstances.sync("ci-1");
+      const config = mockUseAuthMutation.mock.calls[0][0] as {
+        body: (vars: unknown) => unknown;
+      };
+      expect(config.body({ instanceId: "ci-1" })).toBeUndefined();
     });
   });
 

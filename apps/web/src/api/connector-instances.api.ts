@@ -204,6 +204,8 @@ export const connectorInstances = {
     useAuthMutation<ConnectorInstanceSyncResponsePayload, void>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/sync`,
       method: "POST",
+      // #775: the route refuses any body key; never send the variables.
+      body: () => undefined,
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorInstances.root],
       },

@@ -252,10 +252,6 @@ const restApiConnectorSchemas: Record<string, unknown> = {
     DiscoverColumnsRequestBodySchema,
     JSON_SCHEMA_OPTS
   ),
-  ConnectorInstanceSyncRequestBody: z.toJSONSchema(
-    ConnectorInstanceSyncRequestBodySchema,
-    JSON_SCHEMA_OPTS
-  ),
   TestConnectionRequestBody: z.toJSONSchema(
     TestConnectionRequestBodySchema,
     JSON_SCHEMA_OPTS
@@ -283,6 +279,10 @@ const connectorInstanceSchemas: Record<string, unknown> = {
   ),
   ConnectorInstanceListResponse: z.toJSONSchema(
     ConnectorInstanceListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ConnectorInstanceSyncRequestBody: z.toJSONSchema(
+    ConnectorInstanceSyncRequestBodySchema,
     JSON_SCHEMA_OPTS
   ),
 };
