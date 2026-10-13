@@ -365,9 +365,12 @@ Authorization: Bearer {source.readToken}
 ```
 POST {output.writeUrl}
 Authorization: Bearer {output.writeToken}
+Content-Type: application/json
 { "rows": [ ...your result rows... ], "schema": [ { "name": "bucket", "type": "text" } ] }
 → { "success": true, "payload": { "resultHandle": "qh-def456", "rowCount": 80000 } }
 ```
+
+The body must be sent as `application/json`; any other content type is refused with `415 REQUEST_UNSUPPORTED_MEDIA_TYPE`.
 
 then your `/runtime` response is simply:
 

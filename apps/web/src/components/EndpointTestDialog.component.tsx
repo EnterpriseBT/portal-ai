@@ -19,12 +19,10 @@ import {
   Stack,
   Typography,
 } from "@portalai/core/ui";
+import type { TestConnectionRequestBody } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
-import type {
-  TestConnectionResult,
-  TestConnectionRequestBody,
-} from "../api/connector-instances.api";
+import type { TestConnectionResult } from "../api/connector-instances.api";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { FormAlert } from "./FormAlert.component";
 

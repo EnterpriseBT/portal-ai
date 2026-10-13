@@ -231,6 +231,26 @@ describe("POST /api/connector-instances/:id/test-connection — route guards", (
     );
   });
 
+  // #775: the body is strict, so a key no adapter reads is refused by name.
+  it("returns 400 naming an unknown body key", async () => {
+    const res = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/test-connection`)
+      .send({ endpointEntityId: "x", pageSize: 50 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+    expect(res.body.message).toContain("pageSize");
+  });
+
+  it("answers 404 for an unknown instance whatever the body", async () => {
+    const res = await request(app)
+      .post(`/api/connector-instances/${generateId()}/test-connection`)
+      .send({ pageSize: 50 });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+  });
+
   it("returns 404 CONNECTOR_INSTANCE_NOT_FOUND when the instance doesn't exist", async () => {
     const res = await request(app)
       .post(`/api/connector-instances/${generateId()}/test-connection`)

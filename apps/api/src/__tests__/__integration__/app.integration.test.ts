@@ -149,4 +149,46 @@ describe("App Integration", () => {
       expect(res.body.code).toBe(ApiCode.REQUEST_BODY_INVALID_JSON);
     });
   });
+
+  // #775: express.json() skips other content types, leaving req.body empty,
+  // so a strict route saw `{}` and dropped every key. Such a body is a 415.
+  describe("Non-JSON bodies", () => {
+    it.each([
+      ["application/x-www-form-urlencoded", "force=true"],
+      ["text/plain", '{"force":true}'],
+      ["multipart/form-data; boundary=x", "--x\r\n\r\nforce\r\n--x--"],
+    ])("refuses a %s body with 415", async (contentType, body) => {
+      const res = await request(app)
+        .post("/api/connector-instances/any/sync")
+        .set("Content-Type", contentType)
+        .send(body);
+
+      expect(res.status).toBe(415);
+      expect(res.body.code).toBe(ApiCode.REQUEST_UNSUPPORTED_MEDIA_TYPE);
+    });
+
+    it("refuses a body with no content type", async () => {
+      const res = await request(app)
+        .post("/nonexistent")
+        .set("Content-Length", "3")
+        .send(Buffer.from("abc"));
+
+      expect(res.status).toBe(415);
+    });
+
+    it("lets a bodiless POST through", async () => {
+      const res = await request(app).post("/nonexistent");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("lets a JSON body with a charset through", async () => {
+      const res = await request(app)
+        .post("/nonexistent")
+        .set("Content-Type", "application/json; charset=utf-8")
+        .send("{}");
+
+      expect(res.status).toBe(404);
+    });
+  });
 });
