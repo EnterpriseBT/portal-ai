@@ -10,7 +10,8 @@ import {
 
 jest.unstable_mockModule("@portalai/cli-env", () => cliEnvMockModule());
 
-const { partitionTables, runReset } = await import("../reset.js");
+const { partitionTables, runReset, LIST_RESETTABLE_TABLES_SQL } =
+  await import("../reset.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
 
@@ -45,7 +46,8 @@ describe("runReset", () => {
     const execCalls: string[] = [];
     const exec = jest.fn(async (_conn: string, sql: string) => {
       execCalls.push(sql);
-      if (sql.includes("pg_tables")) return "users\ner__ce_1\norganizations\n";
+      if (sql === LIST_RESETTABLE_TABLES_SQL)
+        return "users\ner__ce_1\norganizations\n";
       return "";
     });
 
@@ -56,7 +58,7 @@ describe("runReset", () => {
       confirmed: true,
       prodConfirmed: false,
     });
-    expect(execCalls[0]).toContain("__drizzle_migrations");
+    expect(execCalls[0]).toBe(LIST_RESETTABLE_TABLES_SQL);
     expect(
       execCalls.some((s) => s.includes('DROP TABLE "er__ce_1" CASCADE'))
     ).toBe(true);
@@ -74,6 +76,19 @@ describe("runReset", () => {
     );
   });
 
+  // #784: PostGIS installs spatial_ref_sys in public and nothing reseeds it,
+  // so the listing leaves out every table an extension owns.
+  it("lists only public tables that aren't migrations or extension-owned", () => {
+    expect(LIST_RESETTABLE_TABLES_SQL).toContain("n.nspname = 'public'");
+    expect(LIST_RESETTABLE_TABLES_SQL).toContain(
+      "c.relname <> '__drizzle_migrations'"
+    );
+    expect(LIST_RESETTABLE_TABLES_SQL).toMatch(
+      /NOT EXISTS \(SELECT 1 FROM pg_depend d WHERE d\.classid = 'pg_class'::regclass AND d\.objid = c\.oid AND d\.deptype = 'e'\)/
+    );
+    expect(LIST_RESETTABLE_TABLES_SQL).toContain("c.relkind IN ('r', 'p')");
+  });
+
   it("destructive guard failure propagates before any SQL", async () => {
     mocks.assertOperationAllowed.mockImplementation(() => {
       throw new EnvDestructiveBlockedError("never in prod");
@@ -87,7 +102,7 @@ describe("runReset", () => {
 
   it("no tables → no-op (no DROP/TRUNCATE issued)", async () => {
     const exec = jest.fn(async (_c: string, sql: string) =>
-      sql.includes("pg_tables") ? "" : ""
+      sql === LIST_RESETTABLE_TABLES_SQL ? "" : ""
     );
     const out = await runReset(appDev, { yes: true }, exec);
     expect(out).toEqual({ dropped: [], truncated: [] });
