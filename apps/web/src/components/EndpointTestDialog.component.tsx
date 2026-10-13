@@ -6,7 +6,7 @@
  * `sdk.connectorInstances.testConnection` mutation. The response is a
  * `TestConnectionResult` — `ok: true` carries the first 5 records as a
  * preview; `ok: false` carries an error code + message + details for
- * the user to act on (typically "edit the endpoint and try again").
+ * the user to act on.
  */
 
 import React, { useEffect, useState } from "react";
@@ -20,13 +20,13 @@ import {
   Typography,
 } from "@portalai/core/ui";
 
-import { sdk } from "../../api/sdk";
+import { sdk } from "../api/sdk";
 import type {
   TestConnectionResult,
   TestConnectionRequestBody,
-} from "../../api/connector-instances.api";
-import { toServerError, type ServerError } from "../../utils/api.util";
-import { FormAlert } from "../../components/FormAlert.component";
+} from "../api/connector-instances.api";
+import { toServerError, type ServerError } from "../utils/api.util";
+import { FormAlert } from "./FormAlert.component";
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
@@ -37,13 +37,6 @@ export interface EndpointTestDialogUIProps {
   result: TestConnectionResult | null;
   serverError: ServerError | null;
   onClose: () => void;
-  /**
-   * Called when the user clicks "Edit endpoint" on a failure result.
-   * The parent typically closes this dialog and re-opens the endpoint
-   * form pre-populated with the failing endpoint. Optional — when
-   * unset, the link is hidden.
-   */
-  onEditEndpoint?: () => void;
 }
 
 export const EndpointTestDialogUI: React.FC<EndpointTestDialogUIProps> = ({
@@ -53,7 +46,6 @@ export const EndpointTestDialogUI: React.FC<EndpointTestDialogUIProps> = ({
   result,
   serverError,
   onClose,
-  onEditEndpoint,
 }) => (
   <Modal
     open={open}
@@ -145,16 +137,6 @@ export const EndpointTestDialogUI: React.FC<EndpointTestDialogUIProps> = ({
               {JSON.stringify(result.details, null, 2)}
             </Stack>
           ) : null}
-          {onEditEndpoint ? (
-            <Button
-              type="button"
-              variant="text"
-              onClick={onEditEndpoint}
-              aria-label="Edit endpoint to fix the failure"
-            >
-              Edit endpoint
-            </Button>
-          ) : null}
         </Stack>
       ) : null}
     </Stack>
@@ -169,7 +151,6 @@ export interface EndpointTestDialogProps {
   endpointEntityId: string;
   endpointLabel: string;
   onClose: () => void;
-  onEditEndpoint?: () => void;
 }
 
 export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
@@ -178,7 +159,6 @@ export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
   endpointEntityId,
   endpointLabel,
   onClose,
-  onEditEndpoint,
 }) => {
   const { mutateAsync, isPending } =
     sdk.connectorInstances.testConnection(instanceId);
@@ -208,7 +188,6 @@ export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
       result={result}
       serverError={serverError}
       onClose={onClose}
-      onEditEndpoint={onEditEndpoint}
     />
   );
 };

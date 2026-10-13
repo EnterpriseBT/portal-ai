@@ -25,9 +25,6 @@ export interface ConnectorInstanceActionGates {
   editLayoutPlan: ActionGate;
   delete: ActionGate;
   createEntity: ActionGate;
-  /** Dry-run a REST endpoint (#780): the route checks instance read, and
-   *  it writes nothing, so no job lock applies. */
-  testEndpoint: ActionGate;
   /** Whether the Write/Sync/Push flags render as controls (else read-only). */
   canEditFlags: boolean;
 }
@@ -59,10 +56,6 @@ export function connectorInstanceActionGates({
     createEntity: decideActionGate({
       allowed: canCreateEntity,
       blocked: !isWriteEnabled ? WRITES_DISABLED_REASON : lockedReason,
-    }),
-    testEndpoint: decideActionGate({
-      allowed: capabilities.read,
-      blocked: null,
     }),
     canEditFlags: capabilities.write,
   };

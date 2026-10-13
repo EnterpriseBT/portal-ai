@@ -14,11 +14,6 @@ export {
   type EndpointsStepUIProps,
 } from "./EndpointsStep.component";
 export {
-  EndpointTestDialog,
-  EndpointTestDialogUI,
-  type EndpointTestDialogUIProps,
-} from "./EndpointTestDialog.component";
-export {
   ApiEndpointForm,
   ApiEndpointFormUI,
   EMPTY_DRAFT,

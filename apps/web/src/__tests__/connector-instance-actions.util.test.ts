@@ -33,24 +33,6 @@ describe("connectorInstanceActionGates", () => {
     expect(g.canEditFlags).toBe(true);
   });
 
-  // #780: testing an endpoint is a read; no write grant or job lock blocks it.
-  it("allows testEndpoint on read, even without write and while locked", () => {
-    const g = connectorInstanceActionGates({
-      ...base,
-      capabilities: caps(false, false),
-      lockedReason: "Sync is running on this connector.",
-    });
-    expect(g.testEndpoint).toEqual({ kind: "allow" });
-  });
-
-  it("hides testEndpoint without read", () => {
-    const g = connectorInstanceActionGates({
-      ...base,
-      capabilities: { read: false, write: false, delete: false },
-    });
-    expect(g.testEndpoint).toEqual({ kind: "hide" });
-  });
-
   it("hides write actions and makes the flags read-only without write", () => {
     const g = connectorInstanceActionGates({
       ...base,
