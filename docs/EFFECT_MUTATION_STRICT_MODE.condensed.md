@@ -13,6 +13,7 @@
 | Observer detach | `@tanstack/query-core` `mutationObserver.js` `onUnsubscribe` | removes the observer from the current mutation; resubscribe doesn't re-add |
 | StrictMode | `providers/Application.provider.tsx:46` | wraps the app in dev |
 | Effect-fired calls today | `components/EndpointTestDialog.component.tsx:172` | already reads the promise and tracks its own pending state (#780) |
+| | `views/AcceptInvitation.view.tsx:188` | already complies: `acceptAsync` (a `mutateAsync`) with its own module-level in-flight map, which also survives a real remount |
 | | `views/Portal.view.tsx:143` | `touchMutation.mutate(…, { onSuccess: invalidate })`. A same-millisecond double run is deduped and the invalidation is lost |
 
 ## Decision — the promise is the contract for an effect-fired call; enforce it
@@ -23,8 +24,8 @@ Options from the ticket:
 - **(c) Keep the guard.** A call fired from an effect reads its **promise** (`mutateAsync`), never the hook's state or per-call callbacks, and a guard enforces it.
 
 **Chosen: (c)**, confirmed: a dev-only quirk is acceptable as long as it's easy to smoke-test around, and nothing risks production. The promise is the one value that is correct in every mode. Effects are the only place StrictMode double-invokes, and they never need render-lag dedupe semantics beyond "send once". Concretely:
-- `Portal.view.tsx` switches to `touchMutation.mutateAsync({ lastOpened }).then(invalidate).catch(() => {})`. A deduped run chains onto the same promise, so the invalidation always runs.
-- A new guard fails CI on a `.mutate(` call inside a `useEffect` body: an effect uses `mutateAsync` and handles the promise.
+- `Portal.view.tsx` switches to `mutateAsync(...).then(invalidate)`. It stamps `lastOpened` **once per visit** (a ref keyed by portal id), so StrictMode's second run sends an identical body and joins the first request: exactly one PATCH. It refreshes the list **once per request** (it remembers the last promise it chained). The refresh still runs after leaving the page, so the dashboard shows the new time.
+- A new guard fails CI, inside any `useEffect`/`useLayoutEffect` callback (arrow, function, async, block or expression body), on: `.mutate(`; a call through a name destructured from `mutate`; and `mutateAsync` (or a name destructured from it) with a second, options argument. It parses with strings and comments blanked out, and its self-test checks that it parses at least 50 effects in the real source.
 - `EndpointTestDialog` already complies.
 - CLAUDE.md ("API Calls & SDK Helpers") and its copilot mirror record the rule beside the #751 bullet.
 
@@ -37,14 +38,14 @@ Options from the ticket:
 - `packages/e2e/README.md` (durable; the smoke-walk harness's reference): a troubleshooting note. If a dev walk shows an action stuck pending while the network tab shows it succeeded, it's this StrictMode quirk (#783), not a product bug. Confirm with the response, and check the component reads the promise. Production never double-runs effects, so the quirk can't reach users, and nothing here changes `useAuthMutation`.
 
 **Tests**
-- `__tests__/auth-mutation-single-flight.test.tsx`: a new StrictMode case. Render a component under `<StrictMode>` that fires `mutateAsync` from a mount effect, and assert one request is sent and the promise resolves with the payload. This pins the contract the rule relies on.
-- `__tests__/PortalView.gates.test.tsx`: the `touch` mock exposes `mutateAsync` (resolving), and assertions move from `mutate` to `mutateAsync`. Add a case that `portals.root` is invalidated after it resolves.
+- `__tests__/auth-mutation-single-flight.test.tsx`: a new StrictMode case. Render a component under `<StrictMode>` that fires `mutateAsync` from a mount effect, and assert one request is sent and **both** runs' promises resolve with the payload. This pins the contract the rule relies on.
+- `__tests__/PortalView.gates.test.tsx`: the `touch` mock exposes `mutateAsync`; `portals.root` is invalidated once it resolves. A re-run of the effect (write flipped off and on, clock moved on) reuses the visit's timestamp and refreshes once. This uses a dependency flip rather than `<StrictMode>`, because the shared `test-utils` render doesn't double-run effects under its providers.
 - `npm run test:unit -- --testPathPattern 'effect-mutation|auth-mutation-single-flight|PortalView|EndpointTestDialog'` (web), `type-check`, `lint`, `format:check`.
 
 ## Smoke (manual, against your dev stack)
 
 1. Open a portal you own (dev, StrictMode on). The network tab shows one `PATCH …/portals/<id>` with `lastOpened`, followed by a `GET` of the portals list (the invalidation ran). The portal's "last opened" on the dashboard updates.
-2. Open a portal shared with you read-only. No `lastOpened` request is sent (unchanged #690 behavior).
+2. From the dashboard, open the same portal again (its query is now cached, so write access is known at mount and StrictMode double-runs the touch effect). Still exactly one `PATCH …/portals/<id>`, and the portals queries refetch once, not twice. (The read-only case, no `lastOpened` without write, has no fixture: admins can write any portal and members can't open others'. `PortalView.gates.test.tsx` covers it.)
 3. On a REST API connector, open an entity's **Test endpoint** dialog. It shows the records, not a stuck "Calling endpoint…" (the #780 workaround, still in place).
 4. `npm run test:unit -- --testPathPattern effect-mutation` passes. Temporarily add a `.mutate(` inside a `useEffect` and it fails naming the file (then revert).
 
