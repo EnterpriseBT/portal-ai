@@ -5,7 +5,7 @@
 import { jest } from "@jest/globals";
 
 const mockPortalsGet = jest.fn();
-const mockTouchMutate = jest.fn();
+const mockTouchMutateAsync = jest.fn<() => Promise<unknown>>();
 const mutation = () => ({ mutate: jest.fn(), isPending: false, error: null });
 const loading = () => ({
   data: undefined,
@@ -21,7 +21,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
       get: mockPortalsGet,
       rename: mutation,
       remove: mutation,
-      touch: () => ({ mutate: mockTouchMutate, isPending: false }),
+      touch: () => ({
+        mutate: jest.fn(),
+        mutateAsync: mockTouchMutateAsync,
+        isPending: false,
+      }),
     },
     stations: { get: loading },
     organizations: { usage: loading },
@@ -37,7 +41,8 @@ jest.unstable_mockModule("../components/PortalSession.component", () => ({
   PortalSession: () => <div data-testid="portal-session" />,
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, waitFor } = await import("./test-utils");
+const { QueryClient } = await import("@tanstack/react-query");
 const { PortalView } = await import("../views/Portal.view");
 
 const portalResult = (capabilities: {
@@ -70,7 +75,8 @@ const portalResult = (capabilities: {
 
 beforeEach(() => {
   mockPortalsGet.mockReset();
-  mockTouchMutate.mockReset();
+  mockTouchMutateAsync.mockReset();
+  mockTouchMutateAsync.mockResolvedValue({ portal: { id: "portal-1" } });
 });
 
 describe("PortalView gates (#690)", () => {
@@ -85,7 +91,21 @@ describe("PortalView gates (#690)", () => {
     expect(
       screen.getByRole("button", { name: "More actions" })
     ).toBeInTheDocument();
-    expect(mockTouchMutate).toHaveBeenCalledTimes(1);
+    expect(mockTouchMutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  // #783: the effect reads the touch's promise, so the portals list is
+  // refreshed even when a StrictMode double run joins the first call.
+  it("refreshes the portals list once the touch resolves", async () => {
+    mockPortalsGet.mockReturnValue(
+      portalResult({ read: true, write: true, delete: true })
+    );
+    const queryClient = new QueryClient();
+    const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+    render(<PortalView portalId="portal-1" />, { queryClient });
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["portals"] })
+    );
   });
 
   it("a read-only caller sees no Rename or Delete, and nothing is written", async () => {
@@ -96,12 +116,12 @@ describe("PortalView gates (#690)", () => {
     expect(await screen.findByText("Sales Analysis")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Rename/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
-    expect(mockTouchMutate).not.toHaveBeenCalled();
+    expect(mockTouchMutateAsync).not.toHaveBeenCalled();
   });
 
   it("doesn't record lastOpened before the capabilities are known", () => {
     mockPortalsGet.mockReturnValue(loading());
     render(<PortalView portalId="portal-1" />);
-    expect(mockTouchMutate).not.toHaveBeenCalled();
+    expect(mockTouchMutateAsync).not.toHaveBeenCalled();
   });
 });

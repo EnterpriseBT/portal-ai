@@ -28,7 +28,8 @@ jest.unstable_mockModule("../providers/Auth.provider", () => ({
   AuthContext: React.createContext(mockAuthValue),
 }));
 
-const { renderHook, waitFor, act } = await import("@testing-library/react");
+const { render, renderHook, waitFor, act } =
+  await import("@testing-library/react");
 const { QueryClient, QueryClientProvider } =
   await import("@tanstack/react-query");
 const { useAuthMutation } = await import("../utils/api.util");
@@ -182,6 +183,46 @@ describe("useAuthMutation single-flight (#751)", () => {
     await act(async () => pending[0].ok({ id: "s1" }));
     await expect(first).resolves.toEqual({ id: "s1" });
     await expect(second).resolves.toEqual({ id: "s1" });
+  });
+
+  // #783: in StrictMode a mount effect runs twice, and the second run joins
+  // the first call's promise. React Query's observer has dropped that
+  // mutation by then, so the hook's isPending/data can't be trusted for an
+  // effect-fired call; its promise can. This pins what effects rely on: one
+  // request, and the promise settles with the payload for every run.
+  it("sends once from a StrictMode mount effect, and its promise resolves", async () => {
+    const { fetchMock, pending } = deferredFetch();
+    const onResult = jest.fn();
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const FiresOnMount = () => {
+      const { mutateAsync } = useAuthMutation<unknown, Vars>({
+        url: (v) => `/api/stations/${v.id}`,
+        method: "PATCH",
+        body: (v) => ({ name: v.name }),
+      });
+      React.useEffect(() => {
+        void mutateAsync({ id: "s1", name: "A" }).then(onResult);
+      }, [mutateAsync]);
+      return null;
+    };
+
+    render(
+      <React.StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <FiresOnMount />
+        </QueryClientProvider>
+      </React.StrictMode>
+    );
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => pending[0].ok({ id: "s1" }));
+    await waitFor(() => expect(onResult).toHaveBeenCalledWith({ id: "s1" }));
+    expect(
+      onResult.mock.calls.every(([r]) => (r as { id: string }).id === "s1")
+    ).toBe(true);
   });
 
   it("sends every call when dedupeInFlight is false", async () => {

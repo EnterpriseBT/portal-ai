@@ -140,16 +140,17 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
 
   // Update lastOpened when the portal view is visited, only for a caller who
   // may write it (#690: an owner/admin viewing someone else's portal doesn't).
+  // #783: an effect reads the promise, not per-call callbacks. Under
+  // StrictMode the effect runs twice and a duplicate joins the first call's
+  // promise, whose observer-level callbacks may never fire.
   React.useEffect(() => {
     if (!canWrite) return;
-    touchMutation.mutate(
-      { lastOpened: DateFactory.now() },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-        },
-      }
-    );
+    touchMutation
+      .mutateAsync({ lastOpened: DateFactory.now() })
+      .then(() =>
+        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root })
+      )
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit; touchMutation and queryClient are stable enough and re-running on their identity would re-touch
   }, [portalId, canWrite]);
 
