@@ -25,6 +25,22 @@ import type { MutateOptions } from "./commands/vars.js";
 
 const WIDE_TABLE_PREFIX = "er__";
 
+/**
+ * The tables a reset may touch: everything in `public` except
+ * `__drizzle_migrations` and tables an extension owns (#784). PostGIS
+ * installs `spatial_ref_sys` in `public`, and nothing reseeds it, so
+ * truncating it left every SRID unknown. "Owned by an extension" is the
+ * catalog's own `pg_depend` `deptype = 'e'`, so any future extension's
+ * tables are safe too. `relkind` 'r'/'p' is the set `pg_tables` returned.
+ */
+export const LIST_RESETTABLE_TABLES_SQL =
+  "SELECT c.relname FROM pg_class c " +
+  "JOIN pg_namespace n ON n.oid = c.relnamespace " +
+  "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') " +
+  "AND c.relname <> '__drizzle_migrations' " +
+  "AND NOT EXISTS (SELECT 1 FROM pg_depend d " +
+  "WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e');";
+
 export function partitionTables(tableNames: string[]): {
   toDrop: string[];
   toTruncate: string[];
@@ -90,9 +106,7 @@ export async function runReset(
   const conn = await resolveEnvConnection(def.name);
   try {
     const db = await conn.db();
-    const listSql =
-      "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != '__drizzle_migrations';";
-    const tables = (await exec(db.connectionString, listSql))
+    const tables = (await exec(db.connectionString, LIST_RESETTABLE_TABLES_SQL))
       .split("\n")
       .map((t) => t.trim())
       .filter(Boolean);

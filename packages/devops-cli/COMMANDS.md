@@ -108,7 +108,7 @@ portalops db psql --env app-dev -- -tAc "select 1"
 Exits with psql's own exit code. Missing psql binary → exit 7 with install guidance.
 
 ### `portalops db reset --env <env> --yes [--json]`
-**Destructive** (never production). The infra reset: `DROP TABLE "er__…" CASCADE` for dynamic wide tables, one `TRUNCATE … CASCADE` for everything else, `__drizzle_migrations` untouched. Works for `--env local` (`.env` DB).
+**Destructive** (never production). The infra reset: `DROP TABLE "er__…" CASCADE` for dynamic wide tables, one `TRUNCATE … CASCADE` for everything else, `__drizzle_migrations` untouched, and so is every table an extension owns (e.g. PostGIS's `spatial_ref_sys`, which nothing reseeds; #784). Works for `--env local` (`.env` DB).
 `--json`: `{ "dropped": [string], "truncated": [string] }`
 
 ### `portalops db seed --env <env> --yes [--confirm-prod] [--json]`
