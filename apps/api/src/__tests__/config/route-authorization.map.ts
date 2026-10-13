@@ -65,7 +65,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/connector-instances/{instanceId}/api-endpoints/{entityId}": {
     kind: "authorized",
-    by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+    by: "ConnectorInstanceAccessService.load (write) + entity on the instance (#685) + entity delete via ObjectAccessService (#782)",
     locks: { target: "connectorEntity" },
   },
   "DELETE /api/curated-views/{id}": {
@@ -532,7 +532,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/connector-instances/{instanceId}/api-endpoints/{entityId}": {
     kind: "authorized",
-    by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+    by: "ConnectorInstanceAccessService.load (write) + entity on the instance (#685) + entity write via ObjectAccessService (#782)",
     locks: { target: "connectorEntity" },
   },
   "PATCH /api/curated-views/{id}": {
@@ -679,7 +679,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   "POST /api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns":
     {
       kind: "authorized",
-      by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+      by: "ConnectorInstanceAccessService.load (write) + entity on the instance (#685) + entity read via ObjectAccessService (#782)",
       locks: { none: "an upstream column sample; writes nothing" },
     },
   "POST /api/connectors/google-sheets/authorize": {

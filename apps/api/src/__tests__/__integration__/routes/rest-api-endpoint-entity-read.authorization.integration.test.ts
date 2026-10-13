@@ -14,6 +14,7 @@ import type {
 } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -25,7 +26,7 @@ import {
 } from "../utils/application.util.js";
 
 /**
- * #780: a REST endpoint is an entity with its own read permission. A caller
+ * #780 / #782: a REST endpoint is an entity with its own permissions. A caller
  * who can read the connector but not one of its endpoint entities must not
  * see that endpoint's config, nor its live records through test-connection.
  * Unreadable == absent: the same answer as an endpoint that isn't there.
@@ -54,6 +55,10 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { configureRestApiAdapterDeps, __resetRestApiAdapterDepsForTests } =
+  await import("../../../adapters/rest-api/rest-api.adapter.js");
+const { ProbeCache } =
+  await import("../../../adapters/rest-api/probe-cache.util.js");
 
 const now = Date.now();
 const base = (createdBy: string) => ({
@@ -65,7 +70,7 @@ const base = (createdBy: string) => ({
   deletedBy: null,
 });
 
-describe("REST endpoint entity read (#780)", () => {
+describe("REST endpoint entity permissions (#780 reads, #782 writes)", () => {
   let connection: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle>;
   let fx: TenancyFixture;
@@ -156,11 +161,14 @@ describe("REST endpoint entity read (#780)", () => {
     memberEntityId = await createEndpoint(MEMBER_SUB, "mine");
     ownerEntityId = await createEndpoint(OWNER_SUB, "theirs");
     originalFetch = globalThis.fetch;
+    __resetRestApiAdapterDepsForTests();
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
     currentSub = MEMBER_SUB;
   });
 
   afterEach(async () => {
     globalThis.fetch = originalFetch;
+    __resetRestApiAdapterDepsForTests();
     await connection.end();
   });
 
@@ -229,5 +237,78 @@ describe("REST endpoint entity read (#780)", () => {
     const theirs = await testConnection(ownerEntityId);
     expect(theirs.body.payload).toMatchObject({ ok: true });
     expect(theirs.body.payload.sample).toHaveLength(2);
+  });
+
+  // ── #782: the write routes check the endpoint's entity too ─────────────
+
+  const endpointUrl = (entityId: string) =>
+    `/api/connector-instances/${instanceId}/api-endpoints/${entityId}`;
+  const patchLabel = (entityId: string, label: string) =>
+    request(app).patch(endpointUrl(entityId)).send({ label });
+  const discover = (entityId: string) =>
+    request(app)
+      .post(`${endpointUrl(entityId)}/discover-columns`)
+      .send({});
+
+  async function ownerReads(entityId: string) {
+    const prev = currentSub;
+    currentSub = OWNER_SUB;
+    const res = await request(app).get(endpointUrl(entityId));
+    currentSub = prev;
+    return res;
+  }
+
+  it("a member can't edit, delete or sample an endpoint they can't read (404), and nothing changes", async () => {
+    stubFetch([{ id: 1 }]);
+
+    const patched = await patchLabel(ownerEntityId, "hijacked");
+    const deleted = await request(app).delete(endpointUrl(ownerEntityId));
+    const sampled = await discover(ownerEntityId);
+
+    for (const res of [patched, deleted, sampled]) {
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.REST_API_ENDPOINT_NOT_FOUND);
+    }
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    const after = await ownerReads(ownerEntityId);
+    expect(after.status).toBe(200);
+    expect(after.body.payload.entity.label).toBe("theirs");
+  });
+
+  it("a member gets 403 editing or deleting an endpoint they can read but not change, and can sample it", async () => {
+    // An entity created by SYSTEM_TEST, which members may read.
+    await db
+      .update(schema.connectorEntities)
+      .set({ createdBy: "SYSTEM_TEST" } as never)
+      .where(eq(schema.connectorEntities.id, ownerEntityId));
+    stubFetch([{ id: 1, name: "a" }]);
+
+    const patched = await patchLabel(ownerEntityId, "nope");
+    const deleted = await request(app).delete(endpointUrl(ownerEntityId));
+    expect(patched.status).toBe(403);
+    expect(patched.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(deleted.status).toBe(403);
+    expect(deleted.body.code).toBe(ApiCode.PERMISSION_DENIED);
+
+    const sampled = await discover(ownerEntityId);
+    expect(sampled.status).toBe(200);
+    expect((await ownerReads(ownerEntityId)).body.payload.entity.label).toBe(
+      "theirs"
+    );
+  });
+
+  it("a member edits and samples their own endpoint; the owner edits and deletes the member's", async () => {
+    stubFetch([{ id: 1 }]);
+    expect((await patchLabel(memberEntityId, "renamed")).status).toBe(200);
+    expect((await discover(memberEntityId)).status).toBe(200);
+
+    currentSub = OWNER_SUB;
+    expect((await patchLabel(memberEntityId, "by owner")).status).toBe(200);
+    expect(
+      (await request(app).delete(endpointUrl(memberEntityId))).status
+    ).toBe(200);
+    expect((await request(app).get(endpointUrl(memberEntityId))).status).toBe(
+      404
+    );
   });
 });
