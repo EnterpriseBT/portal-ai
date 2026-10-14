@@ -142,6 +142,7 @@ This rule applies to **every** `*.component.tsx`, `*.view.tsx`, and `*.layout.ts
 - A component file may define and export **at most two** components.
 - **Inline helper components are not allowed.** If a JSX fragment is worth naming, it is worth its own file. A new component always goes in a new file.
 - **Single-component file:** the component must be a **pure UI component** — it receives all data and callbacks via props and is free of data fetching, routing, context consumption, state machines, effects against external systems, or any other wiring. It renders from its props and nothing else.
+- **Local UI state is not wiring.** A UI component may hold the state of its own interaction: field values, `touched`/`errors`, a toggled section, a selection. What disqualifies it is reaching outside itself (fetching, routing, contexts, mutations, external effects). A dialog's form state therefore lives in its `…UI` component, and its container wires the data and mutation.
 - **Two-component file:** the second export is allowed **only** when it is the implementation (container) of the pure UI component also exported from the same file. The container wires hooks/state/contexts, then delegates rendering to the UI component. No other pairing (e.g. "UI + another unrelated UI", "UI + small header", "container + container") is permitted.
 
 ### Naming
@@ -162,11 +163,14 @@ Every data-submission dialog must follow this structure:
 
 ### Form Wrapping
 
-- Every dialog that submits data **must** be wrapped in a `<form onSubmit>` element
-- For `Modal`-based dialogs: use `slotProps.paper.component="form"` with `onSubmit` handler on `slotProps.paper`
-- For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`, and render `<FormDefaultButton />` (from `@portalai/core/ui`) inside it
+- **Every dialog is a `Modal`** (`@portalai/core/ui`). Nothing in `apps/web` imports MUI's raw `Dialog`: a raw one was invisible to every check below (PinnedResultDetail's rename submitted on Enter while its Save was disabled).
+- **A dialog that submits passes `onSubmit`, `submitDisabled` and `pending` to `Modal`** (#789). `onSubmit` makes the paper the form; `ModalProps` requires the other two alongside it, so tsc fails a form dialog that leaves either out. `submitDisabled` is the visible submit's `disabled` expression and `pending` is "its request is in flight". Wire the visible submit's `onClick` to the same handler as `onSubmit`. There is no other way to make a dialog a form: `slotProps.paper.component` is gone.
 - Action buttons must use `type="button"` to prevent double-firing with form submission
-- **Enter submits exactly when the submit button could.** A form with no submit button and more than one text field doesn't submit on Enter (HTML implicit submission), and the `type="button"` rule leaves dialogs without one. `Modal` therefore renders a hidden `FormDefaultButton` whenever its paper is a form, and every form `Modal` passes **`submitDisabled`** — the same expression as its visible submit's `disabled` — so Enter can't submit during a pending request or an incomplete form (a double Enter made duplicates). `submitDisabled` lands a render after `mutate()` (react-query notifies on a timeout), so it can't stop a second activation inside that lag; that's the request layer's job (see "API Calls & SDK Helpers": `useAuthMutation` sends one request per submit intent, #751). A raw `Dialog` form renders `<FormDefaultButton disabled={…} />` by hand. `dialog-enter-submit.guard.test.ts` fails CI on a form `Modal` without `submitDisabled`, and on a `Modal` with no form paper in a file that renders `<FormAlert>`, the pattern's marker for a submitting dialog (#758: the Rename Portal dialog had no form, so Enter did nothing). Its `EXEMPT` list holds the one alert-bearing Modal that submits nothing (`EndpointTestDialog`), with its reason. Never call `onSubmit` from a key handler instead
+- **Enter submits exactly when the submit button could.** A form with no submit button and more than one text field doesn't submit on Enter (HTML implicit submission), and the `type="button"` rule leaves dialogs without one. A form `Modal` therefore renders a hidden `FormDefaultButton`, and its submit handler runs `onSubmit` only when neither `submitDisabled` nor `pending` holds, so Enter can't submit during a pending request or an incomplete form (a double Enter made duplicates). `submitDisabled` lands a render after `mutate()` (react-query notifies on a timeout), so it can't stop a second activation inside that lag; that's the request layer's job (see "API Calls & SDK Helpers": `useAuthMutation` sends one request per submit intent, #751). Never call `onSubmit` from a key handler instead
+- **Nothing dismisses a dialog while `pending`.** Escape, the backdrop and the close button are blocked until the request settles, and `onClose` is never called meanwhile, so a dialog always shows how its save ended. That relies on **every write being bounded**: a non-`GET` through `useAuthMutation` times out after `WRITE_TIMEOUT_MS` (30s) with `REQUEST_TIMEOUT`, whose message says the write **may still finish** (a timed-out write isn't known to have failed). A known-slow endpoint (an AI interpret, a commit, a remote probe) declares `timeoutMs: LONG_WRITE_TIMEOUT_MS` (5 min) on its SDK definition. Both live in `utils/api.util.ts`.
+- **Escape that a step already handled is its own.** `Modal` ignores an Escape whose event is `defaultPrevented`, so a step that uses Escape (RegionDrawingStep deselecting a region) listens in the **capture** phase and calls `preventDefault`.
+- **Wizards: Enter runs the step's primary**, gated exactly like its button. Either the wizard's `Modal` is the form (RestApi: Next, or Commit on the last step), or the step is, where the step owns its primary (RegionEditor's Interpret and Commit plan, in EditLayoutPlan too). A step form's `onSubmit` goes through `handleOwnSubmit` (`@portalai/core/ui`): React bubbles a submit through portals, so a nested form (a popover, an embedded `ApiEndpointForm`) would otherwise also fire its ancestors' actions. A wizard that commits passes `pending` while it does, even with no `onSubmit`, so closing can't drop a running commit.
+- **`dialog-contract.guard.test.ts`** parses each `<Modal>` and fails CI on: **R1** a `Modal` rendering `<FormAlert>` (the marker for a dialog that triggers a mutation) without `onSubmit` (#758: Rename Portal had no form, so Enter did nothing), unless its file is in `EXEMPT` with a reason (only `EndpointTestDialog`, a result viewer); **R2** a `Modal` passing `slotProps` with a `component`; **R3** an import of MUI's raw `Dialog`; **R4** a mutation error shown in a dialog without that mutation's `reset()` (see Server Error Display); **R5** a test calling `fireEvent.submit` (see the Test Checklist). R5's one allowed file is `dialog-single-flight.integration.test.tsx`, which needs two activations in one tick to reproduce #751's race
 - The first interactive field must receive auto-focus via `useDialogAutoFocus(open)` from `utils/use-dialog-autofocus.util.ts` (or `autoFocus` prop for simple text fields outside Modal)
 
 ### Server Error Display
@@ -176,6 +180,7 @@ Every dialog that triggers a mutation must:
 - Accept a `serverError?: ServerError | null` prop (type from `utils/api.util.ts`)
 - Render `<FormAlert serverError={serverError} />` (from `components/FormAlert.component.tsx`) inside the dialog content
 - The parent view must pass `toServerError(mutation.error)` from `utils/api.util.ts`
+- **The parent resets the mutation where the dialog opens or closes** (`mutation.reset()`, #789), in its `onClose` when the container owns the dialog, or on the open callback when a UI component opens it. Otherwise a failed attempt's alert greets the next one after Cancel and reopen. R4 fails CI on a file that hands `toServerError(X.error)` (or a `…ServerError` prop) to a dialog and never calls `X.reset()`
 
 ### Zod Validation
 
@@ -183,6 +188,8 @@ Every form with user input must:
 
 - Validate via `validateWithSchema(Schema, data)` from `utils/form-validation.util.ts` using the matching `@portalai/core/contracts` schema
 - Maintain `touched` and `errors` state (`FormErrors` type from `form-validation.util.ts`); show errors only after blur or submit
+- **A blur toward the dialog's own controls isn't a blur.** Wrap a field's `onBlur` in `blurUnlessDialogControl(…)` (or check `isDialogControlBlur(event)`), from `utils/dialog-blur.util.ts`. It skips marking the field touched when focus moves to an action button or a header control (`Modal` marks those regions `data-dialog-controls`), so clicking Cancel on an empty required field closes the dialog without flashing "Name is required". Save still validates, because submit marks every field touched
+- **Recorded exception:** `CreateEntityRecordDialog` and `EditEntityRecordDialog` validate with `validateRequiredFields`, not `validateWithSchema`, because their schema is built at runtime from the entity's column definitions. They still keep touched/errors, `aria-invalid` and `focusFirstInvalidField`
 - Block submission when validation fails (never call `onSubmit` with invalid data)
 - Call `focusFirstInvalidField()` from `utils/form-validation.util.ts` after setting errors — this finds the first `[aria-invalid="true"]` element, scrolls it into view, and focuses it
 
@@ -574,7 +581,9 @@ Every new dialog must have tests covering:
 - Renders title and content when `open={true}`
 - Does not render when `open={false}`
 - Calls `onSubmit`/`onConfirm` on button click
-- Supports Enter key submission — a real key press (`user.type(field, "x{Enter}")`), not `fireEvent.submit`, which passes even when Enter does nothing
+- Supports Enter key submission: a real key press (`user.type(field, "x{Enter}")`, or `pressEnter(element)` from `test-utils`), never `fireEvent.submit`, which dispatches the submit directly and passes even when Enter does nothing (R5 fails CI on it). Press Enter where a user can: in an enabled field, or on the focused confirm button of a dialog with no text field. In a dialog that auto-focuses, wait for that focus to land first, or it takes focus back mid-test
+- Can't be closed while `isPending={true}` (Escape, Cancel and the close button do nothing)
+- Leaving an empty required field for Cancel doesn't show its error; Cancel still closes
 - Calls `onClose` on Cancel click
 - Shows loading state when `isPending={true}`
 - Renders `<FormAlert>` when `serverError` is provided
