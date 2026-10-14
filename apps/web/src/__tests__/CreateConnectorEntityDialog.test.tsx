@@ -36,7 +36,8 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   ServerError: {},
 }));
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { CreateConnectorEntityDialog } =
   await import("../components/CreateConnectorEntityDialog.component");
 
@@ -121,7 +122,7 @@ describe("CreateConnectorEntityDialog", () => {
     fireEvent.change(screen.getByLabelText(/Key/), {
       target: { value: "deals" },
     });
-    fireEvent.submit(screen.getByLabelText(/Label/).closest("form")!);
+    await pressEnter(screen.getByLabelText(/Label/));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
         label: "Deals",

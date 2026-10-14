@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen, fireEvent, pressEnter } from "./test-utils";
 import { PinResultDialog } from "../components/PinResultDialog.component";
 import type { ServerError } from "../utils/api.util";
 
@@ -63,14 +63,11 @@ describe("PinResultDialog — submission", () => {
     expect(baseProps.onSubmit).toHaveBeenCalledWith("Q1 revenue");
   });
 
-  it("submits on Enter in the name field", () => {
+  it("submits on Enter in the name field", async () => {
     // The dialog was not a <form>, so Enter did nothing at all before.
-    // MUI portals the dialog, so it is outside the render container.
-    const { baseElement } = render(<PinResultDialog {...baseProps} />);
+    render(<PinResultDialog {...baseProps} />);
     fireEvent.change(nameField(), { target: { value: "Via keyboard" } });
-    const form = baseElement.querySelector("form");
-    expect(form).not.toBeNull();
-    fireEvent.submit(form as HTMLFormElement);
+    await pressEnter(nameField());
     expect(baseProps.onSubmit).toHaveBeenCalledWith("Via keyboard");
   });
 

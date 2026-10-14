@@ -95,6 +95,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
       pin: () =>
         ({
           mutateAsync: mockPinResult,
+          reset: jest.fn(),
           isPending: false,
           error: null,
         }) as Partial<UseMutationResult>,

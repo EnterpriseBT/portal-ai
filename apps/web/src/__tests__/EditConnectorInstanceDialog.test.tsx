@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
 const { EditConnectorInstanceDialog } =
   await import("../components/EditConnectorInstanceDialog.component");
 
@@ -63,14 +63,14 @@ describe("EditConnectorInstanceDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("New Name");
   });
 
-  it("should submit form on Enter key press in text field", () => {
+  it("should submit form on Enter key press in text field", async () => {
     const onConfirm = jest.fn();
     render(
       <EditConnectorInstanceDialog {...defaultProps} onConfirm={onConfirm} />
     );
     const input = screen.getByRole("textbox", { name: /name/i });
     fireEvent.change(input, { target: { value: "New Name" } });
-    fireEvent.submit(input.closest("form")!);
+    await pressEnter(input);
     expect(onConfirm).toHaveBeenCalledWith("New Name");
   });
 

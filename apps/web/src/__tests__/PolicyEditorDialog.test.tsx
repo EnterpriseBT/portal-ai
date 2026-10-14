@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, pressEnter } = await import("./test-utils");
 const { PolicyEditorDialogUI } =
   await import("../modules/AccessAuthoring/PolicyEditorDialog.component");
 
@@ -58,5 +58,33 @@ describe("PolicyEditorDialogUI (#691)", () => {
     render(<PolicyEditorDialogUI {...props} policy={policy("custom")} />);
     expect(screen.getByRole("textbox", { name: /Name/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  // #789: Enter in the name field saves exactly when Save could.
+  it("saves on a real Enter in the name field", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <PolicyEditorDialogUI
+        {...props}
+        policy={policy("custom")}
+        onSubmit={onSubmit}
+      />
+    );
+    await pressEnter(screen.getByRole("textbox", { name: /^Name/ }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't save on Enter with an empty name", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <PolicyEditorDialogUI
+        {...props}
+        policy={policy("custom")}
+        name=""
+        onSubmit={onSubmit}
+      />
+    );
+    await pressEnter(screen.getByRole("textbox", { name: /^Name/ }));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

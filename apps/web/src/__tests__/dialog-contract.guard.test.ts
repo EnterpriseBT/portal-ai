@@ -25,6 +25,10 @@
  *   handed down to one) also calls `X.reset()`, so a
  *   reopened dialog doesn't greet a fresh attempt with the last one's error.
  *   The reset belongs where the dialog opens; this checks it exists.
+ * - R5: no test calls `fireEvent.submit`. It dispatches a submit event
+ *   directly, skipping Enter, implicit submission and the disabled default
+ *   button, so it passed even when Enter did nothing (#758). Tests press a
+ *   real Enter instead (`pressEnter` in test-utils, or user-event).
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -164,6 +168,32 @@ export function unresetDialogErrors(source: string): string[] {
   );
 }
 
+// R5's only exception. Each entry says why a synthetic submit is the point.
+const SYNTHETIC_SUBMIT_ALLOWED: Record<string, string> = {
+  "__tests__/dialog-single-flight.integration.test.tsx":
+    "reproduces two activations in one tick (#751's render-lag race); a real key press yields between events, and the file's real-Enter cases are separate",
+};
+
+function testFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return testFiles(path);
+    return /\.test\.tsx?$/.test(path) ? [path] : [];
+  });
+}
+
+// A block comment only counts where it opens a line or a JSX expression, so
+// a string like "image/*" can't swallow the code up to the next `*/`.
+const withoutComments = (source: string) =>
+  source
+    .replace(/(^[ \t]*|\{)\/\*[\s\S]*?\*\//gm, "$1")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+/** R5: a `fireEvent.submit(` call, ignoring comments. */
+export function callsSyntheticSubmit(source: string): boolean {
+  return /\bfireEvent\.submit\(/.test(withoutComments(source));
+}
+
 const violationsOf = (source: string) => {
   const modals = findModals(source);
   return {
@@ -257,6 +287,16 @@ describe("the guard's own rules (fixtures, R4)", () => {
   });
 });
 
+describe("the guard's own rules (fixtures, R5)", () => {
+  it("R5 flags a synthetic submit and ignores one named in a comment", () => {
+    expect(callsSyntheticSubmit(`fireEvent.submit(form);`)).toBe(true);
+    expect(
+      callsSyntheticSubmit(`// A real key press, not fireEvent.submit(form)`)
+    ).toBe(false);
+    expect(callsSyntheticSubmit(`await pressEnter(field);`)).toBe(false);
+  });
+});
+
 describe("dialogs meet the Modal contract (#789)", () => {
   it("finds the dialogs (so the guard can't pass vacuously)", () => {
     expect(withModals.length).toBeGreaterThanOrEqual(45);
@@ -307,4 +347,27 @@ describe("dialogs meet the Modal contract (#789)", () => {
       expect(unresetDialogErrors(source)).toEqual([]);
     }
   );
+
+  it("allows a synthetic submit only where the file still needs one", () => {
+    for (const path of Object.keys(SYNTHETIC_SUBMIT_ALLOWED)) {
+      expect(
+        callsSyntheticSubmit(readFileSync(join(webSrc, path), "utf8"))
+      ).toBe(true);
+    }
+  });
+
+  it.each(
+    testFiles(webSrc).map((path) => [
+      relative(webSrc, path),
+      readFileSync(path, "utf8"),
+    ])
+  )("%s: presses a real Enter, never fireEvent.submit (R5)", (path, source) => {
+    // This file names fireEvent.submit in its own R5 fixtures.
+    if (
+      path in SYNTHETIC_SUBMIT_ALLOWED ||
+      path === relative(webSrc, here + "/dialog-contract.guard.test.ts")
+    )
+      return;
+    expect(callsSyntheticSubmit(source)).toBe(false);
+  });
 });

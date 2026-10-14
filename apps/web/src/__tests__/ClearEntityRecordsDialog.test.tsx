@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
 const { ClearEntityRecordsDialog } =
   await import("../components/ClearEntityRecordsDialog.component");
 
@@ -49,13 +49,13 @@ describe("ClearEntityRecordsDialog (#453)", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it("supports Enter-key submission via the form", () => {
+  it("supports Enter-key submission via the form", async () => {
     const onConfirm = jest.fn();
     render(
       <ClearEntityRecordsDialog {...defaultProps} onConfirm={onConfirm} />
     );
     fireEvent.change(confirmField(), { target: { value: "Customers" } });
-    fireEvent.submit(confirmField().closest("form")!);
+    await pressEnter(confirmField());
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 

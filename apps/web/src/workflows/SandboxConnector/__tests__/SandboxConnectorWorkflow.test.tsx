@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } =
+const { render, screen, fireEvent, pressEnter } =
   await import("../../../__tests__/test-utils");
 const { SandboxConnectorWorkflowUI } =
   await import("../SandboxConnectorWorkflow.component");
@@ -62,11 +62,10 @@ describe("SandboxConnectorWorkflowUI", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it("supports Enter key submission via form submit", () => {
+  it("supports Enter key submission via form submit", async () => {
     const onSubmit = jest.fn();
     render(<SandboxConnectorWorkflowUI {...makeProps({ onSubmit })} />);
-    const form = screen.getByLabelText(/Name/).closest("form")!;
-    fireEvent.submit(form);
+    await pressEnter(screen.getByLabelText(/Name/));
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 

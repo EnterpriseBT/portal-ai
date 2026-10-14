@@ -8,7 +8,7 @@ jest.unstable_mockModule("react-markdown", () => ({
 }));
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EditEntityRecordDialog } =
   await import("../components/EditEntityRecordDialog.component");
@@ -146,7 +146,7 @@ describe("EditEntityRecordDialog — submission", () => {
     const nameField = screen.getByLabelText(/Name/);
     await userEvent.clear(nameField);
     await userEvent.type(nameField, "Charlie");
-    fireEvent.submit(nameField.closest("form")!);
+    await pressEnter(nameField);
     expect(defaultProps.onSubmit).toHaveBeenCalled();
   });
 

@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { EditFieldMappingDialog } =
   await import("../components/EditFieldMappingDialog.component");
 
@@ -300,7 +301,7 @@ describe("EditFieldMappingDialog", () => {
   it("should support Enter key submission", async () => {
     const onSubmit = jest.fn();
     render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
-    fireEvent.submit(screen.getByLabelText(/Source Field/).closest("form")!);
+    await pressEnter(screen.getByLabelText(/Source Field/));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });

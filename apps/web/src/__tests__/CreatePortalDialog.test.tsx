@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
 
 // Mock the sdk modules to avoid real API calls in the dialog
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -132,5 +132,14 @@ describe("CreatePortalDialog", () => {
   it("should not render content when open is false", () => {
     render(<MockedCreatePortalDialog {...defaultProps} open={false} />);
     expect(screen.queryByText("New Portal")).not.toBeInTheDocument();
+  });
+
+  // #789: Enter in the station field creates, exactly like Create.
+  it("creates on a real Enter in the station field", async () => {
+    const onSubmit = jest.fn();
+    render(<MockedCreatePortalDialog {...defaultProps} onSubmit={onSubmit} />);
+    const field = await screen.findByLabelText(/Station/);
+    await pressEnter(field);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { CreateFieldMappingDialog } =
   await import("../components/CreateFieldMappingDialog.component");
 
@@ -196,7 +197,7 @@ describe("CreateFieldMappingDialog", () => {
     });
 
     // Submit via form
-    fireEvent.submit(screen.getByLabelText(/Source Field/).closest("form")!);
+    await pressEnter(screen.getByLabelText(/Source Field/));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({

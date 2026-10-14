@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import type { ColumnDefinitionImpactResponsePayload } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
 const { DeleteColumnDefinitionDialog } =
   await import("../components/DeleteColumnDefinitionDialog.component");
 
@@ -120,7 +120,7 @@ describe("DeleteColumnDefinitionDialog", () => {
     expect(screen.getByText("No associated data found.")).toBeInTheDocument();
   });
 
-  it("should submit on Enter key press (form submission)", () => {
+  it("should submit on Enter key press (form submission)", async () => {
     const onConfirm = jest.fn();
     render(
       <DeleteColumnDefinitionDialog
@@ -129,10 +129,7 @@ describe("DeleteColumnDefinitionDialog", () => {
         onConfirm={onConfirm}
       />
     );
-    const form = screen
-      .getByRole("button", { name: "Delete" })
-      .closest("form")!;
-    fireEvent.submit(form);
+    await pressEnter(screen.getByRole("button", { name: "Delete" }));
     expect(onConfirm).toHaveBeenCalled();
   });
 
