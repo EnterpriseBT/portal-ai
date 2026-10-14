@@ -73,13 +73,19 @@ interface FormState {
   curatedViewIds: string[];
 }
 
-const EditStationFormSchema = z.object({
-  name: nameField(),
-  toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
-});
+/** #801: an edited name is held to the name limit. An unchanged one isn't
+ *  (it isn't sent), so a station saved before the limit stays editable. */
+const editStationFormSchema = (nameChanged: boolean) =>
+  z.object({
+    name: nameChanged
+      ? nameField()
+      : z.string().trim().min(1, "Name is required"),
+    toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
+  });
 
-function validateForm(form: FormState): FormErrors {
-  const result = validateWithSchema(EditStationFormSchema, form);
+function validateForm(form: FormState, originalName: string): FormErrors {
+  const schema = editStationFormSchema(form.name.trim() !== originalName);
+  const result = validateWithSchema(schema, form);
   return result.success ? {} : result.errors;
 }
 
@@ -212,18 +218,18 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     const next = { ...form, [field]: value };
     setForm(next);
     if (touched[field]) {
-      setErrors(validateForm(next));
+      setErrors(validateForm(next, station.name));
     }
   };
 
   const handleBlur = (field: keyof FormState) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
-    setErrors(validateForm(form));
+    setErrors(validateForm(form, station.name));
   };
 
   const handleSubmit = () => {
     setTouched({ name: true, toolPacks: true });
-    const formErrors = validateForm(form);
+    const formErrors = validateForm(form, station.name);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
       requestAnimationFrame(() => focusFirstInvalidField());

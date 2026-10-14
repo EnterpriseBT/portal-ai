@@ -257,4 +257,45 @@ describe("EditStationDialog — length limits (#801)", () => {
     expect(name).toHaveAttribute("aria-invalid", "true");
     expect(defaultProps.onSubmit).not.toHaveBeenCalled();
   });
+
+  // #801 smoke §4.2: a station saved before the limit keeps its name; only a
+  // name the user edits is held to it, and an unchanged name isn't sent.
+  it("saves other changes to a station whose existing name is longer", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, name: "L".repeat(500) }}
+        onSubmit={onSubmit}
+      />
+    );
+    const chip = screen.getByText("Statistics").closest(".MuiChip-root")!;
+    fireEvent.click(chip.querySelector("[data-testid='CancelIcon']")!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ toolPacks: ["data_query"] })
+    );
+    expect(
+      screen.queryByText("Name must be 120 characters or fewer")
+    ).not.toBeInTheDocument();
+  });
+
+  it("still holds an edited legacy name to the limit", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, name: "L".repeat(500) }}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "L".repeat(500) + "x" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Name must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
