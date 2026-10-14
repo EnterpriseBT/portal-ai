@@ -302,3 +302,26 @@ describe("TagFormModal — length limits (#801)", () => {
     expect(defaultProps.onSubmit).not.toHaveBeenCalled();
   });
 });
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("TagFormModal — a name saved before the limit (#801)", () => {
+  it("saves a description change on a tag with a legacy name, without resending the name", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <TagFormModal
+        {...defaultProps}
+        tag={{ ...existingTag, name: "T".repeat(500) }}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Description/), {
+      target: { value: "Prod only" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("name");
+    expect(body.description).toBe("Prod only");
+  });
+});

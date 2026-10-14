@@ -35,13 +35,23 @@ interface TagFormState {
   description: string;
 }
 
-const TagFormSchema = z.object({
-  name: nameField(),
-  description: descriptionField(),
-  color: z.string().refine((v) => !v || /^#[\dA-Fa-f]{6}$/.test(v), {
-    message: "Color must be a valid hex code (e.g. #FF0000)",
-  }),
-});
+/** #801: editing a tag, an unchanged name or description isn't held to the
+ *  length limit (the name isn't resent), so a tag saved before the limit stays
+ *  editable. A new tag, or an edited value, must fit. */
+const tagFormSchema = (form: TagFormState, original: EntityTag | null) =>
+  z.object({
+    name:
+      original && form.name.trim() === original.name
+        ? z.string().trim().min(1, "Name is required")
+        : nameField(),
+    description:
+      original && form.description.trim() === (original.description ?? "")
+        ? z.string()
+        : descriptionField(),
+    color: z.string().refine((v) => !v || /^#[\dA-Fa-f]{6}$/.test(v), {
+      message: "Color must be a valid hex code (e.g. #FF0000)",
+    }),
+  });
 
 const DEFAULT_TAG_COLOR = "#3b82f6";
 const INITIAL_FORM: TagFormState = {
@@ -50,8 +60,11 @@ const INITIAL_FORM: TagFormState = {
   description: "",
 };
 
-function validateTagForm(form: TagFormState): FormErrors {
-  const result = validateWithSchema(TagFormSchema, form);
+function validateTagForm(
+  form: TagFormState,
+  original: EntityTag | null
+): FormErrors {
+  const result = validateWithSchema(tagFormSchema(form, original), form);
   return result.success ? {} : result.errors;
 }
 
@@ -106,28 +119,31 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
     setForm(next);
     if (field === "color") setColorModified(true);
     if (touched[field]) {
-      setErrors(validateTagForm(next));
+      setErrors(validateTagForm(next, tag));
     }
   };
 
   const handleBlur = (field: keyof TagFormState) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
-    setErrors(validateTagForm(form));
+    setErrors(validateTagForm(form, tag));
   };
 
   const handleSubmit = () => {
     setTouched({ name: true, color: true, description: true });
-    const formErrors = validateTagForm(form);
+    const formErrors = validateTagForm(form, tag);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
       requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
 
-    const body: EntityTagCreateRequestBody = {
-      name: form.name.trim(),
+    // #801: an edit doesn't resend an unchanged name or description.
+    const nameChanged = !tag || form.name.trim() !== tag.name;
+    const body: EntityTagCreateRequestBody | EntityTagUpdateRequestBody = {
+      ...(nameChanged ? { name: form.name.trim() } : {}),
       ...(colorModified && form.color ? { color: form.color } : {}),
-      ...(form.description.trim()
+      ...(form.description.trim() &&
+      (!tag || form.description.trim() !== (tag.description ?? ""))
         ? { description: form.description.trim() }
         : {}),
     };

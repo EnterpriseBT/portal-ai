@@ -434,3 +434,28 @@ describe("EditColumnDefinitionDialog", () => {
     });
   });
 });
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("EditColumnDefinitionDialog — a label saved before the limit (#801)", () => {
+  it("saves a description change on a column definition with a legacy label", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditColumnDefinitionDialog
+        {...defaultProps}
+        columnDefinition={makeColumnDefinition({ label: "L".repeat(500) })}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/^Description/), {
+      target: { value: "Given name" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ description: "Given name" })
+    );
+    expect(
+      screen.queryByText("Label must be 120 characters or fewer")
+    ).not.toBeInTheDocument();
+  });
+});

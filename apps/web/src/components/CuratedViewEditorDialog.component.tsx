@@ -28,6 +28,7 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
+import { curatedViewUpdateBody } from "../utils/curated-view-update-body.util";
 
 /** A FilterExpression carries a real predicate only when it has conditions. */
 function filterOrNull(f: FilterExpression): FilterExpression | null {
@@ -367,12 +368,16 @@ const EditorContainer: React.FC<{
       return;
     }
 
-    const body: CuratedViewUpdateRequestBody = {
-      label: label.trim(),
-      description: description.trim() || null,
-      filter: nextFilter,
-      fieldMappingIds: selectedFieldMappingIds,
-    };
+    // #801: an unchanged label or description isn't resent (see the helper).
+    const body: CuratedViewUpdateRequestBody = curatedViewUpdateBody(
+      { label: view?.label ?? "", description: view?.description ?? null },
+      {
+        label,
+        description,
+        filter: nextFilter,
+        fieldMappingIds: selectedFieldMappingIds,
+      }
+    );
     const result = validateWithSchema(CuratedViewUpdateRequestBodySchema, body);
     if (!result.success) {
       setErrors(result.errors);

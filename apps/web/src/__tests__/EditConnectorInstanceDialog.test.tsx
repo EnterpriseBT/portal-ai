@@ -129,3 +129,22 @@ describe("EditConnectorInstanceDialog — length limits (#801)", () => {
     expect(defaultProps.onConfirm).not.toHaveBeenCalled();
   });
 });
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("EditConnectorInstanceDialog — a name saved before the limit (#801)", () => {
+  it("doesn't flag an unchanged legacy name on blur", () => {
+    render(
+      <EditConnectorInstanceDialog
+        {...defaultProps}
+        currentName={"C".repeat(500)}
+      />
+    );
+    const input = screen.getByRole("textbox", { name: /name/i });
+    fireEvent.blur(input);
+    expect(
+      screen.queryByText("Name must be 120 characters or fewer")
+    ).not.toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "false");
+  });
+});
