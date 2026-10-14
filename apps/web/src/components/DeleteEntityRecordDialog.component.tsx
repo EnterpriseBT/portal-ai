@@ -17,23 +17,25 @@ export interface DeleteEntityRecordDialogProps {
 
 export const DeleteEntityRecordDialog: React.FC<
   DeleteEntityRecordDialogProps
-> = ({ open, onClose, recordSourceId, onConfirm, isPending, serverError }) => {
+> = ({
+  open,
+  onClose,
+  recordSourceId,
+  onConfirm,
+  isPending = false,
+  serverError,
+}) => {
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Delete Entity Record"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            if (!isPending) onConfirm();
-          },
-        } as object,
+      onSubmit={() => {
+        if (!isPending) onConfirm();
       }}
       actions={
         <Stack direction="row" spacing={1}>

@@ -98,7 +98,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
   onLabelBlur,
   onKeyBlur,
   onSubmit,
-  isPending,
+  isPending = false,
   serverError,
   columnsReady,
 }) => {
@@ -109,21 +109,14 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending || !columnsReady}
       open
       onClose={onClose}
       title={mode === "create" ? "Create View" : "Edit View"}
       maxWidth="md"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

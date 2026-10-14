@@ -28,7 +28,7 @@ const EditForm: React.FC<{
   onConfirm: (newName: string) => void;
   onClose: () => void;
   isPending?: boolean;
-}> = ({ currentName, onConfirm, onClose, isPending }) => {
+}> = ({ currentName, onConfirm, onClose, isPending = false }) => {
   const [name, setName] = useState(currentName);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState(false);
@@ -59,21 +59,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={saveDisabled}
       open
       onClose={onClose}
       title="Edit Connector Instance"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -121,7 +114,7 @@ const EditForm: React.FC<{
 
 export const EditConnectorInstanceDialog: React.FC<
   EditConnectorInstanceDialogProps
-> = ({ open, onClose, currentName, onConfirm, isPending }) => {
+> = ({ open, onClose, currentName, onConfirm, isPending = false }) => {
   if (!open) return null;
 
   return (

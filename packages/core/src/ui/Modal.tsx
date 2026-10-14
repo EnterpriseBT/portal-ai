@@ -10,12 +10,14 @@ import OpenInFullIcon from "@mui/icons-material/OpenInFull";
 import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
 
 import { FormDefaultButton } from "./FormDefaultButton.js";
+import { handleOwnSubmit } from "./handle-own-submit.js";
 
-export interface ModalProps extends Omit<
+interface ModalBaseProps extends Omit<
   DialogProps,
-  "title" | "onClose" | "open"
+  "title" | "onClose" | "open" | "onSubmit"
 > {
   open: boolean;
+  /** Never called while `pending`. */
   onClose: () => void;
   title?: React.ReactNode;
   actions?: React.ReactNode;
@@ -30,14 +32,34 @@ export interface ModalProps extends Omit<
   maximizable?: boolean;
   /** Initial maximized state when `maximizable` is true. */
   defaultMaximized?: boolean;
-  /**
-   * For a form dialog: true whenever its visible submit button is disabled
-   * (a request in flight, an incomplete form). Enter then submits nothing,
-   * matching the button. Pass the same expression as that button's `disabled`.
-   */
-  submitDisabled?: boolean;
   children?: React.ReactNode;
 }
+
+/**
+ * A dialog that submits (#789). Its paper is a form: Enter submits exactly
+ * when the visible submit could, and the props that make that true are
+ * required together.
+ */
+interface ModalFormProps {
+  /** Runs on Enter and on the form's submit. Wire the visible submit's
+   *  `onClick` to the same handler. */
+  onSubmit: () => void;
+  /** The visible submit's `disabled` expression. */
+  submitDisabled: boolean;
+  /** The submit's request is in flight: Enter, Escape, the backdrop and the
+   *  close button are blocked until it settles. */
+  pending: boolean;
+}
+
+/** A dialog that doesn't submit: a viewer, or a wizard whose forms live in
+ *  its steps. `pending` still blocks dismissal (a wizard committing). */
+interface ModalPlainProps {
+  onSubmit?: never;
+  submitDisabled?: never;
+  pending?: boolean;
+}
+
+export type ModalProps = ModalBaseProps & (ModalFormProps | ModalPlainProps);
 
 export const Modal: React.FC<ModalProps> = ({
   open,
@@ -47,25 +69,52 @@ export const Modal: React.FC<ModalProps> = ({
   showCloseButton = true,
   maximizable = false,
   defaultMaximized = false,
+  onSubmit,
   submitDisabled = false,
+  pending = false,
   children,
+  slotProps,
   ...props
 }) => {
   const [maximized, setMaximized] = useState(maximizable && defaultMaximized);
   const showHeader = !!title || showCloseButton;
   const showMaximizeButton = maximizable && showHeader;
-  // A form dialog gets a default button so Enter submits it however many
-  // fields it has (see FormDefaultButton).
-  const paperComponent = (
-    props.slotProps?.paper as { component?: unknown } | undefined
-  )?.component;
-  const isForm = paperComponent === "form";
+  const isForm = onSubmit !== undefined;
+
+  // #789: nothing dismisses a dialog whose request is in flight, and an
+  // Escape that something inside the dialog already handled (a capture
+  // listener that called preventDefault) is left to it.
+  const handleClose = (event: object, reason?: string) => {
+    if (pending) return;
+    if (
+      reason === "escapeKeyDown" &&
+      (event as { defaultPrevented?: boolean }).defaultPrevented
+    ) {
+      return;
+    }
+    onClose();
+  };
+
+  // A form dialog's paper is the form. It gets a default button so Enter
+  // submits it however many fields it has (see FormDefaultButton).
+  const paperSlot = isForm
+    ? {
+        ...(slotProps?.paper as object | undefined),
+        component: "form",
+        noValidate: true,
+        onSubmit: handleOwnSubmit(() => {
+          if (!submitDisabled && !pending) onSubmit();
+        }),
+      }
+    : slotProps?.paper;
+
   return (
     <Dialog
-      open={open}
-      onClose={onClose}
-      fullScreen={maximizable && maximized}
       {...props}
+      slotProps={{ ...slotProps, paper: paperSlot } as DialogProps["slotProps"]}
+      open={open}
+      onClose={handleClose}
+      fullScreen={maximizable && maximized}
     >
       {showHeader && (
         <DialogTitle
@@ -84,6 +133,7 @@ export const Modal: React.FC<ModalProps> = ({
           {title}
           {(showCloseButton || showMaximizeButton) && (
             <Box
+              data-dialog-controls=""
               sx={{ position: "absolute", right: 8, top: 8, display: "flex" }}
             >
               {showMaximizeButton && (
@@ -96,7 +146,12 @@ export const Modal: React.FC<ModalProps> = ({
                 </IconButton>
               )}
               {showCloseButton && (
-                <IconButton aria-label="close" onClick={onClose} size="small">
+                <IconButton
+                  aria-label="close"
+                  onClick={onClose}
+                  disabled={pending}
+                  size="small"
+                >
                   <CloseIcon />
                 </IconButton>
               )}
@@ -105,8 +160,10 @@ export const Modal: React.FC<ModalProps> = ({
         </DialogTitle>
       )}
       <DialogContent>{children}</DialogContent>
-      {actions && <DialogActions>{actions}</DialogActions>}
-      {isForm && <FormDefaultButton disabled={submitDisabled} />}
+      {actions && (
+        <DialogActions data-dialog-controls="">{actions}</DialogActions>
+      )}
+      {isForm && <FormDefaultButton disabled={submitDisabled || pending} />}
     </Dialog>
   );
 };

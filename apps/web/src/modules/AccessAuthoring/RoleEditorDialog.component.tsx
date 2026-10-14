@@ -57,20 +57,15 @@ export const RoleEditorDialogUI: React.FC<RoleEditorDialogUIProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending || !name.trim()}
       open={open}
       onClose={onClose}
       title={title}
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            if (!readOnly) onSubmit();
-          },
-        } as object,
+      onSubmit={() => {
+        if (!readOnly) onSubmit();
       }}
       actions={
         <Stack direction="row" spacing={1}>

@@ -39,7 +39,7 @@ const EditForm: React.FC<{
   normalizedData,
   onSubmit,
   onClose,
-  isPending,
+  isPending = false,
   serverError,
 }) => {
   const [values, setValues] = useState<Record<string, unknown>>(() =>
@@ -107,21 +107,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open
       onClose={onClose}
       title="Edit Record"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -172,7 +165,7 @@ export const EditEntityRecordDialog: React.FC<EditEntityRecordDialogProps> = ({
   columns,
   normalizedData,
   onSubmit,
-  isPending,
+  isPending = false,
   serverError,
 }) => {
   if (!open) return null;

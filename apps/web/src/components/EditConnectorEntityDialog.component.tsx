@@ -31,7 +31,7 @@ const EditForm: React.FC<{
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
-}> = ({ entity, onSubmit, onClose, isPending, serverError }) => {
+}> = ({ entity, onSubmit, onClose, isPending = false, serverError }) => {
   const [label, setLabel] = useState(entity.label);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState(false);
@@ -63,21 +63,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={saveDisabled}
       open
       onClose={onClose}
       title="Edit Connector Entity"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -130,7 +123,7 @@ const EditForm: React.FC<{
 
 export const EditConnectorEntityDialog: React.FC<
   EditConnectorEntityDialogProps
-> = ({ open, onClose, entity, onSubmit, isPending, serverError }) => {
+> = ({ open, onClose, entity, onSubmit, isPending = false, serverError }) => {
   if (!open) return null;
 
   return (

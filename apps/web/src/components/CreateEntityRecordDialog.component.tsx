@@ -32,7 +32,7 @@ const CreateForm: React.FC<{
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
-}> = ({ columns, onSubmit, onClose, isPending, serverError }) => {
+}> = ({ columns, onSubmit, onClose, isPending = false, serverError }) => {
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     initializeRecordFields(columns)
   );
@@ -80,21 +80,14 @@ const CreateForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open
       onClose={onClose}
       title="New Record"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -138,7 +131,7 @@ const CreateForm: React.FC<{
 
 export const CreateEntityRecordDialog: React.FC<
   CreateEntityRecordDialogProps
-> = ({ open, onClose, columns, onSubmit, isPending, serverError }) => {
+> = ({ open, onClose, columns, onSubmit, isPending = false, serverError }) => {
   if (!open) return null;
 
   return (

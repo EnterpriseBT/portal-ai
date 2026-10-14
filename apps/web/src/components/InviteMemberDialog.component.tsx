@@ -92,21 +92,14 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Invite a member"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

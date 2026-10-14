@@ -53,21 +53,14 @@ export const DeleteOrganizationDialog: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={!matches || isPending}
       open={open}
       onClose={onClose}
       title="Delete Organization"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleConfirm();
-          },
-        } as object,
-      }}
+      onSubmit={handleConfirm}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

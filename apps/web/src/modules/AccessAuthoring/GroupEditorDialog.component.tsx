@@ -66,21 +66,14 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
   serverError,
 }) => (
   <Modal
+    pending={isPending}
     submitDisabled={isPending || !name.trim() || membersLoading}
     open={open}
     onClose={onClose}
     title={group ? `Edit “${group.name}”` : "New group"}
     maxWidth="sm"
     fullWidth
-    slotProps={{
-      paper: {
-        component: "form",
-        onSubmit: (e: React.FormEvent) => {
-          e.preventDefault();
-          onSubmit();
-        },
-      } as object,
-    }}
+    onSubmit={onSubmit}
     actions={
       <Stack direction="row" spacing={1}>
         <Button type="button" variant="outlined" onClick={onClose}>

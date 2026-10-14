@@ -201,21 +201,14 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Edit toolpack"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

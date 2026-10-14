@@ -110,8 +110,7 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
     return false;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!validate()) return;
     const trimmedKey = key.trim();
     const trimmedLabel = label.trim();
@@ -137,25 +136,21 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
 
   return (
     <Modal
+      // A local create: no request is sent, so nothing is ever pending.
       submitDisabled={false}
+      pending={false}
       open={open}
       onClose={onClose}
       title="Create new entity"
       maxWidth="xs"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: handleSubmit,
-          noValidate: true,
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <>
           <Button type="button" variant="outlined" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="contained">
+          <Button type="button" variant="contained" onClick={handleSubmit}>
             Create
           </Button>
         </>

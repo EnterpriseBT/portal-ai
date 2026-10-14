@@ -253,21 +253,14 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Edit Station"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

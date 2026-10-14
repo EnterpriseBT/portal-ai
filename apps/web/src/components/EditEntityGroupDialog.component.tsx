@@ -31,7 +31,7 @@ const EditForm: React.FC<{
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
-}> = ({ group, onSubmit, onClose, isPending, serverError }) => {
+}> = ({ group, onSubmit, onClose, isPending = false, serverError }) => {
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description ?? "");
   const [errors, setErrors] = useState<FormErrors>({});
@@ -76,21 +76,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={saveDisabled}
       open
       onClose={onClose}
       title="Edit Entity Group"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -154,7 +147,7 @@ export const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
   onClose,
   group,
   onSubmit,
-  isPending,
+  isPending = false,
   serverError,
 }) => {
   if (!open) return null;

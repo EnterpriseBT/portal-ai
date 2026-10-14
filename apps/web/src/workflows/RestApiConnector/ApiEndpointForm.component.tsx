@@ -175,7 +175,9 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
 
   return (
     <Modal
+      // A local edit to the wizard's draft: no request, never pending.
       submitDisabled={false}
+      pending={false}
       open={open}
       onClose={onClose}
       title={isEditing ? "Edit endpoint" : "Add endpoint"}
@@ -184,15 +186,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
       // fullWidth so smaller viewports still get the full breakpoint.
       maxWidth="md"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button type="button" variant="outlined" onClick={onClose}>

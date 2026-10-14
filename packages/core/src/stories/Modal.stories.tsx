@@ -230,3 +230,69 @@ export const InteractiveMaximizable: Story = {
   },
   render: InteractiveMaximizableRender,
 };
+
+// #789: a form dialog. Enter submits exactly when Save could; while the
+// request is pending, Enter, Escape, the backdrop and the close button are
+// all blocked until it settles.
+const FormRender = () => {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [name, setName] = useState("");
+  const submitDisabled = pending || !name.trim();
+  const handleSubmit = () => {
+    setPending(true);
+    setTimeout(() => {
+      setPending(false);
+      setOpen(false);
+    }, 2000);
+  };
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open form modal</Button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Rename"
+        maxWidth="sm"
+        fullWidth
+        onSubmit={handleSubmit}
+        submitDisabled={submitDisabled}
+        pending={pending}
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="text"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={submitDisabled}
+            >
+              {pending ? "Saving..." : "Save"}
+            </Button>
+          </>
+        }
+      >
+        <input
+          aria-label="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </Modal>
+    </>
+  );
+};
+
+export const Form: Story = {
+  args: {
+    open: false,
+    onClose: () => {},
+  },
+  render: () => <FormRender />,
+};

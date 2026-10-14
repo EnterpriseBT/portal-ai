@@ -50,21 +50,14 @@ export const SandboxConnectorWorkflowUI: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Connect Sandbox"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

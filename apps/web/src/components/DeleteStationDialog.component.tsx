@@ -24,21 +24,14 @@ export const DeleteStationDialog: React.FC<DeleteStationDialogProps> = ({
   serverError,
 }) => (
   <Modal
+    pending={isPending}
     submitDisabled={isPending}
     open={open}
     onClose={onClose}
     title="Delete Station"
     maxWidth="sm"
     fullWidth
-    slotProps={{
-      paper: {
-        component: "form",
-        onSubmit: (e: React.FormEvent) => {
-          e.preventDefault();
-          onConfirm();
-        },
-      } as object,
-    }}
+    onSubmit={onConfirm}
     actions={
       <Stack direction="row" spacing={1}>
         <Button

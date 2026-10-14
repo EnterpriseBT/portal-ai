@@ -114,7 +114,7 @@ const EditForm: React.FC<{
   onSubmit,
   onSearchConnectorEntitiesForRefKey,
   onClose,
-  isPending,
+  isPending = false,
   serverError,
   columnDefinitionType,
 }) => {
@@ -228,21 +228,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open
       onClose={onClose}
       title="Edit Field Mapping"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -407,7 +400,7 @@ export const EditFieldMappingDialog: React.FC<EditFieldMappingDialogProps> = ({
   fieldMapping,
   onSubmit,
   onSearchConnectorEntitiesForRefKey,
-  isPending,
+  isPending = false,
   serverError,
   columnDefinitionType,
 }) => {
