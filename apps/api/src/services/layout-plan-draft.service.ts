@@ -38,7 +38,10 @@ import type {
   LayoutPlanInterpretDraftRequestBody,
   LayoutPlanInterpretDraftResponsePayload,
 } from "@portalai/core/contracts";
-import { LayoutPlanSchema } from "@portalai/core/contracts";
+import {
+  LayoutPlanSchema,
+  planTextLimitIssues,
+} from "@portalai/core/contracts";
 import type {
   LayoutPlanCommitJobResult,
   LayoutPlanCommitMetadata,
@@ -455,6 +458,17 @@ export class LayoutPlanDraftService {
         404,
         ApiCode.LAYOUT_PLAN_NOT_FOUND,
         "Layout plan not found for this connector instance"
+      );
+    }
+    // #801: interpret stores region hints as given, so a stored plan is held
+    // to the same text limits as a commit draft before anything is enqueued.
+    const limitIssues = planTextLimitIssues(planRow.plan as LayoutPlan);
+    if (limitIssues.length > 0) {
+      throw new ApiError(
+        400,
+        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+        `Invalid plan: ${limitIssues.map((i) => i.message).join("; ")}`,
+        { issues: limitIssues }
       );
     }
     // #743: the route authorizes only the instance in the URL, so the body's

@@ -20,6 +20,15 @@ export function sourceFieldFromBinding(binding: ColumnBinding): string {
 }
 
 /**
+ * The longest key `sourceFieldToNormalizedKey` derives: core's
+ * `KEY_MAX_LENGTH` (#801), since the key becomes a `c_<key>` wide-table
+ * column that must fit Postgres's 63-byte identifier limit. Kept here because
+ * this package doesn't depend on core; core's text-limits test pins the two
+ * equal.
+ */
+export const DERIVED_KEY_MAX_LENGTH = 58;
+
+/**
  * Normalise a spreadsheet source-field name (typically a header cell's text
  * or a synthetic column-index label like `col_3`) into the snake_case key
  * format that `FieldMapping.normalizedKey` enforces.
@@ -37,8 +46,9 @@ export function sourceFieldToNormalizedKey(source: string): string {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
   if (!base) return "field";
-  if (/^[a-z]/.test(base)) return base;
-  return `f_${base}`;
+  const key = /^[a-z]/.test(base) ? base : `f_${base}`;
+  // #801: clip a long header; a cut that lands after a separator drops it.
+  return key.slice(0, DERIVED_KEY_MAX_LENGTH).replace(/_+$/, "");
 }
 
 const AXIS_SEGMENTS = new Set(["row", "column"]);

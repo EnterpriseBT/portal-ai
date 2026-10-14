@@ -585,8 +585,8 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
     });
 
-    // #801: a patched region's label becomes a new entity's label at commit,
-    // so it is held to the name limit; LayoutPlanSchema itself is not.
+    // #801: a patched region's target becomes an entity's key and label at
+    // commit, so it is held to the key limit; LayoutPlanSchema itself is not.
     describe("text limits (#801)", () => {
       const insertPlan = async (plan: LayoutPlan) => {
         const planId = generateId();
@@ -612,7 +612,7 @@ describe("Connector Instance Layout Plans Router", () => {
         return [{ ...plan.regions[0], targetEntityDefinitionId: label }];
       };
 
-      it("refuses patched regions whose label is over the limit, leaving the plan unchanged", async () => {
+      it("refuses patched regions whose entity key is over the limit, leaving the plan unchanged", async () => {
         const planId = await insertPlan(makeLayoutPlan());
 
         const res = await request(app)
@@ -620,12 +620,12 @@ describe("Connector Instance Layout Plans Router", () => {
             `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}`
           )
           .set("Authorization", "Bearer test-token")
-          .send({ regions: withLabel("e".repeat(121)) });
+          .send({ regions: withLabel("e".repeat(59)) });
 
         expect(res.status).toBe(400);
         expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
         expect(res.body.message).toContain(
-          "Entity label must be 120 characters or fewer"
+          "Entity key must be 58 characters or fewer"
         );
         const [row] = await (db as Db)
           .select()
@@ -642,7 +642,7 @@ describe("Connector Instance Layout Plans Router", () => {
             `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}`
           )
           .set("Authorization", "Bearer test-token")
-          .send({ regions: withLabel("e".repeat(120)) });
+          .send({ regions: withLabel("e".repeat(58)) });
 
         expect(res.status).toBe(200);
       });
@@ -967,6 +967,32 @@ describe("Connector Instance Layout Plans Router", () => {
         .send({ connectorInstanceId });
       expect(own.status).toBe(202);
       expect(await recommitJobCount()).toBe(1);
+    });
+
+    // #801: interpret stores region hints as given, so committing a stored
+    // plan by id holds it to the same limits as a commit draft: its targets
+    // become entity keys and labels.
+    it("#801: refuses a stored plan whose entity key is over the limit (400, no job)", async () => {
+      const plan = makeLayoutPlan();
+      plan.regions[0] = {
+        ...plan.regions[0],
+        targetEntityDefinitionId: "e".repeat(59),
+      };
+      const planId = await insertPlanRow(db as Db, plan);
+
+      const res = await request(app)
+        .post(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      expect(res.body.message).toContain(
+        "Entity key must be 58 characters or fewer"
+      );
+      expect(await recommitJobCount()).toBe(0);
     });
 
     it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {

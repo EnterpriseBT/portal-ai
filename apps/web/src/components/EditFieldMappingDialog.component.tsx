@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { z } from "zod";
+import { keyField } from "@portalai/core/contracts";
 import type { FieldMappingUpdateRequestBody } from "@portalai/core/contracts";
 import {
   AsyncSearchableSelect,
@@ -28,18 +29,23 @@ import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Validation ──────────────────────────────────────────────────────
 
-const EditFieldMappingFormSchema = z.object({
-  sourceField: z.string().trim().min(1, "Source field is required"),
-  normalizedKey: z
-    .string()
-    .regex(
+const KEY_PATTERN_MESSAGE =
+  "Must be lowercase alphanumeric with underscores, starting with a letter";
+
+/** #801: a changed key is held to the key limit. An unchanged one isn't (it
+ *  isn't resent), so a mapping saved before the limit, whose key was derived
+ *  from a long header, stays editable. */
+const editFieldMappingFormSchema = (keyChanged: boolean) =>
+  z.object({
+    sourceField: z.string().trim().min(1, "Source field is required"),
+    normalizedKey: (keyChanged ? keyField("Normalized key") : z.string()).regex(
       /^[a-z][a-z0-9_]*$/,
-      "Must be lowercase alphanumeric with underscores, starting with a letter"
+      KEY_PATTERN_MESSAGE
     ),
-  isPrimaryKey: z.boolean(),
-  refNormalizedKey: z.string().nullable(),
-  refEntityKey: z.string().nullable(),
-});
+    isPrimaryKey: z.boolean(),
+    refNormalizedKey: z.string().nullable(),
+    refEntityKey: z.string().nullable(),
+  });
 
 interface EditFieldMappingFormState {
   sourceField: string;
@@ -53,8 +59,12 @@ interface EditFieldMappingFormState {
   refEntityKey: string | null;
 }
 
-function validateForm(form: EditFieldMappingFormState): FormErrors {
-  const result = validateWithSchema(EditFieldMappingFormSchema, {
+function validateForm(
+  form: EditFieldMappingFormState,
+  originalKey: string
+): FormErrors {
+  const schema = editFieldMappingFormSchema(form.normalizedKey !== originalKey);
+  const result = validateWithSchema(schema, {
     sourceField: form.sourceField,
     normalizedKey: form.normalizedKey,
     isPrimaryKey: form.isPrimaryKey,
@@ -146,13 +156,13 @@ const EditForm: React.FC<{
     const next = { ...form, [field]: value };
     setForm(next);
     if (touched[field]) {
-      setErrors(validateForm(next));
+      setErrors(validateForm(next, fm.normalizedKey ?? ""));
     }
   };
 
   const handleBlur = (field: keyof EditFieldMappingFormState) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
-    setErrors(validateForm(form));
+    setErrors(validateForm(form, fm.normalizedKey ?? ""));
   };
 
   const buildBody = (): FieldMappingUpdateRequestBody => {
@@ -163,7 +173,10 @@ const EditForm: React.FC<{
     return {
       sourceField: form.sourceField.trim(),
       columnDefinitionId: fm.columnDefinitionId,
-      normalizedKey: form.normalizedKey,
+      // #801: only a changed key is sent (see editFieldMappingFormSchema).
+      ...(form.normalizedKey !== (fm.normalizedKey ?? "")
+        ? { normalizedKey: form.normalizedKey }
+        : {}),
       required: form.required,
       defaultValue: trimDefault || null,
       format: trimFormat || null,
@@ -185,7 +198,10 @@ const EditForm: React.FC<{
     const newEnumStr = form.enumValues.trim();
     return REVALIDATION_FIELDS.some((field) => {
       if (field === "normalizedKey")
-        return body.normalizedKey !== (fm.normalizedKey ?? "");
+        return (
+          body.normalizedKey !== undefined &&
+          body.normalizedKey !== (fm.normalizedKey ?? "")
+        );
       if (field === "required") return body.required !== (fm.required ?? false);
       if (field === "defaultValue")
         return body.defaultValue !== (fm.defaultValue ?? null);
@@ -197,7 +213,7 @@ const EditForm: React.FC<{
 
   const handleSubmit = () => {
     setTouched({ sourceField: true, normalizedKey: true });
-    const formErrors = validateForm(form);
+    const formErrors = validateForm(form, fm.normalizedKey ?? "");
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
       requestAnimationFrame(() => focusFirstInvalidField());

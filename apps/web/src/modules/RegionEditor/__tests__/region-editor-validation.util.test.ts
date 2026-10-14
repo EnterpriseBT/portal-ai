@@ -528,13 +528,13 @@ describe("validateRegionBindings — cross-binding collisions", () => {
 // key carries the request contract's limits, so the editor says so before
 // the commit is refused.
 describe("length limits (#801)", () => {
-  it("validateRegion flags a target entity over 120 characters", () => {
+  it("validateRegion flags a target entity key over 58 characters", () => {
     expect(
-      validateRegion(baseRegion({ targetEntityDefinitionId: "e".repeat(121) }))
+      validateRegion(baseRegion({ targetEntityDefinitionId: "e".repeat(59) }))
         .targetEntityDefinitionId
-    ).toBe("Entity label must be 120 characters or fewer");
+    ).toBe("Entity key must be 58 characters or fewer");
     expect(
-      validateRegion(baseRegion({ targetEntityDefinitionId: "e".repeat(120) }))
+      validateRegion(baseRegion({ targetEntityDefinitionId: "e".repeat(58) }))
         .targetEntityDefinitionId
     ).toBeUndefined();
   });

@@ -43,10 +43,19 @@ export const descriptionField = (field = "Description") =>
 export const keyField = (field = "Key") =>
   z.string().max(KEY_MAX_LENGTH, tooLongMessage(field, KEY_MAX_LENGTH));
 
-/** For a name we generate ourselves (a provider account label): clip it
- *  rather than reject a connection the user can't fix. */
-export const clipToLength = (value: string, max: number): string =>
-  value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+/** For a name we generate ourselves (a provider account label, a file name):
+ *  clip it rather than reject a connection the user can't fix. The result,
+ *  ellipsis included, is at most `max` UTF-16 units (what the builders'
+ *  `.max()` counts), and a character made of two units is never split. */
+export const clipToLength = (value: string, max: number): string => {
+  if (value.length <= max) return value;
+  let clipped = "";
+  for (const char of value) {
+    if (clipped.length + char.length > max - 1) break;
+    clipped += char;
+  }
+  return `${clipped}…`;
+};
 
 export interface TextLimitIssue {
   path: (string | number)[];
@@ -55,18 +64,20 @@ export interface TextLimitIssue {
 
 /**
  * The user-authored text in a layout plan that becomes object fields: a
- * region's `targetEntityDefinitionId` (a new entity's label) and its binding
- * `normalizedKey` overrides. The commit-draft contract and the plan PATCH run
- * this; `LayoutPlanSchema` itself stays unbounded (see the file comment).
- * Paths are relative to the plan.
+ * region's `targetEntityDefinitionId`, which commit makes both the entity's
+ * key and its label (so it is held to the key limit), and its binding
+ * `normalizedKey` overrides. Every commit path runs this (the commit-draft
+ * contract, the plan PATCH, and committing a stored plan by id);
+ * `LayoutPlanSchema` itself stays unbounded (see the file comment). Paths
+ * are relative to the plan.
  */
 export function planTextLimitIssues(plan: LayoutPlan): TextLimitIssue[] {
   const issues: TextLimitIssue[] = [];
   plan.regions.forEach((region, r) => {
-    if (region.targetEntityDefinitionId.length > NAME_MAX_LENGTH) {
+    if (region.targetEntityDefinitionId.length > KEY_MAX_LENGTH) {
       issues.push({
         path: ["regions", r, "targetEntityDefinitionId"],
-        message: tooLongMessage("Entity label", NAME_MAX_LENGTH),
+        message: tooLongMessage("Entity key", KEY_MAX_LENGTH),
       });
     }
     region.columnBindings.forEach((binding, b) => {

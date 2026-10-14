@@ -1,6 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import {
+  DERIVED_KEY_MAX_LENGTH,
   sourceFieldToNormalizedKey,
   sourceLocatorToNormalizedKey,
 } from "../normalized-key.js";
@@ -74,5 +75,34 @@ describe("sourceLocatorToNormalizedKey", () => {
 
   it("falls back to raw normalisation when the prefix is unknown", () => {
     expect(sourceLocatorToNormalizedKey("weird:value")).toBe("weird_value");
+  });
+});
+
+// #801: a derived key becomes the `c_<key>` wide-table column, so a long
+// header can't produce a key past the request contracts' key limit.
+describe("derived key length (#801)", () => {
+  it("clips a long header to the key limit", () => {
+    const key = sourceFieldToNormalizedKey("Quarterly ".repeat(20));
+    expect(key.length).toBeLessThanOrEqual(DERIVED_KEY_MAX_LENGTH);
+    expect(key.startsWith("quarterly_quarterly")).toBe(true);
+  });
+
+  it("doesn't end a clipped key on an underscore", () => {
+    // 57 letters, then a separator that would land at the cut.
+    const key = sourceFieldToNormalizedKey(
+      `${"a".repeat(57)} b${"c".repeat(20)}`
+    );
+    expect(key.endsWith("_")).toBe(false);
+    expect(key).toMatch(/^[a-z][a-z0-9_]*$/);
+  });
+
+  it("leaves a key within the limit unchanged", () => {
+    expect(sourceFieldToNormalizedKey("k".repeat(58))).toBe("k".repeat(58));
+  });
+
+  it("clips through the locator form too", () => {
+    expect(
+      sourceLocatorToNormalizedKey(`header:row:${"Long ".repeat(30)}`).length
+    ).toBeLessThanOrEqual(DERIVED_KEY_MAX_LENGTH);
   });
 });

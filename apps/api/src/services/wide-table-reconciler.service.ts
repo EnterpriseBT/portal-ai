@@ -133,12 +133,19 @@ export function sanitizeColumnName(
     .replace(/^(c_)+/, "");
   const fit = (suffix: string) =>
     `c_${stripped.slice(0, PG_IDENTIFIER_MAX_BYTES - 2 - suffix.length)}${suffix}`;
+  // A column created before the clip has a catalog name over 63 bytes and a
+  // physical name Postgres truncated to 63, so that is what a new name must
+  // avoid too.
+  const physical = new Set(
+    [...taken].map((name) => name.slice(0, PG_IDENTIFIER_MAX_BYTES))
+  );
+  const free = (name: string) => !taken.has(name) && !physical.has(name);
   const base = fit("");
-  if (!taken.has(base)) return base;
+  if (free(base)) return base;
 
   for (let i = 2; ; i++) {
     const candidate = fit(`_${i}`);
-    if (!taken.has(candidate)) return candidate;
+    if (free(candidate)) return candidate;
   }
 }
 

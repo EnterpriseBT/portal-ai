@@ -1,4 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
+import { DERIVED_KEY_MAX_LENGTH } from "@portalai/spreadsheet-parsing";
 
 import {
   DESCRIPTION_MAX_LENGTH,
@@ -19,6 +20,11 @@ const firstMessage = (r: {
 }) => (r.success ? undefined : r.error!.issues[0]!.message);
 
 describe("text limits (#801)", () => {
+  it("the parser derives keys to the same limit", () => {
+    // spreadsheet-parsing can't import core, so it keeps its own copy.
+    expect(DERIVED_KEY_MAX_LENGTH).toBe(KEY_MAX_LENGTH);
+  });
+
   it("pins the three limits", () => {
     expect(NAME_MAX_LENGTH).toBe(120);
     expect(DESCRIPTION_MAX_LENGTH).toBe(2000);
@@ -96,6 +102,25 @@ describe("text limits (#801)", () => {
       expect(clipToLength("a".repeat(120), 120)).toBe("a".repeat(120));
     });
 
+    it("never splits a character made of two UTF-16 units", () => {
+      // An emoji straddling the cut: a code-unit slice would leave half of it.
+      // The emoji would end at unit 120, leaving no room for the ellipsis,
+      // so it's dropped whole.
+      const clipped = clipToLength(
+        `${"a".repeat(118)}😀${"b".repeat(10)}`,
+        120
+      );
+      expect(clipped).toBe(`${"a".repeat(118)}…`);
+      expect(nameField().safeParse(clipped).success).toBe(true);
+      const fits = clipToLength(`${"a".repeat(117)}😀${"b".repeat(10)}`, 120);
+      expect(fits).toBe(`${"a".repeat(117)}😀…`);
+      expect(fits).toHaveLength(120);
+      // No lone surrogate anywhere.
+      expect(clipped).not.toMatch(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+      );
+    });
+
     it("clips to exactly the limit with a trailing ellipsis", () => {
       const clipped = clipToLength("a".repeat(300), 120);
       expect(clipped).toHaveLength(120);
@@ -119,18 +144,18 @@ describe("text limits (#801)", () => {
     it("returns no issues for a plan within the limits", () => {
       expect(
         planTextLimitIssues(
-          plan([region("People", ["name", undefined, "k".repeat(58)])])
+          plan([region("e".repeat(58), ["name", undefined, "k".repeat(58)])])
         )
       ).toEqual([]);
     });
 
-    it("reports an over-length new-entity label at its plan path", () => {
+    it("reports an over-length entity key at its plan path", () => {
       expect(
-        planTextLimitIssues(plan([region("ok"), region("a".repeat(121))]))
+        planTextLimitIssues(plan([region("ok"), region("e".repeat(59))]))
       ).toEqual([
         {
           path: ["regions", 1, "targetEntityDefinitionId"],
-          message: "Entity label must be 120 characters or fewer",
+          message: "Entity key must be 58 characters or fewer",
         },
       ]);
     });

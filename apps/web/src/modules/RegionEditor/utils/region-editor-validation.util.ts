@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  KEY_MAX_LENGTH,
-  NAME_MAX_LENGTH,
-  tooLongMessage,
-} from "@portalai/core/contracts";
+import { KEY_MAX_LENGTH, tooLongMessage } from "@portalai/core/contracts";
 
 import type { FormErrors } from "../../../utils/form-validation.util";
 import type { ColumnBindingDraft, RegionDraft } from "./region-editor.types";
@@ -70,11 +66,12 @@ export function validateRegion(region: RegionDraft): RegionErrors {
   // --- Entity ---
   if (!region.targetEntityDefinitionId) {
     errors.targetEntityDefinitionId = "Target entity is required";
-  } else if (region.targetEntityDefinitionId.length > NAME_MAX_LENGTH) {
-    // #801: commit makes this a new entity's label (planTextLimitIssues).
+  } else if (region.targetEntityDefinitionId.length > KEY_MAX_LENGTH) {
+    // #801: commit makes this the entity's key and label
+    // (planTextLimitIssues).
     errors.targetEntityDefinitionId = tooLongMessage(
-      "Entity label",
-      NAME_MAX_LENGTH
+      "Entity key",
+      KEY_MAX_LENGTH
     );
   }
 

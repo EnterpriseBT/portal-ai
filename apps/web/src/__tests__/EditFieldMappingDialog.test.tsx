@@ -126,7 +126,6 @@ describe("EditFieldMappingDialog", () => {
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({
-          normalizedKey: "email",
           required: true,
           defaultValue: null,
           format: null,
@@ -134,6 +133,8 @@ describe("EditFieldMappingDialog", () => {
         })
       );
     });
+    // #801: an unchanged key isn't resent (see the length-limit cases).
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("normalizedKey");
   });
 
   it("should send trimmed defaultValue and format, or null when empty", async () => {
@@ -351,5 +352,47 @@ describe("EditFieldMappingDialog", () => {
     );
     expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
     expect(screen.getByText(/currency for 2 decimals/)).toBeInTheDocument();
+  });
+});
+
+// #801: the key limit shows inline, and a mapping saved before the limit (a
+// key derived from a long header) can still be edited without renaming it.
+describe("EditFieldMappingDialog — length limits (#801)", () => {
+  it("shows the key limit for a changed key and doesn't submit", async () => {
+    const onSubmit = jest.fn();
+    render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    const key = screen.getByLabelText(/Normalized Key/);
+    fireEvent.change(key, { target: { value: "k".repeat(59) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Normalized key must be 58 characters or fewer")
+    ).toBeInTheDocument();
+    expect(key).toHaveAttribute("aria-invalid", "true");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("saves other changes to a mapping whose existing key is longer", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        fieldMapping={{ ...defaultFieldMapping, normalizedKey: "k".repeat(80) }}
+        onSubmit={onSubmit}
+      />
+    );
+    // Source field isn't a revalidation field, so Save submits directly.
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "user_email_2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceField: "user_email_2" })
+      )
+    );
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("normalizedKey");
+    expect(
+      screen.queryByText("Normalized key must be 58 characters or fewer")
+    ).not.toBeInTheDocument();
   });
 });

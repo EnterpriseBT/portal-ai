@@ -886,10 +886,10 @@ describe("Layout Plans Draft Router", () => {
       ).toHaveLength(0);
     });
 
-    // #801: a new entity's label comes from the plan's targetEntityDefinitionId,
-    // so the commit request holds it to the name limit before anything is
-    // created.
-    it("#801: refuses a plan whose new-entity label is over the limit and creates nothing", async () => {
+    // #801: commit makes the plan's targetEntityDefinitionId an entity's key and
+    // label, so the commit request holds it to the key limit before anything
+    // is created.
+    it("#801: refuses a plan whose entity key is over the limit and creates nothing", async () => {
       const emailId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -909,7 +909,7 @@ describe("Layout Plans Draft Router", () => {
       const plan = makePlan(emailId, nameId);
       plan.regions[0] = {
         ...plan.regions[0],
-        targetEntityDefinitionId: "e".repeat(121),
+        targetEntityDefinitionId: "e".repeat(59),
       };
 
       const res = await request(app)
@@ -924,7 +924,7 @@ describe("Layout Plans Draft Router", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain(
-        "Entity label must be 120 characters or fewer"
+        "Entity key must be 58 characters or fewer"
       );
       const instances = await (db as Db)
         .select()

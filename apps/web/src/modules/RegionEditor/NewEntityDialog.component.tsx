@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Modal, Button, TextInput, Stack } from "@portalai/core/ui";
 import { z } from "zod";
-import { keyField, nameField } from "@portalai/core/contracts";
+import { KEY_MAX_LENGTH, keyField, nameField } from "@portalai/core/contracts";
 
 import {
   focusFirstInvalidField,
@@ -36,28 +36,38 @@ export interface NewEntityDialogUIProps {
 const KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 function slugify(label: string): string {
-  return label
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .replace(/_+/g, "_");
+  return (
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_")
+      // #801: a key the user didn't type still fits the key limit.
+      .slice(0, KEY_MAX_LENGTH)
+      .replace(/_+$/, "")
+  );
 }
 
 function buildSchema(existingKeys: string[]) {
   const taken = new Set(existingKeys);
   return z.object({
     label: nameField("Label"),
-    key: keyField()
+    // Trimmed before the limit is measured, as nameField does.
+    key: z
+      .string()
       .trim()
-      .min(1, "Key is required")
-      .regex(
-        KEY_PATTERN,
-        "Use lowercase letters, digits, and underscores; must start with a letter"
-      )
-      .refine((k) => !taken.has(k), {
-        message: "Key is already used by another entity",
-      }),
+      .pipe(
+        keyField()
+          .min(1, "Key is required")
+          .regex(
+            KEY_PATTERN,
+            "Use lowercase letters, digits, and underscores; must start with a letter"
+          )
+          .refine((k) => !taken.has(k), {
+            message: "Key is already used by another entity",
+          })
+      ),
   });
 }
 

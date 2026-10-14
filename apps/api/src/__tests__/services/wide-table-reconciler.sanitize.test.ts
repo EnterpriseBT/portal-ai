@@ -65,6 +65,18 @@ describe("sanitizeColumnName", () => {
       }
     });
 
+    it("treats a column Postgres already truncated as taken", () => {
+      // Created before the limit: the catalog holds the full name, Postgres
+      // holds its first 63 bytes.
+      const legacy = `c_${"p".repeat(70)}`;
+      const next = sanitizeColumnName(
+        `${"p".repeat(61)}_other`,
+        new Set([legacy])
+      );
+      expect(next).not.toBe(legacy.slice(0, 63));
+      expect(bytes(next)).toBeLessThanOrEqual(63);
+    });
+
     it("leaves a key that already fits unchanged", () => {
       expect(sanitizeColumnName("k".repeat(58), new Set())).toBe(
         `c_${"k".repeat(58)}`

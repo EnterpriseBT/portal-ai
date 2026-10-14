@@ -278,20 +278,20 @@ describe("request contracts adopt the text limits (#801)", () => {
     it("accepts a plan within the limits", () => {
       const result = parse(
         "LayoutPlanCommitDraftRequestBodySchema",
-        body(plan(N(120), K(58)))
+        body(plan(K(58), K(58)))
       );
       expect(result.error?.issues ?? []).toEqual([]);
     });
 
-    it("rejects an over-length new-entity label at its plan path", () => {
+    it("rejects an over-length entity key at its plan path", () => {
       const result = parse(
         "LayoutPlanCommitDraftRequestBodySchema",
-        body(plan(N(121)))
+        body(plan(K(59)))
       );
       expect(result.error!.issues).toEqual([
         expect.objectContaining({
           path: ["plan", "regions", 0, "targetEntityDefinitionId"],
-          message: "Entity label must be 120 characters or fewer",
+          message: "Entity key must be 58 characters or fewer",
         }),
       ]);
     });
