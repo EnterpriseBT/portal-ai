@@ -256,6 +256,15 @@ Run with `cd packages/core && npm run test:unit`, `cd packages/spreadsheet-parsi
 - **`builtin-toolpacks.ts`** needs no change. Its parameter mirror carries descriptions only, with no limits or patterns for any tool.
 - **RegionEditor.** The panel's "Label" field (`proposedLabel`) is an interpret hint, exempt like the interpret schemas, and isn't capped. `validateRegion` checks `targetEntityDefinitionId` instead, which commit turns into the entity label, and `NewEntityDialog` caps the label and key the user types.
 - **Also capped in the web:** the REST API connector's `validateEndpoint` (key, label) and `validateColumnRows` (normalizedKey). `EditStationDialog` has no description field, so it caps the name only.
+- **Code-review fixes** (after slice 4):
+  - A plan region's `targetEntityDefinitionId` is held to `KEY_MAX_LENGTH` (58), not the name limit: commit makes it both the entity's key and its label.
+  - `planTextLimitIssues` also runs when a stored plan is committed by id (`LayoutPlanDraftService.prepareRecommit`), since interpret stores region hints as given.
+  - Keys derived from long headers are clipped in `sourceFieldToNormalizedKey`. The parser package keeps its own `DERIVED_KEY_MAX_LENGTH`, pinned equal to core's by a test.
+  - Connector names the web builds from a file name or a sheet/workbook title go through `generatedConnectorName` (`apps/web/src/utils/connector-instance-name.util.ts`).
+  - Edit Field Mapping resends `normalizedKey` only when it changed.
+  - `clipToLength` clips by code point within `max` UTF-16 units.
+  - `sanitizeColumnName` also avoids names Postgres truncated before the clip.
+  - The GIST index name truncation the review found is #804.
 - **Contract cases** (test plan 7–8) live in one table-driven file, `packages/core/src/__tests__/contracts/text-limits.adoption.test.ts`, not in each contract's own test file.
 
 ## Next step
