@@ -504,7 +504,10 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
     <Stack
       component="form"
       noValidate
-      onSubmit={handleOwnSubmit(onCommit)}
+      onSubmit={handleOwnSubmit(() => {
+        // Also stops a submit that skips the disabled default button.
+        if (!commitDisabled) onCommit();
+      })}
       spacing={2}
       sx={{ width: "100%", minWidth: 0 }}
     >

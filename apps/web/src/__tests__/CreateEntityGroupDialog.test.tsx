@@ -16,6 +16,17 @@ const defaultProps = {
 const nameField = () => screen.getByRole("textbox", { name: /^name/i });
 
 describe("CreateEntityGroupDialog", () => {
+  it("opens empty after the parent closes it on success", async () => {
+    // The parent closes on success without going through Cancel, so the
+    // form clears when it opens, not only when it closes itself.
+    const user = userEvent.setup();
+    const { rerender } = render(<CreateEntityGroupDialog {...defaultProps} />);
+    await user.type(nameField(), "Customers");
+    rerender(<CreateEntityGroupDialog {...defaultProps} open={false} />);
+    rerender(<CreateEntityGroupDialog {...defaultProps} open />);
+    await waitFor(() => expect(nameField()).toHaveValue(""));
+  });
+
   const user = userEvent.setup();
 
   beforeEach(() => {

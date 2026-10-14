@@ -128,6 +128,24 @@ describe("useAuthMutation write timeout (#789)", () => {
     expect(REQUEST_TIMEOUT_MESSAGE).toMatch(/may still finish/);
   });
 
+  it("bounds a write whose token refresh hangs", async () => {
+    // The timer covers the whole request, not just fetch: a stalled Auth0
+    // refresh would otherwise leave the dialog pending and undismissible.
+    const fetchMock = hangingFetch();
+    mockAuthValue.getToken.mockImplementationOnce(
+      () => new Promise<string>(() => {})
+    );
+    const { result } = renderMutation();
+    let outcome!: ReturnType<typeof start>;
+    await act(async () => {
+      outcome = start(result.current.mutateAsync, { id: "s1", name: "A" });
+      await jest.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS);
+    });
+    expect(outcome.settled).toBe(true);
+    expect((outcome.error as { code?: string }).code).toBe("REQUEST_TIMEOUT");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("lets an endpoint extend the bound", async () => {
     hangingFetch();
     const { result } = renderMutation({ timeoutMs: LONG_WRITE_TIMEOUT_MS });

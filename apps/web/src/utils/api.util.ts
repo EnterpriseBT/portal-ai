@@ -69,6 +69,19 @@ function boundedSignal(ms: number, outer?: AbortSignal | null) {
   return {
     signal: controller.signal,
     timedOut: () => fired,
+    /** Settles with `work`, or rejects once the signal aborts. Covers the
+     *  steps before `fetch` sees the signal (a hung token refresh); a token
+     *  that arrives late meets an aborted signal, so nothing is sent. */
+    race: <T>(work: Promise<T>): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const signal = controller.signal;
+        const onAbort = () => reject(signal.reason);
+        if (signal.aborted) return onAbort();
+        signal.addEventListener("abort", onAbort, { once: true });
+        work.then(resolve, reject).finally(() => {
+          signal.removeEventListener("abort", onAbort);
+        });
+      }),
     clear: () => {
       clearTimeout(timer);
       outer?.removeEventListener("abort", onOuterAbort);
@@ -379,7 +392,7 @@ export const useAuthMutation = <TData, TVariables>({
         : boundedSignal(timeoutMs ?? WRITE_TIMEOUT_MS, options?.signal);
       let response: ApiSuccessResponse<TData>;
       try {
-        response = await fetchWithAuth<ApiSuccessResponse<TData>>(request.url, {
+        const sent = fetchWithAuth<ApiSuccessResponse<TData>>(request.url, {
           ...options,
           ...(bound ? { signal: bound.signal } : {}),
           method,
@@ -391,6 +404,7 @@ export const useAuthMutation = <TData, TVariables>({
               }
             : {}),
         });
+        response = await (bound ? bound.race(sent) : sent);
       } catch (error) {
         if (bound?.timedOut()) {
           throw new ApiError(REQUEST_TIMEOUT_MESSAGE, "REQUEST_TIMEOUT", 0);

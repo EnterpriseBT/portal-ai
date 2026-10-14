@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Box,
   Stack,
@@ -116,6 +122,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   loadSlice,
 }) => {
   const [attemptedInterpret, setAttemptedInterpret] = useState(false);
+  const rootRef = useRef<HTMLFormElement>(null);
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up("lg"));
   const activeSheet =
@@ -303,6 +310,14 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
           return;
         }
       }
+      // A dialog, menu or listbox opened over the step owns its own keys:
+      // capture runs before it, so without this Escape would deselect the
+      // region instead of closing it. A popup is "over" the step when it
+      // doesn't contain the step (the wizard's own dialog does).
+      const popup = target?.closest?.(
+        '[role="dialog"], [role="menu"], [role="listbox"]'
+      );
+      if (popup && !popup.contains(rootRef.current)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onSelectRegion(null);
@@ -361,12 +376,18 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   // Interprets exactly when the Interpret button could. A field that owns
   // Enter (the bounds inputs) prevents it first.
   const interpretDisabled = regions.length === 0;
+  // The disabled default button blocks implicit submission; this also stops
+  // a submit that skips it (requestSubmit, assistive tech).
+  const submitInterpret = () => {
+    if (!interpretDisabled) handleInterpret();
+  };
 
   return (
     <Stack
       component="form"
       noValidate
-      onSubmit={handleOwnSubmit(handleInterpret)}
+      ref={rootRef}
+      onSubmit={handleOwnSubmit(submitInterpret)}
       spacing={2}
       sx={{
         width: "100%",

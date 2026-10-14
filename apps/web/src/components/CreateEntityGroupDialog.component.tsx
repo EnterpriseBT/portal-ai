@@ -54,18 +54,23 @@ export const CreateEntityGroupDialog: React.FC<
     onSubmit(body);
   };
 
-  const handleClose = () => {
-    setName("");
-    setDescription("");
-    setErrors({});
-    setTouched({});
-    onClose();
-  };
+  // Clear on open, not on close: the parent closes on success without
+  // going through Cancel, so a close-time reset left the last group behind.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setName("");
+      setDescription("");
+      setErrors({});
+      setTouched({});
+    }
+  }
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
       title="Create Entity Group"
       maxWidth="sm"
       fullWidth
@@ -77,7 +82,7 @@ export const CreateEntityGroupDialog: React.FC<
           <Button
             type="button"
             variant="outlined"
-            onClick={handleClose}
+            onClick={onClose}
             disabled={isPending}
           >
             Cancel

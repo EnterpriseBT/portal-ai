@@ -404,4 +404,47 @@ describe("RegionDrawingStepUI — keyboard (#789)", () => {
     expect(onSelectRegion).toHaveBeenCalledWith(null);
     expect(onClose).not.toHaveBeenCalled();
   });
+  test("Escape in a dialog opened over the step closes that dialog, not the region", async () => {
+    const user = userEvent.setup();
+    const onSelectRegion = jest.fn();
+    const onNestedClose = jest.fn();
+    render(
+      <Modal open onClose={jest.fn()} title="Wizard">
+        <RegionDrawingStepUI {...baseProps({ onSelectRegion })} />
+        <Modal open onClose={onNestedClose} title="Nested">
+          <button type="button">Nested action</button>
+        </Modal>
+      </Modal>
+    );
+    screen.getByRole("button", { name: "Nested action" }).focus();
+    await user.keyboard("{Escape}");
+    expect(onSelectRegion).not.toHaveBeenCalled();
+    expect(onNestedClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("Escape in an open menu over the step leaves the region selected", () => {
+    const onSelectRegion = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onSelectRegion })} />);
+    const listbox = document.createElement("ul");
+    listbox.setAttribute("role", "listbox");
+    const option = document.createElement("li");
+    option.tabIndex = 0;
+    listbox.appendChild(option);
+    document.body.appendChild(listbox);
+    fireEvent.keyDown(option, { key: "Escape" });
+    expect(onSelectRegion).not.toHaveBeenCalled();
+    listbox.remove();
+  });
+
+  test("a submit that skips the default button can't Interpret with no regions", () => {
+    const onInterpret = jest.fn();
+    render(
+      <RegionDrawingStepUI {...baseProps({ onInterpret, regions: [] })} />
+    );
+    const form = screen
+      .getByRole("button", { name: "Interpret" })
+      .closest("form") as HTMLFormElement;
+    form.requestSubmit();
+    expect(onInterpret).not.toHaveBeenCalled();
+  });
 });

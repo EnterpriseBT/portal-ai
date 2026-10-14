@@ -21,6 +21,7 @@ import {
   useAuthQuery,
   useAuthMutation,
   useAuthFetch,
+  LONG_WRITE_TIMEOUT_MS,
   type ApiError,
 } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -119,10 +120,12 @@ export const connectorEntities = {
       },
     }),
 
+  // Cascades over the entity's records in one transaction: the long bound.
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorEntities.root],
       },

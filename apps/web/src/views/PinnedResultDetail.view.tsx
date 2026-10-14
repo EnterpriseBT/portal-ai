@@ -79,6 +79,9 @@ export interface PinnedResultDetailUIProps {
   /** Opens the delete confirmation (owned by the container, #789). */
   onDeleteClick: () => void;
   onUnpin: () => void;
+  /** The shared remove request (Unpin or Delete) is in flight: both actions
+   *  are disabled until it settles (#789). */
+  removing?: boolean;
   onOpenPortal: (portalId: string, messageId: string | null) => void;
   onNavigate: (href: string) => void;
 }
@@ -92,10 +95,15 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   onRenameClick,
   onDeleteClick,
   onUnpin,
+  removing = false,
   onOpenPortal,
   onNavigate,
 }) => {
   const contentBlock = toContentBlock(result);
+  const removeGate = decideActionGate({
+    allowed: canDelete,
+    blocked: removing ? "Removing this pin…" : undefined,
+  });
 
   return (
     <Box>
@@ -118,7 +126,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
               startIcon={<PushPinIcon />}
               onClick={onUnpin}
               data-testid="unpin-btn"
-              gate={decideActionGate({ allowed: canDelete })}
+              gate={removeGate}
             >
               Unpin
             </GatedButton>
@@ -153,7 +161,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
               icon: <DeleteIcon />,
               onClick: onDeleteClick,
               color: "error" as const,
-              gate: decideActionGate({ allowed: canDelete }),
+              gate: removeGate,
             },
           ]}
         >
@@ -340,6 +348,7 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
               onRenameClick={openRename}
               onDeleteClick={openDelete}
               onUnpin={handleUnpin}
+              removing={removeMutation.isPending}
               onOpenPortal={handleOpenPortal}
               onNavigate={handleNavigate}
             />

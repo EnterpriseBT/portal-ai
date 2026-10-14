@@ -289,6 +289,27 @@ describe("ReviewStepUI — keyboard and commit (#789)", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  test("a submit that skips the default button can't commit a blocked or running plan", () => {
+    const onCommit = jest.fn();
+    const { unmount } = setup({
+      onCommit,
+      commitDisabledReason: "Fix the bindings first.",
+    });
+    (
+      screen
+        .getByRole("button", { name: "Commit plan" })
+        .closest("form") as HTMLFormElement
+    ).requestSubmit();
+    unmount();
+    setup({ onCommit, isCommitting: true });
+    (
+      screen
+        .getByRole("button", { name: /Committing/ })
+        .closest("form") as HTMLFormElement
+    ).requestSubmit();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   test("Back to regions is disabled while committing", () => {
     setup({ isCommitting: true });
     expect(

@@ -399,6 +399,63 @@ describe("Modal Component", () => {
       );
     });
 
+    // A focused button owns Enter: the browser clicks it, and implicit
+    // submission only comes from text fields, so the dialog doesn't submit.
+    it("Enter on a focused secondary button runs that button, not submit", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const onAddRow = jest.fn();
+      render(
+        <FormModal onSubmit={onSubmit}>
+          <button type="button" onClick={onAddRow}>
+            Add row
+          </button>
+        </FormModal>
+      );
+      screen.getByRole("button", { name: "Add row" }).focus();
+      await user.keyboard("{Enter}");
+      expect(onAddRow).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it("Enter on a focused Cancel cancels without submitting", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const onCancel = jest.fn();
+      render(
+        <Modal
+          open
+          onClose={onCancel}
+          title="Form"
+          onSubmit={onSubmit}
+          submitDisabled={false}
+          pending={false}
+          actions={
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          }
+        >
+          <input aria-label="Name" />
+        </Modal>
+      );
+      screen.getByRole("button", { name: "Cancel" }).focus();
+      await user.keyboard("{Enter}");
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it("Enter on the focused close button closes without submitting", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const onClose = jest.fn();
+      render(<FormModal onSubmit={onSubmit} onClose={onClose} />);
+      screen.getByRole("button", { name: /close/i }).focus();
+      await user.keyboard("{Enter}");
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
     it("clicking the visible action still fires once", async () => {
       const user = userEvent.setup();
       const onSubmit = jest.fn();

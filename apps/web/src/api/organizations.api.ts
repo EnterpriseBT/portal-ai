@@ -8,7 +8,11 @@ import type {
   OrganizationDeleteRequest,
   OrganizationDeleteResponse,
 } from "@portalai/core/contracts";
-import { useAuthQuery, useAuthMutation } from "../utils/api.util";
+import {
+  useAuthQuery,
+  useAuthMutation,
+  LONG_WRITE_TIMEOUT_MS,
+} from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -58,10 +62,12 @@ export const organizations = {
     }),
   /** Owner-only org deletion (#197). The variables ARE the request body
    *  ({ confirmationName } — the server-verified type-to-confirm gate).
-   *  Consumers log out on success, so no cache invalidation is needed. */
+   *  Consumers log out on success, so no cache invalidation is needed.
+   *  It drops every entity's wide table in one transaction: the long bound. */
   delete: (id: string) =>
     useAuthMutation<OrganizationDeleteResponse, OrganizationDeleteRequest>({
       url: `/api/organization/${encodeURIComponent(id)}`,
       method: "DELETE",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
     }),
 };

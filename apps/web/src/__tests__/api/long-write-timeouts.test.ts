@@ -23,13 +23,15 @@ const { toolpacks } = await import("../../api/toolpacks.api");
 const { portalSql } = await import("../../api/portal-sql.api");
 const { portalResults } = await import("../../api/portal-results.api");
 const { entityRecords } = await import("../../api/entity-records.api");
+const { connectorEntities } = await import("../../api/connector-entities.api");
+const { organizations } = await import("../../api/organizations.api");
 
 const timeoutOf = () =>
   (mockUseAuthMutation.mock.calls[0][0] as { timeoutMs?: number }).timeoutMs;
 
 // #789: writes default to a 30s bound. These answer synchronously after slow
 // work (a model call, a commit, a remote probe or webhook, a SQL re-run, an
-// inline import), so each declares the long bound on its SDK endpoint.
+// inline import, a cascade delete), so each declares the long bound on its SDK endpoint.
 describe("long write timeouts (#789)", () => {
   beforeEach(() => {
     mockUseAuthMutation.mockReset();
@@ -69,6 +71,12 @@ describe("long write timeouts (#789)", () => {
       () => connectorInstances.testConnection("ci-1"),
     ],
     ["toolpacks.refresh", () => toolpacks.refresh()],
+    ["toolpacks.register", () => toolpacks.register()],
+    ["toolpacks.update", () => toolpacks.update("tp-1")],
+    // Cascade deletes: every record and wide table, in one transaction.
+    ["connectorInstances.delete", () => connectorInstances.delete("ci-1")],
+    ["connectorEntities.delete", () => connectorEntities.delete("ce-1")],
+    ["organizations.delete", () => organizations.delete("org-1")],
     ["portalSql.widgetRefresh", () => portalSql.widgetRefresh()],
     ["portalResults.refresh", () => portalResults.refresh()],
     ["entityRecords.import", () => entityRecords.import("ce-1")],

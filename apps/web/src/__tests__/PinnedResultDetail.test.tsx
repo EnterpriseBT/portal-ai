@@ -282,6 +282,30 @@ describe("PinnedResultDetailUI", () => {
     expect(onDeleteClick).toHaveBeenCalledTimes(1);
   });
 
+  // #789: Unpin and Delete share one remove request. While it's in flight
+  // neither can start again, so opening Delete can't reset (and lose track
+  // of) a running Unpin.
+  it("disables Unpin and Delete while the pin is being removed", () => {
+    const onUnpin = jest.fn();
+    const onDeleteClick = jest.fn();
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        canDelete
+        removing
+        onUnpin={onUnpin}
+        onDeleteClick={onDeleteClick}
+      />
+    );
+    const unpin = screen.getByTestId("unpin-btn");
+    expect(unpin).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(unpin);
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete/i }));
+    expect(onUnpin).not.toHaveBeenCalled();
+    expect(onDeleteClick).not.toHaveBeenCalled();
+  });
+
   it("should render Open Source Portal in actions menu when portalId is present", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
