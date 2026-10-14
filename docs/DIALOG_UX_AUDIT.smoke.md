@@ -32,7 +32,7 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 
 - [ ] `/stations` → **New Station**: type "Smoke station" in Name and press **Enter**. The station is created and the dialog closes.
 - [ ] Reopen it, clear Name, press **Enter**. Nothing is sent (no POST in the network log). "Name is required" shows and Name is focused.
-- [ ] `/entity-groups` → **Create Entity Group**: a dialog with two text fields. Type a name in **Description**, not Name, and press Enter. It validates (Name error, Name focused) and doesn't submit.
+- [ ] `/entity-groups` → **Create Entity Group**: type in **Description**, leave Name empty, then press **Enter** in Name. Nothing is sent, and Name shows its error and has focus. Enter in Description (a multiline field) adds a newline and doesn't submit.
 - [ ] `/portals/<id>` → **Rename**: change the name and press **Enter**. It renames, the case #758 broke.
 - [ ] `/portal-results/<id>` → actions → **Rename**: press Enter with the name unchanged, then changed. It saves only when Save is enabled (the old raw-Dialog bug: it submitted while Save was disabled).
 - [ ] Hold the request pending (see top), submit any dialog, then press **Enter** three more times. Exactly **one** request is in the network log.
@@ -73,8 +73,8 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 
 ## §7 — Static guarantees (AC7, AC8) — backend
 
-- [ ] — backend — `grep -rn "@mui/material/Dialog\"" apps/web/src` → no results
-- [ ] — backend — `grep -rn "fireEvent.submit" apps/web/src --include=*.test.tsx` → only `dialog-single-flight.integration.test.tsx` and the guard's own fixtures
+- [ ] — backend — `grep -rn '@mui/material/Dialog"' apps/web/src --exclude='*.stories.tsx' --exclude='*.test.tsx' --exclude='*.test.ts'` → no results (stories, tests and the guard's fixtures may name it; no component imports it)
+- [ ] — backend — `grep -rln "fireEvent.submit(" apps/web/src --include='*.test.tsx' --include='*.test.ts'` → only `dialog-single-flight.integration.test.tsx` and `dialog-contract.guard.test.ts` (its fixtures)
 - [ ] — backend — `npm run test:unit --workspace=@portalai/web -- --testPathPattern dialog-contract` → green (R1–R5)
 - [ ] — manual — `CLAUDE.md` → Form & Dialog Pattern and `.github/copilot-instructions.md` describe `onSubmit`/`submitDisabled`/`pending`, the timeout, R1–R5, the Component File Policy amendment, the entity-record exception, and the focused-control Enter rule
 
@@ -100,7 +100,7 @@ Keyboard steps are walkable. The screen-reader steps need VoiceOver (macOS: ⌘F
 - [ ] **Double activation:** hold the request; click Create, then press Enter immediately. Exactly one request is sent.
 - [ ] **Nested forms:** in the REST API wizard, submit the embedded endpoint form (Enter in its URL field). The wizard does **not** advance.
 - [ ] **Escape owned by a menu:** in any dialog with a select (e.g. Share → "Share with"), open the menu and press Escape. The menu closes and the dialog stays open.
-- [ ] **Entity-record exception:** `/entities/<id>` → the **New Record** dialog with a required column empty → submit. The error shows on that field, it's focused, and `aria-invalid="true"`.
+- [ ] **Entity-record exception:** `/entities/<id>` → the **New Record** dialog with a required column empty → submit, once with Enter in another field and once by clicking Create. The error shows on that field, it's focused, and `aria-invalid="true"`. Same for **Edit Record** (clear a required field, Save) and **Delete All Records** (mistyped confirmation, confirm).
 
 ---
 
