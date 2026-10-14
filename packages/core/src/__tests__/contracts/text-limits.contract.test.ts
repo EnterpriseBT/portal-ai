@@ -141,6 +141,14 @@ describe("text limits (#801)", () => {
       ),
     });
 
+    it("tolerates a stored plan with no regions or bindings", () => {
+      // A stored plan is raw JSON; the commit-by-id path doesn't parse it.
+      expect(planTextLimitIssues({} as unknown as LayoutPlan)).toEqual([]);
+      expect(
+        planTextLimitIssues(plan([{ targetEntityDefinitionId: "e" }]))
+      ).toEqual([]);
+    });
+
     it("returns no issues for a plan within the limits", () => {
       expect(
         planTextLimitIssues(

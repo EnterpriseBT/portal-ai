@@ -73,14 +73,16 @@ export interface TextLimitIssue {
  */
 export function planTextLimitIssues(plan: LayoutPlan): TextLimitIssue[] {
   const issues: TextLimitIssue[] = [];
-  plan.regions.forEach((region, r) => {
-    if (region.targetEntityDefinitionId.length > KEY_MAX_LENGTH) {
+  // A stored plan is raw JSON that the commit-by-id path doesn't parse, so a
+  // missing array or field reads as "nothing to check", never a throw.
+  (plan.regions ?? []).forEach((region, r) => {
+    if ((region.targetEntityDefinitionId?.length ?? 0) > KEY_MAX_LENGTH) {
       issues.push({
         path: ["regions", r, "targetEntityDefinitionId"],
         message: tooLongMessage("Entity key", KEY_MAX_LENGTH),
       });
     }
-    region.columnBindings.forEach((binding, b) => {
+    (region.columnBindings ?? []).forEach((binding, b) => {
       if ((binding.normalizedKey?.length ?? 0) > KEY_MAX_LENGTH) {
         issues.push({
           path: ["regions", r, "columnBindings", b, "normalizedKey"],
