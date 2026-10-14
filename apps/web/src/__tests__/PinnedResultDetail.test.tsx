@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import userEvent from "@testing-library/user-event";
 import type { PortalResult } from "@portalai/core/models";
 import type { UseMutationResult } from "@tanstack/react-query";
 import type { ToastApi } from "../utils/toast.context";
@@ -9,6 +10,7 @@ const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 const mockRename = jest.fn();
 const mockPinRefresh = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 let currentGetQuery: Record<string, unknown> = {};
+let renamePending = false;
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -17,12 +19,16 @@ jest.unstable_mockModule("../api/sdk", () => ({
       rename: () =>
         ({
           mutate: mockRename,
-          isPending: false,
+          reset: jest.fn(),
+          isPending: renamePending,
+          error: null,
         }) as Partial<UseMutationResult>,
       remove: () =>
         ({
           mutateAsync: mockRemove,
+          reset: jest.fn(),
           isPending: false,
+          error: null,
         }) as Partial<UseMutationResult>,
       refresh: () =>
         ({
@@ -106,8 +112,8 @@ const defaultProps = {
   canShare: true,
   canWrite: true,
   canDelete: true,
-  onRename: jest.fn(),
-  onDelete: jest.fn(),
+  onRenameClick: jest.fn(),
+  onDeleteClick: jest.fn(),
   onUnpin: jest.fn(),
   onOpenPortal: jest.fn(),
   onNavigate: jest.fn(),
@@ -255,33 +261,25 @@ describe("PinnedResultDetailUI", () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
-  it("should open rename dialog and call onRename on submit", () => {
-    const onRename = jest.fn();
-    render(<PinnedResultDetailUI {...defaultProps} onRename={onRename} />);
-
-    // Open the actions menu
+  // #789: the dialogs belong to the container; the UI only asks for them.
+  it("asks to open the rename dialog from the actions menu", () => {
+    const onRenameClick = jest.fn();
+    render(
+      <PinnedResultDetailUI {...defaultProps} onRenameClick={onRenameClick} />
+    );
     fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Rename/i }));
-    expect(screen.getByText("Rename Result")).toBeInTheDocument();
-
-    const input = screen.getByTestId("rename-input").querySelector("input")!;
-    fireEvent.change(input, { target: { value: "Updated Name" } });
-    fireEvent.click(screen.getByTestId("rename-submit"));
-
-    expect(onRename).toHaveBeenCalledWith("Updated Name");
+    expect(onRenameClick).toHaveBeenCalledTimes(1);
   });
 
-  it("should open delete dialog and call onDelete on confirm", () => {
-    const onDelete = jest.fn();
-    render(<PinnedResultDetailUI {...defaultProps} onDelete={onDelete} />);
-
-    // Open the actions menu
+  it("asks to open the delete confirmation from the actions menu", () => {
+    const onDeleteClick = jest.fn();
+    render(
+      <PinnedResultDetailUI {...defaultProps} onDeleteClick={onDeleteClick} />
+    );
     fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Delete/i }));
-    expect(screen.getByText("Delete Pinned Result")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("delete-confirm"));
-    expect(onDelete).toHaveBeenCalled();
+    expect(onDeleteClick).toHaveBeenCalledTimes(1);
   });
 
   it("should render Open Source Portal in actions menu when portalId is present", () => {
@@ -561,5 +559,60 @@ describe("PinnedResultDetailView container — remove", () => {
     mockRemove.mockResolvedValue(undefined);
     action?.onClick();
     await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(2));
+  });
+
+  // #789: rename is a form dialog. It sends the trimmed name, and stays
+  // open until the request succeeds.
+  it("renames through the dialog on a real Enter", async () => {
+    const user = userEvent.setup();
+    renderContainer();
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rename/i }));
+    const field = await screen.findByRole("textbox", { name: /name/i });
+    await user.clear(field);
+    await user.type(field, "Updated Name{Enter}");
+    expect(mockRename).toHaveBeenCalledTimes(1);
+    expect(mockRename.mock.calls[0][0]).toEqual({ name: "Updated Name" });
+  });
+
+  it("blocks an empty name with a field error", async () => {
+    const user = userEvent.setup();
+    renderContainer();
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rename/i }));
+    const field = await screen.findByRole("textbox", { name: /name/i });
+    await user.clear(field);
+    await user.type(field, "{Enter}");
+    expect(await screen.findByText("Name is required")).toBeInTheDocument();
+    expect(mockRename).not.toHaveBeenCalled();
+  });
+
+  it("keeps the delete dialog open when the delete fails, without a toast", async () => {
+    mockRemove.mockRejectedValue(new Error("boom"));
+    renderContainer();
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete/i }));
+    fireEvent.click(screen.getByTestId("delete-confirm"));
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Delete Pinned Result")).toBeInTheDocument();
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  // #789: the old dialog's Enter handler called submit even while Save was
+  // disabled for a pending rename, so a second Enter sent a second PATCH.
+  it("sends nothing on Enter while a rename is pending", async () => {
+    const user = userEvent.setup();
+    renamePending = true;
+    try {
+      renderContainer();
+      fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /Rename/i }));
+      const field = await screen.findByRole("textbox", { name: /name/i });
+      await user.type(field, "x{Enter}{Enter}");
+      expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+      expect(mockRename).not.toHaveBeenCalled();
+    } finally {
+      renamePending = false;
+    }
   });
 });

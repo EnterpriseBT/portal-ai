@@ -3,7 +3,6 @@ import React, { useState, useCallback } from "react";
 import type { PortalResult } from "@portalai/core/models";
 import {
   Box,
-  Button,
   GatedButton,
   Icon,
   IconName,
@@ -15,12 +14,6 @@ import {
 import { DateFactory } from "@portalai/core/utils";
 import { ContentBlockRenderer } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
-import TextField from "@mui/material/TextField";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogContentText from "@mui/material/DialogContentText";
-import DialogActions from "@mui/material/DialogActions";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ShareIcon from "@mui/icons-material/IosShare";
@@ -31,10 +24,12 @@ import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { decideActionGate } from "../utils/action-gate.util";
+import { DeletePinnedResultDialog } from "../components/DeletePinnedResultDialog.component";
+import { RenamePinnedResultDialog } from "../components/RenamePinnedResultDialog.component";
 import { ShareDialog } from "../components/ShareDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 import { useToast } from "../utils/toast.context";
-import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { PortalResultPayload } from "../api/portal-results.api";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -79,12 +74,13 @@ export interface PinnedResultDetailUIProps {
   canWrite?: boolean;
   canDelete?: boolean;
   onShareClick?: () => void;
-  onRename: (name: string) => void;
-  onDelete: () => void;
+  /** Opens the rename dialog (owned by the container, #789). */
+  onRenameClick: () => void;
+  /** Opens the delete confirmation (owned by the container, #789). */
+  onDeleteClick: () => void;
   onUnpin: () => void;
   onOpenPortal: (portalId: string, messageId: string | null) => void;
   onNavigate: (href: string) => void;
-  renamePending?: boolean;
 }
 
 export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
@@ -93,30 +89,12 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   canWrite = false,
   canDelete = false,
   onShareClick,
-  onRename,
-  onDelete,
+  onRenameClick,
+  onDeleteClick,
   onUnpin,
   onOpenPortal,
   onNavigate,
-  renamePending,
 }) => {
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState(result.name);
-  const renameRef = useDialogAutoFocus(renameOpen);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const handleRenameSubmit = () => {
-    if (renameValue.trim()) {
-      onRename(renameValue.trim());
-      setRenameOpen(false);
-    }
-  };
-
-  const handleDeleteConfirm = () => {
-    setDeleteOpen(false);
-    onDelete();
-  };
-
   const contentBlock = toContentBlock(result);
 
   return (
@@ -151,10 +129,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             {
               label: "Rename",
               icon: <EditIcon />,
-              onClick: () => {
-                setRenameValue(result.name);
-                setRenameOpen(true);
-              },
+              onClick: onRenameClick,
               gate: decideActionGate({ allowed: canWrite }),
             },
             {
@@ -176,7 +151,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             {
               label: "Delete",
               icon: <DeleteIcon />,
-              onClick: () => setDeleteOpen(true),
+              onClick: onDeleteClick,
               color: "error" as const,
               gate: decideActionGate({ allowed: canDelete }),
             },
@@ -227,58 +202,6 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           )}
         </PageSection>
       </Stack>
-
-      {/* Rename dialog */}
-      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)}>
-        <DialogTitle>Rename Result</DialogTitle>
-        <DialogContent>
-          <TextField
-            inputRef={renameRef}
-            fullWidth
-            margin="dense"
-            label="Name"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleRenameSubmit();
-            }}
-            data-testid="rename-input"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRenameOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleRenameSubmit}
-            variant="contained"
-            disabled={renamePending || !renameValue.trim()}
-            data-testid="rename-submit"
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete confirmation dialog */}
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-        <DialogTitle>Delete Pinned Result</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete &quot;{result.name}&quot;? This
-            action cannot be undone.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleDeleteConfirm}
-            color="error"
-            variant="contained"
-            data-testid="delete-confirm"
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };
@@ -299,12 +222,29 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   const renameMutation = sdk.portalResults.rename(portalResultId);
   const removeMutation = sdk.portalResults.remove();
 
+  // #789: each dialog stays open until its request succeeds; a failure shows
+  // in its FormAlert. A reopened dialog starts without the last attempt's
+  // error.
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const openRename = () => {
+    renameMutation.reset();
+    setRenameOpen(true);
+  };
+
+  const openDelete = () => {
+    removeMutation.reset();
+    setDeleteOpen(true);
+  };
+
   const handleRename = useCallback(
     (name: string) => {
       renameMutation.mutate(
         { name },
         {
           onSuccess: () => {
+            setRenameOpen(false);
             queryClient.invalidateQueries({
               queryKey: queryKeys.portalResults.root,
             });
@@ -315,13 +255,24 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
     [renameMutation, queryClient]
   );
 
+  const handleDeleteConfirm = useCallback(async () => {
+    try {
+      await removeMutation.mutateAsync({ id: portalResultId });
+    } catch {
+      // The dialog is still open: its FormAlert shows the failure.
+      return;
+    }
+    setDeleteOpen(false);
+    queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+    navigate({ to: "/portal-results" });
+  }, [removeMutation, portalResultId, queryClient, navigate]);
+
   /**
-   * One handler behind both affordances. "Unpin" and "Delete" (the latter
-   * behind a confirm dialog) are the same operation on this view — they were
-   * two byte-identical hand-rolled fetches before #286. The two props stay:
-   * they are distinct affordances, they just no longer duplicate the request.
+   * Unpin removes the pin without a confirmation. It shares the remove
+   * mutation with Delete (#286); with no dialog to hold a FormAlert, its
+   * failure raises a toast.
    */
-  const handleRemove = useCallback(
+  const handleUnpin = useCallback(
     // Named so the Retry action can re-invoke it — referring to
     // `handleRemove` here would be a use-before-declaration.
     async function attempt(): Promise<void> {
@@ -386,12 +337,30 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
               canWrite={capabilities?.write ?? false}
               canDelete={capabilities?.delete ?? false}
               onShareClick={() => setShareOpen(true)}
-              onRename={handleRename}
-              onDelete={handleRemove}
-              onUnpin={handleRemove}
+              onRenameClick={openRename}
+              onDeleteClick={openDelete}
+              onUnpin={handleUnpin}
               onOpenPortal={handleOpenPortal}
               onNavigate={handleNavigate}
-              renamePending={renameMutation.isPending}
+            />
+            {renameOpen && (
+              <RenamePinnedResultDialog
+                key={portalResult.name}
+                open={renameOpen}
+                onClose={() => setRenameOpen(false)}
+                currentName={portalResult.name}
+                onSubmit={handleRename}
+                isPending={renameMutation.isPending}
+                serverError={toServerError(renameMutation.error)}
+              />
+            )}
+            <DeletePinnedResultDialog
+              open={deleteOpen}
+              onClose={() => setDeleteOpen(false)}
+              resultName={portalResult.name}
+              onConfirm={() => void handleDeleteConfirm()}
+              isPending={removeMutation.isPending}
+              serverError={toServerError(removeMutation.error)}
             />
             <ShareDialog
               open={shareOpen}

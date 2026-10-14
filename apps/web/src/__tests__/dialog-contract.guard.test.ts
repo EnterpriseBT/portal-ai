@@ -16,6 +16,10 @@
  * - R2: no `<Modal>` passes `slotProps` with a `component`. The old way to
  *   make a form (`slotProps.paper.component = "form"`) is gone; `onSubmit`
  *   is the only one.
+ * - R3: nothing in apps/web imports MUI's raw `Dialog`. Every dialog is a
+ *   `Modal`, so every dialog gets the contract above; a raw Dialog was
+ *   invisible to it (PinnedResultDetail's rename submitted on Enter while
+ *   its Save was disabled).
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -115,6 +119,31 @@ export function findModals(source: string): ModalFinding[] {
   return findings;
 }
 
+/** R3: an import of MUI's raw Dialog (default or named). */
+export function importsRawDialog(source: string): boolean {
+  const file = ts.createSourceFile(
+    "file.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  return file.statements.some((statement) => {
+    if (!ts.isImportDeclaration(statement)) return false;
+    const from = (statement.moduleSpecifier as ts.StringLiteral).text;
+    if (from === "@mui/material/Dialog") return true;
+    if (from !== "@mui/material") return false;
+    const bindings = statement.importClause?.namedBindings;
+    return (
+      bindings !== undefined &&
+      ts.isNamedImports(bindings) &&
+      bindings.elements.some(
+        (el) => (el.propertyName ?? el.name).text === "Dialog"
+      )
+    );
+  });
+}
+
 const violationsOf = (source: string) => {
   const modals = findModals(source);
   return {
@@ -167,6 +196,26 @@ describe("the guard's own rules (fixtures)", () => {
   });
 });
 
+describe("the guard's own rules (fixtures, R3)", () => {
+  it("R3 flags a default or named import of MUI's Dialog, and nothing else", () => {
+    expect(importsRawDialog(`import Dialog from "@mui/material/Dialog";`)).toBe(
+      true
+    );
+    expect(
+      importsRawDialog(`import { Box, Dialog } from "@mui/material";`)
+    ).toBe(true);
+    expect(
+      importsRawDialog(`import { Dialog as D } from "@mui/material";`)
+    ).toBe(true);
+    expect(
+      importsRawDialog(`import DialogTitle from "@mui/material/DialogTitle";`)
+    ).toBe(false);
+    expect(importsRawDialog(`import { Modal } from "@portalai/core/ui";`)).toBe(
+      false
+    );
+  });
+});
+
 describe("dialogs meet the Modal contract (#789)", () => {
   it("finds the dialogs (so the guard can't pass vacuously)", () => {
     expect(withModals.length).toBeGreaterThanOrEqual(45);
@@ -195,6 +244,15 @@ describe("dialogs meet the Modal contract (#789)", () => {
     "%s: no Modal makes a form through slotProps (R2)",
     (_path, source) => {
       expect(violationsOf(source).r2.map((m) => `line ${m.line}`)).toEqual([]);
+    }
+  );
+
+  // Every source file, not just those with a Modal: a raw Dialog is exactly
+  // a dialog this guard couldn't otherwise see. The allowlist is empty.
+  it.each(files.map((f) => [f.path, f.source]))(
+    "%s: imports no raw MUI Dialog (R3)",
+    (_path, source) => {
+      expect(importsRawDialog(source)).toBe(false);
     }
   );
 });

@@ -145,7 +145,7 @@ export type UpdatePortalBody = z.infer<typeof UpdatePortalBodySchema>;
 
 /** #745: PATCH /api/portal-results/:id renames a pin. */
 export const UpdatePortalResultBodySchema = z
-  .object({ name: z.string().trim().min(1) })
+  .object({ name: z.string().trim().min(1, "Name is required") })
   .strict();
 
 export type UpdatePortalResultBody = z.infer<

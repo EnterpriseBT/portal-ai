@@ -5,10 +5,9 @@ import {
   Divider,
   ClickAwayListener,
   IconName,
+  Modal,
   Typography,
 } from "@portalai/core/ui";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
 import type { NavPageId } from "@portalai/core/models";
 import { NAV_PAGE_IDS } from "@portalai/core/models";
 import { useLayout } from "../utils";
@@ -276,34 +275,33 @@ export const SidebarNav = () => {
               ? `\u00A9 ${new Date().getFullYear()}`
               : `Portalsai \u00A9 ${new Date().getFullYear()}`}
           </Typography>
-          <Dialog
+          <Modal
             open={versionOpen}
             onClose={() => setVersionOpen(false)}
             maxWidth="xs"
+            showCloseButton={false}
           >
-            <DialogContent>
-              <Typography variant="body2" sx={{ mb: 1, textAlign: "center" }}>
-                App version
-              </Typography>
-              <Box
-                component="code"
-                sx={(theme) => ({
-                  display: "block",
-                  wordBreak: "break-all",
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  fontFamily: (theme.typography as any).code?.fontFamily,
-                  fontSize: "0.75rem",
-                  backgroundColor: theme.palette.action.hover,
-                  borderRadius: 1,
-                  px: 1.5,
-                  py: 1,
-                })}
-              >
-                {import.meta.env?.VITE_APP_VERSION ?? "dev"} (
-                {import.meta.env?.VITE_APP_SHA ?? "local"})
-              </Box>
-            </DialogContent>
-          </Dialog>
+            <Typography variant="body2" sx={{ mb: 1, textAlign: "center" }}>
+              App version
+            </Typography>
+            <Box
+              component="code"
+              sx={(theme) => ({
+                display: "block",
+                wordBreak: "break-all",
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                fontFamily: (theme.typography as any).code?.fontFamily,
+                fontSize: "0.75rem",
+                backgroundColor: theme.palette.action.hover,
+                borderRadius: 1,
+                px: 1.5,
+                py: 1,
+              })}
+            >
+              {import.meta.env?.VITE_APP_VERSION ?? "dev"} (
+              {import.meta.env?.VITE_APP_SHA ?? "local"})
+            </Box>
+          </Modal>
         </>
       }
     >

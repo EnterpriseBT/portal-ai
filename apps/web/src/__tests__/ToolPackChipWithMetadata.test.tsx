@@ -110,6 +110,6 @@ describe("ToolPackChipWithMetadata", () => {
     expect(screen.getByText("org:does-not-exist")).toBeInTheDocument();
     // Click does not open the modal — heading still absent.
     fireEvent.click(screen.getByText("org:does-not-exist"));
-    expect(screen.queryByLabelText("Close metadata")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("close")).not.toBeInTheDocument();
   });
 });

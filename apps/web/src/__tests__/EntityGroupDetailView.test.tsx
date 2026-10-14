@@ -51,8 +51,12 @@ jest.unstable_mockModule("../utils/api.util", () => ({
 
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { EntityGroupDetailViewUI, OverlapPreview, AddMemberDialog } =
+const { EntityGroupDetailViewUI } =
   await import("../views/EntityGroupDetail.view");
+const { OverlapPreview } =
+  await import("../components/OverlapPreview.component");
+const { AddGroupMemberDialog: AddMemberDialog } =
+  await import("../components/AddGroupMemberDialog.component");
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -110,7 +114,7 @@ const defaultProps = {
   onDeleteGroup: jest.fn(),
   onPromoteMember: jest.fn(),
   onDemoteMember: jest.fn(),
-  onRemoveMember: jest.fn(),
+  onRemoveMember: jest.fn(async (_memberId: string) => true),
   addMemberOpen: false,
   onOpenAddMember: jest.fn(),
   onCloseAddMember: jest.fn(),
@@ -231,6 +235,61 @@ describe("EntityGroupDetailViewUI", () => {
     await user.click(removeButtons[0]);
     await user.click(screen.getByRole("button", { name: "Remove" }));
     expect(defaultProps.onRemoveMember).toHaveBeenCalledWith("mem-1");
+  });
+
+  // #789: the confirm dialog stays open until the remove succeeds, so a
+  // failure stays readable in its FormAlert.
+  it("keeps the remove confirmation open when the remove fails", async () => {
+    const user = userEvent.setup();
+    const onRemoveMember = jest.fn(async (_memberId: string) => false);
+    const { rerender } = render(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        onRemoveMember={onRemoveMember}
+      />
+    );
+    await user.click(screen.getAllByLabelText("Remove member")[0]);
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    rerender(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        onRemoveMember={onRemoveMember}
+        removeMemberServerError={{
+          message: "Not allowed",
+          code: "PERMISSION_DENIED",
+        }}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Not allowed");
+    expect(screen.getByText("Remove Member")).toBeInTheDocument();
+  });
+
+  it("confirms the removal on a real Enter", async () => {
+    const user = userEvent.setup();
+    const onRemoveMember = jest.fn(async (_memberId: string) => true);
+    render(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        onRemoveMember={onRemoveMember}
+      />
+    );
+    await user.click(screen.getAllByLabelText("Remove member")[0]);
+    screen.getByRole("button", { name: "Remove" }).focus();
+    await user.keyboard("{Enter}");
+    expect(onRemoveMember).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a fresh attempt when the remove confirmation opens", async () => {
+    const user = userEvent.setup();
+    const onRemoveMemberDialogOpen = jest.fn();
+    render(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        onRemoveMemberDialogOpen={onRemoveMemberDialogOpen}
+      />
+    );
+    await user.click(screen.getAllByLabelText("Remove member")[0]);
+    expect(onRemoveMemberDialogOpen).toHaveBeenCalledTimes(1);
   });
 
   it("renders edit and delete action buttons", async () => {
@@ -409,7 +468,7 @@ describe("OverlapPreview", () => {
   });
 });
 
-describe("AddMemberDialog", () => {
+describe("AddGroupMemberDialog", () => {
   const dialogProps = {
     open: true,
     onClose: jest.fn(),

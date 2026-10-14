@@ -1,18 +1,13 @@
 import React from "react";
 
 import type { Toolpack, ToolpackTool } from "@portalai/core/contracts";
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import { Box, Modal, Stack, Typography } from "@portalai/core/ui";
 
 import { HighlightedCode } from "./HighlightedCode.component";
 import { UpgradeLink } from "./UpgradeLink.component";
 import { UNENTITLED_PACK_TOOLTIP } from "../utils/tool-packs.util";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import IconButton from "@mui/material/IconButton";
-import CloseIcon from "@mui/icons-material/Close";
 
 export interface ToolpackMetadataModalUIProps {
   toolpack: Toolpack | null;
@@ -36,109 +31,99 @@ export const ToolpackMetadataModalUI: React.FC<
   ToolpackMetadataModalUIProps
 > = ({ toolpack, open, onClose, entitled = true }) => {
   return (
-    <Dialog
+    <Modal
       open={open && toolpack !== null}
       onClose={onClose}
       maxWidth="md"
       fullWidth
       aria-labelledby="toolpack-metadata-title"
+      title={
+        toolpack && (
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography
+              id="toolpack-metadata-title"
+              variant="h6"
+              component="span"
+            >
+              {toolpack.name}
+            </Typography>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={toolpack.kind === "builtin" ? "Built-in" : "Custom"}
+            />
+          </Stack>
+        )
+      }
     >
       {toolpack && (
         <>
-          <DialogTitle id="toolpack-metadata-title" sx={{ pr: 6 }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="h6" component="span">
-                {toolpack.name}
-              </Typography>
-              <Chip
-                size="small"
-                variant="outlined"
-                label={toolpack.kind === "builtin" ? "Built-in" : "Custom"}
-              />
-            </Stack>
-            <IconButton
-              aria-label="Close metadata"
-              onClick={onClose}
-              sx={{
-                position: "absolute",
-                right: 8,
-                top: 8,
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent dividers>
-            <Stack spacing={3}>
-              {!entitled && (
-                <Alert severity="info" data-testid="toolpack-plan-notice">
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    alignItems="baseline"
-                    sx={{ flexWrap: "wrap" }}
-                  >
-                    <span>{UNENTITLED_PACK_TOOLTIP}</span>
-                    <UpgradeLink />
-                  </Stack>
-                </Alert>
-              )}
-              {toolpack.description && (
-                <Typography variant="body2" color="text.secondary">
-                  {toolpack.description}
-                </Typography>
-              )}
-
-              {toolpack.kind === "custom" && (
-                <Box
-                  sx={{
-                    border: (theme) => `1px solid ${theme.palette.divider}`,
-                    borderRadius: 1,
-                    p: 2,
-                  }}
+          <Stack spacing={3}>
+            {!entitled && (
+              <Alert severity="info" data-testid="toolpack-plan-notice">
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="baseline"
+                  sx={{ flexWrap: "wrap" }}
                 >
-                  <Stack spacing={1}>
-                    <Typography variant="overline" color="text.secondary">
-                      Endpoints
-                    </Typography>
-                    <EndpointRow
-                      label="Schema"
-                      url={toolpack.endpoints.schema}
-                    />
-                    <EndpointRow
-                      label="Runtime"
-                      url={toolpack.endpoints.runtime}
-                    />
-                    {toolpack.endpoints.metadata && (
-                      <EndpointRow
-                        label="Metadata"
-                        url={toolpack.endpoints.metadata}
-                      />
-                    )}
-                    <Typography variant="caption" color="text.secondary">
-                      Auth headers:{" "}
-                      {toolpack.authHeadersStatus.has ? "set" : "not set"}
-                      {" • "}
-                      Last refreshed:{" "}
-                      {new Date(toolpack.schemaFetchedAt).toLocaleString()}
-                    </Typography>
-                  </Stack>
-                </Box>
-              )}
+                  <span>{UNENTITLED_PACK_TOOLTIP}</span>
+                  <UpgradeLink />
+                </Stack>
+              </Alert>
+            )}
+            {toolpack.description && (
+              <Typography variant="body2" color="text.secondary">
+                {toolpack.description}
+              </Typography>
+            )}
 
-              <Stack spacing={2}>
-                <Typography variant="overline" color="text.secondary">
-                  Tools ({toolpack.tools.length})
-                </Typography>
-                {toolpack.tools.map((tool) => (
-                  <ToolSection key={tool.name} tool={tool} />
-                ))}
-              </Stack>
+            {toolpack.kind === "custom" && (
+              <Box
+                sx={{
+                  border: (theme) => `1px solid ${theme.palette.divider}`,
+                  borderRadius: 1,
+                  p: 2,
+                }}
+              >
+                <Stack spacing={1}>
+                  <Typography variant="overline" color="text.secondary">
+                    Endpoints
+                  </Typography>
+                  <EndpointRow label="Schema" url={toolpack.endpoints.schema} />
+                  <EndpointRow
+                    label="Runtime"
+                    url={toolpack.endpoints.runtime}
+                  />
+                  {toolpack.endpoints.metadata && (
+                    <EndpointRow
+                      label="Metadata"
+                      url={toolpack.endpoints.metadata}
+                    />
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    Auth headers:{" "}
+                    {toolpack.authHeadersStatus.has ? "set" : "not set"}
+                    {" • "}
+                    Last refreshed:{" "}
+                    {new Date(toolpack.schemaFetchedAt).toLocaleString()}
+                  </Typography>
+                </Stack>
+              </Box>
+            )}
+
+            <Stack spacing={2}>
+              <Typography variant="overline" color="text.secondary">
+                Tools ({toolpack.tools.length})
+              </Typography>
+              {toolpack.tools.map((tool) => (
+                <ToolSection key={tool.name} tool={tool} />
+              ))}
             </Stack>
-          </DialogContent>
+          </Stack>
         </>
       )}
-    </Dialog>
+    </Modal>
   );
 };
 
