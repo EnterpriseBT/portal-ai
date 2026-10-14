@@ -94,4 +94,23 @@ describe("EditConnectorInstanceDialog", () => {
     const input = screen.getByRole("textbox", { name: /name/i });
     expect(input).toBeRequired();
   });
+
+  // #789: a failed rename is readable in the dialog that's still open.
+  it("renders a FormAlert for a server error", () => {
+    render(
+      <EditConnectorInstanceDialog
+        {...defaultProps}
+        serverError={{
+          message: "Name taken",
+          code: "CONNECTOR_INSTANCE_CONFLICT",
+        }}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Name taken");
+  });
+
+  it("renders no FormAlert without a server error", () => {
+    render(<EditConnectorInstanceDialog {...defaultProps} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 
-import TextField from "@mui/material/TextField";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -11,12 +10,16 @@ import {
   MultiSearchableSelect,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
-import type { RoleView } from "@portalai/core/contracts";
+import {
+  RoleUpsertRequestSchema,
+  type RoleView,
+} from "@portalai/core/contracts";
 
 import { sdk } from "../../api/sdk";
 import { queryKeys } from "../../api/keys";
 import { useToast } from "../../utils/toast.context";
 import { FormAlert } from "../../components/FormAlert.component";
+import { NameField } from "./NameField.component";
 import { toServerError, type ServerError } from "../../utils/api.util";
 
 // ── UI (pure) ────────────────────────────────────────────────────────────
@@ -106,13 +109,11 @@ export const RoleEditorDialogUI: React.FC<RoleEditorDialogUIProps> = ({
           />
         ) : (
           <>
-            <TextField
-              label="Name"
+            <NameField
+              open={open}
               value={name}
-              onChange={(e) => onNameChange(e.target.value)}
-              required
-              fullWidth
-              autoFocus
+              onChange={onNameChange}
+              rule={RoleUpsertRequestSchema.shape.name}
             />
             <MultiSearchableSelect
               label="Policies"

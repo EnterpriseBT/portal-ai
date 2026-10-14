@@ -74,6 +74,11 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
   const [keyDirty, setKeyDirty] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  // #789: the key check is a request. While it runs the dialog is pending,
+  // and the ref stops a second Enter that lands before the re-render from
+  // creating the entity twice.
+  const [checking, setChecking] = useState(false);
+  const checkingRef = React.useRef(false);
 
   const labelRef = useDialogAutoFocus<HTMLInputElement>(open);
 
@@ -112,11 +117,20 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
   };
 
   const handleSubmit = async () => {
+    if (checkingRef.current) return;
     if (!validate()) return;
     const trimmedKey = key.trim();
     const trimmedLabel = label.trim();
     if (validateKey) {
-      const result = await validateKey(trimmedKey);
+      checkingRef.current = true;
+      setChecking(true);
+      let result: Awaited<ReturnType<typeof validateKey>>;
+      try {
+        result = await validateKey(trimmedKey);
+      } finally {
+        checkingRef.current = false;
+        setChecking(false);
+      }
       if (!result.ok) {
         const ownedBy = result.ownedBy ?? "another connector";
         setErrors((prev) => ({
@@ -137,9 +151,8 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
 
   return (
     <Modal
-      // A local create: no request is sent, so nothing is ever pending.
-      submitDisabled={false}
-      pending={false}
+      submitDisabled={checking}
+      pending={checking}
       open={open}
       onClose={onClose}
       title="Create new entity"
@@ -148,11 +161,21 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
       onSubmit={handleSubmit}
       actions={
         <>
-          <Button type="button" variant="outlined" onClick={onClose}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={checking}
+          >
             Cancel
           </Button>
-          <Button type="button" variant="contained" onClick={handleSubmit}>
-            Create
+          <Button
+            type="button"
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={checking}
+          >
+            {checking ? "Checking..." : "Create"}
           </Button>
         </>
       }

@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom";
 import React from "react";
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { NewEntityDialogUI } from "../NewEntityDialog.component";
 
@@ -176,5 +177,40 @@ describe("NewEntityDialogUI — C2 org-wide key pre-check", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
     expect(onSubmit).toHaveBeenCalledWith("order", "Order");
+  });
+});
+
+// #789: the key-uniqueness check is a request. Until it answers, Enter and
+// Escape are blocked, so a double Enter creates the entity once.
+describe("NewEntityDialogUI — while the key check runs", () => {
+  const deferredCheck = () => {
+    let resolve!: (r: { ok: boolean }) => void;
+    const validateKey = jest.fn(
+      () => new Promise<{ ok: boolean }>((r) => (resolve = r))
+    );
+    return { validateKey, answer: (ok: boolean) => resolve({ ok }) };
+  };
+
+  test("a double Enter creates the entity once", async () => {
+    const user = userEvent.setup();
+    const { validateKey, answer } = deferredCheck();
+    const { onSubmit } = setup({ validateKey });
+    await user.type(screen.getByLabelText(/label/i), "Orders{Enter}{Enter}");
+    expect(validateKey).toHaveBeenCalledTimes(1);
+    await act(async () => answer(true));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  test("Escape and Cancel are blocked until it answers", async () => {
+    const user = userEvent.setup();
+    const { validateKey, answer } = deferredCheck();
+    const { onClose } = setup({ validateKey });
+    await user.type(screen.getByLabelText(/label/i), "Orders{Enter}");
+    expect(screen.getByRole("button", { name: "Checking..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => answer(false));
+    expect(screen.getByRole("button", { name: /^create$/i })).toBeEnabled();
   });
 });

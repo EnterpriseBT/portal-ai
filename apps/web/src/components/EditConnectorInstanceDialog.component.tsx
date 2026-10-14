@@ -4,6 +4,8 @@ import { z } from "zod";
 import TextField from "@mui/material/TextField";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
 import {
   validateWithSchema,
   focusFirstInvalidField,
@@ -22,6 +24,8 @@ export interface EditConnectorInstanceDialogProps {
   currentName: string;
   onConfirm: (newName: string) => void;
   isPending?: boolean;
+  /** #789: a failed rename stays readable in the open dialog. */
+  serverError?: ServerError | null;
 }
 
 const EditForm: React.FC<{
@@ -29,7 +33,8 @@ const EditForm: React.FC<{
   onConfirm: (newName: string) => void;
   onClose: () => void;
   isPending?: boolean;
-}> = ({ currentName, onConfirm, onClose, isPending = false }) => {
+  serverError?: ServerError | null;
+}> = ({ currentName, onConfirm, onClose, isPending = false, serverError }) => {
   const [name, setName] = useState(currentName);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState(false);
@@ -108,6 +113,7 @@ const EditForm: React.FC<{
           required
           fullWidth
         />
+        <FormAlert serverError={serverError ?? null} />
       </Stack>
     </Modal>
   );
@@ -115,7 +121,14 @@ const EditForm: React.FC<{
 
 export const EditConnectorInstanceDialog: React.FC<
   EditConnectorInstanceDialogProps
-> = ({ open, onClose, currentName, onConfirm, isPending = false }) => {
+> = ({
+  open,
+  onClose,
+  currentName,
+  onConfirm,
+  isPending = false,
+  serverError,
+}) => {
   if (!open) return null;
 
   return (
@@ -125,6 +138,7 @@ export const EditConnectorInstanceDialog: React.FC<
       onConfirm={onConfirm}
       onClose={onClose}
       isPending={isPending}
+      serverError={serverError}
     />
   );
 };

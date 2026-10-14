@@ -659,10 +659,14 @@ export const ConnectorInstanceView = ({
 
                   <EditConnectorInstanceDialog
                     open={editDialogOpen}
-                    onClose={() => setEditDialogOpen(false)}
+                    onClose={() => {
+                      renameMutation.reset();
+                      setEditDialogOpen(false);
+                    }}
                     currentName={ci.name}
                     onConfirm={handleRename}
                     isPending={renameMutation.isPending}
+                    serverError={toServerError(renameMutation.error)}
                   />
 
                   {testingEndpoint ? (

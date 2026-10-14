@@ -139,10 +139,13 @@ Each inline dialog in a view moves to its own `components/<Name>.component.tsx` 
 
 ### Per-dialog gaps (from the discovery inventory)
 
-- **`NewEntityDialog`, `ApiEndpointForm`:** `submitDisabled` becomes their real validity expression, and `pending={false}` (local creates, no request).
-- **`EditConnectorInstanceDialog`:** gains `serverError` and `FormAlert`. `ConnectorInstance.view.tsx:657` passes `toServerError(<its update mutation>.error)`.
-- **`ShareDialog`, `AccessAuthoring/{Group,Policy,Role}EditorDialog`:** gain `validateWithSchema` against their contract body schemas, touched/errors and `aria-invalid`. The editors replace raw `autoFocus` with `useDialogAutoFocus`.
-- **`CreatePortalDialog`:** gains an explicit `aria-invalid` on the station field.
+*Reconciled at slice 7, against each dialog's real behavior:*
+
+- **`NewEntityDialog`:** a real double-submit bug. Its key-uniqueness check is a request (`await validateKey`), and a double Enter during it ran `onSubmit` twice, creating the entity twice. While the check runs the dialog is now `pending`, with `submitDisabled` and the visible buttons disabled. A ref guard covers a second Enter that lands before the re-render.
+- **`ApiEndpointForm`:** unchanged. `submitDisabled={false}` mirrors its never-disabled Add button (it validates on submit), which is what the contract asks for, and it sends no request, so `pending={false}`.
+- **`EditConnectorInstanceDialog`:** gains `serverError` and `FormAlert`. `ConnectorInstance.view.tsx` passes `toServerError(renameMutation.error)` and resets it on close.
+- **`AccessAuthoring/{Group,Policy,Role}EditorDialog`:** the name field becomes a shared `NameField` (`modules/AccessAuthoring/NameField.component.tsx`). It validates against the contract's own rule (`*UpsertRequestSchema.shape.name`, now carrying "Name is required"), shows the error once touched, sets `aria-invalid`, and uses `useDialogAutoFocus` in place of `autoFocus`. Save keeps its disabled-until-valid gate.
+- **`ShareDialog`, `CreatePortalDialog`:** no change. The survey flagged them on a heuristic. `ShareDialog`'s two fields are selects that always hold a valid value, so there's no invalid state to describe. `CreatePortalDialog`'s station field gets `aria-invalid` from MUI's `InputBase`, which derives it from `error`.
 
 ### Guards: `apps/web/src/__tests__/dialog-contract.guard.test.ts` (replaces `dialog-enter-submit.guard.test.ts`)
 

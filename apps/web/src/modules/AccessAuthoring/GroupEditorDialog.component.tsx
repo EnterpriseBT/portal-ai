@@ -11,12 +11,16 @@ import {
   MultiSearchableSelect,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
-import type { GroupView } from "@portalai/core/contracts";
+import {
+  GroupUpsertRequestSchema,
+  type GroupView,
+} from "@portalai/core/contracts";
 
 import { sdk } from "../../api/sdk";
 import { queryKeys } from "../../api/keys";
 import { useToast } from "../../utils/toast.context";
 import { FormAlert } from "../../components/FormAlert.component";
+import { NameField } from "./NameField.component";
 import { toServerError, type ServerError } from "../../utils/api.util";
 
 // ── UI (pure) ────────────────────────────────────────────────────────────
@@ -91,13 +95,11 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
     }
   >
     <Stack spacing={2.5} sx={{ pt: 1 }}>
-      <TextField
-        label="Name"
+      <NameField
+        open={open}
         value={name}
-        onChange={(e) => onNameChange(e.target.value)}
-        required
-        fullWidth
-        autoFocus
+        onChange={onNameChange}
+        rule={GroupUpsertRequestSchema.shape.name}
       />
       <TextField
         label="Description"
