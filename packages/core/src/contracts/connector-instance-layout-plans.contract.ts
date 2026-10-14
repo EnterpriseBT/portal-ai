@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { FileUploadParseSheetSchema } from "./file-uploads.contract.js";
+import { nameField, planTextLimitIssues } from "./text-limits.contract.js";
 import {
   InterpretationTraceSchema,
   InterpretInputSchema,
@@ -220,12 +221,24 @@ export type LayoutPlanInterpretDraftResponsePayload = z.infer<
 export const LayoutPlanCommitDraftRequestBodySchema = z
   .object({
     connectorDefinitionId: z.string().min(1),
-    name: z.string().min(1),
+    name: nameField(),
     plan: LayoutPlanSchema,
     uploadSessionId: z.string().min(1).optional(),
     connectorInstanceId: z.string().min(1).optional(),
   })
   .strict()
+  // #801: the plan's user-authored text becomes the new entities' labels and
+  // field-mapping keys. LayoutPlanSchema itself stays unbounded (it also
+  // parses stored plans on replay), so the limit is checked here.
+  .superRefine((v, ctx) => {
+    for (const issue of planTextLimitIssues(v.plan)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["plan", ...issue.path],
+        message: issue.message,
+      });
+    }
+  })
   .refine(
     (v) =>
       (v.uploadSessionId && !v.connectorInstanceId) ||

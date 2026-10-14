@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { descriptionField, nameField } from "./text-limits.contract.js";
+
 import { withShareableCapabilities } from "./capabilities.contract.js";
 
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
@@ -116,8 +118,8 @@ export type StationGetResponsePayload = z.infer<
 
 export const CreateStationBodySchema = z
   .object({
-    name: z.string().min(1),
-    description: z.string().optional(),
+    name: nameField(),
+    description: descriptionField().optional(),
     connectorInstanceIds: z.array(z.string()).optional(),
     /** #674: curated views to attach, independent of the connectors. Each must
      *  be readable by the caller. */
@@ -169,8 +171,8 @@ export type StationAttachmentChanges = z.infer<
 
 export const UpdateStationBodySchema = z
   .object({
-    name: z.string().min(1).optional(),
-    description: z.string().optional(),
+    name: nameField().optional(),
+    description: descriptionField().optional(),
     connectorInstanceChanges: StationAttachmentChangesSchema.optional(),
     curatedViewChanges: StationAttachmentChangesSchema.optional(),
     toolPacks: z.array(z.string()).min(1).optional(),

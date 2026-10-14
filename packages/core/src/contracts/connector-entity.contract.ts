@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { keyField, nameField } from "./text-limits.contract.js";
+
 import { withCapabilities } from "./capabilities.contract.js";
 
 import { ColumnDefinitionSchema } from "../models/column-definition.model.js";
@@ -103,8 +105,8 @@ export type ConnectorEntityGetResponsePayload = z.infer<
 export const ConnectorEntityCreateRequestBodySchema = z
   .object({
     connectorInstanceId: z.string(),
-    key: z.string().regex(/^[a-z][a-z0-9_]*$/),
-    label: z.string().min(1),
+    key: keyField().regex(/^[a-z][a-z0-9_]*$/),
+    label: nameField("Label"),
   })
   .strict();
 
@@ -125,7 +127,7 @@ export type ConnectorEntityCreateResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const ConnectorEntityPatchRequestBodySchema = z
   .object({
-    label: z.string().min(1).optional(),
+    label: nameField("Label").optional(),
   })
   .strict();
 
