@@ -247,3 +247,22 @@ describe("visualize_d3 unit cost (#499)", () => {
     expect(new mod.VisualizeD3Tool().description).toContain("80 usage units");
   });
 });
+
+// #801: a visualization's title lands in message and pin content.
+describe("VisualizeD3Tool input limits", () => {
+  const titleIssues = (title: string) =>
+    (
+      new VisualizeD3Tool().schema.safeParse({
+        sql: "SELECT 1",
+        instruction: "bar chart",
+        title,
+      }).error?.issues ?? []
+    ).map((i) => i.message);
+
+  it("accepts a 120-character title and rejects 121", () => {
+    expect(titleIssues("t".repeat(120))).toEqual([]);
+    expect(titleIssues("t".repeat(121))).toEqual([
+      "Title must be 120 characters or fewer",
+    ]);
+  });
+});

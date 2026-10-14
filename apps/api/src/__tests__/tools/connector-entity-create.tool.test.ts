@@ -210,3 +210,33 @@ describe("ConnectorEntityCreateTool", () => {
     expect(mockUpsertByKey).not.toHaveBeenCalled();
   });
 });
+
+// #801: the tool's input carries the same limits as the request contract.
+describe("ConnectorEntityCreateTool input limits", () => {
+  const parse = (item: Record<string, unknown>) =>
+    new ConnectorEntityCreateTool().schema.safeParse({
+      items: [{ connectorInstanceId: "ci-1", key: "k", label: "L", ...item }],
+    });
+
+  it("accepts a 58-character key and a 120-character label", () => {
+    expect(parse({ key: "k".repeat(58), label: "a".repeat(120) }).success).toBe(
+      true
+    );
+  });
+
+  it("rejects a 59-character key", () => {
+    expect(parse({ key: "k".repeat(59) }).error?.issues[0]?.message).toBe(
+      "Key must be 58 characters or fewer"
+    );
+  });
+
+  it("rejects a key that breaks the contract's pattern", () => {
+    expect(parse({ key: "Bad-Key" }).success).toBe(false);
+  });
+
+  it("rejects a 121-character label", () => {
+    expect(parse({ label: "a".repeat(121) }).error?.issues[0]?.message).toBe(
+      "Label must be 120 characters or fewer"
+    );
+  });
+});

@@ -886,6 +886,55 @@ describe("Layout Plans Draft Router", () => {
       ).toHaveLength(0);
     });
 
+    // #801: commit makes the plan's targetEntityDefinitionId an entity's key and
+    // label, so the commit request holds it to the key limit before anything
+    // is created.
+    it("#801: refuses a plan whose entity key is over the limit and creates nothing", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+      const plan = makePlan(emailId, nameId);
+      plan.regions[0] = {
+        ...plan.regions[0],
+        targetEntityDefinitionId: "e".repeat(59),
+      };
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "Long label commit",
+          plan,
+          uploadSessionId,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain(
+        "Entity key must be 58 characters or fewer"
+      );
+      const instances = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.name, "Long label commit"));
+      expect(instances).toHaveLength(0);
+      const jobs = await (db as Db).select().from(schema.jobs);
+      expect(jobs).toHaveLength(0);
+    });
+
     describe("C1 duplicate-target guard", () => {
       it("returns 400 LAYOUT_PLAN_DUPLICATE_ENTITY when the plan has two regions with the same targetEntityDefinitionId", async () => {
         const emailId = await seedColumnDefinition(

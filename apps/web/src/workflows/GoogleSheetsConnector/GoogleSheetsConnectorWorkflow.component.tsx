@@ -53,6 +53,7 @@ import {
 import { sdk, queryKeys } from "../../api/sdk";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
+import { generatedConnectorName } from "../../utils/connector-instance-name.util";
 import type {
   ColumnBindingDraft,
   EntityOption,
@@ -174,7 +175,10 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
       if (!ciId) throw new Error("Connector instance missing");
       const enqueue = await commitMutate({
         connectorDefinitionId,
-        name: spreadsheetTitleRef.current,
+        name: generatedConnectorName(
+          spreadsheetTitleRef.current,
+          "Google Sheets"
+        ),
         plan,
         connectorInstanceId: ciId,
       });

@@ -31,8 +31,12 @@ export const RenamePinnedResultDialog: React.FC<
   const [touched, setTouched] = useState(false);
   const nameRef = useDialogAutoFocus(open);
 
+  // #801: an unchanged name isn't sent (Save just closes), so one saved before
+  // the length limit doesn't block the dialog; only an edited name is checked.
   const validate = (value: string) =>
-    validateWithSchema(UpdatePortalResultBodySchema, { name: value });
+    value.trim() === currentName
+      ? ({ success: true, data: { name: currentName } } as const)
+      : validateWithSchema(UpdatePortalResultBodySchema, { name: value });
 
   const handleSubmit = () => {
     setTouched(true);

@@ -1,3 +1,6 @@
+/** Length limits on user-authored text (#801) */
+export * from "./text-limits.contract.js";
+
 /** Pagination contracts — schemas & types */
 export * from "./pagination.contract.js";
 export * from "./capabilities.contract.js";

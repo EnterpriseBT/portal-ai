@@ -135,3 +135,43 @@ describe("RenamePinnedResultDialog", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("RenamePinnedResultDialog — a name saved before the limit (#801)", () => {
+  it("closes on an unchanged legacy name without an error or a request", async () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn();
+    render(
+      <RenamePinnedResultDialog
+        {...defaultProps}
+        currentName={"P".repeat(500)}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByText(LIMIT)).not.toBeInTheDocument();
+  });
+
+  it("still holds an edited name to the limit", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <RenamePinnedResultDialog
+        {...defaultProps}
+        currentName={"P".repeat(500)}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "P".repeat(499) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(LIMIT)).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+const LIMIT = "Name must be 120 characters or fewer";

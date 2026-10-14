@@ -106,9 +106,12 @@ const EditForm: React.FC<{
   const typeConfig = getTypeConfig(type);
 
   const validate = (data: Record<string, unknown>, vp?: string): FormErrors => {
+    // #801: only an edited label is checked. An unchanged one isn't sent, so a
+    // label saved before the length limit doesn't block other edits.
+    const { label: nextLabel, ...rest } = data;
     const result = validateWithSchema(
       ColumnDefinitionUpdateRequestBodySchema,
-      data
+      nextLabel === cd.label ? rest : data
     );
     const errs = result.success ? {} : { ...result.errors };
     const regexError = validateRegex(vp ?? validationPattern);

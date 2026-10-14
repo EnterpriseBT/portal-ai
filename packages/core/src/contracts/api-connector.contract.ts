@@ -7,6 +7,8 @@
  */
 import { z } from "zod";
 
+import { keyField, nameField } from "./text-limits.contract.js";
+
 import {
   ApiAuthConfigSchema,
   ApiCredentialsSchema,
@@ -248,7 +250,7 @@ export type ApiEndpointListResponsePayload = z.infer<
  */
 export const CreateApiEndpointColumnDraftSchema = z.object({
   sourceField: z.string().min(1),
-  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/),
+  normalizedKey: keyField("Normalized key").regex(/^[a-z][a-z0-9_]*$/),
   type: ColumnDataTypeEnum,
   required: z.boolean().default(false),
   columnDefinitionId: z.string().nullable().optional(),
@@ -261,8 +263,8 @@ export type CreateApiEndpointColumnDraft = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const CreateApiEndpointRequestBodySchema = z
   .object({
-    key: z.string().min(1),
-    label: z.string().min(1),
+    key: keyField().min(1),
+    label: nameField("Label"),
     config: ApiEndpointConfigSchema,
     /**
      * Optional bulk column-mapping setup. Each entry materializes as a
@@ -282,7 +284,7 @@ export type CreateApiEndpointRequestBody = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const PatchApiEndpointRequestBodySchema = z
   .object({
-    label: z.string().min(1).optional(),
+    label: nameField("Label").optional(),
     config: ApiEndpointConfigBaseSchema.partial().optional(),
   })
   .strict();

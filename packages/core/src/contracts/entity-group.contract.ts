@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { descriptionField, nameField } from "./text-limits.contract.js";
+
 import { withCapabilities } from "./capabilities.contract.js";
 
 import { EntityGroupSchema } from "../models/entity-group.model.js";
@@ -74,8 +76,8 @@ export type EntityGroupGetResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const EntityGroupCreateRequestBodySchema = z
   .object({
-    name: z.string().min(1),
-    description: z.string().optional(),
+    name: nameField(),
+    description: descriptionField().optional(),
   })
   .strict();
 
@@ -96,8 +98,8 @@ export type EntityGroupCreateResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const EntityGroupUpdateRequestBodySchema = z
   .object({
-    name: z.string().min(1).optional(),
-    description: z.string().optional(),
+    name: nameField().optional(),
+    description: descriptionField().optional(),
   })
   .strict()
   .refine((data) => Object.values(data).some((v) => v !== undefined), {

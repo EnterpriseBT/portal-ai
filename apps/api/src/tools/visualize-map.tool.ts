@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { MapSpecSchema } from "@portalai/core/contracts";
+import {
+  MapSpecSchema,
+  NAME_MAX_LENGTH,
+  tooLongMessage,
+} from "@portalai/core/contracts";
 import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
 import { Tool } from "../types/tools.js";
@@ -35,7 +39,10 @@ const InputSchema = z.object({
   spec: MapSpecSchema.describe(
     'The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend — set `colorBy.scale` to `"categorical"`, `"step"`, or `"interpolate"`, where `"interpolate"` is a smooth continuous gradient for a numeric column, absent ⇒ inferred), and an optional `popup.template`. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); set `aggregation.treatment` on a layer to `"bins"` or `"none"` to override that per-kind default.'
   ),
-  title: z.string().optional(),
+  title: z
+    .string()
+    .max(NAME_MAX_LENGTH, tooLongMessage("Title", NAME_MAX_LENGTH))
+    .optional(),
 });
 
 /** Injectable dependencies (test seam; mirrors the DI style used elsewhere). */

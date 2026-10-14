@@ -23,6 +23,8 @@
 
 import { sql } from "drizzle-orm";
 
+import { PG_IDENTIFIER_MAX_BYTES } from "@portalai/core/contracts";
+
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -108,6 +110,10 @@ export function pgTypeForColumnDefinitionType(type: ColumnDataType): string {
  *     mapping by either spelling)
  *   - prefix `c_` to avoid reserved words and ensure leading letter
  *   - on collision with `taken`, suffix `_2`, `_3`, …
+ *   - clip the key so the result (suffix included) fits Postgres's
+ *     63-byte identifier limit, which otherwise truncates silently and
+ *     lands two long keys on one column (#801). The key is ASCII by now,
+ *     so characters are bytes.
  *
  * The function is intentionally tolerant of doubly-prefixed input:
  * call sites validate at input time (rejecting `c_*` normalizedKeys
@@ -125,12 +131,21 @@ export function sanitizeColumnName(
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "")
     .replace(/^(c_)+/, "");
-  const base = `c_${stripped}`;
-  if (!taken.has(base)) return base;
+  const fit = (suffix: string) =>
+    `c_${stripped.slice(0, PG_IDENTIFIER_MAX_BYTES - 2 - suffix.length)}${suffix}`;
+  // A column created before the clip has a catalog name over 63 bytes and a
+  // physical name Postgres truncated to 63, so that is what a new name must
+  // avoid too.
+  const physical = new Set(
+    [...taken].map((name) => name.slice(0, PG_IDENTIFIER_MAX_BYTES))
+  );
+  const free = (name: string) => !taken.has(name) && !physical.has(name);
+  const base = fit("");
+  if (free(base)) return base;
 
   for (let i = 2; ; i++) {
-    const candidate = `${base}_${i}`;
-    if (!taken.has(candidate)) return candidate;
+    const candidate = fit(`_${i}`);
+    if (free(candidate)) return candidate;
   }
 }
 

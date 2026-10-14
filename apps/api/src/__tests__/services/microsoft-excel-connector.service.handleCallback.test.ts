@@ -199,6 +199,41 @@ describe("MicrosoftExcelConnectorService.handleCallback", () => {
     expect(exchangeCodeMock).not.toHaveBeenCalled();
   });
 
+  // #801: the name is built from the account, so it is clipped to the name
+  // limit rather than refusing a connection the user can't fix.
+  it("clips an instance name built from a very long account UPN", async () => {
+    exchangeCodeMock.mockResolvedValue({
+      accessToken: "eyJ.access",
+      refreshToken: "0.AX-rt",
+      idToken: makeIdToken({ tid: "tenant-A", oid: "alice-oid" }),
+      expiresIn: 3599,
+      scope: "openid offline_access Files.Read.All",
+    });
+    const upn = `${"a".repeat(300)}@contoso.com`;
+    fetchUserProfileMock.mockResolvedValue({
+      upn,
+      email: upn,
+      displayName: "Alice",
+      tenantId: "tenant-A",
+    });
+    findByOrgAndDefinitionMock.mockResolvedValue([]);
+    createInstanceMock.mockResolvedValue({ id: "ci-long" });
+
+    await MicrosoftExcelConnectorService.handleCallback({
+      code: "good",
+      state: validState(),
+    });
+
+    const call = createInstanceMock.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
+    const name = call.name as string;
+    expect(name).toHaveLength(120);
+    expect(name.startsWith("Microsoft 365 Excel (aaa")).toBe(true);
+    expect(name.endsWith("…")).toBe(true);
+  });
+
   it("creates a pending instance with encrypted credentials including tenantId on first auth", async () => {
     exchangeCodeMock.mockResolvedValue({
       accessToken: "eyJ.access",

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { z } from "zod";
+import { nameField } from "@portalai/core/contracts";
 import TextField from "@mui/material/TextField";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
@@ -15,7 +16,7 @@ import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 const EditNameSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
+  name: nameField(),
 });
 
 export interface EditConnectorInstanceDialogProps {
@@ -43,9 +44,16 @@ const EditForm: React.FC<{
   const saveDisabled =
     isPending || name.trim() === "" || name.trim() === currentName;
 
+  // #801: an unchanged name isn't sent, so one saved before the length limit
+  // doesn't block the dialog; only an edited name is checked.
+  const validate = (value: string) =>
+    value.trim() === currentName
+      ? ({ success: true, data: { name: currentName } } as const)
+      : validateWithSchema(EditNameSchema, { name: value });
+
   const handleSubmit = () => {
     setTouched(true);
-    const result = validateWithSchema(EditNameSchema, { name });
+    const result = validate(name);
     if (!result.success) {
       setErrors(result.errors);
       requestAnimationFrame(() => focusFirstInvalidField());
@@ -58,7 +66,7 @@ const EditForm: React.FC<{
   const handleChange = (value: string) => {
     setName(value);
     if (touched) {
-      const result = validateWithSchema(EditNameSchema, { name: value });
+      const result = validate(value);
       setErrors(result.success ? {} : result.errors);
     }
   };
@@ -102,7 +110,7 @@ const EditForm: React.FC<{
           onChange={(e) => handleChange(e.target.value)}
           onBlur={blurUnlessDialogControl(() => {
             setTouched(true);
-            const result = validateWithSchema(EditNameSchema, { name });
+            const result = validate(name);
             setErrors(result.success ? {} : result.errors);
           })}
           error={touched && !!errors.name}

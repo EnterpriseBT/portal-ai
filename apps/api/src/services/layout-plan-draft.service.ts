@@ -38,7 +38,10 @@ import type {
   LayoutPlanInterpretDraftRequestBody,
   LayoutPlanInterpretDraftResponsePayload,
 } from "@portalai/core/contracts";
-import { LayoutPlanSchema } from "@portalai/core/contracts";
+import {
+  LayoutPlanSchema,
+  planTextLimitIssues,
+} from "@portalai/core/contracts";
 import type {
   LayoutPlanCommitJobResult,
   LayoutPlanCommitMetadata,
@@ -471,6 +474,19 @@ export class LayoutPlanDraftService {
         400,
         ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
         "The workbook source doesn't belong to this connector instance"
+      );
+    }
+    // #801: interpret stores region hints as given, so a stored plan is held
+    // to the same text limits as a commit draft before anything is enqueued.
+    // After the source check, so a foreign source gets the same answer as
+    // before.
+    const limitIssues = planTextLimitIssues(planRow.plan as LayoutPlan);
+    if (limitIssues.length > 0) {
+      throw new ApiError(
+        400,
+        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+        `Invalid plan: ${limitIssues.map((i) => i.message).join("; ")}`,
+        { issues: limitIssues }
       );
     }
     return {

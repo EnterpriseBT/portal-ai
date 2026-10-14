@@ -259,3 +259,25 @@ describe("FieldMappingCreateTool", () => {
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 });
+
+// #801: a normalizedKey becomes the `c_<key>` column, so it is capped like the
+// request contract's.
+describe("FieldMappingCreateTool input limits", () => {
+  const schema = () => new FieldMappingCreateTool().schema;
+  const keyIssues = (normalizedKey: string) => {
+    const result = schema().safeParse({ items: [{ normalizedKey }] });
+    return (result.error?.issues ?? []).filter((i) =>
+      i.path.includes("normalizedKey")
+    );
+  };
+
+  it("accepts a 58-character key", () => {
+    expect(keyIssues("k".repeat(58))).toEqual([]);
+  });
+
+  it("rejects a 59-character key", () => {
+    expect(keyIssues("k".repeat(59)).map((i) => i.message)).toContain(
+      "Normalized key must be 58 characters or fewer"
+    );
+  });
+});

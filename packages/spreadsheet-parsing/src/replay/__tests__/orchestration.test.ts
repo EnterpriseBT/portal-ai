@@ -117,6 +117,32 @@ describe("replay() — orchestration", () => {
     );
   });
 
+  // #801: the length limits on user-authored text live on request contracts,
+  // never on LayoutPlanSchema, so a stored plan holding long spreadsheet text
+  // (or a label saved before the limits) still replays.
+  it("replays a stored plan whose text is longer than the request limits", async () => {
+    const longHeader = "h".repeat(500);
+    const plan = contactsPlan();
+    plan.regions[0].targetEntityDefinitionId = "e".repeat(500);
+    plan.regions[0].columnBindings[1] = {
+      ...plan.regions[0].columnBindings[1],
+      sourceLocator: { kind: "byHeaderName", axis: "row", name: longHeader },
+      normalizedKey: "k".repeat(100),
+    };
+    const workbook: WorkbookData = {
+      sheets: [
+        {
+          ...contactsWorkbookData.sheets[0],
+          cells: contactsWorkbookData.sheets[0].cells.map((c) =>
+            c.row === 1 && c.col === 2 ? { ...c, value: longHeader } : c
+          ),
+        },
+      ],
+    };
+    const result = await replay(plan, workbook);
+    expect(result.records).toHaveLength(3);
+  });
+
   it("skips regions whose sheet is missing from the workbook without throwing", async () => {
     const plan = contactsPlan();
     plan.regions.push({

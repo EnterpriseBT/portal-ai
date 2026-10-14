@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { keyField } from "./text-limits.contract.js";
+
 import { withCapabilities } from "./capabilities.contract.js";
 
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
@@ -99,8 +101,7 @@ const nullableString = z
  * `sanitizeColumnName` in the API also strips defensively as a last
  * line of defense.
  */
-const normalizedKeyBase = z
-  .string()
+const normalizedKeyBase = keyField("Normalized key")
   .regex(/^[a-z][a-z0-9_]*$/)
   .refine((s) => !/^c_/.test(s), {
     message:

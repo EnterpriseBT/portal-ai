@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { nameField } from "./text-limits.contract.js";
+
 import { withCapabilities } from "./capabilities.contract.js";
 
 import { withShareableCapabilities } from "./capabilities.contract.js";
@@ -131,7 +133,7 @@ export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
  *  wrongly typed or unknown key is a 400 naming it, not a silent no-op. */
 export const UpdatePortalBodySchema = z
   .object({
-    name: z.string().trim().min(1, "Name is required").optional(),
+    name: nameField().optional(),
     lastOpened: z.number().int().nonnegative().optional(),
   })
   .strict()
@@ -145,7 +147,7 @@ export type UpdatePortalBody = z.infer<typeof UpdatePortalBodySchema>;
 
 /** #745: PATCH /api/portal-results/:id renames a pin. */
 export const UpdatePortalResultBodySchema = z
-  .object({ name: z.string().trim().min(1, "Name is required") })
+  .object({ name: nameField() })
   .strict();
 
 export type UpdatePortalResultBody = z.infer<
@@ -208,7 +210,7 @@ export const PinResultBodySchema = z
     portalId: z.string().min(1),
     messageId: z.string().min(1).optional(),
     blockIndex: z.number().int().min(0),
-    name: z.string().min(1),
+    name: nameField(),
   })
   .strict();
 

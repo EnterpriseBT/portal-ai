@@ -468,3 +468,21 @@ describe("visualize_map (#667 — commented agent SQL in every wrapper)", () => 
     expectAllValid(sent);
   });
 });
+
+// #801: a visualization's title lands in message and pin content.
+describe("VisualizeMapTool input limits", () => {
+  const titleIssues = (title: string) =>
+    (
+      new VisualizeMapTool().schema.safeParse({ sql: "SELECT 1", title }).error
+        ?.issues ?? []
+    )
+      .filter((i) => i.path[0] === "title")
+      .map((i) => i.message);
+
+  it("accepts a 120-character title and rejects 121", () => {
+    expect(titleIssues("t".repeat(120))).toEqual([]);
+    expect(titleIssues("t".repeat(121))).toEqual([
+      "Title must be 120 characters or fewer",
+    ]);
+  });
+});

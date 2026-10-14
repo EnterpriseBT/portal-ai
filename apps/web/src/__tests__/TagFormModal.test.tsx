@@ -271,3 +271,57 @@ describe("TagFormModal — blur toward the dialog's controls", () => {
     expect(screen.queryByText("Name is required")).not.toBeInTheDocument();
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("TagFormModal — length limits (#801)", () => {
+  it("shows the name limit after blur and doesn't submit", async () => {
+    render(<TagFormModal {...defaultProps} />);
+    const name = screen.getByLabelText(/Name/);
+    fireEvent.change(name, { target: { value: "a".repeat(121) } });
+    fireEvent.blur(name);
+    expect(
+      await screen.findByText("Name must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows the description limit on submit", async () => {
+    render(<TagFormModal {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Prod" },
+    });
+    const description = screen.getByLabelText(/Description/);
+    fireEvent.change(description, { target: { value: "d".repeat(2001) } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(
+      await screen.findByText("Description must be 2000 characters or fewer")
+    ).toBeInTheDocument();
+    expect(description).toHaveAttribute("aria-invalid", "true");
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("TagFormModal — a name saved before the limit (#801)", () => {
+  it("saves a description change on a tag with a legacy name, without resending the name", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <TagFormModal
+        {...defaultProps}
+        tag={{ ...existingTag, name: "T".repeat(500) }}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Description/), {
+      target: { value: "Prod only" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("name");
+    expect(body.description).toBe("Prod only");
+  });
+});

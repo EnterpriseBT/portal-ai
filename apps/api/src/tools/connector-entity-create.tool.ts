@@ -4,6 +4,7 @@ import { tool } from "ai";
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
+import { keyField, nameField } from "@portalai/core/contracts";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
 import { resolveCapabilities } from "../utils/resolve-capabilities.util.js";
@@ -17,11 +18,13 @@ const ItemSchema = z.object({
   connectorInstanceId: z
     .string()
     .describe("The connector instance to create the entity under"),
-  key: z
-    .string()
-    .min(1)
+  key: keyField()
+    .regex(
+      /^[a-z][a-z0-9_]*$/,
+      "Key must start with a lowercase letter and use only lowercase letters, digits and underscores"
+    )
     .describe("Unique key for the entity (used as AlaSQL table name)"),
-  label: z.string().min(1).describe("Human-readable label"),
+  label: nameField("Label").describe("Human-readable label"),
 });
 
 const InputSchema = z.object({

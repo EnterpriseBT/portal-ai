@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { nameField } from "./text-limits.contract.js";
+
 import { withCapabilities } from "./capabilities.contract.js";
 import { ConnectorDefinitionSchema } from "../models/connector-definition.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
@@ -123,7 +125,7 @@ export const ConnectorInstanceCreateRequestBodySchema = z
   .object({
     connectorDefinitionId: z.string(),
     organizationId: z.string(),
-    name: z.string().min(1),
+    name: nameField(),
     status: z.enum(["active", "inactive", "error", "pending"]),
     /**
      * Per-instance capability overrides. When omitted, the server copies
@@ -160,7 +162,7 @@ export type ConnectorInstanceCreateResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const ConnectorInstancePatchRequestBodySchema = z
   .object({
-    name: z.string().min(1, "Name is required"),
+    name: nameField(),
     enabledCapabilityFlags: z
       .object({
         sync: z.boolean().optional(),

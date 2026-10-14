@@ -8,7 +8,9 @@
  */
 
 import {
+  clipToLength,
   EMPTY_ACCOUNT_INFO,
+  NAME_MAX_LENGTH,
   type PublicAccountInfo,
 } from "@portalai/core/contracts";
 import { makeWorkbook } from "@portalai/spreadsheet-parsing";
@@ -158,7 +160,7 @@ export class GoogleSheetsConnectorService {
         id: SystemUtilities.id.v4.generate(),
         organizationId,
         connectorDefinitionId: definition.id,
-        name: `Google Sheets (${email})`,
+        name: clipToLength(`Google Sheets (${email})`, NAME_MAX_LENGTH),
         status: "pending",
         config: null,
         credentials: credentials as unknown as string,

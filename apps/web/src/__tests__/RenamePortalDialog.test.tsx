@@ -141,3 +141,26 @@ describe("RenamePortalDialog — blur toward the dialog's controls", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("RenamePortalDialog — a name saved before the limit (#801)", () => {
+  it("closes on an unchanged legacy name without an error or a request", async () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn();
+    render(
+      <RenamePortalDialog
+        {...defaultProps}
+        currentName={"P".repeat(500)}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Name must be 120 characters or fewer")
+    ).not.toBeInTheDocument();
+  });
+});

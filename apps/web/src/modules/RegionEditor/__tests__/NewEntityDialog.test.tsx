@@ -214,3 +214,49 @@ describe("NewEntityDialogUI — while the key check runs", () => {
     expect(screen.getByRole("button", { name: /^create$/i })).toBeEnabled();
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("NewEntityDialogUI — length limits (#801)", () => {
+  test("derives a key within the limit from a long label", () => {
+    const { onSubmit } = setup();
+    const label = "Quarterly regional revenue ".repeat(3).trim();
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: label },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    const [key] = onSubmit.mock.calls[0] ?? [];
+    expect(key?.length).toBeLessThanOrEqual(58);
+    expect(key?.endsWith("_")).toBe(false);
+    expect(onSubmit).toHaveBeenCalledWith(key, label);
+  });
+
+  test("measures the key after trimming it", () => {
+    const { onSubmit } = setup();
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "Order" },
+    });
+    fireEvent.change(screen.getByLabelText(/key/i), {
+      target: { value: `${"k".repeat(58)} ` },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    expect(onSubmit).toHaveBeenCalledWith("k".repeat(58), "Order");
+  });
+
+  test("shows the label and key limits and doesn't submit", async () => {
+    const { onSubmit } = setup();
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "a".repeat(121) },
+    });
+    fireEvent.change(screen.getByLabelText(/key/i), {
+      target: { value: "k".repeat(59) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    expect(
+      await screen.findByText("Label must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Key must be 58 characters or fewer")
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

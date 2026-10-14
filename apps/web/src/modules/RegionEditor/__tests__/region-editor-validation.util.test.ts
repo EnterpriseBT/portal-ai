@@ -523,3 +523,32 @@ describe("validateRegionBindings — cross-binding collisions", () => {
     expect(errors["col:2"]).toBeUndefined();
   });
 });
+
+// #801: what commit turns into a new entity's label and a field mapping's
+// key carries the request contract's limits, so the editor says so before
+// the commit is refused.
+describe("length limits (#801)", () => {
+  it("validateRegion flags a target entity key over 58 characters", () => {
+    expect(
+      validateRegion(baseRegion({ targetEntityDefinitionId: "e".repeat(59) }))
+        .targetEntityDefinitionId
+    ).toBe("Entity key must be 58 characters or fewer");
+    expect(
+      validateRegion(baseRegion({ targetEntityDefinitionId: "e".repeat(58) }))
+        .targetEntityDefinitionId
+    ).toBeUndefined();
+  });
+
+  it("validateBindingDraft flags a normalized key over 58 characters", () => {
+    const binding = (normalizedKey: string) =>
+      validateBindingDraft({
+        sourceLocator: "header:row:name",
+        columnDefinitionId: "cd-1",
+        normalizedKey,
+      } as never);
+    expect(binding("k".repeat(59)).normalizedKey).toBe(
+      "Normalized key must be 58 characters or fewer"
+    );
+    expect(binding("k".repeat(58)).normalizedKey).toBeUndefined();
+  });
+});

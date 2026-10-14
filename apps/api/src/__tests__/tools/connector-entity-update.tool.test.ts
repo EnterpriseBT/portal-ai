@@ -119,3 +119,18 @@ describe("ConnectorEntityUpdateTool", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
+
+// #801: the tool's input carries the same limits as the request contract.
+describe("ConnectorEntityUpdateTool input limits", () => {
+  const parse = (label: string) =>
+    new ConnectorEntityUpdateTool().schema.safeParse({
+      items: [{ connectorEntityId: "ce-1", label }],
+    });
+
+  it("accepts a 120-character label and rejects 121", () => {
+    expect(parse("a".repeat(120)).success).toBe(true);
+    expect(parse("a".repeat(121)).error?.issues[0]?.message).toBe(
+      "Label must be 120 characters or fewer"
+    );
+  });
+});

@@ -392,3 +392,49 @@ describe("validateEndpoint — totalCount (#458)", () => {
     expect(validateEndpoint(base)).toEqual({});
   });
 });
+
+// #801: the endpoint's key, label and column keys carry the request
+// contract's limits.
+describe("length limits (#801)", () => {
+  const endpoint = (over: { key?: string; label?: string }) =>
+    validateEndpoint({
+      key: "users",
+      label: "Users",
+      path: "/users",
+      method: "GET",
+      recordsPath: "",
+      idField: "id",
+      ...over,
+    });
+
+  it("validateEndpoint flags a key over 58 and a label over 120", () => {
+    expect(endpoint({ key: "k".repeat(59) }).key).toBe(
+      "Key must be 58 characters or fewer"
+    );
+    expect(endpoint({ label: "a".repeat(121) }).label).toBe(
+      "Label must be 120 characters or fewer"
+    );
+    expect(endpoint({ key: "k".repeat(58), label: "a".repeat(120) })).toEqual(
+      {}
+    );
+  });
+
+  it("validateBasics flags a name over 120", () => {
+    expect(
+      validateBasics({
+        name: "a".repeat(121),
+        baseUrl: "https://x.test",
+        authMode: "none",
+        credentials: EMPTY_CREDENTIALS_DRAFT,
+      }).name
+    ).toBe("Name must be 120 characters or fewer");
+  });
+
+  it("validateColumnRows flags a normalized key over 58", () => {
+    expect(
+      validateColumnRows([row({ normalizedKey: "k".repeat(59) })])[
+        "row-0-normalizedKey"
+      ]
+    ).toBe("Normalized key must be 58 characters or fewer");
+  });
+});

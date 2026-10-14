@@ -97,3 +97,39 @@ describe("EditEntityGroupDialog", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("EditEntityGroupDialog — a name saved before the limit (#801)", () => {
+  const user = userEvent.setup();
+
+  it("saves a description change on a group with a legacy name", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditEntityGroupDialog
+        {...defaultProps}
+        group={{ name: "G".repeat(500), description: null }}
+        onSubmit={onSubmit}
+      />
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /description/i }),
+      "Accounts"
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledWith({ description: "Accounts" });
+  });
+
+  it("holds a changed description to the limit", async () => {
+    const onSubmit = jest.fn();
+    render(<EditEntityGroupDialog {...defaultProps} onSubmit={onSubmit} />);
+    const description = screen.getByRole("textbox", { name: /description/i });
+    await user.click(description);
+    await user.paste("d".repeat(2001));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Description must be 2000 characters or fewer")
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

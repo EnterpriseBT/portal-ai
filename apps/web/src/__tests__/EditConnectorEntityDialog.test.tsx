@@ -101,3 +101,21 @@ describe("EditConnectorEntityDialog", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+// #801 adversarial §6.1: a value saved before the limit doesn't block the
+// dialog. Only a value the user edits is held to it.
+describe("EditConnectorEntityDialog — a label saved before the limit (#801)", () => {
+  it("doesn't flag an unchanged legacy label on blur", () => {
+    render(
+      <EditConnectorEntityDialog
+        {...defaultProps}
+        entity={{ label: "E".repeat(500) }}
+      />
+    );
+    labelField().focus();
+    labelField().blur();
+    expect(
+      screen.queryByText("Label must be 120 characters or fewer")
+    ).not.toBeInTheDocument();
+  });
+});

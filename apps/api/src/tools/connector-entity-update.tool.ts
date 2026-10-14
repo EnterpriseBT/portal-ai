@@ -2,6 +2,8 @@
 import { z } from "zod";
 import { tool } from "ai";
 
+import { nameField } from "@portalai/core/contracts";
+
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import {
@@ -12,7 +14,7 @@ import { Repository } from "../db/repositories/base.repository.js";
 
 const ItemSchema = z.object({
   connectorEntityId: z.string().describe("The connector entity ID to update"),
-  label: z.string().min(1).describe("New label for the entity"),
+  label: nameField("Label").describe("New label for the entity"),
 });
 
 const InputSchema = z.object({

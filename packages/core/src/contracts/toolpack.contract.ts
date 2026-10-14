@@ -9,6 +9,8 @@
 
 import { z } from "zod";
 
+import { descriptionField } from "./text-limits.contract.js";
+
 import { withCapabilities } from "./capabilities.contract.js";
 
 import {
@@ -132,7 +134,7 @@ export type ToolpackGetResponsePayload = z.infer<
 export const RegisterToolpackBodySchema = z
   .object({
     name: z.string().regex(TOOLPACK_SLUG_REGEX),
-    description: z.string().min(1).optional(),
+    description: descriptionField().min(1).optional(),
     endpoints: ToolpackEndpointsSchema,
     authHeaders: z.record(z.string(), z.string()).optional(),
   })
@@ -143,7 +145,7 @@ export type RegisterToolpackBody = z.infer<typeof RegisterToolpackBodySchema>;
 export const UpdateToolpackBodySchema = z
   .object({
     name: z.string().regex(TOOLPACK_SLUG_REGEX).optional(),
-    description: z.string().min(1).optional(),
+    description: descriptionField().min(1).optional(),
     endpoints: ToolpackEndpointsSchema.optional(),
     authHeaders: z.record(z.string(), z.string()).optional(),
   })

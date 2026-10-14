@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  descriptionField,
+  keyField,
+  nameField,
+} from "./text-limits.contract.js";
+
 import { withCapabilities } from "./capabilities.contract.js";
 
 import {
@@ -49,12 +55,15 @@ export type ColumnDefinitionGetResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const ColumnDefinitionCreateRequestBodySchema = z
   .object({
-    key: z.string().regex(/^[a-z][a-z0-9_]*$/),
-    label: z.string().min(1),
+    key: keyField().regex(/^[a-z][a-z0-9_]*$/),
+    label: nameField("Label"),
     type: ColumnDataTypeEnum,
-    description: z.string().nullable().optional().default(null),
+    description: descriptionField().nullable().optional().default(null),
     validationPattern: z.string().nullable().optional().default(null),
-    validationMessage: z.string().nullable().optional().default(null),
+    validationMessage: descriptionField("Validation message")
+      .nullable()
+      .optional()
+      .default(null),
     canonicalFormat: z.string().nullable().optional().default(null),
     geoRole: GeoRoleSchema.nullable().optional().default(null),
   })
@@ -77,11 +86,13 @@ export type ColumnDefinitionCreateResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const ColumnDefinitionUpdateRequestBodySchema = z
   .object({
-    label: z.string().min(1).optional(),
+    label: nameField("Label").optional(),
     type: ColumnDataTypeEnum.optional(),
-    description: z.string().nullable().optional(),
+    description: descriptionField().nullable().optional(),
     validationPattern: z.string().nullable().optional(),
-    validationMessage: z.string().nullable().optional(),
+    validationMessage: descriptionField("Validation message")
+      .nullable()
+      .optional(),
     canonicalFormat: z.string().nullable().optional(),
     geoRole: GeoRoleSchema.nullable().optional(),
   })

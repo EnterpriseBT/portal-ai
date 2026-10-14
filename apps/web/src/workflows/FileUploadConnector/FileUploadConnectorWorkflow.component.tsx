@@ -41,6 +41,7 @@ import { sdk, queryKeys } from "../../api/sdk";
 import { putToS3 } from "../../api/file-uploads.api";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
+import { generatedConnectorName } from "../../utils/connector-instance-name.util";
 import type {
   CellBounds,
   CellValue,
@@ -61,13 +62,13 @@ import type { ServerError } from "../../utils/api.util";
 /**
  * Derive the ConnectorInstance name from the first uploaded file. Strips the
  * extension; falls back to `"Upload"` when there are no files or the stripped
- * base is empty.
+ * base is empty, and clips a long file name to the name limit (#801).
  */
 function deriveConnectorInstanceName(files: File[]): string {
   const filename = files[0]?.name ?? "Upload";
   const dot = filename.lastIndexOf(".");
   const base = dot > 0 ? filename.substring(0, dot) : filename;
-  return base.trim() || "Upload";
+  return generatedConnectorName(base, "Upload");
 }
 
 /**

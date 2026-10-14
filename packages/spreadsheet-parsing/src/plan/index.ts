@@ -83,6 +83,7 @@ export { WarningSchema } from "./warning.schema.js";
 export type { Warning } from "./warning.schema.js";
 
 export {
+  DERIVED_KEY_MAX_LENGTH,
   sourceFieldFromBinding,
   sourceFieldToNormalizedKey,
   sourceLocatorToNormalizedKey,

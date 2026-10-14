@@ -51,6 +51,7 @@ import {
 import { sdk, queryKeys } from "../../api/sdk";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
+import { generatedConnectorName } from "../../utils/connector-instance-name.util";
 import type {
   ColumnBindingDraft,
   EntityOption,
@@ -174,7 +175,7 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
       if (!ciId) throw new Error("Connector instance missing");
       const enqueue = await commitMutate({
         connectorDefinitionId,
-        name: workbookTitleRef.current,
+        name: generatedConnectorName(workbookTitleRef.current, FALLBACK_TITLE),
         plan,
         connectorInstanceId: ciId,
       });

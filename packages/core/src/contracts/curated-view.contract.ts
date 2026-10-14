@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { descriptionField, nameField } from "./text-limits.contract.js";
+
 import { withShareableCapabilities } from "./capabilities.contract.js";
 
 import { CuratedViewSchema } from "../models/curated-view.model.js";
@@ -114,8 +116,8 @@ export const CuratedViewCreateRequestBodySchema = z
   .object({
     connectorEntityId: z.string().min(1),
     key: CuratedViewKeySchema,
-    label: z.string().min(1),
-    description: z.string().nullable().optional(),
+    label: nameField("Label"),
+    description: descriptionField().nullable().optional(),
     /** A structured `FilterGroup` (filter.contract.ts); omit for no row filter. */
     filter: FilterExpressionSchema.nullable().optional(),
     /** The projection's field-mapping ids; omit/empty = unrestricted (all columns). */
@@ -140,8 +142,8 @@ export type CuratedViewCreateResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const CuratedViewUpdateRequestBodySchema = z
   .object({
-    label: z.string().min(1).optional(),
-    description: z.string().nullable().optional(),
+    label: nameField("Label").optional(),
+    description: descriptionField().nullable().optional(),
     filter: FilterExpressionSchema.nullable().optional(),
     fieldMappingIds: z.array(z.string()).optional(),
   })

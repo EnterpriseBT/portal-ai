@@ -45,16 +45,36 @@ const EditForm: React.FC<{
     (name.trim() === group.name &&
       description.trim() === (group.description ?? ""));
 
-  const validate = (data: { name: string }): FormErrors => {
-    const result = validateWithSchema(EntityGroupUpdateRequestBodySchema, data);
+  // #801: only an edited value is checked. An unchanged one isn't sent, so a
+  // name saved before the length limit doesn't block a description change.
+  const validate = (data: {
+    name?: string;
+    description?: string;
+  }): FormErrors => {
+    const changed = {
+      ...(data.name !== undefined && data.name !== group.name
+        ? { name: data.name }
+        : {}),
+      ...(data.description !== undefined &&
+      data.description !== (group.description ?? "")
+        ? { description: data.description }
+        : {}),
+    };
+    const result = validateWithSchema(
+      EntityGroupUpdateRequestBodySchema,
+      changed
+    );
     return result.success ? {} : result.errors;
   };
 
   const handleSubmit = () => {
-    setTouched({ name: true });
+    setTouched({ name: true, description: true });
     const trimmedName = name.trim();
     const trimmedDesc = description.trim();
-    const formErrors = validate({ name: trimmedName });
+    const formErrors = validate({
+      name: trimmedName,
+      description: trimmedDesc,
+    });
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
       requestAnimationFrame(() => focusFirstInvalidField());
@@ -132,7 +152,23 @@ const EditForm: React.FC<{
         <TextField
           label="Description"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => {
+            setDescription(e.target.value);
+            if (touched.description) {
+              setErrors(validate({ description: e.target.value.trim() }));
+            }
+          }}
+          onBlur={blurUnlessDialogControl(() => {
+            setTouched((prev) => ({ ...prev, description: true }));
+            setErrors(validate({ description: description.trim() }));
+          })}
+          error={touched.description && !!errors.description}
+          helperText={touched.description && errors.description}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid": touched.description && !!errors.description,
+            },
+          }}
           fullWidth
           multiline
           rows={3}
