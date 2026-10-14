@@ -5,6 +5,8 @@
  *
  * Usage: tsx src/db/create-org.ts --owner-email <email> --name <name>
  */
+import { NAME_MAX_LENGTH, tooLongMessage } from "@portalai/core/contracts";
+
 import { ApplicationService } from "../services/application.service.js";
 import { closeDatabase } from "./client.js";
 
@@ -15,10 +17,16 @@ function arg(flag: string): string | undefined {
 
 async function main() {
   const ownerEmail = arg("--owner-email");
-  const name = arg("--name");
+  const name = arg("--name")?.trim();
   if (!ownerEmail || !name) {
     throw new Error(
       "Usage: db:create-org -- --owner-email <email> --name <name>"
+    );
+  }
+  // #801: the same name limit the API holds every other name to.
+  if (name.length > NAME_MAX_LENGTH) {
+    throw new Error(
+      `Usage: db:create-org -- --name: ${tooLongMessage("Name", NAME_MAX_LENGTH)}`
     );
   }
   const result = await ApplicationService.createOrganizationForEmail(

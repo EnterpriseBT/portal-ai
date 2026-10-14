@@ -17,7 +17,11 @@
  * `resolveWorkbook`, and `fetchWorkbookForSync`.
  */
 
-import type { PublicAccountInfo } from "@portalai/core/contracts";
+import {
+  clipToLength,
+  NAME_MAX_LENGTH,
+  type PublicAccountInfo,
+} from "@portalai/core/contracts";
 import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -199,7 +203,10 @@ export class MicrosoftExcelConnectorService {
         id: SystemUtilities.id.v4.generate(),
         organizationId,
         connectorDefinitionId: definition.id,
-        name: `Microsoft 365 Excel (${profile.upn})`,
+        name: clipToLength(
+          `Microsoft 365 Excel (${profile.upn})`,
+          NAME_MAX_LENGTH
+        ),
         status: "pending",
         config: null,
         credentials: credentials as unknown as string,

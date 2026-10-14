@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { tool } from "ai";
 
+import { NAME_MAX_LENGTH, tooLongMessage } from "@portalai/core/contracts";
+
 import { Tool } from "../types/tools.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
 import { AiService } from "../services/ai.service.js";
@@ -24,7 +26,10 @@ const InputSchema = z.object({
     .describe(
       "What to visualize: chart type, which result columns map to which encodings, and any emphasis."
     ),
-  title: z.string().optional(),
+  title: z
+    .string()
+    .max(NAME_MAX_LENGTH, tooLongMessage("Title", NAME_MAX_LENGTH))
+    .optional(),
 });
 
 /** Total codegen attempts = 1 + MAX_CODEGEN_RETRIES. */

@@ -19,7 +19,10 @@ import type {
   LayoutPlanResponsePayload,
   PatchLayoutPlanBody,
 } from "@portalai/core/contracts";
-import { LayoutPlanSchema } from "@portalai/core/contracts";
+import {
+  LayoutPlanSchema,
+  planTextLimitIssues,
+} from "@portalai/core/contracts";
 import type { LayoutPlanCommitWorkbookSource } from "@portalai/core/models";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -223,6 +226,24 @@ export class ConnectorInstanceLayoutPlansService {
           .join("; ")}`,
         { issues: validated.error.issues }
       );
+    }
+
+    // #801: patched regions carry the user's labels and key overrides, which
+    // commit turns into entities and field mappings. Only a body that sends
+    // `regions` is checked, so a plan stored before the limits can still have
+    // its other fields patched.
+    if ("regions" in body) {
+      const issues = planTextLimitIssues(validated.data);
+      if (issues.length > 0) {
+        throw new ApiError(
+          400,
+          ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+          `Patched plan failed validation: ${issues
+            .map((i) => i.message)
+            .join("; ")}`,
+          { issues }
+        );
+      }
     }
 
     // #769: refused while a job holds the connector (a sync or import reads

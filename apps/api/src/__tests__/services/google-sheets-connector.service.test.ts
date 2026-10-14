@@ -547,6 +547,26 @@ describe("GoogleSheetsConnectorService.handleCallback", () => {
     expect(calledData.lastErrorMessage).toBeNull();
   });
 
+  // #801: the name is built from the account, so it is clipped to the name
+  // limit rather than refusing a connection the user can't fix.
+  it("clips an instance name built from a very long account email", async () => {
+    fetchUserEmailMock.mockResolvedValue(`${"a".repeat(300)}@example.com`);
+    createInstanceMock.mockResolvedValue({ id: "ci-long" });
+
+    await GoogleSheetsConnectorService.handleCallback({
+      code: "auth-code",
+      state: "signed-state",
+    });
+
+    const [calledData] = createInstanceMock.mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+    const name = calledData.name as string;
+    expect(name).toHaveLength(120);
+    expect(name.startsWith("Google Sheets (aaa")).toBe(true);
+    expect(name.endsWith("…")).toBe(true);
+  });
+
   it("creates a new instance even when the same email already has one (add-connector flow)", async () => {
     // Bare state (no connectorInstanceId) bypasses the email lookup
     // entirely — every authorize without a reconnect target gets a

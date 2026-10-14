@@ -337,6 +337,35 @@ describe("Station Router", () => {
       expect(res.body.message).toMatch(/^Invalid station payload: name: /);
     });
 
+    // #801: a name past the limit is a 400 naming it, and nothing is written.
+    it("#801: rejects a name over 120 characters and writes nothing", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "a".repeat(121), toolPacks: ["data_query"] })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        "Invalid station payload: name: Name must be 120 characters or fewer"
+      );
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.name, "a".repeat(121)));
+      expect(rows).toHaveLength(0);
+    });
+
+    it("#801: accepts a 120-character name", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "a".repeat(120), toolPacks: ["data_query"] })
+        .expect(201);
+      expect(res.body.payload.station.name).toBe("a".repeat(120));
+    });
+
     it("#706: rejects an unknown key (update's curatedViewChanges) instead of dropping it", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
@@ -374,6 +403,31 @@ describe("Station Router", () => {
         .expect(200);
 
       expect(res.body.payload.station.name).toBe("Updated Name");
+    });
+
+    // #801: a station saved before the limit stays readable and editable; only
+    // a write that sends the over-length name again is refused.
+    it("#801: an over-length name is refused when resent, not when left out", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values({ ...station, name: "a".repeat(500) } as never);
+
+      const resent = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ name: "a".repeat(500), description: "new" })
+        .expect(400);
+      expect(resent.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ description: "new" })
+        .expect(200);
+      expect(res.body.payload.station.description).toBe("new");
     });
 
     it("returns 404 for unknown station", async () => {

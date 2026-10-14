@@ -2,6 +2,8 @@
 import { z } from "zod";
 import { tool } from "ai";
 
+import { keyField } from "@portalai/core/contracts";
+
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import {
@@ -22,8 +24,7 @@ const ItemSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether this mapping is a primary key"),
-  normalizedKey: z
-    .string()
+  normalizedKey: keyField("Normalized key")
     .regex(/^[a-z][a-z0-9_]*$/)
     .refine((s) => !/^c_/.test(s), {
       message:
