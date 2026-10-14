@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import ReactDOM from "react-dom";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { Modal } from "../../ui/Modal";
@@ -277,24 +278,24 @@ describe("Modal Component", () => {
   describe("Enter submits a form dialog", () => {
     const FormModal = ({
       onSubmit,
-      submitDisabled,
+      submitDisabled = false,
+      pending = false,
+      onClose = defaultProps.onClose,
+      children,
     }: {
       onSubmit: () => void;
       submitDisabled?: boolean;
+      pending?: boolean;
+      onClose?: () => void;
+      children?: React.ReactNode;
     }) => (
       <Modal
-        {...defaultProps}
+        open
+        onClose={onClose}
         title="Form"
+        onSubmit={onSubmit}
         submitDisabled={submitDisabled}
-        slotProps={{
-          paper: {
-            component: "form",
-            onSubmit: (e: React.FormEvent) => {
-              e.preventDefault();
-              onSubmit();
-            },
-          } as object,
-        }}
+        pending={pending}
         actions={
           <button type="button" onClick={onSubmit}>
             Save
@@ -309,8 +310,50 @@ describe("Modal Component", () => {
           Description
           <input name="description" />
         </label>
+        {children}
       </Modal>
     );
+
+    it("renders its paper as a form", () => {
+      render(<FormModal onSubmit={jest.fn()} />);
+      expect(screen.getByLabelText("Name").closest("form")).not.toBeNull();
+    });
+
+    it("does not submit on Enter while pending", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      render(<FormModal onSubmit={onSubmit} pending />);
+      await user.type(screen.getByLabelText("Name"), "x{Enter}{Enter}");
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    // #789: React bubbles a submit from a portaled child form (a nested
+    // dialog or popover) through to this form's onSubmit. It isn't ours.
+    it("ignores a submit bubbled from a portaled child form", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const onChildSubmit = jest.fn();
+      const Child = () =>
+        ReactDOM.createPortal(
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onChildSubmit();
+            }}
+          >
+            <input aria-label="child field" />
+          </form>,
+          document.body
+        );
+      render(
+        <FormModal onSubmit={onSubmit}>
+          <Child />
+        </FormModal>
+      );
+      await user.type(screen.getByLabelText("child field"), "x{Enter}");
+      expect(onChildSubmit).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
 
     it("submits once when Enter is pressed in one of several text fields", async () => {
       const user = userEvent.setup();
@@ -356,6 +399,82 @@ describe("Modal Component", () => {
       );
     });
 
+    // A focused button owns Enter: the browser clicks it, and implicit
+    // submission only comes from text fields, so the dialog doesn't submit.
+    it("Enter on a focused secondary button runs that button, not submit", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const onAddRow = jest.fn();
+      render(
+        <FormModal onSubmit={onSubmit}>
+          <button type="button" onClick={onAddRow}>
+            Add row
+          </button>
+        </FormModal>
+      );
+      screen.getByRole("button", { name: "Add row" }).focus();
+      await user.keyboard("{Enter}");
+      expect(onAddRow).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it("Enter on a focused Cancel cancels without submitting", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const onCancel = jest.fn();
+      render(
+        <Modal
+          open
+          onClose={onCancel}
+          title="Form"
+          onSubmit={onSubmit}
+          submitDisabled={false}
+          pending={false}
+          actions={
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          }
+        >
+          <input aria-label="Name" />
+        </Modal>
+      );
+      screen.getByRole("button", { name: "Cancel" }).focus();
+      await user.keyboard("{Enter}");
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    // Browsers submit a form on Enter in a checkbox or radio (implicit
+    // submission), without toggling it. A focused control that isn't a text
+    // field owns Enter, so the dialog doesn't submit from one.
+    it.each(["checkbox", "radio"])(
+      "Enter on a focused %s doesn't submit",
+      async (type) => {
+        const user = userEvent.setup();
+        const onSubmit = jest.fn();
+        render(
+          <FormModal onSubmit={onSubmit}>
+            <input type={type} aria-label="Choice" />
+          </FormModal>
+        );
+        screen.getByLabelText("Choice").focus();
+        await user.keyboard("{Enter}");
+        expect(onSubmit).not.toHaveBeenCalled();
+      }
+    );
+
+    it("Enter on the focused close button closes without submitting", async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      const onClose = jest.fn();
+      render(<FormModal onSubmit={onSubmit} onClose={onClose} />);
+      screen.getByRole("button", { name: /close/i }).focus();
+      await user.keyboard("{Enter}");
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
     it("clicking the visible action still fires once", async () => {
       const user = userEvent.setup();
       const onSubmit = jest.fn();
@@ -380,6 +499,135 @@ describe("Modal Component", () => {
       expect(submit).toHaveAttribute("aria-hidden", "true");
       expect(submit).toHaveAttribute("tabindex", "-1");
       expect(screen.getAllByRole("button")).not.toContain(submit);
+    });
+  });
+
+  // #789: a dialog whose request is in flight can't be dismissed. Cancel is
+  // disabled by its caller; Modal blocks the rest, so the dialog stays up to
+  // show the outcome (success closes it, a failure lands in its FormAlert).
+  describe("dismissal while pending", () => {
+    const renderPending = (pending: boolean, onClose = jest.fn()) => {
+      render(
+        <Modal
+          open
+          onClose={onClose}
+          title="Saving"
+          onSubmit={jest.fn()}
+          submitDisabled={false}
+          pending={pending}
+        >
+          <input aria-label="field" />
+        </Modal>
+      );
+      return onClose;
+    };
+
+    it("Escape does not close while pending", async () => {
+      const user = userEvent.setup();
+      const onClose = renderPending(true);
+      await user.keyboard("{Escape}");
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("Escape closes when not pending", async () => {
+      const user = userEvent.setup();
+      const onClose = renderPending(false);
+      await user.keyboard("{Escape}");
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("a backdrop click does not close while pending", async () => {
+      const user = userEvent.setup();
+      const onClose = renderPending(true);
+      const backdrop = document.querySelector(".MuiBackdrop-root");
+      expect(backdrop).not.toBeNull();
+      await user.click(backdrop as Element);
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("disables the close button while pending", () => {
+      renderPending(true);
+      expect(screen.getByLabelText("close")).toBeDisabled();
+    });
+
+    it("blocks dismissal for a plain (non-form) Modal that is pending", async () => {
+      const user = userEvent.setup();
+      const onClose = jest.fn();
+      render(
+        <Modal open onClose={onClose} title="Committing" pending>
+          <p>Working</p>
+        </Modal>
+      );
+      await user.keyboard("{Escape}");
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("close")).toBeDisabled();
+    });
+
+    it("a caller can't replace the guarded onClose through spread props", async () => {
+      const user = userEvent.setup();
+      const onClose = jest.fn();
+      const props = { onClose } as Record<string, unknown>;
+      render(
+        <Modal
+          open
+          title="Saving"
+          pending
+          {...(props as { onClose: () => void })}
+        >
+          <p>Working</p>
+        </Modal>
+      );
+      await user.keyboard("{Escape}");
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
+  // #789: an Escape that something inside the dialog already handled (the
+  // region editor deselecting a region) doesn't also close the dialog.
+  describe("Escape handled inside the dialog", () => {
+    it("does not close when a capture listener prevented the Escape", async () => {
+      const user = userEvent.setup();
+      const onClose = jest.fn();
+      const handle = (e: KeyboardEvent) => {
+        if (e.key === "Escape") e.preventDefault();
+      };
+      document.addEventListener("keydown", handle, { capture: true });
+      try {
+        render(
+          <Modal open onClose={onClose} title="Editor">
+            <p>Canvas</p>
+          </Modal>
+        );
+        await user.keyboard("{Escape}");
+        expect(onClose).not.toHaveBeenCalled();
+      } finally {
+        document.removeEventListener("keydown", handle, { capture: true });
+      }
+    });
+  });
+
+  // #789: blur handlers read these to tell a move toward the dialog's own
+  // controls (Cancel, the close X) from a move to another field.
+  describe("control markers", () => {
+    it("marks the actions and the header controls", () => {
+      render(
+        <Modal
+          open
+          onClose={jest.fn()}
+          title="Marked"
+          actions={<button type="button">Cancel</button>}
+        >
+          <p>Body</p>
+        </Modal>
+      );
+      expect(
+        screen
+          .getByRole("button", { name: "Cancel" })
+          .closest("[data-dialog-controls]")
+      ).not.toBeNull();
+      expect(
+        screen.getByLabelText("close").closest("[data-dialog-controls]")
+      ).not.toBeNull();
     });
   });
 });

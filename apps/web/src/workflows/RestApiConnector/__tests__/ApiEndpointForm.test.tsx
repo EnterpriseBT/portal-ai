@@ -8,6 +8,7 @@ import {
   screen,
   waitFor,
   fireEvent,
+  pressEnter,
 } from "../../../__tests__/test-utils";
 
 import {
@@ -718,5 +719,22 @@ describe("ApiEndpointForm — record total probe (#458)", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  });
+});
+
+// #789: a real Enter in a field submits the endpoint, exactly like Save.
+describe("ApiEndpointForm — Enter", () => {
+  it("submits on a real Enter in a field", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({ key: "users", label: "Users", path: "/users" })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await pressEnter(screen.getByRole("textbox", { name: /entity key/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
   });
 });

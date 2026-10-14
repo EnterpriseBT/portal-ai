@@ -36,6 +36,7 @@ import {
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
 import { ToolPackUpgradeNoteUI } from "./ToolPackUpgradeNote.component";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 const BUILTIN_TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map(
   (pack) => {
@@ -253,21 +254,14 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Edit Station"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -295,7 +289,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
-          onBlur={() => handleBlur("name")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("name"))}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
           slotProps={{

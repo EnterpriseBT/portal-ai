@@ -35,7 +35,7 @@ export type PolicyStatementInput = z.infer<typeof PolicyStatementInputSchema>;
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const PolicyUpsertRequestSchema = z
   .object({
-    name: z.string().min(1),
+    name: z.string().min(1, "Name is required"),
     description: z.string().nullable().optional(),
     statements: z.array(PolicyStatementInputSchema).min(1),
   })
@@ -68,7 +68,7 @@ export type PolicyListResponse = z.infer<typeof PolicyListResponseSchema>;
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const RoleUpsertRequestSchema = z
   .object({
-    name: z.string().min(1),
+    name: z.string().min(1, "Name is required"),
     policyIds: z.array(z.string()),
   })
   .strict();
@@ -101,7 +101,7 @@ export type RoleListResponse = z.infer<typeof RoleListResponseSchema>;
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const GroupUpsertRequestSchema = z
   .object({
-    name: z.string().min(1),
+    name: z.string().min(1, "Name is required"),
     description: z.string().nullable().optional(),
     policyIds: z.array(z.string()),
   })

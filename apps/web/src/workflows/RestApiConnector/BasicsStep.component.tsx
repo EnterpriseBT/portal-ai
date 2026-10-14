@@ -33,6 +33,7 @@ import type {
   AuthMode,
   CredentialsDraft,
 } from "./utils/rest-api-validation.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
@@ -84,7 +85,7 @@ export const BasicsStepUI: React.FC<BasicsStepUIProps> = ({
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onNameChange(e.target.value)
         }
-        onBlur={() => onBlur("name")}
+        onBlur={blurUnlessDialogControl(() => onBlur("name"))}
         required
         fullWidth
         error={touched.name && !!errors.name}
@@ -100,7 +101,7 @@ export const BasicsStepUI: React.FC<BasicsStepUIProps> = ({
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onBaseUrlChange(e.target.value)
         }
-        onBlur={() => onBlur("baseUrl")}
+        onBlur={blurUnlessDialogControl(() => onBlur("baseUrl"))}
         required
         fullWidth
         error={touched.baseUrl && !!errors.baseUrl}

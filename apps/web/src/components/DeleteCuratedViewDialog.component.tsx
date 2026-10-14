@@ -16,26 +16,26 @@ export interface DeleteCuratedViewDialogProps {
 
 export const DeleteCuratedViewDialog: React.FC<
   DeleteCuratedViewDialogProps
-> = ({ open, onClose, viewLabel, onConfirm, isPending, serverError }) => {
+> = ({
+  open,
+  onClose,
+  viewLabel,
+  onConfirm,
+  isPending = false,
+  serverError,
+}) => {
   if (!open) return null;
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={!!isPending}
       open
       onClose={onClose}
       title="Delete view"
       maxWidth="xs"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onConfirm();
-          },
-        } as object,
-      }}
+      onSubmit={onConfirm}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

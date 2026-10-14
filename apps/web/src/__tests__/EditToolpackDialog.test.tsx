@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { Toolpack } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { EditToolpackDialogUI } =
   await import("../components/EditToolpackDialog.component");
 
@@ -154,5 +155,17 @@ describe("EditToolpackDialogUI", () => {
       screen.getByRole("button", { name: /Rotate signing secret/ })
     );
     expect(onRotateSecret).toHaveBeenCalledTimes(1);
+  });
+
+  // #789: a real Enter in a field saves, exactly like Save.
+  it("saves on a real Enter in the name field", async () => {
+    const onSubmit = jest.fn();
+    render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "renamed_pack" },
+    });
+    await pressEnter(screen.getByLabelText(/Name/));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({ name: "renamed_pack" });
   });
 });

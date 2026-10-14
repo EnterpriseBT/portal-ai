@@ -485,6 +485,8 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
       title="Connect Microsoft 365 Excel"
       defaultMaximized
       maximizable
+      // #789: nothing dismisses the wizard while its plan commits.
+      pending={workflow.isCommitting}
     >
       <Stack spacing={2} sx={{ minWidth: 0 }}>
         <Stepper
@@ -588,21 +590,21 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
 
         {workflow.step === 0 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={handleClose}>
               Cancel
             </Button>
           </Stack>
         )}
         {workflow.step === 1 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={handleClose}>
               Cancel
             </Button>
           </Stack>
         )}
         {workflow.step === 2 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={workflow.goBack}>
+            <Button type="button" variant="text" onClick={workflow.goBack}>
               Back
             </Button>
           </Stack>

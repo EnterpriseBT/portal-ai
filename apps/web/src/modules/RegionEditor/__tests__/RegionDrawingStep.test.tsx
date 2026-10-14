@@ -2,6 +2,8 @@ import "@testing-library/jest-dom";
 import React from "react";
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { Modal } from "@portalai/core/ui";
 
 import { RegionDrawingStepUI } from "../RegionDrawingStep.component";
 import type { RegionDraft, Workbook } from "../utils/region-editor.types";
@@ -362,5 +364,87 @@ describe("RegionDrawingStepUI — interpret validation", () => {
     expect(chip).toBeDefined();
     fireEvent.click(chip!);
     expect(onSelectRegion).toHaveBeenCalledWith("r_two");
+  });
+});
+
+// #789: the step is a form around Interpret. Enter in a field Interprets
+// exactly when the button could; a field that owns Enter keeps it; and an
+// Escape the step handles (deselecting a region) doesn't close the dialog
+// around it.
+describe("RegionDrawingStepUI — keyboard (#789)", () => {
+  test("Enter on the focused form Interprets", async () => {
+    const user = userEvent.setup();
+    const onInterpret = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onInterpret })} />);
+    screen.getByRole("button", { name: "Interpret" }).focus();
+    await user.keyboard("{Enter}");
+    expect(onInterpret).toHaveBeenCalledTimes(1);
+  });
+
+  test("Enter in a bounds field commits the field, not the step", async () => {
+    const user = userEvent.setup();
+    const onInterpret = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onInterpret })} />);
+    await user.type(screen.getByLabelText("End row"), "{Enter}");
+    expect(onInterpret).not.toHaveBeenCalled();
+  });
+
+  test("Escape with a region selected deselects it and leaves the Modal open", async () => {
+    const user = userEvent.setup();
+    const onSelectRegion = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <Modal open onClose={onClose} title="Wizard">
+        <RegionDrawingStepUI {...baseProps({ onSelectRegion })} />
+      </Modal>
+    );
+    // Focus outside any text field, where the step's shortcuts apply.
+    screen.getByRole("button", { name: "Interpret" }).focus();
+    await user.keyboard("{Escape}");
+    expect(onSelectRegion).toHaveBeenCalledWith(null);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+  test("Escape in a dialog opened over the step closes that dialog, not the region", async () => {
+    const user = userEvent.setup();
+    const onSelectRegion = jest.fn();
+    const onNestedClose = jest.fn();
+    render(
+      <Modal open onClose={jest.fn()} title="Wizard">
+        <RegionDrawingStepUI {...baseProps({ onSelectRegion })} />
+        <Modal open onClose={onNestedClose} title="Nested">
+          <button type="button">Nested action</button>
+        </Modal>
+      </Modal>
+    );
+    screen.getByRole("button", { name: "Nested action" }).focus();
+    await user.keyboard("{Escape}");
+    expect(onSelectRegion).not.toHaveBeenCalled();
+    expect(onNestedClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("Escape in an open menu over the step leaves the region selected", () => {
+    const onSelectRegion = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onSelectRegion })} />);
+    const listbox = document.createElement("ul");
+    listbox.setAttribute("role", "listbox");
+    const option = document.createElement("li");
+    option.tabIndex = 0;
+    listbox.appendChild(option);
+    document.body.appendChild(listbox);
+    fireEvent.keyDown(option, { key: "Escape" });
+    expect(onSelectRegion).not.toHaveBeenCalled();
+    listbox.remove();
+  });
+
+  test("a submit that skips the default button can't Interpret with no regions", () => {
+    const onInterpret = jest.fn();
+    render(
+      <RegionDrawingStepUI {...baseProps({ onInterpret, regions: [] })} />
+    );
+    const form = screen
+      .getByRole("button", { name: "Interpret" })
+      .closest("form") as HTMLFormElement;
+    form.requestSubmit();
+    expect(onInterpret).not.toHaveBeenCalled();
   });
 });

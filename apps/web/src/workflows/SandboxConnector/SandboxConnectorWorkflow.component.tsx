@@ -16,6 +16,7 @@ import {
 } from "../../utils/form-validation.util";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import type { ConnectorWorkflowProps } from "../../views/Connector.view";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 // ── UI Component (pure, no hooks) ───────────────────────────────────
 
@@ -50,21 +51,14 @@ export const SandboxConnectorWorkflowUI: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Connect Sandbox"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -93,7 +87,7 @@ export const SandboxConnectorWorkflowUI: React.FC<
           label="Name"
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(onBlur)}
           error={touched && !!errors.name}
           helperText={touched && errors.name}
           slotProps={{

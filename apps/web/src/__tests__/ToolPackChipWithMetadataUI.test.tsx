@@ -158,7 +158,7 @@ describe("ToolPackChipWithMetadataUI", () => {
         onClose={onClose}
       />
     );
-    fireEvent.click(screen.getByLabelText("Close metadata"));
+    fireEvent.click(screen.getByLabelText("close"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

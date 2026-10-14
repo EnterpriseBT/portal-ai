@@ -9,7 +9,7 @@ import type {
   FileUploadSheetSliceResponsePayload,
 } from "@portalai/core/contracts";
 
-import { useAuthMutation } from "../utils/api.util";
+import { LONG_WRITE_TIMEOUT_MS, useAuthMutation } from "../utils/api.util";
 
 /**
  * Streaming upload pipeline:
@@ -30,13 +30,13 @@ export const fileUploads = {
     useAuthMutation<
       FileUploadConfirmResponsePayload,
       FileUploadConfirmRequestBody
-    >({ url: "/api/file-uploads/confirm" }),
+    >({ url: "/api/file-uploads/confirm", timeoutMs: LONG_WRITE_TIMEOUT_MS }),
 
   parse: () =>
     useAuthMutation<
       FileUploadParseSessionResponsePayload,
       FileUploadParseSessionRequestBody
-    >({ url: "/api/file-uploads/parse" }),
+    >({ url: "/api/file-uploads/parse", timeoutMs: LONG_WRITE_TIMEOUT_MS }),
 
   /**
    * Imperative GET for a cell rectangle on a previously-parsed sheet. Called

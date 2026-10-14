@@ -8,6 +8,7 @@ import {
   type FormErrors,
 } from "../../utils/form-validation.util";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 export interface NewEntityDialogUIProps {
   open: boolean;
@@ -73,6 +74,11 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
   const [keyDirty, setKeyDirty] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  // #789: the key check is a request. While it runs the dialog is pending,
+  // and the ref stops a second Enter that lands before the re-render from
+  // creating the entity twice.
+  const [checking, setChecking] = useState(false);
+  const checkingRef = React.useRef(false);
 
   const labelRef = useDialogAutoFocus<HTMLInputElement>(open);
 
@@ -110,13 +116,21 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
     return false;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
+    if (checkingRef.current) return;
     if (!validate()) return;
     const trimmedKey = key.trim();
     const trimmedLabel = label.trim();
     if (validateKey) {
-      const result = await validateKey(trimmedKey);
+      checkingRef.current = true;
+      setChecking(true);
+      let result: Awaited<ReturnType<typeof validateKey>>;
+      try {
+        result = await validateKey(trimmedKey);
+      } finally {
+        checkingRef.current = false;
+        setChecking(false);
+      }
       if (!result.ok) {
         const ownedBy = result.ownedBy ?? "another connector";
         setErrors((prev) => ({
@@ -137,26 +151,31 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
 
   return (
     <Modal
-      submitDisabled={false}
+      submitDisabled={checking}
+      pending={checking}
       open={open}
       onClose={onClose}
       title="Create new entity"
       maxWidth="xs"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: handleSubmit,
-          noValidate: true,
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <>
-          <Button type="button" variant="outlined" onClick={onClose}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={checking}
+          >
             Cancel
           </Button>
-          <Button type="submit" variant="contained">
-            Create
+          <Button
+            type="button"
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={checking}
+          >
+            {checking ? "Checking..." : "Create"}
           </Button>
         </>
       }
@@ -169,7 +188,9 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
           required
           value={label}
           onChange={(e) => handleLabelChange(e.target.value)}
-          onBlur={() => setTouched((t) => ({ ...t, label: true }))}
+          onBlur={blurUnlessDialogControl(() =>
+            setTouched((t) => ({ ...t, label: true }))
+          )}
           placeholder="e.g. Contact, Deal, Revenue"
           error={labelInvalid}
           helperText={
@@ -183,7 +204,9 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
           required
           value={key}
           onChange={(e) => handleKeyChange(e.target.value)}
-          onBlur={() => setTouched((t) => ({ ...t, key: true }))}
+          onBlur={blurUnlessDialogControl(() =>
+            setTouched((t) => ({ ...t, key: true }))
+          )}
           placeholder="e.g. contact, deal, revenue"
           error={keyInvalid}
           helperText={

@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { InviteMemberDialog } =
   await import("../components/InviteMemberDialog.component");
 
@@ -47,7 +48,7 @@ describe("InviteMemberDialog", () => {
     fireEvent.change(screen.getByLabelText(/Email/), {
       target: { value: "enter@example.com" },
     });
-    fireEvent.submit(screen.getByLabelText(/Email/).closest("form")!);
+    await pressEnter(screen.getByLabelText(/Email/));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
         email: "enter@example.com",

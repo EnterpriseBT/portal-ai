@@ -24,6 +24,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Form types ──────────────────────────────────────────────────────
 
@@ -133,21 +134,14 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title={isEdit ? "Edit Tag" : "Create Tag"}
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -175,7 +169,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
-          onBlur={() => handleBlur("name")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("name"))}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
           slotProps={{

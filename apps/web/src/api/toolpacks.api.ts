@@ -11,7 +11,11 @@ import type {
   ToolpackRotateSigningSecretResponsePayload,
 } from "@portalai/core/contracts";
 
-import { useAuthQuery, useAuthMutation } from "../utils/api.util";
+import {
+  useAuthQuery,
+  useAuthMutation,
+  LONG_WRITE_TIMEOUT_MS,
+} from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -36,15 +40,19 @@ export const toolpacks = {
       options
     ),
 
+  // Register, and an update that changes endpoints, fetch the webhook's
+  // schema and metadata before answering, the same work as refresh.
   register: () =>
     useAuthMutation<ToolpackRegisterResponsePayload, RegisterToolpackBody>({
       url: "/api/toolpacks",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
     }),
 
   update: (id: string) =>
     useAuthMutation<ToolpackUpdateResponsePayload, UpdateToolpackBody>({
       url: `/api/toolpacks/${encodeURIComponent(id)}`,
       method: "PATCH",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       onPermissionDenied: { invalidate: () => [queryKeys.toolpacks.root] },
     }),
 
@@ -67,6 +75,7 @@ export const toolpacks = {
     useAuthMutation<ToolpackRefreshResponsePayload, { id: string }>({
       method: "POST",
       url: ({ id }) => `/api/toolpacks/${encodeURIComponent(id)}/refresh`,
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       body: () => undefined,
       onPermissionDenied: { invalidate: () => [queryKeys.toolpacks.root] },
     }),

@@ -245,7 +245,10 @@ export const ColumnDefinitionListView: React.FC = () => {
 
       <CreateColumnDefinitionDialog
         open={createOpen}
-        onClose={handleCreateClose}
+        onClose={() => {
+          createMutation.reset();
+          handleCreateClose();
+        }}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
         serverError={toServerError(createMutation.error)}
@@ -253,7 +256,10 @@ export const ColumnDefinitionListView: React.FC = () => {
 
       <DeleteColumnDefinitionDialog
         open={deleteOpen}
-        onClose={handleDeleteClose}
+        onClose={() => {
+          deleteMutation.reset();
+          handleDeleteClose();
+        }}
         columnDefinitionLabel={deletingCd?.label ?? ""}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}

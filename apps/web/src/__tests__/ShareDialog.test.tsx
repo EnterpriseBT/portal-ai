@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen, fireEvent, pressEnter, waitFor } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { ShareDialogUI } from "../components/ShareDialog.component";
 import type { GrantView } from "@portalai/core/contracts";
@@ -36,6 +36,21 @@ describe("ShareDialogUI (#621)", () => {
     const onShare = jest.fn();
     render(<ShareDialogUI {...baseProps} onShare={onShare} />);
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(onShare).toHaveBeenCalledWith({ type: "team" }, "read", []);
+  });
+
+  it("shares on Enter on the focused Share button", async () => {
+    // The dialog has only selects, where Enter opens the menu, so Enter
+    // shares from the button, the way a keyboard user reaches it: after the
+    // open's auto-focus has landed on "Share with", which would otherwise
+    // take focus back from the button mid-test.
+    const onShare = jest.fn();
+    render(<ShareDialogUI {...baseProps} onShare={onShare} />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Share with")).toHaveFocus()
+    );
+    await pressEnter(screen.getByRole("button", { name: "Share" }));
+    expect(onShare).toHaveBeenCalledTimes(1);
     expect(onShare).toHaveBeenCalledWith({ type: "team" }, "read", []);
   });
 

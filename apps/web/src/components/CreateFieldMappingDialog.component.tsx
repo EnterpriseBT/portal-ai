@@ -17,6 +17,7 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { getTypeConfig } from "../utils/column-definition-form.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Validation ──────────────────────────────────────────────────────
 
@@ -196,21 +197,14 @@ export const CreateFieldMappingDialog: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="New Field Mapping"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -255,7 +249,7 @@ export const CreateFieldMappingDialog: React.FC<
           label="Source Field"
           value={form.sourceField}
           onChange={(e) => handleChange("sourceField", e.target.value)}
-          onBlur={() => handleBlur("sourceField")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("sourceField"))}
           error={touched.sourceField && !!errors.sourceField}
           helperText={touched.sourceField && errors.sourceField}
           slotProps={{
@@ -270,7 +264,7 @@ export const CreateFieldMappingDialog: React.FC<
           label="Normalized Key"
           value={form.normalizedKey}
           onChange={(e) => handleChange("normalizedKey", e.target.value)}
-          onBlur={() => handleBlur("normalizedKey")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("normalizedKey"))}
           error={touched.normalizedKey && !!errors.normalizedKey}
           helperText={
             (touched.normalizedKey && errors.normalizedKey) ||

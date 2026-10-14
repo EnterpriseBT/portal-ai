@@ -7,7 +7,11 @@ import type {
 } from "@portalai/core/contracts";
 import type { PortalResult } from "@portalai/core/models";
 
-import { useAuthQuery, useAuthMutation } from "../utils/api.util";
+import {
+  useAuthQuery,
+  useAuthMutation,
+  LONG_WRITE_TIMEOUT_MS,
+} from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -88,6 +92,7 @@ export const portalResults = {
   refresh: () =>
     useAuthMutation<WidgetRefreshResponse, { id: string }>({
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}/refresh`,
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       body: () => undefined,
       // #753: a manual refresh must not join an auto-refresh in flight.
       dedupeInFlight: false,

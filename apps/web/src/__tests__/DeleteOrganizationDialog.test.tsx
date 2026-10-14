@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
 const { DeleteOrganizationDialog } =
   await import("../components/DeleteOrganizationDialog.component");
 
@@ -59,23 +59,23 @@ describe("DeleteOrganizationDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("Acme Corp");
   });
 
-  it("should call onConfirm on form submit (Enter) when matching (case 20)", () => {
+  it("should call onConfirm on form submit (Enter) when matching (case 20)", async () => {
     const onConfirm = jest.fn();
     render(
       <DeleteOrganizationDialog {...defaultProps} onConfirm={onConfirm} />
     );
     fireEvent.change(confirmField(), { target: { value: "Acme Corp" } });
-    fireEvent.submit(confirmField().closest("form")!);
+    await pressEnter(confirmField());
     expect(onConfirm).toHaveBeenCalledWith("Acme Corp");
   });
 
-  it("should not call onConfirm on submit while the name does not match (case 20)", () => {
+  it("should not call onConfirm on submit while the name does not match (case 20)", async () => {
     const onConfirm = jest.fn();
     render(
       <DeleteOrganizationDialog {...defaultProps} onConfirm={onConfirm} />
     );
     fireEvent.change(confirmField(), { target: { value: "wrong" } });
-    fireEvent.submit(confirmField().closest("form")!);
+    await pressEnter(confirmField());
     expect(onConfirm).not.toHaveBeenCalled();
   });
 

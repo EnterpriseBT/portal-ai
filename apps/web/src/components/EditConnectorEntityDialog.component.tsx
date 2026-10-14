@@ -15,6 +15,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 export interface EditConnectorEntityDialogProps {
   open: boolean;
@@ -31,7 +32,7 @@ const EditForm: React.FC<{
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
-}> = ({ entity, onSubmit, onClose, isPending, serverError }) => {
+}> = ({ entity, onSubmit, onClose, isPending = false, serverError }) => {
   const [label, setLabel] = useState(entity.label);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState(false);
@@ -63,21 +64,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={saveDisabled}
       open
       onClose={onClose}
       title="Edit Connector Entity"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -110,10 +104,10 @@ const EditForm: React.FC<{
               setErrors(validate({ label: e.target.value.trim() }));
             }
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched(true);
             setErrors(validate({ label: label.trim() }));
-          }}
+          })}
           error={touched && !!errors.label}
           helperText={touched && errors.label}
           slotProps={{
@@ -130,7 +124,7 @@ const EditForm: React.FC<{
 
 export const EditConnectorEntityDialog: React.FC<
   EditConnectorEntityDialogProps
-> = ({ open, onClose, entity, onSubmit, isPending, serverError }) => {
+> = ({ open, onClose, entity, onSubmit, isPending = false, serverError }) => {
   if (!open) return null;
 
   return (

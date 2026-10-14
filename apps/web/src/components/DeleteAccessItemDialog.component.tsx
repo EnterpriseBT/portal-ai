@@ -32,22 +32,17 @@ export const DeleteAccessItemDialogUI: React.FC<
   DeleteAccessItemDialogUIProps
 > = ({ open, onClose, onConfirm, kind, itemName, isPending, serverError }) => (
   <Modal
+    pending={isPending}
     submitDisabled={isPending}
     open={open}
     // Not dismissible mid-request: an Escape would hide the outcome (a
     // failure renders here) and a reopened delete would reset this one.
-    onClose={isPending ? () => undefined : onClose}
+    onClose={onClose}
     title={`Delete ${kind}`}
     maxWidth="xs"
     fullWidth
-    slotProps={{
-      paper: {
-        component: "form",
-        onSubmit: (e: React.FormEvent) => {
-          e.preventDefault();
-          if (!isPending) onConfirm();
-        },
-      } as object,
+    onSubmit={() => {
+      if (!isPending) onConfirm();
     }}
     actions={
       <Stack direction="row" spacing={1}>

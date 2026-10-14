@@ -2,7 +2,8 @@ import { jest } from "@jest/globals";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
 import type { ColumnDefinition } from "@portalai/core/models";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { EditColumnDefinitionDialog } =
   await import("../components/EditColumnDefinitionDialog.component");
 
@@ -320,8 +321,9 @@ describe("EditColumnDefinitionDialog", () => {
   it("should submit form on Enter key press", async () => {
     const onClose = jest.fn();
     render(<EditColumnDefinitionDialog {...defaultProps} onClose={onClose} />);
-    // No changes — form submit should call onClose
-    fireEvent.submit(screen.getByDisplayValue("first_name").closest("form")!);
+    // No changes — Enter should call onClose. In Label: the Key field is
+    // disabled, so no one can press Enter there.
+    await pressEnter(screen.getByLabelText(/^Label/));
     await waitFor(() => {
       expect(onClose).toHaveBeenCalled();
     });

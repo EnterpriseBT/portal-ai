@@ -15,20 +15,11 @@ import {
   PageHeader,
   PageSection,
   Stack,
-  Typography,
-  AsyncSearchableSelect,
-  FormDefaultButton,
   GatedButton,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type { DataTableColumn } from "@portalai/core/ui";
 import Button from "@mui/material/Button";
-import Checkbox from "@mui/material/Checkbox";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -38,10 +29,11 @@ import StarOutlineIcon from "@mui/icons-material/StarOutline";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
+import { AddGroupMemberDialog } from "../components/AddGroupMemberDialog.component";
 import DataResult from "../components/DataResult.component";
 import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
-import { FormAlert } from "../components/FormAlert.component";
+import { RemoveGroupMemberDialog } from "../components/RemoveGroupMemberDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
@@ -50,162 +42,8 @@ import {
   toServerError,
   type ServerError,
 } from "../utils/api.util";
-import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { serverErrorMessage } from "../utils/permission-denied.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
-
-// ── Overlap preview ─────────────────────────────────────────────────
-
-interface OverlapPreviewProps {
-  overlap: EntityGroupMemberOverlapResponsePayload | null;
-  isLoading: boolean;
-}
-
-export const OverlapPreview: React.FC<OverlapPreviewProps> = ({
-  overlap,
-  isLoading,
-}) => {
-  if (isLoading) {
-    return (
-      <Typography variant="body2" color="text.secondary">
-        Checking overlap…
-      </Typography>
-    );
-  }
-
-  if (!overlap) return null;
-
-  const pct = overlap.overlapPercentage;
-  const color = pct < 5 ? "error" : pct < 50 ? "warning" : undefined;
-
-  return (
-    <Box
-      data-testid="overlap-preview"
-      sx={{
-        p: 2,
-        borderRadius: 1,
-        ...(color === "error" && {
-          bgcolor: "error.light",
-          color: "error.contrastText",
-        }),
-        ...(color === "warning" && {
-          bgcolor: "warning.light",
-          color: "warning.contrastText",
-        }),
-        ...(!color && { bgcolor: "grey.100" }),
-      }}
-    >
-      <Typography variant="h4" data-testid="overlap-percentage">
-        {Math.round(pct)}% overlap
-      </Typography>
-      <Typography variant="body2" data-testid="overlap-counts">
-        {overlap.matchingRecordCount} of {overlap.sourceRecordCount} source
-        records match {overlap.matchingRecordCount} of{" "}
-        {overlap.targetRecordCount} target records
-      </Typography>
-    </Box>
-  );
-};
-
-// ── Add member dialog ───────────────────────────────────────────────
-
-interface AddMemberDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onSearchEntities: (query: string) => Promise<SelectOption[]>;
-  onSearchFieldMappings: (query: string) => Promise<SelectOption[]>;
-  selectedEntityId: string | null;
-  onEntityChange: (value: string | null) => void;
-  selectedFieldMappingId: string | null;
-  onFieldMappingChange: (value: string | null) => void;
-  isPrimary: boolean;
-  onPrimaryChange: (checked: boolean) => void;
-  overlap: EntityGroupMemberOverlapResponsePayload | null;
-  overlapLoading: boolean;
-  onAddMember: () => void;
-  isAdding: boolean;
-  serverError?: ServerError | null;
-}
-
-export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
-  open,
-  onClose,
-  onSearchEntities,
-  onSearchFieldMappings,
-  selectedEntityId,
-  onEntityChange,
-  selectedFieldMappingId,
-  onFieldMappingChange,
-  isPrimary,
-  onPrimaryChange,
-  overlap,
-  overlapLoading,
-  onAddMember,
-  isAdding,
-  serverError,
-}) => {
-  const addDisabled = !selectedEntityId || !selectedFieldMappingId || isAdding;
-  const entityInputRef = useDialogAutoFocus(open);
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!addDisabled) onAddMember();
-        }}
-      >
-        <DialogTitle>Add Member</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <AsyncSearchableSelect
-              inputRef={entityInputRef}
-              value={selectedEntityId}
-              onChange={onEntityChange}
-              onSearch={onSearchEntities}
-              label="Connector Entity"
-              placeholder="Search entities…"
-            />
-            <AsyncSearchableSelect
-              value={selectedFieldMappingId}
-              onChange={onFieldMappingChange}
-              onSearch={onSearchFieldMappings}
-              label="Link Field Mapping"
-              placeholder="Search field mappings…"
-              disabled={!selectedEntityId}
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={isPrimary}
-                  onChange={(e) => onPrimaryChange(e.target.checked)}
-                />
-              }
-              label="Primary member"
-            />
-            <OverlapPreview overlap={overlap} isLoading={overlapLoading} />
-            <FormAlert serverError={serverError ?? null} />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button type="button" onClick={onClose} disabled={isAdding}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="contained"
-            onClick={() => {
-              if (!addDisabled) onAddMember();
-            }}
-            disabled={addDisabled}
-          >
-            Submit
-          </Button>
-        </DialogActions>
-        <FormDefaultButton disabled={addDisabled} />
-      </form>
-    </Dialog>
-  );
-};
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
@@ -215,7 +53,13 @@ export interface EntityGroupDetailViewUIProps {
   onDeleteGroup: () => void;
   onPromoteMember: (memberId: string) => void;
   onDemoteMember: (memberId: string) => void;
-  onRemoveMember: (memberId: string) => void;
+  /** Resolves true once the member is removed (#789: the confirm dialog
+   *  stays open, showing the error, until then). */
+  onRemoveMember: (memberId: string) => Promise<boolean>;
+  isRemovingMember?: boolean;
+  removeMemberServerError?: ServerError | null;
+  /** The confirm dialog opened: a fresh attempt, without the last error. */
+  onRemoveMemberDialogOpen?: () => void;
   // Edit group dialog
   editOpen: boolean;
   onOpenEdit: () => void;
@@ -255,6 +99,9 @@ export const EntityGroupDetailViewUI: React.FC<
   onPromoteMember,
   onDemoteMember,
   onRemoveMember,
+  isRemovingMember = false,
+  removeMemberServerError,
+  onRemoveMemberDialogOpen,
   editOpen,
   onOpenEdit,
   onCloseEdit,
@@ -313,11 +160,11 @@ export const EntityGroupDetailViewUI: React.FC<
     onDeleteGroup();
   };
 
-  const handleConfirmRemove = () => {
-    if (removeDialogMemberId) {
-      onRemoveMember(removeDialogMemberId);
+  const handleConfirmRemove = async () => {
+    if (!removeDialogMemberId) return;
+    if (await onRemoveMember(removeDialogMemberId)) {
+      setRemoveDialogMemberId(null);
     }
-    setRemoveDialogMemberId(null);
   };
 
   const membersColumns: DataTableColumn[] = [
@@ -360,6 +207,7 @@ export const EntityGroupDetailViewUI: React.FC<
                 color="error"
                 onClick={(e) => {
                   e.stopPropagation();
+                  onRemoveMemberDialogOpen?.();
                   setRemoveDialogMemberId(row.id as string);
                 }}
                 aria-label="Remove member"
@@ -453,7 +301,7 @@ export const EntityGroupDetailViewUI: React.FC<
       </Stack>
 
       {/* Add member dialog */}
-      <AddMemberDialog
+      <AddGroupMemberDialog
         open={addMemberOpen}
         onClose={onCloseAddMember}
         onSearchEntities={onSearchEntities}
@@ -494,27 +342,13 @@ export const EntityGroupDetailViewUI: React.FC<
       />
 
       {/* Remove member confirmation */}
-      <Dialog
+      <RemoveGroupMemberDialog
         open={!!removeDialogMemberId}
         onClose={() => setRemoveDialogMemberId(null)}
-      >
-        <DialogTitle>Remove Member</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to remove this member from the group?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRemoveDialogMemberId(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={handleConfirmRemove}
-          >
-            Remove
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={() => void handleConfirmRemove()}
+        isPending={isRemovingMember}
+        serverError={removeMemberServerError}
+      />
     </Box>
   );
 };
@@ -540,7 +374,7 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const deleteMutation = sdk.entityGroups.delete(entityGroupId);
   const addMemberMutation = sdk.entityGroups.addMember(entityGroupId);
   const { mutate: updateMember } = sdk.entityGroups.updateMember(entityGroupId);
-  const { mutate: removeMember } = sdk.entityGroups.removeMember(entityGroupId);
+  const removeMemberMutation = sdk.entityGroups.removeMember(entityGroupId);
   const toast = useToast();
 
   // Delete impact - the dialog state is inside the UI, but we track it here for the query
@@ -680,20 +514,18 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     [handleSetPrimary]
   );
 
+  // #789: the confirm dialog shows a failure in its FormAlert, so no toast.
   const handleRemoveMember = useCallback(
-    (memberId: string) => {
-      removeMember(
-        { memberId },
-        {
-          onSuccess: invalidate,
-          onError: (error) =>
-            toast.error(
-              serverErrorMessage(error, "Couldn't update the member")
-            ),
-        }
-      );
+    async (memberId: string) => {
+      try {
+        await removeMemberMutation.mutateAsync({ memberId });
+      } catch {
+        return false;
+      }
+      invalidate();
+      return true;
     },
-    [removeMember, invalidate, toast]
+    [removeMemberMutation, invalidate]
   );
 
   const resetAddMemberForm = useCallback(() => {
@@ -745,12 +577,21 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             onPromoteMember={handlePromoteMember}
             onDemoteMember={handleDemoteMember}
             onRemoveMember={handleRemoveMember}
+            isRemovingMember={removeMemberMutation.isPending}
+            removeMemberServerError={toServerError(removeMemberMutation.error)}
+            onRemoveMemberDialogOpen={() => removeMemberMutation.reset()}
             editOpen={editOpen}
-            onOpenEdit={() => setEditOpen(true)}
+            onOpenEdit={() => {
+              updateMutation.reset();
+              setEditOpen(true);
+            }}
             onCloseEdit={() => setEditOpen(false)}
             editServerError={toServerError(updateMutation.error)}
             addMemberOpen={addMemberOpen}
-            onOpenAddMember={() => setAddMemberOpen(true)}
+            onOpenAddMember={() => {
+              addMemberMutation.reset();
+              setAddMemberOpen(true);
+            }}
             onCloseAddMember={handleCloseAddMember}
             onSearchEntities={handleSearchEntities}
             onSearchFieldMappings={handleSearchFieldMappings}
@@ -772,7 +613,10 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             isLoadingDeleteImpact={
               impactQuery.isLoading && deleteDialogOpenForImpact
             }
-            onDeleteDialogOpenChange={setDeleteDialogOpenForImpact}
+            onDeleteDialogOpenChange={(open) => {
+              if (open) deleteMutation.reset();
+              setDeleteDialogOpenForImpact(open);
+            }}
           />
         );
       }}

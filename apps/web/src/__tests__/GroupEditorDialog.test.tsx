@@ -47,8 +47,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
-const { GroupEditorDialog } =
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { GroupEditorDialog, GroupEditorDialogUI } =
   await import("../modules/AccessAuthoring/GroupEditorDialog.component");
 
 const editGroup = {
@@ -131,5 +131,40 @@ describe("GroupEditorDialog (#637)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(mockSetMembers).toHaveBeenCalledWith({ id: "new-g", userIds: [] });
+  });
+});
+
+// #789: the editor's UI saves on a real Enter exactly when Save could.
+describe("GroupEditorDialogUI — Enter", () => {
+  const uiProps = {
+    open: true,
+    onClose: jest.fn(),
+    group: null,
+    name: "Analysts",
+    onNameChange: jest.fn(),
+    description: "",
+    onDescriptionChange: jest.fn(),
+    policyIds: [],
+    onPolicyIdsChange: jest.fn(),
+    policyOptions: [],
+    memberIds: [],
+    onMemberIdsChange: jest.fn(),
+    memberOptions: [],
+    onSubmit: jest.fn(),
+    serverError: null,
+  };
+
+  it("saves on a real Enter in the name field", async () => {
+    const onSubmit = jest.fn();
+    render(<GroupEditorDialogUI {...uiProps} onSubmit={onSubmit} />);
+    await pressEnter(screen.getByRole("textbox", { name: /^name/i }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't save on Enter with an empty name", async () => {
+    const onSubmit = jest.fn();
+    render(<GroupEditorDialogUI {...uiProps} name="" onSubmit={onSubmit} />);
+    await pressEnter(screen.getByRole("textbox", { name: /^name/i }));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

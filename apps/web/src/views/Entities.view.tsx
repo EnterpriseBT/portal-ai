@@ -338,7 +338,10 @@ export const EntitiesView: React.FC = () => {
 
       <DeleteConnectorEntityDialog
         open={!!deletingEntity}
-        onClose={handleDeleteClose}
+        onClose={() => {
+          deleteMutation.reset();
+          handleDeleteClose();
+        }}
         connectorEntityLabel={deletingEntity?.label ?? ""}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}

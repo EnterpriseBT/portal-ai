@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { EditStationDialog } =
   await import("../components/EditStationDialog.component");
 
@@ -126,7 +127,7 @@ describe("EditStationDialog", () => {
     fireEvent.change(screen.getByLabelText(/Name/), {
       target: { value: "Updated Station" },
     });
-    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await pressEnter(screen.getByLabelText(/Name/));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({ name: "Updated Station" });
     });

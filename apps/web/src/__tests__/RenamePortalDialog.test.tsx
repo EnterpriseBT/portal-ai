@@ -128,3 +128,16 @@ describe("RenamePortalDialog", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+// #789: Cancel never flashes a field error on its way out.
+describe("RenamePortalDialog — blur toward the dialog's controls", () => {
+  it("shows no error when an emptied name loses focus to Cancel", async () => {
+    const user = userEvent.setup();
+    const onClose = jest.fn();
+    render(<RenamePortalDialog {...defaultProps} onClose={onClose} />);
+    await user.clear(nameField());
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Name is required")).not.toBeInTheDocument();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

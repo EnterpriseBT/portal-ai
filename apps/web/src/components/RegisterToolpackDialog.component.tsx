@@ -26,6 +26,7 @@ import {
   HighlightedCode,
   type HighlightLanguage,
 } from "./HighlightedCode.component";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -212,6 +213,7 @@ export const RegisterToolpackDialogUI: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
@@ -232,15 +234,7 @@ export const RegisterToolpackDialogUI: React.FC<
       }
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -268,7 +262,7 @@ export const RegisterToolpackDialogUI: React.FC<
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
-          onBlur={() => handleBlur("name")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("name"))}
           placeholder="customer_intel"
           error={touched.name && !!errors.name}
           helperText={
@@ -294,7 +288,7 @@ export const RegisterToolpackDialogUI: React.FC<
           label="Schema endpoint"
           value={form.schemaUrl}
           onChange={(e) => handleChange("schemaUrl", e.target.value)}
-          onBlur={() => handleBlur("schemaUrl")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("schemaUrl"))}
           placeholder="https://api.example.com/toolpacks/customer_intel/schema"
           error={touched.schemaUrl && !!fieldError("endpoints.schema")}
           helperText={
@@ -315,7 +309,7 @@ export const RegisterToolpackDialogUI: React.FC<
           label="Runtime endpoint"
           value={form.runtimeUrl}
           onChange={(e) => handleChange("runtimeUrl", e.target.value)}
-          onBlur={() => handleBlur("runtimeUrl")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("runtimeUrl"))}
           placeholder="https://api.example.com/toolpacks/customer_intel/run"
           error={touched.runtimeUrl && !!fieldError("endpoints.runtime")}
           helperText={
@@ -344,7 +338,7 @@ export const RegisterToolpackDialogUI: React.FC<
             label="Auth headers (optional)"
             value={form.authHeaders}
             onChange={(e) => handleChange("authHeaders", e.target.value)}
-            onBlur={() => handleBlur("authHeaders")}
+            onBlur={blurUnlessDialogControl(() => handleBlur("authHeaders"))}
             placeholder={"X-Api-Key: secret123\nAuthorization: Bearer …"}
             error={touched.authHeaders && !!errors.authHeaders}
             helperText={

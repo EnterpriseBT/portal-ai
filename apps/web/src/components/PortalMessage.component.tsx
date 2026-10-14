@@ -119,6 +119,8 @@ export interface PortalMessageUIProps {
   isPinPending?: boolean;
   /** The last pin failure, rendered inside the dialog (#285). */
   pinServerError?: ServerError | null;
+  /** The pin dialog opened: a fresh attempt, without the last error (#789). */
+  onPinDialogOpen?: () => void;
 }
 
 export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
@@ -129,11 +131,13 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
   onUnpin,
   isPinPending,
   pinServerError = null,
+  onPinDialogOpen,
 }) => {
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinBlockIndex, setPinBlockIndex] = useState<number | null>(null);
 
   const handlePinClick = (blockIndex: number) => {
+    onPinDialogOpen?.();
     setPinBlockIndex(blockIndex);
     setPinDialogOpen(true);
   };
@@ -343,6 +347,7 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
       onUnpin={handleUnpin}
       isPinPending={pin.isPending}
       pinServerError={toServerError(pin.error)}
+      onPinDialogOpen={() => pin.reset()}
     />
   );
 };

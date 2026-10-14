@@ -645,7 +645,10 @@ export const ConnectorInstanceView = ({
                   </PageSection>
                   <DeleteConnectorInstanceDialog
                     open={deleteDialogOpen}
-                    onClose={() => setDeleteDialogOpen(false)}
+                    onClose={() => {
+                      deleteMutation.reset();
+                      setDeleteDialogOpen(false);
+                    }}
                     connectorInstanceName={ci.name}
                     onConfirm={handleDelete}
                     isPending={deleteMutation.isPending}
@@ -656,10 +659,14 @@ export const ConnectorInstanceView = ({
 
                   <EditConnectorInstanceDialog
                     open={editDialogOpen}
-                    onClose={() => setEditDialogOpen(false)}
+                    onClose={() => {
+                      renameMutation.reset();
+                      setEditDialogOpen(false);
+                    }}
                     currentName={ci.name}
                     onConfirm={handleRename}
                     isPending={renameMutation.isPending}
+                    serverError={toServerError(renameMutation.error)}
                   />
 
                   {testingEndpoint ? (

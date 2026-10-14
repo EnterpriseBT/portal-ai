@@ -13,6 +13,7 @@ import { Stack } from "@portalai/core/ui";
 
 import type { FormErrors } from "../../utils/form-validation.util";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 export interface BearerCredentialsFormUIProps {
   token: string;
@@ -40,7 +41,7 @@ export const BearerCredentialsFormUI: React.FC<
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onTokenChange(e.target.value)
         }
-        onBlur={() => onBlur("token")}
+        onBlur={blurUnlessDialogControl(() => onBlur("token"))}
         required
         fullWidth
         autoComplete="off"

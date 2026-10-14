@@ -23,6 +23,7 @@ import {
   appendAuthHeaderBoilerplate,
   AUTH_HEADER_BOILERPLATES,
 } from "./RegisterToolpackDialog.component";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 interface FormState {
   name: string;
@@ -201,21 +202,14 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Edit toolpack"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -260,7 +254,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
-          onBlur={() => handleBlur("name")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("name"))}
           error={touched.name && !!fieldError("name")}
           helperText={touched.name && fieldError("name")}
           slotProps={{
@@ -282,7 +276,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
           label="Schema endpoint"
           value={form.schemaUrl}
           onChange={(e) => handleChange("schemaUrl", e.target.value)}
-          onBlur={() => handleBlur("schemaUrl")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("schemaUrl"))}
           error={touched.schemaUrl && !!fieldError("endpoints.schema")}
           helperText={
             (touched.schemaUrl && fieldError("endpoints.schema")) ||
@@ -300,7 +294,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
           label="Runtime endpoint"
           value={form.runtimeUrl}
           onChange={(e) => handleChange("runtimeUrl", e.target.value)}
-          onBlur={() => handleBlur("runtimeUrl")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("runtimeUrl"))}
           error={touched.runtimeUrl && !!fieldError("endpoints.runtime")}
           helperText={touched.runtimeUrl && fieldError("endpoints.runtime")}
           slotProps={{
@@ -322,7 +316,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
             label="Auth headers"
             value={form.authHeaders}
             onChange={(e) => handleChange("authHeaders", e.target.value)}
-            onBlur={() => handleBlur("authHeaders")}
+            onBlur={blurUnlessDialogControl(() => handleBlur("authHeaders"))}
             placeholder={
               authHeadersStatus
                 ? "Set (values not shown). Type to replace; leave blank to keep the existing values."

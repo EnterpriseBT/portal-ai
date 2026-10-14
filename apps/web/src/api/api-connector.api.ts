@@ -17,7 +17,11 @@ import type {
   SuggestTransformRequestBody,
   SuggestTransformResponse,
 } from "@portalai/core/contracts";
-import { useAuthMutation, useAuthQuery } from "../utils/api.util";
+import {
+  useAuthMutation,
+  useAuthQuery,
+  LONG_WRITE_TIMEOUT_MS,
+} from "../utils/api.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
 
@@ -145,6 +149,7 @@ export const apiConnector = {
     discoverColumns: (instanceId: string, entityId: string) =>
       useAuthMutation<DiscoverColumnsResult, DiscoverColumnsRequestBody>({
         url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}/discover-columns`,
+        timeoutMs: LONG_WRITE_TIMEOUT_MS,
         method: "POST",
         onPermissionDenied: {
           invalidate: () => [
@@ -165,6 +170,7 @@ export const apiConnector = {
     probeDraft: () =>
       useAuthMutation<DiscoverColumnsResult, ProbeEndpointDraftRequestBody>({
         url: "/api/connector-instances/probe-endpoint-draft",
+        timeoutMs: LONG_WRITE_TIMEOUT_MS,
         method: "POST",
       }),
 
@@ -181,6 +187,7 @@ export const apiConnector = {
         PreviewEndpointPageRequestBody
       >({
         url: "/api/connector-instances/preview-endpoint-page",
+        timeoutMs: LONG_WRITE_TIMEOUT_MS,
         method: "POST",
       }),
 
@@ -200,6 +207,7 @@ export const apiConnector = {
     suggestTransform: () =>
       useAuthMutation<SuggestTransformResponse, SuggestTransformRequestBody>({
         url: "/api/connector-instances/suggest-transform",
+        timeoutMs: LONG_WRITE_TIMEOUT_MS,
         method: "POST",
       }),
   },

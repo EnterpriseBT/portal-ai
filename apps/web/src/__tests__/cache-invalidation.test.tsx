@@ -95,6 +95,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
       pin: () =>
         ({
           mutateAsync: mockPinResult,
+          reset: jest.fn(),
           isPending: false,
           error: null,
         }) as Partial<UseMutationResult>,
@@ -110,6 +111,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 jest.unstable_mockModule("../utils/api.util", () => ({
+  WRITE_TIMEOUT_MS: 30_000,
+  LONG_WRITE_TIMEOUT_MS: 300_000,
   useAuthFetch: () => ({
     fetchWithAuth: jest.fn<() => Promise<unknown>>().mockResolvedValue({}),
   }),

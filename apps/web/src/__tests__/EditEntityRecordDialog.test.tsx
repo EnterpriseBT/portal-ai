@@ -8,7 +8,8 @@ jest.unstable_mockModule("react-markdown", () => ({
 }));
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, waitFor } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EditEntityRecordDialog } =
   await import("../components/EditEntityRecordDialog.component");
@@ -146,7 +147,7 @@ describe("EditEntityRecordDialog — submission", () => {
     const nameField = screen.getByLabelText(/Name/);
     await userEvent.clear(nameField);
     await userEvent.type(nameField, "Charlie");
-    fireEvent.submit(nameField.closest("form")!);
+    await pressEnter(nameField);
     expect(defaultProps.onSubmit).toHaveBeenCalled();
   });
 
@@ -238,5 +239,16 @@ describe("EditEntityRecordDialog — field validation", () => {
     await userEvent.clear(nameField);
     await userEvent.click(screen.getByText("Save"));
     expect(nameField).toHaveAttribute("aria-invalid", "true");
+  });
+
+  // #789 smoke §9.4: the focus waits for the render that sets aria-invalid.
+  it("focuses the first invalid field after a click on Save", async () => {
+    render(<EditEntityRecordDialog {...defaultProps} />);
+    const nameField = screen.getByLabelText(/Name/);
+    // The open's auto-focus lands on Name first, so it can't pass this.
+    await waitFor(() => expect(nameField).toHaveFocus());
+    await userEvent.clear(nameField);
+    await userEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(nameField).toHaveFocus());
   });
 });

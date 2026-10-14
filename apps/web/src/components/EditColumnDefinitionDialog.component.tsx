@@ -27,6 +27,7 @@ import {
   findPresetByPattern,
   validateRegex,
 } from "../utils/column-definition-form.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 /**
  * Allowlist of permitted column definition type transitions.
@@ -72,7 +73,7 @@ const EditForm: React.FC<{
   columnDefinition: cd,
   onSubmit,
   onClose,
-  isPending,
+  isPending = false,
   serverError,
   warnings,
 }) => {
@@ -168,8 +169,7 @@ const EditForm: React.FC<{
   ): boolean =>
     body.validationPattern !== undefined || body.canonicalFormat !== undefined;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = () => {
     setTouched({ label: true, validationPattern: true });
     const formErrors = validate({ label: label.trim() });
     setErrors(formErrors);
@@ -204,17 +204,13 @@ const EditForm: React.FC<{
   return (
     <Modal
       submitDisabled={isPending}
+      pending={isPending}
       open
       onClose={onClose}
       title="Edit Column Definition"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: handleSubmit,
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -228,7 +224,7 @@ const EditForm: React.FC<{
           <Button
             type="button"
             variant="contained"
-            onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
+            onClick={handleSubmit}
             disabled={isPending}
           >
             {isPending ? "Saving..." : "Save"}
@@ -257,10 +253,10 @@ const EditForm: React.FC<{
             if (touched.label)
               setErrors(validate({ label: e.target.value.trim() }));
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched((p) => ({ ...p, label: true }));
             setErrors(validate({ label: label.trim() }));
-          }}
+          })}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
           slotProps={{
@@ -335,10 +331,10 @@ const EditForm: React.FC<{
             if (touched.validationPattern)
               setErrors(validate({ label: label.trim() }, e.target.value));
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched((p) => ({ ...p, validationPattern: true }));
             setErrors(validate({ label: label.trim() }));
-          }}
+          })}
           fullWidth
           size="small"
           disabled={!typeConfig.validation.enabled}
@@ -437,7 +433,7 @@ export const EditColumnDefinitionDialog: React.FC<
   onClose,
   columnDefinition,
   onSubmit,
-  isPending,
+  isPending = false,
   serverError,
   warnings,
 }) => {

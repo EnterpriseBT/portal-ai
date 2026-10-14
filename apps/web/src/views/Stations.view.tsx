@@ -219,7 +219,10 @@ export const StationsView: React.FC = () => {
       <CreateStationDialog
         entitledBuiltinSlugs={entitledBuiltinSlugs}
         open={createOpen}
-        onClose={handleCreateClose}
+        onClose={() => {
+          createMutation.reset();
+          handleCreateClose();
+        }}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
         serverError={toServerError(createMutation.error)}
@@ -227,7 +230,10 @@ export const StationsView: React.FC = () => {
 
       <DeleteStationDialog
         open={deleteOpen}
-        onClose={handleDeleteClose}
+        onClose={() => {
+          deleteMutation.reset();
+          handleDeleteClose();
+        }}
         station={deletingStation}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}

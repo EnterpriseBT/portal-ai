@@ -122,21 +122,14 @@ export const ShareDialogUI: React.FC<ShareDialogUIProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title={`Share “${resourceLabel}”`}
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleShare();
-          },
-        } as object,
-      }}
+      onSubmit={handleShare}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -393,7 +386,10 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
   return (
     <ShareDialogUI
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        share.reset();
+        onClose();
+      }}
       resourceLabel={resourceLabel}
       memberOptions={memberOptions}
       grants={grantsQuery.data?.grants ?? []}

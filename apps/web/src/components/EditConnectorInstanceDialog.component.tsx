@@ -4,12 +4,15 @@ import { z } from "zod";
 import TextField from "@mui/material/TextField";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
 import {
   validateWithSchema,
   focusFirstInvalidField,
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 const EditNameSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -21,6 +24,8 @@ export interface EditConnectorInstanceDialogProps {
   currentName: string;
   onConfirm: (newName: string) => void;
   isPending?: boolean;
+  /** #789: a failed rename stays readable in the open dialog. */
+  serverError?: ServerError | null;
 }
 
 const EditForm: React.FC<{
@@ -28,7 +33,8 @@ const EditForm: React.FC<{
   onConfirm: (newName: string) => void;
   onClose: () => void;
   isPending?: boolean;
-}> = ({ currentName, onConfirm, onClose, isPending }) => {
+  serverError?: ServerError | null;
+}> = ({ currentName, onConfirm, onClose, isPending = false, serverError }) => {
   const [name, setName] = useState(currentName);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState(false);
@@ -59,21 +65,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={saveDisabled}
       open
       onClose={onClose}
       title="Edit Connector Instance"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -101,11 +100,11 @@ const EditForm: React.FC<{
           label="Name"
           value={name}
           onChange={(e) => handleChange(e.target.value)}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched(true);
             const result = validateWithSchema(EditNameSchema, { name });
             setErrors(result.success ? {} : result.errors);
-          }}
+          })}
           error={touched && !!errors.name}
           helperText={touched && errors.name}
           slotProps={{
@@ -114,6 +113,7 @@ const EditForm: React.FC<{
           required
           fullWidth
         />
+        <FormAlert serverError={serverError ?? null} />
       </Stack>
     </Modal>
   );
@@ -121,7 +121,14 @@ const EditForm: React.FC<{
 
 export const EditConnectorInstanceDialog: React.FC<
   EditConnectorInstanceDialogProps
-> = ({ open, onClose, currentName, onConfirm, isPending }) => {
+> = ({
+  open,
+  onClose,
+  currentName,
+  onConfirm,
+  isPending = false,
+  serverError,
+}) => {
   if (!open) return null;
 
   return (
@@ -131,6 +138,7 @@ export const EditConnectorInstanceDialog: React.FC<
       onConfirm={onConfirm}
       onClose={onClose}
       isPending={isPending}
+      serverError={serverError}
     />
   );
 };

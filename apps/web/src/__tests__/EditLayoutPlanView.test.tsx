@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import userEvent from "@testing-library/user-event";
 
 import type {
   LayoutPlan,
@@ -166,6 +167,27 @@ describe("EditLayoutPlanViewUI", () => {
     const commitButton = screen.getByRole("button", { name: /commit/i });
     fireEvent.click(commitButton);
 
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  // #789: the review step is a form around Commit plan, here as in the
+  // wizards (this view renders the same step outside any dialog).
+  it("Enter on the focused Commit plan commits", async () => {
+    const user = userEvent.setup();
+    const onCommit = jest.fn();
+    const editContext = makeEditableContext();
+    const regions = makeEditableDraftsFromContext(editContext);
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={regions}
+        step={1}
+        onCommit={onCommit}
+      />
+    );
+    screen.getByRole("button", { name: /commit/i }).focus();
+    await user.keyboard("{Enter}");
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 

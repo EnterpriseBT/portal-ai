@@ -8,7 +8,8 @@ jest.unstable_mockModule("react-markdown", () => ({
 }));
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, waitFor } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CreateEntityRecordDialog } =
   await import("../components/CreateEntityRecordDialog.component");
@@ -160,7 +161,7 @@ describe("CreateEntityRecordDialog — submission", () => {
   it("calls onSubmit on Enter key (form submit)", async () => {
     render(<CreateEntityRecordDialog {...defaultProps} />);
     await userEvent.type(screen.getByLabelText(/Name/), "Bob");
-    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await pressEnter(screen.getByLabelText(/Name/));
     expect(defaultProps.onSubmit).toHaveBeenCalled();
   });
 
@@ -298,6 +299,23 @@ describe("CreateEntityRecordDialog — field validation", () => {
       "aria-invalid",
       "true"
     );
+  });
+
+  // #789 smoke §9.4: the focus waits for the render that sets aria-invalid.
+  // Each waits for the open's auto-focus on Name first, so that can't pass it.
+  it("focuses the first invalid field after a click on Create", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
+    await userEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
+  });
+
+  it("focuses the first invalid field after Enter in another field", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
+    await userEvent.type(screen.getByLabelText("Age"), "3{Enter}");
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
   });
 
   it("sets required attribute on required fields", () => {

@@ -15,6 +15,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 export interface EditEntityGroupDialogProps {
   open: boolean;
@@ -31,7 +32,7 @@ const EditForm: React.FC<{
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
-}> = ({ group, onSubmit, onClose, isPending, serverError }) => {
+}> = ({ group, onSubmit, onClose, isPending = false, serverError }) => {
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description ?? "");
   const [errors, setErrors] = useState<FormErrors>({});
@@ -76,21 +77,14 @@ const EditForm: React.FC<{
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={saveDisabled}
       open
       onClose={onClose}
       title="Edit Entity Group"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -123,10 +117,10 @@ const EditForm: React.FC<{
               setErrors(validate({ name: e.target.value.trim() }));
             }
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched((prev) => ({ ...prev, name: true }));
             setErrors(validate({ name: name.trim() }));
-          }}
+          })}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
           slotProps={{
@@ -154,7 +148,7 @@ export const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
   onClose,
   group,
   onSubmit,
-  isPending,
+  isPending = false,
   serverError,
 }) => {
   if (!open) return null;

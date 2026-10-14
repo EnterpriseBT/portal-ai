@@ -452,3 +452,42 @@ describe("FileUploadConnectorWorkflowUI — binding editor wiring", () => {
     ).toBeNull();
   });
 });
+
+// #789: a commit in flight can't be abandoned by Escape, the backdrop or the
+// close button. Closing used to drop the run token while the server kept
+// committing, so the result was thrown away.
+describe("FileUploadConnectorWorkflowUI — commit blocks dismissal", () => {
+  const committing = () =>
+    makeProps({
+      step: 2,
+      workbook: DEMO_WORKBOOK,
+      activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+      regions: POST_INTERPRET_REGIONS,
+      files: [SAMPLE_FILE],
+      uploadPhase: "parsed",
+      isCommitting: true,
+    });
+
+  test("Escape does not close the wizard while committing", async () => {
+    const user = userEvent.setup();
+    const onClose = jest.fn();
+    render(
+      <FileUploadConnectorWorkflowUI {...committing()} onClose={onClose} />
+    );
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test("the close button is disabled while committing", () => {
+    render(<FileUploadConnectorWorkflowUI {...committing()} />);
+    expect(screen.getByLabelText("close")).toBeDisabled();
+  });
+
+  test("Escape closes the wizard when nothing is committing", async () => {
+    const user = userEvent.setup();
+    const onClose = jest.fn();
+    render(<FileUploadConnectorWorkflowUI {...makeProps({ onClose })} />);
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

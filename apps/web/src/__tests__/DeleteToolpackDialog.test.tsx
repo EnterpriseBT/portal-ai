@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
 const { DeleteToolpackDialogUI } =
   await import("../components/DeleteToolpackDialog.component");
 
@@ -66,5 +66,14 @@ describe("DeleteToolpackDialogUI", () => {
       />
     );
     expect(screen.getByText("s-anon")).toBeInTheDocument();
+  });
+
+  // #789: Enter on the focused confirm button confirms exactly once (not once
+  // for the click and again for the form's submit).
+  it("confirms exactly once on a real Enter", async () => {
+    const onConfirm = jest.fn();
+    render(<DeleteToolpackDialogUI {...defaultProps} onConfirm={onConfirm} />);
+    await pressEnter(screen.getByRole("button", { name: "Delete" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

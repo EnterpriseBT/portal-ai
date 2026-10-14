@@ -44,6 +44,7 @@ import {
   useAuthMutation,
   useAuthFetch,
   type ApiError,
+  LONG_WRITE_TIMEOUT_MS,
 } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
@@ -144,11 +145,14 @@ export const connectorInstances = {
     }),
 
   // #689: a 403 on a write means the caller's capabilities on the instance
-  // changed; refetch so the page's gates re-render from them.
+  // changed; refetch so the page's gates re-render from them. The delete
+  // cascades over every record and drops each wide table in one
+  // transaction, so it takes the long bound.
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorInstances.root],
       },
@@ -234,6 +238,7 @@ export const connectorInstances = {
   testConnection: (id: string) =>
     useAuthMutation<TestConnectionResult, TestConnectionRequestBody>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/test-connection`,
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       method: "POST",
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorInstances.root],

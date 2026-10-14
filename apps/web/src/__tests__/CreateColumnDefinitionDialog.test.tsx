@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { CreateColumnDefinitionDialog } =
   await import("../components/CreateColumnDefinitionDialog.component");
 
@@ -155,7 +156,7 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.change(screen.getByLabelText(/^Label/), {
       target: { value: "Test" },
     });
-    fireEvent.submit(screen.getByLabelText(/^Key/).closest("form")!);
+    await pressEnter(screen.getByLabelText(/^Key/));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });

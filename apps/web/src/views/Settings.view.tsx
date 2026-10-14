@@ -435,7 +435,10 @@ export const SettingsView = () => {
 
                   <DeleteOrganizationDialog
                     open={deleteDialogOpen}
-                    onClose={() => setDeleteDialogOpen(false)}
+                    onClose={() => {
+                      deleteMutation.reset();
+                      setDeleteDialogOpen(false);
+                    }}
                     organizationName={organization.name}
                     onConfirm={handleDeleteConfirm}
                     isPending={deleteMutation.isPending}

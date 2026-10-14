@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, pressEnter } =
+  await import("./test-utils");
 const { RegisterToolpackDialogUI, appendAuthHeaderBoilerplate } =
   await import("../components/RegisterToolpackDialog.component");
 
@@ -317,5 +318,14 @@ describe("appendAuthHeaderBoilerplate", () => {
         "X-Api-Key: <key>"
       )
     ).toBe("Authorization: Bearer abc\nX-Api-Key: <key>");
+  });
+
+  // #789: a real Enter in a field registers, exactly like Register.
+  it("registers on a real Enter in a field", async () => {
+    const onSubmit = jest.fn();
+    render(<RegisterToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    fillRequired();
+    await pressEnter(screen.getByLabelText(/Runtime endpoint/));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
   });
 });

@@ -17,6 +17,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 /** Invitable roles — `owner` is excluded (ownership transfer is out of scope). */
 type InvitableRole = InviteCreateRequest["role"];
@@ -92,21 +93,14 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Invite a member"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -135,7 +129,7 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           type="email"
           value={form.email}
           onChange={(e) => handleChange("email", e.target.value)}
-          onBlur={() => handleBlur("email")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("email"))}
           error={touched.email && !!errors.email}
           helperText={touched.email && errors.email}
           slotProps={{
@@ -149,7 +143,7 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           label="Role"
           value={form.role}
           onChange={(e) => handleChange("role", e.target.value)}
-          onBlur={() => handleBlur("role")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("role"))}
           error={touched.role && !!errors.role}
           helperText={touched.role && errors.role}
           slotProps={{

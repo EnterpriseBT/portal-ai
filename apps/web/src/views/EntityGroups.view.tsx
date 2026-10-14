@@ -1,14 +1,12 @@
 import React, { useState, useCallback } from "react";
 
 import {
-  EntityGroupCreateRequestBodySchema,
   type EntityGroupCreateRequestBody,
   type EntityGroupListRequestQuery,
   type EntityGroupListResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
   Icon,
   IconName,
   PageEmptyState,
@@ -22,14 +20,10 @@ import type { ActionGate, ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
-import TextField from "@mui/material/TextField";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
+import { CreateEntityGroupDialog } from "../components/CreateEntityGroupDialog.component";
 import DataResult from "../components/DataResult.component";
 import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
@@ -38,17 +32,10 @@ import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
-import { FormAlert } from "../components/FormAlert.component";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 import { sdk, queryKeys } from "../api/sdk";
-import { toServerError, type ServerError } from "../utils/api.util";
-import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import {
-  validateWithSchema,
-  focusFirstInvalidField,
-  type FormErrors,
-} from "../utils/form-validation.util";
+import { toServerError } from "../utils/api.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -233,116 +220,6 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
   );
 };
 
-// ── Create Group Dialog ─────────────────────────────────────────────
-
-interface CreateGroupDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (body: EntityGroupCreateRequestBody) => void;
-  isPending: boolean;
-  serverError: ServerError | null;
-}
-
-const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
-  open,
-  onClose,
-  onSubmit,
-  isPending,
-  serverError,
-}) => {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const nameRef = useDialogAutoFocus(open);
-
-  const validate = (data: { name: string }) => {
-    const result = validateWithSchema(EntityGroupCreateRequestBodySchema, data);
-    return result.success ? {} : result.errors;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setTouched({ name: true });
-    const body = {
-      name: name.trim(),
-      description: description.trim() || undefined,
-    };
-    const formErrors = validate({ name: body.name });
-    setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) {
-      requestAnimationFrame(() => focusFirstInvalidField());
-      return;
-    }
-    onSubmit(body);
-  };
-
-  const handleClose = () => {
-    setName("");
-    setDescription("");
-    setErrors({});
-    setTouched({});
-    onClose();
-  };
-
-  return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <form onSubmit={handleSubmit}>
-        <DialogTitle>Create Entity Group</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              inputRef={nameRef}
-              label="Name"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (touched.name) {
-                  const errs = validate({ name: e.target.value.trim() });
-                  setErrors(errs);
-                }
-              }}
-              onBlur={() => {
-                setTouched((prev) => ({ ...prev, name: true }));
-                setErrors(validate({ name: name.trim() }));
-              }}
-              error={touched.name && !!errors.name}
-              helperText={touched.name && errors.name}
-              slotProps={{
-                htmlInput: { "aria-invalid": touched.name && !!errors.name },
-              }}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              fullWidth
-              multiline
-              rows={3}
-            />
-            <FormAlert serverError={serverError} />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            type="button"
-            variant="outlined"
-            onClick={handleClose}
-            disabled={isPending}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" variant="contained" disabled={isPending}>
-            Create
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  );
-};
-
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const EntityGroupsView: React.FC = () => {
@@ -416,9 +293,12 @@ export const EntityGroupsView: React.FC = () => {
         createGate={createGate}
       />
 
-      <CreateGroupDialog
+      <CreateEntityGroupDialog
         open={createOpen}
-        onClose={handleCreateClose}
+        onClose={() => {
+          createMutation.reset();
+          handleCreateClose();
+        }}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
         serverError={toServerError(createMutation.error)}
@@ -426,7 +306,10 @@ export const EntityGroupsView: React.FC = () => {
 
       <DeleteEntityGroupDialog
         open={!!deletingGroup}
-        onClose={handleDeleteClose}
+        onClose={() => {
+          deleteMutation.reset();
+          handleDeleteClose();
+        }}
         entityGroupName={deletingGroup?.name ?? ""}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}

@@ -4,6 +4,8 @@ const mockUseAuthQuery = jest.fn();
 const mockUseAuthMutation = jest.fn();
 
 jest.unstable_mockModule("../../utils/api.util", () => ({
+  WRITE_TIMEOUT_MS: 30_000,
+  LONG_WRITE_TIMEOUT_MS: 300_000,
   useAuthQuery: mockUseAuthQuery,
   useAuthMutation: mockUseAuthMutation,
 }));
@@ -20,6 +22,7 @@ describe("apiConnector.endpoints.suggestTransform", () => {
     expect(mockUseAuthMutation).toHaveBeenCalledTimes(1);
     expect(mockUseAuthMutation).toHaveBeenCalledWith({
       url: "/api/connector-instances/suggest-transform",
+      timeoutMs: 300_000,
       method: "POST",
     });
   });

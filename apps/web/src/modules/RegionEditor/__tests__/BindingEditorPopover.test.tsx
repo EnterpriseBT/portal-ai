@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { SelectOption } from "@portalai/core/ui";
 
 import { BindingEditorPopoverUI } from "../BindingEditorPopover.component";
@@ -158,14 +159,19 @@ describe("BindingEditorPopoverUI — interaction", () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
-  test("submitting the form fires onApply", () => {
+  test("Enter in a field applies the binding", async () => {
     const { onApply } = setup();
     // MUI Popover portals into document.body — query globally rather than by container.
     const form = document.querySelector<HTMLFormElement>(
       'form[aria-label="Edit column binding"]'
     );
     expect(form).not.toBeNull();
-    fireEvent.submit(form as HTMLFormElement);
+    const field = form!.querySelector<HTMLInputElement>(
+      "input[type=text], input:not([type])"
+    );
+    expect(field).not.toBeNull();
+    field!.focus();
+    await userEvent.keyboard("{Enter}");
     expect(onApply).toHaveBeenCalled();
   });
 
@@ -310,5 +316,17 @@ describe("BindingEditorPopoverUI — header status icon", () => {
     expect(
       screen.queryByTestId("binding-state-icon-invalid")
     ).not.toBeInTheDocument();
+  });
+});
+
+// #789: Enter on a focused checkbox doesn't apply the popover. Browsers
+// treat it as implicit submission; a toggle owns its key the way a button does.
+describe("BindingEditorPopoverUI — Enter on a checkbox", () => {
+  test("doesn't apply", async () => {
+    const user = userEvent.setup();
+    const { onApply } = setup();
+    screen.getByLabelText("Omit this column from the entity").focus();
+    await user.keyboard("{Enter}");
+    expect(onApply).not.toHaveBeenCalled();
   });
 });

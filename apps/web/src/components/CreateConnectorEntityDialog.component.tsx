@@ -15,6 +15,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -122,21 +123,14 @@ export const CreateConnectorEntityDialog: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="New Entity"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -164,7 +158,7 @@ export const CreateConnectorEntityDialog: React.FC<
           label="Label"
           value={form.label}
           onChange={(e) => handleChange("label", e.target.value)}
-          onBlur={() => handleBlur("label")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("label"))}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
           slotProps={{
@@ -177,7 +171,7 @@ export const CreateConnectorEntityDialog: React.FC<
           label="Key"
           value={form.key}
           onChange={(e) => handleChange("key", e.target.value)}
-          onBlur={() => handleBlur("key")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("key"))}
           error={touched.key && !!errors.key}
           helperText={(touched.key && errors.key) || 'e.g. "customer_orders"'}
           slotProps={{

@@ -35,6 +35,60 @@ export function toServerError(
     : null;
 }
 
+/**
+ * #789: every write is bounded, so a dialog that blocks dismissal while its
+ * request is pending always gets an answer. Known-slow writes (an AI
+ * interpret, a commit, a remote probe) declare `LONG_WRITE_TIMEOUT_MS` on
+ * their SDK endpoint. Reads keep react-query's own lifecycle.
+ */
+export const WRITE_TIMEOUT_MS = 30_000;
+export const LONG_WRITE_TIMEOUT_MS = 300_000;
+
+/** A timed-out write isn't known to have failed: the server may still apply
+ *  it, so the copy says to check before retrying. */
+export const REQUEST_TIMEOUT_MESSAGE =
+  "This is taking longer than expected. It may still finish, so check before trying again.";
+
+/**
+ * A signal that aborts after `ms`, or when `outer` aborts. Built from an
+ * AbortController and a timer rather than `AbortSignal.timeout`/`.any`, which
+ * jsdom lacks. `timedOut()` says whether the timer fired, so the caller can
+ * tell a timeout from its own caller's abort. `clear()` stops the timer once
+ * the request settles.
+ */
+function boundedSignal(ms: number, outer?: AbortSignal | null) {
+  const controller = new AbortController();
+  let fired = false;
+  const timer = setTimeout(() => {
+    fired = true;
+    controller.abort();
+  }, ms);
+  const onOuterAbort = () => controller.abort(outer?.reason);
+  if (outer?.aborted) onOuterAbort();
+  else outer?.addEventListener("abort", onOuterAbort, { once: true });
+  return {
+    signal: controller.signal,
+    timedOut: () => fired,
+    /** Settles with `work`, or rejects once the signal aborts. Covers the
+     *  steps before `fetch` sees the signal (a hung token refresh); a token
+     *  that arrives late meets an aborted signal, so nothing is sent. */
+    race: <T>(work: Promise<T>): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const signal = controller.signal;
+        const onAbort = () => reject(signal.reason);
+        if (signal.aborted) return onAbort();
+        signal.addEventListener("abort", onAbort, { once: true });
+        work.then(resolve, reject).finally(() => {
+          signal.removeEventListener("abort", onAbort);
+        });
+      }),
+    clear: () => {
+      clearTimeout(timer);
+      outer?.removeEventListener("abort", onOuterAbort);
+    },
+  };
+}
+
 export function resolveApiUrl(path: string): string {
   // `?.` because `import.meta.env` does not exist outside a Vite build (jest,
   // node scripts) — the value is always set in a real build.
@@ -227,6 +281,12 @@ interface AuthMutationConfig<TData, TVariables> {
    * write-shaped read (a POST refresh) for the same reason.
    */
   dedupeInFlight?: boolean;
+  /**
+   * #789: how long a write may take before it rejects with
+   * `REQUEST_TIMEOUT`. Defaults to `WRITE_TIMEOUT_MS` for every non-`GET`;
+   * a known-slow endpoint passes `LONG_WRITE_TIMEOUT_MS`. Ignored for `GET`.
+   */
+  timeoutMs?: number;
 }
 
 interface BuiltRequest {
@@ -316,6 +376,7 @@ export const useAuthMutation = <TData, TVariables>({
   mutationOptions,
   onPermissionDenied,
   dedupeInFlight,
+  timeoutMs,
 }: AuthMutationConfig<TData, TVariables>) => {
   const isRead = method.toUpperCase() === "GET";
   const dedupe = dedupeInFlight ?? !isRead;
@@ -325,10 +386,15 @@ export const useAuthMutation = <TData, TVariables>({
   const mutation = useMutation<TData, ApiError, TVariables>({
     mutationFn: async (variables) => {
       const request = buildRequest({ url, body, method }, variables);
-      const response = await fetchWithAuth<ApiSuccessResponse<TData>>(
-        request.url,
-        {
+      // #789: a fresh timer per attempt, combined with any caller signal.
+      const bound = isRead
+        ? null
+        : boundedSignal(timeoutMs ?? WRITE_TIMEOUT_MS, options?.signal);
+      let response: ApiSuccessResponse<TData>;
+      try {
+        const sent = fetchWithAuth<ApiSuccessResponse<TData>>(request.url, {
           ...options,
+          ...(bound ? { signal: bound.signal } : {}),
           method,
           ...(request.bodyPayload !== undefined && request.bodyPayload !== null
             ? {
@@ -337,8 +403,16 @@ export const useAuthMutation = <TData, TVariables>({
                   : JSON.stringify(request.bodyPayload),
               }
             : {}),
+        });
+        response = await (bound ? bound.race(sent) : sent);
+      } catch (error) {
+        if (bound?.timedOut()) {
+          throw new ApiError(REQUEST_TIMEOUT_MESSAGE, "REQUEST_TIMEOUT", 0);
         }
-      );
+        throw error;
+      } finally {
+        bound?.clear();
+      }
       return response.payload;
     },
     // #753: a write isn't resent on its own. A network error or 5xx can

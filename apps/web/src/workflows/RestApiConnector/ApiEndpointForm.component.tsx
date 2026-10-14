@@ -29,6 +29,7 @@ import { TransformSuggesterUI } from "./TransformSuggester.component";
 import { PreviewPaneUI } from "./PreviewPane.component";
 
 import type { ServerError } from "../../utils/api.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 // ── Draft shape ──────────────────────────────────────────────────────
 
@@ -161,7 +162,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
         onChange(name, e.target.value as EndpointDraft[K])
       }
-      onBlur={() => onBlur(name)}
+      onBlur={blurUnlessDialogControl(() => onBlur(name))}
       fullWidth
       error={touched[name as string] && !!errors[name as string]}
       helperText={touched[name as string] && errors[name as string]}
@@ -175,7 +176,9 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
 
   return (
     <Modal
+      // A local edit to the wizard's draft: no request, never pending.
       submitDisabled={false}
+      pending={false}
       open={open}
       onClose={onClose}
       title={isEditing ? "Edit endpoint" : "Add endpoint"}
@@ -184,15 +187,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
       // fullWidth so smaller viewports still get the full breakpoint.
       maxWidth="md"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button type="button" variant="outlined" onClick={onClose}>
@@ -303,7 +298,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   onChange("recordsPath", e.target.value)
                 }
-                onBlur={() => onBlur("recordsPath")}
+                onBlur={blurUnlessDialogControl(() => onBlur("recordsPath"))}
                 fullWidth
                 error={touched.recordsPath && !!errors.recordsPath}
                 helperText={touched.recordsPath && errors.recordsPath}

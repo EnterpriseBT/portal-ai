@@ -14,6 +14,7 @@ import { Stack } from "@portalai/core/ui";
 
 import type { FormErrors } from "../../utils/form-validation.util";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 export interface BasicCredentialsFormUIProps {
   username: string;
@@ -48,7 +49,7 @@ export const BasicCredentialsFormUI: React.FC<BasicCredentialsFormUIProps> = ({
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onUsernameChange(e.target.value)
         }
-        onBlur={() => onBlur("username")}
+        onBlur={blurUnlessDialogControl(() => onBlur("username"))}
         required
         fullWidth
         autoComplete="username"
@@ -65,7 +66,7 @@ export const BasicCredentialsFormUI: React.FC<BasicCredentialsFormUIProps> = ({
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onPasswordChange(e.target.value)
         }
-        onBlur={() => onBlur("password")}
+        onBlur={blurUnlessDialogControl(() => onBlur("password"))}
         required
         fullWidth
         autoComplete="off"

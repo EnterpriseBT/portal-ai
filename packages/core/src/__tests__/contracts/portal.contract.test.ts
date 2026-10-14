@@ -147,6 +147,10 @@ describe("UpdatePortalResultBodySchema", () => {
     expect(first(body)?.path).toEqual(["name"]);
   });
 
+  it("rejects a blank name with the message the rename dialog shows", () => {
+    expect(first({ name: "   " })?.message).toBe("Name is required");
+  });
+
   it("rejects an unknown key", () => {
     expect(first({ name: "A", portalId: "p" })?.code).toBe("unrecognized_keys");
   });

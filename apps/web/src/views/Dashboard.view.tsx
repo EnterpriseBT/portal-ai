@@ -217,7 +217,10 @@ export const DashboardView: React.FC = () => {
 
       <CreatePortalDialog
         open={createOpen}
-        onClose={handleCreateClose}
+        onClose={() => {
+          createMutation.reset();
+          handleCreateClose();
+        }}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
         serverError={toServerError(createMutation.error)}

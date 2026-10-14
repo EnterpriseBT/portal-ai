@@ -31,21 +31,14 @@ export const DeleteToolpackDialogUI: React.FC<DeleteToolpackDialogUIProps> = ({
 }) => {
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Delete toolpack"
       maxWidth="xs"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onConfirm();
-          },
-        } as object,
-      }}
+      onSubmit={onConfirm}
       actions={
         <Stack direction="row" spacing={1}>
           <Button

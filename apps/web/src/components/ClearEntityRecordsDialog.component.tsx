@@ -13,6 +13,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import type { ServerError } from "../utils/api.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 export interface ClearEntityRecordsDialogProps {
   open: boolean;
@@ -83,7 +84,7 @@ export const ClearEntityRecordsDialog: React.FC<
     setErrors(nextErrors);
     setTouched(true);
     if (nextErrors.confirmation) {
-      focusFirstInvalidField();
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
     onConfirm();
@@ -91,21 +92,14 @@ export const ClearEntityRecordsDialog: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
       title="Delete All Records"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            handleSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -149,10 +143,10 @@ export const ClearEntityRecordsDialog: React.FC<
             setValue(e.target.value);
             if (touched) setErrors(validate(e.target.value));
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched(true);
             setErrors(validate(value));
-          }}
+          })}
           error={showError}
           helperText={showError ? errors.confirmation : " "}
           disabled={isPending}

@@ -12,7 +12,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   queryKeys: { curatedViews: { root: ["curatedViews"] } },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, pressEnter } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CuratedViewEditorUI, CuratedViewEditorDialog } =
   await import("../components/CuratedViewEditorDialog.component");
@@ -112,5 +112,22 @@ describe("CuratedViewEditorDialog (container gating)", () => {
       />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  // #789: a real Enter in the label field saves, exactly like Save.
+  it("saves on a real Enter in the label field", async () => {
+    const onSubmit = jest.fn();
+    render(<CuratedViewEditorUI {...baseProps} onSubmit={onSubmit} />);
+    await pressEnter(screen.getByRole("textbox", { name: /^label/i }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't save on Enter while pending", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <CuratedViewEditorUI {...baseProps} onSubmit={onSubmit} isPending />
+    );
+    await pressEnter(screen.getByRole("textbox", { name: /^label/i }));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

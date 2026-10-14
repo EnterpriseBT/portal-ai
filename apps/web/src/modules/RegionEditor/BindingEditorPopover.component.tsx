@@ -10,6 +10,7 @@ import {
   Divider,
   Icon,
   IconName,
+  preventToggleEnterSubmit,
   Select,
   Stack,
   TextInput,
@@ -234,6 +235,7 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
           role: "dialog",
           "aria-label": "Edit column binding",
           onSubmit: handleSubmit,
+          onKeyDown: preventToggleEnterSubmit,
           sx: { width: 380, maxWidth: "95vw", p: 2 },
         } as object,
       }}

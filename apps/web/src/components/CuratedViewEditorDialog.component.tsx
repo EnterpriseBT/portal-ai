@@ -27,6 +27,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 /** A FilterExpression carries a real predicate only when it has conditions. */
 function filterOrNull(f: FilterExpression): FilterExpression | null {
@@ -98,7 +99,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
   onLabelBlur,
   onKeyBlur,
   onSubmit,
-  isPending,
+  isPending = false,
   serverError,
   columnsReady,
 }) => {
@@ -109,21 +110,14 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending || !columnsReady}
       open
       onClose={onClose}
       title={mode === "create" ? "Create View" : "Edit View"}
       maxWidth="md"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            onSubmit();
-          },
-        } as object,
-      }}
+      onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -167,7 +161,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
           label="Label"
           value={label}
           onChange={(e) => onLabelChange(e.target.value)}
-          onBlur={onLabelBlur}
+          onBlur={blurUnlessDialogControl(onLabelBlur)}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
           slotProps={{
@@ -181,7 +175,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
             label="Key"
             value={keyValue}
             onChange={(e) => onKeyChange(e.target.value)}
-            onBlur={onKeyBlur}
+            onBlur={blurUnlessDialogControl(onKeyBlur)}
             error={touched.key && !!errors.key}
             helperText={
               (touched.key && errors.key) ||

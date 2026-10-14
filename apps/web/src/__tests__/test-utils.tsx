@@ -1,5 +1,6 @@
 import React from "react";
 import { render, RenderOptions } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@portalai/core/ui";
 import {
@@ -79,6 +80,17 @@ function renderWithProviders(
     ...render(ui, { wrapper: Wrapper, ...options }),
     queryClient,
   };
+}
+
+/**
+ * Presses a real Enter in `element` (#789). In a field, that's the browser's
+ * implicit submission, so it submits only when the dialog's default button
+ * isn't disabled; on a focused button it's a click. `fireEvent.submit`
+ * skipped all of that, so it passed even when Enter did nothing.
+ */
+export async function pressEnter(element: HTMLElement): Promise<void> {
+  element.focus();
+  await userEvent.keyboard("{Enter}");
 }
 
 export * from "@testing-library/react";

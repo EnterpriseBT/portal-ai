@@ -5,9 +5,10 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { Button, MetadataList, Modal, Stack } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
-import type {
-  PolicyView,
-  PolicyStatementInput,
+import {
+  PolicyUpsertRequestSchema,
+  type PolicyView,
+  type PolicyStatementInput,
 } from "@portalai/core/contracts";
 
 import { sdk } from "../../api/sdk";
@@ -15,6 +16,7 @@ import { queryKeys } from "../../api/keys";
 import { useRbacObjectSearch } from "../../api/rbac-objects.api";
 import { useToast } from "../../utils/toast.context";
 import { FormAlert } from "../../components/FormAlert.component";
+import { NameField } from "./NameField.component";
 import { toServerError, type ServerError } from "../../utils/api.util";
 import { StatementEditorUI } from "./StatementEditor.component";
 import { PolicyStatementListUI } from "./PolicyStatementList.component";
@@ -61,20 +63,15 @@ export const PolicyEditorDialogUI: React.FC<PolicyEditorDialogUIProps> = ({
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={isPending || !name.trim()}
       open={open}
       onClose={onClose}
       title={title}
       maxWidth="md"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            if (!readOnly) onSubmit();
-          },
-        } as object,
+      onSubmit={() => {
+        if (!readOnly) onSubmit();
       }}
       actions={
         <Stack direction="row" spacing={1}>
@@ -111,13 +108,11 @@ export const PolicyEditorDialogUI: React.FC<PolicyEditorDialogUIProps> = ({
           />
         ) : (
           <>
-            <TextField
-              label="Name"
+            <NameField
+              open={open}
               value={name}
-              onChange={(e) => onNameChange(e.target.value)}
-              required
-              fullWidth
-              autoFocus
+              onChange={onNameChange}
+              rule={PolicyUpsertRequestSchema.shape.name}
             />
             <TextField
               label="Description"
@@ -195,7 +190,10 @@ export const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
   return (
     <PolicyEditorDialogUI
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        mutation.reset();
+        onClose();
+      }}
       policy={policy}
       name={name}
       onNameChange={setName}

@@ -93,7 +93,7 @@ export const DeleteFieldMappingDialog: React.FC<
   onClose,
   fieldMappingSourceField,
   onConfirm,
-  isPending,
+  isPending = false,
   impact,
   isLoadingImpact,
   serverError,
@@ -106,20 +106,15 @@ export const DeleteFieldMappingDialog: React.FC<
 
   return (
     <Modal
+      pending={isPending}
       submitDisabled={deleteDisabled}
       open={open}
       onClose={onClose}
       title="Delete Field Mapping"
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          component: "form",
-          onSubmit: (e: React.FormEvent) => {
-            e.preventDefault();
-            if (!deleteDisabled) onConfirm();
-          },
-        } as object,
+      onSubmit={() => {
+        if (!deleteDisabled) onConfirm();
       }}
       actions={
         <Stack direction="row" spacing={1}>

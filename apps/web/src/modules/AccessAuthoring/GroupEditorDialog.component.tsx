@@ -11,12 +11,16 @@ import {
   MultiSearchableSelect,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
-import type { GroupView } from "@portalai/core/contracts";
+import {
+  GroupUpsertRequestSchema,
+  type GroupView,
+} from "@portalai/core/contracts";
 
 import { sdk } from "../../api/sdk";
 import { queryKeys } from "../../api/keys";
 import { useToast } from "../../utils/toast.context";
 import { FormAlert } from "../../components/FormAlert.component";
+import { NameField } from "./NameField.component";
 import { toServerError, type ServerError } from "../../utils/api.util";
 
 // ── UI (pure) ────────────────────────────────────────────────────────────
@@ -66,21 +70,14 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
   serverError,
 }) => (
   <Modal
+    pending={isPending}
     submitDisabled={isPending || !name.trim() || membersLoading}
     open={open}
     onClose={onClose}
     title={group ? `Edit “${group.name}”` : "New group"}
     maxWidth="sm"
     fullWidth
-    slotProps={{
-      paper: {
-        component: "form",
-        onSubmit: (e: React.FormEvent) => {
-          e.preventDefault();
-          onSubmit();
-        },
-      } as object,
-    }}
+    onSubmit={onSubmit}
     actions={
       <Stack direction="row" spacing={1}>
         <Button type="button" variant="outlined" onClick={onClose}>
@@ -98,13 +95,11 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
     }
   >
     <Stack spacing={2.5} sx={{ pt: 1 }}>
-      <TextField
-        label="Name"
+      <NameField
+        open={open}
         value={name}
-        onChange={(e) => onNameChange(e.target.value)}
-        required
-        fullWidth
-        autoFocus
+        onChange={onNameChange}
+        rule={GroupUpsertRequestSchema.shape.name}
       />
       <TextField
         label="Description"
@@ -232,7 +227,10 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
   return (
     <GroupEditorDialogUI
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        upsert.reset();
+        onClose();
+      }}
       group={group}
       name={name}
       onNameChange={setName}

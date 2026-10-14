@@ -473,6 +473,8 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
       title="Connect Google Sheets"
       defaultMaximized
       maximizable
+      // #789: nothing dismisses the wizard while its plan commits.
+      pending={workflow.isCommitting}
       // Google's picker renders its own dialog outside this Modal's DOM, so
       // MUI's focus trap treats it as "outside" and pulls focus back on every
       // interaction — the picker appears but cannot be typed into. Relaxed
@@ -584,21 +586,21 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
         {workflow.step === 0 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={handleClose}>
               Cancel
             </Button>
           </Stack>
         )}
         {workflow.step === 1 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={handleClose}>
               Cancel
             </Button>
           </Stack>
         )}
         {workflow.step === 2 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={workflow.goBack}>
+            <Button type="button" variant="text" onClick={workflow.goBack}>
               Back
             </Button>
           </Stack>
