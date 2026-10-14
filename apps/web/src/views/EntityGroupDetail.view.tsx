@@ -581,11 +581,17 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             removeMemberServerError={toServerError(removeMemberMutation.error)}
             onRemoveMemberDialogOpen={() => removeMemberMutation.reset()}
             editOpen={editOpen}
-            onOpenEdit={() => setEditOpen(true)}
+            onOpenEdit={() => {
+              updateMutation.reset();
+              setEditOpen(true);
+            }}
             onCloseEdit={() => setEditOpen(false)}
             editServerError={toServerError(updateMutation.error)}
             addMemberOpen={addMemberOpen}
-            onOpenAddMember={() => setAddMemberOpen(true)}
+            onOpenAddMember={() => {
+              addMemberMutation.reset();
+              setAddMemberOpen(true);
+            }}
             onCloseAddMember={handleCloseAddMember}
             onSearchEntities={handleSearchEntities}
             onSearchFieldMappings={handleSearchFieldMappings}
@@ -607,7 +613,10 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             isLoadingDeleteImpact={
               impactQuery.isLoading && deleteDialogOpenForImpact
             }
-            onDeleteDialogOpenChange={setDeleteDialogOpenForImpact}
+            onDeleteDialogOpenChange={(open) => {
+              if (open) deleteMutation.reset();
+              setDeleteDialogOpenForImpact(open);
+            }}
           />
         );
       }}

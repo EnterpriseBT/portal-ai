@@ -190,7 +190,10 @@ export const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
   return (
     <PolicyEditorDialogUI
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        mutation.reset();
+        onClose();
+      }}
       policy={policy}
       name={name}
       onNameChange={setName}

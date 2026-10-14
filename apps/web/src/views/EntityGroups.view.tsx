@@ -295,7 +295,10 @@ export const EntityGroupsView: React.FC = () => {
 
       <CreateEntityGroupDialog
         open={createOpen}
-        onClose={handleCreateClose}
+        onClose={() => {
+          createMutation.reset();
+          handleCreateClose();
+        }}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
         serverError={toServerError(createMutation.error)}
@@ -303,7 +306,10 @@ export const EntityGroupsView: React.FC = () => {
 
       <DeleteEntityGroupDialog
         open={!!deletingGroup}
-        onClose={handleDeleteClose}
+        onClose={() => {
+          deleteMutation.reset();
+          handleDeleteClose();
+        }}
         entityGroupName={deletingGroup?.name ?? ""}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}

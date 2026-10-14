@@ -645,7 +645,10 @@ export const ConnectorInstanceView = ({
                   </PageSection>
                   <DeleteConnectorInstanceDialog
                     open={deleteDialogOpen}
-                    onClose={() => setDeleteDialogOpen(false)}
+                    onClose={() => {
+                      deleteMutation.reset();
+                      setDeleteDialogOpen(false);
+                    }}
                     connectorInstanceName={ci.name}
                     onConfirm={handleDelete}
                     isPending={deleteMutation.isPending}

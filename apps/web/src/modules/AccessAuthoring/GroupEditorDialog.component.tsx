@@ -225,7 +225,10 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
   return (
     <GroupEditorDialogUI
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        upsert.reset();
+        onClose();
+      }}
       group={group}
       name={name}
       onNameChange={setName}

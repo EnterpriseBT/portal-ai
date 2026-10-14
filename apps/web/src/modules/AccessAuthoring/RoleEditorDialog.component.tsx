@@ -180,7 +180,10 @@ export const RoleEditorDialog: React.FC<RoleEditorDialogProps> = ({
   return (
     <RoleEditorDialogUI
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        mutation.reset();
+        onClose();
+      }}
       role={role}
       name={name}
       onNameChange={setName}

@@ -405,7 +405,10 @@ export const ColumnDefinitionDetailView: React.FC<
                   </PageSection>
                   <CreateFieldMappingDialog
                     open={createFieldMappingOpen}
-                    onClose={() => setCreateFieldMappingOpen(false)}
+                    onClose={() => {
+                      fmCreateMutation.reset();
+                      setCreateFieldMappingOpen(false);
+                    }}
                     onSubmit={handleFieldMappingCreate}
                     onSearchConnectorEntities={handleSearchConnectorEntities}
                     onSearchConnectorEntitiesForRefKey={
@@ -419,7 +422,10 @@ export const ColumnDefinitionDetailView: React.FC<
                   />
                   <EditFieldMappingDialog
                     open={!!editingFieldMapping}
-                    onClose={() => setEditingFieldMapping(null)}
+                    onClose={() => {
+                      fmUpdateMutation.reset();
+                      setEditingFieldMapping(null);
+                    }}
                     fieldMapping={
                       editingFieldMapping
                         ? {
@@ -453,7 +459,10 @@ export const ColumnDefinitionDetailView: React.FC<
                   />
                   <DeleteFieldMappingDialog
                     open={!!deletingFieldMapping}
-                    onClose={() => setDeletingFieldMapping(null)}
+                    onClose={() => {
+                      fmDeleteMutation.reset();
+                      setDeletingFieldMapping(null);
+                    }}
                     fieldMappingSourceField={
                       deletingFieldMapping?.sourceField ?? ""
                     }
@@ -468,8 +477,11 @@ export const ColumnDefinitionDetailView: React.FC<
                   <EditColumnDefinitionDialog
                     open={editDialogOpen}
                     onClose={() => {
-                      setEditDialogOpen(false);
-                      setUpdateWarnings([]);
+                      updateMutation.reset();
+                      {
+                        setEditDialogOpen(false);
+                        setUpdateWarnings([]);
+                      }
                     }}
                     columnDefinition={cd}
                     onSubmit={handleUpdate}
@@ -479,7 +491,10 @@ export const ColumnDefinitionDetailView: React.FC<
                   />
                   <DeleteColumnDefinitionDialog
                     open={deleteDialogOpen}
-                    onClose={() => setDeleteDialogOpen(false)}
+                    onClose={() => {
+                      deleteMutation.reset();
+                      setDeleteDialogOpen(false);
+                    }}
                     columnDefinitionLabel={cd.label}
                     onConfirm={handleDelete}
                     isPending={deleteMutation.isPending}

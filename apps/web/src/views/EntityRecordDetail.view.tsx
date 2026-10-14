@@ -551,13 +551,19 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
           isDeleting={deleteMutation.isPending}
           deleteServerError={toServerError(deleteMutation.error)}
           deleteDialogOpen={deleteDialogOpen}
-          onOpenDeleteDialog={() => setDeleteDialogOpen(true)}
+          onOpenDeleteDialog={() => {
+            deleteMutation.reset();
+            setDeleteDialogOpen(true);
+          }}
           onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
           onUpdate={handleUpdate}
           isUpdating={updateMutation.isPending}
           updateServerError={toServerError(updateMutation.error)}
           editDialogOpen={editDialogOpen}
-          onOpenEditDialog={() => setEditDialogOpen(true)}
+          onOpenEditDialog={() => {
+            updateMutation.reset();
+            setEditDialogOpen(true);
+          }}
           onCloseEditDialog={() => setEditDialogOpen(false)}
           onRevalidate={handleRevalidate}
           isRevalidating={revalidateMutation.isPending}

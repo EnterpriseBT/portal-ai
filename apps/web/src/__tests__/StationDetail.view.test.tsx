@@ -15,8 +15,18 @@ const result = (data: unknown) => ({
 const mutation = () => ({
   mutate: jest.fn(),
   mutateAsync: jest.fn(),
+  reset: jest.fn(),
   isPending: false,
   error: null,
+});
+
+// #789: the edit dialog's mutation carries the last attempt's failure, and
+// closing the dialog must reset it so a reopened dialog starts clean.
+const mockUpdateReset = jest.fn();
+const failedUpdate = () => ({
+  ...mutation(),
+  reset: mockUpdateReset,
+  error: { message: "That name is taken", code: "STATION_CONFLICT" },
 });
 
 const mockStationsGet = jest.fn();
@@ -25,7 +35,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     stations: {
       get: mockStationsGet,
-      update: mutation,
+      update: failedUpdate,
       delete: mutation,
     },
     portals: {
@@ -38,6 +48,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       usage: () => result(undefined),
     },
     toolpacks: { list: () => result({ toolpacks: [] }) },
+    // The edit dialog's connector picker (#789's reset test opens it).
+    connectorInstances: {
+      list: () => result({ connectorInstances: [], total: 0 }),
+    },
     // The (closed) ShareDialog's queries.
     members: { list: () => result({ members: [] }) },
     grants: {
@@ -45,7 +59,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       share: mutation,
       revoke: mutation,
     },
-    curatedViews: { list: () => result({ curatedViews: [], total: 0 }) },
+    curatedViews: {
+      list: () => result({ curatedViews: [], total: 0 }),
+      search: mutation,
+    },
   },
   queryKeys: {
     stations: { root: ["stations"] },
@@ -55,6 +72,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { StationDetailView } = await import("../views/StationDetail.view");
 
 const base = {
@@ -147,5 +165,30 @@ describe("StationDetailView — attachments (#674)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "No views are attached to this station yet."
     );
+  });
+});
+
+describe("StationDetailView — a failed edit doesn't follow the dialog (#789)", () => {
+  beforeEach(() => {
+    mockStationsGet.mockReset();
+    mockUpdateReset.mockReset();
+  });
+
+  it("resets the update when the edit dialog closes", async () => {
+    const user = userEvent.setup();
+    const writable = payload([], []) as { data: { station: object } };
+    writable.data.station = {
+      ...writable.data.station,
+      capabilities: { read: true, write: true, delete: false, share: false },
+    };
+    mockStationsGet.mockReturnValue(writable);
+    render(<StationDetailView stationId="st-1" />);
+    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /edit/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That name is taken"
+    );
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockUpdateReset).toHaveBeenCalledTimes(1);
   });
 });

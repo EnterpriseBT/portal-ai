@@ -388,7 +388,10 @@ export const MembersTab: React.FC = () => {
       />
       <RemoveMemberDialog
         open={removeTarget !== null}
-        onClose={() => setRemoveTarget(null)}
+        onClose={() => {
+          remove.reset();
+          setRemoveTarget(null);
+        }}
         member={removeTarget}
         onConfirm={handleRemoveConfirm}
         isPending={remove.isPending}
@@ -396,7 +399,10 @@ export const MembersTab: React.FC = () => {
       />
       <InviteMemberDialog
         open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
+        onClose={() => {
+          inviteCreate.reset();
+          setInviteOpen(false);
+        }}
         onSubmit={handleInvite}
         isPending={inviteCreate.isPending}
         serverError={toServerError(inviteCreate.error)}

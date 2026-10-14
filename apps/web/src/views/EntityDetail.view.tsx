@@ -943,16 +943,25 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             deleteImpact={impactQuery.data ?? null}
             isLoadingDeleteImpact={impactQuery.isLoading && deleteDialogOpen}
             deleteDialogOpen={deleteDialogOpen}
-            onOpenDeleteDialog={() => setDeleteDialogOpen(true)}
+            onOpenDeleteDialog={() => {
+              deleteMutation.reset();
+              setDeleteDialogOpen(true);
+            }}
             onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
             onUpdate={handleUpdate}
             isUpdating={updateMutation.isPending}
             updateServerError={toServerError(updateMutation.error)}
             editDialogOpen={editDialogOpen}
-            onOpenEditDialog={() => setEditDialogOpen(true)}
+            onOpenEditDialog={() => {
+              updateMutation.reset();
+              setEditDialogOpen(true);
+            }}
             onCloseEditDialog={() => setEditDialogOpen(false)}
             createRecordDialogOpen={createRecordDialogOpen}
-            onOpenCreateRecordDialog={() => setCreateRecordDialogOpen(true)}
+            onOpenCreateRecordDialog={() => {
+              createRecordMutation.reset();
+              setCreateRecordDialogOpen(true);
+            }}
             onCloseCreateRecordDialog={() => setCreateRecordDialogOpen(false)}
             onCreateRecord={handleCreateRecord}
             isCreatingRecord={createRecordMutation.isPending}

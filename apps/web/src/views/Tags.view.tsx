@@ -248,7 +248,10 @@ export const TagsView: React.FC = () => {
 
       <TagFormModal
         open={formOpen}
-        onClose={handleFormClose}
+        onClose={() => {
+          activeMutation.reset();
+          handleFormClose();
+        }}
         tag={editingTag}
         onSubmit={handleFormSubmit}
         isPending={activeMutation.isPending}
@@ -257,7 +260,10 @@ export const TagsView: React.FC = () => {
 
       <DeleteTagDialog
         open={deleteOpen}
-        onClose={handleDeleteClose}
+        onClose={() => {
+          deleteMutation.reset();
+          handleDeleteClose();
+        }}
         tag={deletingTag}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}

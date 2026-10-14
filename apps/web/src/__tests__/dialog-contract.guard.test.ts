@@ -20,6 +20,11 @@
  *   `Modal`, so every dialog gets the contract above; a raw Dialog was
  *   invisible to it (PinnedResultDetail's rename submitted on Enter while
  *   its Save was disabled).
+ * - R4: a file that shows a mutation's error in a dialog
+ *   (`serverError={toServerError(X.error)}`, or a `…ServerError` prop
+ *   handed down to one) also calls `X.reset()`, so a
+ *   reopened dialog doesn't greet a fresh attempt with the last one's error.
+ *   The reset belongs where the dialog opens; this checks it exists.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -144,6 +149,21 @@ export function importsRawDialog(source: string): boolean {
   });
 }
 
+/** R4: mutations whose error a dialog shows but the file never resets. */
+export function unresetDialogErrors(source: string): string[] {
+  const shown = new Set(
+    [
+      ...source.matchAll(
+        /[sS]erverError=\{\s*toServerError\(\s*([A-Za-z_][\w.]*?)\.error\s*\)\s*\}/g
+      ),
+    ].map((m) => m[1])
+  );
+  return [...shown].filter(
+    (name) =>
+      !new RegExp(`\\b${name.replace(/\./g, "\\.")}\\.reset\\(`).test(source)
+  );
+}
+
 const violationsOf = (source: string) => {
   const modals = findModals(source);
   return {
@@ -216,6 +236,27 @@ describe("the guard's own rules (fixtures, R3)", () => {
   });
 });
 
+describe("the guard's own rules (fixtures, R4)", () => {
+  it("R4 flags a shown mutation error with no reset, and passes one with it", () => {
+    const bad = `<X serverError={toServerError(renameMutation.error)} />`;
+    const good = `const open = () => { renameMutation.reset(); setOpen(true); };
+      <X serverError={toServerError(renameMutation.error)} />`;
+    expect(unresetDialogErrors(bad)).toEqual(["renameMutation"]);
+    expect(unresetDialogErrors(good)).toEqual([]);
+  });
+
+  it("R4 sees an error handed down under a …ServerError prop", () => {
+    const src = `<ViewUI createRecordServerError={toServerError(createRecordMutation.error)} />`;
+    expect(unresetDialogErrors(src)).toEqual(["createRecordMutation"]);
+  });
+
+  it("R4 handles a dotted mutation and a reset of a different one", () => {
+    const src = `serverError={toServerError(m.update.error)}
+      other.reset();`;
+    expect(unresetDialogErrors(src)).toEqual(["m.update"]);
+  });
+});
+
 describe("dialogs meet the Modal contract (#789)", () => {
   it("finds the dialogs (so the guard can't pass vacuously)", () => {
     expect(withModals.length).toBeGreaterThanOrEqual(45);
@@ -253,6 +294,17 @@ describe("dialogs meet the Modal contract (#789)", () => {
     "%s: imports no raw MUI Dialog (R3)",
     (_path, source) => {
       expect(importsRawDialog(source)).toBe(false);
+    }
+  );
+
+  it.each(
+    files
+      .filter((f) => /[sS]erverError=\{\s*toServerError\(/.test(f.source))
+      .map((f) => [f.path, f.source])
+  )(
+    "%s: resets every mutation whose error a dialog shows (R4)",
+    (_path, source) => {
+      expect(unresetDialogErrors(source)).toEqual([]);
     }
   );
 });

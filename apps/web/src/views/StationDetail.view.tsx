@@ -391,7 +391,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       entitledBuiltinSlugs={entitledBuiltinSlugs}
                       key={stationId}
                       open={editOpen}
-                      onClose={() => setEditOpen(false)}
+                      onClose={() => {
+                        updateMutation.reset();
+                        setEditOpen(false);
+                      }}
                       station={station}
                       onSubmit={handleEditSubmit}
                       isPending={updateMutation.isPending}

@@ -171,7 +171,10 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
 
                 <DeletePortalDialog
                   open={deleteOpen}
-                  onClose={() => setDeleteOpen(false)}
+                  onClose={() => {
+                    removeMutation.reset();
+                    setDeleteOpen(false);
+                  }}
                   portalName={item.portal.name}
                   onConfirm={handleDeleteConfirm}
                   isPending={removeMutation.isPending}

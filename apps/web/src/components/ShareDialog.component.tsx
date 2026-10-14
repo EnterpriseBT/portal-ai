@@ -386,7 +386,10 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
   return (
     <ShareDialogUI
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        share.reset();
+        onClose();
+      }}
       resourceLabel={resourceLabel}
       memberOptions={memberOptions}
       grants={grantsQuery.data?.grants ?? []}
