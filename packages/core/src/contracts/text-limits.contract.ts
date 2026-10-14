@@ -45,8 +45,10 @@ export const keyField = (field = "Key") =>
 
 /** For a name we generate ourselves (a provider account label, a file name):
  *  clip it rather than reject a connection the user can't fix. The result,
- *  ellipsis included, is at most `max` UTF-16 units (what the builders'
- *  `.max()` counts), and a character made of two units is never split. */
+ *  ellipsis included, is at most `max` UTF-16 units, which is never more than
+ *  `max` code points: what the builders' `.max()` measures (Zod counts a
+ *  string's code points, not its units). A character made of two units is
+ *  never split. */
 export const clipToLength = (value: string, max: number): string => {
   if (value.length <= max) return value;
   let clipped = "";

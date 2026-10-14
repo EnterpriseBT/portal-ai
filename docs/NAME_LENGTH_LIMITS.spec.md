@@ -262,7 +262,7 @@ Run with `cd packages/core && npm run test:unit`, `cd packages/spreadsheet-parsi
   - Keys derived from long headers are clipped in `sourceFieldToNormalizedKey`. The parser package keeps its own `DERIVED_KEY_MAX_LENGTH`, pinned equal to core's by a test.
   - Connector names the web builds from a file name or a sheet/workbook title go through `generatedConnectorName` (`apps/web/src/utils/connector-instance-name.util.ts`).
   - Edit Field Mapping resends `normalizedKey` only when it changed.
-  - `clipToLength` clips by code point within `max` UTF-16 units.
+  - `clipToLength` never splits a character, and its result stays within `max` UTF-16 units, so within the `max` code points that Zod's `.max()` counts. (The adversarial walk showed Zod measures code points, not units, so "characters" in the messages is accurate.)
   - `sanitizeColumnName` also avoids names Postgres truncated before the clip.
   - The GIST index name truncation the review found is #804.
 - **Contract cases** (test plan 7–8) live in one table-driven file, `packages/core/src/__tests__/contracts/text-limits.adoption.test.ts`, not in each contract's own test file.

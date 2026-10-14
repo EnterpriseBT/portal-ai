@@ -142,7 +142,7 @@ One module in core exports the three constants, plus a reusable `nameSchema`/`de
 2. **Repair existing over-length rows?** **Lean: no.** The only known instances are local test data. A data migration that truncates names rewrites user content without asking.
 3. **Is chat `message` (`SendMessageBodySchema`) in scope?** **Lean: no.** It is prompt text with its own cost and token concerns, not a label. Record it in the guard's exemption map with that reason.
 4. **The exact identifier-key bound.** The `c_` prefix plus `_N` suffixes up to two digits gives 63 − 2 − 3 = 58. **Lean: 58**, asserted by a test that builds the longest `sanitizeColumnName` output and checks it fits 63 bytes, so the number is derived, not trusted.
-5. **Bytes or characters for names?** Postgres `text` has no byte limit, and the UI counts characters. **Lean: characters** (Zod's `max` counts UTF-16 code units, close enough for a UX cap). Identifier keys are ASCII by regex, so bytes and characters agree there.
+5. **Bytes or characters for names?** Postgres `text` has no byte limit, and the UI counts characters. **Lean: characters** (Zod's `max` counts code points, which is what a user means by characters; the adversarial walk confirmed it). Identifier keys are ASCII by regex, so bytes and characters agree there.
 
 ## Enterprise-scale considerations
 

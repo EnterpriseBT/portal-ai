@@ -45,6 +45,17 @@ describe("text limits (#801)", () => {
       );
     });
 
+    it("counts characters (code points), not UTF-16 units", () => {
+      // #801 adversarial §1.1: an emoji is two units but one character, and
+      // Zod's .max() counts code points, so "characters" in the message is
+      // what a user would count.
+      const emoji = "\u{1F600}";
+      expect(nameField().safeParse(emoji.repeat(120)).success).toBe(true);
+      expect(firstMessage(nameField().safeParse(emoji.repeat(121)))).toBe(
+        "Name must be 120 characters or fewer"
+      );
+    });
+
     it("measures the limit after trimming", () => {
       expect(nameField().safeParse(` ${"a".repeat(120)} `).success).toBe(true);
     });
