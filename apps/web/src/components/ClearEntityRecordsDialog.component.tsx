@@ -84,7 +84,7 @@ export const ClearEntityRecordsDialog: React.FC<
     setErrors(nextErrors);
     setTouched(true);
     if (nextErrors.confirmation) {
-      focusFirstInvalidField();
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
     onConfirm();

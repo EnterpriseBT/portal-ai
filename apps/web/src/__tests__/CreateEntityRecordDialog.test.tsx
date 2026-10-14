@@ -8,7 +8,8 @@ jest.unstable_mockModule("react-markdown", () => ({
 }));
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, waitFor } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CreateEntityRecordDialog } =
   await import("../components/CreateEntityRecordDialog.component");
@@ -298,6 +299,24 @@ describe("CreateEntityRecordDialog — field validation", () => {
       "aria-invalid",
       "true"
     );
+  });
+
+  // #789 smoke §9.4: the focus waits for the render that sets aria-invalid.
+  // Each waits for the open's auto-focus on Name first, so that can't pass it.
+  it("focuses the first invalid field after a click on Create", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
+    await userEvent.click(screen.getByText("Create"));
+    expect(screen.getByText("Create")).toHaveFocus();
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
+  });
+
+  it("focuses the first invalid field after Enter in another field", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
+    await userEvent.type(screen.getByLabelText("Age"), "3{Enter}");
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
   });
 
   it("sets required attribute on required fields", () => {

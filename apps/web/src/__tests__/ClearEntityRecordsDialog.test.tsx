@@ -1,6 +1,8 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, waitFor } =
+  await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { ClearEntityRecordsDialog } =
   await import("../components/ClearEntityRecordsDialog.component");
 
@@ -70,6 +72,14 @@ describe("ClearEntityRecordsDialog (#453)", () => {
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByText(/exactly to confirm/i)).toBeInTheDocument();
     expect(confirmField()).toHaveAttribute("aria-invalid", "true");
+  });
+
+  // #789 smoke §9.4: the focus waits for the render that sets aria-invalid.
+  it("focuses the confirmation field after a mismatched confirm", async () => {
+    render(<ClearEntityRecordsDialog {...defaultProps} />);
+    await userEvent.type(confirmField(), "customers");
+    await userEvent.click(confirmButton());
+    await waitFor(() => expect(confirmField()).toHaveFocus());
   });
 
   it("shows no error while typing before blur or submit", () => {

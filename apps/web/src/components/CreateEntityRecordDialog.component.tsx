@@ -71,7 +71,7 @@ const CreateForm: React.FC<{
     const mergedErrors = { ...requiredErrors, ...serializationErrors };
     if (Object.keys(mergedErrors).length > 0) {
       setErrors(mergedErrors);
-      focusFirstInvalidField();
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
 
