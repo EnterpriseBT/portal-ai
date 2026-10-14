@@ -248,6 +248,16 @@ Run with `cd packages/core && npm run test:unit`, `cd packages/spreadsheet-parsi
   - their tests
 - **Docs:** `record-field-serialization.util.ts` is unaffected (record values, not labels). There's no Help or glossary change. `CLAUDE.md` → Form & Dialog Pattern gains one line: name, description and key fields compose `nameField`/`descriptionField`/`keyField` (mirrored in `.github/copilot-instructions.md`).
 
+## Implementation notes (where the build departed from this spec)
+
+- **Guard findings.** `CreateApiEndpointColumnDraftSchema.normalizedKey` (REST API endpoint column drafts) is capped too: the guard found it, and the inventory above had missed it. `LayoutPlanInterpretDraftRequestBodySchema` joins `EXEMPT` (interpret hints plus a prior stored plan, the same case as `InterpretRequestBodySchema`).
+- **Plan PATCH** checks `planTextLimitIssues` only when the body sends `regions`, so a plan stored before the limits can still have its other fields patched.
+- **Excel workbook and sheet titles** (`microsoft-excel-connector.service.ts:354`, `:363`) are unchanged. They go into the instance config and the workflow's display, not into an entity label; entity labels come from the plan.
+- **`builtin-toolpacks.ts`** needs no change. Its parameter mirror carries descriptions only, with no limits or patterns for any tool.
+- **RegionEditor.** The panel's "Label" field (`proposedLabel`) is an interpret hint, exempt like the interpret schemas, and isn't capped. `validateRegion` checks `targetEntityDefinitionId` instead, which commit turns into the entity label, and `NewEntityDialog` caps the label and key the user types.
+- **Also capped in the web:** the REST API connector's `validateEndpoint` (key, label) and `validateColumnRows` (normalizedKey). `EditStationDialog` has no description field, so it caps the name only.
+- **Contract cases** (test plan 7–8) live in one table-driven file, `packages/core/src/__tests__/contracts/text-limits.adoption.test.ts`, not in each contract's own test file.
+
 ## Next step
 
 `docs/NAME_LENGTH_LIMITS.plan.md` sequences this into about 4 TDD slices on this branch:
