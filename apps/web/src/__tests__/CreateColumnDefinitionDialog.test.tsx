@@ -509,3 +509,23 @@ describe("CreateColumnDefinitionDialog", () => {
     });
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("CreateColumnDefinitionDialog — length limits (#801)", () => {
+  it("shows the key and label limits on submit and doesn't submit", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    const key = screen.getByLabelText(/^Key/);
+    const label = screen.getByLabelText(/^Label/);
+    fireEvent.change(key, { target: { value: "k".repeat(59) } });
+    fireEvent.change(label, { target: { value: "a".repeat(121) } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(
+      await screen.findByText("Key must be 58 characters or fewer")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Label must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(key).toHaveAttribute("aria-invalid", "true");
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+});

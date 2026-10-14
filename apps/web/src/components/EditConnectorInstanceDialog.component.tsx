@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { z } from "zod";
+import { nameField } from "@portalai/core/contracts";
 import TextField from "@mui/material/TextField";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
@@ -15,7 +16,7 @@ import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 const EditNameSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
+  name: nameField(),
 });
 
 export interface EditConnectorInstanceDialogProps {

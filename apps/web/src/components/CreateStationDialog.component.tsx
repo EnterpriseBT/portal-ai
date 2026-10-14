@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
+import { descriptionField, nameField } from "@portalai/core/contracts";
 import type { CreateStationBody, Toolpack } from "@portalai/core/contracts";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
@@ -46,7 +47,8 @@ interface StationFormState {
 }
 
 const StationFormSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
+  name: nameField(),
+  description: descriptionField(),
   toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
 });
 
@@ -144,7 +146,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   };
 
   const handleSubmit = () => {
-    setTouched({ name: true, toolPacks: true });
+    setTouched({ name: true, description: true, toolPacks: true });
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
@@ -218,6 +220,14 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           label="Description"
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
+          onBlur={blurUnlessDialogControl(() => handleBlur("description"))}
+          error={touched.description && !!errors.description}
+          helperText={touched.description && errors.description}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid": touched.description && !!errors.description,
+            },
+          }}
           fullWidth
           multiline
           rows={3}

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { z } from "zod";
+import { keyField, nameField } from "@portalai/core/contracts";
 import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
 import { AsyncSearchableSelect, Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
@@ -26,13 +27,11 @@ interface EntityFormState {
 }
 
 const EntityFormSchema = z.object({
-  label: z.string().trim().min(1, "Label is required"),
-  key: z
-    .string()
-    .regex(
-      /^[a-z][a-z0-9_]*$/,
-      "Key must start with a lowercase letter and contain only lowercase letters, numbers, and underscores"
-    ),
+  label: nameField("Label"),
+  key: keyField().regex(
+    /^[a-z][a-z0-9_]*$/,
+    "Key must start with a lowercase letter and contain only lowercase letters, numbers, and underscores"
+  ),
   connectorInstanceId: z.string().min(1, "Connector instance is required"),
 });
 

@@ -333,3 +333,48 @@ describe("CreateStationDialog — blur toward the dialog's controls", () => {
     expect(await screen.findByText("Name is required")).toBeInTheDocument();
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("CreateStationDialog — length limits (#801)", () => {
+  it("shows the name limit after blur and doesn't submit", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    const name = screen.getByLabelText(/Name/);
+    fireEvent.change(name, { target: { value: "a".repeat(121) } });
+    fireEvent.blur(name);
+    expect(
+      await screen.findByText("Name must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("accepts a 120-character name", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "a".repeat(120) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(defaultProps.onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "a".repeat(120) })
+      )
+    );
+  });
+
+  it("shows the description limit on submit and focuses it", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Ops" },
+    });
+    const description = screen.getByLabelText(/Description/);
+    fireEvent.change(description, { target: { value: "d".repeat(2001) } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(
+      await screen.findByText("Description must be 2000 characters or fewer")
+    ).toBeInTheDocument();
+    expect(description).toHaveAttribute("aria-invalid", "true");
+    await waitFor(() => expect(description).toHaveFocus());
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+});

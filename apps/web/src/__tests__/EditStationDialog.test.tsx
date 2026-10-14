@@ -243,3 +243,18 @@ describe("EditStationDialog", () => {
     });
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("EditStationDialog — length limits (#801)", () => {
+  it("shows the name limit on save and doesn't submit", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    const name = screen.getByLabelText(/Name/);
+    fireEvent.change(name, { target: { value: "a".repeat(121) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Name must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+});

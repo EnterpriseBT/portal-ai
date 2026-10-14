@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { z } from "zod";
+import { keyField, nameField } from "@portalai/core/contracts";
 import type { ColumnDefinitionCreateRequestBody } from "@portalai/core/contracts";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
 import { Button, Modal, Stack, Select } from "@portalai/core/ui";
@@ -37,13 +38,11 @@ interface ColumnDefinitionFormState {
 }
 
 const CreateColumnDefinitionFormSchema = z.object({
-  key: z
-    .string()
-    .regex(
-      /^[a-z][a-z0-9_]*$/,
-      "Key must be lowercase alphanumeric with underscores, starting with a letter"
-    ),
-  label: z.string().trim().min(1, "Label is required"),
+  key: keyField().regex(
+    /^[a-z][a-z0-9_]*$/,
+    "Key must be lowercase alphanumeric with underscores, starting with a letter"
+  ),
+  label: nameField("Label"),
   type: ColumnDataTypeEnum,
 });
 

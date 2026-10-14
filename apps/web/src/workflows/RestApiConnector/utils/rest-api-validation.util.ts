@@ -13,7 +13,12 @@ import {
   type ColumnDataType,
   type PaginationConfig,
 } from "@portalai/core/models";
-import type { ApiColumnSuggestion } from "@portalai/core/contracts";
+import {
+  KEY_MAX_LENGTH,
+  NAME_MAX_LENGTH,
+  tooLongMessage,
+  type ApiColumnSuggestion,
+} from "@portalai/core/contracts";
 import {
   validateWithSchema,
   type FormErrors,
@@ -208,6 +213,8 @@ export function validateBasics(input: {
 }): FormErrors {
   const errors: FormErrors = {};
   if (!input.name.trim()) errors.name = "Name is required";
+  else if (input.name.trim().length > NAME_MAX_LENGTH)
+    errors.name = tooLongMessage("Name", NAME_MAX_LENGTH);
   if (!input.baseUrl.trim()) {
     errors.baseUrl = "Base URL is required";
   } else {
@@ -263,7 +270,11 @@ export function validateEndpoint(input: {
 }): FormErrors {
   const errors: FormErrors = {};
   if (!input.key.trim()) errors.key = "Key is required";
+  else if (input.key.trim().length > KEY_MAX_LENGTH)
+    errors.key = tooLongMessage("Key", KEY_MAX_LENGTH);
   if (!input.label.trim()) errors.label = "Label is required";
+  else if (input.label.trim().length > NAME_MAX_LENGTH)
+    errors.label = tooLongMessage("Label", NAME_MAX_LENGTH);
 
   // #458: count params without a response path leave the probe unreadable.
   const totalCountParams = input.totalCountParams?.trim() ?? "";
@@ -357,6 +368,13 @@ export function validateColumnRows(rows: ColumnRowDraft[]): FormErrors {
     const key = row.normalizedKey.trim();
     if (!key) {
       errors[`row-${index}-normalizedKey`] = "Normalized key is required";
+      return;
+    }
+    if (key.length > KEY_MAX_LENGTH) {
+      errors[`row-${index}-normalizedKey`] = tooLongMessage(
+        "Normalized key",
+        KEY_MAX_LENGTH
+      );
       return;
     }
     if (!/^[a-z][a-z0-9_]*$/.test(key)) {

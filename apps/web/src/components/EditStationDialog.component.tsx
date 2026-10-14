@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
+import { nameField } from "@portalai/core/contracts";
 import type { UpdateStationBody, Toolpack } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
@@ -73,7 +74,7 @@ interface FormState {
 }
 
 const EditStationFormSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
+  name: nameField(),
   toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
 });
 

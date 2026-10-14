@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { z } from "zod";
+import { descriptionField, nameField } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
 import type {
   EntityTagCreateRequestBody,
@@ -35,7 +36,8 @@ interface TagFormState {
 }
 
 const TagFormSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
+  name: nameField(),
+  description: descriptionField(),
   color: z.string().refine((v) => !v || /^#[\dA-Fa-f]{6}$/.test(v), {
     message: "Color must be a valid hex code (e.g. #FF0000)",
   }),
@@ -114,7 +116,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
   };
 
   const handleSubmit = () => {
-    setTouched({ name: true, color: true });
+    setTouched({ name: true, color: true, description: true });
     const formErrors = validateTagForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
@@ -196,6 +198,14 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           label="Description"
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
+          onBlur={blurUnlessDialogControl(() => handleBlur("description"))}
+          error={touched.description && !!errors.description}
+          helperText={touched.description && errors.description}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid": touched.description && !!errors.description,
+            },
+          }}
           fullWidth
           multiline
           rows={3}

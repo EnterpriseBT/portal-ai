@@ -283,3 +283,26 @@ describe("CreateConnectorEntityDialog", () => {
     ).toBeEnabled();
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("CreateConnectorEntityDialog — length limits (#801)", () => {
+  it("shows the label and key limits after blur", async () => {
+    render(<CreateConnectorEntityDialog {...lockedProps} />);
+    const label = screen.getByLabelText(/Label/);
+    const key = screen.getByLabelText(/Key/);
+    fireEvent.change(label, { target: { value: "a".repeat(121) } });
+    fireEvent.blur(label);
+    fireEvent.change(key, { target: { value: "k".repeat(59) } });
+    fireEvent.blur(key);
+    expect(
+      await screen.findByText("Label must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Key must be 58 characters or fewer")
+    ).toBeInTheDocument();
+    expect(label).toHaveAttribute("aria-invalid", "true");
+    expect(key).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+});

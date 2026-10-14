@@ -431,3 +431,21 @@ describe("CreateFieldMappingDialog", () => {
     });
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("CreateFieldMappingDialog — length limits (#801)", () => {
+  it("shows the normalized key limit on submit and doesn't submit", async () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "first_name" },
+    });
+    const key = screen.getByLabelText(/^Normalized Key/);
+    fireEvent.change(key, { target: { value: "k".repeat(59) } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(
+      await screen.findByText("Normalized key must be 58 characters or fewer")
+    ).toBeInTheDocument();
+    expect(key).toHaveAttribute("aria-invalid", "true");
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+});

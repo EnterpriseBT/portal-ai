@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { z } from "zod";
+import { keyField } from "@portalai/core/contracts";
 import type { FieldMappingCreateRequestBody } from "@portalai/core/contracts";
 import { AsyncSearchableSelect, Button, Modal, Stack } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
@@ -24,12 +25,10 @@ import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 const CreateFieldMappingFormSchema = z.object({
   connectorEntityId: z.string().min(1, "Connector entity is required"),
   sourceField: z.string().trim().min(1, "Source field is required"),
-  normalizedKey: z
-    .string()
-    .regex(
-      /^[a-z][a-z0-9_]*$/,
-      "Must be lowercase alphanumeric with underscores, starting with a letter"
-    ),
+  normalizedKey: keyField("Normalized key").regex(
+    /^[a-z][a-z0-9_]*$/,
+    "Must be lowercase alphanumeric with underscores, starting with a letter"
+  ),
   isPrimaryKey: z.boolean(),
   refNormalizedKey: z.string().nullable(),
   refEntityKey: z.string().nullable(),

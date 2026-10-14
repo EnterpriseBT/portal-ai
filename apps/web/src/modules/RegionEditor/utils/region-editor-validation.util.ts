@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  KEY_MAX_LENGTH,
+  NAME_MAX_LENGTH,
+  tooLongMessage,
+} from "@portalai/core/contracts";
 
 import type { FormErrors } from "../../../utils/form-validation.util";
 import type { ColumnBindingDraft, RegionDraft } from "./region-editor.types";
@@ -65,6 +70,12 @@ export function validateRegion(region: RegionDraft): RegionErrors {
   // --- Entity ---
   if (!region.targetEntityDefinitionId) {
     errors.targetEntityDefinitionId = "Target entity is required";
+  } else if (region.targetEntityDefinitionId.length > NAME_MAX_LENGTH) {
+    // #801: commit makes this a new entity's label (planTextLimitIssues).
+    errors.targetEntityDefinitionId = tooLongMessage(
+      "Entity label",
+      NAME_MAX_LENGTH
+    );
   }
 
   // --- Bounds ---
@@ -266,6 +277,9 @@ export function validateBindingDraft(
   ) {
     errors.normalizedKey =
       "Must be lowercase snake_case (letters, digits, underscores; start with a letter).";
+  }
+  if ((binding.normalizedKey?.length ?? 0) > KEY_MAX_LENGTH) {
+    errors.normalizedKey = tooLongMessage("Normalized key", KEY_MAX_LENGTH);
   }
   if (
     ctx.columnDefinitionType &&

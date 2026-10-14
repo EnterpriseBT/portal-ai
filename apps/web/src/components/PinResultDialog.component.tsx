@@ -60,10 +60,9 @@ export const PinResultDialog: React.FC<PinResultDialogProps> = ({
     const trimmed = name.trim();
     const result = validateWithSchema(NameSchema, { name: trimmed });
     if (!result.success) {
-      // The schema's only constraint on `name` is `min(1)`, so any failure
-      // here is "missing". Zod's own message ("Too small: expected string to
-      // have >=1 characters") is not user-facing copy.
-      setErrors({ name: "Name is required" });
+      // The schema's rule (`nameField`, #801) carries its own copy: "Name is
+      // required" or the length limit.
+      setErrors(result.errors);
       return;
     }
     setErrors({});

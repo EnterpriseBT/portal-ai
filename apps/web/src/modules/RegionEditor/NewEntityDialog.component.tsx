@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Modal, Button, TextInput, Stack } from "@portalai/core/ui";
 import { z } from "zod";
+import { keyField, nameField } from "@portalai/core/contracts";
 
 import {
   focusFirstInvalidField,
@@ -46,9 +47,8 @@ function slugify(label: string): string {
 function buildSchema(existingKeys: string[]) {
   const taken = new Set(existingKeys);
   return z.object({
-    label: z.string().trim().min(1, "Label is required"),
-    key: z
-      .string()
+    label: nameField("Label"),
+    key: keyField()
       .trim()
       .min(1, "Key is required")
       .regex(

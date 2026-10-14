@@ -153,3 +153,17 @@ describe("PinResultDialog — server errors (#285)", () => {
     expect(baseProps.onSubmit).toHaveBeenLastCalledWith("Retry me");
   });
 });
+
+// #801: the shared length limits, shown inline like any other field error.
+describe("PinResultDialog — length limits (#801)", () => {
+  it("says the name is too long, not that it's missing", async () => {
+    render(<PinResultDialog {...baseProps} />);
+    fireEvent.change(nameField(), { target: { value: "a".repeat(121) } });
+    fireEvent.click(submit());
+    expect(
+      await screen.findByText("Name must be 120 characters or fewer")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Name is required")).not.toBeInTheDocument();
+    expect(baseProps.onSubmit).not.toHaveBeenCalled();
+  });
+});
