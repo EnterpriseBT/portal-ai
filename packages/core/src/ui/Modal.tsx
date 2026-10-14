@@ -10,7 +10,10 @@ import OpenInFullIcon from "@mui/icons-material/OpenInFull";
 import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
 
 import { FormDefaultButton } from "./FormDefaultButton.js";
-import { handleOwnSubmit } from "./handle-own-submit.js";
+import {
+  handleOwnSubmit,
+  preventToggleEnterSubmit,
+} from "./handle-own-submit.js";
 
 interface ModalBaseProps extends Omit<
   DialogProps,
@@ -105,6 +108,14 @@ export const Modal: React.FC<ModalProps> = ({
         onSubmit: handleOwnSubmit(() => {
           if (!submitDisabled && !pending) onSubmit();
         }),
+        onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+          preventToggleEnterSubmit(event);
+          (
+            slotProps?.paper as
+              | { onKeyDown?: React.KeyboardEventHandler<HTMLElement> }
+              | undefined
+          )?.onKeyDown?.(event);
+        },
       }
     : slotProps?.paper;
 

@@ -445,6 +445,25 @@ describe("Modal Component", () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
+    // Browsers submit a form on Enter in a checkbox or radio (implicit
+    // submission), without toggling it. A focused control that isn't a text
+    // field owns Enter, so the dialog doesn't submit from one.
+    it.each(["checkbox", "radio"])(
+      "Enter on a focused %s doesn't submit",
+      async (type) => {
+        const user = userEvent.setup();
+        const onSubmit = jest.fn();
+        render(
+          <FormModal onSubmit={onSubmit}>
+            <input type={type} aria-label="Choice" />
+          </FormModal>
+        );
+        screen.getByLabelText("Choice").focus();
+        await user.keyboard("{Enter}");
+        expect(onSubmit).not.toHaveBeenCalled();
+      }
+    );
+
     it("Enter on the focused close button closes without submitting", async () => {
       const user = userEvent.setup();
       const onSubmit = jest.fn();

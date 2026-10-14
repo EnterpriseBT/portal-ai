@@ -18,3 +18,23 @@ export function handleOwnSubmit(
     run();
   };
 }
+
+/**
+ * A form `onKeyDown` that keeps Enter on a checkbox or radio from submitting
+ * (#789). Browsers treat it as implicit submission (without toggling the
+ * control), so Tabbing to a checkbox and pressing Enter ran the dialog's
+ * submit. A focused control that isn't a text field owns Enter: buttons
+ * already do (Enter clicks them), and this gives toggles the same rule.
+ */
+export function preventToggleEnterSubmit(
+  event: React.KeyboardEvent<HTMLElement>
+): void {
+  const target = event.target as HTMLInputElement;
+  if (
+    event.key === "Enter" &&
+    target.tagName === "INPUT" &&
+    (target.type === "checkbox" || target.type === "radio")
+  ) {
+    event.preventDefault();
+  }
+}

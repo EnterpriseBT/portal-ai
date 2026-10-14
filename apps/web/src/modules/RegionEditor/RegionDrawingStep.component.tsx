@@ -15,6 +15,7 @@ import {
   CircularProgress,
   FormDefaultButton,
   handleOwnSubmit,
+  preventToggleEnterSubmit,
 } from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
 import MuiChip from "@mui/material/Chip";
@@ -388,6 +389,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       noValidate
       ref={rootRef}
       onSubmit={handleOwnSubmit(submitInterpret)}
+      onKeyDown={preventToggleEnterSubmit}
       spacing={2}
       sx={{
         width: "100%",

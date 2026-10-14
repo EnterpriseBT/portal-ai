@@ -318,3 +318,15 @@ describe("BindingEditorPopoverUI — header status icon", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+// #789: Enter on a focused checkbox doesn't apply the popover. Browsers
+// treat it as implicit submission; a toggle owns its key the way a button does.
+describe("BindingEditorPopoverUI — Enter on a checkbox", () => {
+  test("doesn't apply", async () => {
+    const user = userEvent.setup();
+    const { onApply } = setup();
+    screen.getByLabelText("Omit this column from the entity").focus();
+    await user.keyboard("{Enter}");
+    expect(onApply).not.toHaveBeenCalled();
+  });
+});

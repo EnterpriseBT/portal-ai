@@ -6,6 +6,7 @@ import {
   Button,
   FormDefaultButton,
   handleOwnSubmit,
+  preventToggleEnterSubmit,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
@@ -504,6 +505,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
     <Stack
       component="form"
       noValidate
+      onKeyDown={preventToggleEnterSubmit}
       onSubmit={handleOwnSubmit(() => {
         // Also stops a submit that skips the disabled default button.
         if (!commitDisabled) onCommit();
