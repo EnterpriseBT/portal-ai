@@ -1,4 +1,8 @@
-import { useAuthMutation, useAuthQuery } from "../utils/api.util";
+import {
+  useAuthMutation,
+  useAuthQuery,
+  LONG_WRITE_TIMEOUT_MS,
+} from "../utils/api.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
@@ -70,6 +74,7 @@ export const portalSql = {
       { messageId: string; blockIndex: number }
     >({
       url: () => `/api/portal-sql/widget-refresh`,
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       method: "POST",
       body: (vars) => vars,
       // #753: a read shaped as a POST. A manual refresh must not join the

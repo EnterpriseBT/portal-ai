@@ -85,8 +85,8 @@ export function handleOwnSubmit(
 
 - New exports: `WRITE_TIMEOUT_MS = 30_000` and `LONG_WRITE_TIMEOUT_MS = 300_000`.
 - `UseAuthMutationOptions` gains `timeoutMs?: number`. For a non-`GET` method the effective timeout is `timeoutMs ?? WRITE_TIMEOUT_MS`. `GET` (imperative reads) gets none, since the read-pause signal logic is unchanged.
-- The mutation's fetch passes `signal: AbortSignal.timeout(ms)`, combined with any caller `options.signal` through `AbortSignal.any`.
-- `fetchWithAuth` maps an abort caused by that timeout (`DOMException` name `"TimeoutError"`) to `new ApiError(REQUEST_TIMEOUT_MESSAGE, "REQUEST_TIMEOUT", 0)`. The message is: "This is taking longer than expected. It may still finish, so check before trying again." A caller-initiated abort keeps its current behavior.
+- The mutation's fetch passes the signal from `boundedSignal(ms, options?.signal)`: an `AbortController` aborted by a timer, or by the caller's own signal. It isn't built on `AbortSignal.timeout`/`AbortSignal.any`, because jsdom lacks both. The timer is cleared once the request settles.
+- `mutationFn` maps a failure that happened after the timer fired to `new ApiError(REQUEST_TIMEOUT_MESSAGE, "REQUEST_TIMEOUT", 0)`. That message is "This is taking longer than expected. It may still finish, so check before trying again." Deciding by the timer flag, not by the error's name, keeps the mapping independent of how a given `fetch` reports an abort. A caller-initiated abort keeps its current behavior. *(Reconciled at slice 1.)*
 - `REQUEST_TIMEOUT` is a client-side code. It isn't added to the API's `ApiCode` enum, since the server never sends it, and `serverErrorMessage` passes its message through.
 
 ### SDK overrides (`timeoutMs: LONG_WRITE_TIMEOUT_MS`)
@@ -99,7 +99,7 @@ export function handleOwnSubmit(
 | `apiConnector.discoverColumns`, `.probeDraft`, `.previewPage`, `.suggestTransform` | `api/api-connector.api.ts:145,165,178,200` |
 | `connectorInstances.testConnection` | `api/connector-instances.api.ts:234` |
 | `toolpacks` refresh, `portalSql` widget-refresh, `portalResults` refresh | `api/toolpacks.api.ts:69`, `api/portal-sql.api.ts:72`, `api/portal-results.api.ts:90` |
-| `entityRecords` import, revalidate | `api/entity-records.api.ts:64,108`: only if the route answers synchronously. A `202` enqueue keeps the default. The plan verifies each route. |
+| `entityRecords.import` | `api/entity-records.api.ts:63`. The route writes inline, so it takes the long bound. `revalidate` answers `202` (enqueue) and keeps the default; verified at slice 1. |
 
 ### `apps/web/src/utils/dialog-blur.util.ts` (new)
 

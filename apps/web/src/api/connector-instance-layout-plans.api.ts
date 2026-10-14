@@ -8,7 +8,11 @@ import type {
   PatchLayoutPlanBody,
 } from "@portalai/core/contracts";
 
-import { useAuthMutation, useAuthQuery } from "../utils/api.util";
+import {
+  useAuthMutation,
+  useAuthQuery,
+  LONG_WRITE_TIMEOUT_MS,
+} from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -20,6 +24,7 @@ export const connectorInstanceLayoutPlans = {
   interpret: (connectorInstanceId: string) =>
     useAuthMutation<InterpretResponsePayload, InterpretRequestBody>({
       url: `${base(connectorInstanceId)}/interpret`,
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorInstances.root],
       },
@@ -72,6 +77,7 @@ export const connectorInstanceLayoutPlans = {
   commit: (connectorInstanceId: string, planId: string) =>
     useAuthMutation<LayoutPlanCommitResult, CommitLayoutPlanRequestBody>({
       url: `${base(connectorInstanceId)}/${encodeURIComponent(planId)}/commit`,
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorInstances.root],
       },

@@ -4,6 +4,8 @@ const mockUseAuthQuery = jest.fn();
 const mockUseAuthMutation = jest.fn();
 
 jest.unstable_mockModule("../../utils/api.util", () => ({
+  WRITE_TIMEOUT_MS: 30_000,
+  LONG_WRITE_TIMEOUT_MS: 300_000,
   useAuthQuery: mockUseAuthQuery,
   useAuthMutation: mockUseAuthMutation,
 }));
@@ -23,6 +25,7 @@ describe("connectorInstanceLayoutPlans.api", () => {
       connectorInstanceLayoutPlans.interpret("ci_123");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci_123/layout-plan/interpret",
+        timeoutMs: 300_000,
         onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
@@ -31,6 +34,7 @@ describe("connectorInstanceLayoutPlans.api", () => {
       connectorInstanceLayoutPlans.interpret("ci with/slash");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci%20with%2Fslash/layout-plan/interpret",
+        timeoutMs: 300_000,
         onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });
@@ -102,6 +106,7 @@ describe("connectorInstanceLayoutPlans.api", () => {
       connectorInstanceLayoutPlans.commit("ci_123", "plan_abc");
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/connector-instances/ci_123/layout-plan/plan_abc/commit",
+        timeoutMs: 300_000,
         onPermissionDenied: { invalidate: expect.any(Function) },
       });
     });

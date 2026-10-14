@@ -5,7 +5,7 @@ import type {
   LayoutPlanInterpretDraftResponsePayload,
 } from "@portalai/core/contracts";
 
-import { useAuthMutation } from "../utils/api.util";
+import { useAuthMutation, LONG_WRITE_TIMEOUT_MS } from "../utils/api.util";
 
 /**
  * Instance-less layout-plan flow. Used by "new connector" workflows
@@ -24,6 +24,7 @@ export const layoutPlans = {
       LayoutPlanInterpretDraftRequestBody
     >({
       url: "/api/layout-plans/interpret",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
     }),
 
   commit: () =>
@@ -32,5 +33,6 @@ export const layoutPlans = {
       LayoutPlanCommitDraftRequestBody
     >({
       url: "/api/layout-plans/commit",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
     }),
 };

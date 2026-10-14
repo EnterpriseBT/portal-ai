@@ -4,6 +4,8 @@ const mockUseAuthQuery = jest.fn();
 const mockUseAuthMutation = jest.fn();
 
 jest.unstable_mockModule("../../utils/api.util", () => ({
+  WRITE_TIMEOUT_MS: 30_000,
+  LONG_WRITE_TIMEOUT_MS: 300_000,
   useAuthQuery: mockUseAuthQuery,
   useAuthMutation: mockUseAuthMutation,
   useAuthFetch: () => ({ fetchWithAuth: jest.fn() }),

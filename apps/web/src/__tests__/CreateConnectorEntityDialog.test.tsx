@@ -13,6 +13,8 @@ const mockFetchWithAuth = jest.fn<() => Promise<unknown>>().mockResolvedValue({
 });
 
 jest.unstable_mockModule("../utils/api.util", () => ({
+  WRITE_TIMEOUT_MS: 30_000,
+  LONG_WRITE_TIMEOUT_MS: 300_000,
   useAuthFetch: () => ({
     fetchWithAuth: mockFetchWithAuth,
   }),

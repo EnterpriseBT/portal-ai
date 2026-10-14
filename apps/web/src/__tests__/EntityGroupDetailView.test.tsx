@@ -37,6 +37,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 jest.unstable_mockModule("../utils/api.util", () => ({
+  WRITE_TIMEOUT_MS: 30_000,
+  LONG_WRITE_TIMEOUT_MS: 300_000,
   useAuthFetch: () => ({
     fetchWithAuth: jest.fn(),
   }),

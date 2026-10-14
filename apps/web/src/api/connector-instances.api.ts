@@ -44,6 +44,7 @@ import {
   useAuthMutation,
   useAuthFetch,
   type ApiError,
+  LONG_WRITE_TIMEOUT_MS,
 } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
@@ -234,6 +235,7 @@ export const connectorInstances = {
   testConnection: (id: string) =>
     useAuthMutation<TestConnectionResult, TestConnectionRequestBody>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/test-connection`,
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
       method: "POST",
       onPermissionDenied: {
         invalidate: () => [queryKeys.connectorInstances.root],
