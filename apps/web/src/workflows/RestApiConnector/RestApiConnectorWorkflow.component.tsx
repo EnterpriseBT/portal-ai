@@ -157,6 +157,10 @@ export const RestApiConnectorWorkflowUI: React.FC<
   serverError,
 }) => {
   const isLast = step === STEPS.length - 1;
+  // #789: Enter does what the step's primary button does (Next, or Commit on
+  // the last step), gated exactly like it.
+  const primaryDisabled = isLast ? !canAdvance || isCommitting : !canAdvance;
+  const handlePrimary = isLast ? onCommit : () => onStepChange(step + 1);
 
   return (
     <Modal
@@ -165,6 +169,9 @@ export const RestApiConnectorWorkflowUI: React.FC<
       title="Connect REST API"
       defaultMaximized
       maximizable
+      onSubmit={handlePrimary}
+      submitDisabled={primaryDisabled}
+      pending={isCommitting}
       actions={
         <Stack direction="row" spacing={1}>
           <Button
@@ -189,8 +196,8 @@ export const RestApiConnectorWorkflowUI: React.FC<
             <Button
               type="button"
               variant="contained"
-              onClick={onCommit}
-              disabled={!canAdvance || isCommitting}
+              onClick={handlePrimary}
+              disabled={primaryDisabled}
             >
               {isCommitting ? "Committing…" : "Commit"}
             </Button>
@@ -198,8 +205,8 @@ export const RestApiConnectorWorkflowUI: React.FC<
             <Button
               type="button"
               variant="contained"
-              onClick={() => onStepChange(step + 1)}
-              disabled={!canAdvance}
+              onClick={handlePrimary}
+              disabled={primaryDisabled}
             >
               Next
             </Button>

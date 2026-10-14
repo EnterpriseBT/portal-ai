@@ -263,6 +263,8 @@ export const FileUploadConnectorWorkflowUI: React.FC<
       title="Upload a spreadsheet"
       defaultMaximized
       maximizable
+      // #789: nothing dismisses the wizard while its plan commits.
+      pending={isCommitting}
     >
       <Stack spacing={2} sx={{ minWidth: 0 }}>
         <Stepper steps={stepConfigs} activeStep={step}>
@@ -337,10 +339,11 @@ export const FileUploadConnectorWorkflowUI: React.FC<
 
         {step === 0 && (
           <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={onClose}>
+            <Button type="button" variant="text" onClick={onClose}>
               Cancel
             </Button>
             <Button
+              type="button"
               variant="contained"
               onClick={onStartParse}
               disabled={isUploadDisabled}
@@ -352,7 +355,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
 
         {step === 1 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={onBack}>
+            <Button type="button" variant="text" onClick={onBack}>
               Back
             </Button>
           </Stack>

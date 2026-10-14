@@ -7,6 +7,8 @@ import {
   Button,
   Select,
   CircularProgress,
+  FormDefaultButton,
+  handleOwnSubmit,
 } from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
 import MuiChip from "@mui/material/Chip";
@@ -314,8 +316,14 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       e.preventDefault();
       onRegionDelete(selectedRegionId);
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    // #789: the capture phase, so this runs before an enclosing Modal's own
+    // Escape handling. MUI's Dialog handles Escape on its root and stops
+    // propagation, so a bubble-phase listener never saw it and Escape closed
+    // the whole wizard instead of deselecting. The preventDefault above
+    // tells the Modal the Escape was handled.
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () =>
+      document.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [selectedRegionId, onRegionDelete, onSelectRegion, regionDeletionLocked]);
 
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
@@ -349,8 +357,16 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   const regionCountBySheet = (sheetId: string) =>
     regions.filter((r) => r.sheetId === sheetId).length;
 
+  // #789: the step is a form around its primary action, so Enter in a field
+  // Interprets exactly when the Interpret button could. A field that owns
+  // Enter (the bounds inputs) prevents it first.
+  const interpretDisabled = regions.length === 0;
+
   return (
     <Stack
+      component="form"
+      noValidate
+      onSubmit={handleOwnSubmit(handleInterpret)}
       spacing={2}
       sx={{
         width: "100%",
@@ -652,6 +668,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       >
         {onSkipToReview && (
           <Button
+            type="button"
             variant="text"
             onClick={onSkipToReview}
             disabled={isInterpreting}
@@ -660,13 +677,15 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
           </Button>
         )}
         <Button
+          type="button"
           variant="contained"
           onClick={handleInterpret}
-          disabled={regions.length === 0}
+          disabled={interpretDisabled}
         >
           Interpret
         </Button>
       </Stack>
+      <FormDefaultButton disabled={interpretDisabled} />
     </Stack>
   );
 };

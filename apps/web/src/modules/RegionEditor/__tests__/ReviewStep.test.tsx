@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { SelectOption } from "@portalai/core/ui";
 
 import { ReviewStepUI } from "../ReviewStep.component";
@@ -263,5 +264,50 @@ describe("ReviewStepUI — binding editor popover", () => {
     expect(
       document.querySelector('form[aria-label="Edit column binding"]')
     ).toBeNull();
+  });
+});
+
+// #789: the step is a form around Commit plan. Enter commits exactly when the
+// button could, the binding popover's own form never commits the plan, and
+// nothing navigates away mid-commit.
+describe("ReviewStepUI — keyboard and commit (#789)", () => {
+  test("Enter on the focused Commit plan commits", async () => {
+    const user = userEvent.setup();
+    const onCommit = jest.fn();
+    setup({ onCommit });
+    screen.getByRole("button", { name: "Commit plan" }).focus();
+    await user.keyboard("{Enter}");
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  test("a blocked commit ignores Enter", async () => {
+    const user = userEvent.setup();
+    const onCommit = jest.fn();
+    setup({ onCommit, commitDisabledReason: "Fix the bindings first." });
+    expect(screen.getByRole("button", { name: "Commit plan" })).toBeDisabled();
+    await user.keyboard("{Enter}");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  test("Back to regions is disabled while committing", () => {
+    setup({ isCommitting: true });
+    expect(
+      screen.getByRole("button", { name: "Back to regions" })
+    ).toBeDisabled();
+  });
+
+  test("submitting the binding popover doesn't commit the plan", async () => {
+    const user = userEvent.setup();
+    const onCommit = jest.fn();
+    setup({ onCommit });
+    fireEvent.click(
+      screen.getByRole("button", { name: /edit binding.*header:email/i })
+    );
+    const popover = document.querySelector(
+      'form[aria-label="Edit column binding"]'
+    ) as HTMLFormElement;
+    const field = popover.querySelector("input") as HTMLInputElement;
+    await user.type(field, "{Enter}");
+    expect(onCommit).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { Box, Stack, Typography, Button } from "@portalai/core/ui";
+import {
+  Box,
+  Stack,
+  Typography,
+  Button,
+  FormDefaultButton,
+  handleOwnSubmit,
+} from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import type { ColumnDataType } from "@portalai/core/models";
@@ -488,8 +495,19 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   const effectiveCommitDisabledReason =
     commitDisabledReason ?? bindingDisabledReason;
 
+  // #789: the step is a form around Commit plan, so Enter in a field (a
+  // binding's inputs) commits exactly when the button could.
+  const commitDisabled =
+    isCommitting || hasBlockers || Boolean(effectiveCommitDisabledReason);
+
   return (
-    <Stack spacing={2} sx={{ width: "100%", minWidth: 0 }}>
+    <Stack
+      component="form"
+      noValidate
+      onSubmit={handleOwnSubmit(onCommit)}
+      spacing={2}
+      sx={{ width: "100%", minWidth: 0 }}
+    >
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -513,17 +531,19 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
           )}
         </Stack>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button variant="outlined" onClick={onBack}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onBack}
+            disabled={isCommitting}
+          >
             Back to regions
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={onCommit}
-            disabled={
-              isCommitting ||
-              hasBlockers ||
-              Boolean(effectiveCommitDisabledReason)
-            }
+            disabled={commitDisabled}
           >
             {isCommitting ? "Committing…" : "Commit plan"}
           </Button>
@@ -666,6 +686,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
           onCancel={handleCancel}
         />
       )}
+      <FormDefaultButton disabled={commitDisabled} />
     </Stack>
   );
 };

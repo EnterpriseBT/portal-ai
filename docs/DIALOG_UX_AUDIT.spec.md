@@ -118,7 +118,7 @@ Every dialog `onBlur`/`handleBlur` that sets touched first returns early when `i
 
 - **RestApi** (`RestApiConnectorWorkflow.component.tsx`): `Modal onSubmit={handlePrimary}`, `submitDisabled={!canAdvance || isCommitting}`, `pending={isCommitting}`. `handlePrimary` runs Next, or Commit on the last step, exactly as the footer button's `onClick` does. Cancel and Back are unchanged (already `disabled={isCommitting}`).
 - **FileUpload / GoogleSheets / MicrosoftExcel**: `Modal pending={isCommitting}`, with no `onSubmit`. `handleClose` is unreachable while pending.
-  - FileUpload step 0 wraps the step and its Upload footer in `<form onSubmit={handleOwnSubmit(upload)}>` with `<FormDefaultButton disabled={isUploadDisabled} />`.
+  - FileUpload step 0 gets **no** form *(reconciled at slice 4)*. The step holds only a file input and a dropzone, and HTML implicit submission never fires from a file input, so a form would add nothing. Enter on the focused Upload button already clicks it.
   - Sheets/Excel steps 0–1 (OAuth, picker) have no primary and no form.
 - **`RegionDrawingStepUI`** (`modules/RegionEditor/RegionDrawingStep.component.tsx`): wraps its panel in `<form onSubmit={handleOwnSubmit(handleInterpret)}>` with `<FormDefaultButton disabled={interpretDisabled} />`, where `interpretDisabled` is the existing button expression (`regions.length === 0`, `:662-667`). The Interpret button becomes `type="button"`.
 - **`ReviewStepUI`** (`modules/RegionEditor/ReviewStep.component.tsx`): same shape, around `onCommit`. `disabled` is the existing commit expression (`isCommitting || hasBlockers || effectiveCommitDisabledReason`, `:519-528`). "Back to regions" (`:516`) becomes `disabled={isCommitting}`.
@@ -209,7 +209,7 @@ Run per package with `npm run test:unit -- --testPathPattern <…>` (never raw j
   - a submit inside a nested `ApiEndpointForm` doesn't advance the wizard.
 - `RegionDrawingStep.test.tsx`, about 3 cases: Enter in a bounds field doesn't Interpret (field-level `preventDefault`), Enter on the focused form Interprets, and Escape with a region selected deselects without closing (rendered inside a `Modal`).
 - `FileUploadReviewStep.test.tsx`/`ReviewStep` tests, about 2 cases: Enter commits only when unblocked, and Back is disabled while committing.
-- FileUpload, Sheets and Excel containers, about 6 cases: close blocked while committing, and step-0 Enter uploads (FileUpload).
+- FileUpload container UI, 3 cases: close blocked while committing, the X disabled, and Escape still closing when idle. *Reconciled at slice 4:* the Sheets and Excel containers render their `Modal` inline with no UI/container split, so a container test would mock about ten hooks to assert one pass-through prop. Their `pending={workflow.isCommitting}` is covered by core `Modal`'s pending tests and by smoke; the missing split is a Component File Policy gap outside this ticket.
 
 **Totals: about 160 cases.** Mostly migrations plus about 75 new cases.
 
