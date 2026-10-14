@@ -260,3 +260,14 @@ describe("TagFormModal", () => {
     expect(nameInput).toBeRequired();
   });
 });
+
+// #789: Cancel never flashes a field error on its way out.
+describe("TagFormModal — blur toward the dialog's controls", () => {
+  it("shows no error when focus moves from an empty name to Cancel", async () => {
+    const user = userEvent.setup();
+    render(<TagFormModal {...defaultProps} />);
+    await user.click(screen.getByLabelText(/Name/));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Name is required")).not.toBeInTheDocument();
+  });
+});

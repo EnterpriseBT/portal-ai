@@ -17,6 +17,7 @@ import { Stack } from "@portalai/core/ui";
 
 import type { FormErrors } from "../../utils/form-validation.util";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 export type ApiKeyPlacement = "header" | "query";
 
@@ -60,7 +61,7 @@ export const ApiKeyCredentialsFormUI: React.FC<
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onKeyNameChange(e.target.value)
         }
-        onBlur={() => onBlur("keyName")}
+        onBlur={blurUnlessDialogControl(() => onBlur("keyName"))}
         required
         fullWidth
         error={touched.keyName && !!errors.keyName}
@@ -76,7 +77,7 @@ export const ApiKeyCredentialsFormUI: React.FC<
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onPlacementChange(e.target.value as ApiKeyPlacement)
         }
-        onBlur={() => onBlur("placement")}
+        onBlur={blurUnlessDialogControl(() => onBlur("placement"))}
         fullWidth
       >
         <MenuItem value="header">Header</MenuItem>
@@ -89,7 +90,7 @@ export const ApiKeyCredentialsFormUI: React.FC<
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onValueChange(e.target.value)
         }
-        onBlur={() => onBlur("value")}
+        onBlur={blurUnlessDialogControl(() => onBlur("value"))}
         required
         fullWidth
         autoComplete="off"

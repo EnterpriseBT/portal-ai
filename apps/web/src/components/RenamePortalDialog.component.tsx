@@ -12,6 +12,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 export interface RenamePortalDialogProps {
   open: boolean;
@@ -110,7 +111,7 @@ export const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
           label="Name"
           value={name}
           onChange={(e) => handleChange(e.target.value)}
-          onBlur={handleBlur}
+          onBlur={blurUnlessDialogControl(handleBlur)}
           error={touched && !!errors.name}
           helperText={touched && errors.name}
           slotProps={{

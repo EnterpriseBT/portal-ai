@@ -24,6 +24,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Form types ──────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
-          onBlur={() => handleBlur("name")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("name"))}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
           slotProps={{

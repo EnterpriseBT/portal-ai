@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import userEvent from "@testing-library/user-event";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
 const { CreateStationDialog } =
@@ -307,5 +308,27 @@ describe("CreateStationDialog", () => {
         option.querySelector('[data-testid="HubOutlinedIcon"]')
       ).toBeInTheDocument();
     });
+  });
+});
+
+// #789: leaving a field for the dialog's own controls (Cancel, the close X)
+// doesn't mark it touched, so Cancel never flashes an error on its way out.
+// Moving to another field still does.
+describe("CreateStationDialog — blur toward the dialog's controls", () => {
+  it("shows no error when focus moves from an empty name to Cancel", async () => {
+    const user = userEvent.setup();
+    render(<CreateStationDialog {...defaultProps} />);
+    await user.click(screen.getByLabelText(/Name/));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Name is required")).not.toBeInTheDocument();
+    expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it("still shows the error when focus moves to another field", async () => {
+    const user = userEvent.setup();
+    render(<CreateStationDialog {...defaultProps} />);
+    await user.click(screen.getByLabelText(/Name/));
+    await user.click(screen.getByLabelText(/Description/));
+    expect(await screen.findByText("Name is required")).toBeInTheDocument();
   });
 });

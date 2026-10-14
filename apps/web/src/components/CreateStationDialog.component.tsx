@@ -31,6 +31,7 @@ import {
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
 import { ToolPackUpgradeNoteUI } from "./ToolPackUpgradeNote.component";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -204,7 +205,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
-          onBlur={() => handleBlur("name")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("name"))}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
           slotProps={{
@@ -260,7 +261,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           }}
           value={form.toolPacks}
           onChange={(_, newValue) => handleChange("toolPacks", newValue)}
-          onBlur={() => handleBlur("toolPacks")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("toolPacks"))}
           renderTags={(value, getTagProps) =>
             value.map((option, index) => {
               const { key, ...tagProps } = getTagProps({ index });

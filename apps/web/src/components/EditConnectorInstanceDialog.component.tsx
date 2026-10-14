@@ -10,6 +10,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 const EditNameSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -94,11 +95,11 @@ const EditForm: React.FC<{
           label="Name"
           value={name}
           onChange={(e) => handleChange(e.target.value)}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched(true);
             const result = validateWithSchema(EditNameSchema, { name });
             setErrors(result.success ? {} : result.errors);
-          }}
+          })}
           error={touched && !!errors.name}
           helperText={touched && errors.name}
           slotProps={{

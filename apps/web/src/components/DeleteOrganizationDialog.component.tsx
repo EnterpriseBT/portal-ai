@@ -7,6 +7,7 @@ import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 import { FormAlert } from "./FormAlert.component";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ServerError } from "../utils/api.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 export interface DeleteOrganizationDialogProps {
   open: boolean;
@@ -99,7 +100,7 @@ export const DeleteOrganizationDialog: React.FC<
           label={`Type "${organizationName}" to confirm`}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onBlur={() => setTouched(true)}
+          onBlur={blurUnlessDialogControl(() => setTouched(true))}
           error={showError}
           helperText={
             showError ? "Enter the organization name exactly to confirm" : " "

@@ -13,6 +13,7 @@ import React from "react";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import { Stack, Typography } from "@portalai/core/ui";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 export interface BodyTemplateFieldUIProps {
   value: string;
@@ -52,7 +53,7 @@ export const BodyTemplateFieldUI: React.FC<BodyTemplateFieldUIProps> = ({
       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
         onChange(e.target.value)
       }
-      onBlur={onBlur}
+      onBlur={blurUnlessDialogControl(() => onBlur?.())}
       multiline
       minRows={3}
       maxRows={10}

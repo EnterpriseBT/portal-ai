@@ -27,6 +27,7 @@ import {
   findPresetByPattern,
   validateRegex,
 } from "../utils/column-definition-form.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 /**
  * Allowlist of permitted column definition type transitions.
@@ -252,10 +253,10 @@ const EditForm: React.FC<{
             if (touched.label)
               setErrors(validate({ label: e.target.value.trim() }));
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched((p) => ({ ...p, label: true }));
             setErrors(validate({ label: label.trim() }));
-          }}
+          })}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
           slotProps={{
@@ -330,10 +331,10 @@ const EditForm: React.FC<{
             if (touched.validationPattern)
               setErrors(validate({ label: label.trim() }, e.target.value));
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched((p) => ({ ...p, validationPattern: true }));
             setErrors(validate({ label: label.trim() }));
-          }}
+          })}
           fullWidth
           size="small"
           disabled={!typeConfig.validation.enabled}

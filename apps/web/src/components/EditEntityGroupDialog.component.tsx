@@ -15,6 +15,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 export interface EditEntityGroupDialogProps {
   open: boolean;
@@ -116,10 +117,10 @@ const EditForm: React.FC<{
               setErrors(validate({ name: e.target.value.trim() }));
             }
           }}
-          onBlur={() => {
+          onBlur={blurUnlessDialogControl(() => {
             setTouched((prev) => ({ ...prev, name: true }));
             setErrors(validate({ name: name.trim() }));
-          }}
+          })}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
           slotProps={{

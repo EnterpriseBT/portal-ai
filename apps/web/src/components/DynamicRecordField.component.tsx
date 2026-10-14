@@ -4,6 +4,7 @@ import { TextField, Checkbox, FormControlLabel, MenuItem } from "@mui/material";
 import type { ResolvedColumn } from "@portalai/core/contracts";
 
 import { geoJsonGeometryError } from "../utils/record-field-serialization.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Props ────────────────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           type="number"
           value={value ?? ""}
           onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(() => onBlur?.())}
           fullWidth
           size="small"
           disabled={disabled}
@@ -136,7 +137,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           type="date"
           value={value ?? ""}
           onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(() => onBlur?.())}
           fullWidth
           size="small"
           disabled={disabled}
@@ -158,7 +159,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           type="datetime-local"
           value={value ?? ""}
           onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(() => onBlur?.())}
           fullWidth
           size="small"
           disabled={disabled}
@@ -183,7 +184,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
             label={column.label}
             value={value ?? ""}
             onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-            onBlur={onBlur}
+            onBlur={blurUnlessDialogControl(() => onBlur?.())}
             fullWidth
             size="small"
             disabled={disabled}
@@ -204,7 +205,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           select
           value={value ?? ""}
           onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(() => onBlur?.())}
           fullWidth
           size="small"
           disabled={disabled}
@@ -265,7 +266,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           label={column.label}
           value={value ?? ""}
           onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(() => onBlur?.())}
           fullWidth
           size="small"
           multiline
@@ -289,7 +290,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           label={column.label}
           value={value ?? ""}
           onChange={(e) => onChange(column.normalizedKey, e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(() => onBlur?.())}
           fullWidth
           size="small"
           disabled={disabled}

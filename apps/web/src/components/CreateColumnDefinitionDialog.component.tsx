@@ -21,6 +21,7 @@ import {
   getTypeConfig,
   validateRegex,
 } from "../utils/column-definition-form.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -213,7 +214,7 @@ export const CreateColumnDefinitionDialog: React.FC<
           label="Key"
           value={form.key}
           onChange={(e) => handleChange("key", e.target.value)}
-          onBlur={() => handleBlur("key")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("key"))}
           error={touched.key && !!errors.key}
           helperText={(touched.key && errors.key) || "e.g. customer_name"}
           slotProps={{
@@ -226,7 +227,7 @@ export const CreateColumnDefinitionDialog: React.FC<
           label="Label"
           value={form.label}
           onChange={(e) => handleChange("label", e.target.value)}
-          onBlur={() => handleBlur("label")}
+          onBlur={blurUnlessDialogControl(() => handleBlur("label"))}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
           slotProps={{
@@ -273,7 +274,9 @@ export const CreateColumnDefinitionDialog: React.FC<
           label="Validation Pattern"
           value={form.validationPattern}
           onChange={(e) => handleChange("validationPattern", e.target.value)}
-          onBlur={() => handleBlur("validationPattern")}
+          onBlur={blurUnlessDialogControl(() =>
+            handleBlur("validationPattern")
+          )}
           fullWidth
           disabled={!typeConfig.validation.enabled}
           error={touched.validationPattern && !!errors.validationPattern}

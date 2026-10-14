@@ -27,6 +27,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
 /** A FilterExpression carries a real predicate only when it has conditions. */
 function filterOrNull(f: FilterExpression): FilterExpression | null {
@@ -160,7 +161,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
           label="Label"
           value={label}
           onChange={(e) => onLabelChange(e.target.value)}
-          onBlur={onLabelBlur}
+          onBlur={blurUnlessDialogControl(onLabelBlur)}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
           slotProps={{
@@ -174,7 +175,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
             label="Key"
             value={keyValue}
             onChange={(e) => onKeyChange(e.target.value)}
-            onBlur={onKeyBlur}
+            onBlur={blurUnlessDialogControl(onKeyBlur)}
             error={touched.key && !!errors.key}
             helperText={
               (touched.key && errors.key) ||

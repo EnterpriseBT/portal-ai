@@ -8,6 +8,7 @@ import {
   type FormErrors,
 } from "../../utils/form-validation.util";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 export interface NewEntityDialogUIProps {
   open: boolean;
@@ -164,7 +165,9 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
           required
           value={label}
           onChange={(e) => handleLabelChange(e.target.value)}
-          onBlur={() => setTouched((t) => ({ ...t, label: true }))}
+          onBlur={blurUnlessDialogControl(() =>
+            setTouched((t) => ({ ...t, label: true }))
+          )}
           placeholder="e.g. Contact, Deal, Revenue"
           error={labelInvalid}
           helperText={
@@ -178,7 +181,9 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
           required
           value={key}
           onChange={(e) => handleKeyChange(e.target.value)}
-          onBlur={() => setTouched((t) => ({ ...t, key: true }))}
+          onBlur={blurUnlessDialogControl(() =>
+            setTouched((t) => ({ ...t, key: true }))
+          )}
           placeholder="e.g. contact, deal, revenue"
           error={keyInvalid}
           helperText={

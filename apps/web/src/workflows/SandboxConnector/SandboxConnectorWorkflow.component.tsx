@@ -16,6 +16,7 @@ import {
 } from "../../utils/form-validation.util";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import type { ConnectorWorkflowProps } from "../../views/Connector.view";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 // ── UI Component (pure, no hooks) ───────────────────────────────────
 
@@ -86,7 +87,7 @@ export const SandboxConnectorWorkflowUI: React.FC<
           label="Name"
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
-          onBlur={onBlur}
+          onBlur={blurUnlessDialogControl(onBlur)}
           error={touched && !!errors.name}
           helperText={touched && errors.name}
           slotProps={{

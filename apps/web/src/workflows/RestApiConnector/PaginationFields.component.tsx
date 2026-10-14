@@ -18,6 +18,7 @@ import { Stack, Typography } from "@portalai/core/ui";
 
 import type { FormErrors } from "../../utils/form-validation.util";
 import type { PaginationDraft } from "./utils/rest-api-validation.util";
+import { blurUnlessDialogControl } from "../../utils/dialog-blur.util";
 
 export interface PaginationFieldsUIProps {
   draft: PaginationDraft;
@@ -56,7 +57,7 @@ export const PaginationFieldsUI: React.FC<PaginationFieldsUIProps> = ({
             : e.target.value) as PaginationDraft[typeof name]
         )
       }
-      onBlur={() => onBlur(name)}
+      onBlur={blurUnlessDialogControl(() => onBlur(name))}
       fullWidth
       error={touched[name as string] && !!errors[name as string]}
       helperText={touched[name as string] && errors[name as string]}
