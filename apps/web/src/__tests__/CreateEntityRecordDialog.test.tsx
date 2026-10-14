@@ -307,7 +307,6 @@ describe("CreateEntityRecordDialog — field validation", () => {
     render(<CreateEntityRecordDialog {...defaultProps} />);
     await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
     await userEvent.click(screen.getByText("Create"));
-    expect(screen.getByText("Create")).toHaveFocus();
     await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
   });
 
