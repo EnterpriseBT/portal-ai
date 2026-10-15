@@ -294,6 +294,27 @@ describe("Station Router", () => {
       expect(res.body.payload.station.name).toBe("My Station");
     });
 
+    // #805: a NUL passed the contract and failed at the insert as a 500.
+    it("refuses a NUL in the name with 400 and writes nothing", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Ops\u0000x", toolPacks: ["data_query"] })
+        .expect(400);
+
+      expect(res.body.code).toBe(ApiCode.REQUEST_INVALID_CHARACTERS);
+      expect(res.body.details).toEqual({ location: "body", path: "name" });
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.organizationId, organizationId));
+      expect(rows).toHaveLength(0);
+    });
+
     it("creates station with connector instances", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

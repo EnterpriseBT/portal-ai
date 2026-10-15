@@ -35,6 +35,7 @@ import type {
 import type { ColumnDataType } from "@portalai/core/models";
 
 import type { CachedStatements } from "../services/wide-table-statement.cache.js";
+import { findNul } from "./nul-character.util.js";
 
 // ── Public API ──────────────────────────────────────────────────────
 
@@ -75,6 +76,15 @@ export function parseFilterPayload(
     parsed = JSON.parse(jsonStr);
   } catch {
     return { message: "Invalid filter encoding: expected base64-encoded JSON" };
+  }
+
+  // #805: the expression rides the query base64-encoded, so the boundary's
+  // `%00` check can't see a NUL in it, and Postgres can't bind one.
+  const nul = findNul(parsed);
+  if (nul) {
+    return {
+      message: `Invalid filter: ${nul.path ? `\`${nul.path}\`` : "the expression"} contains a NUL character (U+0000), which can't be stored`,
+    };
   }
 
   const schemaResult = FilterExpressionSchema.safeParse(parsed);

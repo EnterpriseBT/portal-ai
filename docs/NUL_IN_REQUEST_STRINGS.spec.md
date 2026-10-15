@@ -106,6 +106,10 @@ export const rejectNul = (req: Request, _res: Response, next: NextFunction): voi
 
 **Mount** in `apps/api/src/app.ts`, directly after `app.use(jsonBodyOnly)` (`:90`) and before `/api/docs`, with a `// #805:` comment.
 
+### Base64 filters — `apps/api/src/utils/filter-sql.util.ts`
+
+*Added during slice 2.* The record list's `?filters=` carries a base64-encoded JSON expression, so a NUL inside it never appears as `%00` and gets past the URL check. `parseFilterPayload` (its only decoder, used by `entity-record.router.ts` and `portal-sql.service.ts`) runs `findNul` on the decoded value before schema validation. On a hit it returns the `FilterValidationError` `` Invalid filter: `<path>` contains a NUL character (U+0000), which can't be stored `` ("the expression" in place of the path at the root). The route answers that with its existing `400 ENTITY_RECORD_INVALID_FILTER`.
+
 ### Workbook cache — `apps/api/src/services/workbook-cache.service.ts`
 
 - `SessionMeta` (`:36`) gains `nulStrippedValues?: number`. It's absent when zero.
@@ -214,7 +218,7 @@ Run per package with the npm scripts:
 
 12. `__integration__/app.integration.test.ts`, next to "Body-parser error mapping": a POST to `/nonexistent` with a NUL body gives 400 `REQUEST_INVALID_CHARACTERS` without auth. `GET /api/health?x=%00` gives 400.
 13. `__integration__/routes/station.router.integration.test.ts`: `POST /api/stations` with `name: "Ops\u0000x"` gives 400, and the station count is unchanged.
-14. `__integration__/routes/entity-record.router.integration.test.ts`: a create whose `data` value contains a NUL gives 400 and no record row is written. A list `?search=%00` gives 400 instead of 500. A filter whose value contains a NUL gives 400.
+14. `__integration__/routes/entity-record.router.integration.test.ts`: a create whose `normalizedData` value contains a NUL gives 400 and no record row is written. A list `?search=%00` gives 400 instead of 500. A base64 filter whose value contains a NUL gives 400 `ENTITY_RECORD_INVALID_FILTER` naming `conditions.0.value`. `__tests__/utils/filter-sql.util.test.ts` covers `parseFilterPayload` directly.
 15. `__integration__/routes/field-mapping.router.integration.test.ts:500–517` (#687) is rewritten. `jest.spyOn` makes the repository read reject with a Drizzle-shaped error whose message carries SQL text. The test still asserts 500 `FIELD_MAPPING_FETCH_FAILED`, `Internal server error`, and no SQL in the body. A new case asserts `/api/field-mappings/%00` gives 400 `REQUEST_INVALID_CHARACTERS`.
 
 ### api — ingest

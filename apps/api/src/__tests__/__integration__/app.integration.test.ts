@@ -150,6 +150,29 @@ describe("App Integration", () => {
     });
   });
 
+  // #805: Postgres can't store U+0000, so a request carrying one is refused
+  // before any route (and before auth, like the body-parser errors above).
+  describe("NUL characters", () => {
+    it("refuses a NUL in a JSON body with 400 REQUEST_INVALID_CHARACTERS", async () => {
+      const res = await request(app)
+        .post("/nonexistent")
+        .set("Content-Type", "application/json")
+        .send({ name: "Ops\u0000x" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.REQUEST_INVALID_CHARACTERS);
+      expect(res.body.details).toEqual({ location: "body", path: "name" });
+    });
+
+    it("refuses %00 in a query string with 400 REQUEST_INVALID_CHARACTERS", async () => {
+      const res = await request(app).get("/api/health?x=%00");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.REQUEST_INVALID_CHARACTERS);
+      expect(res.body.details).toEqual({ location: "url" });
+    });
+  });
+
   // #775: express.json() skips other content types, leaving req.body empty,
   // so a strict route saw `{}` and dropped every key. Such a body is a 415.
   describe("Non-JSON bodies", () => {

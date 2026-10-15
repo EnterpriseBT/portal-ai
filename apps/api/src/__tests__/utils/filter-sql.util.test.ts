@@ -3,7 +3,10 @@ import { describe, it, expect } from "@jest/globals";
 import type { FilterGroup } from "@portalai/core/contracts";
 import type { ColumnDataType } from "@portalai/core/models";
 
-import { renderFilterGroupToSql } from "../../utils/filter-sql.util.js";
+import {
+  parseFilterPayload,
+  renderFilterGroupToSql,
+} from "../../utils/filter-sql.util.js";
 import type { CachedStatements } from "../../services/wide-table-statement.cache.js";
 
 /**
@@ -119,5 +122,40 @@ describe("renderFilterGroupToSql", () => {
     );
     expect(typeof out).not.toBe("string");
     if (typeof out !== "string") expect(out.message).toMatch(/unknown column/i);
+  });
+});
+
+// #805: filters ride the query base64-encoded, so a NUL inside one is
+// invisible to the URL check and used to fail in Postgres as a 500.
+describe("parseFilterPayload", () => {
+  const encode = (expr: unknown) =>
+    Buffer.from(JSON.stringify(expr)).toString("base64");
+  const columns = [
+    { normalizedKey: "region", type: "string" as const },
+  ] as unknown as Parameters<typeof parseFilterPayload>[1];
+
+  it("refuses a NUL in a condition value, naming where it is", () => {
+    const out = parseFilterPayload(
+      encode({
+        combinator: "and",
+        conditions: [{ field: "region", operator: "eq", value: "we\u0000st" }],
+      }),
+      columns
+    );
+    expect(out).toEqual({
+      message:
+        "Invalid filter: `conditions.0.value` contains a NUL character (U+0000), which can't be stored",
+    });
+  });
+
+  it("accepts the same filter without the NUL", () => {
+    const out = parseFilterPayload(
+      encode({
+        combinator: "and",
+        conditions: [{ field: "region", operator: "eq", value: "west" }],
+      }),
+      columns
+    );
+    expect(out).not.toHaveProperty("message");
   });
 });

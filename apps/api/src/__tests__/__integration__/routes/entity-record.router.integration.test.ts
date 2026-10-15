@@ -1666,6 +1666,38 @@ describe("Entity Record Router — Advanced Filters", () => {
 
   // ── Filters combined with search ────────────────────────────────
 
+  // #805: a NUL in a search or filter value reached Postgres and 500ed.
+  describe("NUL characters", () => {
+    it("refuses a NUL in the search with 400", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(`${recordsUrl(connectorEntityId)}?search=Bo%00b`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.REQUEST_INVALID_CHARACTERS);
+    });
+
+    it("refuses a NUL in a filter value with 400", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [
+              { field: "name", operator: "contains", value: "Bo\u0000b" },
+            ],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_FILTER);
+      expect(res.body.message).toContain("conditions.0.value");
+    });
+  });
+
   describe("filters combined with search", () => {
     it("should apply both search and advanced filters", async () => {
       const { connectorEntityId } = await seedFilterData();
@@ -2007,6 +2039,32 @@ describe("Entity Record Router — POST /", () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.payload.record.normalizedData).toEqual({ name: "Alice" });
+  });
+
+  // #805: a NUL in a record value passed the contract and failed at the
+  // jsonb write as a 500.
+  it("refuses a NUL in a record value with 400 and writes nothing", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Al\u0000ice" } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.REQUEST_INVALID_CHARACTERS);
+    expect(res.body.details).toEqual({
+      location: "body",
+      path: "normalizedData.name",
+    });
+    const rows = await db
+      .select()
+      .from(entityRecords)
+      .where(eq(entityRecords.connectorEntityId, connectorEntityId));
+    expect(rows).toHaveLength(0);
   });
 
   it("should mirror normalizedData into data", async () => {
