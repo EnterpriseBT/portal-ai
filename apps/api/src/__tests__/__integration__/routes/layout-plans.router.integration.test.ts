@@ -700,6 +700,41 @@ describe("Layout Plans Draft Router", () => {
       expect(result.nulStrippedValues).toBe(2);
     });
 
+    // Code review on #805: the count is report-only, so reading it must never
+    // fail a commit that landed (a final-attempt failure rolls the commit
+    // back), and it's read before the commit, ahead of markSessionCommitted's
+    // background deleteSession on the same prefix.
+    it("reads the count before the commit, and a failed read doesn't fail the commit", async () => {
+      const { WorkbookCacheService } =
+        await import("../../../services/workbook-cache.service.js");
+      const { LayoutPlanCommitService } =
+        await import("../../../services/layout-plan-commit.service.js");
+      const realGetMeta = WorkbookCacheService.getSessionMeta;
+      let calls = 0;
+      const metaSpy = jest
+        .spyOn(WorkbookCacheService, "getSessionMeta")
+        .mockImplementation(async (prefix) => {
+          calls++;
+          // The first read is resolveWorkbook's; the second is the count.
+          if (calls === 2) throw new Error("redis down");
+          return realGetMeta.call(WorkbookCacheService, prefix);
+        });
+      const commitSpy = jest.spyOn(LayoutPlanCommitService, "commit");
+
+      try {
+        const result = await commitWithSessionCount(2);
+
+        expect(result.connectorInstanceId).toBeDefined();
+        expect(result).not.toHaveProperty("nulStrippedValues");
+        expect(metaSpy.mock.invocationCallOrder[1]!).toBeLessThan(
+          commitSpy.mock.invocationCallOrder[0]!
+        );
+      } finally {
+        metaSpy.mockRestore();
+        commitSpy.mockRestore();
+      }
+    });
+
     it("omits the NUL-stripped count when the session stripped nothing", async () => {
       const result = await commitWithSessionCount();
       expect(result).not.toHaveProperty("nulStrippedValues");

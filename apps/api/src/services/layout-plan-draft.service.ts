@@ -288,6 +288,10 @@ export class LayoutPlanDraftService {
       workbookSource,
       organizationId
     );
+    // #805: read before the commit. After it, `markSessionCommitted` deletes
+    // an upload session in the background and the meta (and count) can go.
+    const nulStrippedValues =
+      await LayoutPlanDraftService.nulStrippedValuesForSource(workbookSource);
 
     // Errors propagate as-is so BullMQ can retry. The orphan-row
     // cleanup that used to live here moved to
@@ -351,8 +355,6 @@ export class LayoutPlanDraftService {
       });
     }
 
-    const nulStrippedValues =
-      await LayoutPlanDraftService.nulStrippedValuesForSource(workbookSource);
     return {
       connectorInstanceId,
       planId,
@@ -537,6 +539,10 @@ export class LayoutPlanDraftService {
       workbookSource,
       organizationId
     );
+    // #805: read before the commit. After it, `markSessionCommitted` deletes
+    // an upload session in the background and the meta (and count) can go.
+    const nulStrippedValues =
+      await LayoutPlanDraftService.nulStrippedValuesForSource(workbookSource);
 
     const runStartedAt = Date.now();
     const result = await LayoutPlanCommitService.commit(
@@ -557,8 +563,6 @@ export class LayoutPlanDraftService {
       userId
     );
 
-    const nulStrippedValues =
-      await LayoutPlanDraftService.nulStrippedValuesForSource(workbookSource);
     return {
       connectorInstanceId,
       planId,
@@ -605,20 +609,32 @@ export class LayoutPlanDraftService {
    * #805: how many strings the source's cached session had its U+0000
    * stripped from on ingest (0 when none, or when the session is gone). Read
    * after `resolveWorkbookBySource`, which may have re-streamed an upload
-   * session from S3 under the same prefix.
+   * session from S3 under the same prefix, and before the commit (see the
+   * callers).
+   *
+   * Best-effort: the count is report-only, so a failed read logs and answers
+   * 0 rather than failing a commit (whose final-attempt failure rolls back).
    */
   static async nulStrippedValuesForSource(
     source: LayoutPlanCommitWorkbookSource
   ): Promise<number> {
-    const prefix =
-      source.kind === "uploadSession"
-        ? uploadSessionCachePrefix(source.uploadSessionId)
-        : workbookCacheKey(
-            await loadConnectorSlug(source.connectorInstanceId),
-            source.connectorInstanceId
-          );
-    const meta = await WorkbookCacheService.getSessionMeta(prefix);
-    return meta?.nulStrippedValues ?? 0;
+    try {
+      const prefix =
+        source.kind === "uploadSession"
+          ? uploadSessionCachePrefix(source.uploadSessionId)
+          : workbookCacheKey(
+              await loadConnectorSlug(source.connectorInstanceId),
+              source.connectorInstanceId
+            );
+      const meta = await WorkbookCacheService.getSessionMeta(prefix);
+      return meta?.nulStrippedValues ?? 0;
+    } catch (err) {
+      logger.warn(
+        { source, err: err instanceof Error ? err.message : err },
+        "Couldn't read the NUL-stripped count for a commit (non-fatal)"
+      );
+      return 0;
+    }
   }
 
   /**
