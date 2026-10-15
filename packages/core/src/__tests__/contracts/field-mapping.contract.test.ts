@@ -401,6 +401,8 @@ describe("FieldMappingImpactResponsePayloadSchema", () => {
     const result = FieldMappingImpactResponsePayloadSchema.safeParse({
       entityGroupMembers: 5,
       entityRecords: 10,
+      curatedViews: [{ id: "cv-1", label: "Pipeline" }],
+      hiddenCuratedViews: 2,
       counterpart: { id: "fm-2", sourceField: "email", normalizedKey: "email" },
     });
     expect(result.success).toBe(true);
@@ -410,9 +412,20 @@ describe("FieldMappingImpactResponsePayloadSchema", () => {
     const result = FieldMappingImpactResponsePayloadSchema.safeParse({
       entityGroupMembers: 0,
       entityRecords: 0,
+      curatedViews: [],
+      hiddenCuratedViews: 0,
       counterpart: null,
     });
     expect(result.success).toBe(true);
+  });
+
+  it("#802: requires the views that use the mapping", () => {
+    const result = FieldMappingImpactResponsePayloadSchema.safeParse({
+      entityGroupMembers: 0,
+      entityRecords: 0,
+      counterpart: null,
+    });
+    expect(result.success).toBe(false);
   });
 
   it("should reject missing entityGroupMembers", () => {

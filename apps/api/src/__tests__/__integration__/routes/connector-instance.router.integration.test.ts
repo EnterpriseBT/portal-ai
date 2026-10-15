@@ -23,6 +23,7 @@ import {
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import { seedCuratedViewWithDependents } from "../utils/seed-populated-org.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
 
@@ -53,6 +54,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { entityDataDeleteProcessor } =
+  await import("../../../queues/processors/entity-data-delete.processor.js");
 
 const {
   connectorDefinitions,
@@ -786,6 +789,37 @@ describe("Connector Instance Router", () => {
     };
   }
 
+  /** #802: a second entity on the seeded instance, and one curated view over
+   *  each entity, both attached to the seeded station with their grants. */
+  async function seedViewsOnTwoEntities(
+    orgId: string,
+    userId: string,
+    seeded: Awaited<ReturnType<typeof seedInstanceWithRelatedData>>
+  ): Promise<string[]> {
+    const secondEntity = {
+      ...seeded.entity,
+      id: generateId(),
+      key: `second_${generateId().slice(0, 8)}`,
+    };
+    await (db as ReturnType<typeof drizzle>)
+      .insert(connectorEntities)
+      .values(secondEntity as never);
+    const viewIds: string[] = [];
+    for (const entityId of [seeded.entity.id, secondEntity.id]) {
+      viewIds.push(
+        await seedCuratedViewWithDependents(db as ReturnType<typeof drizzle>, {
+          organizationId: orgId,
+          connectorEntityId: entityId,
+          fieldMappingId: seeded.mapping.id,
+          stationId: seeded.station.id,
+          granteeUserId: userId,
+          key: `view_${generateId().slice(0, 8)}`,
+        })
+      );
+    }
+    return viewIds;
+  }
+
   describe("DELETE /api/connector-instances/:id", () => {
     it("should return 404 for non-existent connector instance", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
@@ -864,13 +898,14 @@ describe("Connector Instance Router", () => {
       expect(deletedEntity).toBeDefined();
       expect(deletedEntity!.deleted).not.toBeNull();
 
-      // Verify entity record is soft-deleted
+      // #802: the record is left to the entity_data_delete job — still
+      // live here, since no worker runs in this process.
       const records = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(entityRecords);
-      const deletedRecord = records.find((r) => r.id === seeded.record.id);
-      expect(deletedRecord).toBeDefined();
-      expect(deletedRecord!.deleted).not.toBeNull();
+      const keptRecord = records.find((r) => r.id === seeded.record.id);
+      expect(keptRecord).toBeDefined();
+      expect(keptRecord!.deleted).toBeNull();
 
       // Verify field mapping is soft-deleted
       const mappings = await (db as ReturnType<typeof drizzle>)
@@ -916,6 +951,45 @@ describe("Connector Instance Router", () => {
       expect(deletedInstance!.deleted).not.toBeNull();
     });
 
+    it("#802: deletes the views over every entity and detaches them from stations", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+      const viewIds = await seedViewsOnTwoEntities(orgId, userId, seeded);
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${seeded.instance.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+
+      for (const viewId of viewIds) {
+        const viewRes = await request(app)
+          .get(`/api/curated-views/${viewId}`)
+          .set("Authorization", "Bearer test-token");
+        expect(viewRes.status).toBe(404);
+      }
+
+      const stationRes = await request(app)
+        .get(`/api/curated-views?stationId=${seeded.station.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(stationRes.status).toBe(200);
+      expect(stationRes.body.payload.curatedViews).toHaveLength(0);
+
+      const grants = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.permissionGrants)
+        .where(eqRaw(schema.permissionGrants.organizationId, orgId));
+      expect(
+        grants.filter(
+          (g) =>
+            viewIds.includes(g.resourceId ?? "") ||
+            viewIds.includes(g.conditionParam ?? "")
+        )
+      ).toHaveLength(0);
+    });
+
     it("should no longer return deleted instance in GET list", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
@@ -949,6 +1023,130 @@ describe("Connector Instance Router", () => {
       expect(names).not.toContain("Soon Gone");
     });
 
+    /** #802: run the entity_data_delete job a delete queued, as the worker
+     *  would. */
+    async function runRecordsJob(jobId: string) {
+      const [job] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.id, jobId));
+      expect(job.type).toBe("entity_data_delete");
+      return entityDataDeleteProcessor({
+        data: { jobId: job.id, type: job.type, ...job.metadata },
+        updateProgress: async () => {},
+      } as never);
+    }
+
+    it("#802: queues one entity_data_delete job for all of the instance's entities", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${seeded.instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const [job] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.id, res.body.payload.recordsJobId));
+      expect(job.metadata).toMatchObject({
+        organizationId: orgId,
+        connectorEntityIds: [seeded.entity.id],
+        connectorInstanceId: seeded.instance.id,
+      });
+
+      expect(await runRecordsJob(job.id)).toMatchObject({ recordsDeleted: 1 });
+      const [record] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(entityRecords)
+        .where(eqRaw(entityRecords.id, seeded.record.id));
+      expect(record.deleted).not.toBeNull();
+    });
+
+    it("#802: two simultaneous deletes — one succeeds, the other is a 404, one job", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+
+      const responses = await Promise.all([
+        request(app)
+          .delete(`/api/connector-instances/${seeded.instance.id}`)
+          .set("Authorization", "Bearer test-token"),
+        request(app)
+          .delete(`/api/connector-instances/${seeded.instance.id}`)
+          .set("Authorization", "Bearer test-token"),
+      ]);
+
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 404]);
+      const jobs = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.type, "entity_data_delete"));
+      expect(
+        jobs.filter(
+          (j) =>
+            (j.metadata as { connectorInstanceId?: string })
+              .connectorInstanceId === seeded.instance.id
+        )
+      ).toHaveLength(1);
+    });
+
+    it("#802: a queue that never answers doesn't hold the response (Redis down)", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+      const { JobsService } = await import("../../../services/jobs.service.js");
+      const dispatch = jest
+        .spyOn(JobsService, "dispatch")
+        .mockImplementationOnce(() => new Promise(() => {}));
+
+      try {
+        const res = await request(app)
+          .delete(`/api/connector-instances/${seeded.instance.id}`)
+          .set("Authorization", "Bearer test-token")
+          .timeout(5000);
+
+        expect(res.status).toBe(200);
+        expect(res.body.payload.recordsJobId).toEqual(expect.any(String));
+        expect(dispatch).toHaveBeenCalled();
+      } finally {
+        dispatch.mockRestore();
+      }
+    });
+
+    it("#802: an instance with no entities queues no job", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(instance as never);
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload).toEqual({
+        id: instance.id,
+        recordsJobId: null,
+      });
+    });
+
     it("drops each entity's er__ wide table and its catalog rows (#423)", async () => {
       const { organizationId: orgId, userId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
@@ -976,6 +1174,11 @@ describe("Connector Instance Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.payload.id).toBe(seeded.instance.id);
 
+      // #802: the drop moved off-request with the records — the table is
+      // still there until the entity_data_delete job runs.
+      expect(await tableExists()).toBe(true);
+      await runRecordsJob(res.body.payload.recordsJobId);
+
       // The physical projection is gone, not merely orphaned.
       expect(await tableExists()).toBe(false);
 
@@ -996,13 +1199,16 @@ describe("Connector Instance Router", () => {
       );
       const seeded = await seedInstanceWithRelatedData(orgId, userId);
 
-      // No ensureTable call — `dropTable` must be a no-op, not a failure.
+      // No ensureTable call — the job's drop must be a no-op, not a failure.
       const res = await request(app)
         .delete(`/api/connector-instances/${seeded.instance.id}`)
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+      expect(await runRecordsJob(res.body.payload.recordsJobId)).toMatchObject({
+        wideTablesDropped: 0,
+      });
     });
   });
 
@@ -1048,6 +1254,7 @@ describe("Connector Instance Router", () => {
         entityTagAssignments: 0,
         entityGroupMembers: 0,
         stations: 0,
+        curatedViews: 0,
       });
     });
 
@@ -1070,7 +1277,24 @@ describe("Connector Instance Router", () => {
         entityTagAssignments: 1,
         entityGroupMembers: 1,
         stations: 1,
+        curatedViews: 0,
       });
+    });
+
+    it("#802: counts the views over every one of the instance's entities", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+      await seedViewsOnTwoEntities(orgId, userId, seeded);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${seeded.instance.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.curatedViews).toBe(2);
     });
   });
 

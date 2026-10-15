@@ -40,6 +40,7 @@ import type { DbClient } from "../../../../db/repositories/base.repository.js";
 import { WideTableReconcilerService } from "../../../../services/wide-table-reconciler.service.js";
 import { wideTableStatementCache } from "../../../../services/wide-table-statement.cache.js";
 import * as schema from "../../../../db/schema/index.js";
+import { DbService } from "../../../../services/db.service.js";
 import {
   generateId,
   teardownOrg,
@@ -277,6 +278,84 @@ describe("EntityRecordsRepository.purgeTombstonedBefore (#442)", () => {
     const cutoff = now - 30 * DAY;
     expect(await repo.purgeTombstonedBefore(cutoff, 1000, "live", db)).toBe(1);
     expect(await totalCount(liveEntityId)).toBe(1);
+  });
+
+  /** #802: an entity soft-deleted at `deleted`, on the seeded instance. */
+  const insertDeletedEntity = async (deleted: number): Promise<string> => {
+    const [dead] = await dbq
+      .select()
+      .from(schema.connectorEntities)
+      .where(sql`${schema.connectorEntities.id} = ${deadEntityId}`);
+    const id = generateId();
+    await dbq.insert(schema.connectorEntities).values({
+      ...dead,
+      id,
+      key: `ent_${id.slice(0, 6)}`,
+      deleted,
+    } as never);
+    return id;
+  };
+
+  it('#802: scope "stranded" purges live records under an entity deleted before the cutoff', async () => {
+    await insertRecord(deadEntityId, { deleted: null });
+    await insertRecord(deadEntityId, { deleted: null });
+    await insertRecord(deadEntityId, { deleted: OLD });
+
+    const cutoff = now - 30 * DAY;
+    expect(await repo.purgeTombstonedBefore(cutoff, 1000, "stranded", db)).toBe(
+      2
+    );
+    // The tombstone is the orphan scope's, not this one's.
+    expect(await totalCount(deadEntityId)).toBe(1);
+  });
+
+  it('#802: scope "stranded" waits out the window after the entity\'s delete', async () => {
+    const recentlyDeleted = await insertDeletedEntity(RECENT);
+    await insertRecord(recentlyDeleted, { deleted: null });
+
+    const cutoff = now - 30 * DAY;
+    expect(await repo.purgeTombstonedBefore(cutoff, 1000, "stranded", db)).toBe(
+      0
+    );
+    expect(await liveCount(recentlyDeleted)).toBe(1);
+  });
+
+  it('#802: scope "stranded" never touches a live entity\'s records', async () => {
+    await insertRecord(liveEntityId, { deleted: null });
+    await insertRecord(liveEntityId, { deleted: OLD });
+
+    expect(await repo.purgeTombstonedBefore(now, 1000, "stranded", db)).toBe(0);
+    expect(await totalCount(liveEntityId)).toBe(2);
+  });
+
+  it("#802: finds the wide tables left behind by entities deleted before the cutoff", async () => {
+    const recentlyDeleted = await insertDeletedEntity(RECENT);
+    for (const id of [deadEntityId, recentlyDeleted, liveEntityId]) {
+      await reconciler.ensureTable(id, db);
+    }
+
+    try {
+      const found =
+        await DbService.repository.wideTable.findEntityIdsWithTableDeletedBefore(
+          now - 30 * DAY,
+          100
+        );
+      expect(found).toContain(deadEntityId);
+      expect(found).not.toContain(recentlyDeleted);
+      expect(found).not.toContain(liveEntityId);
+      // An id the run already failed to drop is skipped.
+      expect(
+        await DbService.repository.wideTable.findEntityIdsWithTableDeletedBefore(
+          now - 30 * DAY,
+          100,
+          [deadEntityId]
+        )
+      ).not.toContain(deadEntityId);
+    } finally {
+      for (const id of [deadEntityId, recentlyDeleted]) {
+        await reconciler.dropTable(id, db).catch(() => undefined);
+      }
+    }
   });
 
   it("returns 0 on an empty backlog", async () => {

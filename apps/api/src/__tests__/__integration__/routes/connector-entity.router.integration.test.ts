@@ -26,6 +26,7 @@ import {
   createUser,
   createOrganizationUser,
 } from "../utils/application.util.js";
+import { seedCuratedViewWithDependents } from "../utils/seed-populated-org.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
 const MEMBER_SUB = "auth0|ci-ce-member";
@@ -50,6 +51,10 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+
+const { entityDataDeleteProcessor } =
+  await import("../../../queues/processors/entity-data-delete.processor.js");
+const { JobsService } = await import("../../../services/jobs.service.js");
 
 const {
   connectorDefinitions,
@@ -1017,6 +1022,40 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
     };
   }
 
+  /** #802: a curated view over the entity, attached to a fresh station, with
+   *  a resource grant and an `in_curated_view` field grant. */
+  async function seedViewOnStation(
+    organizationId: string,
+    connectorEntityId: string,
+    fieldMappingId: string,
+    granteeUserId: string
+  ) {
+    const station = {
+      id: generateId(),
+      organizationId,
+      name: `station-${generateId().slice(0, 8)}`,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await db.insert(schema.stations).values(station as never);
+    const viewId = await seedCuratedViewWithDependents(
+      db as ReturnType<typeof drizzle>,
+      {
+        organizationId,
+        connectorEntityId,
+        fieldMappingId,
+        stationId: station.id,
+        granteeUserId,
+        key: `view_${generateId().slice(0, 8)}`,
+      }
+    );
+    return { viewId, stationId: station.id };
+  }
+
   /** Seed related child data for an entity (records, mappings, tags, group members). */
   async function seedRelatedData(organizationId: string, entityId: string) {
     // Column definition + field mapping
@@ -1175,13 +1214,62 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.id).toBe(entity.id);
-      expect(res.body.payload.cascaded.entityRecords).toBe(1);
+      // #802: records go off-request; the response names the job instead.
+      expect(res.body.payload.cascaded).not.toHaveProperty("entityRecords");
+      expect(res.body.payload.recordsJobId).toEqual(expect.any(String));
       expect(res.body.payload.cascaded.fieldMappings).toBe(1);
       expect(res.body.payload.cascaded.entityTagAssignments).toBe(1);
       expect(res.body.payload.cascaded.entityGroupMembers).toBe(1);
+      expect(res.body.payload.cascaded.curatedViews).toBe(0);
     });
 
-    it("should set deleted timestamp on all cascaded child records", async () => {
+    it("#802: deletes the entity's curated views and detaches them from stations", async () => {
+      const { userId, organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      const { mapping } = await seedRelatedData(organizationId, entity.id);
+      const viewId = await seedViewOnStation(
+        organizationId,
+        entity.id,
+        mapping.id,
+        userId
+      );
+
+      const res = await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.cascaded.curatedViews).toBe(1);
+
+      // The view is gone — 404, not the 500 an orphaned view answered.
+      const viewRes = await request(app)
+        .get(`/api/curated-views/${viewId.viewId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(viewRes.status).toBe(404);
+
+      // …and the station no longer lists it.
+      const stationRes = await request(app)
+        .get(`/api/curated-views?stationId=${viewId.stationId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(stationRes.status).toBe(200);
+      expect(stationRes.body.payload.curatedViews).toHaveLength(0);
+
+      // No grant outlives the view.
+      const grants = await db
+        .select()
+        .from(schema.permissionGrants)
+        .where(eq(schema.permissionGrants.organizationId, organizationId));
+      expect(
+        grants.filter(
+          (g) =>
+            g.resourceId === viewId.viewId || g.conditionParam === viewId.viewId
+        )
+      ).toHaveLength(0);
+    });
+
+    it("#802: tombstones the children in the request and leaves the records to an entity_data_delete job", async () => {
       const { organizationId, entity } = await seedWithCapabilities({
         definitionWrite: true,
         enabledCapabilityFlags: { write: true },
@@ -1189,11 +1277,34 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
 
       const related = await seedRelatedData(organizationId, entity.id);
 
-      await request(app)
+      const res = await request(app)
         .delete(`/api/connector-entities/${entity.id}`)
         .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
 
-      // Query with includeDeleted to verify timestamps
+      // The record is still live — no worker runs in this process — and the
+      // job that will delete it is queued with the entity.
+      const [recordBefore] = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, related.record.id));
+      expect(recordBefore.deleted).toBeNull();
+      const [job] = await db
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.id, res.body.payload.recordsJobId));
+      expect(job.type).toBe("entity_data_delete");
+      expect(job.metadata).toMatchObject({
+        organizationId,
+        connectorEntityIds: [entity.id],
+        connectorInstanceId: null,
+      });
+
+      // Running that job deletes the record.
+      await entityDataDeleteProcessor({
+        data: { jobId: job.id, type: job.type, ...job.metadata },
+        updateProgress: async () => {},
+      } as never);
       const [recordRows] = await db
         .select()
         .from(entityRecords)
@@ -1217,6 +1328,131 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
         .from(entityGroupMembers)
         .where(eq(entityGroupMembers.id, related.member.id));
       expect(memberRows.deleted).not.toBeNull();
+    });
+
+    it("#802: while the records job is pending, no write reaches the entity's records", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      const related = await seedRelatedData(organizationId, entity.id);
+
+      const del = await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(del.status).toBe(200);
+
+      const base = `/api/connector-entities/${entity.id}/records`;
+      const writes = [
+        request(app)
+          .post(base)
+          .send({ data: { name: "Mallory" } }),
+        request(app)
+          .patch(`${base}/${related.record.id}`)
+          .send({ data: { name: "Mallory" } }),
+        request(app).delete(`${base}/${related.record.id}`),
+        request(app).delete(base),
+        request(app).post(`${base}/revalidate`).send({}),
+      ];
+      for (const write of writes) {
+        const res = await write.set("Authorization", "Bearer test-token");
+        expect(res.status).toBe(404);
+        expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+      }
+
+      // The record is untouched: still live, still Alice, for the job.
+      const [record] = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, related.record.id));
+      expect(record.deleted).toBeNull();
+      expect(record.data).toEqual({ name: "Alice" });
+    });
+
+    it("#802: two simultaneous deletes — one succeeds, the other is a 404, one job", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      await seedRelatedData(organizationId, entity.id);
+
+      const responses = await Promise.all([
+        request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token"),
+        request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token"),
+      ]);
+
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 404]);
+      const jobs = await db
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.type, "entity_data_delete"));
+      expect(
+        jobs.filter((j) =>
+          (
+            (j.metadata as { connectorEntityIds?: string[] })
+              .connectorEntityIds ?? []
+          ).includes(entity.id)
+        )
+      ).toHaveLength(1);
+    });
+
+    it("#802: a queue that never answers doesn't hold the response (Redis down)", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      await seedRelatedData(organizationId, entity.id);
+      // ioredis holds a command while Redis is down instead of failing it.
+      const dispatch = jest
+        .spyOn(JobsService, "dispatch")
+        .mockImplementationOnce(() => new Promise(() => {}));
+
+      try {
+        const started = Date.now();
+        const res = await request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token")
+          .timeout(5000);
+
+        expect(res.status).toBe(200);
+        expect(Date.now() - started).toBeLessThan(5000);
+        expect(dispatch).toHaveBeenCalled();
+      } finally {
+        dispatch.mockRestore();
+      }
+    });
+
+    it("#802: still succeeds when the records job can't be queued", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      await seedRelatedData(organizationId, entity.id);
+      const dispatch = jest
+        .spyOn(JobsService, "dispatch")
+        .mockRejectedValueOnce(new Error("redis down"));
+
+      try {
+        const res = await request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token");
+
+        // The delete committed; the purge's stranded scope reclaims the
+        // records the job would have removed.
+        expect(res.status).toBe(200);
+        expect(dispatch).toHaveBeenCalled();
+        const [entityRow] = await db
+          .select()
+          .from(connectorEntities)
+          .where(eq(connectorEntities.id, entity.id));
+        expect(entityRow.deleted).not.toBeNull();
+      } finally {
+        dispatch.mockRestore();
+      }
     });
 
     it("should return 404 for non-existent entity", async () => {
@@ -1291,6 +1527,35 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       expect(res.body.payload.entityTagAssignments).toBe(1);
       expect(res.body.payload.entityGroupMembers).toBe(1);
       expect(res.body.payload.refFieldMappings).toBe(1);
+      expect(res.body.payload.curatedViews).toBe(0);
+    });
+
+    it("#802: counts every live view the delete would remove", async () => {
+      const { userId, organizationId, connectorInstanceId, entity } =
+        await seedWithCapabilities({
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
+      const { mapping } = await seedRelatedData(organizationId, entity.id);
+      await seedViewOnStation(organizationId, entity.id, mapping.id, userId);
+      await seedViewOnStation(organizationId, entity.id, mapping.id, userId);
+
+      // A view over another entity isn't counted.
+      const otherEntity = createConnEntity(organizationId, connectorInstanceId);
+      await db.insert(connectorEntities).values(otherEntity as never);
+      await seedViewOnStation(
+        organizationId,
+        otherEntity.id,
+        mapping.id,
+        userId
+      );
+
+      const res = await request(app)
+        .get(`/api/connector-entities/${entity.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.curatedViews).toBe(2);
     });
 
     it("should return 404 for non-existent entity", async () => {

@@ -34,6 +34,22 @@ export class CuratedViewFieldMappingsRepository extends Repository<
     );
   }
 
+  /** #802: soft-delete the live projection rows of the given views (the
+   *  view delete cascade). */
+  async softDeleteByCuratedViewIds(
+    curatedViewIds: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (curatedViewIds.length === 0) return 0;
+    const rows = await this.updateWhere(
+      inArray(curatedViewFieldMappings.curatedViewId, curatedViewIds),
+      { deleted: Date.now(), deletedBy },
+      client
+    );
+    return rows.length;
+  }
+
   /** Which of `curatedViewIds` have an explicit projection (#680): one batched
    *  read for a list page, rather than a projection fetch per view. */
   async findProjectedViewIds(

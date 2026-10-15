@@ -67,6 +67,22 @@ export class StationViewsRepository extends Repository<
     return rows.length;
   }
 
+  /** #802: soft-delete every live attachment of the given views (the view
+   *  delete cascade — every station they're attached to). */
+  async softDeleteByCuratedViewIds(
+    curatedViewIds: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (curatedViewIds.length === 0) return 0;
+    const rows = await this.updateWhere(
+      inArray(stationViews.curatedViewId, curatedViewIds),
+      { deleted: Date.now(), deletedBy },
+      client
+    );
+    return rows.length;
+  }
+
   /** #674: soft-delete every live view attachment of a station. */
   async softDeleteByStation(
     stationId: string,

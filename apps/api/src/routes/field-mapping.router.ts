@@ -31,6 +31,7 @@ import type { PermissionSet } from "../services/permission-set.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
+import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
@@ -652,6 +653,12 @@ fieldMappingRouter.post(
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: The caller lacks permission for this field mapping change (#685)
+ *       409:
+ *         description: FIELD_MAPPING_KEY_IN_VIEW — the rename changes a normalizedKey a curated view's filter uses (#802)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Field mapping not found
  *         content:
@@ -779,8 +786,14 @@ fieldMappingRouter.patch(
           connectorEntityId: existing.connectorEntityId,
         },
         { organizationId: req.application!.metadata.organizationId },
-        (tx) =>
-          DbService.repository.fieldMappings.update(
+        async (tx) => {
+          // #802: a view filtering on the old key would break.
+          await FieldMappingValidationService.assertKeyChangeKeepsViews(
+            existing,
+            parsed.data.normalizedKey,
+            tx
+          );
+          return DbService.repository.fieldMappings.update(
             id,
             {
               ...parsed.data,
@@ -788,7 +801,8 @@ fieldMappingRouter.patch(
               updatedBy: userId,
             } as never,
             tx
-          )
+          );
+        }
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -915,6 +929,19 @@ fieldMappingRouter.patch(
  *                     entityGroupMembers:
  *                       type: integer
  *                       description: Number of entity group members using this field mapping as their link field
+ *                     curatedViews:
+ *                       type: array
+ *                       description: Readable curated views that project this mapping or filter on its key; any use blocks the delete (#802)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           label:
+ *                             type: string
+ *                     hiddenCuratedViews:
+ *                       type: integer
+ *                       description: How many more such views the caller can't read (#802)
  *       404:
  *         description: Field mapping not found
  *         content:
@@ -938,12 +965,26 @@ fieldMappingRouter.get(
 
       const existing = await loadReadableMapping(req.application!.metadata, id);
 
-      const [dependentMembers, entityRecordCount] = await Promise.all([
-        DbService.repository.entityGroupMembers.findByLinkFieldMappingId(id),
-        DbService.repository.entityRecords.countByConnectorEntityId(
-          existing.connectorEntityId
-        ),
-      ]);
+      const [dependentMembers, entityRecordCount, dependentViews, permissions] =
+        await Promise.all([
+          DbService.repository.entityGroupMembers.findByLinkFieldMappingId(id),
+          DbService.repository.entityRecords.countByConnectorEntityId(
+            existing.connectorEntityId
+          ),
+          CuratedViewDependencyService.findViewsUsingMappings(
+            existing.organizationId,
+            [existing]
+          ),
+          PermissionService.loadSet(req.application!.metadata),
+        ]);
+      // #802: name only the views the caller can read; count the rest.
+      const readableViews = dependentViews.filter((view) =>
+        permissions.can("resource.read", {
+          type: "curated_view",
+          id: view.id,
+          createdBy: view.createdBy,
+        })
+      );
 
       let counterpartResult: {
         id: string;
@@ -965,14 +1006,11 @@ fieldMappingRouter.get(
           // #692: only a counterpart the caller may read.
           if (
             counterpart &&
-            (await PermissionService.loadSet(req.application!.metadata)).can(
-              "resource.read",
-              {
-                type: "field_mapping",
-                id: counterpart.id,
-                createdBy: counterpart.createdBy,
-              }
-            )
+            permissions.can("resource.read", {
+              type: "field_mapping",
+              id: counterpart.id,
+              createdBy: counterpart.createdBy,
+            })
           ) {
             counterpartResult = {
               id: counterpart.id,
@@ -986,6 +1024,11 @@ fieldMappingRouter.get(
       return HttpService.success<FieldMappingImpactResponsePayload>(res, {
         entityGroupMembers: dependentMembers.length,
         entityRecords: entityRecordCount,
+        curatedViews: readableViews.map(({ id: viewId, label }) => ({
+          id: viewId,
+          label,
+        })),
+        hiddenCuratedViews: dependentViews.length - readableViews.length,
         counterpart: counterpartResult,
       });
     } catch (error) {
@@ -1049,6 +1092,14 @@ fieldMappingRouter.get(
  *                           description: Number of entity group members that were cascade-deleted
  *       403:
  *         description: The caller lacks permission for this field mapping change (#685)
+ *       409:
+ *         description: >
+ *           FIELD_MAPPING_DELETE_IN_VIEW — a curated view projects this mapping
+ *           or filters on its key (#802), or FIELD_MAPPING_DELETE_HAS_RECORDS.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Field mapping not found
  *         content:

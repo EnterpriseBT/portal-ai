@@ -7,6 +7,7 @@ import {
   OPERATORS_BY_COLUMN_TYPE,
   MAX_FILTER_DEPTH,
   MAX_CONDITIONS,
+  collectFilterFields,
   countConditions,
   measureDepth,
   validateFilterLimits,
@@ -472,5 +473,36 @@ describe("validateOperatorTypeCompat", () => {
         )
       ).toEqual([`Unknown field: "${field}"`]);
     }
+  });
+});
+
+// ── collectFilterFields (#802) ──────────────────────────────────────
+
+describe("collectFilterFields", () => {
+  it("collects every field named anywhere in a nested group", () => {
+    const filter: FilterGroup = {
+      combinator: "and",
+      conditions: [
+        { field: "email", operator: "eq", value: "a@x.com" },
+        {
+          combinator: "or",
+          conditions: [
+            { field: "status", operator: "eq", value: "open" },
+            {
+              combinator: "and",
+              conditions: [{ field: "email", operator: "neq", value: null }],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(collectFilterFields(filter)).toEqual(new Set(["email", "status"]));
+  });
+
+  it("returns an empty set for a group with no conditions", () => {
+    expect(collectFilterFields({ combinator: "and", conditions: [] })).toEqual(
+      new Set()
+    );
   });
 });

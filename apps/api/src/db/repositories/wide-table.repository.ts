@@ -217,6 +217,55 @@ export class WideTableRepository {
   }
 
   /**
+   * #802: ids of entities soft-deleted before `cutoffMs` whose `er__<id>`
+   * table still exists — left behind by a delete whose `entity_data_delete`
+   * job never ran, or by a single-entity delete from before #802, which never
+   * dropped it. Read from `pg_tables`, not the column catalog, so a table
+   * with no catalog rows is found too.
+   */
+  async findEntityIdsWithTableDeletedBefore(
+    cutoffMs: number,
+    limit: number,
+    /** Ids to skip — the ones a run already failed to drop. */
+    excludeIds: string[] = [],
+    client: DbClient = db
+  ): Promise<string[]> {
+    // A list of bound params, not a bound JS array: drizzle's sql`` won't
+    // bind one as a Postgres array.
+    const exclude =
+      excludeIds.length > 0
+        ? sql`AND e."id" NOT IN (${sql.join(
+            excludeIds.map((id) => sql`${id}`),
+            sql`, `
+          )})`
+        : sql``;
+    const rows = await (client as typeof db).execute<{ id: string }>(sql`
+      SELECT e."id"
+      FROM "connector_entities" e
+      JOIN pg_tables t
+        ON t.schemaname = 'public' AND t.tablename = 'er__' || e."id"
+      WHERE e."deleted" IS NOT NULL AND e."deleted" < ${cutoffMs}
+        ${exclude}
+      ORDER BY e."deleted", e."id"
+      LIMIT ${limit}
+    `);
+    return rows.map((r) => r.id);
+  }
+
+  /** #802: does the entity's wide table exist? (`to_regclass` is null for a
+   *  missing relation rather than an error.) */
+  async tableExists(
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<boolean> {
+    const name = `public."${this.tableName(connectorEntityId)}"`;
+    const rows = await (client as typeof db).execute<{ exists: boolean }>(
+      sql`SELECT to_regclass(${name}) IS NOT NULL AS "exists"`
+    );
+    return rows[0]?.exists === true;
+  }
+
+  /**
    * Read every row from the entity's wide table. Used by analytics
    * loaders and reconciler self-tests; not a hot path. Returns rows
    * keyed by Postgres column name (metadata columns + `c_*`).

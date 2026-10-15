@@ -11,6 +11,8 @@ import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 import { JOBS_QUEUE_NAME } from "./jobs.queue.js";
 import { jobErrorText } from "../utils/job-error-text.util.js";
+import { ApiError } from "../services/http.service.js";
+import { ApiCode } from "../constants/api-codes.constants.js";
 
 const logger = createLogger({ module: "jobs-worker" });
 
@@ -123,6 +125,25 @@ async function runBulkTransformTerminalHook(
  * connector with no adapter, #774), so the job fails on its first attempt and
  * releases its lock instead of holding it through the whole budget.
  */
+/**
+ * #802: API refusals no retry can change. A processor that throws one (the
+ * layout-plan commit, or a sync replaying its plan, refused because a curated
+ * view uses a mapping the plan drops) would otherwise replay the workbook and
+ * hold the connector's lock through every attempt in the budget, failing the
+ * same way each time. The worker turns them into `UnrecoverableError`, keeping
+ * the message, so the job fails on its first attempt.
+ */
+const FINAL_JOB_ERROR_CODES: ReadonlySet<string> = new Set([
+  ApiCode.FIELD_MAPPING_DELETE_IN_VIEW,
+]);
+
+function asFinal(err: unknown): unknown {
+  if (err instanceof ApiError && FINAL_JOB_ERROR_CODES.has(err.code)) {
+    return new UnrecoverableError(err.message);
+  }
+  return err;
+}
+
 function statusForFailedAttempt(
   bullJob: BullJob,
   err: unknown
@@ -228,8 +249,9 @@ export const createJobsWorker = (
           );
         }
         return result;
-      } catch (err) {
-        const message = jobErrorText(err);
+      } catch (thrown) {
+        const message = jobErrorText(thrown);
+        const err = asFinal(thrown);
         const status = statusForFailedAttempt(bullJob, err);
         logger.error(
           {

@@ -22,7 +22,8 @@ import type {
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
-import { sdk, queryKeys } from "../api/sdk";
+import { sdk } from "../api/sdk";
+import { invalidateAfterConnectorInstanceDelete } from "../utils/delete-invalidation.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import {
@@ -109,16 +110,7 @@ export const ConnectorView = () => {
       onSuccess: () => {
         setDeleteDialogOpen(false);
         setDeleteTarget(null);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorInstances.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorEntities.root,
-        });
-        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.fieldMappings.root,
-        });
+        invalidateAfterConnectorInstanceDelete(queryClient);
       },
     });
   }, [deleteMutation, queryClient]);

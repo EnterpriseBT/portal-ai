@@ -947,7 +947,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "connector_entity_delete",
       description:
-        "Deletes one or more connector entities and all dependent records, field mappings, tags, and group memberships. Accepts 1–100 items.",
+        "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items.",
       parameterSchema: objectSchema(
         { ids: stringArrayField("Connector entity ids") },
         ["ids"]
@@ -983,7 +983,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_update",
       description:
-        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. Accepts 1–100 items.",
+        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -1005,7 +1005,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_delete",
       description:
-        "Deletes one or more field mappings and cascades to dependent group members. Accepts 1–100 items.",
+        "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items.",
       parameterSchema: objectSchema(
         { ids: stringArrayField("Field mapping ids") },
         ["ids"]

@@ -35,6 +35,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { invalidateAfterConnectorEntityDelete } from "../utils/delete-invalidation.util";
 import { toServerError } from "../utils/api.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 
@@ -302,18 +303,7 @@ export const EntitiesView: React.FC = () => {
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeletingEntity(null);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorEntities.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.entityRecords.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.fieldMappings.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.entityGroups.root,
-        });
+        invalidateAfterConnectorEntityDelete(queryClient);
       },
     });
   }, [deleteMutation, queryClient]);

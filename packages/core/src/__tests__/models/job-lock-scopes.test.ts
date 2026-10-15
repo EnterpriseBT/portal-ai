@@ -1,6 +1,7 @@
 import {
   JOB_LOCK_SCOPES,
   JOB_TYPE_LABELS,
+  JOB_TYPE_SCHEMAS,
   JobTypeEnum,
   jobLockScopes,
   lockScopeKey,
@@ -73,6 +74,38 @@ describe("JOB_LOCK_SCOPES / jobLockScopes (#769)", () => {
     ] as const) {
       expect(jobLockScopes(type, {})).toEqual([]);
     }
+  });
+
+  it("#802: entity_data_delete locks nothing — its entities are already deleted", () => {
+    expect(
+      jobLockScopes("entity_data_delete", {
+        organizationId: "o",
+        userId: "u",
+        connectorEntityIds: ["ce-1", "ce-2"],
+        connectorInstanceId: "ci-1",
+      })
+    ).toEqual([]);
+    expect(JOB_TYPE_LABELS.entity_data_delete).toBe("Delete entity data");
+  });
+
+  it("#802: entity_data_delete metadata needs at least one entity", () => {
+    const schema = JOB_TYPE_SCHEMAS.entity_data_delete.metadata;
+    expect(
+      schema.safeParse({
+        organizationId: "o",
+        userId: "u",
+        connectorEntityIds: [],
+        connectorInstanceId: null,
+      }).success
+    ).toBe(false);
+    expect(
+      schema.safeParse({
+        organizationId: "o",
+        userId: "u",
+        connectorEntityIds: ["ce-1"],
+        connectorInstanceId: null,
+      }).success
+    ).toBe(true);
   });
 
   it("every job type declares its scopes", () => {

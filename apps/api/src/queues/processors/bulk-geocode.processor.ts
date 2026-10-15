@@ -1,3 +1,5 @@
+import { UnrecoverableError } from "bullmq";
+
 import type { TypedJobProcessor } from "../jobs.worker.js";
 
 import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
@@ -6,6 +8,7 @@ import type { BulkGeocodeResult } from "@portalai/core/models";
 import { CostGateService } from "../../services/cost-gate.service.js";
 import { JobEventsService } from "../../services/job-events.service.js";
 import { wideTableRepo } from "../../db/repositories/wide-table.repository.js";
+import { connectorEntitiesRepo } from "../../db/repositories/connector-entities.repository.js";
 import { MapboxGeocodingProvider } from "../../services/geocoding/mapbox.js";
 import type { GeocodingProvider } from "../../services/geocoding/provider.js";
 import { cacheGet, cacheSet } from "../../services/geocoding/cache.js";
@@ -187,6 +190,16 @@ export const bulkGeocodeProcessor: TypedJobProcessor<"bulk_geocode"> = async (
     portalId?: string;
   };
   const organizationId = data.organizationId;
+
+  // #802: a deleted entity's records belong to its entity_data_delete job.
+  // The tool refuses one up front; this catches a job queued for an entity
+  // deleted since, before a row is read or a call is charged.
+  const entity = await connectorEntitiesRepo.findById(connectorEntityId);
+  if (!entity || entity.organizationId !== organizationId) {
+    throw new UnrecoverableError(
+      "bulk_geocode: the connector entity was deleted"
+    );
+  }
 
   const provider = new MapboxGeocodingProvider(
     environment.GEOCODING_API_KEY as string

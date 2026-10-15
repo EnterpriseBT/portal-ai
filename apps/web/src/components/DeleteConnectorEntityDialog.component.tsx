@@ -36,6 +36,7 @@ const IMPACT_LABELS: {
   { key: "entityTagAssignments", label: "tag assignments" },
   { key: "entityGroupMembers", label: "group memberships" },
   { key: "refFieldMappings", label: "reference field mappings" },
+  { key: "curatedViews", label: "curated views" },
 ];
 
 const ImpactSummary: React.FC<{

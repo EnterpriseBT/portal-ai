@@ -187,6 +187,18 @@ export type ConnectorInstanceSyncRequestBody = z.infer<
   typeof ConnectorInstanceSyncRequestBodySchema
 >;
 
+/** `DELETE /api/connector-instances/:id` (#802). */
+export const ConnectorInstanceDeleteResponsePayloadSchema = z.object({
+  id: z.string(),
+  /** The `entity_data_delete` job removing the instance's records and wide
+   *  tables in the background; null when it had no entities. */
+  recordsJobId: z.string().nullable(),
+});
+
+export type ConnectorInstanceDeleteResponsePayload = z.infer<
+  typeof ConnectorInstanceDeleteResponsePayloadSchema
+>;
+
 export const ConnectorInstanceImpactResponseSchema = z.object({
   connectorEntities: z.number(),
   entityRecords: z.number(),
@@ -194,6 +206,9 @@ export const ConnectorInstanceImpactResponseSchema = z.object({
   entityTagAssignments: z.number(),
   entityGroupMembers: z.number(),
   stations: z.number(),
+  /** #802: live curated views over the instance's entities — all of them,
+   *  readable or not; the delete removes every one. */
+  curatedViews: z.number(),
 });
 
 export type ConnectorInstanceImpact = z.infer<

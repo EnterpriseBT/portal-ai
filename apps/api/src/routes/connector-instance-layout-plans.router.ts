@@ -19,6 +19,8 @@ import { ConnectorInstanceAccessService } from "../services/connector-instance-a
 import { ConnectorInstanceLayoutPlansService } from "../services/connector-instance-layout-plans.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
+import { LayoutPlanCommitService } from "../services/layout-plan-commit.service.js";
+import { DbService } from "../services/db.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { interpretFailure } from "../utils/interpret-error.util.js";
@@ -628,6 +630,16 @@ connectorInstanceLayoutPlansRouter.post(
         connectorInstanceId,
         planId,
         workbookSource
+      );
+      // #802: refuse up front, not as a failed job, when committing would
+      // drop a field mapping a curated view uses. (The commit re-checks.)
+      await DbService.transaction((tx) =>
+        LayoutPlanCommitService.assertCommitKeepsViewMappings(
+          prepared.plan,
+          organizationId,
+          connectorInstanceId,
+          tx
+        )
       );
       // #769: refused while any job holds the connector or one of its
       // entities.

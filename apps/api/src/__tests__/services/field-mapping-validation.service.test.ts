@@ -46,8 +46,24 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         softDeleteByLinkFieldMappingId: mockSoftDeleteGroupMembers,
       },
     },
+    // #802: validateDelete runs its view check in a short transaction.
+    transaction: (fn: (tx: unknown) => Promise<unknown>) => fn("tx-check"),
   },
 }));
+
+const mockAssertNotInViews = jest
+  .fn<(...args: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+
+jest.unstable_mockModule(
+  "../../services/curated-view-dependency.service.js",
+  () => ({
+    CuratedViewDependencyService: {
+      assertMappingsNotInViews: mockAssertNotInViews,
+      assertKeyRenameKeepsViews: jest.fn(async () => undefined),
+    },
+  })
+);
 
 jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: {
@@ -341,6 +357,48 @@ describe("FieldMappingValidationService.executeDelete", () => {
       "user-1",
       "tx-mock"
     );
+  });
+
+  it("#802: re-checks the views under the lock, in the deleting transaction", async () => {
+    mockFindMappingById.mockResolvedValue({
+      id: "fm-1",
+      organizationId: "org-1",
+      connectorEntityId: "ce-1",
+      sourceField: "Email",
+      refEntityKey: null,
+      refNormalizedKey: null,
+    });
+
+    await FieldMappingValidationService.executeDelete("fm-1", "user-1");
+
+    expect(mockAssertNotInViews).toHaveBeenCalledWith(
+      "org-1",
+      [expect.objectContaining({ id: "fm-1" })],
+      'field mapping "Email"',
+      "tx-mock"
+    );
+    expect(mockAssertNotInViews.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSoftDeleteMapping.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("#802: a refusal leaves the mapping alone", async () => {
+    mockFindMappingById.mockResolvedValue({
+      id: "fm-1",
+      organizationId: "org-1",
+      connectorEntityId: "ce-1",
+      sourceField: "Email",
+    });
+    mockAssertNotInViews.mockRejectedValueOnce(
+      Object.assign(new Error("in use"), {
+        code: "FIELD_MAPPING_DELETE_IN_VIEW",
+      })
+    );
+
+    await expect(
+      FieldMappingValidationService.executeDelete("fm-1", "user-1")
+    ).rejects.toMatchObject({ code: "FIELD_MAPPING_DELETE_IN_VIEW" });
+    expect(mockSoftDeleteMapping).not.toHaveBeenCalled();
   });
 
   it("clears counterpart ref fields when bidirectional pair exists", async () => {

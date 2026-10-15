@@ -5,18 +5,32 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockValidateDelete = jest.fn<any>().mockResolvedValue(undefined);
 const mockExecuteDelete = jest.fn<any>().mockResolvedValue({
-  entityRecords: 5,
-  fieldMappings: 3,
-  entityTagAssignments: 1,
-  entityGroupMembers: 2,
+  cascaded: {
+    fieldMappings: 3,
+    entityTagAssignments: 1,
+    entityGroupMembers: 2,
+    curatedViews: 0,
+  },
+  recordsJob: { id: "job-1" },
 });
+const mockDispatch = jest.fn<any>().mockResolvedValue(undefined);
+
+jest.unstable_mockModule(
+  "../../services/entity-data-delete.service.js",
+  () => ({
+    EntityDataDeleteService: { dispatch: mockDispatch },
+  })
+);
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
 }));
-const mockFindEntityById = jest
-  .fn<any>()
-  .mockResolvedValue({ id: "ce-1", key: "contacts", label: "My Entity" });
+const mockFindEntityById = jest.fn<any>().mockResolvedValue({
+  id: "ce-1",
+  organizationId: "org-1",
+  key: "contacts",
+  label: "My Entity",
+});
 
 jest.unstable_mockModule(
   "../../services/connector-entity-validation.service.js",
@@ -54,7 +68,17 @@ describe("ConnectorEntityDeleteTool", () => {
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].entityId).toBe("ce-1");
-    expect(mockExecuteDelete).toHaveBeenCalledWith("ce-1", "user-1");
+    // #802: the entity's own org scopes the view cascade.
+    expect(mockExecuteDelete).toHaveBeenCalledWith("ce-1", "org-1", "user-1");
+    // …and the records job is queued once the delete has committed.
+    expect(mockDispatch).toHaveBeenCalledWith({ id: "job-1" });
+    expect(result.items[0].summary.recordsJobId).toBe("job-1");
+    expect(result.items[0].summary.cascaded).toEqual({
+      fieldMappings: 3,
+      entityTagAssignments: 1,
+      entityGroupMembers: 2,
+      curatedViews: 0,
+    });
   });
 
   it("bulk delete — 3 entities deleted sequentially", async () => {
@@ -62,25 +86,19 @@ describe("ConnectorEntityDeleteTool", () => {
       .mockResolvedValueOnce({ id: "ce-1", key: "a", label: "A" })
       .mockResolvedValueOnce({ id: "ce-2", key: "b", label: "B" })
       .mockResolvedValueOnce({ id: "ce-3", key: "c", label: "C" });
+    const outcome = (n: number) => ({
+      cascaded: {
+        fieldMappings: n,
+        entityTagAssignments: 0,
+        entityGroupMembers: 0,
+        curatedViews: 0,
+      },
+      recordsJob: { id: `job-${n}` },
+    });
     mockExecuteDelete
-      .mockResolvedValueOnce({
-        entityRecords: 1,
-        fieldMappings: 0,
-        entityTagAssignments: 0,
-        entityGroupMembers: 0,
-      })
-      .mockResolvedValueOnce({
-        entityRecords: 2,
-        fieldMappings: 1,
-        entityTagAssignments: 0,
-        entityGroupMembers: 0,
-      })
-      .mockResolvedValueOnce({
-        entityRecords: 0,
-        fieldMappings: 0,
-        entityTagAssignments: 0,
-        entityGroupMembers: 0,
-      });
+      .mockResolvedValueOnce(outcome(1))
+      .mockResolvedValueOnce(outcome(2))
+      .mockResolvedValueOnce(outcome(3));
 
     const result: any = await exec({
       items: [
@@ -93,6 +111,12 @@ describe("ConnectorEntityDeleteTool", () => {
     expect(result.success).toBe(true);
     expect(result.count).toBe(3);
     expect(mockValidateDelete).toHaveBeenCalledTimes(3);
+    // #802: one records job per entity, each queued after its delete.
+    expect(mockDispatch.mock.calls.map((c: any[]) => c[0].id)).toEqual([
+      "job-1",
+      "job-2",
+      "job-3",
+    ]);
     expect(mockExecuteDelete).toHaveBeenCalledTimes(3);
     // Validate all called before any execute
     const validateOrder = mockValidateDelete.mock.invocationCallOrder;

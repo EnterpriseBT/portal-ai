@@ -27,6 +27,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { invalidateAfterConnectorInstanceDelete } from "../utils/delete-invalidation.util";
 import { sse } from "../api/sse.api";
 import { awaitJobCompletion } from "../utils/job-stream.util";
 import { toServerError } from "../utils/api.util";
@@ -280,16 +281,7 @@ export const ConnectorInstanceView = ({
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorInstances.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorEntities.root,
-        });
-        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.fieldMappings.root,
-        });
+        invalidateAfterConnectorInstanceDelete(queryClient);
         navigate({ to: "/connectors" });
       },
     });

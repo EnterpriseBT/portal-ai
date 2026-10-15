@@ -128,6 +128,51 @@ describe("ResetService integration tests (#295)", () => {
       expect(layoutPlans).toHaveLength(0);
     });
 
+    it("clears curated views, their dependents and their grants (#802)", async () => {
+      for (const table of [
+        schema.curatedViews,
+        schema.curatedViewFieldMappings,
+        schema.stationViews,
+      ]) {
+        const rows = await db
+          .select()
+          .from(table as never)
+          .where(
+            eq(
+              (table as typeof schema.curatedViews).organizationId,
+              target.orgId
+            )
+          );
+        expect(rows).toHaveLength(0);
+      }
+
+      const viewGrants = await db
+        .select()
+        .from(schema.permissionGrants)
+        .where(
+          and(
+            eq(schema.permissionGrants.organizationId, target.orgId),
+            inArray(schema.permissionGrants.resourceType, [
+              "curated_view",
+              "field_mapping",
+            ])
+          )
+        );
+      expect(viewGrants).toHaveLength(0);
+
+      // The control org's view survives with its grants.
+      const controlView = await db
+        .select()
+        .from(schema.curatedViews)
+        .where(eq(schema.curatedViews.id, control.curatedViewId));
+      expect(controlView).toHaveLength(1);
+      const controlGrants = await db
+        .select()
+        .from(schema.permissionGrants)
+        .where(eq(schema.permissionGrants.organizationId, control.orgId));
+      expect(controlGrants).toHaveLength(2);
+    });
+
     it("drops the entity's er__ wide table (case 3)", async () => {
       expect(await wideTableExists(db, target.connectorEntityId)).toBe(false);
     });

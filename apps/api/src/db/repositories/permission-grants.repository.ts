@@ -5,7 +5,7 @@
  * **hard-delete** — authz rows carry no soft-delete tombstones.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type {
   PolicyPrincipalType,
   PermissionResourceType,
@@ -78,16 +78,36 @@ export class PermissionGrantsRepository extends Repository<
     resourceId: string,
     client: DbClient = db
   ): Promise<number> {
-    const rows = await this.findByResource(
+    return this.hardDeleteByResources(
       organizationId,
       resourceType,
-      resourceId,
+      [resourceId],
       client
     );
-    return this.hardDeleteMany(
-      rows.map((r) => r.id),
-      client
-    );
+  }
+
+  /** #802: hard-delete every live grant on any of these objects, in one
+   *  statement — the batched form an entity or connector delete uses to
+   *  remove the grants of all its views at once. */
+  async hardDeleteByResources(
+    organizationId: string,
+    resourceType: PermissionResourceType,
+    resourceIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (resourceIds.length === 0) return 0;
+    const rows = await (client as typeof db)
+      .delete(permissionGrants)
+      .where(
+        and(
+          eq(permissionGrants.organizationId, organizationId),
+          eq(permissionGrants.resourceType, resourceType),
+          inArray(permissionGrants.resourceId, resourceIds),
+          this.notDeleted()
+        )
+      )
+      .returning({ id: permissionGrants.id });
+    return rows.length;
   }
 
   /** Every live grant for one principal on one object (the "share" unit). */
@@ -175,20 +195,34 @@ export class PermissionGrantsRepository extends Repository<
     curatedViewId: string,
     client: DbClient = db
   ): Promise<number> {
-    const rows = await this.findMany(
-      and(
-        eq(permissionGrants.organizationId, organizationId),
-        eq(permissionGrants.resourceType, "field_mapping"),
-        eq(permissionGrants.condition, "in_curated_view"),
-        eq(permissionGrants.conditionParam, curatedViewId)
-      ),
-      {},
+    return this.hardDeleteFieldGrantsByCuratedViews(
+      organizationId,
+      [curatedViewId],
       client
     );
-    return this.hardDeleteMany(
-      rows.map((r) => r.id),
-      client
-    );
+  }
+
+  /** #802: the batched form of `hardDeleteFieldGrantsByCuratedView` — the
+   *  composed field grants of every one of these views, in one statement. */
+  async hardDeleteFieldGrantsByCuratedViews(
+    organizationId: string,
+    curatedViewIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (curatedViewIds.length === 0) return 0;
+    const rows = await (client as typeof db)
+      .delete(permissionGrants)
+      .where(
+        and(
+          eq(permissionGrants.organizationId, organizationId),
+          eq(permissionGrants.resourceType, "field_mapping"),
+          eq(permissionGrants.condition, "in_curated_view"),
+          inArray(permissionGrants.conditionParam, curatedViewIds),
+          this.notDeleted()
+        )
+      )
+      .returning({ id: permissionGrants.id });
+    return rows.length;
   }
 
   /** Hard-delete every grant naming a principal (member-removal revoke). */

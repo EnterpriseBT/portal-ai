@@ -62,6 +62,45 @@ export class CuratedViewsRepository extends Repository<
     );
   }
 
+  /** #802: ids of the live views over any of these entities, org-scoped —
+   *  what an entity or connector delete must cascade into. Served by
+   *  `curated_views_entity_idx`. */
+  async findIdsByConnectorEntityIds(
+    organizationId: string,
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<string[]> {
+    if (connectorEntityIds.length === 0) return [];
+    const rows = await (client as typeof db)
+      .select({ id: curatedViews.id })
+      .from(curatedViews)
+      .where(
+        and(
+          eq(curatedViews.organizationId, organizationId),
+          inArray(curatedViews.connectorEntityId, connectorEntityIds),
+          isNull(curatedViews.deleted)
+        )
+      );
+    return rows.map((r) => r.id);
+  }
+
+  /** #802: how many live views over these entities a delete would remove —
+   *  every one, readable by the caller or not (the impact is an aggregate). */
+  async countByConnectorEntityIds(
+    organizationId: string,
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    return this.count(
+      and(
+        eq(curatedViews.organizationId, organizationId),
+        inArray(curatedViews.connectorEntityId, connectorEntityIds)
+      ),
+      client
+    );
+  }
+
   /**
    * List curated views enriched with their connector entity's `key` + `label`
    * (#646). Delegates the page to the base `findMany` — so it inherits every

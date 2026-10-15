@@ -5,6 +5,7 @@ import { tool } from "ai";
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { assertStationScope } from "../utils/resolve-capabilities.util.js";
+import { EntityDataDeleteService } from "../services/entity-data-delete.service.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 
 const ItemSchema = z.object({
@@ -23,7 +24,7 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_delete";
   name = "Connector Entity Delete Tool";
   description =
-    "Deletes one or more connector entities and all dependent records, field mappings, tags, and group memberships. Accepts 1–100 items.";
+    "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items.";
 
   get schema() {
     return InputSchema;
@@ -80,14 +81,22 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
           }
 
           // ── Phase 2: Execute sequentially (no wrapping tx) ─────────
-          const cascadedResults: any[] = [];
+          const outcomes: Awaited<
+            ReturnType<typeof ConnectorEntityValidationService.executeDelete>
+          >[] = [];
           for (const item of items) {
-            const cascaded =
+            // executeDelete commits its own transaction here, so its records
+            // job can be queued straight after (#802). Dispatch only talks to
+            // the queue, so it can't wait on the lock gate's open transaction.
+            const outcome =
               await ConnectorEntityValidationService.executeDelete(
                 item.connectorEntityId,
+                // #802: the entity's own org scopes its view cascade.
+                entities[item.connectorEntityId].organizationId,
                 userId
               );
-            cascadedResults.push(cascaded);
+            EntityDataDeleteService.dispatch(outcome.recordsJob);
+            outcomes.push(outcome);
           }
 
           return {
@@ -101,7 +110,9 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
                 label:
                   entities[item.connectorEntityId]?.label ??
                   item.connectorEntityId,
-                cascaded: cascadedResults[idx],
+                cascaded: outcomes[idx].cascaded,
+                // #802: the records are removed in the background by this job.
+                recordsJobId: outcomes[idx].recordsJob.id,
               },
             })),
           };

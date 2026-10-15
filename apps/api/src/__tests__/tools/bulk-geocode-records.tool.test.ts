@@ -20,11 +20,41 @@ function build(deps: BulkGeocodeToolDeps) {
     "station-1",
     "org-1",
     "user-1",
-    deps
+    { assertEntityInScope: async () => {}, ...deps }
   );
 }
 
 describe("BulkGeocodeRecordsTool (#315)", () => {
+  it("#802: refuses an entity that's deleted or outside the station, before anything else", async () => {
+    const recordRejection = jest.fn(async () => {});
+    const createJob = jest.fn(async () => ({ id: "job-x" }));
+    const assertEntityInScope = jest.fn(async () => {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+        "Connector entity not found"
+      );
+    });
+    const t = build({
+      assertEntityInScope,
+      recordRejection,
+      createJob,
+      validateAck: async () => ({ ok: true }),
+      assertUnlocked: async () => {},
+      countRecords: async () => 100,
+    });
+
+    const out = await run(t, { ...baseInput, acknowledgeCost: true });
+
+    expect(assertEntityInScope).toHaveBeenCalledWith("station-1", "ce_parcels");
+    expect(out).toMatchObject({
+      success: false,
+      code: ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+    });
+    expect(recordRejection).not.toHaveBeenCalled();
+    expect(createJob).not.toHaveBeenCalled();
+  });
+
   it("first call without acknowledgeCost → records a rejection + returns COST_NOT_ACKNOWLEDGED", async () => {
     const recordRejection = jest.fn(async () => {});
     const createJob = jest.fn(async () => ({ id: "job-x" }));

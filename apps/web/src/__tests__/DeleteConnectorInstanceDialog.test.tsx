@@ -12,6 +12,7 @@ const fullImpact: ConnectorInstanceImpact = {
   entityTagAssignments: 5,
   entityGroupMembers: 2,
   stations: 1,
+  curatedViews: 0,
 };
 
 const zeroImpact: ConnectorInstanceImpact = {
@@ -21,6 +22,7 @@ const zeroImpact: ConnectorInstanceImpact = {
   entityTagAssignments: 0,
   entityGroupMembers: 0,
   stations: 0,
+  curatedViews: 0,
 };
 
 const defaultProps = {
@@ -80,6 +82,16 @@ describe("DeleteConnectorInstanceDialog", () => {
     expect(screen.queryByText(/tag assignments/)).not.toBeInTheDocument();
     expect(screen.queryByText(/group memberships/)).not.toBeInTheDocument();
     expect(screen.queryByText(/stations/)).not.toBeInTheDocument();
+  });
+
+  it("#802: lists the curated views the delete removes", () => {
+    render(
+      <DeleteConnectorInstanceDialog
+        {...defaultProps}
+        impact={{ ...fullImpact, curatedViews: 2 }}
+      />
+    );
+    expect(screen.getByText("2 curated views")).toBeInTheDocument();
   });
 
   it("should show loading indicator when isLoadingImpact is true", () => {

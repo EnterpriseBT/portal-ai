@@ -38,11 +38,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
-import {
-  curatedViews,
-  fieldMappings,
-  stationViews,
-} from "../db/schema/index.js";
+import { curatedViews, fieldMappings } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
@@ -53,6 +49,8 @@ import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { CuratedViewPayloadService } from "../services/curated-view-payload.service.js";
+import { CuratedViewDeleteService } from "../services/curated-view-delete.service.js";
+import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 
 const logger = createLogger({ module: "curated-view" });
@@ -538,15 +536,6 @@ curatedViewRouter.post(
         );
       }
 
-      if (body.filter)
-        await validateFilter(body.filter, body.connectorEntityId);
-      // Omitted = unrestricted (all columns), the same as `[]`.
-      const projection = await assertProjection(
-        set,
-        body.connectorEntityId,
-        body.fieldMappingIds ?? []
-      );
-
       const duplicate = await DbService.repository.curatedViews.findByKey(
         organizationId,
         body.key
@@ -574,6 +563,22 @@ curatedViewRouter.post(
       const row = model.parse();
 
       const created = await DbService.transaction(async (tx) => {
+        // #802: the filter's keys and the projection's mappings are checked
+        // under the entity's view-dependency lock, so a mapping can't be
+        // deleted or renamed between the check and this view's insert.
+        await CuratedViewDependencyService.lockEntities(tx, [
+          body.connectorEntityId,
+        ]);
+        if (body.filter)
+          await validateFilter(body.filter, body.connectorEntityId);
+        // Omitted = unrestricted (all columns), the same as `[]`.
+        const projection = await assertProjection(
+          set,
+          body.connectorEntityId,
+          body.fieldMappingIds ?? [],
+          undefined,
+          tx
+        );
         const view = await DbService.repository.curatedViews.create(
           row as never,
           tx
@@ -668,12 +673,16 @@ curatedViewRouter.patch(
           )
       );
 
-      if (body.filter) {
-        await validateFilter(body.filter, existing.connectorEntityId);
-      }
       if (body.fieldMappingIds) assertNoDuplicates(body.fieldMappingIds);
 
       const updated = await DbService.transaction(async (tx) => {
+        // #802: checked under the entity's view-dependency lock, like create.
+        await CuratedViewDependencyService.lockEntities(tx, [
+          existing.connectorEntityId,
+        ]);
+        if (body.filter) {
+          await validateFilter(body.filter, existing.connectorEntityId);
+        }
         const patch: Record<string, unknown> = {
           updated: Date.now(),
           updatedBy: userId,
@@ -789,55 +798,19 @@ curatedViewRouter.delete(
           )
       );
 
+      // #802: the shared cascade — the entity and connector deletes run the
+      // same one, so the three paths can't drift.
       const cascaded = await DbService.transaction(async (tx) => {
-        const fm =
-          await DbService.repository.curatedViewFieldMappings.findByCuratedViewId(
-            existing.id,
-            tx
-          );
-        if (fm.length > 0) {
-          await DbService.repository.curatedViewFieldMappings.softDeleteMany(
-            fm.map((r) => r.id),
-            userId,
-            tx
-          );
-        }
-        const attachments = await DbService.repository.stationViews.findMany(
-          eq(stationViews.curatedViewId, existing.id),
-          {},
-          tx
-        );
-        if (attachments.length > 0) {
-          await DbService.repository.stationViews.softDeleteMany(
-            attachments.map((r) => r.id),
-            userId,
-            tx
-          );
-        }
-        const grants =
-          await DbService.repository.permissionGrants.hardDeleteByResource(
-            organizationId,
-            "curated_view",
-            existing.id,
-            tx
-          );
-        // #599: also drop the composed `in_curated_view` field grants for every
-        // principal — `hardDeleteByResource` (keyed on the view id) can't match
-        // them (resourceType field_mapping, resourceId null).
-        await DbService.repository.permissionGrants.hardDeleteFieldGrantsByCuratedView(
+        const counts = await CuratedViewDeleteService.deleteByIds(
           organizationId,
-          existing.id,
-          tx
-        );
-        await DbService.repository.curatedViews.softDelete(
-          existing.id,
+          [existing.id],
           userId,
           tx
         );
         return {
-          fieldMappings: fm.length,
-          stationViews: attachments.length,
-          grants,
+          fieldMappings: counts.fieldMappings,
+          stationViews: counts.stationViews,
+          grants: counts.grants,
         };
       }).catch((error) => {
         if (error instanceof ApiError) throw error;

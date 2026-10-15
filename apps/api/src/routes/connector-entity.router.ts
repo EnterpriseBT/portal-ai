@@ -41,6 +41,7 @@ import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
+import { EntityDataDeleteService } from "../services/entity-data-delete.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { entityRecordRouter } from "./entity-record.router.js";
 import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
@@ -872,6 +873,9 @@ connectorEntityRouter.patch(
  *                       type: integer
  *                     refFieldMappings:
  *                       type: integer
+ *                     curatedViews:
+ *                       type: integer
+ *                       description: Live curated views over the entity, deleted with it (#802)
  *       404:
  *         description: Connector entity not found
  *       500:
@@ -923,6 +927,7 @@ connectorEntityRouter.get(
         entityTagAssignments,
         entityGroupMembers,
         refFieldMappings,
+        curatedViews,
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
@@ -937,6 +942,12 @@ connectorEntityRouter.get(
           existing.key,
           id
         ),
+        // #802: every view the delete removes, readable or not — the impact
+        // is an aggregate, like the other counts.
+        DbService.repository.curatedViews.countByConnectorEntityIds(
+          existing.organizationId,
+          entityIds
+        ),
       ]);
 
       return HttpService.success<ConnectorEntityImpactResponsePayload>(res, {
@@ -945,6 +956,7 @@ connectorEntityRouter.get(
         entityTagAssignments,
         entityGroupMembers,
         refFieldMappings,
+        curatedViews,
       });
     } catch (error) {
       logger.error(
@@ -975,8 +987,10 @@ connectorEntityRouter.get(
  *     summary: Delete a connector entity
  *     description: >
  *       Soft-deletes a connector entity after checking write capability and
- *       external references. Cascades to entity records, field mappings,
- *       tag assignments, and group members.
+ *       external references, cascading in the same request to its field
+ *       mappings, tag assignments, group members and curated views (#802).
+ *       Its records and wide table are removed in the background by the
+ *       `entity_data_delete` job named in `recordsJobId`.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1005,14 +1019,17 @@ connectorEntityRouter.get(
  *                     cascaded:
  *                       type: object
  *                       properties:
- *                         entityRecords:
- *                           type: integer
  *                         fieldMappings:
  *                           type: integer
  *                         entityTagAssignments:
  *                           type: integer
  *                         entityGroupMembers:
  *                           type: integer
+ *                         curatedViews:
+ *                           type: integer
+ *                     recordsJobId:
+ *                       type: string
+ *                       description: The entity_data_delete job removing the records (#802)
  *       404:
  *         description: Connector entity not found
  *       422:
@@ -1052,10 +1069,16 @@ connectorEntityRouter.delete(
       await ConnectorEntityValidationService.validateDelete(id);
 
       // #769: refused while a running job holds the entity or its connector.
-      const cascaded = await JobLockService.withUnlocked(
+      const outcome = await JobLockService.withUnlocked(
         { kind: "connectorEntity", id },
         { organizationId },
-        (tx) => ConnectorEntityValidationService.executeDelete(id, userId, tx)
+        (tx) =>
+          ConnectorEntityValidationService.executeDelete(
+            id,
+            organizationId,
+            userId,
+            tx
+          )
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -1067,8 +1090,13 @@ connectorEntityRouter.delete(
         );
       });
 
+      // #802: committed — now queue the job that removes the records.
+      EntityDataDeleteService.dispatch(outcome.recordsJob);
+      const { cascaded } = outcome;
+      const recordsJobId = outcome.recordsJob.id;
+
       logger.info(
-        { id, cascaded },
+        { id, cascaded, recordsJobId },
         "Connector entity soft-deleted with cascade"
       );
 
@@ -1078,12 +1106,13 @@ connectorEntityRouter.delete(
         action: "data.delete",
         targetType: "connector_entity",
         targetId: id,
-        metadata: { cascaded },
+        metadata: { cascaded, recordsJobId },
       });
 
       return HttpService.success<ConnectorEntityDeleteResponsePayload>(res, {
         id,
         cascaded,
+        recordsJobId,
       });
     } catch (error) {
       logger.error(

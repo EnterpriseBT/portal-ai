@@ -11,6 +11,7 @@ const fullImpact: ConnectorEntityImpactResponsePayload = {
   entityTagAssignments: 3,
   entityGroupMembers: 2,
   refFieldMappings: 0,
+  curatedViews: 0,
 };
 
 const blockedImpact: ConnectorEntityImpactResponsePayload = {
@@ -19,6 +20,7 @@ const blockedImpact: ConnectorEntityImpactResponsePayload = {
   entityTagAssignments: 3,
   entityGroupMembers: 2,
   refFieldMappings: 4,
+  curatedViews: 0,
 };
 
 const zeroImpact: ConnectorEntityImpactResponsePayload = {
@@ -27,6 +29,7 @@ const zeroImpact: ConnectorEntityImpactResponsePayload = {
   entityTagAssignments: 0,
   entityGroupMembers: 0,
   refFieldMappings: 0,
+  curatedViews: 0,
 };
 
 const defaultProps = {
@@ -106,6 +109,16 @@ describe("DeleteConnectorEntityDialog", () => {
     alerts.forEach((alert) => {
       expect(alert).not.toHaveTextContent("Delete failed");
     });
+  });
+
+  it("#802: lists the curated views the delete removes", () => {
+    render(
+      <DeleteConnectorEntityDialog
+        {...defaultProps}
+        impact={{ ...fullImpact, curatedViews: 2 }}
+      />
+    );
+    expect(screen.getByText("2 curated views")).toBeInTheDocument();
   });
 
   it("should show loading indicator when isLoadingImpact is true", () => {

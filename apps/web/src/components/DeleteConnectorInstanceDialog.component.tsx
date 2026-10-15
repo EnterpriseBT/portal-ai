@@ -34,6 +34,7 @@ const IMPACT_LABELS: { key: keyof ConnectorInstanceImpact; label: string }[] = [
   { key: "entityTagAssignments", label: "tag assignments" },
   { key: "entityGroupMembers", label: "group memberships" },
   { key: "stations", label: "stations will be unlinked" },
+  { key: "curatedViews", label: "curated views" },
 ];
 
 const ImpactSummary: React.FC<{

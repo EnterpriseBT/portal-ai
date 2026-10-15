@@ -304,10 +304,13 @@ describe("EntityRecordsRepository Integration Tests", () => {
     });
   });
 
-  // ── softDeleteByConnectorEntityIds (#423) ──────────────────────────
+  // ── softDeleteBatchByConnectorEntityId (#802) ──────────────────────
+  // The entity_data_delete job's batch; it replaced the in-request bulk
+  // softDeleteByConnectorEntityIds, and keeps its #423 count-without-
+  // RETURNING contract.
 
-  describe("softDeleteByConnectorEntityIds", () => {
-    it("reports the affected-row count and soft-deletes every matched row", async () => {
+  describe("softDeleteBatchByConnectorEntityId", () => {
+    it("reports the affected-row count and stamps every row it deletes", async () => {
       const ids = await Promise.all(
         Array.from({ length: 5 }, async () => {
           const r = makeRecord(entityAId);
@@ -316,13 +319,14 @@ describe("EntityRecordsRepository Integration Tests", () => {
         })
       );
 
-      const affected = await repo.softDeleteByConnectorEntityIds(
-        [entityAId],
+      const affected = await repo.softDeleteBatchByConnectorEntityId(
+        entityAId,
         "user-1",
+        100,
         db
       );
 
-      // A number, not a row array — the whole point of the fix.
+      // A number, not a row array.
       expect(affected).toBe(5);
       for (const id of ids) {
         const row = await readRow(id);
@@ -331,16 +335,16 @@ describe("EntityRecordsRepository Integration Tests", () => {
       }
     });
 
-    it("spans every supplied entity and counts them together", async () => {
-      for (const _ of [0, 1, 2]) await insertRecord(makeRecord(entityAId));
-      for (const _ of [0, 1]) await insertRecord(makeRecord(entityBId));
+    it("deletes at most a batch per call", async () => {
+      for (const _ of [0, 1, 2, 3, 4])
+        await insertRecord(makeRecord(entityAId));
 
-      const affected = await repo.softDeleteByConnectorEntityIds(
-        [entityAId, entityBId],
-        "user-1",
-        db
-      );
-      expect(affected).toBe(5);
+      expect(
+        await repo.softDeleteBatchByConnectorEntityId(entityAId, "u", 3, db)
+      ).toBe(3);
+      expect(
+        await repo.softDeleteBatchByConnectorEntityId(entityAId, "u", 3, db)
+      ).toBe(2);
     });
 
     it("only touches the supplied entity, not siblings", async () => {
@@ -349,38 +353,51 @@ describe("EntityRecordsRepository Integration Tests", () => {
       await insertRecord(target);
       await insertRecord(sibling);
 
-      const affected = await repo.softDeleteByConnectorEntityIds(
-        [entityAId],
-        "user-1",
-        db
-      );
-      expect(affected).toBe(1);
+      expect(
+        await repo.softDeleteBatchByConnectorEntityId(entityAId, "u", 100, db)
+      ).toBe(1);
       expect((await readRow(target.id!))?.deleted).not.toBeNull();
       expect((await readRow(sibling.id!))?.deleted).toBeNull();
+    });
+
+    it("#802: doesn't re-stamp or recount rows a concurrent batch deleted first", async () => {
+      for (const _ of [0, 1, 2]) await insertRecord(makeRecord(entityAId));
+
+      // Another transaction soft-deletes the same rows and holds their locks;
+      // this batch picks the same ids, waits, then must find them deleted.
+      const other = postgres(process.env.DATABASE_URL!, { max: 1 });
+      let pending!: Promise<number>;
+      try {
+        await other.begin(async (tx) => {
+          await tx`UPDATE entity_records SET deleted = 1, deleted_by = 'first' WHERE connector_entity_id = ${entityAId}`;
+          pending = repo.softDeleteBatchByConnectorEntityId(
+            entityAId,
+            "second",
+            100,
+            db
+          );
+          await new Promise((r) => setTimeout(r, 300));
+        });
+        expect(await pending).toBe(0);
+      } finally {
+        await other.end();
+      }
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.entityRecords)
+        .where(eq(schema.entityRecords.connectorEntityId, entityAId));
+      expect(rows.every((r) => r.deletedBy === "first")).toBe(true);
     });
 
     it("excludes already-deleted rows — a second call reports 0", async () => {
       for (const _ of [0, 1, 2]) await insertRecord(makeRecord(entityAId));
 
       expect(
-        await repo.softDeleteByConnectorEntityIds([entityAId], "user-1", db)
+        await repo.softDeleteBatchByConnectorEntityId(entityAId, "u", 100, db)
       ).toBe(3);
       expect(
-        await repo.softDeleteByConnectorEntityIds([entityAId], "user-2", db)
+        await repo.softDeleteBatchByConnectorEntityId(entityAId, "u", 100, db)
       ).toBe(0);
-    });
-
-    it("returns 0 when the entity holds no live rows", async () => {
-      expect(
-        await repo.softDeleteByConnectorEntityIds([entityAId], "user-1", db)
-      ).toBe(0);
-    });
-
-    it("returns 0 for an empty id list without issuing a statement", async () => {
-      await insertRecord(makeRecord(entityAId));
-      expect(await repo.softDeleteByConnectorEntityIds([], "user-1", db)).toBe(
-        0
-      );
     });
   });
 

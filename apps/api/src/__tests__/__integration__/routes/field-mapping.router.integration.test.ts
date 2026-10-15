@@ -12,6 +12,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { and, eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
+import { VIEW_DEPS_LOCK_NAMESPACE } from "../../../services/sync-lock.service.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
@@ -184,6 +185,47 @@ function createFieldMap(
     deletedBy: null,
     ...overrides,
   };
+}
+
+/** #802: a live curated view over `connectorEntityId`, optionally projecting
+ *  one mapping and/or carrying a row filter. Returns the view row. */
+async function insertView(
+  db: ReturnType<typeof drizzle>,
+  organizationId: string,
+  connectorEntityId: string,
+  opts: { createdBy?: string; projectMappingId?: string; filter?: unknown } = {}
+) {
+  const view = {
+    id: generateId(),
+    organizationId,
+    connectorEntityId,
+    key: `v_${generateId().replace(/-/g, "").slice(0, 8)}`,
+    label: `Secret view ${generateId().slice(0, 4)}`,
+    description: null,
+    filter: opts.filter ?? null,
+    created: now,
+    createdBy: opts.createdBy ?? "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+  await db.insert(schema.curatedViews).values(view as never);
+  if (opts.projectMappingId) {
+    await db.insert(schema.curatedViewFieldMappings).values({
+      id: generateId(),
+      organizationId,
+      curatedViewId: view.id,
+      fieldMappingId: opts.projectMappingId,
+      created: now,
+      createdBy: view.createdBy,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+  }
+  return view;
 }
 
 function createEntityGroup(
@@ -1180,6 +1222,232 @@ describe("Field Mapping Router", () => {
   });
 
   // ── GET /api/field-mappings/:id/impact ──────────────────────────────
+
+  describe("DELETE /api/field-mappings/:id — in use by a curated view (#802)", () => {
+    async function mappingOnEmptyEntity() {
+      const chain = await seedFullChain(db as ReturnType<typeof drizzle>);
+      const mapping = createFieldMap(
+        chain.organizationId,
+        chain.connectorEntityId,
+        chain.columnDefinitionId,
+        { sourceField: "email" }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+      return { ...chain, mapping };
+    }
+
+    it("is refused while a view projects the mapping", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        { projectMappingId: mapping.id }
+      );
+
+      const res = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DELETE_IN_VIEW);
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, mapping.id));
+      expect(row.deleted).toBeNull();
+    });
+
+    it("is refused while a view's nested filter names the mapping's key", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        {
+          filter: {
+            combinator: "and",
+            conditions: [
+              {
+                combinator: "or",
+                conditions: [
+                  { field: mapping.normalizedKey, operator: "eq", value: "x" },
+                ],
+              },
+            ],
+          },
+        }
+      );
+
+      const res = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DELETE_IN_VIEW);
+    });
+
+    it("names no view in the refusal", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      const view = await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        { projectMappingId: mapping.id }
+      );
+
+      const res = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.body.details).toEqual({ curatedViewCount: 1 });
+      expect(JSON.stringify(res.body)).not.toContain(view.label);
+      expect(JSON.stringify(res.body)).not.toContain(view.id);
+    });
+
+    it("is allowed once the view is deleted", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      const view = await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        { projectMappingId: mapping.id }
+      );
+      const viewDelete = await request(app)
+        .delete(`/api/curated-views/${view.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(viewDelete.status).toBe(200);
+
+      const res = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+    });
+
+    it("a key rename is refused while a view filters on the old key", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        {
+          filter: {
+            combinator: "and",
+            conditions: [
+              { field: mapping.normalizedKey, operator: "eq", value: "x" },
+            ],
+          },
+        }
+      );
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: mapping.sourceField,
+          columnDefinitionId: mapping.columnDefinitionId,
+          normalizedKey: "renamed_key",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_KEY_IN_VIEW);
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, mapping.id));
+      expect(row.normalizedKey).toBe(mapping.normalizedKey);
+    });
+
+    it("a key rename is allowed when a view only projects the mapping", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        { projectMappingId: mapping.id }
+      );
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: mapping.sourceField,
+          columnDefinitionId: mapping.columnDefinitionId,
+          normalizedKey: "renamed_key",
+        });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("a view write waits for a mapping delete holding the entity's lock, then sees it gone", async () => {
+      const { connectorEntityId, mapping } = await mappingOnEmptyEntity();
+      const other = postgres(process.env.DATABASE_URL!, { max: 1 });
+      let createRes: request.Response | undefined;
+      try {
+        await other.begin(async (tx) => {
+          // What a mapping delete does under #802's lock: lock, then delete.
+          await tx`SELECT pg_advisory_xact_lock(${VIEW_DEPS_LOCK_NAMESPACE}::int, hashtext(${connectorEntityId}))`;
+          await tx`UPDATE field_mappings SET deleted = ${Date.now()}, deleted_by = 'test' WHERE id = ${mapping.id}`;
+
+          const pending = request(app)
+            .post("/api/curated-views")
+            .set("Authorization", "Bearer test-token")
+            .send({
+              connectorEntityId,
+              key: `v_${generateId().replace(/-/g, "").slice(0, 8)}`,
+              label: "Racing view",
+              fieldMappingIds: [mapping.id],
+            })
+            .then((r) => {
+              createRes = r;
+              return r;
+            });
+          // Still blocked on the lock while this transaction is open.
+          await new Promise((r) => setTimeout(r, 400));
+          expect(createRes).toBeUndefined();
+          void pending;
+        });
+        // Committed: the view create proceeds and finds its only column gone.
+        for (let i = 0; i < 50 && !createRes; i++) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        expect(createRes?.status).toBe(400);
+        expect(createRes?.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+      } finally {
+        await other.end();
+      }
+    });
+
+    it("the impact lists the views using the mapping", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      const view = await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        { projectMappingId: mapping.id }
+      );
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mapping.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.curatedViews).toEqual([
+        { id: view.id, label: view.label },
+      ]);
+      expect(res.body.payload.hiddenCuratedViews).toBe(0);
+    });
+  });
 
   describe("GET /api/field-mappings/:id/impact", () => {
     it("should return correct entityGroupMembers count", async () => {
@@ -2419,6 +2687,31 @@ describe("Field Mapping Router", () => {
         .set("Authorization", "Bearer test-token");
       expect(own.status).toBe(200);
       expect(own.body.payload.fieldMapping.id).toBe(membersMapping.id);
+    });
+
+    it("#802: the impact counts, but doesn't name, views the member can't read", async () => {
+      const { mine, membersMapping } = await ownerAndMemberMappings();
+      const [membersMappingRow] = await drz()
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, membersMapping.id));
+      // The owner's view over the member's entity, never shared with them.
+      const ownersView = await insertView(
+        drz(),
+        mine.organizationId,
+        membersMappingRow.connectorEntityId,
+        { createdBy: mine.userId, projectMappingId: membersMapping.id }
+      );
+
+      currentSub = MEMBER_AUTH0_ID;
+      const res = await request(app)
+        .get(`/api/field-mappings/${membersMapping.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.curatedViews).toEqual([]);
+      expect(res.body.payload.hiddenCuratedViews).toBe(1);
+      expect(JSON.stringify(res.body)).not.toContain(ownersView.label);
     });
 
     it("the owner still reads every mapping in the org (#692)", async () => {

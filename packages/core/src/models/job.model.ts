@@ -47,6 +47,7 @@ export const JobTypeEnum = z.enum([
   "bulk_geocode",
   "sql_query",
   "dissolve_precompute",
+  "entity_data_delete",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -130,6 +131,40 @@ export const EntityRecordClearResultSchema = z.object({
 });
 export type EntityRecordClearResult = z.infer<
   typeof EntityRecordClearResultSchema
+>;
+
+/**
+ * entity_data_delete (#802) — removes the bulk data of connector entities a
+ * delete has already tombstoned: soft-deletes their records in batches and
+ * drops each `er__<id>` wide table. An entity or connector delete tombstones
+ * everything user-visible in its request and hands this job the records,
+ * which at 400K+ rows took longer than a request may (the same body
+ * `entity_record_clear` moved off-request in #453).
+ *
+ * LOCKS: nothing. Every entity it touches is soft-deleted before it is
+ * enqueued, so no route or tool can target one (each answers 404 first), and
+ * lock resolution skips deleted entities, so a scope on them would lock
+ * nothing anyway.
+ *
+ * `connectorInstanceId` is set for a connector delete and null for a single
+ * entity's. `userId` stamps `deletedBy` on the tombstones.
+ */
+export const EntityDataDeleteMetadataSchema = z.object({
+  organizationId: z.string(),
+  userId: z.string(),
+  connectorEntityIds: z.array(z.string()).min(1),
+  connectorInstanceId: z.string().nullable(),
+});
+export type EntityDataDeleteMetadata = z.infer<
+  typeof EntityDataDeleteMetadataSchema
+>;
+
+export const EntityDataDeleteResultSchema = z.object({
+  recordsDeleted: z.number().int().nonnegative(),
+  wideTablesDropped: z.number().int().nonnegative(),
+});
+export type EntityDataDeleteResult = z.infer<
+  typeof EntityDataDeleteResultSchema
 >;
 
 /**
@@ -620,6 +655,10 @@ export interface JobTypeMap {
     metadata: EntityRecordClearMetadata;
     result: EntityRecordClearResult;
   };
+  entity_data_delete: {
+    metadata: EntityDataDeleteMetadata;
+    result: EntityDataDeleteResult;
+  };
   connector_sync: {
     metadata: ConnectorSyncMetadata;
     result: ConnectorSyncResult;
@@ -671,6 +710,10 @@ export const JOB_TYPE_SCHEMAS: {
   entity_record_clear: {
     metadata: EntityRecordClearMetadataSchema,
     result: EntityRecordClearResultSchema,
+  },
+  entity_data_delete: {
+    metadata: EntityDataDeleteMetadataSchema,
+    result: EntityDataDeleteResultSchema,
   },
   connector_sync: {
     metadata: ConnectorSyncMetadataSchema,
@@ -739,6 +782,7 @@ export const JOB_TYPE_LABELS: Record<JobType, string> = {
   system_check: "System check",
   revalidation: "Revalidation",
   entity_record_clear: "Delete records",
+  entity_data_delete: "Delete entity data",
   connector_sync: "Sync",
   file_upload_parse: "File parse",
   layout_plan_commit: "Import",
@@ -825,6 +869,9 @@ export const JOB_LOCK_SCOPES: {
   sql_query: () => [],
   dissolve_precompute: () => [],
   system_check: () => [],
+  // #802: its entities are soft-deleted before it's enqueued; nothing can
+  // target them, and lock resolution skips deleted entities.
+  entity_data_delete: () => [],
 };
 
 export function jobLockScopes(type: JobType, metadata: unknown): LockScope[] {

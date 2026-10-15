@@ -995,6 +995,134 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(await recommitJobCount()).toBe(0);
     });
 
+    describe("#802: a re-commit that drops a mapping a curated view uses", () => {
+      /** Commit contacts (email + name), then a second plan that excludes
+       *  `name` — committing it would soft-delete the `name` mapping. */
+      async function committedThenDropName() {
+        const colEmailId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "email"
+        );
+        const colNameId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "name"
+        );
+        const plan = (region: LayoutPlan["regions"][number]): LayoutPlan => ({
+          planVersion: "1.0.0",
+          workbookFingerprint: {
+            sheetNames: ["Sheet1"],
+            dimensions: { Sheet1: { rows: 3, cols: 2 } },
+            anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
+          },
+          regions: [region],
+          confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
+        });
+        const first = await insertPlanRow(
+          db as Db,
+          plan(simpleRegion("r1", "contacts", colEmailId, colNameId))
+        );
+        const committed = await commitInline(first, contactsWorkbook());
+        const entityId = committed.connectorEntityIds[0]!;
+
+        const dropping = simpleRegion("r1", "contacts", colEmailId, colNameId);
+        dropping.columnBindings = dropping.columnBindings.map((b, i) =>
+          i === 1 ? { ...b, excluded: true } : b
+        ) as typeof dropping.columnBindings;
+        const secondPlanId = await insertPlanRow(db as Db, plan(dropping));
+
+        const [nameMapping] = (
+          await (db as Db)
+            .select()
+            .from(schema.fieldMappings)
+            .where(eq(schema.fieldMappings.connectorEntityId, entityId))
+        ).filter((m) => m.normalizedKey === "name");
+        return { entityId, nameMapping, secondPlanId };
+      }
+
+      async function viewProjecting(entityId: string, fieldMappingId: string) {
+        const now = Date.now();
+        const view = {
+          id: generateId(),
+          organizationId,
+          connectorEntityId: entityId,
+          key: `v_${generateId().replace(/-/g, "").slice(0, 8)}`,
+          label: "Names",
+          description: null,
+          filter: null,
+          created: now,
+          createdBy: userId,
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        };
+        await (db as Db).insert(schema.curatedViews).values(view as never);
+        await (db as Db).insert(schema.curatedViewFieldMappings).values({
+          ...view,
+          id: generateId(),
+          curatedViewId: view.id,
+          fieldMappingId,
+          key: undefined,
+          label: undefined,
+          description: undefined,
+          filter: undefined,
+          connectorEntityId: undefined,
+        } as never);
+      }
+
+      it("is refused before any job is enqueued", async () => {
+        const { entityId, nameMapping, secondPlanId } =
+          await committedThenDropName();
+        await viewProjecting(entityId, nameMapping.id);
+        const sessionId = generateId();
+        await linkUploadSession(sessionId, secondPlanId);
+
+        const res = await request(app)
+          .post(
+            `/api/connector-instances/${connectorInstanceId}/layout-plan/${secondPlanId}/commit`
+          )
+          .set("Authorization", "Bearer test-token")
+          .send({ uploadSessionId: sessionId });
+
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DELETE_IN_VIEW);
+        expect(await recommitJobCount()).toBe(0);
+      });
+
+      it("still enqueues when no view uses the dropped mapping", async () => {
+        const { secondPlanId } = await committedThenDropName();
+        const sessionId = generateId();
+        await linkUploadSession(sessionId, secondPlanId);
+
+        const res = await request(app)
+          .post(
+            `/api/connector-instances/${connectorInstanceId}/layout-plan/${secondPlanId}/commit`
+          )
+          .set("Authorization", "Bearer test-token")
+          .send({ uploadSessionId: sessionId });
+
+        expect(res.status).toBe(202);
+      });
+
+      it("the commit itself refuses too, before writing (a view made after enqueue)", async () => {
+        const { entityId, nameMapping, secondPlanId } =
+          await committedThenDropName();
+        await viewProjecting(entityId, nameMapping.id);
+
+        await expect(
+          commitInline(secondPlanId, contactsWorkbook())
+        ).rejects.toMatchObject({ code: ApiCode.FIELD_MAPPING_DELETE_IN_VIEW });
+
+        const [stillLive] = await (db as Db)
+          .select()
+          .from(schema.fieldMappings)
+          .where(eq(schema.fieldMappings.id, nameMapping.id));
+        expect(stillLive.deleted).toBeNull();
+      });
+    });
+
     it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {
       const colEmailId = await seedColumnDefinition(
         db as Db,

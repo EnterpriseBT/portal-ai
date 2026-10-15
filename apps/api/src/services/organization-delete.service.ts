@@ -31,6 +31,8 @@ import {
   connectorEntities,
   connectorInstanceLayoutPlans,
   connectorInstances,
+  curatedViewFieldMappings,
+  curatedViews,
   entityGroupMembers,
   entityGroups,
   entityRecords,
@@ -47,6 +49,7 @@ import {
   portals,
   stationInstances,
   stationToolpacks,
+  stationViews,
   stations,
   wideTableColumns,
   permissionGrants,
@@ -167,6 +170,20 @@ export class OrganizationDeleteService {
       await tx
         .delete(wideTableColumns)
         .where(eq(wideTableColumns.organizationId, organizationId));
+
+      // #802: curated views hold FKs to field mappings (projection links),
+      // stations (attachments) and entities (the view itself), all
+      // hard-deleted below — so the view tables go first, children before
+      // the view. Their grants go with the org-wide grant sweep at the end.
+      await tx
+        .delete(curatedViewFieldMappings)
+        .where(eq(curatedViewFieldMappings.organizationId, organizationId));
+      await tx
+        .delete(stationViews)
+        .where(eq(stationViews.organizationId, organizationId));
+      await tx
+        .delete(curatedViews)
+        .where(eq(curatedViews.organizationId, organizationId));
 
       await tx
         .delete(entityGroupMembers)

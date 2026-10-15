@@ -440,6 +440,15 @@ export class EntityRecordsRepository extends Repository<
    * windows together can neither strand a row nor delete one twice — pinned
    * by `entity-records-purge.integration.test.ts`.
    *
+   *  - `"stranded"` (#802) — a *live* record whose parent entity was
+   *    soft-deleted before `cutoffMs`. An entity delete tombstones the entity
+   *    in its request and leaves the records to an `entity_data_delete` job;
+   *    if that job was never queued or ran out of retries, its records stay
+   *    live under a dead parent, unreachable (every read is entity-scoped)
+   *    and invisible to the two tombstone scopes. The cutoff here applies to
+   *    the *entity's* delete time, since the records have none.
+   *    Served by the `(connector_entity_id, …) WHERE deleted IS NULL` index.
+   *
    * Deletes by `IN (<subquery>)`, never by an id list marshalled through
    * Node: the ids stay server-side, so this is immune to the unbounded
    * `sql.join` stack overflow #436 fixed elsewhere, and the batch bounds
@@ -461,10 +470,36 @@ export class EntityRecordsRepository extends Repository<
   async purgeTombstonedBefore(
     cutoffMs: number,
     batchSize: number,
-    scope: "orphan" | "live",
+    scope: "orphan" | "live" | "stranded",
     client: DbClient = db
   ): Promise<number> {
     const typed = client as typeof db;
+
+    if (scope === "stranded") {
+      const deadBefore = typed
+        .select({ id: connectorEntities.id })
+        .from(connectorEntities)
+        .where(
+          and(
+            isNotNull(connectorEntities.deleted),
+            lt(connectorEntities.deleted, cutoffMs)
+          )
+        );
+      const stranded = typed
+        .select({ id: entityRecords.id })
+        .from(entityRecords)
+        .where(
+          and(
+            isNull(entityRecords.deleted),
+            inArray(entityRecords.connectorEntityId, deadBefore)
+          )
+        )
+        .limit(batchSize);
+      const result = await typed
+        .delete(entityRecords)
+        .where(inArray(entityRecords.id, stranded));
+      return result.count;
+    }
 
     const parentDeleted = exists(
       typed
@@ -500,28 +535,40 @@ export class EntityRecordsRepository extends Repository<
   }
 
   /**
-   * Soft-delete all records across multiple connector entities.
-   * Returns the number of affected rows.
+   * #802: soft-delete up to `batchSize` live records of one entity and return
+   * how many — 0 ends the caller's drain. Batched so one statement never
+   * holds row locks across a 1.5M-row entity; `IN (<subquery> LIMIT n)` keeps
+   * the ids server-side (served by the `(connector_entity_id, …) WHERE
+   * deleted IS NULL` index). Invalidates the entity's cached counts when it
+   * changed anything.
    */
-  async softDeleteByConnectorEntityIds(
-    connectorEntityIds: string[],
+  async softDeleteBatchByConnectorEntityId(
+    connectorEntityId: string,
     deletedBy: string,
+    batchSize: number,
     client: DbClient = db
   ): Promise<number> {
-    if (connectorEntityIds.length === 0) return 0;
-    const now = Date.now();
-    // #423: count from the driver — `RETURNING` here streamed every
-    // matched row (with its payload) into Node just to call `.length`.
-    const result = await (client as typeof db)
-      .update(this.table)
-      .set({ deleted: now, deletedBy } as any)
+    const typed = client as typeof db;
+    const batch = typed
+      .select({ id: entityRecords.id })
+      .from(entityRecords)
       .where(
         and(
-          inArray(entityRecords.connectorEntityId, connectorEntityIds),
-          this.notDeleted()
+          eq(entityRecords.connectorEntityId, connectorEntityId),
+          isNull(entityRecords.deleted)
         )
+      )
+      .limit(batchSize);
+    // The outer `deleted IS NULL` is re-checked on each row after its lock is
+    // acquired, so a row a concurrent pass deleted first is skipped rather
+    // than re-stamped and counted twice (#802).
+    const result = await typed
+      .update(entityRecords)
+      .set({ deleted: Date.now(), deletedBy } as any)
+      .where(
+        and(inArray(entityRecords.id, batch), isNull(entityRecords.deleted))
       );
-    await invalidateCounts(connectorEntityIds);
+    if (result.count > 0) await invalidateCounts([connectorEntityId]);
     return result.count;
   }
 

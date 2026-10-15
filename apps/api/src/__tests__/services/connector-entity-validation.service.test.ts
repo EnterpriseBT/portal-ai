@@ -16,14 +16,41 @@ const mockSoftDeleteTagAssignments = jest
 const mockSoftDeleteFieldMappings = jest
   .fn<(...args: unknown[]) => Promise<number>>()
   .mockResolvedValue(0);
-const mockSoftDeleteEntityRecords = jest
-  .fn<(...args: unknown[]) => Promise<number>>()
-  .mockResolvedValue(0);
 const mockSoftDeleteEntity = jest
   .fn<(...args: unknown[]) => Promise<unknown>>()
   .mockResolvedValue(undefined);
 const mockTransaction =
   jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
+const mockFindViewIds = jest
+  .fn<(...args: unknown[]) => Promise<string[]>>()
+  .mockResolvedValue([]);
+const mockDeleteViews = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue({
+    curatedViews: 0,
+    fieldMappings: 0,
+    stationViews: 0,
+    grants: 0,
+  });
+
+const mockInsertJob = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue({ id: "job-1", type: "entity_data_delete" });
+
+jest.unstable_mockModule(
+  "../../services/entity-data-delete.service.js",
+  () => ({ EntityDataDeleteService: { insertJob: mockInsertJob } })
+);
+
+jest.unstable_mockModule(
+  "../../services/curated-view-delete.service.js",
+  () => ({
+    CuratedViewDeleteService: {
+      findIdsByConnectorEntityIds: mockFindViewIds,
+      deleteByIds: mockDeleteViews,
+    },
+  })
+);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -41,9 +68,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       entityTagAssignments: {
         softDeleteByConnectorEntityIds: mockSoftDeleteTagAssignments,
-      },
-      entityRecords: {
-        softDeleteByConnectorEntityIds: mockSoftDeleteEntityRecords,
       },
     },
     transaction: mockTransaction,
@@ -67,6 +91,9 @@ const { ConnectorEntityValidationService } =
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFindViewIds.mockResolvedValue([]);
+  // The claim: the entity row the delete soft-deletes first.
+  mockSoftDeleteEntity.mockResolvedValue({ id: "ce-1" });
   // Default: transaction calls the callback immediately
   mockTransaction.mockImplementation(async (fn) => fn("tx-mock"));
 });
@@ -125,28 +152,98 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     mockSoftDeleteGroupMembers.mockResolvedValue(2);
     mockSoftDeleteTagAssignments.mockResolvedValue(1);
     mockSoftDeleteFieldMappings.mockResolvedValue(3);
-    mockSoftDeleteEntityRecords.mockResolvedValue(5);
 
     const result = await ConnectorEntityValidationService.executeDelete(
       "ce-1",
+      "org-1",
       "user-1"
     );
 
     expect(result).toEqual({
-      entityGroupMembers: 2,
-      entityTagAssignments: 1,
-      fieldMappings: 3,
-      entityRecords: 5,
+      cascaded: {
+        entityGroupMembers: 2,
+        entityTagAssignments: 1,
+        fieldMappings: 3,
+        curatedViews: 0,
+      },
+      recordsJob: { id: "job-1", type: "entity_data_delete" },
     });
+  });
+
+  it("#802: leaves the records to an entity_data_delete job inserted on the same tx", async () => {
+    await ConnectorEntityValidationService.executeDelete(
+      "ce-1",
+      "org-1",
+      "user-1"
+    );
+
+    expect(mockInsertJob).toHaveBeenCalledWith(
+      {
+        organizationId: "org-1",
+        userId: "user-1",
+        connectorEntityIds: ["ce-1"],
+        connectorInstanceId: null,
+      },
+      "tx-mock"
+    );
+    expect(mockInsertJob.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockSoftDeleteEntity.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("#802: claims the entity first, then deletes its views, org-scoped", async () => {
+    mockFindViewIds.mockResolvedValue(["cv-1", "cv-2"]);
+    mockDeleteViews.mockResolvedValue({
+      curatedViews: 2,
+      fieldMappings: 3,
+      stationViews: 1,
+      grants: 4,
+    });
+
+    const result = await ConnectorEntityValidationService.executeDelete(
+      "ce-1",
+      "org-1",
+      "user-1"
+    );
+
+    expect(mockFindViewIds).toHaveBeenCalledWith("org-1", ["ce-1"], "tx-mock");
+    expect(mockDeleteViews).toHaveBeenCalledWith(
+      "org-1",
+      ["cv-1", "cv-2"],
+      "user-1",
+      "tx-mock"
+    );
+    expect(mockSoftDeleteEntity.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDeleteViews.mock.invocationCallOrder[0]
+    );
+    expect(result.cascaded.curatedViews).toBe(2);
+  });
+
+  it("#802: refuses with 404 when the entity was already deleted, before any cascade or job", async () => {
+    // A concurrent delete committed first: the claim updates no row.
+    mockSoftDeleteEntity.mockResolvedValueOnce(undefined);
+
+    await expect(
+      ConnectorEntityValidationService.executeDelete("ce-1", "org-1", "user-1")
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "CONNECTOR_ENTITY_NOT_FOUND",
+    });
+    expect(mockDeleteViews).not.toHaveBeenCalled();
+    expect(mockSoftDeleteFieldMappings).not.toHaveBeenCalled();
+    expect(mockInsertJob).not.toHaveBeenCalled();
   });
 
   it("runs in a single transaction when no client provided", async () => {
     mockSoftDeleteGroupMembers.mockResolvedValue(0);
     mockSoftDeleteTagAssignments.mockResolvedValue(0);
     mockSoftDeleteFieldMappings.mockResolvedValue(0);
-    mockSoftDeleteEntityRecords.mockResolvedValue(0);
 
-    await ConnectorEntityValidationService.executeDelete("ce-1", "user-1");
+    await ConnectorEntityValidationService.executeDelete(
+      "ce-1",
+      "org-1",
+      "user-1"
+    );
 
     expect(mockTransaction).toHaveBeenCalledTimes(1);
     // Verify cascade methods received the tx argument
@@ -161,12 +258,12 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     mockSoftDeleteGroupMembers.mockResolvedValue(0);
     mockSoftDeleteTagAssignments.mockResolvedValue(0);
     mockSoftDeleteFieldMappings.mockResolvedValue(0);
-    mockSoftDeleteEntityRecords.mockResolvedValue(0);
 
     const externalTx = "external-tx" as unknown;
 
     await ConnectorEntityValidationService.executeDelete(
       "ce-1",
+      "org-1",
       "user-1",
       externalTx as never
     );

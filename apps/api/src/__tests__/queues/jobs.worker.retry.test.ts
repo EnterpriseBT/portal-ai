@@ -183,6 +183,41 @@ describe("jobs worker — retry-aware terminal state (#441)", () => {
     expect(lastNonActive()![1]).toBe("failed");
   });
 
+  // #802: a commit refused because a curated view uses a mapping it would
+  // drop fails the same way on every retry — final on its first attempt, so
+  // it doesn't hold the connector's lock through the whole budget.
+  it("#802: fails at once on FIELD_MAPPING_DELETE_IN_VIEW, keeping its message", async () => {
+    const { ApiError } = await import("../../services/http.service.js");
+    const { ApiCode } = await import("../../constants/api-codes.constants.js");
+    const refusal = new ApiError(
+      409,
+      ApiCode.FIELD_MAPPING_DELETE_IN_VIEW,
+      'Cannot delete field mapping "name": 1 curated view uses it.'
+    );
+    build(async () => {
+      throw refusal;
+    });
+
+    const thrown = await captured!(job(0)).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(UnrecoverableError);
+    expect(lastNonActive()![1]).toBe("failed");
+    expect(lastNonActive()![2]?.error).toContain("1 curated view uses it");
+  });
+
+  it("#802: other API errors still retry", async () => {
+    const { ApiError } = await import("../../services/http.service.js");
+    const { ApiCode } = await import("../../constants/api-codes.constants.js");
+    build(async () => {
+      throw new ApiError(409, ApiCode.ENTITY_LOCKED_BY_JOB, "locked");
+    });
+
+    await expect(captured!(job(0))).rejects.not.toBeInstanceOf(
+      UnrecoverableError
+    );
+    expect(lastNonActive()![1]).toBe("pending");
+  });
+
   // #777: a type with no processor was thrown before the worker's try, so
   // no catch wrote the row: it stayed `pending`, holding its locks, until
   // BullMQ dropped the failed entry (30 days) and the sweep reaped it. It
