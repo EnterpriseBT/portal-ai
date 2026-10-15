@@ -43,6 +43,14 @@ describe("findNul", () => {
     expect(findNul([[`${NUL}`], `${NUL}`])).toEqual({ path: "0.0" });
   });
 
+  it("visits keys and values strictly in document order", () => {
+    // `a`'s nested value comes before the later key `b\u0000`.
+    expect(findNul({ a: { x: `${NUL}` }, [`b${NUL}`]: 1 })).toEqual({
+      path: "a.x",
+    });
+    expect(findNul({ [`a${NUL}`]: { x: `${NUL}` } })).toEqual({ path: "a" });
+  });
+
   it("returns null for clean input", () => {
     expect(findNul({ name: "Ops", n: 1, b: true, z: null })).toBeNull();
     expect(findNul([])).toBeNull();

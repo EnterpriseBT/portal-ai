@@ -28,41 +28,55 @@ function capPath(path: string): string {
     : path;
 }
 
-function joinPath(parent: string, segment: string): string {
-  return parent === "" ? segment : `${parent}.${segment}`;
+/** One node of `findNul`'s walk. The path is only built on a hit, from the
+ *  parent chain, so a clean walk allocates no strings. */
+interface WalkEntry {
+  value: unknown;
+  /** The key or index this value sits under; null at the root. */
+  segment: string | null;
+  parent: WalkEntry | null;
+}
+
+function pathOf(entry: WalkEntry): string {
+  const segments: string[] = [];
+  for (let e: WalkEntry | null = entry; e?.segment != null; e = e.parent) {
+    segments.push(stripNul(e.segment));
+  }
+  return capPath(segments.reverse().join("."));
 }
 
 /**
  * Where the first U+0000 sits in a JSON-shaped value, in document order, or
  * null if there is none. Checks object keys and string values through objects
- * and arrays. Iterative, so depth can't overflow the stack. Segments join
- * with "." (`data.notes`, `items.2.name`), as `describeFirstZodIssue` does; a
- * NUL in a key reports the parent path plus the stripped key. "" means the
- * value itself is the string.
+ * and arrays. Iterative, so depth can't overflow the stack, and the path is
+ * only built for a hit (this runs on every request body and tool call).
+ * Segments join with "." (`data.notes`, `items.2.name`), as
+ * `describeFirstZodIssue` does; a NUL in a key reports the path to that key,
+ * stripped. "" means the value itself is the string.
  */
 export function findNul(value: unknown): { path: string } | null {
-  const stack: Array<{ value: unknown; path: string }> = [{ value, path: "" }];
+  const stack: WalkEntry[] = [{ value, segment: null, parent: null }];
   while (stack.length > 0) {
-    const { value: current, path } = stack.pop()!;
+    const entry = stack.pop()!;
+    if (entry.segment?.includes(NUL)) return { path: pathOf(entry) };
+    const current = entry.value;
     if (typeof current === "string") {
-      if (current.includes(NUL)) return { path: capPath(path) };
+      if (current.includes(NUL)) return { path: pathOf(entry) };
       continue;
     }
     if (!isWalkable(current)) continue;
-    const children: Array<{ value: unknown; path: string }> = [];
+    // Pushed in reverse, so the stack pops them in document order.
     if (Array.isArray(current)) {
-      current.forEach((item, i) =>
-        children.push({ value: item, path: joinPath(path, String(i)) })
-      );
+      for (let i = current.length - 1; i >= 0; i--) {
+        stack.push({ value: current[i], segment: String(i), parent: entry });
+      }
     } else {
-      for (const key of Object.keys(current)) {
-        const childPath = joinPath(path, stripNul(key));
-        if (key.includes(NUL)) return { path: capPath(childPath) };
-        children.push({ value: current[key], path: childPath });
+      const keys = Object.keys(current);
+      for (let i = keys.length - 1; i >= 0; i--) {
+        const key = keys[i]!;
+        stack.push({ value: current[key], segment: key, parent: entry });
       }
     }
-    // Reversed, so the stack pops them in document order.
-    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]!);
   }
   return null;
 }
