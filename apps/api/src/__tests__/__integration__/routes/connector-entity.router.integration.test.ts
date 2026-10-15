@@ -1369,6 +1369,37 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       expect(record.data).toEqual({ name: "Alice" });
     });
 
+    it("#802: two simultaneous deletes — one succeeds, the other is a 404, one job", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      await seedRelatedData(organizationId, entity.id);
+
+      const responses = await Promise.all([
+        request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token"),
+        request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token"),
+      ]);
+
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 404]);
+      const jobs = await db
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.type, "entity_data_delete"));
+      expect(
+        jobs.filter((j) =>
+          (
+            (j.metadata as { connectorEntityIds?: string[] })
+              .connectorEntityIds ?? []
+          ).includes(entity.id)
+        )
+      ).toHaveLength(1);
+    });
+
     it("#802: still succeeds when the records job can't be queued", async () => {
       const { organizationId, entity } = await seedWithCapabilities({
         definitionWrite: true,

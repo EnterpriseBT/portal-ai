@@ -88,6 +88,23 @@ export class ConnectorEntityValidationService {
     const run = async (tx: DbClient): Promise<ConnectorEntityDeleteOutcome> => {
       const entityIds = [connectorEntityId];
 
+      // #802: claim the entity first. Its row lock makes a concurrent delete
+      // of the same entity wait here, and once this commits that delete finds
+      // the entity already deleted: it answers 404 and rolls back, instead of
+      // re-running the cascade and queuing a second records job.
+      const claimed = await DbService.repository.connectorEntities.softDelete(
+        connectorEntityId,
+        userId,
+        tx
+      );
+      if (!claimed) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+          "Connector entity not found"
+        );
+      }
+
       // #802: a view is meaningless without its entity — it would 500 on
       // open and stay attached to its stations. Delete the entity's views
       // (projection rows, attachments, grants) in the same transaction.
@@ -125,12 +142,6 @@ export class ConnectorEntityValidationService {
             tx
           ),
         ]);
-
-      await DbService.repository.connectorEntities.softDelete(
-        connectorEntityId,
-        userId,
-        tx
-      );
 
       const recordsJob = await EntityDataDeleteService.insertJob(
         {

@@ -1067,6 +1067,36 @@ describe("Connector Instance Router", () => {
       expect(record.deleted).not.toBeNull();
     });
 
+    it("#802: two simultaneous deletes — one succeeds, the other is a 404, one job", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+
+      const responses = await Promise.all([
+        request(app)
+          .delete(`/api/connector-instances/${seeded.instance.id}`)
+          .set("Authorization", "Bearer test-token"),
+        request(app)
+          .delete(`/api/connector-instances/${seeded.instance.id}`)
+          .set("Authorization", "Bearer test-token"),
+      ]);
+
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 404]);
+      const jobs = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.type, "entity_data_delete"));
+      expect(
+        jobs.filter(
+          (j) =>
+            (j.metadata as { connectorInstanceId?: string })
+              .connectorInstanceId === seeded.instance.id
+        )
+      ).toHaveLength(1);
+    });
+
     it("#802: an instance with no entities queues no job", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

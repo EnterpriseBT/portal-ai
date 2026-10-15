@@ -559,10 +559,15 @@ export class EntityRecordsRepository extends Repository<
         )
       )
       .limit(batchSize);
+    // The outer `deleted IS NULL` is re-checked on each row after its lock is
+    // acquired, so a row a concurrent pass deleted first is skipped rather
+    // than re-stamped and counted twice (#802).
     const result = await typed
       .update(entityRecords)
       .set({ deleted: Date.now(), deletedBy } as any)
-      .where(inArray(entityRecords.id, batch));
+      .where(
+        and(inArray(entityRecords.id, batch), isNull(entityRecords.deleted))
+      );
     if (result.count > 0) await invalidateCounts([connectorEntityId]);
     return result.count;
   }

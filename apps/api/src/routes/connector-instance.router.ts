@@ -1456,6 +1456,25 @@ connectorInstanceRouter.delete(
         { kind: "connectorInstance", id },
         { organizationId },
         async (tx) => {
+          // #802: claim the instance first (its soft delete, with its layout
+          // plans). Its row lock makes a concurrent delete of the same
+          // instance wait here, and once this commits that delete finds it
+          // already deleted: a 404 that rolls back, instead of a second
+          // cascade and a second records job.
+          const claimed =
+            await DbService.repository.connectorInstances.softDelete(
+              id,
+              userId,
+              tx
+            );
+          if (!claimed) {
+            throw new ApiError(
+              404,
+              ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+              "Connector instance not found"
+            );
+          }
+
           // Hard-delete station_instances join rows (unlink from stations)
           await DbService.repository.stationInstances.hardDeleteByConnectorInstanceId(
             id,
@@ -1512,13 +1531,6 @@ connectorInstanceRouter.delete(
               tx
             );
           }
-
-          // Soft-delete the connector instance itself
-          await DbService.repository.connectorInstances.softDelete(
-            id,
-            userId,
-            tx
-          );
 
           // #802: the records and each entity's er__<id> wide table (#423)
           // go off-request — 400K+ records took longer than a request may.

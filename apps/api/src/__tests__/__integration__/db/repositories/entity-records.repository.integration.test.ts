@@ -360,6 +360,35 @@ describe("EntityRecordsRepository Integration Tests", () => {
       expect((await readRow(sibling.id!))?.deleted).toBeNull();
     });
 
+    it("#802: doesn't re-stamp or recount rows a concurrent batch deleted first", async () => {
+      for (const _ of [0, 1, 2]) await insertRecord(makeRecord(entityAId));
+
+      // Another transaction soft-deletes the same rows and holds their locks;
+      // this batch picks the same ids, waits, then must find them deleted.
+      const other = postgres(process.env.DATABASE_URL!, { max: 1 });
+      let pending!: Promise<number>;
+      try {
+        await other.begin(async (tx) => {
+          await tx`UPDATE entity_records SET deleted = 1, deleted_by = 'first' WHERE connector_entity_id = ${entityAId}`;
+          pending = repo.softDeleteBatchByConnectorEntityId(
+            entityAId,
+            "second",
+            100,
+            db
+          );
+          await new Promise((r) => setTimeout(r, 300));
+        });
+        expect(await pending).toBe(0);
+      } finally {
+        await other.end();
+      }
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.entityRecords)
+        .where(eq(schema.entityRecords.connectorEntityId, entityAId));
+      expect(rows.every((r) => r.deletedBy === "first")).toBe(true);
+    });
+
     it("excludes already-deleted rows — a second call reports 0", async () => {
       for (const _ of [0, 1, 2]) await insertRecord(makeRecord(entityAId));
 

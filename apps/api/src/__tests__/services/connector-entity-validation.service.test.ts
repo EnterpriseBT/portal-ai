@@ -92,6 +92,8 @@ const { ConnectorEntityValidationService } =
 beforeEach(() => {
   jest.clearAllMocks();
   mockFindViewIds.mockResolvedValue([]);
+  // The claim: the entity row the delete soft-deletes first.
+  mockSoftDeleteEntity.mockResolvedValue({ id: "ce-1" });
   // Default: transaction calls the callback immediately
   mockTransaction.mockImplementation(async (fn) => fn("tx-mock"));
 });
@@ -189,7 +191,7 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     );
   });
 
-  it("#802: deletes the entity's views, org-scoped, before the entity", async () => {
+  it("#802: claims the entity first, then deletes its views, org-scoped", async () => {
     mockFindViewIds.mockResolvedValue(["cv-1", "cv-2"]);
     mockDeleteViews.mockResolvedValue({
       curatedViews: 2,
@@ -211,10 +213,25 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
       "user-1",
       "tx-mock"
     );
-    expect(mockDeleteViews.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSoftDeleteEntity.mock.invocationCallOrder[0]
+    expect(mockSoftDeleteEntity.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDeleteViews.mock.invocationCallOrder[0]
     );
     expect(result.cascaded.curatedViews).toBe(2);
+  });
+
+  it("#802: refuses with 404 when the entity was already deleted, before any cascade or job", async () => {
+    // A concurrent delete committed first: the claim updates no row.
+    mockSoftDeleteEntity.mockResolvedValueOnce(undefined);
+
+    await expect(
+      ConnectorEntityValidationService.executeDelete("ce-1", "org-1", "user-1")
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "CONNECTOR_ENTITY_NOT_FOUND",
+    });
+    expect(mockDeleteViews).not.toHaveBeenCalled();
+    expect(mockSoftDeleteFieldMappings).not.toHaveBeenCalled();
+    expect(mockInsertJob).not.toHaveBeenCalled();
   });
 
   it("runs in a single transaction when no client provided", async () => {
