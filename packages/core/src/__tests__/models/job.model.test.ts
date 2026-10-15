@@ -793,6 +793,7 @@ describe("JobProgressDetailSchema (#458)", () => {
 });
 
 import {
+  BulkTransformResultSchema,
   ConnectorSyncResultSchema,
   LayoutPlanCommitJobResultSchema,
 } from "../../models/job.model.js";
@@ -801,6 +802,7 @@ describe("nulStrippedValues on import job results (#805)", () => {
   const sync = {
     recordCounts: { created: 1, updated: 0, unchanged: 0, deleted: 0 },
   };
+  const bulk = { recordsProcessed: 1, recordsFailed: 0, durationMs: 5 };
   const commit = {
     connectorInstanceId: "ci",
     planId: "p",
@@ -815,6 +817,7 @@ describe("nulStrippedValues on import job results (#805)", () => {
       LayoutPlanCommitJobResultSchema,
       commit,
     ],
+    ["BulkTransformResultSchema", BulkTransformResultSchema, bulk],
   ] as const)(
     "%s accepts a positive count and its absence",
     (_n, schema, base) => {
@@ -832,6 +835,7 @@ describe("nulStrippedValues on import job results (#805)", () => {
       LayoutPlanCommitJobResultSchema,
       commit,
     ],
+    ["BulkTransformResultSchema", BulkTransformResultSchema, bulk],
   ] as const)(
     "%s rejects 0 and negatives (absent when none)",
     (_n, schema, base) => {
