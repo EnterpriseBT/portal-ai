@@ -2434,6 +2434,40 @@ describe("restApiAdapter.syncInstance — streaming branch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  // #805: U+0000 stripped from records reaches the sync result as a count.
+  it("reports the records' NUL-stripped count on the result, and omits it when clean", async () => {
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: { id: "e-items", key: "items", label: "Items" },
+        config: {
+          path: "/items",
+          method: "GET",
+          recordsPath: "data.items",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+    const body = (items: unknown[]) =>
+      new Response(JSON.stringify({ data: { items } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+
+    fetchMock.mockResolvedValueOnce(
+      body([
+        { id: "a", name: "x\u0000" },
+        { id: "b\u0000", name: "y" },
+      ])
+    );
+    const dirty = await restApiAdapter.syncInstance!(INSTANCE, "u1");
+    expect(dirty.nulStrippedValues).toBe(2);
+
+    fetchMock.mockResolvedValueOnce(body([{ id: "a", name: "x" }]));
+    const clean = await restApiAdapter.syncInstance!(INSTANCE, "u1");
+    expect(clean).not.toHaveProperty("nulStrippedValues");
+  });
+
   // #458: a single streamed page used to report exactly twice (stream start
   // + drain), so a 400K-record stream showed no motion at all. The stream
   // loop now reports cumulative records at least every 1,000 and once after
