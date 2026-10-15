@@ -12,6 +12,7 @@ import {
   computeJobSignature,
 } from "../services/cost-acknowledgement.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
+import { assertStationScope } from "../utils/resolve-capabilities.util.js";
 import { BulkTransformService } from "../services/bulk-transform.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -41,6 +42,8 @@ const InputSchema = z.object({
 /** DB/queue seams, injected so the ack/lock/enqueue path unit-tests without a
  *  live database or worker. */
 export interface BulkGeocodeToolDeps {
+  /** #802: the entity must exist and be in the station's scope. */
+  assertEntityInScope?: (stationId: string, entityId: string) => Promise<void>;
   countRecords?: (entityId: string, organizationId: string) => Promise<number>;
   assertUnlocked?: (ids: string[], organizationId: string) => Promise<void>;
   createJob?: (
@@ -110,6 +113,7 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
     userId: string,
     deps: BulkGeocodeToolDeps = {}
   ) {
+    const assertEntityInScope = deps.assertEntityInScope ?? assertStationScope;
     const countRecords =
       deps.countRecords ??
       ((entityId: string, orgId: string) =>
@@ -149,6 +153,13 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
             targetColumnKey,
             acknowledgeCost,
           } = this.validate(input);
+
+          // #802: a deleted entity (or one outside this station) is refused
+          // before anything is recorded or charged. Once an entity or
+          // connector delete commits, its records belong to the
+          // entity_data_delete job, and nothing else may write them —
+          // transform_entity_records refuses the same way.
+          await assertEntityInScope(stationId, connectorEntityId);
 
           // Server-enforced cost gate (expensive) — record→ack→retry, mirroring
           // transform_entity_records. The agent can't bypass it prompt-side.
