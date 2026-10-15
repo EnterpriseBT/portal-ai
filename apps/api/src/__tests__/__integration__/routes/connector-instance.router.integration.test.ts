@@ -54,6 +54,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { entityDataDeleteProcessor } =
+  await import("../../../queues/processors/entity-data-delete.processor.js");
 
 const {
   connectorDefinitions,
@@ -896,13 +898,14 @@ describe("Connector Instance Router", () => {
       expect(deletedEntity).toBeDefined();
       expect(deletedEntity!.deleted).not.toBeNull();
 
-      // Verify entity record is soft-deleted
+      // #802: the record is left to the entity_data_delete job — still
+      // live here, since no worker runs in this process.
       const records = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(entityRecords);
-      const deletedRecord = records.find((r) => r.id === seeded.record.id);
-      expect(deletedRecord).toBeDefined();
-      expect(deletedRecord!.deleted).not.toBeNull();
+      const keptRecord = records.find((r) => r.id === seeded.record.id);
+      expect(keptRecord).toBeDefined();
+      expect(keptRecord!.deleted).toBeNull();
 
       // Verify field mapping is soft-deleted
       const mappings = await (db as ReturnType<typeof drizzle>)
@@ -1020,6 +1023,75 @@ describe("Connector Instance Router", () => {
       expect(names).not.toContain("Soon Gone");
     });
 
+    /** #802: run the entity_data_delete job a delete queued, as the worker
+     *  would. */
+    async function runRecordsJob(jobId: string) {
+      const [job] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.id, jobId));
+      expect(job.type).toBe("entity_data_delete");
+      return entityDataDeleteProcessor({
+        data: { jobId: job.id, type: job.type, ...job.metadata },
+        updateProgress: async () => {},
+      } as never);
+    }
+
+    it("#802: queues one entity_data_delete job for all of the instance's entities", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${seeded.instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const [job] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.id, res.body.payload.recordsJobId));
+      expect(job.metadata).toMatchObject({
+        organizationId: orgId,
+        connectorEntityIds: [seeded.entity.id],
+        connectorInstanceId: seeded.instance.id,
+      });
+
+      expect(await runRecordsJob(job.id)).toMatchObject({ recordsDeleted: 1 });
+      const [record] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(entityRecords)
+        .where(eqRaw(entityRecords.id, seeded.record.id));
+      expect(record.deleted).not.toBeNull();
+    });
+
+    it("#802: an instance with no entities queues no job", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(instance as never);
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload).toEqual({
+        id: instance.id,
+        recordsJobId: null,
+      });
+    });
+
     it("drops each entity's er__ wide table and its catalog rows (#423)", async () => {
       const { organizationId: orgId, userId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
@@ -1047,6 +1119,11 @@ describe("Connector Instance Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.payload.id).toBe(seeded.instance.id);
 
+      // #802: the drop moved off-request with the records — the table is
+      // still there until the entity_data_delete job runs.
+      expect(await tableExists()).toBe(true);
+      await runRecordsJob(res.body.payload.recordsJobId);
+
       // The physical projection is gone, not merely orphaned.
       expect(await tableExists()).toBe(false);
 
@@ -1067,13 +1144,16 @@ describe("Connector Instance Router", () => {
       );
       const seeded = await seedInstanceWithRelatedData(orgId, userId);
 
-      // No ensureTable call — `dropTable` must be a no-op, not a failure.
+      // No ensureTable call — the job's drop must be a no-op, not a failure.
       const res = await request(app)
         .delete(`/api/connector-instances/${seeded.instance.id}`)
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+      expect(await runRecordsJob(res.body.payload.recordsJobId)).toMatchObject({
+        wideTablesDropped: 0,
+      });
     });
   });
 

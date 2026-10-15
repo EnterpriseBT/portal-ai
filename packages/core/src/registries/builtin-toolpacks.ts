@@ -947,7 +947,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "connector_entity_delete",
       description:
-        "Deletes one or more connector entities and all dependent records, field mappings, tags, and group memberships. Accepts 1–100 items.",
+        "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items.",
       parameterSchema: objectSchema(
         { ids: stringArrayField("Connector entity ids") },
         ["ids"]

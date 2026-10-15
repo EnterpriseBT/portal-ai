@@ -34,6 +34,7 @@ import {
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
   type ConnectorInstanceWithDefinitionApi,
+  type ConnectorInstanceDeleteResponsePayload,
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -44,8 +45,8 @@ import { ObjectCapabilitiesService } from "../services/object-capabilities.servi
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
-import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { CuratedViewDeleteService } from "../services/curated-view-delete.service.js";
+import { EntityDataDeleteService } from "../services/entity-data-delete.service.js";
 import {
   computeIdentityWarnings,
   computeSyncEligible,
@@ -1386,9 +1387,12 @@ async function validateSuggestion(
  *       - Connector Instances
  *     summary: Delete a connector instance
  *     description: >
- *       Soft-deletes a connector instance and cascades to all associated
- *       connector entities, entity records, field mappings, tag assignments,
- *       and group members. Hard-deletes station_instances join rows.
+ *       Soft-deletes a connector instance and, in the same request, its
+ *       connector entities, field mappings, tag assignments, group members
+ *       and the curated views over its entities (#802); hard-deletes its
+ *       station_instances join rows. The records and wide tables are removed
+ *       in the background by the `entity_data_delete` job named in
+ *       `recordsJobId`.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1414,6 +1418,10 @@ async function validateSuggestion(
  *                   properties:
  *                     id:
  *                       type: string
+ *                     recordsJobId:
+ *                       type: string
+ *                       nullable: true
+ *                       description: The entity_data_delete job removing the records; null when the instance had no entities (#802)
  *       404:
  *         description: Connector instance not found
  *       500:
@@ -1445,7 +1453,7 @@ connectorInstanceRouter.delete(
 
       // #769: refused while a running job holds the connector or any of its
       // entities.
-      await JobLockService.withUnlocked(
+      const recordsJob = await JobLockService.withUnlocked(
         { kind: "connectorInstance", id },
         { organizationId },
         async (tx) => {
@@ -1497,25 +1505,7 @@ connectorInstanceRouter.delete(
                 userId,
                 tx
               ),
-              DbService.repository.entityRecords.softDeleteByConnectorEntityIds(
-                entityIds,
-                userId,
-                tx
-              ),
             ]);
-
-            // #423: the cascade above is an UPDATE, so the
-            // `entity_records → er__<id>` ON DELETE CASCADE never fires and the
-            // wide table keeps a full projected copy of an instance that is
-            // gone — 200K rows for the entity that surfaced this. Every other
-            // delete path already cleans the wide side (#327); this one did not.
-            // `dropTable` also clears the entity's `wide_table_columns` catalog
-            // rows and invalidates its cached statement. Ordering is free here,
-            // unlike reset/organization-delete where the FK parents are
-            // hard-deleted — this cascade only soft-deletes them.
-            for (const entityId of entityIds) {
-              await wideTableReconcilerService.dropTable(entityId, tx);
-            }
 
             await DbService.repository.connectorEntities.softDeleteByConnectorInstanceId(
               id,
@@ -1530,11 +1520,32 @@ connectorInstanceRouter.delete(
             userId,
             tx
           );
+
+          // #802: the records and each entity's er__<id> wide table (#423)
+          // go off-request — 400K+ records took longer than a request may.
+          // The job row lands in this transaction; it's queued after commit.
+          if (entityIds.length === 0) return null;
+          return EntityDataDeleteService.insertJob(
+            {
+              organizationId,
+              userId,
+              connectorEntityIds: entityIds,
+              connectorInstanceId: id,
+            },
+            tx
+          );
         }
       );
+      if (recordsJob) await EntityDataDeleteService.dispatch(recordsJob);
 
-      logger.info({ id }, "Connector instance deleted");
-      return HttpService.success(res, { id });
+      logger.info(
+        { id, recordsJobId: recordsJob?.id ?? null },
+        "Connector instance deleted"
+      );
+      return HttpService.success<ConnectorInstanceDeleteResponsePayload>(res, {
+        id,
+        recordsJobId: recordsJob?.id ?? null,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

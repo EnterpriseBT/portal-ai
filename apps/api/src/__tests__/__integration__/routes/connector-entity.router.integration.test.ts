@@ -52,6 +52,10 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 
+const { entityDataDeleteProcessor } =
+  await import("../../../queues/processors/entity-data-delete.processor.js");
+const { JobsService } = await import("../../../services/jobs.service.js");
+
 const {
   connectorDefinitions,
   connectorInstances,
@@ -1210,7 +1214,9 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.id).toBe(entity.id);
-      expect(res.body.payload.cascaded.entityRecords).toBe(1);
+      // #802: records go off-request; the response names the job instead.
+      expect(res.body.payload.cascaded).not.toHaveProperty("entityRecords");
+      expect(res.body.payload.recordsJobId).toEqual(expect.any(String));
       expect(res.body.payload.cascaded.fieldMappings).toBe(1);
       expect(res.body.payload.cascaded.entityTagAssignments).toBe(1);
       expect(res.body.payload.cascaded.entityGroupMembers).toBe(1);
@@ -1263,7 +1269,7 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       ).toHaveLength(0);
     });
 
-    it("should set deleted timestamp on all cascaded child records", async () => {
+    it("#802: tombstones the children in the request and leaves the records to an entity_data_delete job", async () => {
       const { organizationId, entity } = await seedWithCapabilities({
         definitionWrite: true,
         enabledCapabilityFlags: { write: true },
@@ -1271,11 +1277,34 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
 
       const related = await seedRelatedData(organizationId, entity.id);
 
-      await request(app)
+      const res = await request(app)
         .delete(`/api/connector-entities/${entity.id}`)
         .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
 
-      // Query with includeDeleted to verify timestamps
+      // The record is still live — no worker runs in this process — and the
+      // job that will delete it is queued with the entity.
+      const [recordBefore] = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, related.record.id));
+      expect(recordBefore.deleted).toBeNull();
+      const [job] = await db
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.id, res.body.payload.recordsJobId));
+      expect(job.type).toBe("entity_data_delete");
+      expect(job.metadata).toMatchObject({
+        organizationId,
+        connectorEntityIds: [entity.id],
+        connectorInstanceId: null,
+      });
+
+      // Running that job deletes the record.
+      await entityDataDeleteProcessor({
+        data: { jobId: job.id, type: job.type, ...job.metadata },
+        updateProgress: async () => {},
+      } as never);
       const [recordRows] = await db
         .select()
         .from(entityRecords)
@@ -1299,6 +1328,35 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
         .from(entityGroupMembers)
         .where(eq(entityGroupMembers.id, related.member.id));
       expect(memberRows.deleted).not.toBeNull();
+    });
+
+    it("#802: still succeeds when the records job can't be queued", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      await seedRelatedData(organizationId, entity.id);
+      const dispatch = jest
+        .spyOn(JobsService, "dispatch")
+        .mockRejectedValueOnce(new Error("redis down"));
+
+      try {
+        const res = await request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token");
+
+        // The delete committed; the purge's stranded scope reclaims the
+        // records the job would have removed.
+        expect(res.status).toBe(200);
+        expect(dispatch).toHaveBeenCalled();
+        const [entityRow] = await db
+          .select()
+          .from(connectorEntities)
+          .where(eq(connectorEntities.id, entity.id));
+        expect(entityRow.deleted).not.toBeNull();
+      } finally {
+        dispatch.mockRestore();
+      }
     });
 
     it("should return 404 for non-existent entity", async () => {

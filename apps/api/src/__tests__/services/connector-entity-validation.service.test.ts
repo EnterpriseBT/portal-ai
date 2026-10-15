@@ -36,6 +36,15 @@ const mockDeleteViews = jest
     grants: 0,
   });
 
+const mockInsertJob = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue({ id: "job-1", type: "entity_data_delete" });
+
+jest.unstable_mockModule(
+  "../../services/entity-data-delete.service.js",
+  () => ({ EntityDataDeleteService: { insertJob: mockInsertJob } })
+);
+
 jest.unstable_mockModule(
   "../../services/curated-view-delete.service.js",
   () => ({
@@ -156,12 +165,36 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     );
 
     expect(result).toEqual({
-      entityGroupMembers: 2,
-      entityTagAssignments: 1,
-      fieldMappings: 3,
-      entityRecords: 5,
-      curatedViews: 0,
+      cascaded: {
+        entityGroupMembers: 2,
+        entityTagAssignments: 1,
+        fieldMappings: 3,
+        curatedViews: 0,
+      },
+      recordsJob: { id: "job-1", type: "entity_data_delete" },
     });
+  });
+
+  it("#802: leaves the records to an entity_data_delete job inserted on the same tx", async () => {
+    await ConnectorEntityValidationService.executeDelete(
+      "ce-1",
+      "org-1",
+      "user-1"
+    );
+
+    expect(mockSoftDeleteEntityRecords).not.toHaveBeenCalled();
+    expect(mockInsertJob).toHaveBeenCalledWith(
+      {
+        organizationId: "org-1",
+        userId: "user-1",
+        connectorEntityIds: ["ce-1"],
+        connectorInstanceId: null,
+      },
+      "tx-mock"
+    );
+    expect(mockInsertJob.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockSoftDeleteEntity.mock.invocationCallOrder[0]
+    );
   });
 
   it("#802: deletes the entity's views, org-scoped, before the entity", async () => {
@@ -189,7 +222,7 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     expect(mockDeleteViews.mock.invocationCallOrder[0]).toBeLessThan(
       mockSoftDeleteEntity.mock.invocationCallOrder[0]
     );
-    expect(result.curatedViews).toBe(2);
+    expect(result.cascaded.curatedViews).toBe(2);
   });
 
   it("runs in a single transaction when no client provided", async () => {

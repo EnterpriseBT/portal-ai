@@ -147,14 +147,17 @@ export type ConnectorEntityPatchResponsePayload = z.infer<
 
 export const ConnectorEntityDeleteResponsePayloadSchema = z.object({
   id: z.string(),
+  /** What the delete tombstoned in its request. */
   cascaded: z.object({
-    entityRecords: z.number(),
     fieldMappings: z.number(),
     entityTagAssignments: z.number(),
     entityGroupMembers: z.number(),
     /** #802: the entity's curated views, deleted with it. */
     curatedViews: z.number(),
   }),
+  /** #802: the `entity_data_delete` job removing the entity's records and
+   *  wide table in the background. */
+  recordsJobId: z.string(),
 });
 
 export type ConnectorEntityDeleteResponsePayload = z.infer<
