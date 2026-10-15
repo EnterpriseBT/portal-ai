@@ -35,6 +35,7 @@ export interface PopulatedOrg {
   connectorInstanceId: string;
   connectorEntityId: string;
   curatedViewId: string;
+  fieldMappingId: string;
   s3Key: string;
   pendingJobId: string;
   completedJobId: string;
@@ -214,58 +215,17 @@ export async function seedPopulatedOrg(
     connectorInstanceId: instance.id,
   } as never);
 
-  // #802: a curated view with every dependent — projection link, station
-  // attachment, a resource grant and a composed `in_curated_view` field
-  // grant — so a cascade that hard-deletes the view's parents (field
-  // mappings, stations, entities) is proven to clear the view tables first.
-  const curatedView = {
-    ...base(now),
+  // #802: a curated view with every dependent, so a cascade that
+  // hard-deletes the view's parents (field mappings, stations, entities) is
+  // proven to clear the view tables first.
+  const curatedViewId = await seedCuratedViewWithDependents(db, {
     organizationId: org.id,
     connectorEntityId: entity.id,
-    key: `contacts_view_${suffix}`,
-    label: "Contacts view",
-    description: null,
-    filter: null,
-  };
-  await db.insert(schema.curatedViews).values(curatedView as never);
-  await db.insert(schema.curatedViewFieldMappings).values({
-    ...base(now),
-    organizationId: org.id,
-    curatedViewId: curatedView.id,
     fieldMappingId: mapping.id,
-  } as never);
-  await db.insert(schema.stationViews).values({
-    ...base(now),
-    organizationId: org.id,
     stationId: station.id,
-    curatedViewId: curatedView.id,
-  } as never);
-  await db.insert(schema.permissionGrants).values([
-    {
-      ...base(now),
-      organizationId: org.id,
-      principalType: "user",
-      principalId: member.id,
-      effect: "allow",
-      verb: "read",
-      resourceType: "curated_view",
-      resourceId: curatedView.id,
-      condition: null,
-      conditionParam: null,
-    },
-    {
-      ...base(now),
-      organizationId: org.id,
-      principalType: "user",
-      principalId: member.id,
-      effect: "allow",
-      verb: "read",
-      resourceType: "field_mapping",
-      resourceId: null,
-      condition: "in_curated_view",
-      conditionParam: curatedView.id,
-    },
-  ] as never);
+    granteeUserId: member.id,
+    key: `contacts_view_${suffix}`,
+  });
 
   await db.insert(schema.organizationToolpacks).values({
     ...base(now),
@@ -361,11 +321,80 @@ export async function seedPopulatedOrg(
     portalId: portal.id,
     connectorInstanceId: instance.id,
     connectorEntityId: entity.id,
-    curatedViewId: curatedView.id,
+    curatedViewId,
+    fieldMappingId: mapping.id,
     s3Key,
     pendingJobId: pendingJob.id,
     completedJobId: completedJob.id,
   };
+}
+
+/**
+ * #802: a curated view over `connectorEntityId` with every dependent the view
+ * delete cascade must clear — one projection row, one station attachment, a
+ * `curated_view` resource grant and a composed `in_curated_view` field grant,
+ * both to `granteeUserId`. Returns the view id.
+ */
+export async function seedCuratedViewWithDependents(
+  db: Db,
+  opts: {
+    organizationId: string;
+    connectorEntityId: string;
+    fieldMappingId: string;
+    stationId: string;
+    granteeUserId: string;
+    key: string;
+  }
+): Promise<string> {
+  const now = Date.now();
+  const view = {
+    ...base(now),
+    organizationId: opts.organizationId,
+    connectorEntityId: opts.connectorEntityId,
+    key: opts.key,
+    label: opts.key,
+    description: null,
+    filter: null,
+  };
+  await db.insert(schema.curatedViews).values(view as never);
+  await db.insert(schema.curatedViewFieldMappings).values({
+    ...base(now),
+    organizationId: opts.organizationId,
+    curatedViewId: view.id,
+    fieldMappingId: opts.fieldMappingId,
+  } as never);
+  await db.insert(schema.stationViews).values({
+    ...base(now),
+    organizationId: opts.organizationId,
+    stationId: opts.stationId,
+    curatedViewId: view.id,
+  } as never);
+  const grant = {
+    organizationId: opts.organizationId,
+    principalType: "user",
+    principalId: opts.granteeUserId,
+    effect: "allow",
+    verb: "read",
+  };
+  await db.insert(schema.permissionGrants).values([
+    {
+      ...base(now),
+      ...grant,
+      resourceType: "curated_view",
+      resourceId: view.id,
+      condition: null,
+      conditionParam: null,
+    },
+    {
+      ...base(now),
+      ...grant,
+      resourceType: "field_mapping",
+      resourceId: null,
+      condition: "in_curated_view",
+      conditionParam: view.id,
+    },
+  ] as never);
+  return view.id;
 }
 
 /** Is the entity's dynamic `er__<id>` table still in the schema? */
