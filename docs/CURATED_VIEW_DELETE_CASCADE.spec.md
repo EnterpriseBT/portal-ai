@@ -355,7 +355,7 @@ All commands run from the package: `npm run test:unit` / `npm run test:integrati
 - **Layout-plan commit (`routes/connector-instance-layout-plans.router.integration.test.ts`): 2 cases.**
   - A re-commit dropping a projected mapping gets a 409 before enqueue, with no job created.
   - A re-commit dropping an unused mapping succeeds.
-- **`db/migrations/0121…integration.test.ts` (new): 3 cases**, run on a scratch DB seeded pre-migration.
+- **`db/delete-orphaned-curated-views.integration.test.ts` (new, the 0119 test pattern): 3 cases**, run on a scratch DB seeded pre-migration.
   - Orphan views and their links, attachments and grants are repaired.
   - A view over a live entity is untouched.
   - A second run is a no-op.
