@@ -47,11 +47,29 @@ import type { ConnectorInstanceContext } from "../prompts/system.prompt.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import { stripNulDeep } from "../utils/nul-character.util.js";
 import type { PortalSelect, PortalMessageSelect } from "../db/schema/zod.js";
 import { portalResults } from "../db/schema/index.js";
 import { toModelView } from "./model-output.util.js";
 
 const logger = createLogger({ module: "portal-service" });
+
+/**
+ * #805: an assistant message's blocks without U+0000, which the jsonb
+ * `blocks` column can't store. Model text or a custom tool's result can carry
+ * one; it's model output, so there's no caller to refuse it back to, and the
+ * turn would otherwise fail to save. Logs the count, never the text.
+ */
+function storableBlocks<T>(blocks: T[], portalId: string): T[] {
+  const { value, stripped } = stripNulDeep(blocks);
+  if (stripped > 0) {
+    logger.warn(
+      { portalId, stripped },
+      "Stripped U+0000 from an assistant message before persisting it"
+    );
+  }
+  return value;
+}
 
 /** Redis Pub/Sub channel prefix for portal-level events (#85 Phase 2). */
 export const PORTAL_EVENTS_CHANNEL_PREFIX = "portal:events:";
@@ -590,7 +608,7 @@ export class PortalService {
       portalId,
       organizationId: portal.organizationId,
       role: "assistant",
-      blocks,
+      blocks: storableBlocks(blocks, portalId),
       created: now,
       createdBy: authorId,
       updated: null,
@@ -800,8 +818,11 @@ export class PortalService {
         .filter((b) => b.type === "tool-result")
         .map((b) => b.toolCallId)
     );
-    const assistantBlocks = ctx.assistantBlocks.filter(
-      (b) => b.type !== "tool-call" || resultIds.has(b.toolCallId)
+    const assistantBlocks = storableBlocks(
+      ctx.assistantBlocks.filter(
+        (b) => b.type !== "tool-call" || resultIds.has(b.toolCallId)
+      ),
+      portalId
     );
 
     // Persist the assistant message
