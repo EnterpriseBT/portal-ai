@@ -159,6 +159,23 @@ export function countConditions(expression: FilterGroup): number {
 }
 
 /**
+ * Every field a filter expression names, anywhere in its tree (#802) — so a
+ * caller can tell whether a stored filter depends on a column before that
+ * column is removed.
+ */
+export function collectFilterFields(expression: FilterGroup): Set<string> {
+  const fields = new Set<string>();
+  for (const item of expression.conditions) {
+    if ("combinator" in item) {
+      for (const field of collectFilterFields(item)) fields.add(field);
+    } else {
+      fields.add(item.field);
+    }
+  }
+  return fields;
+}
+
+/**
  * Returns the maximum nesting depth of a filter expression.
  * A flat group has depth 1.
  */

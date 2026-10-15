@@ -186,6 +186,11 @@ export type FieldMappingDeleteResponsePayload = z.infer<
 export const FieldMappingImpactResponsePayloadSchema = z.object({
   entityGroupMembers: z.number(),
   entityRecords: z.number(),
+  /** #802: live curated views that project this mapping or filter on its
+   *  key, limited to the ones the caller can read. Any use blocks the delete. */
+  curatedViews: z.array(z.object({ id: z.string(), label: z.string() })),
+  /** #802: how many more such views the caller can't read. */
+  hiddenCuratedViews: z.number(),
   counterpart: z
     .object({
       id: z.string(),

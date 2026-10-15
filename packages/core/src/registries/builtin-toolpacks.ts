@@ -1005,7 +1005,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_delete",
       description:
-        "Deletes one or more field mappings and cascades to dependent group members. Accepts 1–100 items.",
+        "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items.",
       parameterSchema: objectSchema(
         { ids: stringArrayField("Field mapping ids") },
         ["ids"]

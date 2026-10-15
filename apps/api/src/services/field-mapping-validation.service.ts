@@ -3,6 +3,7 @@ import { eq, and, inArray, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
+import { CuratedViewDependencyService } from "./curated-view-dependency.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { connectorEntities, fieldMappings } from "../db/schema/index.js";
 import {
@@ -133,6 +134,15 @@ export class FieldMappingValidationService {
         `Cannot delete field mapping: the connector entity has ${recordCount} record${recordCount !== 1 ? "s" : ""}. Delete the records first.`
       );
     }
+
+    // #802: a mapping a curated view projects or filters on can't go — the
+    // view would break, and dropping its last projected column would widen
+    // it to every column. The user edits or deletes the view first.
+    await CuratedViewDependencyService.assertMappingsNotInViews(
+      mapping.organizationId,
+      [mapping],
+      mapping.sourceField
+    );
   }
 
   /**

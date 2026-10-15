@@ -146,6 +146,25 @@ describe("FieldMappingDeleteTool", () => {
     expect(mockExecuteDelete).not.toHaveBeenCalled();
   });
 
+  it("#802: a mapping a curated view uses is refused with the reason, nothing deleted", async () => {
+    mockValidateDelete.mockRejectedValueOnce(
+      new Error(
+        'Cannot delete field mapping "Name": 1 curated view uses it. Edit or delete that view first.'
+      )
+    );
+
+    const result: any = await exec({ items: [{ fieldMappingId: "fm-1" }] });
+
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([
+      {
+        index: 0,
+        error: expect.stringContaining("curated view uses it"),
+      },
+    ]);
+    expect(mockExecuteDelete).not.toHaveBeenCalled();
+  });
+
   it("validation failure — mapping not found", async () => {
     mockFindById.mockResolvedValueOnce(null);
 

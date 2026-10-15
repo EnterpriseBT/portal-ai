@@ -8,18 +8,24 @@ const { DeleteFieldMappingDialog } =
 const impactWithCascade: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 5,
   entityRecords: 0,
+  curatedViews: [],
+  hiddenCuratedViews: 0,
   counterpart: null,
 };
 
 const zeroImpact: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
   entityRecords: 0,
+  curatedViews: [],
+  hiddenCuratedViews: 0,
   counterpart: null,
 };
 
 const impactWithBidirectional: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
   entityRecords: 0,
+  curatedViews: [],
+  hiddenCuratedViews: 0,
   counterpart: {
     id: "fm-counterpart",
     sourceField: "related_id",
@@ -30,6 +36,8 @@ const impactWithBidirectional: FieldMappingImpactResponsePayload = {
 const impactWithBoth: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 3,
   entityRecords: 0,
+  curatedViews: [],
+  hiddenCuratedViews: 0,
   counterpart: {
     id: "fm-counterpart",
     sourceField: "related_id",
@@ -40,6 +48,17 @@ const impactWithBoth: FieldMappingImpactResponsePayload = {
 const impactWithRecords: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
   entityRecords: 42,
+  curatedViews: [],
+  hiddenCuratedViews: 0,
+  counterpart: null,
+};
+
+// #802: views that use the mapping block its delete.
+const impactWithViews: FieldMappingImpactResponsePayload = {
+  entityGroupMembers: 0,
+  entityRecords: 0,
+  curatedViews: [{ id: "cv-1", label: "Sales pipeline" }],
+  hiddenCuratedViews: 2,
   counterpart: null,
 };
 
@@ -187,6 +206,41 @@ describe("DeleteFieldMappingDialog", () => {
     expect(
       screen.getByText("42 entity records on this connector entity")
     ).toBeInTheDocument();
+  });
+
+  it("#802: lists the readable views that use the mapping", () => {
+    render(
+      <DeleteFieldMappingDialog {...defaultProps} impact={impactWithViews} />
+    );
+    expect(
+      screen.getByText('Used by curated view "Sales pipeline"')
+    ).toBeInTheDocument();
+  });
+
+  it("#802: counts the views the caller can't see", () => {
+    render(
+      <DeleteFieldMappingDialog {...defaultProps} impact={impactWithViews} />
+    );
+    expect(
+      screen.getByText("Used by 2 more curated views you can't see")
+    ).toBeInTheDocument();
+  });
+
+  it("#802: blocks the delete while any view uses the mapping", () => {
+    const onConfirm = jest.fn();
+    render(
+      <DeleteFieldMappingDialog
+        {...defaultProps}
+        impact={{ ...impactWithViews, curatedViews: [], hiddenCuratedViews: 1 }}
+        onConfirm={onConfirm}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+    expect(
+      screen.getByText(/curated views use this field mapping/)
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("should not call onConfirm when Delete is clicked while blocked by records", () => {

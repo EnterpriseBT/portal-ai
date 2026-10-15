@@ -47,8 +47,10 @@ const ImpactSummary: React.FC<{
   const hasRecords = impact.entityRecords > 0;
   const hasEntityGroupMembers = impact.entityGroupMembers > 0;
   const hasBidirectional = !!impact.counterpart;
+  const hasViews =
+    impact.curatedViews.length > 0 || impact.hiddenCuratedViews > 0;
 
-  if (!hasRecords && !hasEntityGroupMembers && !hasBidirectional) {
+  if (!hasRecords && !hasEntityGroupMembers && !hasBidirectional && !hasViews) {
     return (
       <Typography variant="body2" color="text.secondary">
         No associated data found.
@@ -70,6 +72,22 @@ const ImpactSummary: React.FC<{
         <ListItem disableGutters sx={{ py: 0 }}>
           <ListItemText
             primary={`${impact.entityGroupMembers} entity group member${impact.entityGroupMembers !== 1 ? "s" : ""}`}
+            slotProps={{ primary: { variant: "body2" } }}
+          />
+        </ListItem>
+      )}
+      {impact.curatedViews.map((view) => (
+        <ListItem key={view.id} disableGutters sx={{ py: 0 }}>
+          <ListItemText
+            primary={`Used by curated view "${view.label}"`}
+            slotProps={{ primary: { variant: "body2" } }}
+          />
+        </ListItem>
+      ))}
+      {impact.hiddenCuratedViews > 0 && (
+        <ListItem disableGutters sx={{ py: 0 }}>
+          <ListItemText
+            primary={`Used by ${impact.hiddenCuratedViews}${impact.curatedViews.length > 0 ? " more" : ""} curated view${impact.hiddenCuratedViews !== 1 ? "s" : ""} you can't see`}
             slotProps={{ primary: { variant: "body2" } }}
           />
         </ListItem>
@@ -99,7 +117,11 @@ export const DeleteFieldMappingDialog: React.FC<
   serverError,
 }) => {
   const hasRecords = impact ? impact.entityRecords > 0 : false;
-  const deleteBlocked = hasRecords;
+  // #802: a mapping a curated view projects or filters on can't be deleted.
+  const usedByViews = impact
+    ? impact.curatedViews.length > 0 || impact.hiddenCuratedViews > 0
+    : false;
+  const deleteBlocked = hasRecords || usedByViews;
   const deleteDisabled = isPending || isLoadingImpact || deleteBlocked;
   const hasCascade =
     impact && (impact.entityGroupMembers > 0 || !!impact.counterpart);
@@ -148,10 +170,15 @@ export const DeleteFieldMappingDialog: React.FC<
 
         <ImpactSummary impact={impact} isLoading={isLoadingImpact} />
 
-        {deleteBlocked ? (
+        {hasRecords ? (
           <Alert severity="error">
             This field mapping cannot be deleted because its connector entity
             has existing records. Delete the entity records first.
+          </Alert>
+        ) : usedByViews ? (
+          <Alert severity="error">
+            This field mapping cannot be deleted because curated views use this
+            field mapping. Edit or delete those views first.
           </Alert>
         ) : hasCascade ? (
           <Alert severity="warning">
