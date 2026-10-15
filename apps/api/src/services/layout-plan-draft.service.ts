@@ -51,13 +51,18 @@ import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
-import { FileUploadSessionService } from "./file-upload-session.service.js";
+import {
+  FileUploadSessionService,
+  uploadSessionCachePrefix,
+} from "./file-upload-session.service.js";
 import { GoogleSheetsConnectorService } from "./google-sheets-connector.service.js";
 import { LayoutPlanCommitService } from "./layout-plan-commit.service.js";
 import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
 import { MicrosoftExcelConnectorService } from "./microsoft-excel-connector.service.js";
 import { ApiError } from "./http.service.js";
+import { WorkbookCacheService } from "./workbook-cache.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { interpretFailure } from "../utils/interpret-error.util.js";
 
@@ -346,11 +351,14 @@ export class LayoutPlanDraftService {
       });
     }
 
+    const nulStrippedValues =
+      await LayoutPlanDraftService.nulStrippedValuesForSource(workbookSource);
     return {
       connectorInstanceId,
       planId,
       connectorEntityIds: result.connectorEntityIds,
       recordCounts: result.recordCounts,
+      ...(nulStrippedValues > 0 ? { nulStrippedValues } : {}),
     };
   }
 
@@ -549,11 +557,14 @@ export class LayoutPlanDraftService {
       userId
     );
 
+    const nulStrippedValues =
+      await LayoutPlanDraftService.nulStrippedValuesForSource(workbookSource);
     return {
       connectorInstanceId,
       planId,
       connectorEntityIds: result.connectorEntityIds,
       recordCounts: result.recordCounts,
+      ...(nulStrippedValues > 0 ? { nulStrippedValues } : {}),
     };
   }
 
@@ -588,6 +599,26 @@ export class LayoutPlanDraftService {
         );
       }
     }
+  }
+
+  /**
+   * #805: how many strings the source's cached session had its U+0000
+   * stripped from on ingest (0 when none, or when the session is gone). Read
+   * after `resolveWorkbookBySource`, which may have re-streamed an upload
+   * session from S3 under the same prefix.
+   */
+  static async nulStrippedValuesForSource(
+    source: LayoutPlanCommitWorkbookSource
+  ): Promise<number> {
+    const prefix =
+      source.kind === "uploadSession"
+        ? uploadSessionCachePrefix(source.uploadSessionId)
+        : workbookCacheKey(
+            await loadConnectorSlug(source.connectorInstanceId),
+            source.connectorInstanceId
+          );
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    return meta?.nulStrippedValues ?? 0;
   }
 
   /**

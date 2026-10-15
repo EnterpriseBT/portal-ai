@@ -120,6 +120,8 @@ export const rejectNul = (req: Request, _res: Response, next: NextFunction): voi
 
   The `SessionWriter` interface (`:66–83`) is unchanged.
 
+*Added during slice 3:* `sheetId()` (`utils/workbook-preview.util.ts:46`) also strips U+0000 from the name it slugs. Every pipeline derives the sheet id from the raw name before the writer sees it, and the id is stored in layout plans (jsonb).
+
 This covers file-upload parse and its S3 re-stream, the Google Sheets editor session (`google-sheets-connector.service.ts:230, :354`), the Excel editor session (`microsoft-excel-connector.service.ts:331, :541`) and Excel sync's throwaway session (`:657`).
 
 ### Sync fetches
@@ -135,12 +137,11 @@ This covers file-upload parse and its S3 re-stream, the Google Sheets editor ses
  *  when the session is gone). Read after `resolveWorkbookBySource`, which
  *  may have re-streamed the session from S3. */
 static async nulStrippedValuesForSource(
-  source: LayoutPlanCommitWorkbookSource,
-  organizationId: string
+  source: LayoutPlanCommitWorkbookSource
 ): Promise<number>;
 ```
 
-- It derives the prefix the way each resolver already does: `uploadSessionCachePrefix(uploadSessionId)`, or `workbookCacheKey(slug, connectorInstanceId)` for google-sheets / microsoft-excel. It then reads `WorkbookCacheService.getSessionMeta(prefix)?.nulStrippedValues ?? 0`.
+- It derives the prefix the way each resolver already does: `uploadSessionCachePrefix(uploadSessionId)`, or `workbookCacheKey(slug, connectorInstanceId)` for google-sheets / microsoft-excel. `uploadSessionCachePrefix` is exported from `file-upload-session.service.ts` for this. No organization id is taken: the source was already resolved, and authorized, by `resolveWorkbookBySource`. It then reads `WorkbookCacheService.getSessionMeta(prefix)?.nulStrippedValues ?? 0`.
 - The commit result (`:349–353`) and the recommit result (`:552–556`) add `...(n > 0 ? { nulStrippedValues: n } : {})`. `resolveWorkbookBySource`'s signature is unchanged.
 
 ### REST sync — `apps/api/src/adapters/rest-api/rest-api.adapter.ts`

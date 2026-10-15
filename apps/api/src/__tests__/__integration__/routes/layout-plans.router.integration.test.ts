@@ -658,6 +658,53 @@ describe("Layout Plans Draft Router", () => {
       expect(entities.length).toBeGreaterThanOrEqual(1);
     });
 
+    // #805: the session writer strips U+0000 on ingest and records how many
+    // strings it changed; the commit that stores the data reports it.
+    async function commitWithSessionCount(count?: number) {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+      if (count !== undefined) {
+        const metaKey = `upload-session:${uploadSessionId}:meta`;
+        redisStore.set(
+          metaKey,
+          JSON.stringify({
+            ...JSON.parse(redisStore.get(metaKey)!),
+            nulStrippedValues: count,
+          })
+        );
+      }
+      return runDraftCommitInline({
+        connectorDefinitionId,
+        name: "My CSV upload",
+        plan: makePlan(emailId, nameId),
+        uploadSessionId,
+      });
+    }
+
+    it("reports the session's NUL-stripped count on the commit result", async () => {
+      const result = await commitWithSessionCount(2);
+      expect(result.nulStrippedValues).toBe(2);
+    });
+
+    it("omits the NUL-stripped count when the session stripped nothing", async () => {
+      const result = await commitWithSessionCount();
+      expect(result).not.toHaveProperty("nulStrippedValues");
+    });
+
     it("writes entity_records.normalizedData keyed by the same normalizedKey the FieldMapping rows use", async () => {
       // Seed catalog columns whose `key` differs from the spreadsheet's
       // header text. The source-derived default `normalizedKey` should

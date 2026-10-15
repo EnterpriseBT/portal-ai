@@ -231,3 +231,70 @@ describe("WorkbookCacheService — chunked streaming API", () => {
     ).not.toBeNull();
   });
 });
+
+// #805: Postgres can't store U+0000, and everything downstream (preview,
+// interpret's header labels and keys, commit) reads from this cache, so the
+// session writer strips it on the way in and counts what it stripped.
+describe("WorkbookCacheService — NUL stripping (#805)", () => {
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it("strips U+0000 from string cells and counts each changed cell", async () => {
+    const writer = await WorkbookCacheService.beginSession("upload-session:n");
+    await writer.appendRows("sheet_0_t", [
+      ["na\u0000me", "ok", 1, true, null],
+      ["\u0000\u0000", 2.5, false, "x\u0000"],
+    ]);
+    await writer.finishSheet("sheet_0_t", {
+      name: "T",
+      rowCount: 2,
+      colCount: 5,
+    });
+    await writer.finalize("ready");
+
+    const rows = await collect(
+      WorkbookCacheService.readRows("upload-session:n", "sheet_0_t", 0, 2)
+    );
+    expect(rows).toEqual([
+      ["name", "ok", 1, true, null],
+      ["", 2.5, false, "x"],
+    ]);
+    const meta = await WorkbookCacheService.getSessionMeta("upload-session:n");
+    expect(meta!.nulStrippedValues).toBe(3);
+  });
+
+  it("strips the sheet name and counts it", async () => {
+    const writer = await WorkbookCacheService.beginSession("upload-session:s");
+    await writer.appendRows("sheet_0_t", [["a"]]);
+    await writer.finishSheet("sheet_0_t", {
+      name: "T\u0000ab",
+      rowCount: 1,
+      colCount: 1,
+    });
+    await writer.finalize("ready");
+
+    const meta = await WorkbookCacheService.getSessionMeta("upload-session:s");
+    expect(meta!.sheets[0]!.name).toBe("Tab");
+    expect(meta!.nulStrippedValues).toBe(1);
+  });
+
+  it("leaves the count off a clean session and doesn't share it across sessions", async () => {
+    const dirty = await WorkbookCacheService.beginSession("upload-session:d");
+    const clean = await WorkbookCacheService.beginSession("upload-session:c");
+    await dirty.appendRows("s", [["a\u0000"]]);
+    await clean.appendRows("s", [["a"]]);
+    for (const w of [dirty, clean]) {
+      await w.finishSheet("s", { name: "S", rowCount: 1, colCount: 1 });
+      await w.finalize("ready");
+    }
+
+    expect(
+      (await WorkbookCacheService.getSessionMeta("upload-session:d"))!
+        .nulStrippedValues
+    ).toBe(1);
+    expect(
+      await WorkbookCacheService.getSessionMeta("upload-session:c")
+    ).not.toHaveProperty("nulStrippedValues");
+  });
+});

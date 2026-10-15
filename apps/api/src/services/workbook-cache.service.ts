@@ -3,6 +3,7 @@ import type { MergedRange } from "@portalai/spreadsheet-parsing";
 import { environment } from "../environment.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import { stripNul } from "../utils/nul-character.util.js";
 
 const logger = createLogger({ module: "workbook-cache" });
 
@@ -38,6 +39,9 @@ export interface SessionMeta {
   status: "parsing" | "ready" | "failed";
   error?: string;
   createdAt: number;
+  /** #805: cells and sheet names whose U+0000 the writer stripped (no
+   *  Postgres text/jsonb value can store one). Absent when none. */
+  nulStrippedValues?: number;
 }
 
 /** Cell shape stored in row chunks. Dates serialize to ISO strings via JSON. */
@@ -111,6 +115,13 @@ export const WorkbookCacheService = {
 
     const sheets = new Map<string, SheetState>();
     const finishedSheets: SheetChunkMeta[] = [];
+    // #805: per session (sessions run concurrently in one process).
+    let nulStrippedValues = 0;
+    const stripCell = (cell: ChunkCell): ChunkCell => {
+      if (typeof cell !== "string" || !cell.includes("\u0000")) return cell;
+      nulStrippedValues++;
+      return stripNul(cell);
+    };
 
     const flushChunk = async (sheetId: string): Promise<void> => {
       const state = sheets.get(sheetId);
@@ -130,13 +141,19 @@ export const WorkbookCacheService = {
           sheets.set(sheetId, state);
         }
         for (const row of rows) {
-          state.buffer.push(row);
+          state.buffer.push(
+            row.some((c) => typeof c === "string" && c.includes("\u0000"))
+              ? row.map(stripCell)
+              : row
+          );
           if (state.buffer.length >= ROWS_PER_CHUNK()) {
             await flushChunk(sheetId);
           }
         }
       },
-      async finishSheet(sheetId, info) {
+      async finishSheet(sheetId, rawInfo) {
+        const name = stripCell(rawInfo.name) as string;
+        const info = name === rawInfo.name ? rawInfo : { ...rawInfo, name };
         await flushChunk(sheetId);
         const state = sheets.get(sheetId) ?? {
           name: info.name,
@@ -171,6 +188,7 @@ export const WorkbookCacheService = {
           sheets: finishedSheets,
           status,
           createdAt: Date.now(),
+          ...(nulStrippedValues > 0 ? { nulStrippedValues } : {}),
         };
         await redis.set(metaKey(prefix), JSON.stringify(meta), "EX", TTL());
         logger.debug(
