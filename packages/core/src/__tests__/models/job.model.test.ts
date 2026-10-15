@@ -793,7 +793,6 @@ describe("JobProgressDetailSchema (#458)", () => {
 });
 
 import {
-  BulkTransformResultSchema,
   ConnectorSyncResultSchema,
   LayoutPlanCommitJobResultSchema,
 } from "../../models/job.model.js";
