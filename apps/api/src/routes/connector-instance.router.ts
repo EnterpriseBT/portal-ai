@@ -1419,8 +1419,7 @@ async function validateSuggestion(
  *                     id:
  *                       type: string
  *                     recordsJobId:
- *                       type: string
- *                       nullable: true
+ *                       type: [string, "null"]
  *                       description: The entity_data_delete job removing the records; null when the instance had no entities (#802)
  *       404:
  *         description: Connector instance not found

@@ -210,18 +210,22 @@ layoutPlansRouter.post(
       // #769: a commit into an existing connector is refused while any job
       // holds it or one of its entities. Checked before preparing, which
       // writes the new plan.
-      if (parsed.data.connectorInstanceId) {
+      const existingInstanceId = parsed.data.connectorInstanceId;
+      if (existingInstanceId) {
         await JobLockService.assertNoneRunning(
-          { kind: "connectorInstance", id: parsed.data.connectorInstanceId },
+          { kind: "connectorInstance", id: existingInstanceId },
           { organizationId }
         );
         // #802: committing into an existing connector would drop the field
         // mappings the plan no longer binds — refuse before preparing (which
         // writes the plan) if a curated view uses one. The commit re-checks.
-        await LayoutPlanCommitService.assertCommitKeepsViewMappings(
-          parsed.data.plan as LayoutPlan,
-          organizationId,
-          parsed.data.connectorInstanceId
+        await DbService.transaction((tx) =>
+          LayoutPlanCommitService.assertCommitKeepsViewMappings(
+            parsed.data.plan as LayoutPlan,
+            organizationId,
+            existingInstanceId,
+            tx
+          )
         );
       }
       const prepared = await LayoutPlanDraftService.prepareDraftCommit(

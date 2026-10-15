@@ -58,34 +58,42 @@ export interface EntityRecordRetentionPurgeSummary {
  * concurrency needs no guard beyond the maintenance worker's `concurrency: 1`.
  */
 /** Leftover wide tables dropped per run — bounds the run; the rest go next
- *  time. */
+ *  time. Also the page size of each lookup. */
 const WIDE_TABLE_DROP_LIMIT = 100;
 
 /**
  * #802: drop the `er__<id>` tables of entities deleted before `cutoffMs`.
- * Its records are gone by now (the stranded drain ran first), so this only
- * reclaims the empty table. One table that won't drop (a lock timeout) is
- * logged and left for the next run rather than ending this one.
+ * Their records are gone by now (the stranded drain ran first), so this only
+ * reclaims the empty tables. A table that won't drop (a lock timeout) is
+ * logged and excluded from the rest of the run, which keeps paging, so a few
+ * stuck tables can't hold back the newer ones behind them; they're retried
+ * next run.
  */
 async function dropLeftoverWideTables(cutoffMs: number): Promise<number> {
-  const entityIds =
-    await DbService.repository.wideTable.findEntityIdsWithTableDeletedBefore(
-      cutoffMs,
-      WIDE_TABLE_DROP_LIMIT
-    );
+  const failed: string[] = [];
   let dropped = 0;
-  for (const connectorEntityId of entityIds) {
-    try {
-      await wideTableReconcilerService.dropTable(connectorEntityId);
-      dropped += 1;
-    } catch (error) {
-      logger.warn(
-        {
-          connectorEntityId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Could not drop a deleted entity's wide table; next run retries"
+  while (dropped < WIDE_TABLE_DROP_LIMIT) {
+    const entityIds =
+      await DbService.repository.wideTable.findEntityIdsWithTableDeletedBefore(
+        cutoffMs,
+        WIDE_TABLE_DROP_LIMIT,
+        [...failed]
       );
+    if (entityIds.length === 0) break;
+    for (const connectorEntityId of entityIds) {
+      try {
+        await wideTableReconcilerService.dropTable(connectorEntityId);
+        dropped += 1;
+      } catch (error) {
+        failed.push(connectorEntityId);
+        logger.warn(
+          {
+            connectorEntityId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Could not drop a deleted entity's wide table; next run retries"
+        );
+      }
     }
   }
   return dropped;

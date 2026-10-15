@@ -653,6 +653,12 @@ fieldMappingRouter.post(
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: The caller lacks permission for this field mapping change (#685)
+ *       409:
+ *         description: FIELD_MAPPING_KEY_IN_VIEW — the rename changes a normalizedKey a curated view's filter uses (#802)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Field mapping not found
  *         content:
@@ -780,8 +786,14 @@ fieldMappingRouter.patch(
           connectorEntityId: existing.connectorEntityId,
         },
         { organizationId: req.application!.metadata.organizationId },
-        (tx) =>
-          DbService.repository.fieldMappings.update(
+        async (tx) => {
+          // #802: a view filtering on the old key would break.
+          await FieldMappingValidationService.assertKeyChangeKeepsViews(
+            existing,
+            parsed.data.normalizedKey,
+            tx
+          );
+          return DbService.repository.fieldMappings.update(
             id,
             {
               ...parsed.data,
@@ -789,7 +801,8 @@ fieldMappingRouter.patch(
               updatedBy: userId,
             } as never,
             tx
-          )
+          );
+        }
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(

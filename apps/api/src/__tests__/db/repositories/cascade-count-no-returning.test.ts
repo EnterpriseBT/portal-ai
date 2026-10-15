@@ -107,15 +107,6 @@ const CASCADES: ReadonlyArray<{
   call: (client: DbClient) => Promise<number>;
 }> = [
   {
-    name: "entityRecords.softDeleteByConnectorEntityIds",
-    call: (c) =>
-      new EntityRecordsRepository().softDeleteByConnectorEntityIds(
-        ENTITY_IDS,
-        "user-1",
-        c
-      ),
-  },
-  {
     name: "entityRecords.softDeleteByConnectorEntityId",
     call: (c) =>
       new EntityRecordsRepository().softDeleteByConnectorEntityId(

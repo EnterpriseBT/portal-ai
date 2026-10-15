@@ -72,6 +72,9 @@ export interface PreparedDraftCommit {
 export interface PreparedRecommit {
   connectorInstanceId: string;
   planId: string;
+  /** #802: the stored plan, already loaded and matched to the instance, so
+   *  the route's pre-checks don't read it again. */
+  plan: LayoutPlan;
   metadata: Extract<LayoutPlanCommitMetadata, { kind: "recommit" }>;
 }
 
@@ -492,6 +495,7 @@ export class LayoutPlanDraftService {
     return {
       connectorInstanceId,
       planId,
+      plan: planRow.plan as LayoutPlan,
       metadata: {
         kind: "recommit",
         organizationId,

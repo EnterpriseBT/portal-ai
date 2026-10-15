@@ -568,32 +568,6 @@ export class EntityRecordsRepository extends Repository<
   }
 
   /**
-   * Soft-delete all records across multiple connector entities.
-   * Returns the number of affected rows.
-   */
-  async softDeleteByConnectorEntityIds(
-    connectorEntityIds: string[],
-    deletedBy: string,
-    client: DbClient = db
-  ): Promise<number> {
-    if (connectorEntityIds.length === 0) return 0;
-    const now = Date.now();
-    // #423: count from the driver — `RETURNING` here streamed every
-    // matched row (with its payload) into Node just to call `.length`.
-    const result = await (client as typeof db)
-      .update(this.table)
-      .set({ deleted: now, deletedBy } as any)
-      .where(
-        and(
-          inArray(entityRecords.connectorEntityId, connectorEntityIds),
-          this.notDeleted()
-        )
-      );
-    await invalidateCounts(connectorEntityIds);
-    return result.count;
-  }
-
-  /**
    * Find records by connector entity ID and source IDs. Chunked so that
    * very large source-id sets (e.g. ~400k-row spreadsheet uploads) stay
    * under Postgres' 65,535 parameter cap and don't recurse the Drizzle

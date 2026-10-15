@@ -64,6 +64,17 @@ export const UPGRADE_LOCK_NAMESPACE = 0x5550_4752;
  */
 export const JOB_LOCK_NAMESPACE = 0x4a4f_424c;
 
+/**
+ * Advisory-lock namespace for curated-view dependencies (#802), keyed by
+ * connector entity id. Transaction-scoped and exclusive: every write that
+ * changes what an entity's views depend on — a view's create or edit, a
+ * field mapping's delete or key rename, a layout-plan commit reconciling the
+ * entity's mappings — takes it, then checks, then writes, so a view can't
+ * start using a mapping between another write's check and its delete.
+ * Distinct from every other namespace. `0x5644_4550` is ASCII "VDEP".
+ */
+export const VIEW_DEPS_LOCK_NAMESPACE = 0x5644_4550;
+
 export type SyncLockOutcome<T> =
   | { acquired: true; value: T }
   | { acquired: false };

@@ -85,7 +85,7 @@ describe("JOB_LOCK_SCOPES / jobLockScopes (#769)", () => {
         connectorInstanceId: "ci-1",
       })
     ).toEqual([]);
-    expect(JOB_TYPE_LABELS.entity_data_delete).toBe("Delete connector data");
+    expect(JOB_TYPE_LABELS.entity_data_delete).toBe("Delete entity data");
   });
 
   it("#802: entity_data_delete metadata needs at least one entity", () => {

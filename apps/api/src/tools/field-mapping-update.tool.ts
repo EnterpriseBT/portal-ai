@@ -6,6 +6,7 @@ import { keyField } from "@portalai/core/contracts";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import {
   assertStationScope,
   assertWriteCapability,
@@ -79,7 +80,7 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_update";
   name = "Field Mapping Update Tool";
   description =
-    "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. Accepts 1–100 items.";
+    "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items.";
 
   get schema() {
     return InputSchema;
@@ -171,6 +172,12 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
               if (fields.enumValues !== undefined)
                 updateData.enumValues = fields.enumValues;
 
+              // #802: a view filtering on the old key would break.
+              await FieldMappingValidationService.assertKeyChangeKeepsViews(
+                mappings[fieldMappingId],
+                fields.normalizedKey,
+                tx
+              );
               await DbService.repository.fieldMappings.update(
                 fieldMappingId,
                 updateData as never,

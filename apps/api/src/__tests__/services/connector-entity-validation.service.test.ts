@@ -16,9 +16,6 @@ const mockSoftDeleteTagAssignments = jest
 const mockSoftDeleteFieldMappings = jest
   .fn<(...args: unknown[]) => Promise<number>>()
   .mockResolvedValue(0);
-const mockSoftDeleteEntityRecords = jest
-  .fn<(...args: unknown[]) => Promise<number>>()
-  .mockResolvedValue(0);
 const mockSoftDeleteEntity = jest
   .fn<(...args: unknown[]) => Promise<unknown>>()
   .mockResolvedValue(undefined);
@@ -71,9 +68,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       entityTagAssignments: {
         softDeleteByConnectorEntityIds: mockSoftDeleteTagAssignments,
-      },
-      entityRecords: {
-        softDeleteByConnectorEntityIds: mockSoftDeleteEntityRecords,
       },
     },
     transaction: mockTransaction,
@@ -156,7 +150,6 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     mockSoftDeleteGroupMembers.mockResolvedValue(2);
     mockSoftDeleteTagAssignments.mockResolvedValue(1);
     mockSoftDeleteFieldMappings.mockResolvedValue(3);
-    mockSoftDeleteEntityRecords.mockResolvedValue(5);
 
     const result = await ConnectorEntityValidationService.executeDelete(
       "ce-1",
@@ -182,7 +175,6 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
       "user-1"
     );
 
-    expect(mockSoftDeleteEntityRecords).not.toHaveBeenCalled();
     expect(mockInsertJob).toHaveBeenCalledWith(
       {
         organizationId: "org-1",
@@ -229,7 +221,6 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     mockSoftDeleteGroupMembers.mockResolvedValue(0);
     mockSoftDeleteTagAssignments.mockResolvedValue(0);
     mockSoftDeleteFieldMappings.mockResolvedValue(0);
-    mockSoftDeleteEntityRecords.mockResolvedValue(0);
 
     await ConnectorEntityValidationService.executeDelete(
       "ce-1",
@@ -250,7 +241,6 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     mockSoftDeleteGroupMembers.mockResolvedValue(0);
     mockSoftDeleteTagAssignments.mockResolvedValue(0);
     mockSoftDeleteFieldMappings.mockResolvedValue(0);
-    mockSoftDeleteEntityRecords.mockResolvedValue(0);
 
     const externalTx = "external-tx" as unknown;
 

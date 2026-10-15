@@ -50,6 +50,7 @@ import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { CuratedViewPayloadService } from "../services/curated-view-payload.service.js";
 import { CuratedViewDeleteService } from "../services/curated-view-delete.service.js";
+import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 
 const logger = createLogger({ module: "curated-view" });
@@ -535,15 +536,6 @@ curatedViewRouter.post(
         );
       }
 
-      if (body.filter)
-        await validateFilter(body.filter, body.connectorEntityId);
-      // Omitted = unrestricted (all columns), the same as `[]`.
-      const projection = await assertProjection(
-        set,
-        body.connectorEntityId,
-        body.fieldMappingIds ?? []
-      );
-
       const duplicate = await DbService.repository.curatedViews.findByKey(
         organizationId,
         body.key
@@ -571,6 +563,22 @@ curatedViewRouter.post(
       const row = model.parse();
 
       const created = await DbService.transaction(async (tx) => {
+        // #802: the filter's keys and the projection's mappings are checked
+        // under the entity's view-dependency lock, so a mapping can't be
+        // deleted or renamed between the check and this view's insert.
+        await CuratedViewDependencyService.lockEntities(tx, [
+          body.connectorEntityId,
+        ]);
+        if (body.filter)
+          await validateFilter(body.filter, body.connectorEntityId);
+        // Omitted = unrestricted (all columns), the same as `[]`.
+        const projection = await assertProjection(
+          set,
+          body.connectorEntityId,
+          body.fieldMappingIds ?? [],
+          undefined,
+          tx
+        );
         const view = await DbService.repository.curatedViews.create(
           row as never,
           tx
@@ -665,12 +673,16 @@ curatedViewRouter.patch(
           )
       );
 
-      if (body.filter) {
-        await validateFilter(body.filter, existing.connectorEntityId);
-      }
       if (body.fieldMappingIds) assertNoDuplicates(body.fieldMappingIds);
 
       const updated = await DbService.transaction(async (tx) => {
+        // #802: checked under the entity's view-dependency lock, like create.
+        await CuratedViewDependencyService.lockEntities(tx, [
+          existing.connectorEntityId,
+        ]);
+        if (body.filter) {
+          await validateFilter(body.filter, existing.connectorEntityId);
+        }
         const patch: Record<string, unknown> = {
           updated: Date.now(),
           updatedBy: userId,

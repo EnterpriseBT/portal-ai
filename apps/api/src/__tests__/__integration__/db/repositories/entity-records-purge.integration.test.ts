@@ -343,6 +343,14 @@ describe("EntityRecordsRepository.purgeTombstonedBefore (#442)", () => {
       expect(found).toContain(deadEntityId);
       expect(found).not.toContain(recentlyDeleted);
       expect(found).not.toContain(liveEntityId);
+      // An id the run already failed to drop is skipped.
+      expect(
+        await DbService.repository.wideTable.findEntityIdsWithTableDeletedBefore(
+          now - 30 * DAY,
+          100,
+          [deadEntityId]
+        )
+      ).not.toContain(deadEntityId);
     } finally {
       for (const id of [deadEntityId, recentlyDeleted]) {
         await reconciler.dropTable(id, db).catch(() => undefined);

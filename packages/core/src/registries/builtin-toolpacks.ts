@@ -983,7 +983,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_update",
       description:
-        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. Accepts 1–100 items.",
+        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items.",
       parameterSchema: objectSchema(
         {
           items: {

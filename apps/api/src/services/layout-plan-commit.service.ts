@@ -233,14 +233,17 @@ export class LayoutPlanCommitService {
 
     // #802: committing soft-deletes each reconciled entity's mappings the
     // plan no longer binds — refuse before any write if a curated view uses
-    // one. Only the targets that produced records are reconciled below, so
-    // only those are checked. The enqueue routes ran the same check over the
-    // whole plan; this one catches a view created after enqueue.
-    await LayoutPlanCommitService.assertCommitKeepsViewMappings(
-      plan,
-      organizationId,
-      connectorInstanceId,
-      { targets: new Set(recordsByTarget.keys()), catalogById }
+    // one, so the common case leaves nothing half-written. Only the targets
+    // that produced records are reconciled below, so only those are checked.
+    // Each target's transaction re-checks under the lock (the race backstop).
+    await DbService.transaction((tx) =>
+      LayoutPlanCommitService.assertCommitKeepsViewMappings(
+        plan,
+        organizationId,
+        connectorInstanceId,
+        tx,
+        { targets: new Set(recordsByTarget.keys()), catalogById }
+      )
     );
 
     // Precompute per-target normalized-key sets across the whole plan so
@@ -287,6 +290,17 @@ export class LayoutPlanCommitService {
           tx
         );
         connectorEntityIds.push(entity.id);
+
+        // #802: authoritative re-check, under the entity's view-dependency
+        // lock and in the transaction that reconciles, so a view created
+        // since the early check can't lose a mapping this commit drops.
+        await LayoutPlanCommitService.assertCommitKeepsViewMappings(
+          plan,
+          organizationId,
+          connectorInstanceId,
+          tx,
+          { targets: new Set([targetId]), catalogById }
+        );
 
         await reconcileFieldMappings(
           {
@@ -512,11 +526,16 @@ export class LayoutPlanCommitService {
    * `(organizationId, key)` as `upsertByKey` matches them, and only this
    * connector's: `upsertByKey` refuses a key another connector owns, so
    * that entity is never reconciled.
+   *
+   * Runs on `tx` and takes the view-dependency lock on every entity it
+   * checks, so it's authoritative in the transaction that reconciles: no view
+   * can start using a dropped mapping before that transaction commits.
    */
   static async assertCommitKeepsViewMappings(
     plan: LayoutPlan,
     organizationId: string,
     connectorInstanceId: string,
+    tx: DbClient,
     opts: {
       targets?: Set<string>;
       catalogById?: Map<string, ColumnDefinitionSelect>;
@@ -533,9 +552,15 @@ export class LayoutPlanCommitService {
         eq(connectorEntities.organizationId, organizationId),
         eq(connectorEntities.connectorInstanceId, connectorInstanceId),
         inArray(connectorEntities.key, targets)
-      )
+      ),
+      {},
+      tx
     );
     if (entities.length === 0) return;
+    await CuratedViewDependencyService.lockEntities(
+      tx,
+      entities.map((e) => e.id)
+    );
 
     const catalogById =
       opts.catalogById ??
@@ -551,7 +576,9 @@ export class LayoutPlanCommitService {
       inArray(
         fieldMappings.connectorEntityId,
         entities.map((e) => e.id)
-      )
+      ),
+      {},
+      tx
     );
     const keyByEntityId = new Map(entities.map((e) => [e.id, e.key]));
     const keptByTarget = new Map<string, Set<string>>();
@@ -577,7 +604,8 @@ export class LayoutPlanCommitService {
     await CuratedViewDependencyService.assertMappingsNotInViews(
       organizationId,
       dropped,
-      `field mapping${dropped.length === 1 ? "" : "s"} ${names}, which this layout plan no longer includes`
+      `field mapping${dropped.length === 1 ? "" : "s"} ${names}, which this layout plan no longer includes`,
+      tx
     );
   }
 

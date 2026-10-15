@@ -226,14 +226,26 @@ export class WideTableRepository {
   async findEntityIdsWithTableDeletedBefore(
     cutoffMs: number,
     limit: number,
+    /** Ids to skip — the ones a run already failed to drop. */
+    excludeIds: string[] = [],
     client: DbClient = db
   ): Promise<string[]> {
+    // A list of bound params, not a bound JS array: drizzle's sql`` won't
+    // bind one as a Postgres array.
+    const exclude =
+      excludeIds.length > 0
+        ? sql`AND e."id" NOT IN (${sql.join(
+            excludeIds.map((id) => sql`${id}`),
+            sql`, `
+          )})`
+        : sql``;
     const rows = await (client as typeof db).execute<{ id: string }>(sql`
       SELECT e."id"
       FROM "connector_entities" e
       JOIN pg_tables t
         ON t.schemaname = 'public' AND t.tablename = 'er__' || e."id"
       WHERE e."deleted" IS NOT NULL AND e."deleted" < ${cutoffMs}
+        ${exclude}
       ORDER BY e."deleted", e."id"
       LIMIT ${limit}
     `);

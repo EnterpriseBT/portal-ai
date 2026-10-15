@@ -1330,6 +1330,45 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       expect(memberRows.deleted).not.toBeNull();
     });
 
+    it("#802: while the records job is pending, no write reaches the entity's records", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      const related = await seedRelatedData(organizationId, entity.id);
+
+      const del = await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(del.status).toBe(200);
+
+      const base = `/api/connector-entities/${entity.id}/records`;
+      const writes = [
+        request(app)
+          .post(base)
+          .send({ data: { name: "Mallory" } }),
+        request(app)
+          .patch(`${base}/${related.record.id}`)
+          .send({ data: { name: "Mallory" } }),
+        request(app).delete(`${base}/${related.record.id}`),
+        request(app).delete(base),
+        request(app).post(`${base}/revalidate`).send({}),
+      ];
+      for (const write of writes) {
+        const res = await write.set("Authorization", "Bearer test-token");
+        expect(res.status).toBe(404);
+        expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+      }
+
+      // The record is untouched: still live, still Alice, for the job.
+      const [record] = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, related.record.id));
+      expect(record.deleted).toBeNull();
+      expect(record.data).toEqual({ name: "Alice" });
+    });
+
     it("#802: still succeeds when the records job can't be queued", async () => {
       const { organizationId, entity } = await seedWithCapabilities({
         definitionWrite: true,

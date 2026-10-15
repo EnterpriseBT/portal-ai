@@ -7,7 +7,6 @@ import {
 } from "@portalai/core/contracts";
 import type {
   InterpretResponsePayload,
-  LayoutPlan,
   LayoutPlanCommitEnqueuedResponse,
   LayoutPlanEditContextResponsePayload,
   LayoutPlanResponsePayload,
@@ -634,17 +633,14 @@ connectorInstanceLayoutPlansRouter.post(
       );
       // #802: refuse up front, not as a failed job, when committing would
       // drop a field mapping a curated view uses. (The commit re-checks.)
-      const planRow =
-        await DbService.repository.connectorInstanceLayoutPlans.findById(
-          planId
-        );
-      if (planRow) {
-        await LayoutPlanCommitService.assertCommitKeepsViewMappings(
-          planRow.plan as LayoutPlan,
+      await DbService.transaction((tx) =>
+        LayoutPlanCommitService.assertCommitKeepsViewMappings(
+          prepared.plan,
           organizationId,
-          connectorInstanceId
-        );
-      }
+          connectorInstanceId,
+          tx
+        )
+      );
       // #769: refused while any job holds the connector or one of its
       // entities.
       const job = await JobLockService.enqueueExclusive(userId, {

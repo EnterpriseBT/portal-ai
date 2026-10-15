@@ -22,7 +22,9 @@ const mockPurge =
     ) => Promise<number>
   >();
 const mockFindLeftoverTables =
-  jest.fn<(cutoffMs: number, limit: number) => Promise<string[]>>();
+  jest.fn<
+    (cutoffMs: number, limit: number, excludeIds: string[]) => Promise<string[]>
+  >();
 const mockDropTable = jest.fn<(entityId: string) => Promise<void>>();
 
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
@@ -158,23 +160,45 @@ describe("entityRecordRetentionPurgeProcessor (#442)", () => {
 
   it("#802: drops the wide tables deleted entities left behind", async () => {
     drains({ orphan: [], live: [] });
-    mockFindLeftoverTables.mockResolvedValue(["ce-1", "ce-2"]);
+    mockFindLeftoverTables.mockResolvedValueOnce(["ce-1", "ce-2"]);
 
     const summary = await entityRecordRetentionPurgeProcessor({ now: NOW });
 
-    expect(mockFindLeftoverTables).toHaveBeenCalledWith(NOW - 7 * DAY, 100);
+    expect(mockFindLeftoverTables).toHaveBeenCalledWith(NOW - 7 * DAY, 100, []);
     expect(mockDropTable.mock.calls.map((c) => c[0])).toEqual(["ce-1", "ce-2"]);
     expect(summary.wideTablesDropped).toBe(2);
   });
 
   it("#802: one table that won't drop doesn't stop the rest", async () => {
     drains({ orphan: [], live: [] });
-    mockFindLeftoverTables.mockResolvedValue(["ce-1", "ce-2"]);
+    mockFindLeftoverTables.mockResolvedValueOnce(["ce-1", "ce-2"]);
     mockDropTable.mockRejectedValueOnce(new Error("lock timeout"));
 
     const summary = await entityRecordRetentionPurgeProcessor({ now: NOW });
 
     expect(mockDropTable).toHaveBeenCalledTimes(2);
+    expect(summary.wideTablesDropped).toBe(1);
+  });
+
+  it("#802: tables that won't drop don't starve newer ones", async () => {
+    drains({ orphan: [], live: [] });
+    // The oldest page fails entirely; the next page, which excludes it,
+    // still gets dropped in the same run.
+    mockFindLeftoverTables
+      .mockResolvedValueOnce(["stuck-1", "stuck-2"])
+      .mockResolvedValueOnce(["ce-3"])
+      .mockResolvedValueOnce([]);
+    mockDropTable
+      .mockRejectedValueOnce(new Error("lock timeout"))
+      .mockRejectedValueOnce(new Error("lock timeout"));
+
+    const summary = await entityRecordRetentionPurgeProcessor({ now: NOW });
+
+    expect(mockFindLeftoverTables.mock.calls[1][2]).toEqual([
+      "stuck-1",
+      "stuck-2",
+    ]);
+    expect(mockDropTable).toHaveBeenLastCalledWith("ce-3");
     expect(summary.wideTablesDropped).toBe(1);
   });
 

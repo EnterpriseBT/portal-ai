@@ -12,6 +12,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { and, eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
+import { VIEW_DEPS_LOCK_NAMESPACE } from "../../../services/sync-lock.service.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
@@ -1328,6 +1329,102 @@ describe("Field Mapping Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
+    });
+
+    it("a key rename is refused while a view filters on the old key", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        {
+          filter: {
+            combinator: "and",
+            conditions: [
+              { field: mapping.normalizedKey, operator: "eq", value: "x" },
+            ],
+          },
+        }
+      );
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: mapping.sourceField,
+          columnDefinitionId: mapping.columnDefinitionId,
+          normalizedKey: "renamed_key",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_KEY_IN_VIEW);
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, mapping.id));
+      expect(row.normalizedKey).toBe(mapping.normalizedKey);
+    });
+
+    it("a key rename is allowed when a view only projects the mapping", async () => {
+      const { organizationId, connectorEntityId, mapping } =
+        await mappingOnEmptyEntity();
+      await insertView(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        connectorEntityId,
+        { projectMappingId: mapping.id }
+      );
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: mapping.sourceField,
+          columnDefinitionId: mapping.columnDefinitionId,
+          normalizedKey: "renamed_key",
+        });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("a view write waits for a mapping delete holding the entity's lock, then sees it gone", async () => {
+      const { connectorEntityId, mapping } = await mappingOnEmptyEntity();
+      const other = postgres(process.env.DATABASE_URL!, { max: 1 });
+      let createRes: request.Response | undefined;
+      try {
+        await other.begin(async (tx) => {
+          // What a mapping delete does under #802's lock: lock, then delete.
+          await tx`SELECT pg_advisory_xact_lock(${VIEW_DEPS_LOCK_NAMESPACE}::int, hashtext(${connectorEntityId}))`;
+          await tx`UPDATE field_mappings SET deleted = ${Date.now()}, deleted_by = 'test' WHERE id = ${mapping.id}`;
+
+          const pending = request(app)
+            .post("/api/curated-views")
+            .set("Authorization", "Bearer test-token")
+            .send({
+              connectorEntityId,
+              key: `v_${generateId().replace(/-/g, "").slice(0, 8)}`,
+              label: "Racing view",
+              fieldMappingIds: [mapping.id],
+            })
+            .then((r) => {
+              createRes = r;
+              return r;
+            });
+          // Still blocked on the lock while this transaction is open.
+          await new Promise((r) => setTimeout(r, 400));
+          expect(createRes).toBeUndefined();
+          void pending;
+        });
+        // Committed: the view create proceeds and finds its only column gone.
+        for (let i = 0; i < 50 && !createRes; i++) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        expect(createRes?.status).toBe(400);
+        expect(createRes?.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+      } finally {
+        await other.end();
+      }
     });
 
     it("the impact lists the views using the mapping", async () => {

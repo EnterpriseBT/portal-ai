@@ -782,7 +782,7 @@ export const JOB_TYPE_LABELS: Record<JobType, string> = {
   system_check: "System check",
   revalidation: "Revalidation",
   entity_record_clear: "Delete records",
-  entity_data_delete: "Delete connector data",
+  entity_data_delete: "Delete entity data",
   connector_sync: "Sync",
   file_upload_parse: "File parse",
   layout_plan_commit: "Import",

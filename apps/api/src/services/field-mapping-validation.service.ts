@@ -42,6 +42,30 @@ export class FieldMappingValidationService {
    * Validate that `normalizedKey` is unique within the connector entity.
    * Pass `excludeId` when updating an existing mapping to exclude itself.
    */
+  /**
+   * #802: refuse a `normalizedKey` rename a curated view's filter depends on
+   * (`409 FIELD_MAPPING_KEY_IN_VIEW`). Call it in the transaction that writes
+   * the rename: it takes the entity's view-dependency lock.
+   */
+  static async assertKeyChangeKeepsViews(
+    mapping: {
+      id: string;
+      organizationId: string;
+      connectorEntityId: string;
+      normalizedKey: string;
+      sourceField: string;
+    },
+    newKey: string | undefined,
+    tx: DbClient
+  ): Promise<void> {
+    await CuratedViewDependencyService.assertKeyRenameKeepsViews(
+      mapping.organizationId,
+      mapping,
+      newKey,
+      tx
+    );
+  }
+
   static async validateNormalizedKeyUniqueness(
     connectorEntityId: string,
     normalizedKey: string,
@@ -137,11 +161,16 @@ export class FieldMappingValidationService {
 
     // #802: a mapping a curated view projects or filters on can't go — the
     // view would break, and dropping its last projected column would widen
-    // it to every column. The user edits or deletes the view first.
-    await CuratedViewDependencyService.assertMappingsNotInViews(
-      mapping.organizationId,
-      [mapping],
-      `field mapping "${mapping.sourceField}"`
+    // it to every column. The user edits or deletes the view first. An early
+    // answer (the tool lists it per item); executeDelete re-checks under the
+    // lock, in the transaction that deletes.
+    await DbService.transaction((tx) =>
+      CuratedViewDependencyService.assertMappingsNotInViews(
+        mapping.organizationId,
+        [mapping],
+        `field mapping "${mapping.sourceField}"`,
+        tx
+      )
     );
   }
 
@@ -206,6 +235,14 @@ export class FieldMappingValidationService {
     }
 
     const run = async (tx: DbClient): Promise<FieldMappingCascadeResult> => {
+      // #802: authoritative — under the entity's view-dependency lock, so no
+      // view can start using the mapping before this transaction commits.
+      await CuratedViewDependencyService.assertMappingsNotInViews(
+        mapping.organizationId,
+        [mapping],
+        `field mapping "${mapping.sourceField}"`,
+        tx
+      );
       await DbService.repository.fieldMappings.softDelete(
         fieldMappingId,
         userId,
