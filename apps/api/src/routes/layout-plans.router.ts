@@ -5,6 +5,7 @@ import {
   LayoutPlanInterpretDraftRequestBodySchema,
 } from "@portalai/core/contracts";
 import type {
+  LayoutPlan,
   LayoutPlanCommitDraftResponsePayload,
   LayoutPlanInterpretDraftResponsePayload,
 } from "@portalai/core/contracts";
@@ -17,6 +18,7 @@ import { ConnectorInstanceAccessService } from "../services/connector-instance-a
 import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
+import { LayoutPlanCommitService } from "../services/layout-plan-commit.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { interpretFailure } from "../utils/interpret-error.util.js";
@@ -212,6 +214,14 @@ layoutPlansRouter.post(
         await JobLockService.assertNoneRunning(
           { kind: "connectorInstance", id: parsed.data.connectorInstanceId },
           { organizationId }
+        );
+        // #802: committing into an existing connector would drop the field
+        // mappings the plan no longer binds — refuse before preparing (which
+        // writes the plan) if a curated view uses one. The commit re-checks.
+        await LayoutPlanCommitService.assertCommitKeepsViewMappings(
+          parsed.data.plan as LayoutPlan,
+          organizationId,
+          parsed.data.connectorInstanceId
         );
       }
       const prepared = await LayoutPlanDraftService.prepareDraftCommit(

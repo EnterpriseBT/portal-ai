@@ -105,11 +105,12 @@ export class CuratedViewDependencyService {
    * Refuse with `409 FIELD_MAPPING_DELETE_IN_VIEW` when any live view uses
    * one of these mappings. The error names no view: the caller may not be
    * able to read them. The impact endpoint lists the readable ones.
+   * `subject` names what's being removed, e.g. `field mapping "Email"`.
    */
   static async assertMappingsNotInViews(
     organizationId: string,
     mappings: MappingRef[],
-    sourceLabel: string,
+    subject: string,
     client?: DbClient
   ): Promise<void> {
     const views = await CuratedViewDependencyService.findViewsUsingMappings(
@@ -121,7 +122,7 @@ export class CuratedViewDependencyService {
     throw new ApiError(
       409,
       ApiCode.FIELD_MAPPING_DELETE_IN_VIEW,
-      `Cannot delete field mapping "${sourceLabel}": ${views.length} curated view${views.length === 1 ? " uses" : "s use"} it. Edit or delete ${views.length === 1 ? "that view" : "those views"} first.`,
+      `Cannot delete ${subject}: ${views.length} curated view${views.length === 1 ? " uses" : "s use"} it. Edit or delete ${views.length === 1 ? "that view" : "those views"} first.`,
       { curatedViewCount: views.length }
     );
   }

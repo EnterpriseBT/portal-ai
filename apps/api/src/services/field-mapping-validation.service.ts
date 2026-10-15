@@ -141,7 +141,7 @@ export class FieldMappingValidationService {
     await CuratedViewDependencyService.assertMappingsNotInViews(
       mapping.organizationId,
       [mapping],
-      mapping.sourceField
+      `field mapping "${mapping.sourceField}"`
     );
   }
 

@@ -132,7 +132,7 @@ describe("CuratedViewDependencyService.assertMappingsNotInViews", () => {
     const err = await CuratedViewDependencyService.assertMappingsNotInViews(
       "org-1",
       [EMAIL],
-      "Email"
+      'field mapping "Email"'
     ).then(
       () => ({}) as Record<string, unknown>,
       (e: unknown) => e as Record<string, unknown>

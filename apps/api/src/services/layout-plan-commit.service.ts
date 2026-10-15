@@ -10,7 +10,7 @@
  * auditable.
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import type {
   ColumnBinding,
@@ -27,6 +27,7 @@ import { computeChecksum, replay } from "@portalai/spreadsheet-parsing/replay";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
+import { CuratedViewDependencyService } from "./curated-view-dependency.service.js";
 import {
   reconcileFieldMappings,
   resolveNormalizedKey,
@@ -35,7 +36,11 @@ import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { db } from "../db/client.js";
 import { WIDE_TABLE_CHUNK_SIZE } from "../db/repositories/wide-table.repository.js";
-import { connectorInstances, fieldMappings } from "../db/schema/index.js";
+import {
+  connectorEntities,
+  connectorInstances,
+  fieldMappings,
+} from "../db/schema/index.js";
 import type {
   ColumnDefinitionSelect,
   EntityRecordInsert,
@@ -224,6 +229,146 @@ export class LayoutPlanCommitService {
       bucket.push(record);
     }
 
+    const bindingsByTarget = LayoutPlanCommitService.bindingsByTarget(plan);
+
+    // #802: committing soft-deletes each reconciled entity's mappings the
+    // plan no longer binds — refuse before any write if a curated view uses
+    // one. Only the targets that produced records are reconciled below, so
+    // only those are checked. The enqueue routes ran the same check over the
+    // whole plan; this one catches a view created after enqueue.
+    await LayoutPlanCommitService.assertCommitKeepsViewMappings(
+      plan,
+      organizationId,
+      connectorInstanceId,
+      { targets: new Set(recordsByTarget.keys()), catalogById }
+    );
+
+    // Precompute per-target normalized-key sets across the whole plan so
+    // reference bindings can validate `refNormalizedKey` against staged
+    // siblings. Excluded bindings contribute no FieldMapping, so they
+    // shouldn't be reachable as ref targets either.
+    const stagedEntityKeys = new Set(bindingsByTarget.keys());
+    const stagedNormalizedKeysByEntityKey = new Map<string, Set<string>>();
+    for (const [targetKey, bucket] of bindingsByTarget.entries()) {
+      const keys = new Set<string>();
+      for (const binding of bucket) {
+        if (binding.excluded === true) continue;
+        keys.add(resolveNormalizedKey(binding, catalogById));
+      }
+      stagedNormalizedKeysByEntityKey.set(targetKey, keys);
+    }
+
+    // ── 6. Per-target: upsert entity, reconcile mappings, write records ─
+    const connectorEntityIds: string[] = [];
+    const totals: LayoutPlanCommitResult["recordCounts"] = {
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+      invalid: 0,
+    };
+
+    for (const [targetId, groupRecords] of recordsByTarget.entries()) {
+      const bindings = bindingsByTarget.get(targetId) ?? [];
+      await DbService.transaction(async (tx) => {
+        const entity = await DbService.repository.connectorEntities.upsertByKey(
+          {
+            id: SystemUtilities.id.v4.generate(),
+            organizationId,
+            connectorInstanceId,
+            key: targetId,
+            label: targetId,
+            created: Date.now(),
+            createdBy: userId,
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+          tx
+        );
+        connectorEntityIds.push(entity.id);
+
+        await reconcileFieldMappings(
+          {
+            connectorEntityId: entity.id,
+            organizationId,
+            userId,
+            bindings,
+            catalogById,
+            stagedEntityKeys,
+            stagedNormalizedKeysByEntityKey,
+          },
+          tx
+        );
+
+        // Reconcile the wide table for this entity. The field-mappings
+        // reconciler just landed the canonical mappings; the wide-table
+        // reconciler now creates `er__<id>` (if absent) and adds the
+        // matching `c_*` columns. `writeRecords` immediately below
+        // requires the table to exist.
+        await wideTableReconcilerService.reconcileEntity(entity.id, tx);
+
+        // Build the `recordFieldKey → normalizedKey` map the record writer
+        // needs so `entity_records.normalizedData` lines up with the
+        // `FieldMapping.normalizedKey` values reconcile wrote. Static field
+        // bindings expose values under `columnDefinitionId`; pivot +
+        // cellValueField bindings expose values under their source name —
+        // each binding declares its own `recordFieldKey` so the lookup is
+        // uniform. Skip excluded bindings — they have no FieldMapping row.
+        const normalizedKeyByRecordFieldKey = new Map<string, string>();
+        for (const binding of bindings) {
+          if (binding.excluded === true) continue;
+          if (!normalizedKeyByRecordFieldKey.has(binding.recordFieldKey)) {
+            normalizedKeyByRecordFieldKey.set(
+              binding.recordFieldKey,
+              resolveNormalizedKey(binding, catalogById)
+            );
+          }
+        }
+
+        const counts = await LayoutPlanCommitService.writeRecords(
+          entity.id,
+          groupRecords,
+          catalogById,
+          normalizedKeyByRecordFieldKey,
+          organizationId,
+          userId,
+          tx,
+          syncOptions.syncedAt,
+          reportRowsWritten
+        );
+        totals.created += counts.created;
+        totals.updated += counts.updated;
+        totals.unchanged += counts.unchanged;
+        totals.invalid += counts.invalid;
+      });
+    }
+
+    syncOptions.onProgress?.(PROGRESS_AFTER_WRITES);
+
+    logger.info(
+      {
+        event: "commit.completed",
+        connectorEntityCount: connectorEntityIds.length,
+        recordCounts: totals,
+      },
+      "layout plan commit completed"
+    );
+
+    return { connectorEntityIds, recordCounts: totals };
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────
+
+  /**
+   * The FieldMapping bindings each plan target produces, keyed by target
+   * entity key — static column bindings, pivot segments, intersection and
+   * cell-value fields. Pure: shared by `commit` and the #802 view-dependency
+   * pre-check, so both see exactly the bindings reconcile will.
+   */
+  static bindingsByTarget(
+    plan: LayoutPlan
+  ): Map<string, PlanBindingWithSource[]> {
     const bindingsByTarget = new Map<string, PlanBindingWithSource[]>();
     for (const region of plan.regions as Region[]) {
       const bucket =
@@ -350,123 +495,91 @@ export class LayoutPlanCommitService {
         }
       }
     }
-
-    // Precompute per-target normalized-key sets across the whole plan so
-    // reference bindings can validate `refNormalizedKey` against staged
-    // siblings. Excluded bindings contribute no FieldMapping, so they
-    // shouldn't be reachable as ref targets either.
-    const stagedEntityKeys = new Set(bindingsByTarget.keys());
-    const stagedNormalizedKeysByEntityKey = new Map<string, Set<string>>();
-    for (const [targetKey, bucket] of bindingsByTarget.entries()) {
-      const keys = new Set<string>();
-      for (const binding of bucket) {
-        if (binding.excluded === true) continue;
-        keys.add(resolveNormalizedKey(binding, catalogById));
-      }
-      stagedNormalizedKeysByEntityKey.set(targetKey, keys);
-    }
-
-    // ── 6. Per-target: upsert entity, reconcile mappings, write records ─
-    const connectorEntityIds: string[] = [];
-    const totals: LayoutPlanCommitResult["recordCounts"] = {
-      created: 0,
-      updated: 0,
-      unchanged: 0,
-      invalid: 0,
-    };
-
-    for (const [targetId, groupRecords] of recordsByTarget.entries()) {
-      const bindings = bindingsByTarget.get(targetId) ?? [];
-      await DbService.transaction(async (tx) => {
-        const entity = await DbService.repository.connectorEntities.upsertByKey(
-          {
-            id: SystemUtilities.id.v4.generate(),
-            organizationId,
-            connectorInstanceId,
-            key: targetId,
-            label: targetId,
-            created: Date.now(),
-            createdBy: userId,
-            updated: null,
-            updatedBy: null,
-            deleted: null,
-            deletedBy: null,
-          },
-          tx
-        );
-        connectorEntityIds.push(entity.id);
-
-        await reconcileFieldMappings(
-          {
-            connectorEntityId: entity.id,
-            organizationId,
-            userId,
-            bindings,
-            catalogById,
-            stagedEntityKeys,
-            stagedNormalizedKeysByEntityKey,
-          },
-          tx
-        );
-
-        // Reconcile the wide table for this entity. The field-mappings
-        // reconciler just landed the canonical mappings; the wide-table
-        // reconciler now creates `er__<id>` (if absent) and adds the
-        // matching `c_*` columns. `writeRecords` immediately below
-        // requires the table to exist.
-        await wideTableReconcilerService.reconcileEntity(entity.id, tx);
-
-        // Build the `recordFieldKey → normalizedKey` map the record writer
-        // needs so `entity_records.normalizedData` lines up with the
-        // `FieldMapping.normalizedKey` values reconcile wrote. Static field
-        // bindings expose values under `columnDefinitionId`; pivot +
-        // cellValueField bindings expose values under their source name —
-        // each binding declares its own `recordFieldKey` so the lookup is
-        // uniform. Skip excluded bindings — they have no FieldMapping row.
-        const normalizedKeyByRecordFieldKey = new Map<string, string>();
-        for (const binding of bindings) {
-          if (binding.excluded === true) continue;
-          if (!normalizedKeyByRecordFieldKey.has(binding.recordFieldKey)) {
-            normalizedKeyByRecordFieldKey.set(
-              binding.recordFieldKey,
-              resolveNormalizedKey(binding, catalogById)
-            );
-          }
-        }
-
-        const counts = await LayoutPlanCommitService.writeRecords(
-          entity.id,
-          groupRecords,
-          catalogById,
-          normalizedKeyByRecordFieldKey,
-          organizationId,
-          userId,
-          tx,
-          syncOptions.syncedAt,
-          reportRowsWritten
-        );
-        totals.created += counts.created;
-        totals.updated += counts.updated;
-        totals.unchanged += counts.unchanged;
-        totals.invalid += counts.invalid;
-      });
-    }
-
-    syncOptions.onProgress?.(PROGRESS_AFTER_WRITES);
-
-    logger.info(
-      {
-        event: "commit.completed",
-        connectorEntityCount: connectorEntityIds.length,
-        recordCounts: totals,
-      },
-      "layout plan commit completed"
-    );
-
-    return { connectorEntityIds, recordCounts: totals };
+    return bindingsByTarget;
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────
+  /**
+   * #802: refuse with `409 FIELD_MAPPING_DELETE_IN_VIEW` when committing
+   * `plan` would drop a field mapping a curated view uses. Committing
+   * reconciles each target entity's mappings to the plan's bindings and
+   * soft-deletes the rest (`reconcileFieldMappings`); a view projecting or
+   * filtering on one of those would break, so the commit can't go ahead
+   * until the view is edited or deleted.
+   *
+   * `targets` narrows the check to the targets actually reconciled (the
+   * in-commit call); omitted, every plan target is checked (the enqueue
+   * routes, which haven't replayed yet). Entities are matched by
+   * `(organizationId, key)` as `upsertByKey` matches them, and only this
+   * connector's: `upsertByKey` refuses a key another connector owns, so
+   * that entity is never reconciled.
+   */
+  static async assertCommitKeepsViewMappings(
+    plan: LayoutPlan,
+    organizationId: string,
+    connectorInstanceId: string,
+    opts: {
+      targets?: Set<string>;
+      catalogById?: Map<string, ColumnDefinitionSelect>;
+    } = {}
+  ): Promise<void> {
+    const bindings = LayoutPlanCommitService.bindingsByTarget(plan);
+    const targets = [...bindings.keys()].filter(
+      (key) => !opts.targets || opts.targets.has(key)
+    );
+    if (targets.length === 0) return;
+
+    const entities = await DbService.repository.connectorEntities.findMany(
+      and(
+        eq(connectorEntities.organizationId, organizationId),
+        eq(connectorEntities.connectorInstanceId, connectorInstanceId),
+        inArray(connectorEntities.key, targets)
+      )
+    );
+    if (entities.length === 0) return;
+
+    const catalogById =
+      opts.catalogById ??
+      new Map(
+        (
+          (await DbService.repository.columnDefinitions.findByOrganizationId(
+            organizationId
+          )) as ColumnDefinitionSelect[]
+        ).map((r) => [r.id, r])
+      );
+
+    const mappings = await DbService.repository.fieldMappings.findMany(
+      inArray(
+        fieldMappings.connectorEntityId,
+        entities.map((e) => e.id)
+      )
+    );
+    const keyByEntityId = new Map(entities.map((e) => [e.id, e.key]));
+    const keptByTarget = new Map<string, Set<string>>();
+    for (const [target, bucket] of bindings) {
+      keptByTarget.set(
+        target,
+        new Set(
+          bucket
+            .filter((b) => b.excluded !== true)
+            .map((b) => resolveNormalizedKey(b, catalogById))
+        )
+      );
+    }
+
+    const dropped = mappings.filter((m) => {
+      const target = keyByEntityId.get(m.connectorEntityId);
+      const kept = target ? keptByTarget.get(target) : undefined;
+      return kept !== undefined && !kept.has(m.normalizedKey);
+    });
+    if (dropped.length === 0) return;
+
+    const names = dropped.map((m) => `"${m.sourceField}"`).join(", ");
+    await CuratedViewDependencyService.assertMappingsNotInViews(
+      organizationId,
+      dropped,
+      `field mapping${dropped.length === 1 ? "" : "s"} ${names}, which this layout plan no longer includes`
+    );
+  }
 
   private static assertUniqueEntityTargets(plan: LayoutPlan): void {
     const seen = new Set<string>();
