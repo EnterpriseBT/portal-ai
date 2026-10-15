@@ -23,6 +23,7 @@ import {
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import { seedCuratedViewWithDependents } from "../utils/seed-populated-org.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
 
@@ -786,6 +787,37 @@ describe("Connector Instance Router", () => {
     };
   }
 
+  /** #802: a second entity on the seeded instance, and one curated view over
+   *  each entity, both attached to the seeded station with their grants. */
+  async function seedViewsOnTwoEntities(
+    orgId: string,
+    userId: string,
+    seeded: Awaited<ReturnType<typeof seedInstanceWithRelatedData>>
+  ): Promise<string[]> {
+    const secondEntity = {
+      ...seeded.entity,
+      id: generateId(),
+      key: `second_${generateId().slice(0, 8)}`,
+    };
+    await (db as ReturnType<typeof drizzle>)
+      .insert(connectorEntities)
+      .values(secondEntity as never);
+    const viewIds: string[] = [];
+    for (const entityId of [seeded.entity.id, secondEntity.id]) {
+      viewIds.push(
+        await seedCuratedViewWithDependents(db as ReturnType<typeof drizzle>, {
+          organizationId: orgId,
+          connectorEntityId: entityId,
+          fieldMappingId: seeded.mapping.id,
+          stationId: seeded.station.id,
+          granteeUserId: userId,
+          key: `view_${generateId().slice(0, 8)}`,
+        })
+      );
+    }
+    return viewIds;
+  }
+
   describe("DELETE /api/connector-instances/:id", () => {
     it("should return 404 for non-existent connector instance", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
@@ -914,6 +946,45 @@ describe("Connector Instance Router", () => {
       );
       expect(deletedInstance).toBeDefined();
       expect(deletedInstance!.deleted).not.toBeNull();
+    });
+
+    it("#802: deletes the views over every entity and detaches them from stations", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+      const viewIds = await seedViewsOnTwoEntities(orgId, userId, seeded);
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${seeded.instance.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+
+      for (const viewId of viewIds) {
+        const viewRes = await request(app)
+          .get(`/api/curated-views/${viewId}`)
+          .set("Authorization", "Bearer test-token");
+        expect(viewRes.status).toBe(404);
+      }
+
+      const stationRes = await request(app)
+        .get(`/api/curated-views?stationId=${seeded.station.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(stationRes.status).toBe(200);
+      expect(stationRes.body.payload.curatedViews).toHaveLength(0);
+
+      const grants = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.permissionGrants)
+        .where(eqRaw(schema.permissionGrants.organizationId, orgId));
+      expect(
+        grants.filter(
+          (g) =>
+            viewIds.includes(g.resourceId ?? "") ||
+            viewIds.includes(g.conditionParam ?? "")
+        )
+      ).toHaveLength(0);
     });
 
     it("should no longer return deleted instance in GET list", async () => {
@@ -1048,6 +1119,7 @@ describe("Connector Instance Router", () => {
         entityTagAssignments: 0,
         entityGroupMembers: 0,
         stations: 0,
+        curatedViews: 0,
       });
     });
 
@@ -1070,7 +1142,24 @@ describe("Connector Instance Router", () => {
         entityTagAssignments: 1,
         entityGroupMembers: 1,
         stations: 1,
+        curatedViews: 0,
       });
+    });
+
+    it("#802: counts the views over every one of the instance's entities", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+      await seedViewsOnTwoEntities(orgId, userId, seeded);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${seeded.instance.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.curatedViews).toBe(2);
     });
   });
 

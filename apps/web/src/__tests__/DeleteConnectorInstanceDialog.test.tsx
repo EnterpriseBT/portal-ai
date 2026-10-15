@@ -12,6 +12,7 @@ const fullImpact: ConnectorInstanceImpact = {
   entityTagAssignments: 5,
   entityGroupMembers: 2,
   stations: 1,
+  curatedViews: 0,
 };
 
 const zeroImpact: ConnectorInstanceImpact = {
@@ -21,6 +22,7 @@ const zeroImpact: ConnectorInstanceImpact = {
   entityTagAssignments: 0,
   entityGroupMembers: 0,
   stations: 0,
+  curatedViews: 0,
 };
 
 const defaultProps = {

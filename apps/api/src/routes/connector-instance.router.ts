@@ -45,6 +45,7 @@ import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+import { CuratedViewDeleteService } from "../services/curated-view-delete.service.js";
 import {
   computeIdentityWarnings,
   computeSyncEligible,
@@ -469,8 +470,9 @@ connectorInstanceRouter.get(
  *     summary: Get deletion impact for a connector instance
  *     description: >
  *       Returns counts of all associated objects that would be affected
- *       if this connector instance were deleted. Used for pre-flight
- *       confirmation in the delete dialog.
+ *       if this connector instance were deleted — including the curated
+ *       views over its entities, which the delete removes (#802). Used for
+ *       pre-flight confirmation in the delete dialog.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -537,6 +539,7 @@ connectorInstanceRouter.get(
         entityTagAssignments,
         entityGroupMembers,
         stations,
+        curatedViews,
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
@@ -547,6 +550,11 @@ connectorInstanceRouter.get(
           entityIds
         ),
         DbService.repository.stationInstances.countByConnectorInstanceId(id),
+        // #802: every view the delete removes, readable or not.
+        DbService.repository.curatedViews.countByConnectorEntityIds(
+          ctx.organizationId,
+          entityIds
+        ),
       ]);
 
       return HttpService.success(res, {
@@ -556,6 +564,7 @@ connectorInstanceRouter.get(
         entityTagAssignments,
         entityGroupMembers,
         stations,
+        curatedViews,
       });
     } catch (error) {
       logger.error(
@@ -1455,6 +1464,22 @@ connectorInstanceRouter.delete(
           const entityIds = entities.map((e) => e.id);
 
           if (entityIds.length > 0) {
+            // #802: the views over every entity go too — with their
+            // projection rows, station attachments and grants — or they'd
+            // stay listed, stay on their stations, and 500 on open.
+            const viewIds =
+              await CuratedViewDeleteService.findIdsByConnectorEntityIds(
+                organizationId,
+                entityIds,
+                tx
+              );
+            await CuratedViewDeleteService.deleteByIds(
+              organizationId,
+              viewIds,
+              userId,
+              tx
+            );
+
             // Soft-delete leaf records first, then entities
             await Promise.all([
               DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(
