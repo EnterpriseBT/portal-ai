@@ -1,4 +1,5 @@
 import { DbService } from "./db.service.js";
+import { CuratedViewDeleteService } from "./curated-view-delete.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
@@ -9,6 +10,8 @@ export interface ConnectorEntityCascadeCounts {
   fieldMappings: number;
   entityTagAssignments: number;
   entityGroupMembers: number;
+  /** #802: the curated views over the entity, deleted with it. */
+  curatedViews: number;
 }
 
 /**
@@ -63,11 +66,28 @@ export class ConnectorEntityValidationService {
    */
   static async executeDelete(
     connectorEntityId: string,
+    organizationId: string,
     userId: string,
     client?: DbClient
   ): Promise<ConnectorEntityCascadeCounts> {
     const run = async (tx: DbClient): Promise<ConnectorEntityCascadeCounts> => {
       const entityIds = [connectorEntityId];
+
+      // #802: a view is meaningless without its entity — it would 500 on
+      // open and stay attached to its stations. Delete the entity's views
+      // (projection rows, attachments, grants) in the same transaction.
+      const viewIds =
+        await CuratedViewDeleteService.findIdsByConnectorEntityIds(
+          organizationId,
+          entityIds,
+          tx
+        );
+      const views = await CuratedViewDeleteService.deleteByIds(
+        organizationId,
+        viewIds,
+        userId,
+        tx
+      );
 
       const [
         entityGroupMembers,
@@ -108,6 +128,7 @@ export class ConnectorEntityValidationService {
         fieldMappings,
         entityTagAssignments,
         entityGroupMembers,
+        curatedViews: views.curatedViews,
       };
     };
 

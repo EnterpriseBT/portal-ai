@@ -11,6 +11,7 @@ const fullImpact: ConnectorEntityImpactResponsePayload = {
   entityTagAssignments: 3,
   entityGroupMembers: 2,
   refFieldMappings: 0,
+  curatedViews: 0,
 };
 
 const blockedImpact: ConnectorEntityImpactResponsePayload = {
@@ -19,6 +20,7 @@ const blockedImpact: ConnectorEntityImpactResponsePayload = {
   entityTagAssignments: 3,
   entityGroupMembers: 2,
   refFieldMappings: 4,
+  curatedViews: 0,
 };
 
 const zeroImpact: ConnectorEntityImpactResponsePayload = {
@@ -27,6 +29,7 @@ const zeroImpact: ConnectorEntityImpactResponsePayload = {
   entityTagAssignments: 0,
   entityGroupMembers: 0,
   refFieldMappings: 0,
+  curatedViews: 0,
 };
 
 const defaultProps = {

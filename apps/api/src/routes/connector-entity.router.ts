@@ -872,6 +872,9 @@ connectorEntityRouter.patch(
  *                       type: integer
  *                     refFieldMappings:
  *                       type: integer
+ *                     curatedViews:
+ *                       type: integer
+ *                       description: Live curated views over the entity, deleted with it (#802)
  *       404:
  *         description: Connector entity not found
  *       500:
@@ -923,6 +926,7 @@ connectorEntityRouter.get(
         entityTagAssignments,
         entityGroupMembers,
         refFieldMappings,
+        curatedViews,
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
@@ -937,6 +941,12 @@ connectorEntityRouter.get(
           existing.key,
           id
         ),
+        // #802: every view the delete removes, readable or not — the impact
+        // is an aggregate, like the other counts.
+        DbService.repository.curatedViews.countByConnectorEntityIds(
+          existing.organizationId,
+          entityIds
+        ),
       ]);
 
       return HttpService.success<ConnectorEntityImpactResponsePayload>(res, {
@@ -945,6 +955,7 @@ connectorEntityRouter.get(
         entityTagAssignments,
         entityGroupMembers,
         refFieldMappings,
+        curatedViews,
       });
     } catch (error) {
       logger.error(
@@ -1013,6 +1024,8 @@ connectorEntityRouter.get(
  *                           type: integer
  *                         entityGroupMembers:
  *                           type: integer
+ *                         curatedViews:
+ *                           type: integer
  *       404:
  *         description: Connector entity not found
  *       422:
@@ -1055,7 +1068,13 @@ connectorEntityRouter.delete(
       const cascaded = await JobLockService.withUnlocked(
         { kind: "connectorEntity", id },
         { organizationId },
-        (tx) => ConnectorEntityValidationService.executeDelete(id, userId, tx)
+        (tx) =>
+          ConnectorEntityValidationService.executeDelete(
+            id,
+            organizationId,
+            userId,
+            tx
+          )
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(

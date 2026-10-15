@@ -26,6 +26,7 @@ import {
   createUser,
   createOrganizationUser,
 } from "../utils/application.util.js";
+import { seedCuratedViewWithDependents } from "../utils/seed-populated-org.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
 const MEMBER_SUB = "auth0|ci-ce-member";
@@ -1017,6 +1018,40 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
     };
   }
 
+  /** #802: a curated view over the entity, attached to a fresh station, with
+   *  a resource grant and an `in_curated_view` field grant. */
+  async function seedViewOnStation(
+    organizationId: string,
+    connectorEntityId: string,
+    fieldMappingId: string,
+    granteeUserId: string
+  ) {
+    const station = {
+      id: generateId(),
+      organizationId,
+      name: `station-${generateId().slice(0, 8)}`,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await db.insert(schema.stations).values(station as never);
+    const viewId = await seedCuratedViewWithDependents(
+      db as ReturnType<typeof drizzle>,
+      {
+        organizationId,
+        connectorEntityId,
+        fieldMappingId,
+        stationId: station.id,
+        granteeUserId,
+        key: `view_${generateId().slice(0, 8)}`,
+      }
+    );
+    return { viewId, stationId: station.id };
+  }
+
   /** Seed related child data for an entity (records, mappings, tags, group members). */
   async function seedRelatedData(organizationId: string, entityId: string) {
     // Column definition + field mapping
@@ -1179,6 +1214,53 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       expect(res.body.payload.cascaded.fieldMappings).toBe(1);
       expect(res.body.payload.cascaded.entityTagAssignments).toBe(1);
       expect(res.body.payload.cascaded.entityGroupMembers).toBe(1);
+      expect(res.body.payload.cascaded.curatedViews).toBe(0);
+    });
+
+    it("#802: deletes the entity's curated views and detaches them from stations", async () => {
+      const { userId, organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      const { mapping } = await seedRelatedData(organizationId, entity.id);
+      const viewId = await seedViewOnStation(
+        organizationId,
+        entity.id,
+        mapping.id,
+        userId
+      );
+
+      const res = await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.cascaded.curatedViews).toBe(1);
+
+      // The view is gone — 404, not the 500 an orphaned view answered.
+      const viewRes = await request(app)
+        .get(`/api/curated-views/${viewId.viewId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(viewRes.status).toBe(404);
+
+      // …and the station no longer lists it.
+      const stationRes = await request(app)
+        .get(`/api/curated-views?stationId=${viewId.stationId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(stationRes.status).toBe(200);
+      expect(stationRes.body.payload.curatedViews).toHaveLength(0);
+
+      // No grant outlives the view.
+      const grants = await db
+        .select()
+        .from(schema.permissionGrants)
+        .where(eq(schema.permissionGrants.organizationId, organizationId));
+      expect(
+        grants.filter(
+          (g) =>
+            g.resourceId === viewId.viewId || g.conditionParam === viewId.viewId
+        )
+      ).toHaveLength(0);
     });
 
     it("should set deleted timestamp on all cascaded child records", async () => {
@@ -1291,6 +1373,35 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       expect(res.body.payload.entityTagAssignments).toBe(1);
       expect(res.body.payload.entityGroupMembers).toBe(1);
       expect(res.body.payload.refFieldMappings).toBe(1);
+      expect(res.body.payload.curatedViews).toBe(0);
+    });
+
+    it("#802: counts every live view the delete would remove", async () => {
+      const { userId, organizationId, connectorInstanceId, entity } =
+        await seedWithCapabilities({
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
+      const { mapping } = await seedRelatedData(organizationId, entity.id);
+      await seedViewOnStation(organizationId, entity.id, mapping.id, userId);
+      await seedViewOnStation(organizationId, entity.id, mapping.id, userId);
+
+      // A view over another entity isn't counted.
+      const otherEntity = createConnEntity(organizationId, connectorInstanceId);
+      await db.insert(connectorEntities).values(otherEntity as never);
+      await seedViewOnStation(
+        organizationId,
+        otherEntity.id,
+        mapping.id,
+        userId
+      );
+
+      const res = await request(app)
+        .get(`/api/connector-entities/${entity.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.curatedViews).toBe(2);
     });
 
     it("should return 404 for non-existent entity", async () => {

@@ -16,6 +16,7 @@ import type {
   FieldMappingListResponsePayload,
   AssignedEntityTag,
   RunningJobSummary,
+  ConnectorEntityImpactResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
@@ -166,13 +167,7 @@ export interface EntityDetailViewUIProps {
   /** Server error from the delete mutation. */
   deleteServerError?: ServerError | null;
   /** Impact data for deletion. */
-  deleteImpact?: {
-    entityRecords: number;
-    fieldMappings: number;
-    entityTagAssignments: number;
-    entityGroupMembers: number;
-    refFieldMappings: number;
-  } | null;
+  deleteImpact?: ConnectorEntityImpactResponsePayload | null;
   /** Whether impact is loading. */
   isLoadingDeleteImpact?: boolean;
   /** Whether the delete dialog is open. */

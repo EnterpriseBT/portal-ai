@@ -152,6 +152,8 @@ export const ConnectorEntityDeleteResponsePayloadSchema = z.object({
     fieldMappings: z.number(),
     entityTagAssignments: z.number(),
     entityGroupMembers: z.number(),
+    /** #802: the entity's curated views, deleted with it. */
+    curatedViews: z.number(),
   }),
 });
 
@@ -167,6 +169,9 @@ export const ConnectorEntityImpactResponsePayloadSchema = z.object({
   entityTagAssignments: z.number(),
   entityGroupMembers: z.number(),
   refFieldMappings: z.number(),
+  /** #802: live curated views over the entity — all of them, readable or
+   *  not; the delete removes every one. */
+  curatedViews: z.number(),
 });
 
 export type ConnectorEntityImpactResponsePayload = z.infer<

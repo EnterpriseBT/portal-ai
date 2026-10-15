@@ -85,6 +85,8 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
             const cascaded =
               await ConnectorEntityValidationService.executeDelete(
                 item.connectorEntityId,
+                // #802: the entity's own org scopes its view cascade.
+                entities[item.connectorEntityId].organizationId,
                 userId
               );
             cascadedResults.push(cascaded);

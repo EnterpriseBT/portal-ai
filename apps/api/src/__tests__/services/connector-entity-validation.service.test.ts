@@ -24,6 +24,27 @@ const mockSoftDeleteEntity = jest
   .mockResolvedValue(undefined);
 const mockTransaction =
   jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
+const mockFindViewIds = jest
+  .fn<(...args: unknown[]) => Promise<string[]>>()
+  .mockResolvedValue([]);
+const mockDeleteViews = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue({
+    curatedViews: 0,
+    fieldMappings: 0,
+    stationViews: 0,
+    grants: 0,
+  });
+
+jest.unstable_mockModule(
+  "../../services/curated-view-delete.service.js",
+  () => ({
+    CuratedViewDeleteService: {
+      findIdsByConnectorEntityIds: mockFindViewIds,
+      deleteByIds: mockDeleteViews,
+    },
+  })
+);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -67,6 +88,7 @@ const { ConnectorEntityValidationService } =
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFindViewIds.mockResolvedValue([]);
   // Default: transaction calls the callback immediately
   mockTransaction.mockImplementation(async (fn) => fn("tx-mock"));
 });
@@ -129,6 +151,7 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
 
     const result = await ConnectorEntityValidationService.executeDelete(
       "ce-1",
+      "org-1",
       "user-1"
     );
 
@@ -137,7 +160,36 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
       entityTagAssignments: 1,
       fieldMappings: 3,
       entityRecords: 5,
+      curatedViews: 0,
     });
+  });
+
+  it("#802: deletes the entity's views, org-scoped, before the entity", async () => {
+    mockFindViewIds.mockResolvedValue(["cv-1", "cv-2"]);
+    mockDeleteViews.mockResolvedValue({
+      curatedViews: 2,
+      fieldMappings: 3,
+      stationViews: 1,
+      grants: 4,
+    });
+
+    const result = await ConnectorEntityValidationService.executeDelete(
+      "ce-1",
+      "org-1",
+      "user-1"
+    );
+
+    expect(mockFindViewIds).toHaveBeenCalledWith("org-1", ["ce-1"], "tx-mock");
+    expect(mockDeleteViews).toHaveBeenCalledWith(
+      "org-1",
+      ["cv-1", "cv-2"],
+      "user-1",
+      "tx-mock"
+    );
+    expect(mockDeleteViews.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSoftDeleteEntity.mock.invocationCallOrder[0]
+    );
+    expect(result.curatedViews).toBe(2);
   });
 
   it("runs in a single transaction when no client provided", async () => {
@@ -146,7 +198,11 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     mockSoftDeleteFieldMappings.mockResolvedValue(0);
     mockSoftDeleteEntityRecords.mockResolvedValue(0);
 
-    await ConnectorEntityValidationService.executeDelete("ce-1", "user-1");
+    await ConnectorEntityValidationService.executeDelete(
+      "ce-1",
+      "org-1",
+      "user-1"
+    );
 
     expect(mockTransaction).toHaveBeenCalledTimes(1);
     // Verify cascade methods received the tx argument
@@ -167,6 +223,7 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
 
     await ConnectorEntityValidationService.executeDelete(
       "ce-1",
+      "org-1",
       "user-1",
       externalTx as never
     );

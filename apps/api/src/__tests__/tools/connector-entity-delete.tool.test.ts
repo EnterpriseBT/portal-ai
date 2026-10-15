@@ -14,9 +14,12 @@ const mockExecuteDelete = jest.fn<any>().mockResolvedValue({
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
 }));
-const mockFindEntityById = jest
-  .fn<any>()
-  .mockResolvedValue({ id: "ce-1", key: "contacts", label: "My Entity" });
+const mockFindEntityById = jest.fn<any>().mockResolvedValue({
+  id: "ce-1",
+  organizationId: "org-1",
+  key: "contacts",
+  label: "My Entity",
+});
 
 jest.unstable_mockModule(
   "../../services/connector-entity-validation.service.js",
@@ -54,7 +57,8 @@ describe("ConnectorEntityDeleteTool", () => {
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].entityId).toBe("ce-1");
-    expect(mockExecuteDelete).toHaveBeenCalledWith("ce-1", "user-1");
+    // #802: the entity's own org scopes the view cascade.
+    expect(mockExecuteDelete).toHaveBeenCalledWith("ce-1", "org-1", "user-1");
   });
 
   it("bulk delete — 3 entities deleted sequentially", async () => {
