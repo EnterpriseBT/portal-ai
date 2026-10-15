@@ -42,7 +42,7 @@ This spec pins the contract for four fixes, all in the curated-view / connector-
 3. `curatedViews` on both impact payloads and both dialogs; web invalidation of `curatedViews.root` + `stations.root` on both deletes.
 4. Two-phase delete: the `entity_data_delete` job type (enum migration, metadata/result, label, scopes, processor) and the batched repository method. Delete responses carry `recordsJobId`.
 5. Purge `"stranded"` scope.
-6. Org delete: the three view tables, plus a guard assertion.
+6. Org delete: the three view tables, plus a guard assertion. **Org reset (`reset.service.ts`) gets the same fix**, plus a sweep of the views' grants. It shares the `seedPopulatedOrg` fixture and failed the same way (23503) once the fixture gained a view, which slice 1 confirmed.
 7. `FIELD_MAPPING_DELETE_IN_VIEW`: the field-mapping delete (route + tool), the layout-plan commit pre-flight and enqueue pre-checks, the field-mapping impact and its dialog.
 8. Migration 0121 repairing views over deleted entities.
 9. Docs: CLAUDE.md, plus the `.github/copilot-instructions.md` mirror (Mutation Cache Invalidation list and the job list), and the descriptions of the `connector_entity_delete` and `field_mapping_delete` tools.
@@ -53,7 +53,6 @@ This spec pins the contract for four fixes, all in the curated-view / connector-
 - **An audit record for the instance delete:** pre-existing.
 - **A "Deleting…" UI state:** the object is gone on return. Nothing waits on the job.
 - **Dangling view links to deleted mappings:** inert (decision 7).
-- **Reset (`reset.service.ts`):** wipes everything already, and is local-only.
 
 ## Surface
 

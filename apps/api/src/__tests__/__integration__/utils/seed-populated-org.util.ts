@@ -34,6 +34,7 @@ export interface PopulatedOrg {
   portalId: string;
   connectorInstanceId: string;
   connectorEntityId: string;
+  curatedViewId: string;
   s3Key: string;
   pendingJobId: string;
   completedJobId: string;
@@ -213,6 +214,59 @@ export async function seedPopulatedOrg(
     connectorInstanceId: instance.id,
   } as never);
 
+  // #802: a curated view with every dependent — projection link, station
+  // attachment, a resource grant and a composed `in_curated_view` field
+  // grant — so a cascade that hard-deletes the view's parents (field
+  // mappings, stations, entities) is proven to clear the view tables first.
+  const curatedView = {
+    ...base(now),
+    organizationId: org.id,
+    connectorEntityId: entity.id,
+    key: `contacts_view_${suffix}`,
+    label: "Contacts view",
+    description: null,
+    filter: null,
+  };
+  await db.insert(schema.curatedViews).values(curatedView as never);
+  await db.insert(schema.curatedViewFieldMappings).values({
+    ...base(now),
+    organizationId: org.id,
+    curatedViewId: curatedView.id,
+    fieldMappingId: mapping.id,
+  } as never);
+  await db.insert(schema.stationViews).values({
+    ...base(now),
+    organizationId: org.id,
+    stationId: station.id,
+    curatedViewId: curatedView.id,
+  } as never);
+  await db.insert(schema.permissionGrants).values([
+    {
+      ...base(now),
+      organizationId: org.id,
+      principalType: "user",
+      principalId: member.id,
+      effect: "allow",
+      verb: "read",
+      resourceType: "curated_view",
+      resourceId: curatedView.id,
+      condition: null,
+      conditionParam: null,
+    },
+    {
+      ...base(now),
+      organizationId: org.id,
+      principalType: "user",
+      principalId: member.id,
+      effect: "allow",
+      verb: "read",
+      resourceType: "field_mapping",
+      resourceId: null,
+      condition: "in_curated_view",
+      conditionParam: curatedView.id,
+    },
+  ] as never);
+
   await db.insert(schema.organizationToolpacks).values({
     ...base(now),
     organizationId: org.id,
@@ -307,6 +361,7 @@ export async function seedPopulatedOrg(
     portalId: portal.id,
     connectorInstanceId: instance.id,
     connectorEntityId: entity.id,
+    curatedViewId: curatedView.id,
     s3Key,
     pendingJobId: pendingJob.id,
     completedJobId: completedJob.id,

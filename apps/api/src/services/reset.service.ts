@@ -1,4 +1,4 @@
-import { eq, and, ne, inArray, isNull } from "drizzle-orm";
+import { eq, and, ne, inArray, isNull, or } from "drizzle-orm";
 
 import { ApplicationService } from "./application.service.js";
 import { DbService } from "./db.service.js";
@@ -12,6 +12,8 @@ import {
   connectorEntities,
   connectorInstanceLayoutPlans,
   connectorInstances,
+  curatedViewFieldMappings,
+  curatedViews,
   entityGroups,
   entityTags,
   columnDefinitions,
@@ -23,8 +25,10 @@ import {
   portals,
   stationToolpacks,
   stationInstances,
+  stationViews,
   stations,
   wideTableColumns,
+  permissionGrants,
 } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -99,6 +103,39 @@ export class ResetService {
         .returning({ id: wideTableColumns.id });
       logger.info(
         `Deleted ${deletedWideTableColumns.length} wide table columns`
+      );
+
+      // #802: curated views hold FKs to field mappings, stations and
+      // entities, all hard-deleted below — clear the view tables first,
+      // children before the view, and drop the views' grants (both the
+      // resource grant and the composed `in_curated_view` field grant) so
+      // none outlives its object.
+      const deletedViewLinks = await tx
+        .delete(curatedViewFieldMappings)
+        .where(eq(curatedViewFieldMappings.organizationId, organizationId))
+        .returning({ id: curatedViewFieldMappings.id });
+      const deletedStationViews = await tx
+        .delete(stationViews)
+        .where(eq(stationViews.organizationId, organizationId))
+        .returning({ id: stationViews.id });
+      const deletedViewGrants = await tx
+        .delete(permissionGrants)
+        .where(
+          and(
+            eq(permissionGrants.organizationId, organizationId),
+            or(
+              eq(permissionGrants.resourceType, "curated_view"),
+              eq(permissionGrants.condition, "in_curated_view")
+            )
+          )
+        )
+        .returning({ id: permissionGrants.id });
+      const deletedCuratedViews = await tx
+        .delete(curatedViews)
+        .where(eq(curatedViews.organizationId, organizationId))
+        .returning({ id: curatedViews.id });
+      logger.info(
+        `Deleted ${deletedCuratedViews.length} curated views (${deletedViewLinks.length} projection links, ${deletedStationViews.length} station attachments, ${deletedViewGrants.length} grants)`
       );
 
       const deletedEntityGroupMembers = await tx

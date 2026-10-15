@@ -25,7 +25,8 @@ import {
 } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, getTableName, is, sql } from "drizzle-orm";
+import { PgTable } from "drizzle-orm/pg-core";
 
 import { OrganizationDeleteService } from "../../../services/organization-delete.service.js";
 import { JobsService } from "../../../services/jobs.service.js";
@@ -130,6 +131,13 @@ describe("OrganizationDeleteService integration tests", () => {
         ["organization_toolpacks", schema.organizationToolpacks],
         ["file_uploads", schema.fileUploads],
         ["jobs", schema.jobs],
+        // #802: the view tables hold FKs to field mappings, stations and
+        // entities, so they must go before those parents.
+        ["curated_view_field_mappings", schema.curatedViewFieldMappings],
+        ["station_views", schema.stationViews],
+        ["curated_views", schema.curatedViews],
+        ["permission_grants", schema.permissionGrants],
+        ["map_dissolve_geometries", schema.mapDissolveGeometries],
       ] as never;
       for (const [name, table] of byOrg) {
         const rows = await db
@@ -168,6 +176,77 @@ describe("OrganizationDeleteService integration tests", () => {
           )
         );
       expect(planRows).toHaveLength(0);
+    });
+
+    it("classifies every org-scoped table as purged or retained (#802 guard)", async () => {
+      // A table that holds an FK to something org delete hard-deletes, and is
+      // not itself purged first, fails the whole delete (23503) — #802 found
+      // the curated-view tables in exactly that state. Every table with an
+      // `organization_id` column must therefore be a deliberate decision:
+      // PURGED (asserted empty for the target) or RETAINED (with a reason).
+      const PURGED = new Set([
+        "api_endpoint_configs",
+        "column_definitions",
+        "connector_entities",
+        "connector_instances",
+        "curated_view_field_mappings",
+        "curated_views",
+        "entity_group_members",
+        "entity_groups",
+        "entity_records",
+        "entity_tag_assignments",
+        "entity_tags",
+        "field_mappings",
+        "file_uploads",
+        "jobs",
+        "map_dissolve_geometries",
+        "organization_toolpacks",
+        "permission_grants",
+        "portal_messages",
+        "portal_results",
+        "portals",
+        "station_views",
+        "stations",
+        "wide_table_columns",
+      ]);
+      const RETAINED: Record<string, string> = {
+        usage: "billing balance; the tombstoned org row keeps its FK valid",
+        tool_usage_ledger: "per-call billing itemization behind usage (#179)",
+        organization_users: "memberships are tombstoned, not purged (case 7)",
+        audit_log: "the audit trail outlives its org (#575)",
+        commercial_events: "commercial record of the org's billing history",
+        invitations: "references only the org row and users",
+        roles: "role definitions persist against the tombstoned org (#621)",
+        groups: "references only the org row",
+        user_role: "references only users, roles and the org row",
+        user_group: "references only users, groups and the org row",
+        permission_policies:
+          "policies persist against the tombstoned org (#621)",
+        permission_statements: "belong to retained policies",
+        policy_attachments: "attach retained policies to retained principals",
+      };
+
+      const orgScoped = (Object.values(schema) as unknown[])
+        .filter((v): v is PgTable => is(v, PgTable))
+        .filter((t) => "organizationId" in getTableColumns(t))
+        .map((t) => getTableName(t))
+        .sort();
+
+      const unclassified = orgScoped.filter(
+        (name) => !PURGED.has(name) && !(name in RETAINED)
+      );
+      expect(unclassified).toEqual([]);
+
+      for (const name of PURGED) {
+        const rows = await db.execute<{ n: number }>(
+          sql`SELECT count(*)::int AS n FROM ${sql.identifier(name)}
+              WHERE organization_id = ${target.orgId}`
+        );
+        expect({ table: name, count: rows[0].n }).toEqual({
+          table: name,
+          count: 0,
+        });
+      }
     });
 
     it("drops the er__ wide table and its catalog rows (case 4)", async () => {
