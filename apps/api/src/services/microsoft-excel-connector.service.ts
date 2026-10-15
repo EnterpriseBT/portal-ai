@@ -571,7 +571,7 @@ export class MicrosoftExcelConnectorService {
   static async fetchWorkbookForSync(
     connectorInstanceId: string,
     organizationId: string
-  ): Promise<Workbook> {
+  ): Promise<{ workbook: Workbook; nulStrippedValues: number }> {
     const instance =
       await DbService.repository.connectorInstances.findById(
         connectorInstanceId
@@ -680,7 +680,11 @@ export class MicrosoftExcelConnectorService {
         "Throwaway sync session meta missing after finalize"
       );
     }
-    return makeLazyWorkbookFromCache(throwawayPrefix, meta.sheets);
+    return {
+      workbook: makeLazyWorkbookFromCache(throwawayPrefix, meta.sheets),
+      // #805: the session writer stripped U+0000 on the way in.
+      nulStrippedValues: meta.nulStrippedValues ?? 0,
+    };
   }
 
   /**

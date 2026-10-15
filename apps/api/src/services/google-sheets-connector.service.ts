@@ -31,6 +31,7 @@ import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { decryptCredentials } from "../utils/crypto.util.js";
 import { OAuthStateError, verifyState } from "../utils/oauth-state.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { stripNulDeep } from "../utils/nul-character.util.js";
 import {
   findSheetMetaById,
   inflateSheetPreviewFromChunks,
@@ -389,7 +390,7 @@ export class GoogleSheetsConnectorService {
     connectorInstanceId: string,
     organizationId: string,
     fetchFn: FetchFn = fetch
-  ): Promise<Workbook> {
+  ): Promise<{ workbook: Workbook; nulStrippedValues: number }> {
     const instance =
       await DbService.repository.connectorInstances.findById(
         connectorInstanceId
@@ -434,7 +435,12 @@ export class GoogleSheetsConnectorService {
     // `WorkbookData`; wrap it in an eager `Workbook` for downstream
     // consumers. Sync's memory ceiling is bounded by Google Sheets'
     // own API limits, not the chunked cache.
-    return makeWorkbook(workbook);
+    //
+    // #805: sync skips the cache, whose writer strips U+0000 on every other
+    // path, so strip it here: names, values and raw text alike.
+    const { value: stripped, stripped: nulStrippedValues } =
+      stripNulDeep(workbook);
+    return { workbook: makeWorkbook(stripped), nulStrippedValues };
   }
 
   /**

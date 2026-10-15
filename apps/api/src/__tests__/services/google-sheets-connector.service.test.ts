@@ -213,8 +213,9 @@ describe("GoogleSheetsConnectorService.fetchWorkbookForSync", () => {
       fetchMock
     );
 
-    expect(out.sheets).toHaveLength(1);
-    expect(out.sheets[0]?.cell(1, 1)?.value).toBe("alpha");
+    expect(out.workbook.sheets).toHaveLength(1);
+    expect(out.workbook.sheets[0]?.cell(1, 1)?.value).toBe("alpha");
+    expect(out.nulStrippedValues).toBe(0);
     expect(getOrRefreshMock).toHaveBeenCalledWith("ci-1");
     const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).toContain(
@@ -224,6 +225,60 @@ describe("GoogleSheetsConnectorService.fetchWorkbookForSync", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe(
       "Bearer ya29.access"
     );
+  });
+
+  // #805: sync bypasses the workbook cache, so it strips U+0000 itself.
+  it("strips U+0000 from sheet names, cell values and raw text, and counts them", async () => {
+    findInstanceMock.mockResolvedValue(instanceWithConfig("1abcXYZ"));
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockFetchResponse({
+        body: {
+          properties: { title: "Q3" },
+          sheets: [
+            {
+              properties: {
+                title: "She\u0000et1",
+                gridProperties: { rowCount: 1, columnCount: 2 },
+              },
+              data: [
+                {
+                  startRow: 0,
+                  startColumn: 0,
+                  rowData: [
+                    {
+                      values: [
+                        {
+                          effectiveValue: { stringValue: "al\u0000pha" },
+                          formattedValue: "al\u0000pha",
+                        },
+                        {
+                          effectiveValue: { numberValue: 7 },
+                          formattedValue: "7",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      })
+    );
+
+    const out = await GoogleSheetsConnectorService.fetchWorkbookForSync(
+      "ci-1",
+      "org-1",
+      fetchMock
+    );
+
+    const sheet = out.workbook.sheets[0]!;
+    expect(sheet.name).toBe("Sheet1");
+    expect(sheet.cell(1, 1)?.value).toBe("alpha");
+    expect(sheet.cell(1, 1)?.rawText).toBe("alpha");
+    expect(sheet.cell(1, 2)?.value).toBe(7);
+    // The sheet name, the cell's value and its raw text.
+    expect(out.nulStrippedValues).toBe(3);
   });
 
   it("throws when the instance does not exist", async () => {
@@ -359,7 +414,7 @@ describe("GoogleSheetsConnectorService — 404 retry on the Sheets read", () => 
     await jest.advanceTimersByTimeAsync(1_000);
     const out = await promise;
 
-    expect(out.sheets).toHaveLength(1);
+    expect(out.workbook.sheets).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

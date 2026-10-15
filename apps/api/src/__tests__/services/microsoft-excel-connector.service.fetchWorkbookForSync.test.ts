@@ -310,10 +310,11 @@ describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
       "org-1"
     );
 
-    expect(out.sheets).toHaveLength(1);
-    expect(out.sheets[0]?.name).toBe("Sheet1");
-    await out.sheets[0]?.loadRange(1, 1);
-    expect(out.sheets[0]?.cell(1, 1)?.value).toBe("x");
+    expect(out.workbook.sheets).toHaveLength(1);
+    expect(out.workbook.sheets[0]?.name).toBe("Sheet1");
+    await out.workbook.sheets[0]?.loadRange(1, 1);
+    expect(out.workbook.sheets[0]?.cell(1, 1)?.value).toBe("x");
+    expect(out.nulStrippedValues).toBe(0);
 
     expect(getOrRefreshMock).toHaveBeenCalledWith("ci-1");
     expect(headWorkbookMock).toHaveBeenCalledWith("access-token-x", "01ABC");
@@ -328,5 +329,33 @@ describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
     expect(deleteSessionMock).not.toHaveBeenCalled();
     const passedPrefix = beginSessionMock.mock.calls[0]?.[0] as string;
     expect(passedPrefix).toMatch(/^connector:sync:/);
+  });
+
+  // #805: the throwaway session's writer strips U+0000; sync reports how many.
+  it("returns the throwaway session's NUL-stripped count", async () => {
+    findByIdMock.mockResolvedValue({
+      id: "ci-1",
+      organizationId: "org-1",
+      config: { driveItemId: "01ABC" },
+    });
+    headWorkbookMock.mockResolvedValue({ size: 1024, name: "Q3.xlsx" });
+    downloadWorkbookMock.mockResolvedValue({
+      stream: fakeStream(),
+      contentLength: 1024,
+    });
+    getSessionMetaMock.mockResolvedValue({
+      ...meta([
+        { sheetId: "sheet_0_Sheet1", name: "Sheet1", rowCount: 1, colCount: 1 },
+      ]),
+      nulStrippedValues: 4,
+    });
+    readRowsMock.mockReturnValue(rowsAsync([["x"]]));
+
+    const out = await MicrosoftExcelConnectorService.fetchWorkbookForSync(
+      "ci-1",
+      "org-1"
+    );
+
+    expect(out.nulStrippedValues).toBe(4);
   });
 });
