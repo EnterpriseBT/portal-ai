@@ -224,6 +224,30 @@ describe("POST /api/webhook/handle/:sessionId — outbound staging (#124)", () =
     expect(snap.rows[1]).toEqual({ k: "b", n: 2 });
   });
 
+  // #805: staged rows are org-hosted tool output, which is stripped of U+0000
+  // rather than refused (the boundary middleware skips this body).
+  it("stages rows containing U+0000, stripped", async () => {
+    const sessionId = "sess-write-nul";
+    const writeToken = await WebhookReadTokenService.mint({
+      organizationId: ORG,
+      handleId: sessionId,
+      mode: "write",
+      stationId: "station-1",
+    });
+
+    const res = await POST(sessionId, writeToken, {
+      rows: [{ k: "a\u0000b", n: 1 }],
+    });
+    expect(res.status).toBe(200);
+    staged.push(res.body.payload.resultHandle);
+
+    const snap = await PortalSqlHandleService.getSnapshot(
+      res.body.payload.resultHandle,
+      { offset: 0, limit: 10 }
+    );
+    expect(snap.rows[0]).toEqual({ k: "ab", n: 1 });
+  });
+
   it("binds the staged handle to the token's user (#694)", async () => {
     const sessionId = "sess-write-user";
     const writeToken = await WebhookReadTokenService.mint({

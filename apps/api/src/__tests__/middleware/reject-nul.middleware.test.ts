@@ -123,6 +123,40 @@ describe("rejectNul", () => {
     });
   });
 
+  // Code review on #805: webhook staging carries org-hosted tool output, which
+  // the route strips instead of refusing (like every other tool output).
+  it("doesn't check the body of POST /api/webhook/handle/:sessionId", () => {
+    const next = jest.fn<(err?: unknown) => void>();
+    rejectNul(
+      {
+        method: "POST",
+        path: "/api/webhook/handle/sess-1",
+        originalUrl: "/api/webhook/handle/sess-1",
+        body: { rows: [{ k: `a${NUL}` }] },
+      } as Request,
+      {} as Response,
+      next as unknown as NextFunction
+    );
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("still checks that route's URL", () => {
+    const next = jest.fn<(err?: unknown) => void>();
+    rejectNul(
+      {
+        method: "POST",
+        path: "/api/webhook/handle/s\u0000",
+        originalUrl: "/api/webhook/handle/s%00",
+        body: {},
+      } as Request,
+      {} as Response,
+      next as unknown as NextFunction
+    );
+    expect((next.mock.calls[0]![0] as unknown as ApiError).code).toBe(
+      ApiCode.REQUEST_INVALID_CHARACTERS
+    );
+  });
+
   it("passes clean requests through", async () => {
     const app = makeApp();
 

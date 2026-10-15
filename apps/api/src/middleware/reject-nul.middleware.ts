@@ -5,6 +5,18 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { findNul } from "../utils/nul-character.util.js";
 
 /**
+ * Bodies that carry org-hosted tool output rather than user input, which
+ * #805 strips instead of refusing (like every other tool output). Their
+ * routes strip the body themselves; the URL check still applies.
+ *
+ * - `POST /api/webhook/handle/:sessionId`: a custom webhook staging its
+ *   result rows (into Redis, not Postgres), authenticated by its own token.
+ */
+function isStripRoute(req: Request): boolean {
+  return req.method === "POST" && req.path.startsWith("/api/webhook/handle/");
+}
+
+/**
  * Refuse a request carrying U+0000 (#805).
  *
  * JSON (`"\u0000"`) and URLs (`%00`) can carry a NUL, but no Postgres `text`
@@ -34,6 +46,8 @@ export const rejectNul = (
       )
     );
   }
+
+  if (isStripRoute(req)) return next();
 
   const hit = req.body === undefined ? null : findNul(req.body);
   if (!hit) return next();

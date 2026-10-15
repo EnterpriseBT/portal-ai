@@ -21,6 +21,7 @@ import { ApiError, HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { WebhookReadTokenService } from "../services/webhook-read-token.service.js";
+import { stripNulDeep } from "../utils/nul-character.util.js";
 
 const MAX_PAGE = 5_000;
 
@@ -222,9 +223,12 @@ webhookHandleRouter.post(
         );
       }
 
+      // #805: the rows are the org's tool output, which is stripped of
+      // U+0000 rather than refused (`reject-nul.middleware.ts` skips this
+      // body), since a NUL can't reach Postgres if a row is later stored.
       const { envelope } = await PortalSqlHandleService.produceFromRows({
-        rows: body.rows as Array<Record<string, unknown>>,
-        schema: body.schema,
+        rows: stripNulDeep(body.rows as Array<Record<string, unknown>>).value,
+        schema: body.schema && stripNulDeep(body.schema).value,
         stationId: grant.stationId ?? "webhook-staging",
         organizationId: grant.organizationId,
         userId: grant.userId,
