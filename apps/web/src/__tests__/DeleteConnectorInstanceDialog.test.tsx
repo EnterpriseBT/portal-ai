@@ -84,6 +84,16 @@ describe("DeleteConnectorInstanceDialog", () => {
     expect(screen.queryByText(/stations/)).not.toBeInTheDocument();
   });
 
+  it("#802: lists the curated views the delete removes", () => {
+    render(
+      <DeleteConnectorInstanceDialog
+        {...defaultProps}
+        impact={{ ...fullImpact, curatedViews: 2 }}
+      />
+    );
+    expect(screen.getByText("2 curated views")).toBeInTheDocument();
+  });
+
   it("should show loading indicator when isLoadingImpact is true", () => {
     render(
       <DeleteConnectorInstanceDialog

@@ -40,6 +40,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { invalidateAfterConnectorEntityDelete } from "../utils/delete-invalidation.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import { toServerError } from "../utils/api.util";
@@ -848,18 +849,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorEntities.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.entityRecords.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.fieldMappings.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.entityGroups.root,
-        });
+        invalidateAfterConnectorEntityDelete(queryClient);
         navigate({ to: "/entities" });
       },
     });

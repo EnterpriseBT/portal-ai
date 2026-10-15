@@ -251,7 +251,9 @@ All API calls route through the SDK. No component — view, workflow, module, or
 - Every mutation's `onSuccess` callback must invalidate at minimum its own entity's `.root` query key via `queryClient.invalidateQueries({ queryKey: queryKeys.<entity>.root })`
 - Delete operations that cascade on the backend must also invalidate downstream entity query keys on the frontend:
   - Station delete → `stations.root`, `portals.root`, `portalResults.root`
-  - Connector instance delete → `connectorInstances.root`, `connectorEntities.root`, `stations.root`, `fieldMappings.root`
+  - Connector instance delete → `connectorInstances.root`, `connectorEntities.root`, `stations.root`, `fieldMappings.root`, `curatedViews.root` (its entities' views are deleted and detached from their stations, #802)
+  - Entity delete → `connectorEntities.root`, `entityRecords.root`, `fieldMappings.root`, `entityGroups.root`, `stations.root`, `curatedViews.root` (#802)
+  - Both entity-level deletes go through `utils/delete-invalidation.util.ts`, so the four views that run them can't drift apart
   - Portal delete → `portals.root`, `portalResults.root`
 - Never manually remove or update cache entries — always use `invalidateQueries`
 - Query keys are defined in `api/keys.ts` and re-exported from `api/sdk.ts`
