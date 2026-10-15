@@ -1,4 +1,5 @@
 import { DbService } from "../../services/db.service.js";
+import { wideTableReconcilerService } from "../../services/wide-table-reconciler.service.js";
 import { environment } from "../../environment.js";
 import { createLogger } from "../../utils/logger.util.js";
 
@@ -18,6 +19,11 @@ export const PURGE_BATCH_SIZE = 10_000;
 export interface EntityRecordRetentionPurgeSummary {
   purgedOrphan: number;
   purgedLive: number;
+  /** #802: live records hard-deleted from under entities deleted before the
+   *  orphan cutoff — an `entity_data_delete` job that never finished. */
+  purgedStranded: number;
+  /** #802: `er__<id>` tables dropped for such entities. */
+  wideTablesDropped: number;
   batches: number;
   orphanCutoff: string;
   liveCutoff: string;
@@ -51,6 +57,40 @@ export interface EntityRecordRetentionPurgeSummary {
  * A pure DELETE loop — safe to double-run by construction, so scheduler
  * concurrency needs no guard beyond the maintenance worker's `concurrency: 1`.
  */
+/** Leftover wide tables dropped per run — bounds the run; the rest go next
+ *  time. */
+const WIDE_TABLE_DROP_LIMIT = 100;
+
+/**
+ * #802: drop the `er__<id>` tables of entities deleted before `cutoffMs`.
+ * Its records are gone by now (the stranded drain ran first), so this only
+ * reclaims the empty table. One table that won't drop (a lock timeout) is
+ * logged and left for the next run rather than ending this one.
+ */
+async function dropLeftoverWideTables(cutoffMs: number): Promise<number> {
+  const entityIds =
+    await DbService.repository.wideTable.findEntityIdsWithTableDeletedBefore(
+      cutoffMs,
+      WIDE_TABLE_DROP_LIMIT
+    );
+  let dropped = 0;
+  for (const connectorEntityId of entityIds) {
+    try {
+      await wideTableReconcilerService.dropTable(connectorEntityId);
+      dropped += 1;
+    } catch (error) {
+      logger.warn(
+        {
+          connectorEntityId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Could not drop a deleted entity's wide table; next run retries"
+      );
+    }
+  }
+  return dropped;
+}
+
 export const entityRecordRetentionPurgeProcessor = async (opts?: {
   /** Test seam — production runs use PURGE_BATCH_SIZE. */
   batchSize?: number;
@@ -78,7 +118,7 @@ export const entityRecordRetentionPurgeProcessor = async (opts?: {
   /** Drain one scope to zero. The terminating zero is a real call — that is
    *  what makes the loop safe to re-enter rather than reliant on a count. */
   const drain = async (
-    scope: "orphan" | "live",
+    scope: "orphan" | "live" | "stranded",
     cutoffMs: number
   ): Promise<number> => {
     let purged = 0;
@@ -98,10 +138,17 @@ export const entityRecordRetentionPurgeProcessor = async (opts?: {
 
   const purgedOrphan = await drain("orphan", orphanCutoffMs);
   const purgedLive = await drain("live", liveCutoffMs);
+  // #802: the backstop for a two-phase delete whose `entity_data_delete` job
+  // never finished — live records under an entity deleted longer ago than
+  // the orphan window, then that entity's leftover wide table.
+  const purgedStranded = await drain("stranded", orphanCutoffMs);
+  const wideTablesDropped = await dropLeftoverWideTables(orphanCutoffMs);
 
   const summary: EntityRecordRetentionPurgeSummary = {
     purgedOrphan,
     purgedLive,
+    purgedStranded,
+    wideTablesDropped,
     batches,
     orphanCutoff: new Date(orphanCutoffMs).toISOString(),
     liveCutoff: new Date(liveCutoffMs).toISOString(),

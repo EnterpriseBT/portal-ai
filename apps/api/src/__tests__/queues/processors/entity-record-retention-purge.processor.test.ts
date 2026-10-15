@@ -18,15 +18,28 @@ const mockPurge =
     (
       cutoffMs: number,
       batchSize: number,
-      scope: "orphan" | "live"
+      scope: "orphan" | "live" | "stranded"
     ) => Promise<number>
   >();
+const mockFindLeftoverTables =
+  jest.fn<(cutoffMs: number, limit: number) => Promise<string[]>>();
+const mockDropTable = jest.fn<(entityId: string) => Promise<void>>();
 
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
   DbService: {
-    repository: { entityRecords: { purgeTombstonedBefore: mockPurge } },
+    repository: {
+      entityRecords: { purgeTombstonedBefore: mockPurge },
+      wideTable: {
+        findEntityIdsWithTableDeletedBefore: mockFindLeftoverTables,
+      },
+    },
   },
 }));
+
+jest.unstable_mockModule(
+  "../../../services/wide-table-reconciler.service.js",
+  () => ({ wideTableReconcilerService: { dropTable: mockDropTable } })
+);
 
 jest.unstable_mockModule("../../../environment.js", () => ({
   environment: {
@@ -50,10 +63,13 @@ const NOW = 1_800_000_000_000;
  * returns 0 forever, so a loop that ignores the zero would hang rather than
  * silently pass.
  */
-const drains = (byScope: Record<"orphan" | "live", number[]>) => {
+const drains = (
+  byScope: Record<"orphan" | "live", number[]> & { stranded?: number[] }
+) => {
   const queues = {
     orphan: [...byScope.orphan],
     live: [...byScope.live],
+    stranded: [...(byScope.stranded ?? [])],
   };
   mockPurge.mockImplementation(async (_cutoff, _size, scope) =>
     queues[scope].length > 0 ? (queues[scope].shift() as number) : 0
@@ -63,6 +79,8 @@ const drains = (byScope: Record<"orphan" | "live", number[]>) => {
 describe("entityRecordRetentionPurgeProcessor (#442)", () => {
   beforeEach(() => {
     mockPurge.mockReset();
+    mockFindLeftoverTables.mockReset().mockResolvedValue([]);
+    mockDropTable.mockReset().mockResolvedValue(undefined);
   });
 
   it("drains each scope until the repository reports 0", async () => {
@@ -72,9 +90,10 @@ describe("entityRecordRetentionPurgeProcessor (#442)", () => {
 
     expect(summary.purgedOrphan).toBe(22_500);
     expect(summary.purgedLive).toBe(10_400);
-    // 3 + 1 orphan calls and 2 + 1 live calls — the trailing zero that
-    // terminates each loop is a real call, and is counted as such.
-    expect(mockPurge).toHaveBeenCalledTimes(7);
+    // 3 + 1 orphan calls, 2 + 1 live calls and 0 + 1 stranded — the
+    // trailing zero that terminates each loop is a real call, and is
+    // counted as such.
+    expect(mockPurge).toHaveBeenCalledTimes(8);
   });
 
   it("counts batches, not rows", async () => {
@@ -127,6 +146,38 @@ describe("entityRecordRetentionPurgeProcessor (#442)", () => {
     expect(mockPurge.mock.calls.some((c) => c[2] === "orphan")).toBe(true);
   });
 
+  it("#802: drains the stranded scope at the orphan cutoff", async () => {
+    drains({ orphan: [], live: [], stranded: [10_000, 3] });
+
+    const summary = await entityRecordRetentionPurgeProcessor({ now: NOW });
+
+    expect(summary.purgedStranded).toBe(10_003);
+    const strandedCall = mockPurge.mock.calls.find((c) => c[2] === "stranded");
+    expect(strandedCall?.[0]).toBe(NOW - 7 * DAY);
+  });
+
+  it("#802: drops the wide tables deleted entities left behind", async () => {
+    drains({ orphan: [], live: [] });
+    mockFindLeftoverTables.mockResolvedValue(["ce-1", "ce-2"]);
+
+    const summary = await entityRecordRetentionPurgeProcessor({ now: NOW });
+
+    expect(mockFindLeftoverTables).toHaveBeenCalledWith(NOW - 7 * DAY, 100);
+    expect(mockDropTable.mock.calls.map((c) => c[0])).toEqual(["ce-1", "ce-2"]);
+    expect(summary.wideTablesDropped).toBe(2);
+  });
+
+  it("#802: one table that won't drop doesn't stop the rest", async () => {
+    drains({ orphan: [], live: [] });
+    mockFindLeftoverTables.mockResolvedValue(["ce-1", "ce-2"]);
+    mockDropTable.mockRejectedValueOnce(new Error("lock timeout"));
+
+    const summary = await entityRecordRetentionPurgeProcessor({ now: NOW });
+
+    expect(mockDropTable).toHaveBeenCalledTimes(2);
+    expect(summary.wideTablesDropped).toBe(1);
+  });
+
   it("passes the batch size through, and the test seam overrides it", async () => {
     drains({ orphan: [7], live: [] });
 
@@ -143,10 +194,12 @@ describe("entityRecordRetentionPurgeProcessor (#442)", () => {
     expect(summary).toMatchObject({
       purgedOrphan: 0,
       purgedLive: 0,
+      purgedStranded: 0,
+      wideTablesDropped: 0,
       batches: 0,
     });
     // Idempotence: the second daily run is this, and it must stay cheap —
-    // one probe per scope, no retry storm.
-    expect(mockPurge).toHaveBeenCalledTimes(2);
+    // one probe per scope (orphan, live, stranded), no retry storm.
+    expect(mockPurge).toHaveBeenCalledTimes(3);
   });
 });
