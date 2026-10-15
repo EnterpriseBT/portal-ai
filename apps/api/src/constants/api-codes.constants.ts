@@ -28,6 +28,9 @@ export enum ApiCode {
   REQUEST_BODY_INVALID_JSON = "REQUEST_BODY_INVALID_JSON",
   /** A request body that isn't application/json, which no route reads (#775). 415. */
   REQUEST_UNSUPPORTED_MEDIA_TYPE = "REQUEST_UNSUPPORTED_MEDIA_TYPE",
+  /** A request URL or JSON body carrying U+0000, which no Postgres text or
+   *  jsonb value can store (#805). Refused before any route runs. 400. */
+  REQUEST_INVALID_CHARACTERS = "REQUEST_INVALID_CHARACTERS",
   /** Per-user fixed-window limit exceeded on the authenticated API
    *  (#574). Keyed by the Auth0 subject; fail-open on a Redis outage. 429. */
   API_RATE_LIMITED = "API_RATE_LIMITED",
@@ -803,6 +806,9 @@ export enum ApiCode {
   TOOL_PERMISSION_DENIED = "TOOL_PERMISSION_DENIED",
   /** #769: too many lock-gated agent writes are running in this process. */
   TOOL_WRITE_BUSY = "TOOL_WRITE_BUSY",
+  /** A built-in tool's input carrying U+0000 (#805). Typed tool result; the
+   *  tool never runs and the call is never charged. */
+  TOOL_INPUT_INVALID_CHARACTERS = "TOOL_INPUT_INVALID_CHARACTERS",
 
   // Tool usage ledger (#179)
   /** Malformed itemized-usage query (unknown sortBy / bad pagination). 400. */
