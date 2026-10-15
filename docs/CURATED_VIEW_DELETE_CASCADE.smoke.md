@@ -107,13 +107,15 @@ Build a fresh **upload-connector** and **view V** (projecting 2 columns, filteri
 - [ ] `backend` — `curl -X DELETE :3001/api/field-mappings/<id>` answers **409 `FIELD_MAPPING_DELETE_IN_VIEW`**. The body has `details.curatedViewCount: 1` and contains neither the view's label nor its id.
 - [ ] Same for the column the view only **filters** on. The delete is refused the same way.
 - [ ] `backend` — rename the filtered column's key: `PATCH /api/field-mappings/<id>` with `{ sourceField, columnDefinitionId, normalizedKey: "renamed_key" }` answers **409 `FIELD_MAPPING_KEY_IN_VIEW`**. The same rename on the *projected-only* column answers **200**.
-- [ ] Agent prompt on a station with the entity: **"Delete the email field mapping on <E>"**. The `field_mapping_delete` tool's item fails with *"Cannot delete field mapping "email": 1 curated view uses it…"*, and the mapping is still listed.
-- [ ] As the **member** (`npm run --workspace @portalai/e2e e2e:use member`, restart the MCP session), open the field-mapping impact for a mapping the member can read that is used by an owner-only view. The dialog shows **"Used by 1 curated view you can't see"** and no label.
+- [ ] Agent prompt on a station that has a view over the entity attached (since #674 a station's data is its attached views; with only the connector on the station the agent finds no entities): **"Delete the email field mapping on <E>"**. The `field_mapping_delete` tool's item fails with *"Cannot delete field mapping "email": 1 curated view uses it…"*, and the mapping is still listed.
+- [ ] As the **member** (`npm run --workspace @portalai/e2e e2e:use member`, restart the MCP session). First make sure the member's active org is `e2e-fixture`: their last login may be in their personal org, where every e2e-fixture object 404s. Switch with the org switcher, or `POST /api/organization/switch {"organizationId":"<e2e-fixture id>"}`. Members can't open the column-definition page, so check through the API. For a mapping the member can read that an owner-only view uses, `GET /api/field-mappings/<id>/impact` answers `curatedViews: []` and `hiddenCuratedViews: 1`, with no label anywhere in the body. (The dialog's **"Used by 1 curated view you can't see"** rendering is covered by `DeleteFieldMappingDialog.test.tsx`.)
 - [ ] **Views → Smoke view → Delete**, then retry the mapping delete. The dialog no longer lists the view, Delete is enabled, and the delete succeeds.
 
 ## §7 — Layout-plan re-commit can't drop a used mapping
 
-- [ ] On a fresh **upload-connector** with **view V** projecting the `name` column: **Connector → Edit layout plan**, open the `name` column's binding and tick **Omit this column from the entity**, then **Commit**. The commit is refused immediately with a **409 `FIELD_MAPPING_DELETE_IN_VIEW`** alert naming *"field mapping "name", which this layout plan no longer includes"*. No **Import** job appears in **Jobs**.
+Needs a **Google Sheets or Microsoft Excel** connector. Only those support layout-plan editing (`EDITABLE_SLUGS`); a File upload connector shows *"does not support layout-plan editing"*. A File upload re-commit also can't succeed, because its stored file is deleted after the first commit. (The refusal itself was verified on a File upload connector through the re-commit API in the agent walk.)
+
+- [ ] On a **Sheets/Excel connector** with **view V** projecting the `name` column: **Connector → Edit layout plan**, open the `name` column's binding and tick **Omit this column from the entity**, then **Commit**. The commit is refused immediately with a **409 `FIELD_MAPPING_DELETE_IN_VIEW`** alert naming *"field mapping "name", which this layout plan no longer includes"*. No **Import** job appears in **Jobs**.
 - [ ] Omit a column **no** view uses instead and commit. The import job is queued and completes.
 
 ## §8 — Org delete and reset with views — manual
@@ -128,7 +130,7 @@ Uses a throwaway org, never the e2e-fixture org.
 
 ## §9 — Orphaned views repaired by 0121 — backend
 
-- [ ] Make an orphan the old way. Create a view over a throwaway entity, then soft-delete only the entity in `psql`: `UPDATE connector_entities SET deleted = (extract(epoch from now())*1000)::bigint, deleted_by='smoke' WHERE id = '<id>';`. Confirm the view still lists under **Views** and its `GET …/records` answers 500. This is the pre-#802 bug.
+- [ ] Make an orphan the old way. Create a view over a throwaway entity, then soft-delete only the entity in `psql`: `UPDATE connector_entities SET deleted = (extract(epoch from now())*1000)::bigint, deleted_by='smoke' WHERE id = '<id>';`. Confirm the view still lists under **Views** and is still attached to its station. This is the pre-#802 bug. Its `GET …/records` answers an **empty 200** here, because an entity-only delete kept the `er__` table. The 500 the issue describes only follows a **connector** delete, which drops it; to see the 500, also run `DROP TABLE "er__<id>"`.
 - [ ] Re-apply the repair: `psql "$DATABASE_URL" -f apps/api/drizzle/0121_delete-orphaned-curated-views.sql`. The view is gone from **Views** and its station, and `/views/<id>` answers 404. `deleted_by = 'system'` is set on the view, its links and its attachments, and its grants are gone.
 - [ ] Re-run the same file. It changes nothing (the counts are the same before and after).
 - [ ] After merge and the app-dev deploy, check app-dev's **Views** list. No view whose entity is deleted is listed, and none 500s on open. — manual
@@ -137,7 +139,7 @@ Uses a throwaway org, never the e2e-fixture org.
 
 - [ ] Delete an entity while a **Sync** or **Import** job is running on its connector. The delete is refused with **409 `ENTITY_LOCKED_BY_JOB`** naming the job, and nothing is deleted. The delete may only start once no job holds the scope.
 - [ ] Delete a view directly (**Views → Smoke view → Delete**). It behaves exactly as before #802: the response is `{ id, cascaded: { fieldMappings, stationViews, grants } }`, and the station stops listing it.
-- [ ] `backend` — with Redis stopped, delete an entity. The delete still answers **200** (the API log has *"entity_data_delete dispatch failed; the retention purge will reclaim the records"*), and the job row stays `pending` until the reconciliation sweep reaps it. §5's purge reclaims the records.
+- [ ] `backend` — with Redis stopped (`docker stop portalai-redis-1`), delete an entity. The delete answers **200 within a couple of seconds** with a `recordsJobId`; queueing never holds the response. Once Redis is back (`docker start portalai-redis-1`), the job is queued and completes. If queueing fails outright, the API log has *"entity_data_delete dispatch failed; the retention purge will reclaim the records"*, and the never-queued row is reaped by the reconciliation sweep, with §5's purge reclaiming the records.
 
 ---
 
