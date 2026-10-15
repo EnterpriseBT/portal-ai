@@ -216,6 +216,19 @@ export class WideTableRepository {
     return `er__${connectorEntityId}`;
   }
 
+  /** #802: does the entity's wide table exist? (`to_regclass` is null for a
+   *  missing relation rather than an error.) */
+  async tableExists(
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<boolean> {
+    const name = `public."${this.tableName(connectorEntityId)}"`;
+    const rows = await (client as typeof db).execute<{ exists: boolean }>(
+      sql`SELECT to_regclass(${name}) IS NOT NULL AS "exists"`
+    );
+    return rows[0]?.exists === true;
+  }
+
   /**
    * Read every row from the entity's wide table. Used by analytics
    * loaders and reconciler self-tests; not a hot path. Returns rows

@@ -500,6 +500,39 @@ export class EntityRecordsRepository extends Repository<
   }
 
   /**
+   * #802: soft-delete up to `batchSize` live records of one entity and return
+   * how many — 0 ends the caller's drain. Batched so one statement never
+   * holds row locks across a 1.5M-row entity; `IN (<subquery> LIMIT n)` keeps
+   * the ids server-side (served by the `(connector_entity_id, …) WHERE
+   * deleted IS NULL` index). Invalidates the entity's cached counts when it
+   * changed anything.
+   */
+  async softDeleteBatchByConnectorEntityId(
+    connectorEntityId: string,
+    deletedBy: string,
+    batchSize: number,
+    client: DbClient = db
+  ): Promise<number> {
+    const typed = client as typeof db;
+    const batch = typed
+      .select({ id: entityRecords.id })
+      .from(entityRecords)
+      .where(
+        and(
+          eq(entityRecords.connectorEntityId, connectorEntityId),
+          isNull(entityRecords.deleted)
+        )
+      )
+      .limit(batchSize);
+    const result = await typed
+      .update(entityRecords)
+      .set({ deleted: Date.now(), deletedBy } as any)
+      .where(inArray(entityRecords.id, batch));
+    if (result.count > 0) await invalidateCounts([connectorEntityId]);
+    return result.count;
+  }
+
+  /**
    * Soft-delete all records across multiple connector entities.
    * Returns the number of affected rows.
    */

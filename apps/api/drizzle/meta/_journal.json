@@ -855,6 +855,13 @@
       "when": 1792078026447,
       "tag": "0121_delete-orphaned-curated-views",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1792078278312,
+      "tag": "0122_entity-data-delete-job-type",
+      "breakpoints": true
     }
   ]
 }
