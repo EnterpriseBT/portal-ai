@@ -848,6 +848,13 @@
       "when": 1791836936437,
       "tag": "0120_job-lock-scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1792078026447,
+      "tag": "0121_delete-orphaned-curated-views",
+      "breakpoints": true
     }
   ]
 }
