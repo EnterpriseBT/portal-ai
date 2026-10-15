@@ -1547,7 +1547,7 @@ connectorInstanceRouter.delete(
           );
         }
       );
-      if (recordsJob) await EntityDataDeleteService.dispatch(recordsJob);
+      if (recordsJob) EntityDataDeleteService.dispatch(recordsJob);
 
       logger.info(
         { id, recordsJobId: recordsJob?.id ?? null },

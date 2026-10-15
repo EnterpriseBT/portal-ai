@@ -41,15 +41,16 @@ export class EntityDataDeleteService {
   }
 
   /**
-   * Queue a committed job. Never throws: the delete it follows has already
-   * committed, so a failure here is logged, not surfaced. The records it
-   * would have removed are unreachable (every read is entity-scoped), and the
-   * retention purge's stranded scope reclaims them.
+   * Queue a committed job, without waiting on the queue. The delete it
+   * follows has already committed, so the response must not depend on Redis:
+   * while Redis is down, ioredis holds the command until it returns rather
+   * than failing it, which held the DELETE open past the client's timeout
+   * (#802 smoke §10). A failure is logged. A job row that never reaches the
+   * queue is reaped by the reconciliation sweep, and its records are
+   * reclaimed by the retention purge's stranded scope.
    */
-  static async dispatch(job: JobSelect): Promise<void> {
-    try {
-      await JobsService.dispatch(job);
-    } catch (error) {
+  static dispatch(job: JobSelect): void {
+    void JobsService.dispatch(job).catch((error: unknown) => {
       logger.error(
         {
           jobId: job.id,
@@ -57,6 +58,6 @@ export class EntityDataDeleteService {
         },
         "entity_data_delete dispatch failed; the retention purge will reclaim the records"
       );
-    }
+    });
   }
 }

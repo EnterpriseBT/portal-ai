@@ -1097,6 +1097,31 @@ describe("Connector Instance Router", () => {
       ).toHaveLength(1);
     });
 
+    it("#802: a queue that never answers doesn't hold the response (Redis down)", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+      const { JobsService } = await import("../../../services/jobs.service.js");
+      const dispatch = jest
+        .spyOn(JobsService, "dispatch")
+        .mockImplementationOnce(() => new Promise(() => {}));
+
+      try {
+        const res = await request(app)
+          .delete(`/api/connector-instances/${seeded.instance.id}`)
+          .set("Authorization", "Bearer test-token")
+          .timeout(5000);
+
+        expect(res.status).toBe(200);
+        expect(res.body.payload.recordsJobId).toEqual(expect.any(String));
+        expect(dispatch).toHaveBeenCalled();
+      } finally {
+        dispatch.mockRestore();
+      }
+    });
+
     it("#802: an instance with no entities queues no job", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

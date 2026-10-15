@@ -1091,7 +1091,7 @@ connectorEntityRouter.delete(
       });
 
       // #802: committed — now queue the job that removes the records.
-      await EntityDataDeleteService.dispatch(outcome.recordsJob);
+      EntityDataDeleteService.dispatch(outcome.recordsJob);
       const { cascaded } = outcome;
       const recordsJobId = outcome.recordsJob.id;
 

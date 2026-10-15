@@ -95,7 +95,7 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
                 entities[item.connectorEntityId].organizationId,
                 userId
               );
-            await EntityDataDeleteService.dispatch(outcome.recordsJob);
+            EntityDataDeleteService.dispatch(outcome.recordsJob);
             outcomes.push(outcome);
           }
 

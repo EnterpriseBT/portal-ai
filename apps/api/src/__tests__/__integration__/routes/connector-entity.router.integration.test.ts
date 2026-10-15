@@ -1400,6 +1400,32 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       ).toHaveLength(1);
     });
 
+    it("#802: a queue that never answers doesn't hold the response (Redis down)", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+      await seedRelatedData(organizationId, entity.id);
+      // ioredis holds a command while Redis is down instead of failing it.
+      const dispatch = jest
+        .spyOn(JobsService, "dispatch")
+        .mockImplementationOnce(() => new Promise(() => {}));
+
+      try {
+        const started = Date.now();
+        const res = await request(app)
+          .delete(`/api/connector-entities/${entity.id}`)
+          .set("Authorization", "Bearer test-token")
+          .timeout(5000);
+
+        expect(res.status).toBe(200);
+        expect(Date.now() - started).toBeLessThan(5000);
+        expect(dispatch).toHaveBeenCalled();
+      } finally {
+        dispatch.mockRestore();
+      }
+    });
+
     it("#802: still succeeds when the records job can't be queued", async () => {
       const { organizationId, entity } = await seedWithCapabilities({
         definitionWrite: true,

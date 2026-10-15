@@ -76,7 +76,7 @@ export class ConnectorEntityValidationService {
    * When `client` is provided the operations run on that client directly
    * (useful for joining an outer transaction). Otherwise a new transaction
    * is created internally. Either way the caller must
-   * `EntityDataDeleteService.dispatch(outcome.recordsJob)` once that
+   * `EntityDataDeleteService.dispatch(outcome.recordsJob)` (non-blocking) once that
    * transaction has committed.
    */
   static async executeDelete(
