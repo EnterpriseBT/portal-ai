@@ -188,6 +188,15 @@ export function wrapWithInputCharacterGate(
 - When `stripped > 0`, log at `warn` with `{ portalId, stripped }`. The text is never logged.
 - The user turn (`addMessage`, `:486`) arrives over HTTP, so the middleware already covers it.
 
+### Code-review amendments
+
+The PR's code review changed four things after the slices landed:
+
+- **Commit count:** `nulStrippedValuesForSource` is read right after `resolveWorkbookBySource`, **before** the commit, in both commit and recommit. After the commit, `markSessionCommitted` deletes an upload session in the background, and a throw there would fail a commit that had already landed. It's also best-effort: a failed read logs and answers 0.
+- **Bulk transform:** `transform_entity_records` writes tool results into the target's wide table, and a custom tool's output can carry U+0000. `dispatchBatch` (`queues/processors/bulk-transform-tool.dispatcher.ts`) strips every success value. `DispatchResult.nulStrippedValues` sums it, and `BulkTransformResultSchema` gains the same optional positive `nulStrippedValues`.
+- **Webhook staging:** `POST /api/webhook/handle/:sessionId` carries a custom webhook's result rows, which are org-hosted tool output staged in Redis. `rejectNul` skips that route's body (its URL is still checked), and the route strips `rows` and `schema` with `stripNulDeep`.
+- **Google Sheets count:** `fetchWorkbookForSync` strips the freshly mapped `WorkbookData` in place (`stripNulFromWorkbookData`), counting each sheet name and each cell once, as the cache writer does. `findNul` builds its path only on a hit, and visits keys and values strictly in document order.
+
 ## Migration / Seed
 
 None. There's no schema change: `nulStrippedValues` lives in the existing `jobs.result` jsonb and in Redis session meta.
