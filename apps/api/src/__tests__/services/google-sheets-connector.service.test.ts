@@ -277,8 +277,9 @@ describe("GoogleSheetsConnectorService.fetchWorkbookForSync", () => {
     expect(sheet.cell(1, 1)?.value).toBe("alpha");
     expect(sheet.cell(1, 1)?.rawText).toBe("alpha");
     expect(sheet.cell(1, 2)?.value).toBe(7);
-    // The sheet name, the cell's value and its raw text.
-    expect(out.nulStrippedValues).toBe(3);
+    // The sheet name and the one cell (its value and raw text count once,
+    // as the workbook cache's writer counts a cell).
+    expect(out.nulStrippedValues).toBe(2);
   });
 
   it("throws when the instance does not exist", async () => {

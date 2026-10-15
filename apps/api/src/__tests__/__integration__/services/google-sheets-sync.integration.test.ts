@@ -480,8 +480,8 @@ describe("googleSheetsAdapter.syncInstance", () => {
 
     const result = await googleSheetsAdapter.syncInstance!(instance, userId);
 
-    // The cell's value and its formatted (raw) text.
-    expect(result.nulStrippedValues).toBe(2);
+    // One cell (its value and formatted raw text count once).
+    expect(result.nulStrippedValues).toBe(1);
     const rows = await db
       .select()
       .from(entityRecords)

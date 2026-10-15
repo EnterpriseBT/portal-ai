@@ -31,7 +31,7 @@ import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { decryptCredentials } from "../utils/crypto.util.js";
 import { OAuthStateError, verifyState } from "../utils/oauth-state.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
-import { stripNulDeep } from "../utils/nul-character.util.js";
+import { stripNul } from "../utils/nul-character.util.js";
 import {
   findSheetMetaById,
   inflateSheetPreviewFromChunks,
@@ -437,10 +437,9 @@ export class GoogleSheetsConnectorService {
     // own API limits, not the chunked cache.
     //
     // #805: sync skips the cache, whose writer strips U+0000 on every other
-    // path, so strip it here: names, values and raw text alike.
-    const { value: stripped, stripped: nulStrippedValues } =
-      stripNulDeep(workbook);
-    return { workbook: makeWorkbook(stripped), nulStrippedValues };
+    // path, so strip it here.
+    const nulStrippedValues = stripNulFromWorkbookData(workbook);
+    return { workbook: makeWorkbook(workbook), nulStrippedValues };
   }
 
   /**
@@ -663,6 +662,35 @@ function sleep(ms: number): Promise<void> {
  * `fetchWorkbookForSync` (does neither — sync uses fresh data each run),
  * so both inherit the bounded 404 retry described above.
  */
+/**
+ * #805: strip U+0000 from a freshly mapped workbook **in place** (it's ours,
+ * so there's no copy to make) and count what changed the way the workbook
+ * cache's writer does: each sheet name, and each cell once even when both
+ * its value and its raw text held a NUL.
+ */
+function stripNulFromWorkbookData(data: WorkbookData): number {
+  let changed = 0;
+  for (const sheet of data.sheets) {
+    if (sheet.name.includes("\u0000")) {
+      sheet.name = stripNul(sheet.name);
+      changed++;
+    }
+    for (const cell of sheet.cells) {
+      let cellChanged = false;
+      if (typeof cell.value === "string" && cell.value.includes("\u0000")) {
+        cell.value = stripNul(cell.value);
+        cellChanged = true;
+      }
+      if (cell.rawText?.includes("\u0000")) {
+        cell.rawText = stripNul(cell.rawText);
+        cellChanged = true;
+      }
+      if (cellChanged) changed++;
+    }
+  }
+  return changed;
+}
+
 async function fetchSpreadsheet(
   accessToken: string,
   spreadsheetId: string,
