@@ -98,6 +98,8 @@ const makePinnedResult = (
   created: Date.now() - 3600000,
   createdBy: "user-1",
   snapshotUpdatedAt: null,
+  definerPrincipalType: "user",
+  definerPrincipalId: "user-1",
   updated: null,
   updatedBy: null,
   deleted: null,

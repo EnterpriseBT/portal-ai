@@ -23,6 +23,10 @@ const makePinnedResult = (
   created: Date.now() - 3600000, // 1 hour ago
   createdBy: "user-1",
   snapshotUpdatedAt: null,
+  definerPrincipalType: "user",
+  definerPrincipalId: "user-1",
+  definer: { id: "user-1", displayName: "Test User" },
+  viewerIsDefiner: true,
   updated: null,
   updatedBy: null,
   deleted: null,

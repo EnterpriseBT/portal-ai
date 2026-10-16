@@ -121,6 +121,8 @@ export async function seedPopulatedOrg(
     name: "Result",
     type: "text",
     content: {},
+    definerPrincipalType: "user",
+    definerPrincipalId: "SYSTEM_TEST",
   } as never);
 
   const instance = {

@@ -359,6 +359,11 @@ export enum ApiCode {
    * no re-executable pipeline — there is nothing durable to materialize.
    */
   PORTAL_RESULT_CONTENT_EXPIRED = "PORTAL_RESULT_CONTENT_EXPIRED",
+  /**
+   * #640: invariant — a pin's definer has a principal type nothing can execute
+   * as yet (`role`, admitted by the schema for a later rebind).
+   */
+  PORTAL_RESULT_DEFINER_UNSUPPORTED = "PORTAL_RESULT_DEFINER_UNSUPPORTED",
   PORTAL_INVALID_STATION = "PORTAL_INVALID_STATION",
   PORTAL_STATION_NO_TOOLS = "PORTAL_STATION_NO_TOOLS",
   PORTAL_STREAM_FAILED = "PORTAL_STREAM_FAILED",

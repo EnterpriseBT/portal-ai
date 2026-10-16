@@ -188,13 +188,18 @@ await DbService.repository.policyAttachments.softDeleteByPrincipal("user", targe
 
 ## Migration
 
-`npm run db:generate -- --name always-live-definer-pins` → `0124_always-live-definer-pins.sql` plus `meta/_journal.json` and `0124_snapshot.json`, all committed together. The generated DDL is hand-ordered as follows:
+Two forward migrations, each generated with `npm run db:generate -- --name <name>` and committed with its `meta/_journal.json` + `<n>_snapshot.json`. They're split because slices 2–5 need the definer columns while the old snapshot path still runs (see the plan).
+
+**0124 `pin-definer-columns`** (slice 1), hand-ordered:
 
 1. `ADD COLUMN definer_principal_type text`, `ADD COLUMN definer_principal_id text`.
-2. `UPDATE portal_results SET definer_principal_type = 'user', definer_principal_id = created_by;`
-3. `SET NOT NULL` on both, then create `portal_results_definer_idx`.
-4. `UPDATE portal_results SET content = content - 'rows' - 'rowCount' - 'matchedCount' - 'matchedCountExact' - 'truncated' - 'queryHandle' WHERE type IN ('data-table','d3','geo');`
-5. `ALTER TABLE portal_results DROP COLUMN snapshot_updated_at; -- destructive-ok: snapshots no longer exist (#640)`
+2. `UPDATE portal_results SET definer_principal_type = 'user', definer_principal_id = created_by;` (soft-deleted rows included).
+3. `SET NOT NULL` on both, then `portal_results_definer_idx`.
+
+**0125 `strip-pin-snapshots`** (slice 6, the cutover):
+
+1. `UPDATE portal_results SET content = content - 'rows' - 'rowCount' - 'matchedCount' - 'matchedCountExact' - 'truncated' - 'queryHandle' WHERE type IN ('data-table','d3','geo');`
+2. `ALTER TABLE portal_results DROP COLUMN snapshot_updated_at; -- destructive-ok: snapshots no longer exist (#640)`
 
 Rows are stripped from soft-deleted pins too: a tombstoned pin must not retain gated data. Expand-only otherwise.
 
@@ -240,7 +245,8 @@ API tests are run from `apps/api` with `npm run test:unit` and `npm run test:int
 - `services/seat.service.integration.test.ts`: `removeMember` soft-deletes a user-principal attachment, and a later `loadSet` yields nothing from it. (2)
 - `routes/portal-map.router.integration.test.ts`: two viewers with different views get identical pin tiles (the definer's); a revoked definer → 422; the 9 `snapshotUpdatedAt` references are updated. (4)
 - `queues/dissolve-precompute.processor.integration.test.ts`: the pin enqueue runs under the definer's scopeHash. (2)
-- `db/migrations/0124-always-live-definer-pins.integration.test.ts` (new): seed pre-0124 rows (data with rows, legacy `queryHandle`, text, soft-deleted), migrate, then assert no data row keeps `rows`/counts/`queryHandle`, text is untouched, and `definer_principal_id = created_by`. (4)
+- `db/pin-definer-columns.integration.test.ts` (new, 0124): the backfill sets every definer (deleted included) to `created_by`; both columns NOT NULL. (2)
+- `db/strip-pin-snapshots.integration.test.ts` (new, 0125): no data row keeps `rows`/counts/`queryHandle`; text untouched; soft-deleted stripped. (4)
 - The route-authorization guard picks up the new GET and the deleted POST automatically.
 
 ### Web — `apps/web/src/__tests__/` and modules
@@ -266,7 +272,7 @@ API tests are run from `apps/api` with `npm run test:unit` and `npm run test:int
 
 ## Risks & rollback
 
-- **Destructive migration.** Stored snapshots and `snapshot_updated_at` are gone; a rollback is a forward migration plus a re-pin, never a restore. This is intended: those rows are the gated data. It's detected by the 0124 migration test.
+- **Destructive migration.** Stored snapshots and `snapshot_updated_at` are gone; a rollback is a forward migration plus a re-pin, never a restore. This is intended: those rows are the gated data. It's detected by the 0125 migration test.
 - **Execution cost moves to view time.** Bounded: only the detail view executes, under `statement_timeout`, `viz-refresh:<org>` and the tile `AdmissionGate`. Caching is the recorded follow-up.
 - **Fail-closed by construction.** A definer, pipeline, reader role or Redis-backed handle that can't be resolved refuses; nothing stored can be served, because nothing is stored. Only the rate window and the layer-count cache fail open, and neither serves data.
 - **Pin-owned handle misuse.** A handle id is a bearer reference: anyone with a pin-owned handle id must still be a pin reader in the pin's org. The unit and integration tests cover a reader who isn't the definer, a non-reader (404) and a cross-org caller.
@@ -275,7 +281,7 @@ API tests are run from `apps/api` with `npm run test:unit` and `npm run test:int
 
 - **core:** `models/portal-result.model.ts`, `contracts/pinned-result.contract.ts`, `contracts/portal.contract.ts`, `contracts/d3-widget.contract.ts`, `contracts/map-spec.contract.ts`, `ui/ContentBlockRenderer.tsx`, `content/faq.util.ts`, `content/glossary.util.ts`, plus tests.
 - **api:**
-  - schema and database: `db/schema/portal-results.table.ts`, `zod.ts`, `type-checks.ts`, `drizzle/0124_*` + `meta/*`;
+  - schema and database: `db/schema/portal-results.table.ts`, `zod.ts`, `type-checks.ts`, `drizzle/0124_*`, `drizzle/0125_*` + `meta/*`;
   - services: new `services/pin-definer.service.ts`, `portal-viz-refresh.service.ts`, `portal-result-pin.service.ts`, `portal-sql-handle.service.ts`, `portal-map-tile.service.ts`, `dissolve-precompute.service.ts`, `seat.service.ts`;
   - other: `tools/result-sink.ts`, `routes/portal-results.router.ts`, `routes/portal-sql-handle.router.ts`, `constants/api-codes.constants.ts`, `config/swagger.config.ts`, `__tests__/config/route-authorization.map.ts`, plus tests.
 - **web:** `api/portal-results.api.ts`, `api/keys.ts`, `utils/use-widget-refresh.util.ts`, `views/PinnedResultDetail.view.tsx`, `components/PinnedResultsList.component.tsx`, `components/PortalMessage.component.tsx`, `modules/MapWidget/MapWidget.component.tsx`, plus tests.

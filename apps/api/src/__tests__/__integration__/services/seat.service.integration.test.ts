@@ -463,6 +463,50 @@ describe("SeatService Integration Tests", () => {
     ).toHaveLength(0);
   });
 
+  // #640: a policy attached to the member directly must not outlive their
+  // membership — `loadSet` reads user-principal attachments without checking
+  // membership, so a removed member (and any pin they define) would keep it.
+  it("removeMember tombstones the member's direct policy attachments in this org only (#640)", async () => {
+    const memberId = await addMember("member");
+    const otherOrg = createOrganization(ownerId);
+    await asDrizzle()
+      .insert(schema.organizations)
+      .values(otherOrg as never);
+    const policy = async (organizationId: string) => {
+      const id = generateId();
+      await asDrizzle()
+        .insert(schema.permissionPolicies)
+        .values({
+          id,
+          created: Date.now(),
+          createdBy: "SYSTEM_TEST",
+          organizationId,
+          name: `direct-${id}`,
+          kind: "custom",
+        } as never);
+      await asDrizzle()
+        .insert(schema.policyAttachments)
+        .values({
+          id: generateId(),
+          created: Date.now(),
+          createdBy: "SYSTEM_TEST",
+          organizationId,
+          policyId: id,
+          principalType: "user",
+          principalId: memberId,
+        } as never);
+    };
+    await policy(orgId);
+    await policy(otherOrg.id);
+
+    await SeatService.removeMember(owner, memberId, AUDIT);
+
+    const live = await DbService.repository.policyAttachments.findByPrincipals([
+      { principalType: "user", principalId: memberId },
+    ]);
+    expect(live.map((a) => a.organizationId)).toEqual([otherOrg.id]);
+  });
+
   it("refuses to remove the last owner (LAST_OWNER_REMOVAL)", async () => {
     await expect(
       SeatService.removeMember(owner, ownerId, AUDIT)

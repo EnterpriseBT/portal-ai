@@ -109,6 +109,8 @@ function createPortalResult(
     content: { value: "hello" },
     created: now,
     createdBy: "SYSTEM_TEST",
+    definerPrincipalType: "user" as const,
+    definerPrincipalId: "SYSTEM_TEST",
     updated: null,
     updatedBy: null,
     deleted: null,
@@ -163,7 +165,7 @@ describe("Portal Results Router", () => {
     });
 
     it("pins a block from the latest assistant message", async () => {
-      const { organizationId } = await seedUserAndOrg(
+      const { organizationId, userId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
@@ -196,6 +198,9 @@ describe("Portal Results Router", () => {
       expect(res.body.payload.portalResult).toBeDefined();
       expect(res.body.payload.portalResult.name).toBe("My Analysis");
       expect(res.body.payload.portalResult.stationId).toBe(station.id);
+      // #640: the pin's data executes as the user who pinned it.
+      expect(res.body.payload.portalResult.definerPrincipalType).toBe("user");
+      expect(res.body.payload.portalResult.definerPrincipalId).toBe(userId);
     });
 
     it("returns 404 for unknown portal", async () => {
@@ -698,6 +703,9 @@ describe("Portal Results Router", () => {
 
       expect(res.body.payload.portalResults).toHaveLength(1);
       expect(res.body.payload.total).toBe(1);
+      // #640: list rows carry the definer too.
+      expect(res.body.payload.portalResults[0].definer.id).toBe("SYSTEM_TEST");
+      expect(res.body.payload.portalResults[0].viewerIsDefiner).toBe(false);
     });
 
     it("filters by stationId", async () => {
@@ -897,6 +905,45 @@ describe("Portal Results Router", () => {
       expect(res.body.payload.portalResult).toBeDefined();
       expect(res.body.payload.portalResult.id).toBe(result.id);
       expect(res.body.payload.portalResult.name).toBe("My Result");
+    });
+
+    // #640: a reader learns whose access the pin's data shows.
+    it("names the definer, and whether the caller is them", async () => {
+      const { organizationId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+      const mine = createPortalResult(organizationId, station.id, portal.id, {
+        createdBy: userId,
+        definerPrincipalId: userId,
+      });
+      const theirs = createPortalResult(organizationId, station.id, portal.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values([mine, theirs] as never);
+
+      const own = await request(app)
+        .get(`/api/portal-results/${mine.id}`)
+        .expect(200);
+      expect(own.body.payload.portalResult.definer).toEqual({
+        id: userId,
+        displayName: "Test User",
+      });
+      expect(own.body.payload.portalResult.viewerIsDefiner).toBe(true);
+
+      const other = await request(app)
+        .get(`/api/portal-results/${theirs.id}`)
+        .expect(200);
+      expect(other.body.payload.portalResult.definer.id).toBe("SYSTEM_TEST");
+      expect(other.body.payload.portalResult.viewerIsDefiner).toBe(false);
     });
 
     it("returns 404 for non-existent ID", async () => {

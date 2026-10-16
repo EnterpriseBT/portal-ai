@@ -51,6 +51,8 @@ describe("dissolve-scope retention purge (#643)", () => {
         snapshotUpdatedAt: null,
         created: t,
         createdBy: "SYSTEM_TEST",
+        definerPrincipalType: "user",
+        definerPrincipalId: "SYSTEM_TEST",
         updated: null,
         updatedBy: null,
         deleted: null,

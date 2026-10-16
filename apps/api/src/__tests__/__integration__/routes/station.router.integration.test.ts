@@ -155,6 +155,8 @@ function createPortalResult(
     content: {},
     created: now,
     createdBy: "SYSTEM_TEST",
+    definerPrincipalType: "user" as const,
+    definerPrincipalId: "SYSTEM_TEST",
     updated: null,
     updatedBy: null,
     deleted: null,

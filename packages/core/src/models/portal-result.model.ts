@@ -21,6 +21,20 @@ export const PortalResultTypeSchema = z.enum([
 
 export type PortalResultType = z.infer<typeof PortalResultTypeSchema>;
 
+/**
+ * Who a pin's data is executed as (#640): the pin shows its data as the
+ * definer sees it, now. `user` is the only definer written today; `role`
+ * is admitted so a team-shared pin can later rebind to a role without a
+ * schema change.
+ */
+export const PIN_DEFINER_PRINCIPAL_TYPES = ["user", "role"] as const;
+export const PinDefinerPrincipalTypeSchema = z.enum(
+  PIN_DEFINER_PRINCIPAL_TYPES
+);
+export type PinDefinerPrincipalType = z.infer<
+  typeof PinDefinerPrincipalTypeSchema
+>;
+
 export const PortalResultSchema = CoreSchema.extend({
   organizationId: z.string(),
   stationId: z.string(),
@@ -30,6 +44,8 @@ export const PortalResultSchema = CoreSchema.extend({
   name: z.string().min(1),
   type: PortalResultTypeSchema,
   content: z.record(z.string(), z.unknown()),
+  definerPrincipalType: PinDefinerPrincipalTypeSchema,
+  definerPrincipalId: z.string(),
   /** Epoch ms of the last successful snapshot write — pin time, then each
    *  persist-back refresh (#312). Seeds the web freshness clock. Null on
    *  rows pinned before #312. */

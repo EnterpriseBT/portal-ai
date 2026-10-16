@@ -23,6 +23,7 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
 import { PortalResultPinService } from "../services/portal-result-pin.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
+import { PinDefinerService } from "../services/pin-definer.service.js";
 import { DissolvePrecomputeService } from "../services/dissolve-precompute.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -221,6 +222,9 @@ portalResultsRouter.post(
         type,
         content: content as Record<string, unknown>,
         snapshotUpdatedAt,
+        // #640: the pin's data executes as the user who pinned it.
+        definerPrincipalType: "user",
+        definerPrincipalId: userId,
         created: now,
         createdBy: userId,
         updated: null,
@@ -511,12 +515,15 @@ portalResultsRouter.get(
         DbService.repository.portalResults.count(where),
       ]);
 
+      // #640: each pin names its definer, so a sharee knows whose access it
+      // shows.
+      const definers = await PinDefinerService.describeMany(data, ctx.userId);
       return HttpService.success<PortalResultListResponsePayload>(res, {
         // #688: each pin with the caller's capabilities on it.
         portalResults: ObjectCapabilitiesService.attach(
           set,
           "pin",
-          data
+          data.map((row) => ({ ...row, ...definers.get(row.id)! }))
         ) as unknown as PortalResultListResponsePayload["portalResults"],
         total,
         limit,
@@ -605,6 +612,7 @@ portalResultsRouter.get(
       return HttpService.success<PortalResultGetResponsePayload>(res, {
         portalResult: {
           ...portalResult,
+          ...(await PinDefinerService.describe(portalResult, ctx.userId)),
           capabilities: ObjectCapabilitiesService.for(set, "pin", portalResult),
         } as unknown as PortalResultGetResponsePayload["portalResult"],
       });

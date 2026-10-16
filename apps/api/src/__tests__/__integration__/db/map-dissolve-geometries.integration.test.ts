@@ -116,6 +116,8 @@ describe("map_dissolve_geometries storage (#472)", () => {
       snapshotUpdatedAt: null,
       created: now,
       createdBy: "test-system",
+      definerPrincipalType: "user",
+      definerPrincipalId: "test-system",
       updated: null,
       updatedBy: null,
       deleted: null,

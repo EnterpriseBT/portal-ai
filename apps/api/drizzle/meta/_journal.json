@@ -869,6 +869,13 @@
       "when": 1792167826866,
       "tag": "0123_backfill-wide-table-gist-indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1792192600183,
+      "tag": "0124_pin-definer-columns",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,8 @@ const validPortalResultFields = {
   type: "data-table" as const,
   content: { columns: ["quarter", "revenue"], rows: [] },
   snapshotUpdatedAt: null,
+  definerPrincipalType: "user" as const,
+  definerPrincipalId: "user-1",
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -31,6 +33,38 @@ const validPortalResultFields = {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("PortalResultSchema", () => {
+  // #640: every pin names the principal its data executes as.
+  it("requires the definer", () => {
+    const data = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      ...validPortalResultFields,
+    };
+    const { definerPrincipalId: _id, ...withoutId } = data;
+    const { definerPrincipalType: _type, ...withoutType } = data;
+    expect(PortalResultSchema.safeParse(data).success).toBe(true);
+    expect(PortalResultSchema.safeParse(withoutId).success).toBe(false);
+    expect(PortalResultSchema.safeParse(withoutType).success).toBe(false);
+  });
+
+  it("admits a user or role definer and nothing else", () => {
+    const base = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      ...validPortalResultFields,
+    };
+    expect(
+      PortalResultSchema.safeParse({ ...base, definerPrincipalType: "role" })
+        .success
+    ).toBe(true);
+    expect(
+      PortalResultSchema.safeParse({ ...base, definerPrincipalType: "group" })
+        .success
+    ).toBe(false);
+  });
+
   it("should accept valid data with all fields", () => {
     const data = {
       id: "pr-1",
@@ -49,6 +83,8 @@ describe("PortalResultSchema", () => {
       type: "data-table",
       content: { columns: ["quarter", "revenue"], rows: [] },
       snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -92,6 +128,8 @@ describe("PortalResultSchema", () => {
       type: "text",
       content: { body: "hello" },
       snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -135,6 +173,8 @@ describe("PortalResultSchema", () => {
       type: "text",
       content: { body: "Some text" },
       snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -158,6 +198,8 @@ describe("PortalResultSchema", () => {
       type: "data-table",
       content: { columns: ["a"], rows: [{ a: 1 }] },
       snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -205,6 +247,8 @@ describe("PortalResultSchema", () => {
       type: "d3",
       content: { program: "api.svg;", rows: [] },
       snapshotUpdatedAt: Date.now(),
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     expect(PortalResultSchema.safeParse(data).success).toBe(true);
   });
@@ -248,6 +292,8 @@ describe("PortalResultSchema", () => {
       type: "text",
       content: { body: "x" },
       snapshotUpdatedAt: 1.5,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     expect(PortalResultSchema.safeParse(data).success).toBe(false);
   });

@@ -149,6 +149,8 @@ async function pin(db: Db, fx: TenancyFixture, createdBy: string) {
     type: "text",
     content: { text: "hello" },
     ...base(createdBy),
+    definerPrincipalType: "user",
+    definerPrincipalId: createdBy,
   } as never);
   return id;
 }
