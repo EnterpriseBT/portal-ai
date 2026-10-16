@@ -764,12 +764,34 @@ export interface SyncRecordWriter {
  * `recordIndex` advances in upstream order and synthetic source ids stay
  * aligned with the per-record path.
  */
+/**
+ * One record per source id, the last occurrence winning. An upstream that
+ * repeats an id within a batch (or two ids that only differ by a stripped
+ * U+0000, #805) would otherwise make one `INSERT … ON CONFLICT` touch the
+ * same row twice, which Postgres refuses (SQLSTATE 21000), failing the whole
+ * sync. Ids repeated across batches need nothing: each batch is its own
+ * statement, so the later one simply updates the row.
+ */
+function lastPerSourceId(batch: PendingRecord[]): PendingRecord[] {
+  const bySourceId = new Map<string, PendingRecord>();
+  for (const p of batch) bySourceId.set(p.sourceId, p);
+  if (bySourceId.size === batch.length) return batch;
+  logger.warn(
+    {
+      event: "rest-api.sync.duplicate-source-ids",
+      duplicates: batch.length - bySourceId.size,
+    },
+    "Upstream repeated source ids within a batch; keeping the last record for each"
+  );
+  return [...bySourceId.values()];
+}
+
 export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
   let pending: PendingRecord[] = [];
 
   async function flush(): Promise<void> {
     if (pending.length === 0) return;
-    const batch = pending;
+    const batch = lastPerSourceId(pending);
     pending = [];
 
     const existing =

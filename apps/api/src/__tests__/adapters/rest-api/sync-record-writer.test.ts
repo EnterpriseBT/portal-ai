@@ -694,3 +694,60 @@ describe("NUL stripping (#805)", () => {
     expect(counts(ctx).nulStrippedValues).toBe(2);
   });
 });
+
+// ── Duplicate source ids in one batch ─────────────────────────────────
+//
+// #805 adversarial walk: an upstream that repeats an id within one batch (or
+// two ids that only differ by a stripped U+0000) made one INSERT … ON CONFLICT
+// touch the same row twice, and Postgres failed the whole sync with SQLSTATE
+// 21000. The batch now keeps the last record per source id.
+
+describe("duplicate source ids within a batch", () => {
+  const counts = (ctx: unknown) =>
+    (ctx as { counts: Record<string, number> }).counts;
+
+  it("writes one row per source id, the last record winning", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "b", v: "one" });
+    await w.add({ pid: "c", v: "solo" });
+    await w.add({ pid: "b", v: "two" });
+    await w.flush();
+
+    const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
+    expect(rows.map((r) => [r.sourceId, (r.data as { v: string }).v])).toEqual(
+      expect.arrayContaining([
+        ["b", "two"],
+        ["c", "solo"],
+      ])
+    );
+    expect(rows).toHaveLength(2);
+    expect(counts(ctx).created).toBe(2);
+  });
+
+  it("dedupes ids that only collide once U+0000 is stripped", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "b\u0000", v: "one" });
+    await w.add({ pid: "b", v: "two" });
+    await w.flush();
+
+    const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sourceId: "b",
+      data: { pid: "b", v: "two" },
+    });
+    expect(counts(ctx).nulStrippedValues).toBe(1);
+  });
+
+  it("looks up each source id once", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "b", v: "one" });
+    await w.add({ pid: "b", v: "two" });
+    await w.flush();
+
+    expect(findBySourceIdsForSyncMock.mock.calls[0]![1]).toEqual(["b"]);
+  });
+});
