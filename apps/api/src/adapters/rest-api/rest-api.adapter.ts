@@ -474,9 +474,9 @@ async function syncOneEndpoint(
   );
   const iterator = resolveIterator(pagination);
 
-  // `counts` is a mutable bag so the extracted `upsertRecord` helper
-  // (shared with the slice-4 streaming branch) can mutate counters
-  // through the same reference instead of returning + accumulating.
+  // `counts` is a mutable bag so the batch writer (shared with the
+  // slice-4 streaming branch) can mutate counters through the same
+  // reference instead of returning + accumulating.
   // `recordIndex` is global across all pages so synthetic source ids
   // stay unique for an endpoint that paginates without an `idField`.
   const counts = {
@@ -745,7 +745,7 @@ export interface SyncRecordWriter {
 }
 
 /**
- * Batched replacement for `upsertRecord` (#440).
+ * Batched replacement for the old per-record write path (#440).
  *
  * The per-record path cost 3–4 sequential round-trips each: a change-detection
  * read, an upsert or a watermark bump, a wide-row mirror, and the geometry
@@ -1005,127 +1005,6 @@ async function mirrorBatchToWideTable(
   }
 }
 
-/**
- * Upsert a single record into `entity_records` and mirror into the
- * wide table. Mutates `ctx.counts` in place — never returns the
- * counters, and never throws on a non-object record (just bumps
- * `recordIndex` and returns so synthetic source ids stay aligned
- * across the array).
- *
- * Extracted from `syncOneEndpoint`'s inner loop so the slice-4
- * streaming branch can call the same per-record body without
- * duplicating it.
- */
-export async function upsertRecord(
-  record: unknown,
-  ctx: UpsertContext
-): Promise<void> {
-  if (record === null || typeof record !== "object") {
-    ctx.counts.recordIndex++;
-    return;
-  }
-
-  // Defensively normalize the record's prototype before it touches
-  // Drizzle. Drizzle's PgInsertBuilder.values() walks each column
-  // value through `is(v, SQL)`, which reaches for
-  // `Object.getPrototypeOf(v).constructor` — that throws "Cannot
-  // read properties of null (reading 'constructor')" if `v` is a
-  // prototypeless object. Some upstreams (NASA's NEO feed when its
-  // body parses through certain runtimes; jsonata transform
-  // outputs in some cases) deliver `Object.create(null)`-shaped
-  // sub-objects, and that null-prototype value flows straight
-  // into the `data` jsonb column. Spreading via `{ ...record }`
-  // attaches Object.prototype to the top-level wrapper, which is
-  // all Drizzle needs to introspect at insert time. Sub-objects
-  // keep whatever shape they came in with — jsonb stores them
-  // verbatim either way.
-  //
-  // #805: U+0000 is stripped here too (see `toStorableRecord`).
-  const recordObj = toStorableRecord(record, ctx);
-  const sourceId = deriveSourceId(
-    recordObj,
-    ctx.endpoint.config.idField,
-    ctx.generationKey,
-    ctx.counts.recordIndex
-  );
-  ctx.counts.recordIndex++;
-  const checksum = checksumRecord(recordObj);
-
-  const existing = await DbService.repository.entityRecords.findBySourceIds(
-    ctx.endpoint.entity.id,
-    [sourceId]
-  );
-  const prior = existing[0];
-
-  if (prior && prior.checksum === checksum) {
-    // Unchanged → bump syncedAt so watermark reaper leaves it alone.
-    await DbService.repository.entityRecords.bulkUpdateSyncedAt(
-      [prior.id],
-      ctx.runStartedAt
-    );
-    // Wide-table mirror: re-project + upsert (idempotent via
-    // ON CONFLICT). Backfills rows that exist in entity_records
-    // but are missing from the wide table — common right after
-    // landing field mappings on an already-synced entity.
-    if (ctx.wideProjection) {
-      await mirrorRecordToWideTable(
-        ctx.endpoint.entity.id,
-        prior.id,
-        ctx.instance.organizationId,
-        sourceId,
-        ctx.runStartedAt,
-        recordObj,
-        ctx.mappingsForNormalize,
-        ctx.wideProjection,
-        ctx.counts
-      );
-    }
-    ctx.counts.unchanged++;
-    return;
-  }
-
-  const rowId = prior?.id ?? SystemUtilities.id.v4.generate();
-  const upserted = await DbService.repository.entityRecords.upsertBySourceId({
-    id: rowId,
-    organizationId: ctx.instance.organizationId,
-    connectorEntityId: ctx.endpoint.entity.id,
-    sourceId,
-    data: recordObj as never,
-    checksum,
-    syncedAt: ctx.runStartedAt,
-    origin: "sync",
-    isValid: true,
-    validationErrors: null,
-    created: prior?.created ?? Date.now(),
-    createdBy: prior?.createdBy ?? ctx.userId,
-    updated: Date.now(),
-    updatedBy: ctx.userId,
-    deleted: null,
-    deletedBy: null,
-  } as never);
-
-  // Mirror into the wide table so the entity detail view sees the
-  // columns populated. Skip when the entity has no field_mappings
-  // yet (no c_* columns) — the field-mapping create route's
-  // reconciler will populate them once mappings land.
-  if (ctx.wideProjection) {
-    await mirrorRecordToWideTable(
-      ctx.endpoint.entity.id,
-      upserted.id,
-      ctx.instance.organizationId,
-      sourceId,
-      ctx.runStartedAt,
-      recordObj,
-      ctx.mappingsForNormalize,
-      ctx.wideProjection,
-      ctx.counts
-    );
-  }
-
-  if (prior) ctx.counts.updated++;
-  else ctx.counts.created++;
-}
-
 function readBaseUrl(instance: ConnectorInstance): string {
   const cfg = instance.config as { baseUrl?: unknown } | null;
   const baseUrl = cfg?.baseUrl;
@@ -1146,89 +1025,6 @@ function readAuth(instance: ConnectorInstance): ApiAuthConfig {
   // a null config; treat as `none`. Phase-1 instances always carry a
   // populated auth block.
   return cfg?.auth ?? { mode: "none" };
-}
-
-/**
- * Mirror a single synced record into the entity's wide table
- * (`er__<id>`). Runs `NormalizationService.normalizeWithMappings` →
- * `projectToWideRow` → `wideTable.upsertMany` for one row.
- *
- * The wide-table write is best-effort: a failure here leaves the
- * record's data in `entity_records` (the source of truth) and the
- * next reconcile / re-sync can backfill the wide row. Logs the
- * underlying error so we can diagnose without breaking the whole
- * sync run.
- */
-async function mirrorRecordToWideTable(
-  connectorEntityId: string,
-  recordId: string,
-  organizationId: string,
-  sourceId: string,
-  syncedAt: number,
-  recordObj: Record<string, unknown>,
-  mappingsForNormalize: unknown,
-  wideProjection: ReadonlyMap<string, string>,
-  geoCounts?: {
-    geometryRepaired: number;
-    geometryRejected: number;
-    geometryRejectedSample: string[];
-  }
-): Promise<void> {
-  try {
-    const normalized = NormalizationService.normalizeWithMappings(
-      mappingsForNormalize as never,
-      recordObj
-    );
-    const result = await DbService.repository.wideTable.upsertMany(
-      connectorEntityId,
-      [
-        projectToWideRow(
-          {
-            id: recordId,
-            organizationId,
-            sourceId,
-            syncedAt,
-            isValid: normalized.isValid,
-            normalizedData: normalized.normalizedData,
-          },
-          wideProjection
-        ),
-      ]
-    );
-    // #316: surface the fail-closed geometry outcome so it's never silent.
-    if (geoCounts && (result.repaired > 0 || result.rejected.length > 0)) {
-      geoCounts.geometryRepaired += result.repaired;
-      geoCounts.geometryRejected += result.rejected.length;
-      for (const r of result.rejected) {
-        if (
-          geoCounts.geometryRejectedSample.length < GEOMETRY_REJECTED_SAMPLE_CAP
-        ) {
-          geoCounts.geometryRejectedSample.push(r.sourceId);
-        }
-      }
-      logger.warn(
-        {
-          event: "rest-api.sync.geometry-audit",
-          connectorEntityId,
-          sourceId,
-          repaired: result.repaired,
-          rejected: result.rejected,
-        },
-        "Geometry audit repaired or rejected values on import"
-      );
-    }
-  } catch (err) {
-    logger.error(
-      {
-        event: "rest-api.sync.wide-table-mirror-failed",
-        connectorEntityId,
-        recordId,
-        sourceId,
-        err,
-      },
-      "Wide-table mirror failed for record — entity_records row is intact; next reconcile will backfill"
-    );
-  }
 }
 
 export function checksumRecord(record: Record<string, unknown>): string {
