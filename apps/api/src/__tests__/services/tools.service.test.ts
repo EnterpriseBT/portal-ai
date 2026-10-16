@@ -1106,6 +1106,87 @@ describe("buildAnalyticsTools()", () => {
     commit.mockRestore();
   });
 
+  // -----------------------------------------------------------------------
+  // #811: a refusal from the permission or lock gate never reaches the cost
+  // gate. Each wrap replaces `execute`, so the last applied is outermost; the
+  // cost gate charges any result that resolves and its admission spends a
+  // rate-window slot, so it must be applied before (inside) both. The two
+  // gates are spies here, made to refuse every call.
+  // -----------------------------------------------------------------------
+
+  const REFUSING_GATES = [
+    { gate: "permission", code: ApiCode.PERMISSION_DENIED },
+    { gate: "lock", code: ApiCode.ENTITY_LOCKED_BY_JOB },
+  ] as const;
+
+  it.each(REFUSING_GATES)(
+    "#811: a $gate refusal is never admitted or charged",
+    async ({ gate, code }) => {
+      setupStationMocks([
+        "data_query",
+        "visualize",
+        "statistics",
+        "regression",
+        "financial",
+        "web_search",
+        "entity_management",
+        "gis",
+      ]);
+      mockResolveStationCapabilities.mockResolvedValue([
+        {
+          connectorInstanceId: "ci-1",
+          capabilities: { read: true, write: true },
+        },
+      ]);
+      const { wrapWithPermissionGate } =
+        await import("../../services/permission-gate.service.js");
+      const spy = (gate === "permission"
+        ? wrapWithPermissionGate
+        : mockWrapWithLockGate) as unknown as jest.Mock;
+      spy.mockImplementationOnce((tools: unknown) => {
+        for (const tool of Object.values(
+          tools as Record<string, { execute?: unknown }>
+        )) {
+          if (tool.execute) {
+            tool.execute = async () => ({ error: { code, message: "no" } });
+          }
+        }
+      });
+      const admission = jest.spyOn(CostGateService, "checkAdmission");
+      const commit = jest.spyOn(CostGateService, "commitCharge");
+
+      const tools = await buildAnalyticsTools(
+        ORG_ID,
+        STATION_ID,
+        "user-001",
+        "portal-001"
+      );
+      const names = Object.keys(tools);
+      // A metered tool is among them, so a charge was possible.
+      expect(names).toContain("web_search");
+
+      for (const name of names) {
+        const out = await (tools[name] as any).execute(
+          { query: "q" },
+          {
+            toolCallId: "t",
+            messages: [],
+            abortSignal: new AbortController().signal,
+          }
+        );
+        expect([name, out]).toEqual([
+          name,
+          { error: expect.objectContaining({ code }) },
+        ]);
+      }
+      expect(admission).not.toHaveBeenCalled();
+      expect(commit).not.toHaveBeenCalled();
+
+      admission.mockRestore();
+      commit.mockRestore();
+    }
+  );
+
   it("#629: every write tool has an authorization descriptor (coverage guard)", async () => {
     const { ALL_TOOL_CAPABILITIES, TOOL_AUTHORIZATION } =
       await import("@portalai/core/registries");

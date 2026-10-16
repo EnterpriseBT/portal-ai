@@ -26,8 +26,10 @@ import type { GateableTool } from "./cost-gate.service.js";
  * result naming the running job, never a throw, so the agent relays it.
  *
  * Applied inside the permission gate (an unauthorized caller never learns a
- * job is running) and inside the cost gate (a write tool is free or charges
- * on job success, so a refusal is never charged).
+ * job is running) and outside the cost gate (#811), so a refusal is never
+ * admitted: it neither charges nor spends a rate-window slot. The held locks
+ * therefore also cover the cost gate's admission and commit, a few
+ * milliseconds, and only for a charged tool.
  *
  * The held lock uses one pooled connection for the length of the call, on
  * top of whatever the tool uses, and the API's pool is 10 connections shared
