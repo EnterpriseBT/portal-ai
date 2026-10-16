@@ -338,7 +338,16 @@ export const ToolLockSchema = z.union([
     idField: z.string(),
     resolve: z.literal("fieldMappingEntity").optional(),
   }),
-  z.object({ enqueues: JobTypeEnum }),
+  z.object({
+    enqueues: JobTypeEnum,
+    /**
+     * #811: input paths holding the connector entity ids the job will lock,
+     * so the lock gate can refuse before the cost gate admits the call.
+     * Dotted keys; a `[]` suffix fans out over an array
+     * (`expression.writes[].targetConnectorEntityId`).
+     */
+    entityIdArgs: z.array(z.string()).min(1),
+  }),
 ]);
 export type ToolLock = z.infer<typeof ToolLockSchema>;
 

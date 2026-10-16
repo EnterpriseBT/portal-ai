@@ -21,13 +21,18 @@ import type { GateableTool } from "./cost-gate.service.js";
  *    tool inside `JobLockService.withUnlocked`, so the shared scope locks are
  *    held for the whole call (a job can't start over them mid-call);
  *  - `enqueues`: the tool starts a scoped job through `enqueueExclusive`,
- *    which refuses it itself.
+ *    which refuses it atomically. The gate first runs a non-atomic
+ *    `assertNoneRunning` over the entities its `entityIdArgs` name (#811),
+ *    so a refusal returns before the cost gate admits the call; the tool's
+ *    own pre-check and the enqueue still re-check.
  * Either way a lock refusal comes back as a typed `ENTITY_LOCKED_BY_JOB`
  * result naming the running job, never a throw, so the agent relays it.
  *
  * Applied inside the permission gate (an unauthorized caller never learns a
- * job is running) and inside the cost gate (a write tool is free or charges
- * on job success, so a refusal is never charged).
+ * job is running) and outside the cost gate (#811), so a refusal is never
+ * admitted: it neither charges nor spends a rate-window slot. The held locks
+ * therefore also cover the cost gate's admission and commit, a few
+ * milliseconds, and only for a charged tool.
  *
  * The held lock uses one pooled connection for the length of the call, on
  * top of whatever the tool uses, and the API's pool is 10 connections shared
@@ -86,6 +91,25 @@ function itemIds(input: unknown, itemsArg: string, idField: string): string[] {
   });
 }
 
+/** The string values at a dotted input path; a `[]` suffix on a segment fans
+ *  out over that array (`expression.writes[].targetConnectorEntityId`).
+ *  Anything missing or of the wrong shape yields nothing: the tool's own
+ *  validation answers malformed input. */
+export function valuesAtPath(input: unknown, path: string): string[] {
+  let nodes: unknown[] = [input];
+  for (const segment of path.split(".")) {
+    const fanOut = segment.endsWith("[]");
+    const key = fanOut ? segment.slice(0, -2) : segment;
+    nodes = nodes.flatMap((node) => {
+      if (typeof node !== "object" || node === null) return [];
+      const v = (node as Record<string, unknown>)[key];
+      if (!fanOut) return [v];
+      return Array.isArray(v) ? v : [];
+    });
+  }
+  return nodes.filter((v): v is string => typeof v === "string" && v !== "");
+}
+
 /** Each item's lock target; ids that resolve to nothing are left to the
  *  tool's own not-found handling. */
 async function targetsFor(
@@ -132,7 +156,20 @@ export function wrapWithLockGate(
 
     tool.execute = async (input: unknown, options: unknown) => {
       try {
-        if ("enqueues" in lock) return await original(input, options);
+        if ("enqueues" in lock) {
+          const ids = [
+            ...new Set(
+              lock.entityIdArgs.flatMap((p) => valuesAtPath(input, p))
+            ),
+          ];
+          if (ids.length > 0) {
+            await JobLockService.assertNoneRunning(
+              ids.map((id) => ({ kind: "connectorEntity" as const, id })),
+              ctx
+            );
+          }
+          return await original(input, options);
+        }
         const targets = await targetsFor(lock, input, ctx.organizationId);
         if (targets.length === 0) return await original(input, options);
         const signal = (options as { abortSignal?: AbortSignal } | undefined)

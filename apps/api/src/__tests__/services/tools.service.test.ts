@@ -73,8 +73,9 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 }));
 
 // #629: the permission gate + its loadSet are exercised in their own suites
-// (permission-gate.service.test). Here they are no-ops so the cost-gate guard
-// (which runs after) sees every write tool reach the cost wrap.
+// (permission-gate.service.test). Here they are no-ops, so every write tool
+// reaches the cost wrap inside them (#811: the cost gate is applied first, so
+// it wraps innermost).
 jest.unstable_mockModule("../../services/permission-gate.service.js", () => ({
   wrapWithPermissionGate: jest.fn(),
 }));
@@ -1106,6 +1107,91 @@ describe("buildAnalyticsTools()", () => {
     commit.mockRestore();
   });
 
+  // -----------------------------------------------------------------------
+  // #811: a refusal from the permission or lock gate never reaches the cost
+  // gate. Each wrap replaces `execute`, so the last applied is outermost; the
+  // cost gate charges any result that resolves and its admission spends a
+  // rate-window slot, so it must be applied before (inside) both. The two
+  // gates are spies here, made to refuse every call.
+  // -----------------------------------------------------------------------
+
+  const REFUSING_GATES = [
+    { gate: "permission", code: ApiCode.PERMISSION_DENIED },
+    { gate: "lock", code: ApiCode.ENTITY_LOCKED_BY_JOB },
+  ] as const;
+
+  it.each(REFUSING_GATES)(
+    "#811: a $gate refusal is never admitted or charged",
+    async ({ gate, code }) => {
+      setupStationMocks([
+        "data_query",
+        "visualize",
+        "statistics",
+        "regression",
+        "financial",
+        "web_search",
+        "entity_management",
+        "gis",
+      ]);
+      mockResolveStationCapabilities.mockResolvedValue([
+        {
+          connectorInstanceId: "ci-1",
+          capabilities: { read: true, write: true },
+        },
+      ]);
+      const { wrapWithPermissionGate } =
+        await import("../../services/permission-gate.service.js");
+      const spy = (gate === "permission"
+        ? wrapWithPermissionGate
+        : mockWrapWithLockGate) as unknown as jest.Mock;
+      spy.mockImplementationOnce((tools: unknown) => {
+        for (const tool of Object.values(
+          tools as Record<string, { execute?: unknown }>
+        )) {
+          if (tool.execute) {
+            tool.execute = async () => ({ error: { code, message: "no" } });
+          }
+        }
+      });
+      const admission = jest.spyOn(CostGateService, "checkAdmission");
+      const commit = jest.spyOn(CostGateService, "commitCharge");
+      try {
+        const tools = await buildAnalyticsTools(
+          ORG_ID,
+          STATION_ID,
+          "user-001",
+          "portal-001"
+        );
+        const names = Object.keys(tools);
+        // A metered tool is among them, so a charge was possible.
+        expect(names).toContain("web_search");
+
+        for (const name of names) {
+          const out = await (tools[name] as any).execute(
+            { query: "q" },
+            {
+              toolCallId: "t",
+              messages: [],
+              abortSignal: new AbortController().signal,
+            }
+          );
+          expect([name, out]).toEqual([
+            name,
+            { error: expect.objectContaining({ code }) },
+          ]);
+        }
+        expect(admission).not.toHaveBeenCalled();
+        expect(commit).not.toHaveBeenCalled();
+      } finally {
+        // A failure mid-test must not leak the spies, or an unconsumed
+        // refusing implementation, into later tests.
+        admission.mockRestore();
+        commit.mockRestore();
+        spy.mockReset();
+      }
+    }
+  );
+
   it("#629: every write tool has an authorization descriptor (coverage guard)", async () => {
     const { ALL_TOOL_CAPABILITIES, TOOL_AUTHORIZATION } =
       await import("@portalai/core/registries");
@@ -1159,11 +1245,34 @@ describe("buildAnalyticsTools()", () => {
     expect(authFor("entity_record_update")).toBe(
       TOOL_AUTHORIZATION.entity_record_update
     );
-    // Applied first, so it wraps innermost: the permission check runs before
-    // the lock check, and an unauthorized caller never learns a job runs.
+    // Applied before the permission gate, so inside it: the permission check
+    // runs before the lock check, and an unauthorized caller never learns a
+    // job runs. (#811: the cost gate is applied before both, innermost.)
     expect(mockWrapWithLockGate.mock.invocationCallOrder[0]).toBeLessThan(
       permissionGate.mock.invocationCallOrder[0]
     );
+  });
+
+  // #811 trade-off guard. A `target` lock holds its scope locks (and a pooled
+  // connection) for the whole call, and the cost gate sits inside it so a
+  // lock refusal is never admitted. For a charged tool that would put the
+  // usage commit inside the lock's transaction (billed before it commits) and
+  // let an over-quota org occupy lock-admission slots. Every such tool is free
+  // today, which makes both moot: a charged one fails here, so the order is
+  // revisited before it ships.
+  it("#811: every target-locked write tool is free", async () => {
+    const { TOOL_AUTHORIZATION, ALL_TOOL_CAPABILITIES } =
+      await import("@portalai/core/registries");
+    const targetLocked = Object.entries(TOOL_AUTHORIZATION).filter(
+      ([, auth]) => "target" in auth.lock
+    );
+    expect(targetLocked.length).toBeGreaterThan(0);
+    for (const [name] of targetLocked) {
+      expect([name, ALL_TOOL_CAPABILITIES[name]?.costHint]).toEqual([
+        name,
+        "free",
+      ]);
+    }
   });
 
   it("#769: every write tool declares a job lock that matches its input", async () => {

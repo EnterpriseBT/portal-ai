@@ -916,33 +916,15 @@ export class ToolService {
       }
     }
 
-    // #769 job lock: every write tool runs inside JobLockService.withUnlocked
-    // for its items' targets (or enqueues exclusively), and a running job in
-    // scope refuses it with a typed ENTITY_LOCKED_BY_JOB result. Applied
-    // first, so it sits inside the permission gate (an unauthorized caller
-    // never learns a job is running) and the cost gate.
-    wrapWithLockGate(
-      tools as unknown as Record<string, GateableTool>,
-      { organizationId },
-      (name) => TOOL_AUTHORIZATION[name]
-    );
-
-    // #629 per-caller tool-authorization gate: authorize every write the agent
-    // attempts against the caller's RBAC (roles ∪ grants ∪ groups), per object,
-    // and surface any denial as a typed refusal. The context was resolved once
-    // above (shared with the rbac_management pack); the gate is applied OUTSIDE
-    // the cost gate, so a denied call never reaches admission.
-    const permissionSet = await PermissionService.loadSet(permissionContext);
-    wrapWithPermissionGate(
-      tools as unknown as Record<string, GateableTool>,
-      permissionSet,
-      { organizationId, userId },
-      (name) => TOOL_AUTHORIZATION[name]
-    );
-
     // #169 cost gate: wrap every tool's execute so each call charges/denies
     // against the org's tier allocation. `free` + org-hosted (custom) tools
     // short-circuit inside the gate; the guard test asserts none is un-wrapped.
+    //
+    // #811: applied FIRST, so it wraps innermost. Each wrap replaces `execute`,
+    // so the last applied runs first. The cost gate commits a charge for any
+    // result that resolves, and its admission spends a rate-window slot, so
+    // every gate that can refuse (lock, permission, input characters) must sit
+    // outside it. The guard test asserts no refusal reaches admission.
     wrapWithCostGate(
       tools as unknown as Record<string, GateableTool>,
       // #179: station/portal ride the wrap ctx so committed charges carry
@@ -975,6 +957,31 @@ export class ToolService {
           deferChargeToJob: !isCustom && capability?.resultKind === "progress",
         };
       }
+    );
+
+    // #769 job lock: every write tool runs inside JobLockService.withUnlocked
+    // for its items' targets (or enqueues exclusively), and a running job in
+    // scope refuses it with a typed ENTITY_LOCKED_BY_JOB result. Applied after
+    // the cost gate, so outside it (a refusal never reaches admission), and
+    // before the permission gate, so inside it (an unauthorized caller never
+    // learns a job is running).
+    wrapWithLockGate(
+      tools as unknown as Record<string, GateableTool>,
+      { organizationId },
+      (name) => TOOL_AUTHORIZATION[name]
+    );
+
+    // #629 per-caller tool-authorization gate: authorize every write the agent
+    // attempts against the caller's RBAC (roles ∪ grants ∪ groups), per object,
+    // and surface any denial as a typed refusal. The context was resolved once
+    // above (shared with the rbac_management pack). Applied after the lock and
+    // cost gates, so outside both: a denied call never reaches admission.
+    const permissionSet = await PermissionService.loadSet(permissionContext);
+    wrapWithPermissionGate(
+      tools as unknown as Record<string, GateableTool>,
+      permissionSet,
+      { organizationId, userId },
+      (name) => TOOL_AUTHORIZATION[name]
     );
 
     // #805: a NUL in a built-in tool's input is refused with a typed result.

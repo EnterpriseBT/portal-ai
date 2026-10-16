@@ -17,9 +17,14 @@ const mockWithUnlocked =
 const mockFieldMappingFindMany =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const mockLockEntityIds = jest.fn<(m: unknown[]) => Promise<string[]>>();
+const mockAssertNoneRunning =
+  jest.fn<(targets: unknown, ctx: unknown) => Promise<void>>();
 
 jest.unstable_mockModule("../../services/job-lock.service.js", () => ({
-  JobLockService: { withUnlocked: mockWithUnlocked },
+  JobLockService: {
+    withUnlocked: mockWithUnlocked,
+    assertNoneRunning: mockAssertNoneRunning,
+  },
 }));
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -33,7 +38,7 @@ jest.unstable_mockModule(
   })
 );
 
-const { wrapWithLockGate } =
+const { wrapWithLockGate, valuesAtPath } =
   await import("../../services/lock-gate.service.js");
 const { ApiError } = await import("../../services/http.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
@@ -60,6 +65,8 @@ const locked = () =>
   );
 
 beforeEach(() => {
+  mockAssertNoneRunning.mockReset();
+  mockAssertNoneRunning.mockResolvedValue(undefined);
   mockWithUnlocked.mockReset();
   mockWithUnlocked.mockImplementation(async (_t, _c, fn) => fn("tx"));
   mockFieldMappingFindMany.mockReset();
@@ -181,7 +188,9 @@ describe("wrapWithLockGate (#769)", () => {
         },
       },
     };
-    wrapWithLockGate(tools, ctx, () => auth({ enqueues: "bulk_geocode" }));
+    wrapWithLockGate(tools, ctx, () =>
+      auth({ enqueues: "bulk_geocode", entityIdArgs: ["connectorEntityId"] })
+    );
 
     const out = (await tools.t.execute!({}, {})) as {
       error: { code: string };
@@ -189,6 +198,74 @@ describe("wrapWithLockGate (#769)", () => {
 
     expect(mockWithUnlocked).not.toHaveBeenCalled();
     expect(out.error.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+  });
+
+  it("#811: an enqueuing tool is refused before it runs when its entities are locked", async () => {
+    mockAssertNoneRunning.mockRejectedValue(locked());
+    const inner = jest.fn(async () => "ok");
+    const tools: Record<string, Tool> = { t: { execute: inner } };
+    wrapWithLockGate(tools, ctx, () =>
+      auth({
+        enqueues: "bulk_transform",
+        entityIdArgs: [
+          "sourceConnectorEntityId",
+          "expression.writes[].targetConnectorEntityId",
+        ],
+      })
+    );
+
+    const out = (await tools.t.execute!(
+      {
+        sourceConnectorEntityId: "src",
+        expression: {
+          writes: [
+            { targetConnectorEntityId: "a" },
+            { targetConnectorEntityId: "b" },
+            { targetConnectorEntityId: "a" },
+          ],
+        },
+      },
+      {}
+    )) as { error: { code: string } };
+
+    // Refused in the gate: the tool (and the cost gate inside it) never ran.
+    expect(inner).not.toHaveBeenCalled();
+    expect(out.error.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+    expect(mockAssertNoneRunning).toHaveBeenCalledWith(
+      [
+        { kind: "connectorEntity", id: "src" },
+        { kind: "connectorEntity", id: "a" },
+        { kind: "connectorEntity", id: "b" },
+      ],
+      ctx
+    );
+  });
+
+  it("#811: an enqueuing tool with free entities runs", async () => {
+    const inner = jest.fn(async () => "ok");
+    const tools: Record<string, Tool> = { t: { execute: inner } };
+    wrapWithLockGate(tools, ctx, () =>
+      auth({ enqueues: "bulk_geocode", entityIdArgs: ["connectorEntityId"] })
+    );
+
+    expect(await tools.t.execute!({ connectorEntityId: "e1" }, {})).toBe("ok");
+    expect(mockAssertNoneRunning).toHaveBeenCalledWith(
+      [{ kind: "connectorEntity", id: "e1" }],
+      ctx
+    );
+    expect(mockWithUnlocked).not.toHaveBeenCalled();
+  });
+
+  it("#811: valuesAtPath reads dotted keys and fans out over [] arrays", () => {
+    const input = {
+      a: "x",
+      b: { list: [{ id: "1" }, { id: "" }, { id: 2 }, {}, { id: "3" }] },
+    };
+    expect(valuesAtPath(input, "a")).toEqual(["x"]);
+    expect(valuesAtPath(input, "b.list[].id")).toEqual(["1", "3"]);
+    expect(valuesAtPath(input, "b.missing[].id")).toEqual([]);
+    expect(valuesAtPath(input, "a.deeper")).toEqual([]);
+    expect(valuesAtPath(null, "a")).toEqual([]);
   });
 
   it("other errors pass through untouched", async () => {

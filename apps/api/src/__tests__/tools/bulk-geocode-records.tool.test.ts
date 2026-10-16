@@ -4,6 +4,9 @@ import { BulkGeocodeRecordsTool } from "../../tools/bulk-geocode-records.tool.js
 import type { BulkGeocodeToolDeps } from "../../tools/bulk-geocode-records.tool.js";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
+import { JobLockService } from "../../services/job-lock.service.js";
+import { wrapWithLockGate } from "../../services/lock-gate.service.js";
+import { TOOL_AUTHORIZATION } from "@portalai/core/registries";
 
 type Built = { execute: (input: unknown) => Promise<Record<string, unknown>> };
 const run = (t: unknown, input: unknown) => (t as Built).execute(input);
@@ -139,5 +142,58 @@ describe("BulkGeocodeRecordsTool (#315)", () => {
     const out = await run(t, { ...baseInput, acknowledgeCost: true });
     expect(out).toMatchObject({ code: ApiCode.ENTITY_LOCKED_BY_JOB });
     expect(createJob).not.toHaveBeenCalled();
+  });
+});
+
+// #811: the lock gate refuses this tool before it runs (and so before the
+// cost gate inside it admits the call), reading the entity id from the
+// tool's real input through `TOOL_AUTHORIZATION`'s `entityIdArgs`.
+describe("BulkGeocodeRecordsTool — behind the lock gate (#811)", () => {
+  it("is refused before it runs when its entity is locked", async () => {
+    const assertNoneRunning = jest
+      .spyOn(JobLockService, "assertNoneRunning")
+      .mockRejectedValue(
+        new ApiError(
+          409,
+          ApiCode.ENTITY_LOCKED_BY_JOB,
+          "Revalidation is running on this entity."
+        )
+      );
+    const countRecords = jest.fn(async () => 10);
+    const createJob = jest.fn(async () => ({ id: "job-x" }));
+    const assertUnlocked = jest.fn(async () => {});
+    try {
+      const tools = {
+        bulk_geocode_records: build({
+          countRecords,
+          createJob,
+          assertUnlocked,
+        }),
+      };
+      wrapWithLockGate(
+        tools as never,
+        { organizationId: "org-1" },
+        (name) => TOOL_AUTHORIZATION[name]
+      );
+
+      const out = await run(tools.bulk_geocode_records, {
+        ...baseInput,
+        acknowledgeCost: true,
+      });
+
+      expect(out).toEqual({
+        error: expect.objectContaining({ code: ApiCode.ENTITY_LOCKED_BY_JOB }),
+      });
+      expect(assertNoneRunning).toHaveBeenCalledWith(
+        [{ kind: "connectorEntity", id: "ce_parcels" }],
+        { organizationId: "org-1" }
+      );
+      // The tool body never ran.
+      expect(assertUnlocked).not.toHaveBeenCalled();
+      expect(countRecords).not.toHaveBeenCalled();
+      expect(createJob).not.toHaveBeenCalled();
+    } finally {
+      assertNoneRunning.mockRestore();
+    }
   });
 });
