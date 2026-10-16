@@ -10,6 +10,7 @@ import {
   type JobGetResponsePayload,
   type JobListResponsePayload,
   type JobCancelResponsePayload,
+  type JobListRequestQuery,
 } from "@portalai/core/contracts";
 import { and, Column, eq, ilike, inArray, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
@@ -23,7 +24,9 @@ const logger = createLogger({ module: "jobs" });
 
 export const jobsRouter = Router();
 
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<JobListRequestQuery["sortBy"], Column> = {
   created: jobs.created,
   status: jobs.status,
   type: jobs.type,
@@ -166,7 +169,7 @@ jobsRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[query.sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[query.sortBy];
 
       const [data, total] = await Promise.all([
         DbService.repository.jobs.findMany(where, {

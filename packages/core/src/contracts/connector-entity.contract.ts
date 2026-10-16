@@ -48,6 +48,7 @@ export type ConnectorEntityWithInstance = z.infer<
 
 export const ConnectorEntityListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
+    sortBy: z.enum(["key", "label", "created"]).optional().default("created"),
     connectorInstanceIds: z.string().optional(),
     include: z.string().optional(),
     tagIds: z.string().optional(),

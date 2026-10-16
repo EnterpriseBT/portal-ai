@@ -167,12 +167,35 @@ export function schemaFailure400s(
   return out;
 }
 
-/** #756: routes that `.parse()` a request directly. Empty, and only shrinks. */
+/** #756: routes and middleware that `.parse()` a request directly. Empty,
+ *  and only shrinks. */
 const REQUEST_PARSE_ALLOWED: Array<{ file: string; call: string }> = [];
 
-/** #756: every `<schema>.parse(req.query | req.body | req.params)`. Its
- *  ZodError becomes the route's 500, never a 400. `JSON.parse` is not a
- *  schema parse (the webhook route parses its raw body). */
+/** #756 code review: the request data a parse argument reads, seen through
+ *  a cast, a `satisfies`, a non-null `!`, brackets, or a spread into an object
+ *  literal. A copy into a variable first isn't followed. */
+function readsRequest(e: ts.Expression, sf: ts.SourceFile): boolean {
+  if (
+    ts.isParenthesizedExpression(e) ||
+    ts.isAsExpression(e) ||
+    ts.isSatisfiesExpression(e) ||
+    ts.isNonNullExpression(e) ||
+    ts.isTypeAssertionExpression(e)
+  ) {
+    return readsRequest(e.expression, sf);
+  }
+  if (ts.isObjectLiteralExpression(e)) {
+    return e.properties.some(
+      (p) => ts.isSpreadAssignment(p) && readsRequest(p.expression, sf)
+    );
+  }
+  return /^req\.(query|body|params)$/.test(e.getText(sf));
+}
+
+/** #756: every `<schema>.parse(req.query | req.body | req.params)`, or
+ *  `parseAsync`. Its ZodError becomes the route's 500, never a 400.
+ *  `JSON.parse` is not a schema parse (the webhook route parses its raw
+ *  body). */
 export function requestParses(
   source: string
 ): Array<{ line: number; call: string }> {
@@ -182,10 +205,10 @@ export function requestParses(
     if (
       ts.isCallExpression(n) &&
       ts.isPropertyAccessExpression(n.expression) &&
-      n.expression.name.getText(sf) === "parse" &&
+      ["parse", "parseAsync"].includes(n.expression.name.getText(sf)) &&
       n.expression.expression.getText(sf) !== "JSON" &&
       n.arguments.length >= 1 &&
-      /^req\.(query|body|params)$/.test(n.arguments[0].getText(sf))
+      readsRequest(n.arguments[0], sf)
     ) {
       out.push({
         line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
@@ -361,8 +384,10 @@ describe("a schema failure answers through invalidPayload (#745)", () => {
 });
 
 describe("a route never .parse()s a request (#756)", () => {
-  const routesDir = join(apiSrc, "routes");
-  const found = sourceFiles(routesDir).flatMap((path) =>
+  const found = [
+    ...sourceFiles(join(apiSrc, "routes")),
+    ...sourceFiles(join(apiSrc, "middleware")),
+  ].flatMap((path) =>
     requestParses(readFileSync(path, "utf8")).map((f) => ({
       file: relative(apiSrc, path),
       ...f,
@@ -408,6 +433,21 @@ describe("a route never .parse()s a request (#756)", () => {
     ]);
   });
 
+  it("sees through casts, brackets, spreads and parseAsync", () => {
+    expect(
+      requestParses(
+        [
+          "Schema.parse(req.query as unknown);",
+          "Schema.parse((req.body));",
+          "Schema.parse({ ...req.query, page: 1 });",
+          "Schema.parse(req.params!);",
+          "Schema.parse(req.body satisfies object);",
+          "await Schema.parseAsync(req.body);",
+        ].join("\n")
+      ).map((f) => f.line)
+    ).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
   it("ignores safeParse, JSON.parse and other arguments", () => {
     expect(
       requestParses(
@@ -416,6 +456,8 @@ describe("a route never .parse()s a request (#756)", () => {
           "const raw = JSON.parse(req.body);",
           "const v = Schema.parse(req.query.filters);",
           "const w = Schema.parse(value);",
+          "Schema.parse({ page: req.query.page });",
+          "await Schema.safeParseAsync(req.body);",
         ].join("\n")
       )
     ).toEqual([]);

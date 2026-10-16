@@ -35,6 +35,7 @@ import {
   type ConnectorInstanceApi,
   type ConnectorInstanceWithDefinitionApi,
   type ConnectorInstanceDeleteResponsePayload,
+  type ConnectorInstanceListRequestQuery,
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -68,7 +69,12 @@ const logger = createLogger({ module: "connector-instance" });
 export const connectorInstanceRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<
+  ConnectorInstanceListRequestQuery["sortBy"],
+  Column
+> = {
   name: connectorInstances.name,
   status: connectorInstances.status,
   created: connectorInstances.created,
@@ -237,7 +243,7 @@ connectorInstanceRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
       const include_ = include
         ?.split(",")
         .map((s) => s.trim())

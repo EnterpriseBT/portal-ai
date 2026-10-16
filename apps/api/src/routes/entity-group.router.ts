@@ -21,6 +21,7 @@ import {
   type EntityGroupUpdateResponsePayload,
   type EntityGroupDeleteResponsePayload,
   type EntityGroupImpactResponsePayload,
+  type EntityGroupListRequestQuery,
 } from "@portalai/core/contracts";
 import {
   EntityGroupResolveRequestQuerySchema,
@@ -46,10 +47,13 @@ export const entityGroupRouter = Router();
 entityGroupRouter.use("/:entityGroupId/members", entityGroupMemberRouter);
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
-  name: entityGroups.name,
-  created: entityGroups.created,
-};
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<EntityGroupListRequestQuery["sortBy"], Column> =
+  {
+    name: entityGroups.name,
+    created: entityGroups.created,
+  };
 
 /**
  * @openapi
@@ -167,7 +171,7 @@ entityGroupRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
       const include_ = include
         ?.split(",")
         .map((s) => s.trim())

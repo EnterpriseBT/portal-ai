@@ -10,6 +10,7 @@ import {
   type EntityTagCreateResponsePayload,
   EntityTagUpdateRequestBodySchema,
   type EntityTagUpdateResponsePayload,
+  type EntityTagListRequestQuery,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -27,7 +28,9 @@ const logger = createLogger({ module: "entity-tag" });
 export const entityTagRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<EntityTagListRequestQuery["sortBy"], Column> = {
   name: entityTags.name,
   created: entityTags.created,
 };
@@ -123,7 +126,7 @@ entityTagRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
       const listOpts = {
         limit,
         offset,

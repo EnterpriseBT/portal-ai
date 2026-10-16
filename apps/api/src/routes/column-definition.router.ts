@@ -18,6 +18,7 @@ import {
   type ColumnDefinitionCreateResponsePayload,
   ColumnDefinitionUpdateRequestBodySchema,
   type ColumnDefinitionUpdateResponsePayload,
+  type ColumnDefinitionListRequestQuery,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -46,7 +47,12 @@ const logger = createLogger({ module: "column-definition" });
 export const columnDefinitionRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<
+  ColumnDefinitionListRequestQuery["sortBy"],
+  Column
+> = {
   key: columnDefinitions.key,
   label: columnDefinitions.label,
   type: columnDefinitions.type,
@@ -176,7 +182,7 @@ columnDefinitionRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
 
       const [data, total] = await Promise.all([
         DbService.repository.columnDefinitions.findMany(where, {

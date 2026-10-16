@@ -11,6 +11,7 @@ import {
   ConnectorDefinitionListRequestQuerySchema,
   type ConnectorDefinitionListResponsePayload,
   type ConnectorDefinitionGetResponsePayload,
+  type ConnectorDefinitionListRequestQuery,
 } from "@portalai/core/contracts";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 
@@ -19,7 +20,12 @@ const logger = createLogger({ module: "connector-definition" });
 export const connectorDefinitionRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<
+  ConnectorDefinitionListRequestQuery["sortBy"],
+  Column
+> = {
   display: connectorDefinitions.display,
   category: connectorDefinitions.category,
   slug: connectorDefinitions.slug,
@@ -46,7 +52,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         schema:
  *           type: string
  *           enum: [display, category, slug, created, version]
- *           default: created
+ *           default: display
  *         description: Field to sort by
  *       - in: query
  *         name: category
@@ -112,14 +118,6 @@ connectorDefinitionRouter.get(
       );
     }
     try {
-      logger.info(
-        {
-          rawQuery: req.query,
-          rawIsActive: req.query.isActive,
-          typeofIsActive: typeof req.query.isActive,
-        },
-        "DEBUG raw query before parse"
-      );
       const {
         limit,
         offset,
@@ -159,7 +157,7 @@ connectorDefinitionRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = filters.length > 0 ? and(...filters) : undefined;
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.display;
+      const column = SORTABLE_COLUMNS[sortBy];
 
       const [data, total] = await Promise.all([
         DbService.repository.connectorDefinitions.findMany(where, {

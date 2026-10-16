@@ -25,6 +25,7 @@ import {
   type ConnectorEntityPatchResponsePayload,
   type ConnectorEntityDeleteResponsePayload,
   type ConnectorEntityImpactResponsePayload,
+  type ConnectorEntityListRequestQuery,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -60,7 +61,12 @@ connectorEntityRouter.use(
 );
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<
+  ConnectorEntityListRequestQuery["sortBy"],
+  Column
+> = {
   key: connectorEntities.key,
   label: connectorEntities.label,
   created: connectorEntities.created,
@@ -207,7 +213,7 @@ connectorEntityRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
       const include_ = include
         ?.split(",")
         .map((s) => s.trim())

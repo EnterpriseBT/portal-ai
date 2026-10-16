@@ -21,6 +21,7 @@ import {
 
 export const PortalListRequestQuerySchema = PaginationRequestQuerySchema.extend(
   {
+    sortBy: z.enum(["created", "lastOpened"]).optional().default("created"),
     stationId: z.string().optional(),
     include: z.string().optional(),
   }
@@ -184,6 +185,7 @@ export type PortalResultGetResponsePayload = z.infer<
 
 export const PortalResultListRequestQuerySchema =
   PortalListRequestQuerySchema.extend({
+    sortBy: z.enum(["created"]).optional().default("created"),
     portalId: z.string().optional(),
   });
 

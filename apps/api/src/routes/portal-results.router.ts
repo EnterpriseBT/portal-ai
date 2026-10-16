@@ -409,6 +409,7 @@ portalResultsRouter.post(
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - { in: query, name: sortBy, schema: { type: string, enum: [created], default: created } }
  *       - $ref: '#/components/parameters/limitParam'
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
