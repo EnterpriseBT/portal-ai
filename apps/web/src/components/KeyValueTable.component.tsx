@@ -21,8 +21,12 @@ export interface KeyValueTableUIProps {
   onChange: (rows: KeyValueRow[]) => void;
   /** A row's key field lost focus (marks it touched). */
   onKeyBlur?: (index: number) => void;
+  /** A row's value field lost focus (marks it touched). */
+  onValueBlur?: (index: number) => void;
   /** Per-row key error, already filtered to touched rows; index-aligned. */
   keyErrors?: Array<string | undefined>;
+  /** Per-row value error, already filtered to touched rows; index-aligned. */
+  valueErrors?: Array<string | undefined>;
   /** What one row is, for the button and accessible names ("parameter"). */
   itemNoun?: string;
   keyLabel?: string;
@@ -42,7 +46,9 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
   rows,
   onChange,
   onKeyBlur,
+  onValueBlur,
   keyErrors = [],
+  valueErrors = [],
   itemNoun = "parameter",
   keyLabel = "Key",
   valueLabel = "Value",
@@ -68,7 +74,7 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
         <Table size="small" sx={{ mb: 1 }}>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ pl: 0 }}>{keyLabel}</TableCell>
+              <TableCell>{keyLabel}</TableCell>
               <TableCell>{valueLabel}</TableCell>
               <TableCell padding="checkbox">
                 <Box component="span" sx={visuallyHidden}>
@@ -80,10 +86,11 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
           <TableBody>
             {rows.map((row, i) => {
               const error = keyErrors[i];
+              const valueError = valueErrors[i];
               const n = i + 1;
               return (
                 <TableRow key={row.id}>
-                  <TableCell sx={{ pl: 0, verticalAlign: "top" }}>
+                  <TableCell sx={{ verticalAlign: "top" }}>
                     <TextField
                       size="small"
                       fullWidth
@@ -112,8 +119,14 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         update(i, { value: e.target.value })
                       }
+                      onBlur={blurUnlessDialogControl(() => onValueBlur?.(i))}
+                      error={!!valueError}
+                      helperText={valueError}
                       slotProps={{
-                        htmlInput: { "aria-label": `${valueLabel} ${n}` },
+                        htmlInput: {
+                          "aria-label": `${valueLabel} ${n}`,
+                          "aria-invalid": !!valueError,
+                        },
                       }}
                     />
                   </TableCell>
@@ -140,11 +153,16 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
   );
 };
 
+/** Screen-reader-only text: MUI's `visuallyHidden` recipe, kept local
+ *  because `@mui/utils` isn't a declared dependency of this app. */
 const visuallyHidden = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  overflow: "hidden",
+  border: 0,
   clip: "rect(0 0 0 0)",
+  height: "1px",
+  margin: "-1px",
+  overflow: "hidden",
+  padding: 0,
+  position: "absolute",
   whiteSpace: "nowrap",
+  width: "1px",
 } as const;

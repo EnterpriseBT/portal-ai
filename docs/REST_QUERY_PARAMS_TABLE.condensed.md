@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#808](https://github.com/EnterpriseBT/portal-ai/issues/808) · Feature · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** An endpoint's query string can only be typed into **Path** (`/foo?a=b&c=d`), so users hand-encode `&`, `=`, `#`, spaces and `+`, and a stray `&` silently splits a value. The record-total probe's **Count query params** is the same raw `a=b&c=d` box. The contract already supports structured params: `config.queryParams` and `totalCount.queryParams` are `Record<string, string>`. The adapter's `buildUrl` encodes them with `URLSearchParams.set`, and `{{cursor}}` / `{{pageNumber}}` substitute into them. The wizard never sets the endpoint's. This adds a reusable key/value table and binds both to it. `apps/web` only; the core model, API and migrations are unchanged.
+**Why.** An endpoint's query string can only be typed into **Path** (`/foo?a=b&c=d`), so users hand-encode `&`, `=`, `#`, spaces and `+`, and a stray `&` silently splits a value. The record-total probe's **Count query params** is the same raw `a=b&c=d` box. The contract already supports structured params: `config.queryParams` and `totalCount.queryParams` are `Record<string, string>`. The adapter's `buildUrl` encodes them with `URLSearchParams.set`, and `{{cursor}}` / `{{pageNumber}}` substitute into them. The wizard never sets the endpoint's. This adds a reusable key/value table and binds both to it. Mostly `apps/web`; the core model and migrations are unchanged. The code review added one `apps/api` fix (below), because this change makes it reachable.
 
 ## Current shape
 
@@ -38,6 +38,15 @@ No UI edits a *saved* endpoint, so the PRD's on-open migration can only apply to
 - **Each row:** two `TextField`s with `aria-invalid` and `helperText`, plus a remove `IconButton` with `aria-label="Remove parameter <key>"`.
 - **Below the rows:** an `Add parameter` button (`type="button"`). The empty state is just that button and a one-line hint.
 - **Enter:** Enter in a field follows the `Modal`'s rules: it submits only when Save could, and never adds a row.
+
+## Decision — what the code review changed
+
+- **Splitting on Save.** A query typed into Path and saved with Enter or a click on Save never blurred, since a blur toward a dialog control is deliberately ignored. So submit splits too.
+- **Template lint on values.** A param value is templated per page on the server, and an unknown or empty `{{…}}` fails every sync. Each row's value is linted with `validatePlaceholders`, and the error shows on that row.
+- **Errors keyed by row id.** Row errors and touched state are keyed by the row's stable `id`, not its index. Removing a row used to move its neighbour's error.
+- **Fragments.** A `#fragment` is cut before the split, so a `?` inside it isn't a query string.
+- **Spaced tokens.** The preview keeps `{{ cursor }}` (spaces allowed, as on the server) readable.
+- **Count probe (`apps/api`).** `fetchEndpointTotalCount` merged `config.queryParams` raw. #458 chose that on purpose ("a config that depends on them simply degrades to unknown"), but nothing could set those params from the UI then. Raw, a `{{pageNumber}}` value goes upstream as literal braces and can return a *wrong* count, not just none. The probe now takes the first page's template values (`cursor: ""`, `pageNumber: startPage`) for its params, headers and body, as the page fetch does.
 
 ## Plan — 2 slices
 

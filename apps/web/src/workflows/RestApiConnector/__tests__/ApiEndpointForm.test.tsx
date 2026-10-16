@@ -884,4 +884,95 @@ describe("ApiEndpointForm — query parameters (#808)", () => {
     const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
     expect(named(submitted)).toEqual([["active", "true"]]);
   });
+
+  it("splits a typed query on Save even without a blur", async () => {
+    const user = userEvent.setup({ delay: null });
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({ key: "users", label: "Users" })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: /entity key/i })).toHaveFocus()
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /^path$/i }),
+      "/users?where=1"
+    );
+    // Save is a dialog control, so this blur doesn't split; submit does.
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
+    expect(submitted.path).toBe("/users");
+    expect(named(submitted)).toEqual([["where", "1"]]);
+  });
+
+  it("flags an unknown template placeholder on the value and blocks Save", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          queryParams: [newKeyValueRow("filter", "{{page}}")],
+        })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/unknown template variable "page"/i)
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByRole("textbox", { name: "Value 1" })).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps an error with its row when a row above it is removed", async () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          queryParams: [
+            newKeyValueRow("ok", "1"),
+            newKeyValueRow("", "orphan"),
+            newKeyValueRow("fine", "2"),
+          ],
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(screen.getByText("Key is required")).toBeInTheDocument()
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove parameter ok" })
+    );
+    // The keyless row is now first, and still carries its error; the row
+    // that moved into its old position doesn't inherit it.
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByRole("textbox", { name: "Key 2" })).toHaveAttribute(
+      "aria-invalid",
+      "false"
+    );
+  });
 });

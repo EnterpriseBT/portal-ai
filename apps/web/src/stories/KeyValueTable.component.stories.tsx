@@ -36,7 +36,7 @@ const Editable: React.FC<{ initial: KeyValueRow[]; itemNoun?: string }> = ({
         onChange={setRows}
         itemNoun={itemNoun}
         emptyHint="No query parameters. Add one to send it with every request."
-        keyErrors={rows.map((_, i) => errors[keyValueRowErrorKey("rows", i)])}
+        keyErrors={rows.map((r) => errors[keyValueRowErrorKey("rows", r.id)])}
       />
     </Box>
   );

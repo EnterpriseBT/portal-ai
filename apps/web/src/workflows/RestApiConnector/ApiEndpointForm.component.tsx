@@ -19,15 +19,17 @@ import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import type { FormErrors } from "../../utils/form-validation.util";
 import {
   keyValueRowErrorKey,
+  keyValueRowValueErrorKey,
   type KeyValueRow,
 } from "../../utils/key-value-rows.util";
 import { KeyValueTableUI } from "../../components/KeyValueTable.component";
 import {
   EMPTY_PAGINATION_DRAFT,
   previewRequestUrl,
-  splitPathQuery,
   validateEndpoint,
+  withSplitPath,
   type PaginationDraft,
+  type ParamField,
 } from "./utils/rest-api-validation.util";
 import { PaginationFieldsUI } from "./PaginationFields.component";
 import { BodyTemplateFieldUI } from "./BodyTemplateField.component";
@@ -76,23 +78,6 @@ export const EMPTY_DRAFT: EndpointDraft = {
   totalCountPath: "",
 };
 
-/** The two key/value tables on the form. */
-export type ParamField = "queryParams" | "totalCountParams";
-
-/**
- * #808: a Path carrying `?…` moves its query into `queryParams` rows (after
- * any rows already there), so the path stays a path and the table is the
- * one place params live. Used on paste, on blur and when the form opens.
- */
-export function withSplitPath(draft: EndpointDraft, path = draft.path) {
-  const split = splitPathQuery(path);
-  return {
-    ...draft,
-    path: split.path,
-    queryParams: [...draft.queryParams, ...split.rows],
-  };
-}
-
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 /** Which extractor the endpoint uses — mutually exclusive (decision 10). */
@@ -108,6 +93,8 @@ export interface ApiEndpointFormUIProps {
   onBlur: (field: keyof EndpointDraft) => void;
   /** #808: a param row's key field lost focus. */
   onParamKeyBlur: (field: ParamField, index: number) => void;
+  /** #808: a param row's value field lost focus. */
+  onParamValueBlur: (field: ParamField, index: number) => void;
   /** #808: a paste into Path that carries a query string, already applied
    *  to the field's text; the container splits it into rows. */
   onPathPaste: (nextPath: string) => void;
@@ -159,6 +146,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
   onChange,
   onBlur,
   onParamKeyBlur,
+  onParamValueBlur,
   onPathPaste,
   onSubmit,
   onClose,
@@ -208,9 +196,12 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
     />
   );
 
-  const keyErrors = (name: ParamField) =>
-    draft[name].map((_, i) => {
-      const k = keyValueRowErrorKey(name, i);
+  const rowErrors = (
+    name: ParamField,
+    errorKey: (field: string, rowId: string) => string
+  ) =>
+    draft[name].map((row) => {
+      const k = errorKey(name, row.id);
       return touched[k] ? errors[k] : undefined;
     });
 
@@ -280,10 +271,12 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
             rows={draft.queryParams}
             onChange={(rows) => onChange("queryParams", rows)}
             onKeyBlur={(i) => onParamKeyBlur("queryParams", i)}
-            keyErrors={keyErrors("queryParams")}
+            onValueBlur={(i) => onParamValueBlur("queryParams", i)}
+            keyErrors={rowErrors("queryParams", keyValueRowErrorKey)}
+            valueErrors={rowErrors("queryParams", keyValueRowValueErrorKey)}
             emptyHint="No query parameters. Each one you add is sent, URL-encoded, with every request."
-            keyPlaceholder="e.g. where"
-            valuePlaceholder="e.g. 1=1"
+            keyPlaceholder="e.g. limit"
+            valuePlaceholder="e.g. 100"
           />
           <Typography
             variant="caption"
@@ -514,7 +507,12 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                 rows={draft.totalCountParams}
                 onChange={(rows) => onChange("totalCountParams", rows)}
                 onKeyBlur={(i) => onParamKeyBlur("totalCountParams", i)}
-                keyErrors={keyErrors("totalCountParams")}
+                onValueBlur={(i) => onParamValueBlur("totalCountParams", i)}
+                keyErrors={rowErrors("totalCountParams", keyValueRowErrorKey)}
+                valueErrors={rowErrors(
+                  "totalCountParams",
+                  keyValueRowValueErrorKey
+                )}
                 keyPlaceholder="e.g. returnCountOnly"
                 valuePlaceholder="e.g. true"
               />
@@ -757,13 +755,27 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
     if (touched.path) setErrors(validateEndpoint(next));
   };
 
-  const onParamKeyBlur = (field: ParamField, index: number) => {
-    setTouched((t) => ({ ...t, [keyValueRowErrorKey(field, index)]: true }));
+  const touchRow = (
+    field: ParamField,
+    index: number,
+    errorKey: (field: string, rowId: string) => string
+  ) => {
+    const row = draft[field][index];
+    if (!row) return;
+    setTouched((t) => ({ ...t, [errorKey(field, row.id)]: true }));
     setErrors(validateEndpoint(draft));
   };
+  const onParamKeyBlur = (field: ParamField, index: number) =>
+    touchRow(field, index, keyValueRowErrorKey);
+  const onParamValueBlur = (field: ParamField, index: number) =>
+    touchRow(field, index, keyValueRowValueErrorKey);
 
   const onSubmitInternal = () => {
-    const validation = validateEndpoint(draft);
+    // #808: a query typed into Path and saved without a blur (Enter, or a
+    // click on Save, which skips the dialog-control blur) still splits.
+    const submitted = draft.path.includes("?") ? withSplitPath(draft) : draft;
+    if (submitted !== draft) setDraft(submitted);
+    const validation = validateEndpoint(submitted);
     setErrors(validation);
     setTouched({
       key: true,
@@ -774,10 +786,13 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       idField: true,
       bodyTemplate: true,
       totalCountPath: true,
-      // #808: every param row's key, so its error shows.
+      // #808: every param row's key and value, so their errors show.
       ...Object.fromEntries(
         (["queryParams", "totalCountParams"] as const).flatMap((f) =>
-          draft[f].map((_, i) => [keyValueRowErrorKey(f, i), true])
+          submitted[f].flatMap((row) => [
+            [keyValueRowErrorKey(f, row.id), true],
+            [keyValueRowValueErrorKey(f, row.id), true],
+          ])
         )
       ),
       // Mark each pagination sub-field touched so its errors surface
@@ -789,7 +804,7 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       cursorResponsePath: true,
     });
     if (Object.keys(validation).length === 0) {
-      onSubmit(draft);
+      onSubmit(submitted);
     }
   };
 
@@ -800,6 +815,7 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       onChange={onChange}
       onBlur={onBlur}
       onParamKeyBlur={onParamKeyBlur}
+      onParamValueBlur={onParamValueBlur}
       onPathPaste={onPathPaste}
       onSubmit={onSubmitInternal}
       onClose={onClose}

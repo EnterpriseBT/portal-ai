@@ -63,6 +63,11 @@ import {
   MAX_SAMPLES_PER_COLUMN,
 } from "./inference.util.js";
 import { resolveIterator, reconstructPagination } from "./pagination/index.js";
+import {
+  applyTemplate,
+  applyTemplateToConfig,
+  type TemplateVariables,
+} from "./template.util.js";
 import { ProbeCache } from "./probe-cache.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
 import { SystemUtilities } from "../../utils/system.util.js";
@@ -366,9 +371,11 @@ async function syncInstance(
  * renders as a count with an indeterminate bar, which is strictly better
  * than a wrong percent, so nothing here ever throws or retries.
  *
- * Template variables ({{cursor}}, {{pageNumber}}) are page-scoped and
- * meaningless for a count, so the probe uses the raw configured params; a
- * config that depends on them simply degrades to unknown.
+ * Template variables ({{cursor}}, {{pageNumber}}) take the first page's
+ * values (#808), so the count request is page 1's request with the probe's
+ * overrides. Sent raw, they went upstream as literal braces, which could
+ * return a wrong count rather than none; the query-params table is the first
+ * UI that can set them.
  */
 async function probeGrandTotal(
   endpoints: ApiEndpoint[],
@@ -397,13 +404,39 @@ async function fetchEndpointTotalCount(
   const probe = endpoint.config.totalCount;
   if (!probe) return undefined;
   try {
-    const requestUrl = buildUrl(baseUrl, endpoint.config.path, {
-      ...((endpoint.config.queryParams as Record<string, string> | null) ?? {}),
-      ...probe.queryParams,
-    });
-    const headers =
-      (endpoint.config.headers as Record<string, string> | null) ?? undefined;
-    const body = endpoint.config.bodyTemplate ?? undefined;
+    // #808: the probe is the first page's request, so its params, headers
+    // and body take the first page's template values, as a page fetch does.
+    // Raw, a `{{pageNumber}}` param went upstream as literal text.
+    const pagination = reconstructPagination(
+      endpoint.config.pagination,
+      (endpoint.config.paginationConfig as Record<string, unknown> | null) ??
+        null
+    );
+    const vars: TemplateVariables = {
+      cursor: "",
+      pageNumber: "startPage" in pagination ? pagination.startPage : 1,
+    };
+    const requestUrl = buildUrl(
+      baseUrl,
+      endpoint.config.path,
+      applyTemplateToConfig(
+        {
+          ...((endpoint.config.queryParams as Record<string, string> | null) ??
+            {}),
+          ...probe.queryParams,
+        },
+        vars
+      )
+    );
+    const headers = endpoint.config.headers
+      ? applyTemplateToConfig(
+          endpoint.config.headers as Record<string, string>,
+          vars
+        )
+      : undefined;
+    const body = endpoint.config.bodyTemplate
+      ? applyTemplate(endpoint.config.bodyTemplate, vars)
+      : undefined;
     const baseInit: RequestInit = {
       method: endpoint.config.method,
       ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),

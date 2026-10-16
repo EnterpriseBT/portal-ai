@@ -7,6 +7,7 @@ import {
   previewRequestUrl,
   queryParamsConfig,
   splitPathQuery,
+  withSplitPath,
   totalCountDraftToConfig,
   validateBasics,
   validateEndpoint,
@@ -469,6 +470,11 @@ describe("splitPathQuery (#808)", () => {
 
   it("drops a fragment and an empty query", () => {
     expect(pairs(splitPathQuery("/x?a=1#frag"))).toEqual([["a", "1"]]);
+    // A `?` inside the fragment isn't a query string; it's never sent.
+    expect(splitPathQuery("/items#section?x=1")).toEqual({
+      path: "/items",
+      rows: [],
+    });
     expect(splitPathQuery("/x?").path).toBe("/x");
     expect(splitPathQuery("/x?").rows).toEqual([]);
   });
@@ -502,6 +508,10 @@ describe("previewRequestUrl (#808)", () => {
         rows(["after", "{{cursor}}"], ["page", "{{pageNumber}}"])
       )
     ).toBe("/items?after={{cursor}}&page={{pageNumber}}");
+    // The server allows spaces inside the braces; so does the preview.
+    expect(previewRequestUrl("/items", rows(["after", "{{ cursor }}"]))).toBe(
+      "/items?after={{ cursor }}"
+    );
   });
 });
 
@@ -525,16 +535,36 @@ describe("validateEndpoint — query params (#808)", () => {
   });
 
   it("flags a value with no key, and a duplicate key on the later row", () => {
+    const queryParams = rows(["a", "1"], ["", "orphan"], [" a ", "2"]);
+    const totalCountParams = rows(["x", "1"], ["x", "2"]);
     const errors = validateEndpoint({
       ...base,
-      queryParams: rows(["a", "1"], ["", "orphan"], [" a ", "2"]),
-      totalCountParams: rows(["x", "1"], ["x", "2"]),
+      queryParams,
+      totalCountParams,
       totalCountPath: "count",
     });
+    // Keyed by each row's stable id, not its position.
     expect(errors).toEqual({
-      "queryParams.1.key": "Key is required",
-      "queryParams.2.key": "Duplicate key",
-      "totalCountParams.1.key": "Duplicate key",
+      [`queryParams.${queryParams[1].id}.key`]: "Key is required",
+      [`queryParams.${queryParams[2].id}.key`]: "Duplicate key",
+      [`totalCountParams.${totalCountParams[1].id}.key`]: "Duplicate key",
+    });
+  });
+
+  it("flags an unknown or empty template placeholder on that row's value", () => {
+    const queryParams = rows(
+      ["page", "{{pageNumber}}"],
+      ["filter", "{{page}}"],
+      ["x", "{{ }}"]
+    );
+    const errors = validateEndpoint({ ...base, queryParams });
+    expect(errors).toEqual({
+      [`queryParams.${queryParams[1].id}.value`]: expect.stringMatching(
+        /unknown template variable "page"/i
+      ),
+      [`queryParams.${queryParams[2].id}.value`]: expect.stringMatching(
+        /empty template placeholder/i
+      ),
     });
   });
 });
@@ -549,5 +579,17 @@ describe("queryParamsConfig (#808)", () => {
   it("leaves the field absent when no row survives", () => {
     expect(queryParamsConfig([])).toEqual({});
     expect(queryParamsConfig(rows(["", ""]))).toEqual({});
+  });
+});
+
+describe("withSplitPath (#808)", () => {
+  it("appends the path's query after existing rows and cleans the path", () => {
+    const existing = rows(["a", "1"]);
+    const out = withSplitPath({ path: "/x?b=2", queryParams: existing });
+    expect(out.path).toBe("/x");
+    expect(out.queryParams.map((r) => [r.key, r.value])).toEqual([
+      ["a", "1"],
+      ["b", "2"],
+    ]);
   });
 });

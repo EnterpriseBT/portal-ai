@@ -43,9 +43,23 @@ export function keyValueRowsToRecord(
   return out;
 }
 
-/** The `FormErrors` key for a row's key field. */
-export const keyValueRowErrorKey = (field: string, index: number): string =>
-  `${field}.${index}.key`;
+/** Whether any row survives `keyValueRowsToRecord` (isn't fully empty). */
+export const hasKeyValueRows = (rows: KeyValueRow[]): boolean =>
+  rows.some((row) => !isBlank(row));
+
+/**
+ * The `FormErrors` / touched key for a row's key field. Keyed by the row's
+ * stable `id`, not its position, so removing a row never moves another row's
+ * error or touched state onto its neighbour.
+ */
+export const keyValueRowErrorKey = (field: string, rowId: string): string =>
+  `${field}.${rowId}.key`;
+
+/** The `FormErrors` / touched key for a row's value field. */
+export const keyValueRowValueErrorKey = (
+  field: string,
+  rowId: string
+): string => `${field}.${rowId}.value`;
 
 /**
  * A value with no key is an error, as is a key already used by an earlier
@@ -58,13 +72,13 @@ export function validateKeyValueRows(
 ): FormErrors {
   const errors: FormErrors = {};
   const seen = new Set<string>();
-  rows.forEach((row, i) => {
+  rows.forEach((row) => {
     if (isBlank(row)) return;
     const key = row.key.trim();
     if (key === "") {
-      errors[keyValueRowErrorKey(field, i)] = "Key is required";
+      errors[keyValueRowErrorKey(field, row.id)] = "Key is required";
     } else if (seen.has(key)) {
-      errors[keyValueRowErrorKey(field, i)] = "Duplicate key";
+      errors[keyValueRowErrorKey(field, row.id)] = "Duplicate key";
     }
     seen.add(key);
   });

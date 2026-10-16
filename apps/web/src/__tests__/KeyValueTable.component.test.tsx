@@ -99,4 +99,17 @@ describe("KeyValueTableUI (#808)", () => {
       screen.getByRole("button", { name: "Add header" })
     ).toBeInTheDocument();
   });
+
+  it("shows a value error and reports a value blur by row index", () => {
+    const onValueBlur = jest.fn();
+    setup([newKeyValueRow("filter", "{{page}}")], {
+      valueErrors: ["Unknown template variable"],
+      onValueBlur,
+    });
+    expect(screen.getByText("Unknown template variable")).toBeInTheDocument();
+    const value = screen.getByRole("textbox", { name: "Value 1" });
+    expect(value).toHaveAttribute("aria-invalid", "true");
+    fireEvent.blur(value);
+    expect(onValueBlur).toHaveBeenCalledWith(0);
+  });
 });
