@@ -26,11 +26,13 @@
 
 ## Decision — dropping on geometry→json
 
-The drop looks up the column's GIST indexes in the catalog (`pg_index` ⋈ `pg_am` = `gist` ⋈ `pg_attribute` on the column) instead of trusting a computed name. That drops the right index whichever naming scheme created it, and never touches a sibling column's index. If a legacy-named index stayed on the column, the `ALTER … TYPE jsonb` would fail, because jsonb has no default GIST opclass.
+The drop looks up the column's **single-column** GIST indexes in the catalog (`pg_index` ⋈ `pg_am` = `gist`, `indnatts = 1`, `indkey[0]` = the column), resolving the table with `to_regclass` exactly as the `ALTER` does, instead of trusting a computed name. That drops the right index whichever naming scheme created it, and never touches a sibling column's index. A multi-column index also serves other columns, so it is left alone, and the `ALTER` then refuses. If a legacy-named index stayed on the column, the `ALTER … TYPE jsonb` would fail, because jsonb has no default GIST opclass.
 
 ## Decision — repairing existing installs
 
-A forward data migration finds every `public.er__%` table's `geometry` column that has **no** GIST index covering it. It creates the missing index under the new name (a `DO` block driven by the catalog, `format('%I')`). Indexes that already exist under a truncated name stay: they work, and `IF NOT EXISTS` is keyed on the name, which can't collide with the new 63-byte names. The migration is expand-only (no `DROP`), so `lint:migrations` passes. A non-concurrent `CREATE INDEX` inside the migration transaction blocks writes to that one table while the index builds. That's acceptable because it only runs for the collision victims, which are rare and need the index anyway.
+A forward data migration finds every **live** geometry column that has **no** single-column GIST index. Live means a `wide_table_columns` row that isn't retired or deleted, for a connector entity that isn't deleted, matched to `pg_attribute` by `left(column_name, 63)`. Retired columns and the tables of deleted entities (waiting on `entity_data_delete`) are skipped, since nothing queries them. It creates the missing index under the new name (a `DO` block driven by the catalog, `format('%I')`). Indexes that already exist under a truncated name stay: they work, and `IF NOT EXISTS` is keyed on the name, which can't collide with the new 63-byte names. The migration is expand-only (no `DROP`), so `lint:migrations` passes. A non-concurrent `CREATE INDEX` inside the migration transaction blocks writes to that one table while the index builds. That's acceptable because it only runs for live collision victims, which are rare and need the index anyway.
+
+`gistIndexName` hashes the *stored* column name (the first 63 bytes). A column created before #801 can have a longer catalog name, and the reconciler and the migration must agree on its index name.
 
 ## Plan — 1 slice
 
@@ -41,7 +43,7 @@ A forward data migration finds every `public.er__%` table's `geometry` column th
 **Tests**
 - unit `src/__tests__/services/wide-table-reconciler.gist-name.test.ts`: the name is ≤ 63 bytes for a 58-byte key column. Two columns sharing a long prefix get distinct names. The name is stable for the same input, starts with `er__<entityId>__` and ends `_gist`.
 - integration `wide-table-geometry.integration.test.ts`: two geometry columns sharing a > 16-character prefix, then **two** GIST indexes. Converting one to jsonb leaves the other's index in place.
-- integration `src/__tests__/__integration__/db/backfill-wide-table-gist-indexes.integration.test.ts`: a table with a legacy-collided column (index created by hand under the old name for one column only) gets an index for the other column after the backfill SQL runs, and a second run is a no-op.
+- integration `wide-table-geometry.integration.test.ts` (`migration 0123` block, run against the reconciler-built fixture): indexes the bare column, leaves a legacy-named index, skips a retired column and a deleted entity, no-op on a second run. A pre-#801 long-name column gets the same index name from 0123 as from `gistIndexName`, and converts cleanly. Converting never drops a multi-column index.
 - Run: `npm run test:unit -- --testPathPattern wide-table-reconciler`, `npm run test:integration -- --testPathPattern "wide-table-geometry|column-definition.router"`, plus `npm run lint:migrations`.
 
 ## Smoke (manual, against your dev stack)

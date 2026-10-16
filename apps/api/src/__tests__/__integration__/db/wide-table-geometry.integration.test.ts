@@ -8,6 +8,9 @@
  * spatial predicate is planned as an index scan.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -875,19 +878,25 @@ describe("Wide-table geometry storage (#316)", () => {
       expect(indexes.size).toBe(3);
     });
 
-    it("converting one to jsonb leaves the other's index", async () => {
+    const A = "c_parcel_boundary_polygon_a";
+    const B = "c_parcel_boundary_polygon_b";
+    const table = () => `er__${entityId}`;
+
+    async function catalogColumn(columnName: string) {
       const [col] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(schema.wideTableColumns)
         .where(
           and(
             eq(schema.wideTableColumns.connectorEntityId, entityId),
-            eq(
-              schema.wideTableColumns.columnName,
-              "c_parcel_boundary_polygon_b"
-            )
+            eq(schema.wideTableColumns.columnName, columnName)
           )
         );
+      return col;
+    }
+
+    async function convertToJson(columnName: string): Promise<void> {
+      const col = await catalogColumn(columnName);
       await reconciler.convertGeometryColumnType(
         entityId,
         { id: col.id, columnName: col.columnName },
@@ -895,52 +904,148 @@ describe("Wide-table geometry storage (#316)", () => {
         "test-system",
         db
       );
+    }
+
+    async function dropIndexOf(columnName: string): Promise<void> {
+      await db.execute(
+        sql.raw(`DROP INDEX "${gistIndexName(entityId, columnName)}"`)
+      );
+    }
+
+    /** Index `columnName` under its pre-#804, truncated name. */
+    async function legacyIndex(columnName: string): Promise<string> {
+      const name = `${table()}__${columnName}_gist`.slice(0, 63);
+      await db.execute(
+        sql.raw(
+          `CREATE INDEX "${name}" ON "${table()}" USING GIST ("${columnName}")`
+        )
+      );
+      return name;
+    }
+
+    const migration = readFileSync(
+      join(process.cwd(), "drizzle/0123_backfill-wide-table-gist-indexes.sql"),
+      "utf8"
+    );
+    async function runMigration(): Promise<void> {
+      for (const statement of migration.split("--> statement-breakpoint")) {
+        await connection.unsafe(statement);
+      }
+    }
+
+    it("converting one to jsonb leaves the other's index", async () => {
+      await convertToJson(B);
 
       const indexes = await gistIndexes();
-      expect(indexes.has("c_parcel_boundary_polygon_b")).toBe(false);
-      expect(indexes.get("c_parcel_boundary_polygon_a")).toBe(
-        gistIndexName(entityId, "c_parcel_boundary_polygon_a")
-      );
+      expect(indexes.has(B)).toBe(false);
+      expect(indexes.get(A)).toBe(gistIndexName(entityId, A));
     });
 
     it("converting drops an index created under a pre-#804 name", async () => {
-      // A column indexed before #804 carries the old, truncated name.
-      const table = `er__${entityId}`;
-      const legacy = `${table}__c_parcel_boundary_polygon_b_gist`.slice(0, 63);
-      await db.execute(
-        sql.raw(
-          `DROP INDEX "${gistIndexName(entityId, "c_parcel_boundary_polygon_b")}"`
-        )
-      );
-      await db.execute(
-        sql.raw(
-          `CREATE INDEX "${legacy}" ON "${table}" USING GIST ("c_parcel_boundary_polygon_b")`
-        )
-      );
-      const [col] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(schema.wideTableColumns)
-        .where(
-          and(
-            eq(schema.wideTableColumns.connectorEntityId, entityId),
-            eq(
-              schema.wideTableColumns.columnName,
-              "c_parcel_boundary_polygon_b"
-            )
-          )
-        );
+      await dropIndexOf(B);
+      await legacyIndex(B);
 
       // jsonb has no default GiST opclass, so a surviving index fails the ALTER.
-      await reconciler.convertGeometryColumnType(
-        entityId,
-        { id: col.id, columnName: col.columnName },
-        false,
-        "test-system",
-        db
+      await convertToJson(B);
+      expect((await gistIndexes()).has(B)).toBe(false);
+    });
+
+    it("converting never drops a multi-column index", async () => {
+      await db.execute(
+        sql.raw(
+          `CREATE INDEX "${table()}__pair_gist" ON "${table()}" USING GIST ("${A}", "${B}")`
+        )
       );
-      expect((await gistIndexes()).has("c_parcel_boundary_polygon_b")).toBe(
-        false
-      );
+
+      // The pair index still covers B, so the ALTER refuses rather than the
+      // drop taking an index A also uses.
+      await expect(convertToJson(B)).rejects.toThrow();
+      const pair = (await db.execute(
+        sql`SELECT 1 FROM pg_indexes WHERE indexname = ${`${table()}__pair_gist`}`
+      )) as unknown as unknown[];
+      expect(pair).toHaveLength(1);
+    });
+
+    describe("a column created before #801 (catalog name over 63 bytes)", () => {
+      // Postgres stored the physical name truncated; the catalog kept it whole.
+      const LONG = "c_" + "x".repeat(70);
+      const PHYSICAL = LONG.slice(0, 63);
+
+      beforeEach(async () => {
+        await dropIndexOf(B);
+        await db.execute(
+          sql.raw(
+            `ALTER TABLE "${table()}" RENAME COLUMN "${B}" TO "${PHYSICAL}"`
+          )
+        );
+        const col = await catalogColumn(B);
+        await (db as ReturnType<typeof drizzle>)
+          .update(schema.wideTableColumns)
+          .set({ columnName: LONG })
+          .where(eq(schema.wideTableColumns.id, col.id));
+      });
+
+      it("names its index from the stored name, as 0123 does", async () => {
+        await runMigration();
+        expect((await gistIndexes()).get(PHYSICAL)).toBe(
+          gistIndexName(entityId, LONG)
+        );
+      });
+
+      it("converting to jsonb finds and drops its index", async () => {
+        await legacyIndex(PHYSICAL);
+        await convertToJson(LONG);
+        expect((await gistIndexes()).has(PHYSICAL)).toBe(false);
+      });
+    });
+
+    describe("migration 0123", () => {
+      it("indexes the column a collision left bare", async () => {
+        await dropIndexOf(B);
+        await runMigration();
+        expect((await gistIndexes()).get(B)).toBe(gistIndexName(entityId, B));
+      });
+
+      it("leaves a column's legacy-named index alone", async () => {
+        await dropIndexOf(A);
+        const legacy = await legacyIndex(A);
+        await runMigration();
+
+        const indexes = await gistIndexes();
+        expect(indexes.get(A)).toBe(legacy);
+        expect(indexes.size).toBe(3);
+      });
+
+      it("skips a retired column", async () => {
+        await dropIndexOf(B);
+        const col = await catalogColumn(B);
+        await (db as ReturnType<typeof drizzle>)
+          .update(schema.wideTableColumns)
+          .set({ retiredAt: Date.now() })
+          .where(eq(schema.wideTableColumns.id, col.id));
+
+        await runMigration();
+        expect((await gistIndexes()).has(B)).toBe(false);
+      });
+
+      it("skips a deleted entity's table", async () => {
+        await dropIndexOf(B);
+        await (db as ReturnType<typeof drizzle>)
+          .update(schema.connectorEntities)
+          .set({ deleted: Date.now(), deletedBy: "test-system" })
+          .where(eq(schema.connectorEntities.id, entityId));
+
+        await runMigration();
+        expect((await gistIndexes()).has(B)).toBe(false);
+      });
+
+      it("is a no-op on a second run", async () => {
+        await dropIndexOf(B);
+        await runMigration();
+        const once = await gistIndexes();
+        await runMigration();
+        expect(await gistIndexes()).toEqual(once);
+      });
     });
   });
 });

@@ -181,15 +181,29 @@ interface DiffResult {
  * Always exactly 63 bytes (#804): `er__<uuid>__`, then 16 hex of the column
  * name's md5, then `_gist`. Spelling the column name out let Postgres truncate
  * two columns sharing a long prefix to one name, so the second `CREATE INDEX
- * IF NOT EXISTS` silently did nothing. Migration 0123 computes the same name
- * in SQL (`substr(md5(col), 1, 16)`); keep the two in step.
+ * IF NOT EXISTS` silently did nothing.
+ *
+ * Hashes the *physical* column name: a column created before #801 can carry a
+ * catalog name over 63 bytes, which Postgres stored truncated. Migration 0123
+ * computes the same name in SQL from `pg_attribute.attname`
+ * (`substr(md5(col), 1, 16)`); keep the two in step.
  */
 export function gistIndexName(
   connectorEntityId: string,
   columnName: string
 ): string {
-  const hash = createHash("md5").update(columnName).digest("hex");
+  const hash = createHash("md5")
+    .update(physicalIdentifier(columnName))
+    .digest("hex");
   return `er__${connectorEntityId}__${hash.slice(0, 16)}_gist`;
+}
+
+/**
+ * The name Postgres stores for an identifier: its first 63 bytes. Wide-table
+ * column names are `[a-z0-9_]`, so bytes and characters agree.
+ */
+function physicalIdentifier(name: string): string {
+  return name.slice(0, PG_IDENTIFIER_MAX_BYTES);
 }
 
 function quoteIdent(name: string): string {
@@ -359,31 +373,35 @@ export class WideTableReconcilerService {
   }
 
   /**
-   * Drop every GiST index covering `columnName`, found in the catalog rather
-   * than by computed name (#804): an index created before 0123 carries a
-   * truncated name that may belong to a sibling column's index, and one left
+   * Drop the single-column GiST indexes on `columnName`, found in the catalog
+   * rather than by computed name (#804): an index created before 0123 carries
+   * a truncated name that may belong to a sibling column's index, and one left
    * on the column would fail the `ALTER … TYPE jsonb` (jsonb has no default
-   * GiST opclass).
+   * GiST opclass). A multi-column index also serves other columns, so it is
+   * never touched. `quotedTable` resolves through `to_regclass` the same way
+   * the `ALTER` that follows does.
    */
   private async dropGistIndexesOnColumn(
-    tableName: string,
+    quotedTable: string,
     columnName: string,
     tx: DbClient
   ): Promise<void> {
     const rows = (await (tx as typeof db).execute(sql`
-      SELECT i.relname AS index_name
+      SELECT quote_ident(n.nspname) || '.' || quote_ident(i.relname)
+        AS index_name
       FROM pg_index x
-      JOIN pg_class t ON t.oid = x.indrelid
-      JOIN pg_namespace n ON n.oid = t.relnamespace AND n.nspname = 'public'
       JOIN pg_class i ON i.oid = x.indexrelid
+      JOIN pg_namespace n ON n.oid = i.relnamespace
       JOIN pg_am am ON am.oid = i.relam AND am.amname = 'gist'
       JOIN pg_attribute a
-        ON a.attrelid = t.oid AND a.attnum = ANY (x.indkey)
-      WHERE t.relname = ${tableName} AND a.attname = ${columnName}
+        ON a.attrelid = x.indrelid AND a.attnum = x.indkey[0]
+      WHERE x.indrelid = to_regclass(${quotedTable})
+        AND x.indnatts = 1
+        AND a.attname = ${physicalIdentifier(columnName)}
     `)) as unknown as Array<{ index_name: string }>;
     for (const { index_name } of rows) {
       await (tx as typeof db).execute(
-        sql.raw(`DROP INDEX IF EXISTS public.${quoteIdent(index_name)}`)
+        sql.raw(`DROP INDEX IF EXISTS ${index_name}`)
       );
     }
   }
@@ -432,11 +450,11 @@ export class WideTableReconcilerService {
         this.wideTableRepo_.tableName(connectorEntityId)
       );
       const col = quoteIdent(wideColumn.columnName);
-      const gist = quoteIdent(
-        gistIndexName(connectorEntityId, wideColumn.columnName)
-      );
       let newPgType: string;
       if (toGeometry) {
+        const gist = quoteIdent(
+          gistIndexName(connectorEntityId, wideColumn.columnName)
+        );
         await (tx as typeof db).execute(
           sql.raw(
             `ALTER TABLE ${table} ALTER COLUMN ${col} ` +
@@ -452,11 +470,7 @@ export class WideTableReconcilerService {
         newPgType = "geometry(Geometry, 4326)";
       } else {
         // geometry → json: drop the GiST index first, then rewrite to GeoJSON.
-        await this.dropGistIndexesOnColumn(
-          this.wideTableRepo_.tableName(connectorEntityId),
-          wideColumn.columnName,
-          tx
-        );
+        await this.dropGistIndexesOnColumn(table, wideColumn.columnName, tx);
         await (tx as typeof db).execute(
           sql.raw(
             `ALTER TABLE ${table} ALTER COLUMN ${col} ` +
