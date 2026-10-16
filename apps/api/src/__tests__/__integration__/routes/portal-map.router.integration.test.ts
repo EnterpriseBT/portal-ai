@@ -16,6 +16,7 @@ import {
   afterEach,
   jest,
 } from "@jest/globals";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -35,6 +36,7 @@ import {
   teardownOrg,
   createUser,
   createOrganization,
+  createOrganizationUser,
   attachCuratedView,
 } from "../utils/application.util.js";
 
@@ -94,6 +96,12 @@ describe("Portal map tile route (#316)", () => {
     await dbTyped.insert(schema.organizations).values(org as never);
     orgId = org.id;
     userId = user.id;
+    // #640: a pin's tiles execute as its definer, who must be a member.
+    await dbTyped
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(orgId, userId, { role: "member" }) as never
+      );
 
     const connDefId = generateId();
     await dbTyped.insert(schema.connectorDefinitions).values({
@@ -294,7 +302,7 @@ describe("Portal map tile route (#316)", () => {
       created: t,
       createdBy: "SYSTEM_TEST",
       definerPrincipalType: "user",
-      definerPrincipalId: "SYSTEM_TEST",
+      definerPrincipalId: userId,
       updated: null,
       updatedBy: null,
       deleted: null,
@@ -335,28 +343,81 @@ describe("Portal map tile route (#316)", () => {
     expect(res.etag).toMatch(/^"[ar]~[0-9a-f]{32}"$/);
   });
 
-  it("#643: a user with no granted view over the map serves an empty tile (204), not 500 or another scope's data", async () => {
-    // The pin's pipeline references the `parcels` curated view; a user who isn't
-    // granted it has no such temp view in their per-user session, so the tile
-    // query hits `relation "parcels" does not exist` (42P01). The serve must
-    // degrade to an empty tile (AC2: a no-grant member "sees no tile") — never a
-    // 500 and never the data. (Before #643 the org-wide builder made the view
-    // for everyone, so this path never fired.)
+  it("#643/#640: a definer with no granted view over the map serves an empty tile (204), not 500 or another scope's data", async () => {
+    // The pipeline references the `parcels` curated view; a definer who isn't
+    // granted it has no such temp view in their session, so the tile query
+    // hits `relation "parcels" does not exist` (42P01). The serve degrades to
+    // an empty tile — never a 500 and never the data.
     const stranger = createUser(`auth0|${generateId()}`);
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.users)
-      .values(stranger as never);
+    const dbTyped = db as ReturnType<typeof drizzle>;
+    await dbTyped.insert(schema.users).values(stranger as never);
+    await dbTyped
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(orgId, stranger.id, { role: "member" }) as never
+      );
+    await dbTyped
+      .update(schema.portalResults)
+      .set({ definerPrincipalId: stranger.id } as never)
+      .where(eq(schema.portalResults.id, pinId));
     const res = await PortalMapTileService.renderTile({
       ref: { kind: "pin", portalResultId: pinId },
       z: 0,
       x: 0,
       y: 0,
       organizationId: orgId,
-      userId: stranger.id,
+      userId,
       authorizeSource: allowAllSources,
     });
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();
+  });
+
+  // #640: a pin's map shows its definer's data to every reader, whatever the
+  // reader's own views — the same rows its table shows them.
+  it("#640: a reader with no view of their own gets the definer's tile, the same tile the definer gets", async () => {
+    const reader = createUser(`auth0|${generateId()}`);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.users)
+      .values(reader as never);
+    const tile = (asUser: string) =>
+      PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: pinId },
+        z: 0,
+        x: 0,
+        y: 0,
+        organizationId: orgId,
+        userId: asUser,
+        authorizeSource: allowAllSources,
+      });
+    const asDefiner = await tile(userId);
+    const asReader = await tile(reader.id);
+    expect(asReader.status).toBe(200);
+    expect(asReader.etag).toBe(asDefiner.etag);
+    expect(
+      Buffer.compare(asReader.body as Buffer, asDefiner.body as Buffer)
+    ).toBe(0);
+  });
+
+  it("#640: once the definer leaves the org, every reader's tile is unavailable (422)", async () => {
+    await (db as ReturnType<typeof drizzle>)
+      .update(schema.organizationUsers)
+      .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+      .where(eq(schema.organizationUsers.userId, userId));
+    await expect(
+      PortalMapTileService.renderTile({
+        ref: { kind: "pin", portalResultId: pinId },
+        z: 0,
+        x: 0,
+        y: 0,
+        organizationId: orgId,
+        userId,
+        authorizeSource: allowAllSources,
+      })
+    ).rejects.toMatchObject({
+      status: 422,
+      code: "PORTAL_RESULT_DATA_UNAVAILABLE",
+    });
   });
 
   // #695: a pinned table carries a valid pipeline but no geometry. Its tile
@@ -385,7 +446,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -432,7 +493,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -488,7 +549,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -535,7 +596,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -579,7 +640,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -828,7 +889,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -868,7 +929,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -1317,7 +1378,7 @@ describe("Portal map tile route (#316)", () => {
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",
-        definerPrincipalId: "SYSTEM_TEST",
+        definerPrincipalId: userId,
         updated: null,
         updatedBy: null,
         deleted: null,

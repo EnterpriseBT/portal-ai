@@ -12,7 +12,7 @@ This spec pins the contract that makes a data pin a recipe with a definer: it st
 4. **The response depends on who is asking.** A caller with pin `write` gets `PORTAL_RESULT_DEFINER_ACCESS_LOST`. Anyone else gets `PORTAL_RESULT_DATA_UNAVAILABLE`. A zero-row result is a normal success.
 5. **Large results come back as a pin-owned handle.** It's stamped with the definer (`_userId`) and the pin (`_portalResultId`). Every read re-checks the caller's pin read and the definer's membership, so unsharing or offboarding closes a handle that's already open.
 6. **Non-re-executable data blocks are refused at create** (`PORTAL_RESULT_NOT_REEXECUTABLE`). Legacy pipeline-less pins get the same code from the data route.
-7. **Map pins run as the definer:** tiles, dissolve, lazy fill and the layer count. The viewer is only authorized. The ETag drops `snapshotUpdatedAt`.
+7. **Map pins run as the definer:** tiles, dissolve and lazy fill. The viewer is only authorized. The ETag drops `snapshotUpdatedAt` and, for a pin, turns over with the widget freshness window.
 8. **Revocation hardening:** `removeMember` also soft-deletes user-principal `policy_attachments` (discovery OQ1). No writer creates such a row today, so this is defence in depth.
 9. **Execution stays free and unmetered**, under the existing `viz-refresh:<org>` window (OQ2). No agent path reads pin content (OQ3 verified), so no tool changes.
 
@@ -146,14 +146,13 @@ The pin's own `organizationId` is the scope, never the viewer's.
 
 ### API — map tiles (`portal-map-tile.service.ts`, `routes/portal-map.router.ts`)
 
-- `resolvePipeline` (`:581`) returns `executeAs: string`:
+- `resolvePipeline` (`:581`) takes the caller and returns `executeAs: string`:
   - pin: `assertDefinerActive(row).userId`, and `DefinerAccessLostError` → 422 `PORTAL_RESULT_DATA_UNAVAILABLE`;
   - message: the caller.
-- It no longer returns `snapshotUpdatedAt`, `layerTotal` or `layerTotalExact`.
-- `renderTile` (`:1472`) uses `executeAs` for `resolveViewsForSession`, `runTileQuery`, `validatedPipeline`, `runSessionViewTile`, the dissolve probe/serve and `enqueueLazyFill`. `authorizeSource` stays on the viewer.
-- `layerCountFromContent` (`:377`) is deleted. The layer total becomes `countLayer(pipeline, organizationId, executeAs)`, a `COUNT(*)` over the validated pipeline in the same session, cached in Redis at `tile-layer-count:<owner>:<scopeHash>` for 60 s. Redis down → recount (fail-open on cache only).
-- ETag input (`:1549-1555`) drops `snapshotUpdatedAt`: `` `${sql}|${z}|${x}|${y}|${AGG_TILE_VERSION}|${scopeHash}|d0/d1` ``.
-- `DissolvePrecomputeService.enqueueForPin` callers pass the definer; `reenqueueAllDissolvable` (`:212`) selects `definer_principal_id` instead of `created_by`.
+- It no longer returns `snapshotUpdatedAt`. A pin returns `layerTotal: null`: it stores no count, and the per-tile probe at `cap + 1` already is the raw serve when the tile fits, so the whole-layer fast path saves no query for a pin. (The discovery's Redis-cached `countLayer` was dropped for that reason.) Message blocks keep `layerCountFromContent`.
+- `renderTile` (`:1472`) uses `executeAs` for `resolveViewsForSession`, `runTileQuery` (the session tile, the dissolve probe/serve and `enqueueLazyFill`). `authorizeSource` stays on the viewer.
+- ETag input drops `snapshotUpdatedAt`. For a pin it adds a freshness bucket, `floor(now / VIZ_REFRESH_FRESHNESS_MS)`: a live pin's tiles must revalidate when its data changes, and without a stored snapshot clock the hash would otherwise never turn over. Message blocks are unchanged.
+- `DissolvePrecomputeService.enqueueForPin` callers pass the definer; `reenqueueAllDissolvable` selects `definer_principal_id` instead of `created_by`.
 
 ### API — `SeatService.removeMember` (`seat.service.ts:482-563`)
 
@@ -221,7 +220,7 @@ API tests are run from `apps/api` with `npm run test:unit` and `npm run test:int
 - `services/pin-definer.service.test.ts` (new): active member → userId; no membership → `DefinerAccessLostError`; role type → 500; `describe` name/email/id fallback; `viewerIsDefiner`; `describeMany` issues one query. (7)
 - `services/portal-viz-refresh.service.test.ts`: `executePin` runs as the definer, not the viewer; no pipeline → NOT_REEXECUTABLE; lost definer → ACCESS_LOST for a writer, DATA_UNAVAILABLE for a reader; `STALE_REFERENCE` maps the same way; nothing is persisted; a handle delivery carries `portalResultId`. (8)
 - `services/portal-result-pin.service.test.ts`: no rows in the output; null sql → no pipeline; a meta failure → no pipeline (not static). (4)
-- `services/portal-map-tile.service.test.ts`: a pin tile resolves views as the definer; a message tile as the caller; the ETag excludes the snapshot; the layer count is cached per scopeHash; a lost definer → 422. (6)
+- `services/portal-map-tile.service.test.ts`: a pin tile resolves scope and runs as the definer; a pin's ETag turns over with the freshness window and a message block's doesn't; a lost definer → 422. (3)
 - `routes/portal-sql-handle.router.test.ts`: a pin-owned handle is readable by a pin reader who isn't the definer; 404 after unshare; 422 after definer removal; a user handle keeps the old rule. (5)
 
 ### API integration — `apps/api/src/__integration__/`

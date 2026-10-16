@@ -424,7 +424,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/portal-map/tiles/pin/{portalResultId}/{z}/{x}/{y}": {
     kind: "authorized",
-    by: "pin in org + resource.read pin via authorizeSource (404) (#692); rows caller-view-scoped (#643)",
+    by: "pin in org + resource.read pin via authorizeSource (404) (#692); rows scoped to the pin's definer, who must be an active member (#640)",
   },
   "GET /api/portal-results": {
     kind: "authorized",

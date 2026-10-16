@@ -30,6 +30,7 @@ import {
   AGG_GRID_LEVELS,
   AGG_TILE_VERSION,
   COVERAGE_SNAP_FACTOR,
+  VIZ_REFRESH_FRESHNESS_MS,
   bandForZoom,
 } from "@portalai/core/constants";
 
@@ -50,6 +51,10 @@ import {
 } from "./portal-sql-validation.util.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
+import {
+  DefinerAccessLostError,
+  PinDefinerService,
+} from "./pin-definer.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
   AdmissionGate,
@@ -279,6 +284,10 @@ export interface TileQueryResult {
 export interface RenderTileDeps {
   findMessageById?: (id: string) => Promise<unknown>;
   findPortalResultById?: (id: string) => Promise<unknown>;
+  /** #640: the user a pin's tiles execute as (injectable for tests). */
+  assertDefinerActive?: typeof PinDefinerService.assertDefinerActive;
+  /** Wall clock (ms), for the pin ETag's freshness bucket (tests). */
+  now?: () => number;
   /** #643: resolve the caller's session-view scope hash (injectable for tests).
    *  Defaults to `resolveScopeHash(resolveViewsForSession(...))`. */
   resolveTileScopeHash?: (
@@ -581,11 +590,14 @@ export class PortalMapTileService {
   private static async resolvePipeline(
     ref: TileRef,
     organizationId: string,
+    userId: string,
     authorizeSource: RenderTileParams["authorizeSource"],
     deps: RenderTileDeps
   ): Promise<{
     pipeline: VizPipeline;
-    snapshotUpdatedAt: number | null;
+    /** Whose views the tile reads (#640): the caller for a message block, the
+     *  pin's definer for a pin. The caller is authorized either way. */
+    executeAs: string;
     propertyColumns: string[];
     aggregation: TileAggregation;
     /** Persisted total feature count from the query envelope (#532) — drives the
@@ -628,7 +640,7 @@ export class PortalMapTileService {
       if (!parsed.success) throw notFound();
       return {
         pipeline: parsed.data,
-        snapshotUpdatedAt: null,
+        executeAs: userId,
         propertyColumns: propertyColumnsFromSpec(inner.spec),
         aggregation: aggregationFromSpec(inner.spec),
         ...layerCountFromContent(inner),
@@ -655,15 +667,34 @@ export class PortalMapTileService {
     const content = (row.content ?? {}) as Record<string, unknown>;
     const parsed = VizPipelineSchema.safeParse(content.pipeline);
     if (!parsed.success) throw notFound();
+    // #640: a pin's map shows its definer's data, the same as its table. A
+    // definer who can no longer reach it empties every viewer's tiles.
+    const assertDefinerActive =
+      deps.assertDefinerActive ?? PinDefinerService.assertDefinerActive;
+    let executeAs: string;
+    try {
+      ({ userId: executeAs } = await assertDefinerActive(
+        row as unknown as Parameters<typeof assertDefinerActive>[0]
+      ));
+    } catch (err) {
+      if (err instanceof DefinerAccessLostError) {
+        throw new ApiError(
+          422,
+          ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+          "This pin's data isn't available."
+        );
+      }
+      throw err;
+    }
     return {
       pipeline: parsed.data,
-      snapshotUpdatedAt:
-        typeof row.snapshotUpdatedAt === "number"
-          ? row.snapshotUpdatedAt
-          : null,
+      executeAs,
       propertyColumns: propertyColumnsFromSpec(content.spec),
       aggregation: aggregationFromSpec(content.spec),
-      ...layerCountFromContent(content),
+      // A pin stores no rows, so no count: every tile takes the per-tile probe,
+      // which is itself the raw serve when the tile fits (no extra query).
+      layerTotal: null,
+      layerTotalExact: false,
     };
   }
 
@@ -1485,12 +1516,18 @@ export class PortalMapTileService {
     } = params;
     const {
       pipeline,
-      snapshotUpdatedAt,
+      executeAs,
       propertyColumns,
       aggregation,
       layerTotal,
       layerTotalExact,
-    } = await this.resolvePipeline(ref, organizationId, authorizeSource, deps);
+    } = await this.resolvePipeline(
+      ref,
+      organizationId,
+      userId,
+      authorizeSource,
+      deps
+    );
 
     // #643: the caller's resolved curated-view scope. The tile serve runs
     // against these per-user views, and the scope hash keys both the ETag and
@@ -1505,7 +1542,7 @@ export class PortalMapTileService {
     const scopeHash = await resolveScope(
       pipeline.stationId,
       organizationId,
-      userId
+      executeAs
     );
 
     // #542: both a pin and a message block address a dissolve precompute, keyed
@@ -1546,10 +1583,17 @@ export class PortalMapTileService {
     // or a raw→dissolved transition invalidates cached tiles — so two callers
     // with different grants never share a tile and a completed lazy fill is
     // never masked by a stale 304.
+    // #640: a pin is live, so its tiles change whenever its data does. The
+    // freshness bucket makes a pin tile revalidate at the widget freshness
+    // window instead of serving one cached 304 forever.
+    const freshness =
+      ref.kind === "pin"
+        ? Math.floor((deps.now ?? Date.now)() / VIZ_REFRESH_FRESHNESS_MS)
+        : "";
     const hash = crypto
       .createHash("sha256")
       .update(
-        `${pipeline.sql}|${z}|${x}|${y}|${snapshotUpdatedAt ?? ""}|${AGG_TILE_VERSION}|${scopeHash}|${dissolveAvailable ? "d1" : "d0"}`
+        `${pipeline.sql}|${z}|${x}|${y}|${freshness}|${AGG_TILE_VERSION}|${scopeHash}|${dissolveAvailable ? "d1" : "d0"}`
       )
       .digest("hex")
       .slice(0, 32);
@@ -1597,7 +1641,7 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
-      userId,
+      userId: executeAs,
       scopeHash,
       dissolveOwner,
       z,

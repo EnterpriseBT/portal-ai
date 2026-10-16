@@ -17,7 +17,10 @@ import {
   type TileQueryResult,
   type TileAggregation,
 } from "../../services/portal-map-tile.service.js";
-import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
+import {
+  AGG_ZOOM_THRESHOLD,
+  VIZ_REFRESH_FRESHNESS_MS,
+} from "@portalai/core/constants";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { GateRejectedError } from "../../utils/admission-gate.util.js";
@@ -558,6 +561,97 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     ref: { kind: "message" as const, messageId: "msg-1", blockIndex: 0 },
     ...base,
   };
+
+  // #640: a pin's tiles read its definer's views; the caller is only
+  // authorized.
+  const pinRow = {
+    id: "pin-1",
+    organizationId: ORG,
+    type: "geo",
+    createdBy: "definer-1",
+    definerPrincipalType: "user",
+    definerPrincipalId: "definer-1",
+    content: {
+      spec: {
+        layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
+      },
+      pipeline: PIPELINE,
+    },
+  };
+  const pinRef = {
+    ref: { kind: "pin" as const, portalResultId: "pin-1" },
+    ...base,
+  };
+
+  it("#640: a pin tile resolves the definer's scope and runs as the definer", async () => {
+    const scopeUsers: string[] = [];
+    const runAs: string[] = [];
+    await PortalMapTileService.renderTile(
+      pinRef,
+      deps({
+        findPortalResultById: async () => pinRow,
+        assertDefinerActive: async () => ({ userId: "definer-1" }),
+        resolveTileScopeHash: async (_s, _o, u) => {
+          scopeUsers.push(u);
+          return "scope-definer";
+        },
+        runTileQuery: async (args) => {
+          runAs.push(args.userId);
+          return {
+            mvt: Buffer.from([1]),
+            featureCount: 1,
+            truncated: false,
+            aggregated: false,
+          };
+        },
+      })
+    );
+    expect(scopeUsers).toEqual(["definer-1"]);
+    expect(runAs).toEqual(["definer-1"]);
+  });
+
+  it("#640: a pin's ETag turns over with the freshness window; a message block's doesn't", async () => {
+    const at = (ms: number, ref: typeof pinRef | typeof msgRef) =>
+      PortalMapTileService.renderTile(
+        ref,
+        deps({
+          findPortalResultById: async () => pinRow,
+          assertDefinerActive: async () => ({ userId: "definer-1" }),
+          now: () => ms,
+        })
+      );
+    const t0 = 10 * VIZ_REFRESH_FRESHNESS_MS;
+    const sameWindow = t0 + VIZ_REFRESH_FRESHNESS_MS - 1;
+    const nextWindow = t0 + VIZ_REFRESH_FRESHNESS_MS;
+    expect((await at(t0, pinRef)).etag).toBe(
+      (await at(sameWindow, pinRef)).etag
+    );
+    expect((await at(t0, pinRef)).etag).not.toBe(
+      (await at(nextWindow, pinRef)).etag
+    );
+    expect((await at(t0, msgRef)).etag).toBe(
+      (await at(nextWindow, msgRef)).etag
+    );
+  });
+
+  it("#640: a pin whose definer left the org refuses every tile (422)", async () => {
+    const { DefinerAccessLostError } =
+      await import("../../services/pin-definer.service.js");
+    await expect(
+      PortalMapTileService.renderTile(
+        pinRef,
+        deps({
+          findPortalResultById: async () => pinRow,
+          assertDefinerActive: async () => {
+            throw new DefinerAccessLostError("pin-1");
+          },
+        })
+      )
+    ).rejects.toMatchObject({
+      status: 422,
+      code: ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+    });
+  });
 
   it("#643: the ETag varies by the caller's scope hash", async () => {
     const a = await PortalMapTileService.renderTile(

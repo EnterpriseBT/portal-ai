@@ -385,10 +385,11 @@ portalResultsRouter.post(
         req.params.id
       );
       if (pin) {
+        // #640: under the definer — the scope the pin's tiles are served from.
         await DissolvePrecomputeService.enqueueForPin({
           portalResultId: pin.id,
           organizationId,
-          userId: req.application!.metadata.userId,
+          userId: pin.definerPrincipalId,
           type: pin.type,
           content: pin.content,
         });

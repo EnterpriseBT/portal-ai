@@ -205,17 +205,18 @@ export class DissolvePrecomputeService {
    * earlier precompute. Idempotent: each pin's job is advisory-locked, so a pin
    * with an in-flight dissolve just reports `superseded`. Not run on boot (that
    * would re-precompute the whole fleet on every restart). Returns the count
-   * enqueued. #643: each pin re-precomputes under its **creator's** scope.
+   * enqueued. #640: each pin re-precomputes under its **definer's** scope —
+   * the scope its tiles are served from.
    */
   static async reenqueueAllDissolvable(): Promise<{ enqueued: number }> {
     const rows = (await db.execute(
-      sql`SELECT id, organization_id AS "organizationId", created_by AS "createdBy", type, content
+      sql`SELECT id, organization_id AS "organizationId", definer_principal_id AS "definerId", type, content
           FROM portal_results
           WHERE type = 'geo' AND deleted IS NULL`
     )) as unknown as Array<{
       id: string;
       organizationId: string;
-      createdBy: string;
+      definerId: string;
       type: string;
       content: unknown;
     }>;
@@ -225,7 +226,7 @@ export class DissolvePrecomputeService {
       await DissolvePrecomputeService.enqueueForPin({
         portalResultId: r.id,
         organizationId: r.organizationId,
-        userId: r.createdBy,
+        userId: r.definerId,
         type: r.type,
         content: r.content,
       });

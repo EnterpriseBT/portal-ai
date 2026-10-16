@@ -145,8 +145,8 @@ This is the always-live read path. It runs as the definer, persists nothing, and
   - `services/portal-map-tile.service.ts`:
     - `resolvePipeline` returns `executeAs`;
     - `renderTile` and its callees use it;
-    - add `countLayer` with a Redis cache keyed by `(owner, scopeHash)` and a 60 s TTL;
-    - delete `layerCountFromContent`.
+    - a pin passes no layer count (the per-tile probe is already the raw serve);
+    - the pin ETag gains a freshness bucket in place of `snapshotUpdatedAt`.
   - `services/dissolve-precompute.service.ts`: `reenqueueAllDissolvable` selects `definer_principal_id`.
   - `routes/portal-results.router.ts`: the create and refresh dissolve enqueues pass the definer.
 - Tests:
@@ -157,7 +157,7 @@ This is the always-live read path. It runs as the definer, persists nothing, and
 **Steps**
 
 1. **Tests:**
-   - the 6 tile unit cases (the ETag case waits until S6, since `snapshotUpdatedAt` still exists);
+   - the 3 tile unit cases (definer scope, freshness-bucket ETag, lost definer → 422);
    - integration: two viewers get identical pin tiles; a revoked definer → 422 (2);
    - dissolve under the definer's scopeHash (2).
    
@@ -167,7 +167,7 @@ This is the always-live read path. It runs as the definer, persists nothing, and
 
 **Done when:** every viewer of a pinned map gets the definer's tiles and shares one dissolve scope. Message-block tiles are unchanged.
 
-**Risk:** a cold `countLayer` adds a COUNT under `statement_timeout` to the first tile. Keep it inside the existing `AdmissionGate` run.
+**Risk:** a pin tile now revalidates every freshness window rather than on refresh. That's one extra 304 round trip per window, bounded by `max-age=60`.
 
 ---
 
