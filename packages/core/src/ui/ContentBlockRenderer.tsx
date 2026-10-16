@@ -28,11 +28,9 @@ export type BlockRef =
   | { kind: "message"; messageId: string; blockIndex: number }
   | {
       kind: "pin";
+      /** #640: a pin's data is live, read as its definer by any of its
+       *  readers, so a pin ref carries no refresh permission. */
       portalResultId: string;
-      /** #690: `false` when the caller may not write the pin (a read-only
-       *  sharee). Refreshing a pin rewrites its snapshot, so the renderer
-       *  neither auto-refreshes nor offers the button; absent means allowed. */
-      canRefresh?: boolean;
     };
 
 /**

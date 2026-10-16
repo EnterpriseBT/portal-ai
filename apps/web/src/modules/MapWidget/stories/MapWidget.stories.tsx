@@ -162,6 +162,7 @@ export const LargeResultVectorTiles: Story = {
       failed: false,
       busy: false,
       rateLimited: false,
+      unavailable: false,
     },
   },
 };
@@ -180,6 +181,7 @@ export const TilesRateLimited: Story = {
       failed: false,
       busy: false,
       rateLimited: true,
+      unavailable: false,
     },
   },
 };

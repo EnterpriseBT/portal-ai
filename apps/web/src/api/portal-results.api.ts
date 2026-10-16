@@ -2,9 +2,11 @@ import type {
   PinResultBody,
   PortalResultGetResponsePayload,
   PortalResultListResponsePayload,
+  PinDataResponse,
   UpdatePortalResultBody,
   WidgetRefreshResponse,
 } from "@portalai/core/contracts";
+import { VIZ_REFRESH_FRESHNESS_MS } from "@portalai/core/constants";
 import type { PortalResult } from "@portalai/core/models";
 
 import {
@@ -13,6 +15,7 @@ import {
   LONG_WRITE_TIMEOUT_MS,
 } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
+import { isPinDataRefusal } from "../utils/pin-data.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
 
@@ -53,6 +56,25 @@ export const portalResults = {
       buildUrl(`/api/portal-results/${encodeURIComponent(id)}`),
       undefined,
       options
+    ),
+
+  /**
+   * #640: a pin's data, live, as its definer sees it (the pin stores none).
+   * Cached for the widget freshness window, so revisiting a pin within it
+   * doesn't re-run its query. A refusal the pin's state explains (no stored
+   * query, a definer who lost access) isn't retried.
+   */
+  data: (id: string, options?: QueryOptions<PinDataResponse>) =>
+    useAuthQuery<PinDataResponse>(
+      queryKeys.portalResults.data(id),
+      buildUrl(`/api/portal-results/${encodeURIComponent(id)}/data`),
+      undefined,
+      {
+        staleTime: VIZ_REFRESH_FRESHNESS_MS,
+        retry: (failureCount, error) =>
+          !isPinDataRefusal(error) && failureCount < 3,
+        ...options,
+      }
     ),
 
   pin: () =>

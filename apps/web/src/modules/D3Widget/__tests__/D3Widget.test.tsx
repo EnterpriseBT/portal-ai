@@ -27,9 +27,6 @@ const refreshMutate =
     }) => Promise<WidgetRefreshResponse>
   >();
 
-const pinRefreshMutate =
-  jest.fn<(vars: { id: string }) => Promise<WidgetRefreshResponse>>();
-
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     portalSql: {
@@ -37,7 +34,14 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
     portalResults: {
-      refresh: () => ({ mutateAsync: pinRefreshMutate }),
+      // #640: a pin's live data query (inert here — no pin refs).
+      data: () => ({
+        data: undefined,
+        error: null,
+        isFetching: false,
+        dataUpdatedAt: 0,
+        refetch: jest.fn(),
+      }),
     },
   },
 }));
