@@ -174,6 +174,25 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     return HttpService.error(res, new ApiError(status, code, err.message));
   }
 
+  // #805: Express's router decodes each route param with decodeURIComponent
+  // and, on malformed percent-encoding, passes a URIError carrying status 400.
+  // It used to fall through to the 500 below. The message names the raw
+  // param, so it isn't echoed.
+  if (err instanceof URIError && (err as { status?: number }).status === 400) {
+    log.warn(
+      { route: redactUrl(req.originalUrl) },
+      "Malformed percent-encoding in the request URL"
+    );
+    return HttpService.error(
+      res,
+      new ApiError(
+        400,
+        ApiCode.REQUEST_URL_INVALID_ENCODING,
+        "The request URL isn't valid percent-encoded UTF-8"
+      )
+    );
+  }
+
   // Body-parser surfaces structured errors with `type` / `status` set by
   // raw-body. Map them to first-class ApiErrors instead of letting them fall
   // through as a generic 500 — most importantly so an oversized JSON body

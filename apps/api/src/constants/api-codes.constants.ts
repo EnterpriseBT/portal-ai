@@ -31,6 +31,9 @@ export enum ApiCode {
   /** A request URL or JSON body carrying U+0000, which no Postgres text or
    *  jsonb value can store (#805). Refused before any route runs. 400. */
   REQUEST_INVALID_CHARACTERS = "REQUEST_INVALID_CHARACTERS",
+  /** A route param whose percent-encoding isn't valid UTF-8 (`%C0%80`, a
+   *  truncated `%E0%A4%A`), which Express can't decode (#805). 400. */
+  REQUEST_URL_INVALID_ENCODING = "REQUEST_URL_INVALID_ENCODING",
   /** Per-user fixed-window limit exceeded on the authenticated API
    *  (#574). Keyed by the Auth0 subject; fail-open on a Redis outage. 429. */
   API_RATE_LIMITED = "API_RATE_LIMITED",
