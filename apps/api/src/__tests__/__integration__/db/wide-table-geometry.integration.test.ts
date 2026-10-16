@@ -11,10 +11,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { geoReencodeRows } from "../../../tools/geo-delivery.util.js";
-import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
+import {
+  WideTableReconcilerService,
+  gistIndexName,
+} from "../../../services/wide-table-reconciler.service.js";
 import { WideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
 import { WideTableRepository } from "../../../db/repositories/wide-table.repository.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -788,6 +791,156 @@ describe("Wide-table geometry storage (#316)", () => {
 
       expect((await a.read())?.type).toBe("Polygon");
       expect(await isValidOf(a.erId)).toBe(true);
+    });
+  });
+
+  describe("two geometry columns sharing a long prefix (#804)", () => {
+    // Both column names share their first 21 characters, which was all the
+    // pre-#804 index name kept of them, so the second index was never made.
+    async function addGeometryMapping(key: string): Promise<void> {
+      const now = Date.now();
+      const colDefId = generateId();
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      await dbTyped.insert(schema.columnDefinitions).values({
+        id: colDefId,
+        organizationId: orgId,
+        key,
+        label: key,
+        type: "geometry",
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        system: false,
+        geoRole: null,
+        created: now,
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      await dbTyped.insert(schema.fieldMappings).values({
+        id: generateId(),
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        columnDefinitionId: colDefId,
+        sourceField: key,
+        isPrimaryKey: false,
+        normalizedKey: key,
+        required: false,
+        defaultValue: null,
+        format: null,
+        enumValues: null,
+        refNormalizedKey: null,
+        refEntityKey: null,
+        created: now,
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
+
+    /** GiST-indexed column name → index name, read from the catalog. */
+    async function gistIndexes(): Promise<Map<string, string>> {
+      const rows = (await db.execute(sql`
+        SELECT a.attname AS column_name, i.relname AS index_name
+        FROM pg_index x
+        JOIN pg_class t ON t.oid = x.indrelid
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_am am ON am.oid = i.relam AND am.amname = 'gist'
+        JOIN pg_attribute a
+          ON a.attrelid = t.oid AND a.attnum = ANY (x.indkey)
+        WHERE t.relname = ${`er__${entityId}`}
+      `)) as unknown as Array<{ column_name: string; index_name: string }>;
+      return new Map(rows.map((r) => [r.column_name, r.index_name]));
+    }
+
+    beforeEach(async () => {
+      await addGeometryMapping("parcel_boundary_polygon_a");
+      await addGeometryMapping("parcel_boundary_polygon_b");
+      await reconciler.reconcileEntity(entityId, db);
+    });
+
+    it("indexes each column under its own name", async () => {
+      const indexes = await gistIndexes();
+      expect(indexes.get("c_parcel_boundary_polygon_a")).toBe(
+        gistIndexName(entityId, "c_parcel_boundary_polygon_a")
+      );
+      expect(indexes.get("c_parcel_boundary_polygon_b")).toBe(
+        gistIndexName(entityId, "c_parcel_boundary_polygon_b")
+      );
+      expect(indexes.size).toBe(3);
+    });
+
+    it("converting one to jsonb leaves the other's index", async () => {
+      const [col] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.wideTableColumns)
+        .where(
+          and(
+            eq(schema.wideTableColumns.connectorEntityId, entityId),
+            eq(
+              schema.wideTableColumns.columnName,
+              "c_parcel_boundary_polygon_b"
+            )
+          )
+        );
+      await reconciler.convertGeometryColumnType(
+        entityId,
+        { id: col.id, columnName: col.columnName },
+        false,
+        "test-system",
+        db
+      );
+
+      const indexes = await gistIndexes();
+      expect(indexes.has("c_parcel_boundary_polygon_b")).toBe(false);
+      expect(indexes.get("c_parcel_boundary_polygon_a")).toBe(
+        gistIndexName(entityId, "c_parcel_boundary_polygon_a")
+      );
+    });
+
+    it("converting drops an index created under a pre-#804 name", async () => {
+      // A column indexed before #804 carries the old, truncated name.
+      const table = `er__${entityId}`;
+      const legacy = `${table}__c_parcel_boundary_polygon_b_gist`.slice(0, 63);
+      await db.execute(
+        sql.raw(
+          `DROP INDEX "${gistIndexName(entityId, "c_parcel_boundary_polygon_b")}"`
+        )
+      );
+      await db.execute(
+        sql.raw(
+          `CREATE INDEX "${legacy}" ON "${table}" USING GIST ("c_parcel_boundary_polygon_b")`
+        )
+      );
+      const [col] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.wideTableColumns)
+        .where(
+          and(
+            eq(schema.wideTableColumns.connectorEntityId, entityId),
+            eq(
+              schema.wideTableColumns.columnName,
+              "c_parcel_boundary_polygon_b"
+            )
+          )
+        );
+
+      // jsonb has no default GiST opclass, so a surviving index fails the ALTER.
+      await reconciler.convertGeometryColumnType(
+        entityId,
+        { id: col.id, columnName: col.columnName },
+        false,
+        "test-system",
+        db
+      );
+      expect((await gistIndexes()).has("c_parcel_boundary_polygon_b")).toBe(
+        false
+      );
     });
   });
 });

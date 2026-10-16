@@ -862,6 +862,13 @@
       "when": 1792078278312,
       "tag": "0122_entity-data-delete-job-type",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1792167365963,
+      "tag": "0123_backfill-wide-table-gist-indexes",
+      "breakpoints": true
     }
   ]
 }

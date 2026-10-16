@@ -21,6 +21,8 @@
  * maintenance job.
  */
 
+import { createHash } from "node:crypto";
+
 import { sql } from "drizzle-orm";
 
 import { PG_IDENTIFIER_MAX_BYTES } from "@portalai/core/contracts";
@@ -171,6 +173,24 @@ interface DiffResult {
 }
 
 // ── Service ─────────────────────────────────────────────────────────
+
+/**
+ * GiST index name for a geometry column (#316): shared by the add and convert
+ * paths.
+ *
+ * Always exactly 63 bytes (#804): `er__<uuid>__`, then 16 hex of the column
+ * name's md5, then `_gist`. Spelling the column name out let Postgres truncate
+ * two columns sharing a long prefix to one name, so the second `CREATE INDEX
+ * IF NOT EXISTS` silently did nothing. Migration 0123 computes the same name
+ * in SQL (`substr(md5(col), 1, 16)`); keep the two in step.
+ */
+export function gistIndexName(
+  connectorEntityId: string,
+  columnName: string
+): string {
+  const hash = createHash("md5").update(columnName).digest("hex");
+  return `er__${connectorEntityId}__${hash.slice(0, 16)}_gist`;
+}
 
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
@@ -338,9 +358,34 @@ export class WideTableReconcilerService {
     this.statementCache.invalidate(connectorEntityId);
   }
 
-  /** GiST index name for a geometry column (#316) — shared by add + convert. */
-  private gistIndexName(connectorEntityId: string, columnName: string): string {
-    return `er__${connectorEntityId}__${columnName}_gist`;
+  /**
+   * Drop every GiST index covering `columnName`, found in the catalog rather
+   * than by computed name (#804): an index created before 0123 carries a
+   * truncated name that may belong to a sibling column's index, and one left
+   * on the column would fail the `ALTER … TYPE jsonb` (jsonb has no default
+   * GiST opclass).
+   */
+  private async dropGistIndexesOnColumn(
+    tableName: string,
+    columnName: string,
+    tx: DbClient
+  ): Promise<void> {
+    const rows = (await (tx as typeof db).execute(sql`
+      SELECT i.relname AS index_name
+      FROM pg_index x
+      JOIN pg_class t ON t.oid = x.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace AND n.nspname = 'public'
+      JOIN pg_class i ON i.oid = x.indexrelid
+      JOIN pg_am am ON am.oid = i.relam AND am.amname = 'gist'
+      JOIN pg_attribute a
+        ON a.attrelid = t.oid AND a.attnum = ANY (x.indkey)
+      WHERE t.relname = ${tableName} AND a.attname = ${columnName}
+    `)) as unknown as Array<{ index_name: string }>;
+    for (const { index_name } of rows) {
+      await (tx as typeof db).execute(
+        sql.raw(`DROP INDEX IF EXISTS public.${quoteIdent(index_name)}`)
+      );
+    }
   }
 
   /**
@@ -388,7 +433,7 @@ export class WideTableReconcilerService {
       );
       const col = quoteIdent(wideColumn.columnName);
       const gist = quoteIdent(
-        this.gistIndexName(connectorEntityId, wideColumn.columnName)
+        gistIndexName(connectorEntityId, wideColumn.columnName)
       );
       let newPgType: string;
       if (toGeometry) {
@@ -407,8 +452,10 @@ export class WideTableReconcilerService {
         newPgType = "geometry(Geometry, 4326)";
       } else {
         // geometry → json: drop the GiST index first, then rewrite to GeoJSON.
-        await (tx as typeof db).execute(
-          sql.raw(`DROP INDEX IF EXISTS ${gist}`)
+        await this.dropGistIndexesOnColumn(
+          this.wideTableRepo_.tableName(connectorEntityId),
+          wideColumn.columnName,
+          tx
         );
         await (tx as typeof db).execute(
           sql.raw(
@@ -560,7 +607,7 @@ export class WideTableReconcilerService {
         await (tx as typeof db).execute(
           sql.raw(
             `CREATE INDEX IF NOT EXISTS ${quoteIdent(
-              this.gistIndexName(connectorEntityId, columnName)
+              gistIndexName(connectorEntityId, columnName)
             )} ON ${tableName} USING GIST (${quoteIdent(columnName)})`
           )
         );

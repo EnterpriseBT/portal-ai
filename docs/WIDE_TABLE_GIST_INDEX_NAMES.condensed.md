@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#804](https://github.com/EnterpriseBT/portal-ai/issues/804) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** `gistIndexName` builds `er__<entityId>__<columnName>_gist`. The prefix and suffix take 47 bytes, so only 16 bytes of the column name survive Postgres's 63-byte truncation. Two geometry columns that share their first 16 characters get the same index name, and the second `CREATE INDEX IF NOT EXISTS` silently does nothing, so that column's spatial predicates fall back to sequential scans. The convert path makes it worse. Converting a geometry column back to jsonb runs `DROP INDEX IF EXISTS` on the same truncated name, so it can drop the *other* column's index. `apps/api` only.
+**Why.** `gistIndexName` builds `er__<entityId>__<columnName>_gist`. Postgres truncates identifiers to 63 bytes, and the 42-byte `er__<uuid>__` prefix leaves 21 bytes of the column name; the `_gist` suffix is cut first. Two geometry columns sharing their first 21 characters (e.g. `c_parcel_boundary_polygon_a` / `_b`) get the same index name, and the second `CREATE INDEX IF NOT EXISTS` silently does nothing, so that column's spatial predicates fall back to sequential scans. (The issue's example pair, `c_location_boundary_a` / `_b`, is exactly 21 characters, so it doesn't collide.) The convert path makes it worse. Converting a geometry column back to jsonb runs `DROP INDEX IF EXISTS` on the same truncated name, so it can drop the *other* column's index. `apps/api` only.
 
 ## Current shape
 
@@ -36,20 +36,20 @@ A forward data migration finds every `public.er__%` table's `geometry` column th
 
 **Files**
 - edit `apps/api/src/services/wide-table-reconciler.service.ts`: `gistIndexName` → `er__${id}__${md5(col).slice(0,16)}_gist` (`node:crypto`). The geometry→json branch drops by catalog lookup (new private `dropGistIndexesOnColumn(table, col, tx)`).
-- new `apps/api/drizzle/0123_backfill-wide-table-gist-indexes.sql` + `meta/_journal.json` + snapshot (`npm run db:generate -- --custom --name backfill-wide-table-gist-indexes`).
+- new `apps/api/drizzle/0123_backfill-wide-table-gist-indexes.sql` and a hand-added `meta/_journal.json` entry, with no snapshot. A data-only migration changes no schema, and `db:generate` refuses to run because the 0115 and 0116 snapshots share an id; 0117–0122 were added the same way.
 
 **Tests**
 - unit `src/__tests__/services/wide-table-reconciler.gist-name.test.ts`: the name is ≤ 63 bytes for a 58-byte key column. Two columns sharing a long prefix get distinct names. The name is stable for the same input, starts with `er__<entityId>__` and ends `_gist`.
 - integration `wide-table-geometry.integration.test.ts`: two geometry columns sharing a > 16-character prefix, then **two** GIST indexes. Converting one to jsonb leaves the other's index in place.
-- integration migration test: a table with a legacy-collided column (index created by hand under the old name for one column only) gets an index for the other column after the backfill SQL runs, and a second run is a no-op.
+- integration `src/__tests__/__integration__/db/backfill-wide-table-gist-indexes.integration.test.ts`: a table with a legacy-collided column (index created by hand under the old name for one column only) gets an index for the other column after the backfill SQL runs, and a second run is a no-op.
 - Run: `npm run test:unit -- --testPathPattern wide-table-reconciler`, `npm run test:integration -- --testPathPattern "wide-table-geometry|column-definition.router"`, plus `npm run lint:migrations`.
 
 ## Smoke (manual, against your dev stack)
 
 1. `npm run db:migrate` (from `apps/api`), and confirm the migration applies cleanly on your existing local data.
-2. In the app, create or pick an entity and add two field mappings to column definitions of type geometry, with keys `location_boundary_a` and `location_boundary_b`. Sync or import a row so the wide table reconciles.
-3. `psql`: `\di er__<entityId>*` lists **two** `…_gist` indexes, each 63 characters long. `\d er__<entityId>` shows one on `c_location_boundary_a` and one on `c_location_boundary_b`.
-4. Change `location_boundary_b`'s column definition type to JSON (geometry→json conversion). `\d er__<entityId>`: `c_location_boundary_a`'s GIST index is still there, and `c_location_boundary_b` has none.
+2. In the app, create or pick an entity and add two field mappings to column definitions of type geometry, with keys `parcel_boundary_polygon_a` and `parcel_boundary_polygon_b`. Sync or import a row so the wide table reconciles.
+3. `psql`: `\di er__<entityId>*` lists **two** `…_gist` indexes, each 63 characters long. `\d er__<entityId>` shows one on `c_parcel_boundary_polygon_a` and one on `c_parcel_boundary_polygon_b`.
+4. Change `parcel_boundary_polygon_b`'s column definition type to JSON (geometry→json conversion). `\d er__<entityId>`: `c_parcel_boundary_polygon_a`'s GIST index is still there, and `c_parcel_boundary_polygon_b` has none.
 5. Convert it back to geometry, and two GIST indexes are listed again.
 
 ## Out of scope
