@@ -23,6 +23,12 @@ import {
   validateWithSchema,
   type FormErrors,
 } from "../../../utils/form-validation.util";
+import {
+  keyValueRowsToRecord,
+  newKeyValueRow,
+  validateKeyValueRows,
+  type KeyValueRow,
+} from "../../../utils/key-value-rows.util";
 
 import type { ApiKeyPlacement } from "../ApiKeyCredentialsForm.component";
 
@@ -116,23 +122,72 @@ export function paginationDraftToConfig(d: PaginationDraft): PaginationConfig {
  * Project the endpoint form's flat totalCount fields (#458) into the
  * config block, or `undefined` when the section is untouched.
  *
- * `params` is a URL-query-format string ("returnCountOnly=true&f=json");
- * an empty params string with a set path is valid — some APIs carry the
- * total on the plain response ("meta.totalCount") and need no override.
+ * `params` are the table's rows (#808); no rows with a set path is valid —
+ * some APIs carry the total on the plain response ("meta.totalCount") and
+ * need no override.
  * The reverse (params without a path) is a validation error, handled in
  * `validateEndpoint` — there'd be no way to read the count.
  */
 export function totalCountDraftToConfig(
-  params: string,
+  params: KeyValueRow[],
   path: string
 ): { queryParams: Record<string, string>; responsePath: string } | undefined {
   const trimmedPath = path.trim();
   if (trimmedPath === "") return undefined;
-  const queryParams: Record<string, string> = {};
-  for (const [k, v] of new URLSearchParams(params.trim())) {
-    queryParams[k] = v;
+  return {
+    queryParams: keyValueRowsToRecord(params),
+    responsePath: trimmedPath,
+  };
+}
+
+/**
+ * #808: split a Path that carries a query string into the path and one row
+ * per param. `URLSearchParams` decodes the values (`%26` → `&`, `+` → space),
+ * so the rows show what the user meant; a `#fragment` is never sent, so it's
+ * dropped.
+ */
+export function splitPathQuery(path: string): {
+  path: string;
+  rows: KeyValueRow[];
+} {
+  const q = path.indexOf("?");
+  if (q === -1) return { path, rows: [] };
+  const query = path.slice(q + 1).split("#")[0];
+  const rows = [...new URLSearchParams(query)].map(([k, v]) =>
+    newKeyValueRow(k, v)
+  );
+  return { path: path.slice(0, q), rows };
+}
+
+/**
+ * #808: the endpoint config's `queryParams`, spread into the create body and
+ * the preview/probe request: `{ queryParams }` when any row survives,
+ * otherwise nothing (the field stays absent, as before).
+ */
+export function queryParamsConfig(rows: KeyValueRow[]): {
+  queryParams?: Record<string, string>;
+} {
+  const queryParams = keyValueRowsToRecord(rows);
+  return Object.keys(queryParams).length > 0 ? { queryParams } : {};
+}
+
+/** Pagination tokens the sync substitutes per page; shown as typed. */
+const TEMPLATE_TOKEN = /%7B%7B(cursor|pageNumber)%7D%7D/g;
+
+/**
+ * #808: the request line the params produce, encoded exactly as the
+ * adapter's `buildUrl` sends it (`URL.searchParams`, so a space is `+`).
+ * `{{cursor}}` / `{{pageNumber}}` stay readable: they're substituted per
+ * page before encoding.
+ */
+export function previewRequestUrl(path: string, rows: KeyValueRow[]): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(keyValueRowsToRecord(rows))) {
+    params.set(k, v);
   }
-  return { queryParams, responsePath: trimmedPath };
+  const query = params.toString().replace(TEMPLATE_TOKEN, "{{$1}}");
+  if (query === "") return path;
+  return `${path}${path.includes("?") ? "&" : "?"}${query}`;
 }
 
 // ── Templating lint ─────────────────────────────────────────────────
@@ -265,10 +320,14 @@ export function validateEndpoint(input: {
   idField: string;
   bodyTemplate?: string;
   pagination?: PaginationDraft;
-  totalCountParams?: string;
+  queryParams?: KeyValueRow[];
+  totalCountParams?: KeyValueRow[];
   totalCountPath?: string;
 }): FormErrors {
-  const errors: FormErrors = {};
+  const errors: FormErrors = {
+    ...validateKeyValueRows(input.queryParams ?? [], "queryParams"),
+    ...validateKeyValueRows(input.totalCountParams ?? [], "totalCountParams"),
+  };
   if (!input.key.trim()) errors.key = "Key is required";
   else if (input.key.trim().length > KEY_MAX_LENGTH)
     errors.key = tooLongMessage("Key", KEY_MAX_LENGTH);
@@ -277,9 +336,12 @@ export function validateEndpoint(input: {
     errors.label = tooLongMessage("Label", NAME_MAX_LENGTH);
 
   // #458: count params without a response path leave the probe unreadable.
-  const totalCountParams = input.totalCountParams?.trim() ?? "";
+  const totalCountParams = input.totalCountParams ?? [];
   const totalCountPath = input.totalCountPath?.trim() ?? "";
-  if (totalCountParams !== "" && totalCountPath === "") {
+  if (
+    Object.keys(keyValueRowsToRecord(totalCountParams)).length > 0 &&
+    totalCountPath === ""
+  ) {
     errors.totalCountPath =
       "Count response path is required when count query params are set";
   }
@@ -310,8 +372,10 @@ export function validateEndpoint(input: {
       "Transform and Records path cannot both be set; clear one to continue.";
   }
 
+  const queryParams = keyValueRowsToRecord(input.queryParams ?? []);
   const result = validateWithSchema(ApiEndpointConfigSchema, {
     path: input.path,
+    ...(Object.keys(queryParams).length > 0 ? { queryParams } : {}),
     method: input.method,
     recordsPath: input.recordsPath,
     ...(transform.length > 0 ? { transform } : {}),

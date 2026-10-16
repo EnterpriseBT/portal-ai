@@ -19,7 +19,8 @@ const ROW: EndpointDraft = {
   idField: "id",
   bodyTemplate: "",
   pagination: EMPTY_PAGINATION_DRAFT,
-  totalCountParams: "",
+  queryParams: [],
+  totalCountParams: [],
   totalCountPath: "",
 };
 

@@ -17,9 +17,9 @@
 
 ## Decision — draft shape and where the logic lives
 
-The params become rows: `ParamRow = { id, key, value }`, with `id` a stable React key. `EndpointDraft.queryParams: ParamRow[]` is new, and `totalCountParams` changes from `string` to `ParamRow[]`. Pure helpers go in `rest-api-validation.util.ts`, so the form, the workflow's two config builders and the tests share them:
+The params become rows: `KeyValueRow = { id, key, value }`, with `id` a stable React key. `EndpointDraft.queryParams: KeyValueRow[]` is new, and `totalCountParams` changes from `string` to `KeyValueRow[]`. The row type and the generic row helpers (`newKeyValueRow`, `keyValueRowsToRecord`, `validateKeyValueRows`) live in `apps/web/src/utils/key-value-rows.util.ts`, because #809's headers table reuses them. The REST-specific ones live in `rest-api-validation.util.ts`:
 - `splitPathQuery(path)`: `{ path, rows }`, decoding through `URLSearchParams`.
-- `paramRowsToRecord(rows)`: drops fully empty rows.
+- `queryParamsConfig(rows)`: `{ queryParams }` for the create body and the preview/probe request, or nothing when no row survives (fully empty rows are dropped).
 - `validateParamRows(rows, field)`: returns `FormErrors` keyed `<field>.<i>.key`.
   - A value with no key is an error ("Key is required").
   - A duplicate key is an error on the later row ("Duplicate key").
@@ -55,7 +55,7 @@ No UI edits a *saved* endpoint, so the PRD's on-open migration can only apply to
    - `validateEndpoint` gains both row validations.
    - Both config builders carry `queryParams`.
    - Copy: the Path placeholder (`/users`, no query string) and the count caption, so `returnCountOnly=true` now reads as a table row.
-   - Tests in `__tests__/ApiEndpointForm.test.tsx` (UI): paste `?` → rows, a duplicate blocks Save, an opened `?` draft migrates. In the workflow test: the created endpoint's `config.queryParams` and the probe body carry the rows.
+   - Tests in `__tests__/ApiEndpointForm.test.tsx` (UI): paste `?` → rows, a duplicate blocks Save, an opened `?` draft migrates. The workflow's create and preview builders both spread `queryParamsConfig`, which is tested in the util suite. The container itself has no test harness, so the mapping is tested where it lives.
    - Run: `npm run test:unit -- --testPathPattern "KeyValueTable|rest-api-validation|ApiEndpointForm|RestApiConnectorWorkflow"`, `type-check`, `lint`.
 
 ## Smoke (manual, against your dev stack)

@@ -40,6 +40,7 @@ import { useSingleFlight } from "../../utils/use-single-flight.util";
 import {
   EMPTY_CREDENTIALS_DRAFT,
   paginationDraftToConfig,
+  queryParamsConfig,
   totalCountDraftToConfig,
   validateBasics,
   validateColumnRows,
@@ -634,6 +635,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
             label: ep.label,
             config: {
               path: ep.path,
+              ...queryParamsConfig(ep.queryParams),
               method: ep.method,
               recordsPath: ep.recordsPath,
               ...(ep.transform && ep.transform.trim().length > 0
@@ -862,6 +864,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
 function projectEndpointForHash(ep: EndpointDraft): Record<string, unknown> {
   return {
     path: ep.path,
+    // #808: params change what the endpoint returns, so they're part of the
+    // preview and probe request and of the hash that invalidates a probe.
+    ...queryParamsConfig(ep.queryParams),
     method: ep.method,
     recordsPath: ep.recordsPath,
     ...(ep.transform ? { transform: ep.transform } : {}),

@@ -4,12 +4,19 @@ import {
   EMPTY_CREDENTIALS_DRAFT,
   EMPTY_PAGINATION_DRAFT,
   paginationDraftToConfig,
+  previewRequestUrl,
+  queryParamsConfig,
+  splitPathQuery,
   totalCountDraftToConfig,
   validateBasics,
   validateEndpoint,
   validateEndpointsList,
   validatePlaceholders,
 } from "../utils/rest-api-validation.util";
+import { newKeyValueRow } from "../../../utils/key-value-rows.util";
+
+const rows = (...pairs: Array<[string, string]>) =>
+  pairs.map(([k, v]) => newKeyValueRow(k, v));
 
 describe("validateBasics — common", () => {
   it("returns no errors for valid name + baseUrl + none auth", () => {
@@ -340,7 +347,10 @@ describe("validateColumnRows", () => {
 describe("totalCountDraftToConfig", () => {
   it("parses a query string + path into the config block", () => {
     expect(
-      totalCountDraftToConfig("returnCountOnly=true&f=json", "count")
+      totalCountDraftToConfig(
+        rows(["returnCountOnly", "true"], ["f", "json"]),
+        "count"
+      )
     ).toEqual({
       queryParams: { returnCountOnly: "true", f: "json" },
       responsePath: "count",
@@ -348,15 +358,15 @@ describe("totalCountDraftToConfig", () => {
   });
 
   it("allows a path with no extra params (count field on the plain response)", () => {
-    expect(totalCountDraftToConfig("", "meta.totalCount")).toEqual({
+    expect(totalCountDraftToConfig([], "meta.totalCount")).toEqual({
       queryParams: {},
       responsePath: "meta.totalCount",
     });
   });
 
   it("returns undefined when the section is untouched", () => {
-    expect(totalCountDraftToConfig("", "")).toBeUndefined();
-    expect(totalCountDraftToConfig("  ", " ")).toBeUndefined();
+    expect(totalCountDraftToConfig([], "")).toBeUndefined();
+    expect(totalCountDraftToConfig(rows(["", ""]), " ")).toBeUndefined();
   });
 });
 
@@ -373,7 +383,7 @@ describe("validateEndpoint — totalCount (#458)", () => {
   it("errors when count params are set without a response path", () => {
     const errors = validateEndpoint({
       ...base,
-      totalCountParams: "returnCountOnly=true",
+      totalCountParams: rows(["returnCountOnly", "true"]),
       totalCountPath: "",
     });
     expect(errors.totalCountPath).toMatch(/response path is required/i);
@@ -382,7 +392,7 @@ describe("validateEndpoint — totalCount (#458)", () => {
   it("accepts a fully configured probe", () => {
     const errors = validateEndpoint({
       ...base,
-      totalCountParams: "returnCountOnly=true",
+      totalCountParams: rows(["returnCountOnly", "true"]),
       totalCountPath: "count",
     });
     expect(errors).toEqual({});
@@ -436,5 +446,108 @@ describe("length limits (#801)", () => {
         "row-0-normalizedKey"
       ]
     ).toBe("Normalized key must be 58 characters or fewer");
+  });
+});
+
+describe("splitPathQuery (#808)", () => {
+  const pairs = (r: { rows: Array<{ key: string; value: string }> }) =>
+    r.rows.map((row) => [row.key, row.value]);
+
+  it("leaves a path with no query alone", () => {
+    expect(splitPathQuery("/foo/bar")).toEqual({ path: "/foo/bar", rows: [] });
+  });
+
+  it("splits the query into decoded rows", () => {
+    const out = splitPathQuery("/foo/bar?fooz=baz&foot=b%26t&q=a+b%20c");
+    expect(out.path).toBe("/foo/bar");
+    expect(pairs(out)).toEqual([
+      ["fooz", "baz"],
+      ["foot", "b&t"],
+      ["q", "a b c"],
+    ]);
+  });
+
+  it("drops a fragment and an empty query", () => {
+    expect(pairs(splitPathQuery("/x?a=1#frag"))).toEqual([["a", "1"]]);
+    expect(splitPathQuery("/x?").path).toBe("/x");
+    expect(splitPathQuery("/x?").rows).toEqual([]);
+  });
+});
+
+describe("previewRequestUrl (#808)", () => {
+  it("returns the path when there are no params", () => {
+    expect(previewRequestUrl("/users", [])).toBe("/users");
+    expect(previewRequestUrl("/users", rows(["", ""]))).toBe("/users");
+  });
+
+  it("encodes reserved characters the way buildUrl sends them", () => {
+    expect(
+      previewRequestUrl("/q", rows(["q", "a&b=c d#e"], ["pct", "100%"]))
+    ).toBe("/q?q=a%26b%3Dc+d%23e&pct=100%25");
+  });
+
+  it("round-trips through splitPathQuery", () => {
+    const original = rows(["q", "a&b=c d#e"], ["k=1", "+x"]);
+    const back = splitPathQuery(previewRequestUrl("/q", original));
+    expect(back.rows.map((r) => [r.key, r.value])).toEqual([
+      ["q", "a&b=c d#e"],
+      ["k=1", "+x"],
+    ]);
+  });
+
+  it("keeps pagination tokens readable", () => {
+    expect(
+      previewRequestUrl(
+        "/items",
+        rows(["after", "{{cursor}}"], ["page", "{{pageNumber}}"])
+      )
+    ).toBe("/items?after={{cursor}}&page={{pageNumber}}");
+  });
+});
+
+describe("validateEndpoint — query params (#808)", () => {
+  const base = {
+    key: "users",
+    label: "Users",
+    path: "/users",
+    method: "GET",
+    recordsPath: "",
+    idField: "",
+  };
+
+  it("accepts rows and drops fully empty ones", () => {
+    expect(
+      validateEndpoint({
+        ...base,
+        queryParams: rows(["a", "1"], ["", ""], ["b", ""]),
+      })
+    ).toEqual({});
+  });
+
+  it("flags a value with no key, and a duplicate key on the later row", () => {
+    const errors = validateEndpoint({
+      ...base,
+      queryParams: rows(["a", "1"], ["", "orphan"], [" a ", "2"]),
+      totalCountParams: rows(["x", "1"], ["x", "2"]),
+      totalCountPath: "count",
+    });
+    expect(errors).toEqual({
+      "queryParams.1.key": "Key is required",
+      "queryParams.2.key": "Duplicate key",
+      "totalCountParams.1.key": "Duplicate key",
+    });
+  });
+});
+
+describe("queryParamsConfig (#808)", () => {
+  it("is the config's queryParams when any row survives", () => {
+    expect(
+      queryParamsConfig(rows(["a", "1"], ["", ""], [" b ", "x y"]))
+    ).toEqual({ queryParams: { a: "1", b: "x y" } });
+  });
+
+  it("leaves the field absent when no row survives", () => {
+    expect(queryParamsConfig([])).toEqual({});
+    expect(queryParamsConfig(rows(["", ""]))).toEqual({});
   });
 });
