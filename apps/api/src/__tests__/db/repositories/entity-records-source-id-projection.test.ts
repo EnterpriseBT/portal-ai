@@ -12,8 +12,8 @@
  *
  * Soft-deleted rows are excluded deliberately. `layout-plan-commit`'s
  * `writeRecords` passes `includeDeleted: true` and resurrects prior rows via
- * `bulkResurrect`; `record-import`'s `flushBatch` does not, and neither does
- * today's `upsertRecord`. The REST sync path is modelled on `flushBatch`, so
+ * `bulkResurrect`; `record-import`'s `flushBatch` does not, and neither did
+ * the old per-record REST write path. The REST sync path is modelled on `flushBatch`, so
  * resurrection is **not** introduced here — see the spec's Key decision 3.
  *
  * The statements are captured rather than executed: this asserts the shape

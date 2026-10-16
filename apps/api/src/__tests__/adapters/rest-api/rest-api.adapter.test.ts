@@ -43,20 +43,6 @@ const findByInstanceMock =
   jest.fn<(connectorInstanceId: string) => Promise<EndpointFixture[]>>();
 const findByEntityIdMock =
   jest.fn<(connectorEntityId: string) => Promise<EndpointFixture | null>>();
-const findBySourceIdsMock = jest.fn<
-  (
-    connectorEntityId: string,
-    sourceIds: string[]
-  ) => Promise<
-    Array<{
-      id: string;
-      checksum: string;
-      createdBy: string;
-      created: number;
-    }>
-  >
->();
-const upsertBySourceIdMock = jest.fn<(data: unknown) => Promise<unknown>>();
 // #440: the sync loop now batches — it reads through the narrow projection
 // and writes through the bulk upsert.
 const findBySourceIdsForSyncMock = jest.fn<
@@ -112,9 +98,7 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
         findByEntityId: findByEntityIdMock,
       },
       entityRecords: {
-        findBySourceIds: findBySourceIdsMock,
         findBySourceIdsForSync: findBySourceIdsForSyncMock,
-        upsertBySourceId: upsertBySourceIdMock,
         upsertManyBySourceId: upsertManyBySourceIdMock,
         bulkUpdateSyncedAt: bulkUpdateSyncedAtMock,
         softDeleteBeforeWatermark: softDeleteBeforeWatermarkMock,
@@ -190,8 +174,6 @@ const INSTANCE = {
 beforeEach(() => {
   findByInstanceMock.mockReset();
   findByEntityIdMock.mockReset();
-  findBySourceIdsMock.mockReset();
-  upsertBySourceIdMock.mockReset();
   bulkUpdateSyncedAtMock.mockReset();
   softDeleteBeforeWatermarkMock.mockReset();
   updateInstanceMock.mockReset();
@@ -201,9 +183,6 @@ beforeEach(() => {
   findFieldMappingsMock.mockResolvedValue([]);
   upsertWideManyMock.mockReset();
   upsertWideManyMock.mockResolvedValue(undefined);
-  // Default upsertBySourceId returns a stub row carrying the input id —
-  // the adapter consumes `upserted.id` for the wide-table mirror write.
-  upsertBySourceIdMock.mockImplementation(async (input: unknown) => input);
   // #440: the batched writer's collaborators. An empty prior-row set means
   // every record classifies as `created`, which is what these suites assert
   // (they exercise auth/pagination/templating, not change detection).
@@ -493,8 +472,6 @@ describe("restApiAdapter.syncInstance — auth", () => {
         },
       },
     ]);
-    findBySourceIdsMock.mockResolvedValue([]);
-    upsertBySourceIdMock.mockResolvedValue(undefined);
     bulkUpdateSyncedAtMock.mockResolvedValue(0);
     softDeleteBeforeWatermarkMock.mockResolvedValue([]);
     updateInstanceMock.mockResolvedValue(undefined);
@@ -708,8 +685,6 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     originalFetch = globalThis.fetch;
     fetchMock = jest.fn<typeof globalThis.fetch>();
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
-    findBySourceIdsMock.mockResolvedValue([]);
-    upsertBySourceIdMock.mockResolvedValue(undefined);
     bulkUpdateSyncedAtMock.mockResolvedValue(0);
     softDeleteBeforeWatermarkMock.mockResolvedValue([]);
     updateInstanceMock.mockResolvedValue(undefined);
@@ -1087,9 +1062,12 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // The reconciler saw the flat records — assert via upsert calls.
     expect(recordsWritten()).toBe(2);
-    const upsertedDatas = upsertBySourceIdMock.mock.calls.map(
-      (call) => (call[0] as { data: Record<string, unknown> }).data
+    const upsertedDatas = upsertManyBySourceIdMock.mock.calls.flatMap((call) =>
+      (call[0] as Array<{ data: Record<string, unknown> }>).map(
+        (row) => row.data
+      )
     );
+    expect(upsertedDatas).toHaveLength(2);
     for (const data of upsertedDatas) {
       expect(Object.keys(data).sort()).toEqual([
         "id",
@@ -1123,7 +1101,7 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     ).rejects.toMatchObject({
       code: ApiCode.REST_API_TRANSFORM_FAILED,
     });
-    expect(upsertBySourceIdMock).not.toHaveBeenCalled();
+    expect(recordsWritten()).toBe(0);
   });
 });
 
@@ -1144,8 +1122,6 @@ describe("restApiAdapter.syncInstance — totalCount probe (#458)", () => {
     originalFetch = globalThis.fetch;
     fetchMock = jest.fn<typeof globalThis.fetch>();
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
-    findBySourceIdsMock.mockResolvedValue([]);
-    upsertBySourceIdMock.mockResolvedValue(undefined);
     bulkUpdateSyncedAtMock.mockResolvedValue(0);
     softDeleteBeforeWatermarkMock.mockResolvedValue([]);
     updateInstanceMock.mockResolvedValue(undefined);
@@ -2485,10 +2461,6 @@ describe("restApiAdapter.syncInstance — streaming branch", () => {
     originalFetch = globalThis.fetch;
     fetchMock = jest.fn<typeof globalThis.fetch>();
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
-    findBySourceIdsMock.mockResolvedValue([]);
-    upsertBySourceIdMock.mockImplementation(
-      async (input: unknown) => input as never
-    );
     bulkUpdateSyncedAtMock.mockResolvedValue(0);
     softDeleteBeforeWatermarkMock.mockResolvedValue([]);
     updateInstanceMock.mockResolvedValue(undefined);

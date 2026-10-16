@@ -42,6 +42,13 @@ export default async function globalSetup() {
   process.env.ENCRYPTION_KEY ??= "B6c8MuUiBbxwrAWSopmasgp1TMQ3eTi91aG8Og4TOCQ=";
   // Redis for BullMQ queue integration tests
   process.env.REDIS_URL ??= "redis://redis:6379";
+  // Every suite authenticates as the same mocked user, and CI's Redis is
+  // real, so the per-user rate limits (#574, #705) count the whole run's
+  // requests in one window. A fast run (remote cache, #454) went past the
+  // default 300/min and suites answered 429. rate-limit-buckets sets its own
+  // low limits before loading the app.
+  process.env.AUTH_API_RATE_LIMIT_PER_MIN ??= "1000000";
+  process.env.AUTH_TILE_RATE_LIMIT_PER_MIN ??= "1000000";
 
   const connection = postgres(databaseUrl, { max: 1 });
   const db = drizzle(connection);
