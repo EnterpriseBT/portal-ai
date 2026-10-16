@@ -1198,6 +1198,36 @@ describe("restApiAdapter.syncInstance — totalCount probe (#458)", () => {
     }
   });
 
+  it("#808: templates the probe's params as the first page's request", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", {
+          queryParams: { page: "{{pageNumber}}", after: "{{cursor}}" },
+          paginationConfig: {
+            style: "page",
+            param: "p",
+            pageSize: 2,
+            startPage: 3,
+            stopOnShortPage: true,
+          },
+          totalCount: ARCGIS_PROBE,
+        }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: 1 })) // probe
+      .mockResolvedValueOnce(json([{ id: "a" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const probeUrl = new URL(fetchMock.mock.calls[0]![0] as string);
+    expect(probeUrl.searchParams.get("page")).toBe("3");
+    expect(probeUrl.searchParams.get("after")).toBe("");
+    expect(probeUrl.searchParams.get("returnCountOnly")).toBe("true");
+  });
+
   it("reuses the endpoint's POST method and body for the probe", async () => {
     findByInstanceMock.mockResolvedValueOnce([
       {

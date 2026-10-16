@@ -17,6 +17,7 @@ import {
   type EndpointDraft,
 } from "../ApiEndpointForm.component";
 import { EMPTY_PAGINATION_DRAFT } from "../utils/rest-api-validation.util";
+import { newKeyValueRow } from "../../../utils/key-value-rows.util";
 
 function makeDraft(overrides: Partial<EndpointDraft> = {}): EndpointDraft {
   return {
@@ -654,9 +655,9 @@ describe("ApiEndpointForm — Suggest button + onSuggest wiring", () => {
 describe("ApiEndpointForm — record total probe (#458)", () => {
   it("renders the two probe fields with the ArcGIS example in the helper copy", () => {
     render(<ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />);
-    expect(screen.getByLabelText(/count query params/i)).toBeInTheDocument();
+    expect(screen.getByText(/count query parameters/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/count response path/i)).toBeInTheDocument();
-    expect(screen.getByText(/returnCountOnly=true/i)).toBeInTheDocument();
+    expect(screen.getByText("returnCountOnly")).toBeInTheDocument();
   });
 
   it("submitted draft carries the probe fields", async () => {
@@ -668,7 +669,7 @@ describe("ApiEndpointForm — record total probe (#458)", () => {
           key: "parcels",
           label: "Parcels",
           path: "/query",
-          totalCountParams: "returnCountOnly=true",
+          totalCountParams: [newKeyValueRow("returnCountOnly", "true")],
           totalCountPath: "count",
         })}
         onSubmit={onSubmit}
@@ -679,7 +680,9 @@ describe("ApiEndpointForm — record total probe (#458)", () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
-    expect(submitted.totalCountParams).toBe("returnCountOnly=true");
+    expect(submitted.totalCountParams.map((r) => [r.key, r.value])).toEqual([
+      ["returnCountOnly", "true"],
+    ]);
     expect(submitted.totalCountPath).toBe("count");
   });
 
@@ -692,7 +695,7 @@ describe("ApiEndpointForm — record total probe (#458)", () => {
           key: "parcels",
           label: "Parcels",
           path: "/query",
-          totalCountParams: "returnCountOnly=true",
+          totalCountParams: [newKeyValueRow("returnCountOnly", "true")],
           totalCountPath: "",
         })}
         onSubmit={onSubmit}
@@ -736,5 +739,262 @@ describe("ApiEndpointForm — Enter", () => {
     );
     await pressEnter(screen.getByRole("textbox", { name: /entity key/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+  });
+});
+
+// #808: query params are rows in a table, never typed into Path.
+describe("ApiEndpointForm — query parameters (#808)", () => {
+  const named = (submitted: EndpointDraft) =>
+    submitted.queryParams.map((r) => [r.key, r.value]);
+
+  it("splits a pasted query string into decoded rows and a clean path", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />);
+    // The dialog auto-focuses Entity key; let it land so it can't blur Path.
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: /entity key/i })).toHaveFocus()
+    );
+    const path = screen.getByRole("textbox", { name: /^path$/i });
+    await user.click(path);
+    await user.paste("/foo/bar?fooz=baz&foot=b%26t");
+
+    expect(path).toHaveValue("/foo/bar");
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveValue("fooz");
+    expect(screen.getByRole("textbox", { name: "Value 2" })).toHaveValue("b&t");
+    expect(screen.getByTestId("request-preview")).toHaveTextContent(
+      "/foo/bar?fooz=baz&foot=b%26t"
+    );
+  });
+
+  it("splits a typed query string when Path loses focus", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />);
+    // The dialog auto-focuses Entity key; let it land so it can't blur Path.
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: /entity key/i })).toHaveFocus()
+    );
+    const path = screen.getByRole("textbox", { name: /^path$/i });
+    await user.type(path, "/items?a=1");
+    // Typing doesn't split mid-word.
+    expect(path).toHaveValue("/items?a=1");
+    fireEvent.blur(path);
+    expect(path).toHaveValue("/items");
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveValue("a");
+  });
+
+  it("migrates a draft opened with a query in its path, and saves it clean", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users?active=true&q=a%20b",
+        })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    expect(screen.getByRole("textbox", { name: /^path$/i })).toHaveValue(
+      "/users"
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
+    expect(submitted.path).toBe("/users");
+    expect(named(submitted)).toEqual([
+      ["active", "true"],
+      ["q", "a b"],
+    ]);
+  });
+
+  it("shows the encoded request line", () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "q",
+          label: "Q",
+          path: "/q",
+          queryParams: [
+            newKeyValueRow("q", "a&b=c d#e"),
+            newKeyValueRow("after", "{{cursor}}"),
+          ],
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId("request-preview")).toHaveTextContent(
+      "/q?q=a%26b%3Dc+d%23e&after={{cursor}}"
+    );
+  });
+
+  it("blocks Save on a duplicate key, flagging the later row", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          queryParams: [
+            newKeyValueRow("f", "json"),
+            newKeyValueRow("f", "csv"),
+          ],
+        })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(screen.getByText("Duplicate key")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("textbox", { name: "Key 2" })).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveAttribute(
+      "aria-invalid",
+      "false"
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("Enter in a param field submits a valid form and never adds a row", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          queryParams: [newKeyValueRow("active", "true")],
+        })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await pressEnter(screen.getByRole("textbox", { name: "Value 1" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
+    expect(named(submitted)).toEqual([["active", "true"]]);
+  });
+
+  it("splits a typed query on Save even without a blur", async () => {
+    const user = userEvent.setup({ delay: null });
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({ key: "users", label: "Users" })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: /entity key/i })).toHaveFocus()
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /^path$/i }),
+      "/users?where=1"
+    );
+    // Save is a dialog control, so this blur doesn't split; submit does.
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
+    expect(submitted.path).toBe("/users");
+    expect(named(submitted)).toEqual([["where", "1"]]);
+  });
+
+  it("flags an unknown template placeholder on the value and blocks Save", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          queryParams: [newKeyValueRow("filter", "{{page}}")],
+        })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/unknown template variable "page"/i)
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByRole("textbox", { name: "Value 1" })).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps an error with its row when a row above it is removed", async () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          queryParams: [
+            newKeyValueRow("ok", "1"),
+            newKeyValueRow("", "orphan"),
+            newKeyValueRow("fine", "2"),
+          ],
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(screen.getByText("Key is required")).toBeInTheDocument()
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove parameter ok" })
+    );
+    // The keyless row is now first, and still carries its error; the row
+    // that moved into its old position doesn't inherit it.
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByRole("textbox", { name: "Key 2" })).toHaveAttribute(
+      "aria-invalid",
+      "false"
+    );
+  });
+
+  it("names the count table's fields apart from the endpoint table's", () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "parcels",
+          label: "Parcels",
+          path: "/query",
+          queryParams: [newKeyValueRow("f", "json")],
+          totalCountParams: [newKeyValueRow("returnCountOnly", "true")],
+          totalCountPath: "count",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    expect(screen.getAllByRole("textbox", { name: "Key 1" })).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "Count key 1" })).toHaveValue(
+      "returnCountOnly"
+    );
   });
 });
