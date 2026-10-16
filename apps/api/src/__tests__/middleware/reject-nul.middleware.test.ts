@@ -67,7 +67,7 @@ describe("rejectNul", () => {
       // middleware doesn't depend on that.
       const next = jest.fn<(err?: unknown) => void>();
       rejectNul(
-        { originalUrl: "/echo", body: `x${NUL}` } as Request,
+        { path: "/echo", query: {}, body: `x${NUL}` } as unknown as Request,
         {} as Response,
         next as unknown as NextFunction
       );
@@ -104,6 +104,7 @@ describe("rejectNul", () => {
     it.each([
       ["the path", "/echo/a%00b"],
       ["the query", "/echo?search=a%00b"],
+      ["a query key", "/echo?a%00b=1"],
     ])("refuses %00 in %s", async (_label, url) => {
       const res = await request(makeApp()).get(url);
 
@@ -131,9 +132,9 @@ describe("rejectNul", () => {
       {
         method: "POST",
         path: "/api/webhook/handle/sess-1",
-        originalUrl: "/api/webhook/handle/sess-1",
+        query: {},
         body: { rows: [{ k: `a${NUL}` }] },
-      } as Request,
+      } as unknown as Request,
       {} as Response,
       next as unknown as NextFunction
     );
@@ -145,10 +146,10 @@ describe("rejectNul", () => {
     rejectNul(
       {
         method: "POST",
-        path: "/api/webhook/handle/s\u0000",
-        originalUrl: "/api/webhook/handle/s%00",
+        path: "/api/webhook/handle/s%00",
+        query: {},
         body: {},
-      } as Request,
+      } as unknown as Request,
       {} as Response,
       next as unknown as NextFunction
     );

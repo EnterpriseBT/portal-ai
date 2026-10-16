@@ -25,8 +25,10 @@ function isStripRoute(req: Request): boolean {
  * way). Refusing it here covers every route's body, params and query with
  * one typed 400 that names where the NUL is, before any write starts.
  *
- * The URL test is exact: Node's HTTP parser refuses a literal NUL, and
- * `%2500` decodes to the text `%00`, not a NUL. The body test runs on the
+ * The URL test is exact: Node's HTTP parser refuses a literal NUL, the
+ * still-encoded path shows a NUL as `%00`, and `%2500` decodes to the text
+ * `%00`, not a NUL. It reads `req.path` and the parsed query rather than the
+ * raw URL, which only ever passes through `redactUrl` (#728). The body test runs on the
  * parsed value, so the escaped text `\\u0000` passes. The value itself is
  * never echoed. Mounted after `jsonBodyOnly`, ahead of every router and of
  * auth, like body-parser's own 400s.
@@ -36,7 +38,9 @@ export const rejectNul = (
   _res: Response,
   next: NextFunction
 ): void => {
-  if (req.originalUrl.includes("%00")) {
+  // `req.path` is still percent-encoded, so a NUL in a param shows as `%00`;
+  // the query arrives decoded by the query parser, where it's a real U+0000.
+  if (req.path.includes("%00") || findNul(req.query) !== null) {
     return next(
       new ApiError(
         400,
