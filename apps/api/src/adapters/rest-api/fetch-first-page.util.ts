@@ -44,6 +44,7 @@ import {
 } from "./rest-api.adapter.js";
 import { applyTransform } from "./transform.util.js";
 import { stampEsriSpatialReference } from "./geometry.util.js";
+import { stripNulDeep } from "../../utils/nul-character.util.js";
 
 /** Read the response-root `spatialReference` (Esri FeatureServer marker), if any. */
 function rootSpatialReference(body: unknown): unknown {
@@ -171,8 +172,8 @@ export async function fetchOnePage(
  * any config errors surface as throws; the second yield is discarded
  * because the caller only needs page 1.
  *
- * Used by `testConnection` (read-only dry run) and `discoverColumns`
- * (probe).
+ * Used by `testConnection` (read-only dry run), `discoverColumns`
+ * (probe) and `previewEndpointPage`; all three get the page NUL-stripped.
  */
 export async function fetchFirstPage(
   endpoint: ApiEndpoint,
@@ -211,7 +212,17 @@ export async function fetchFirstPage(
     await iterator.next(fetched);
   }
 
-  return fetched;
+  // #810: every caller is a preview (test connection, the probe, the
+  // Preview pane), and a sync strips U+0000 before storing (#805,
+  // `toStorableRecord`). Strip the page after the iterator has inspected the
+  // raw response (cursors, Link headers), so every preview shows what a sync
+  // would store, and a request built from one (a suggested transform's
+  // sample) carries no NUL for the boundary to refuse.
+  return {
+    ...fetched,
+    body: stripNulDeep(fetched.body).value,
+    records: stripNulDeep(fetched.records).value,
+  };
 }
 
 /**

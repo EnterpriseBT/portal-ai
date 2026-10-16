@@ -1521,6 +1521,9 @@ async function runProbePipeline(
     }
     throw err;
   }
+  // #810: `fetchFirstPage` returns the page NUL-stripped, so samples, column
+  // keys, the classifier's input and the cached result match what a sync
+  // stores in `entity_records`.
   const scanned = fetched.records.slice(0, MAX_RECORDS_SCANNED);
   const inference = inferColumns(scanned);
 

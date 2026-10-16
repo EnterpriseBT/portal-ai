@@ -1406,6 +1406,23 @@ describe("restApiAdapter.testConnection", () => {
     });
   });
 
+  // #810: the test dialog shows what a sync would store.
+  it("returns a NUL-stripped sample", async () => {
+    findByEntityIdMock.mockResolvedValueOnce(endpointFixture());
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ id: "b\u0000", "na\u0000me": "x" }]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const result = await restApiAdapter.testConnection!(INSTANCE as never, {
+      endpointEntityId: "ent-users",
+    });
+
+    expect(result).toEqual({ ok: true, sample: [{ id: "b", name: "x" }] });
+  });
+
   it("returns all records as the sample when fewer than 5 are returned", async () => {
     findByEntityIdMock.mockResolvedValueOnce(endpointFixture());
     fetchMock.mockResolvedValueOnce(
@@ -2066,6 +2083,77 @@ describe("restApiAdapter.probeEndpointDraft", () => {
     expect(findByInstanceMock).not.toHaveBeenCalled();
   });
 
+  // #810: a sync strips U+0000 before storing (#805's toStorableRecord), so
+  // the probe infers from stripped records too: samples, keys and what the
+  // classifier sees all match what lands in entity_records.
+  it("strips U+0000 from sampled values before inference", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([
+        { id: "a", name: "Al\u0000ice" },
+        { id: "b\u0000", name: "Bob" },
+      ])
+    );
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    const byKey = new Map(result.columns.map((c) => [c.key, c]));
+    expect(byKey.get("name")?.samples).toEqual(["Alice", "Bob"]);
+    expect(byKey.get("id")?.samples).toEqual(["a", "b"]);
+    expect(JSON.stringify(result.columns)).not.toContain("\\u0000");
+  });
+
+  it("strips U+0000 from upstream keys, so the column is the key a sync stores", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([{ id: "a", "na\u0000me": "x" }])
+    );
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    const name = result.columns.find((c) => c.key === "name");
+    expect(name).toMatchObject({ key: "name", sourceField: "name" });
+    expect(result.columns.map((c) => c.key).sort()).toEqual(["id", "name"]);
+  });
+
+  // A key that collides with an existing one once stripped resolves the way
+  // a sync's stripNulDeep does: the later key wins.
+  it("resolves a stripped key colliding with an existing key the way a sync does", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([{ id: "a", "na\u0000me": "first", name: "second" }])
+    );
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    expect(result.columns.map((c) => c.key).sort()).toEqual(["id", "name"]);
+    expect(result.columns.find((c) => c.key === "name")?.samples).toEqual([
+      "second",
+    ]);
+  });
+
+  it("never sends a U+0000 to the column classifier", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([{ id: "a", "na\u0000me": "Al\u0000ice" }])
+    );
+    const classify = jest.fn(async () => []);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: { classify: classify as never },
+    });
+
+    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    expect(classify).toHaveBeenCalledTimes(1);
+    const [candidates] = classify.mock.calls[0] as unknown as [unknown[]];
+    expect(JSON.stringify(candidates)).not.toContain("\\u0000");
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceField: "name", samples: ["Alice"] }),
+      ])
+    );
+  });
+
   it("surfaces transform failures as degradation: 'transform-failed'", async () => {
     fetchMock.mockResolvedValueOnce(okResponse({ data: [{ id: 1 }] }));
     configureRestApiAdapterDeps({
@@ -2189,6 +2277,18 @@ describe("restApiAdapter.previewEndpointPage", () => {
     expect(result.status).toBe(200);
     expect(result.truncated).toBe(false);
     expect(result.headers["content-type"]).toMatch(/application\/json/);
+  });
+
+  // #810: the Preview pane feeds the records-path / transform feedback and
+  // the Suggest request, so it shows the body a sync would store.
+  it("returns the body with U+0000 stripped", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ data: [{ id: "a", "na\u0000me": "Al\u0000ice" }] })
+    );
+
+    const result = await restApiAdapter.previewEndpointPage(ORG_ID, baseBody);
+
+    expect(result.body).toEqual({ data: [{ id: "a", name: "Alice" }] });
   });
 
   it("sets truncated:true when the upstream body exceeds the 256 KB cap", async () => {
