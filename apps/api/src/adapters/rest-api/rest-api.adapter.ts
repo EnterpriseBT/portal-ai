@@ -1521,12 +1521,10 @@ async function runProbePipeline(
     }
     throw err;
   }
-  // #810: a sync strips U+0000 before storing (`toStorableRecord`), so infer
-  // from the same stripped records. Samples, column keys, the classifier's
-  // input and the cached result then match what lands in `entity_records`.
-  const scanned = stripNulDeep(
-    fetched.records.slice(0, MAX_RECORDS_SCANNED)
-  ).value;
+  // #810: `fetchFirstPage` returns the page NUL-stripped, so samples, column
+  // keys, the classifier's input and the cached result match what a sync
+  // stores in `entity_records`.
+  const scanned = fetched.records.slice(0, MAX_RECORDS_SCANNED);
   const inference = inferColumns(scanned);
 
   // AI-assist layer.

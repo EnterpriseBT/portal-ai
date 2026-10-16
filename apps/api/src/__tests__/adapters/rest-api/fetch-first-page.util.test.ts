@@ -85,6 +85,53 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+// #810: every caller of fetchFirstPage is a preview (test connection, the
+// probe, the Preview pane), and a sync strips U+0000 before storing. So the
+// first page comes back stripped, body and records alike, and every preview
+// shows what a sync would store. Requests built from a preview (a suggested
+// transform's sample) then carry no NUL for #805's boundary to refuse.
+describe("fetchFirstPage — strips U+0000 (#810)", () => {
+  it("strips the body and the extracted records, keys and values", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ items: [{ id: "b\u0000", "na\u0000me": "Al\u0000ice" }] })
+    );
+    const fetched = await fetchFirstPage(
+      makeEndpoint({ recordsPath: "items" }),
+      "https://api.example.com",
+      NONE_AUTH,
+      null,
+      { strategy: "none" }
+    );
+    expect(fetched.records).toEqual([{ id: "b", name: "Alice" }]);
+    expect(fetched.body).toEqual({ items: [{ id: "b", name: "Alice" }] });
+  });
+
+  it("strips the raw body when record extraction is skipped (the Preview pane)", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse({ x: "a\u0000" }));
+    const fetched = await fetchFirstPage(
+      makeEndpoint(),
+      "https://api.example.com",
+      NONE_AUTH,
+      null,
+      { strategy: "none" },
+      { skipRecordsExtraction: true }
+    );
+    expect(fetched.body).toEqual({ x: "a" });
+  });
+
+  it("returns a clean page unchanged", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a", t: "tab\there" }]));
+    const fetched = await fetchFirstPage(
+      makeEndpoint(),
+      "https://api.example.com",
+      NONE_AUTH,
+      null,
+      { strategy: "none" }
+    );
+    expect(fetched.records).toEqual([{ id: "a", t: "tab\there" }]);
+  });
+});
+
 describe("fetchFirstPage — per-strategy single fetch", () => {
   it("none: fetches once and returns the records", async () => {
     fetchMock.mockResolvedValueOnce(okResponse([{ id: "a" }, { id: "b" }]));
