@@ -12,6 +12,7 @@ import {
   type ConnectorDefinitionListResponsePayload,
   type ConnectorDefinitionGetResponsePayload,
 } from "@portalai/core/contracts";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 
 const logger = createLogger({ module: "connector-definition" });
 
@@ -80,6 +81,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/ConnectorDefinitionListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (CONNECTOR_DEFINITION_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -91,6 +98,19 @@ connectorDefinitionRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = ConnectorDefinitionListRequestQuerySchema.safeParse(
+      req.query
+    );
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.CONNECTOR_DEFINITION_INVALID_QUERY,
+          "Invalid connector definition list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       logger.info(
         {
@@ -109,7 +129,7 @@ connectorDefinitionRouter.get(
         authType,
         isActive,
         search,
-      } = ConnectorDefinitionListRequestQuerySchema.parse(req.query);
+      } = parsedQuery.data;
 
       // Build filter conditions
       const filters: SQL[] = [];

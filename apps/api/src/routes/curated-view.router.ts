@@ -256,11 +256,28 @@ async function assertProjection(
  *                     total: { type: integer }
  *                     limit: { type: integer }
  *                     offset: { type: integer }
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (CURATED_VIEW_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 curatedViewRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = CuratedViewListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.CURATED_VIEW_INVALID_QUERY,
+          "Invalid curated view list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const {
         limit,
@@ -270,7 +287,7 @@ curatedViewRouter.get(
         search,
         connectorEntityId,
         stationId,
-      } = CuratedViewListRequestQuerySchema.parse(req.query);
+      } = parsedQuery.data;
       const { organizationId } = req.application!.metadata;
 
       const filters: SQL[] = [eq(curatedViews.organizationId, organizationId)];

@@ -435,6 +435,12 @@ portalResultsRouter.post(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/PortalResultListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (PORTAL_RESULT_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -446,9 +452,20 @@ portalResultsRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = PortalResultListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.PORTAL_RESULT_INVALID_QUERY,
+          "Invalid portal result list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const { limit, offset, sortOrder, search, stationId, portalId, include } =
-        PortalResultListRequestQuerySchema.parse(req.query);
+        parsedQuery.data;
       const ctx = req.application!.metadata;
       const { organizationId } = ctx;
 

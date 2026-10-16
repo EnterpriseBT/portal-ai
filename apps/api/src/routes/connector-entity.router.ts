@@ -110,6 +110,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/ConnectorEntityListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (CONNECTOR_ENTITY_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -121,6 +127,19 @@ connectorEntityRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = ConnectorEntityListRequestQuerySchema.safeParse(
+      req.query
+    );
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.CONNECTOR_ENTITY_INVALID_QUERY,
+          "Invalid connector entity list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const {
         limit,
@@ -131,7 +150,7 @@ connectorEntityRouter.get(
         connectorInstanceIds: connectorInstanceIdsRaw,
         include,
         tagIds: tagIdsRaw,
-      } = ConnectorEntityListRequestQuerySchema.parse(req.query);
+      } = parsedQuery.data;
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [

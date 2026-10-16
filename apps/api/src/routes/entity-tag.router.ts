@@ -71,6 +71,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/EntityTagListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (ENTITY_TAG_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -82,9 +88,19 @@ entityTagRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = EntityTagListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.ENTITY_TAG_INVALID_QUERY,
+          "Invalid entity tag list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
-      const { limit, offset, sortBy, sortOrder, search } =
-        EntityTagListRequestQuerySchema.parse(req.query);
+      const { limit, offset, sortBy, sortOrder, search } = parsedQuery.data;
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(entityTags.organizationId, organizationId)];
