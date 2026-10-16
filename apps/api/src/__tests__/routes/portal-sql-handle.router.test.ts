@@ -16,6 +16,7 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
 const mockAuthorizePinHandle = jest.fn<() => Promise<void>>();
 jest.unstable_mockModule("../../services/pin-definer.service.js", () => ({
   PinDefinerService: { authorizeHandleRead: mockAuthorizePinHandle },
+  DefinerAccessLostError: class DefinerAccessLostError extends Error {},
 }));
 
 jest.unstable_mockModule("../../middleware/metadata.middleware.js", () => ({

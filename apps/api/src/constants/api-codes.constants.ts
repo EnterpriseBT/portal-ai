@@ -365,6 +365,11 @@ export enum ApiCode {
    */
   PORTAL_RESULT_DEFINER_UNSUPPORTED = "PORTAL_RESULT_DEFINER_UNSUPPORTED",
   /**
+   * #640: a data block with no re-executable query — refused at pin time, and
+   * answered by the data route for a pin saved before #640 without one.
+   */
+  PORTAL_RESULT_NOT_REEXECUTABLE = "PORTAL_RESULT_NOT_REEXECUTABLE",
+  /**
    * #640: the pin's definer can no longer reach its data (removed from the org,
    * or lost access to the views its query reads). Sent only to a caller who
    * can manage the pin; everyone else gets `PORTAL_RESULT_DATA_UNAVAILABLE`.
@@ -906,6 +911,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
   [ApiCode.READ_STREAM_INTERRUPTED]: "Reload to refetch the cached snapshot.",
   [ApiCode.VIZ_WIDGET_NOT_FOUND]:
     "That visualization widget wasn't found, or isn't available to your organization.",
+  [ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE]:
+    "Re-run the prompt and pin the new result.",
   [ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST]:
     "Re-run the prompt and pin the result again with someone who can see this data, or restore their access.",
   [ApiCode.VIZ_WIDGET_NOT_REFRESHABLE]:

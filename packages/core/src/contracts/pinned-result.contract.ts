@@ -69,3 +69,10 @@ export const PINNED_CONTENT_SCHEMAS: Partial<
  */
 export const PinRefreshResponseSchema = WidgetRefreshResponseSchema;
 export type PinRefreshResponse = z.infer<typeof PinRefreshResponseSchema>;
+
+/**
+ * #640: `GET /api/portal-results/:id/data` — a pin's data, live, as its
+ * definer sees it: inline rows, or a query handle that belongs to the pin.
+ */
+export const PinDataResponseSchema = WidgetRefreshResponseSchema;
+export type PinDataResponse = z.infer<typeof PinDataResponseSchema>;

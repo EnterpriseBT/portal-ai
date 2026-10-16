@@ -434,9 +434,13 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     kind: "authorized",
     by: "org scope + per-object resource.read pin (404) (#621)",
   },
+  "GET /api/portal-results/{id}/data": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read pin (404); executes as the pin's definer, who must be an active member (#640)",
+  },
   "GET /api/portal-sql/handle/{handleId}": {
     kind: "authorized",
-    by: "handle meta org === caller org, and _userId === caller when present (404) (#685)",
+    by: "handle meta org === caller org, and _userId === caller when present (404) (#685); a pin's handle: resource.read pin + live definer (#640)",
   },
   "GET /api/portals": {
     kind: "authorized",

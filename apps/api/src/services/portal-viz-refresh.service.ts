@@ -32,6 +32,10 @@ import type {
   PortalResultSelect,
   PortalResultInsert,
 } from "../db/schema/zod.js";
+import {
+  DefinerAccessLostError,
+  PinDefinerService,
+} from "./pin-definer.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "portal-viz-refresh" });
@@ -57,6 +61,20 @@ export interface PinRefreshDeps {
   getSnapshot?: typeof PortalSqlHandleService.getSnapshot;
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
   sqlQuery?: typeof AnalyticsService.sqlQuery;
+}
+
+/** DI seam (test) for the live pin read (#640). */
+export interface PinDataDeps {
+  resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
+  sqlQuery?: typeof AnalyticsService.sqlQuery;
+  assertDefinerActive?: typeof PinDefinerService.assertDefinerActive;
+}
+
+/** Who is reading a pin (#640) — it decides how much a refusal explains. */
+export interface PinViewer {
+  userId: string;
+  /** May manage the pin (`resource.write`): told why its data is gone. */
+  canWrite: boolean;
 }
 
 export interface VizRefreshParams {
@@ -237,6 +255,70 @@ export class PortalVizRefreshService {
   }
 
   /**
+   * #640: a pin's data, live, as its **definer** sees it now. Nothing is
+   * persisted: the pin is a recipe, and the rows exist only in this response
+   * (or in a pin-owned handle, readable by the pin's readers).
+   *
+   * The caller has already authorized the viewer's read on `row`. Here the
+   * definer must still be an active member of the pin's org, and the query
+   * must still match the views they can read; either failing empties the pin
+   * (a reason for a viewer who manages it, a neutral message otherwise). A
+   * definer whose views simply match no rows gets an ordinary empty result.
+   */
+  static async executePin(
+    row: PortalResultSelect,
+    viewer: PinViewer,
+    deps: PinDataDeps = {}
+  ): Promise<WidgetRefreshResponse> {
+    const resolveSqlDelivery =
+      deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
+    const sqlQuery =
+      deps.sqlQuery ?? AnalyticsService.sqlQuery.bind(AnalyticsService);
+    const assertDefinerActive =
+      deps.assertDefinerActive ?? PinDefinerService.assertDefinerActive;
+
+    const content = (row.content ?? {}) as Record<string, unknown>;
+    const parsed = VizPipelineSchema.safeParse(content.pipeline);
+    if (!parsed.success) {
+      throw new ApiError(
+        422,
+        ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE,
+        "This pin can't refresh — re-pin it from a new result."
+      );
+    }
+
+    const unavailable = () =>
+      PinDefinerService.unavailableError({
+        canWrite: viewer.canWrite,
+        isDefiner: row.definerPrincipalId === viewer.userId,
+      });
+
+    try {
+      const { userId: definerId } = await assertDefinerActive(row);
+      return await this.runPipeline(
+        parsed.data,
+        row.organizationId,
+        definerId,
+        resolveSqlDelivery,
+        geometryColumnsFromSpec(content.spec),
+        sqlQuery,
+        row.id
+      );
+    } catch (err) {
+      if (err instanceof DefinerAccessLostError) throw unavailable();
+      // The query names a view or column the definer no longer exposes.
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
+        err.details?.reason === STALE_REFERENCE
+      ) {
+        throw unavailable();
+      }
+      throw err;
+    }
+  }
+
+  /**
    * #727: {@link runPipeline}, with a stored query that no longer matches the
    * caller's views (it names a view or column they don't expose: an "unknown
    * entity" / "unknown column" refusal) answered as a widget that can't be
@@ -276,11 +358,18 @@ export class PortalVizRefreshService {
     geometryColumns: string[] = [],
     sqlQuery: typeof AnalyticsService.sqlQuery = AnalyticsService.sqlQuery.bind(
       AnalyticsService
-    )
+    ),
+    /** #640: the pin being delivered; a staged handle then belongs to it. */
+    portalResultId?: string
   ): Promise<WidgetRefreshResponse> {
     const delivery = await resolveSqlDelivery(
       { sql: pipeline.sql },
-      { stationId: pipeline.stationId, organizationId, userId }
+      {
+        stationId: pipeline.stationId,
+        organizationId,
+        userId,
+        ...(portalResultId ? { portalResultId } : {}),
+      }
     );
 
     // A large delivery rides its handle — the map widget re-tiles it through

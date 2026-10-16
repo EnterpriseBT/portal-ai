@@ -27,12 +27,34 @@ import { PinDefinerService } from "../services/pin-definer.service.js";
 import { DissolvePrecomputeService } from "../services/dissolve-precompute.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { setDbCancelPolicy } from "../utils/request-context.util.js";
 import { DateFactory } from "@portalai/core/utils";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 
 const logger = createLogger({ module: "portal-results" });
 
 export const portalResultsRouter = Router();
+
+/**
+ * Per-org rate limit shared by every widget/pin re-execution (one budget
+ * across the addressers). Fail-open on a Redis blip: the re-execution is
+ * already bounded (read-only + statement_timeout + LIMIT).
+ */
+async function consumeVizRefreshBudget(organizationId: string): Promise<void> {
+  try {
+    const count = await incrementRateWindow(`viz-refresh:${organizationId}`);
+    if (count > VIZ_REFRESH_RATE_PER_MIN) {
+      throw new ApiError(
+        429,
+        ApiCode.VIZ_REFRESH_RATE_LIMITED,
+        "Too many widget refreshes this minute."
+      );
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err; // the 429 propagates
+    logger.warn({ err }, "viz-refresh rate limiter unavailable; failing open");
+  }
+}
 
 // ── POST /api/portal-results ──────────────────────────────────────────────
 
@@ -331,28 +353,7 @@ portalResultsRouter.post(
       const ctx = req.application!.metadata;
       const organizationId = ctx.organizationId;
 
-      // Per-org rate limit — the same window as the message-block
-      // widget-refresh (one budget across both addressers). Fail-open on a
-      // Redis blip: the re-execution is already bounded (read-only +
-      // statement_timeout + LIMIT).
-      try {
-        const count = await incrementRateWindow(
-          `viz-refresh:${organizationId}`
-        );
-        if (count > VIZ_REFRESH_RATE_PER_MIN) {
-          throw new ApiError(
-            429,
-            ApiCode.VIZ_REFRESH_RATE_LIMITED,
-            "Too many widget refreshes this minute."
-          );
-        }
-      } catch (err) {
-        if (err instanceof ApiError) throw err; // the 429 propagates
-        logger.warn(
-          { err },
-          "viz-refresh rate limiter unavailable; failing open"
-        );
-      }
+      await consumeVizRefreshBudget(organizationId);
 
       // #621: a viz refresh mutates the pin's stored result — a write. Guard it
       // (a read-only grantee can't refresh a shared pin); 404 when unreadable.
@@ -393,6 +394,106 @@ portalResultsRouter.post(
         });
       }
 
+      return HttpService.success(res, payload);
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
+
+// ── GET /api/portal-results/:id/data ──────────────────────────────────────
+
+/**
+ * @openapi
+ * /api/portal-results/{id}/data:
+ *   get:
+ *     tags:
+ *       - Portal Results
+ *     summary: A pinned result's data, live, as its definer sees it
+ *     description: >
+ *       #640: a pin stores no rows. This executes its stored query on every
+ *       read, read-only and under the **definer's** current access (the user
+ *       who pinned it), not the caller's and not the org's. Any caller who can
+ *       read the pin may call it. Nothing is persisted. A large result is a
+ *       query handle that belongs to the pin, so the pin's readers can page it.
+ *       Free and unmetered; shares the per-org widget-refresh rate window.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Pinned result id
+ *     responses:
+ *       200:
+ *         description: The pin's data, inline or as a pin-owned handle
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 payload:
+ *                   $ref: '#/components/schemas/WidgetRefreshResponse'
+ *       404:
+ *         description: No pin the caller can read with this id (or cross-org)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: >
+ *           `PORTAL_RESULT_NOT_REEXECUTABLE` when the pin has no stored query;
+ *           when its definer can no longer reach the data,
+ *           `PORTAL_RESULT_DEFINER_ACCESS_LOST` for a caller who manages the
+ *           pin and `PORTAL_RESULT_DATA_UNAVAILABLE` otherwise
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       429:
+ *         description: Per-org rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+portalResultsRouter.get(
+  "/:id/data",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
+
+      // After the cheap rate-limit gate, so a nonexistent id is still bounded.
+      await consumeVizRefreshBudget(organizationId);
+
+      const notFound = () =>
+        new ApiError(
+          404,
+          ApiCode.PORTAL_RESULT_NOT_FOUND,
+          "Portal result not found"
+        );
+      const row = await DbService.repository.portalResults.findById(
+        req.params.id
+      );
+      if (!row || row.organizationId !== organizationId) {
+        return next(notFound());
+      }
+      // Reading a pin's data is reading the pin: a read-only sharee may.
+      const set = await PermissionService.loadSet(ctx);
+      const object = { type: "pin", id: row.id, createdBy: row.createdBy };
+      if (!set.can("resource.read", object)) return next(notFound());
+
+      // Read-only work, safe to stop mid-statement when the client leaves.
+      setDbCancelPolicy("always");
+      const payload = await PortalVizRefreshService.executePin(row, {
+        userId,
+        canWrite: set.can("resource.write", object),
+      });
       return HttpService.success(res, payload);
     } catch (err) {
       return next(err);
