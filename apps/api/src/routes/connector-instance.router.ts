@@ -35,6 +35,7 @@ import {
   type ConnectorInstanceApi,
   type ConnectorInstanceWithDefinitionApi,
   type ConnectorInstanceDeleteResponsePayload,
+  type ConnectorInstanceListRequestQuery,
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -68,7 +69,12 @@ const logger = createLogger({ module: "connector-instance" });
 export const connectorInstanceRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<
+  ConnectorInstanceListRequestQuery["sortBy"],
+  Column
+> = {
   name: connectorInstances.name,
   status: connectorInstances.status,
   created: connectorInstances.created,
@@ -138,6 +144,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/ConnectorInstanceListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (CONNECTOR_INSTANCE_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -149,6 +161,19 @@ connectorInstanceRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = ConnectorInstanceListRequestQuerySchema.safeParse(
+      req.query
+    );
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.CONNECTOR_INSTANCE_INVALID_QUERY,
+          "Invalid connector instance list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const {
         limit,
@@ -160,7 +185,7 @@ connectorInstanceRouter.get(
         search,
         include,
         capability,
-      } = ConnectorInstanceListRequestQuerySchema.parse(req.query);
+      } = parsedQuery.data;
 
       const VALID_CAPABILITIES = ["sync", "read", "write", "push"] as const;
 
@@ -218,7 +243,7 @@ connectorInstanceRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
       const include_ = include
         ?.split(",")
         .map((s) => s.trim())

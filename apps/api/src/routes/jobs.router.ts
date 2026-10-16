@@ -10,6 +10,7 @@ import {
   type JobGetResponsePayload,
   type JobListResponsePayload,
   type JobCancelResponsePayload,
+  type JobListRequestQuery,
 } from "@portalai/core/contracts";
 import { and, Column, eq, ilike, inArray, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
@@ -17,12 +18,15 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { JobPayloadRedactionService } from "../services/job-payload-redaction.service.js";
 import { JobControlService } from "../services/job-control.service.js";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 
 const logger = createLogger({ module: "jobs" });
 
 export const jobsRouter = Router();
 
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<JobListRequestQuery["sortBy"], Column> = {
   created: jobs.created,
   status: jobs.status,
   type: jobs.type,
@@ -85,6 +89,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/JobListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (JOB_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -96,8 +106,19 @@ jobsRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = JobListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.JOB_INVALID_QUERY,
+          "Invalid job list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
-      const query = JobListRequestQuerySchema.parse(req.query);
+      const query = parsedQuery.data;
       const filters: SQL[] = [
         eq(
           jobs.organizationId,
@@ -148,7 +169,7 @@ jobsRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[query.sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[query.sortBy];
 
       const [data, total] = await Promise.all([
         DbService.repository.jobs.findMany(where, {

@@ -18,6 +18,7 @@ import {
   type ColumnDefinitionCreateResponsePayload,
   ColumnDefinitionUpdateRequestBodySchema,
   type ColumnDefinitionUpdateResponsePayload,
+  type ColumnDefinitionListRequestQuery,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -46,7 +47,12 @@ const logger = createLogger({ module: "column-definition" });
 export const columnDefinitionRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<
+  ColumnDefinitionListRequestQuery["sortBy"],
+  Column
+> = {
   key: columnDefinitions.key,
   label: columnDefinitions.label,
   type: columnDefinitions.type,
@@ -103,6 +109,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/ColumnDefinitionListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (COLUMN_DEFINITION_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -114,9 +126,22 @@ columnDefinitionRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = ColumnDefinitionListRequestQuerySchema.safeParse(
+      req.query
+    );
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.COLUMN_DEFINITION_INVALID_QUERY,
+          "Invalid column definition list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const { limit, offset, sortBy, sortOrder, search, type, system } =
-        ColumnDefinitionListRequestQuerySchema.parse(req.query);
+        parsedQuery.data;
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [
@@ -157,7 +182,7 @@ columnDefinitionRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
 
       const [data, total] = await Promise.all([
         DbService.repository.columnDefinitions.findMany(where, {

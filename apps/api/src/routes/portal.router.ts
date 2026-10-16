@@ -9,6 +9,7 @@ import {
   type PortalListResponsePayload,
   type PortalGetResponsePayload,
   type PortalCreateResponsePayload,
+  PortalGetRequestQuerySchema,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -216,6 +217,12 @@ portalRouter.post(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/PortalListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (PORTAL_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -227,9 +234,20 @@ portalRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = PortalListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.PORTAL_INVALID_QUERY,
+          "Invalid portal list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const { limit, offset, sortOrder, sortBy, stationId, include } =
-        PortalListRequestQuerySchema.parse(req.query);
+        parsedQuery.data;
       const { organizationId } = req.application!.metadata;
 
       const filters: SQL[] = [eq(portals.organizationId, organizationId)];
@@ -331,6 +349,12 @@ portalRouter.get(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/PortalWithMessages'
+ *       400:
+ *         description: Malformed query, e.g. a repeated include (PORTAL_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Portal not found, or not readable by the caller (#685, portals are per-user)
  *         content:
@@ -348,10 +372,21 @@ portalRouter.get(
   "/:id",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a repeated `include` (an array) is a 400, not a TypeError's 500.
+    const parsedQuery = PortalGetRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.PORTAL_INVALID_QUERY,
+          "Invalid portal query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const { id } = req.params;
       const include_ =
-        (req.query.include as string | undefined)
+        parsedQuery.data.include
           ?.split(",")
           .map((s) => s.trim())
           .filter(Boolean) ?? [];

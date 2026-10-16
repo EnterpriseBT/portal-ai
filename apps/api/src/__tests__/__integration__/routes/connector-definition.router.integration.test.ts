@@ -347,7 +347,7 @@ describe("Connector Definition Router", () => {
       expect(categories).toEqual(["api", "database", "storage"]);
     });
 
-    it("should fall back to display sort for invalid sortBy", async () => {
+    it("should sort by display when sortBy is omitted", async () => {
       const defs = [
         buildConnectorDefinition({ display: "Bravo" }),
         buildConnectorDefinition({ display: "Alpha" }),
@@ -357,7 +357,7 @@ describe("Connector Definition Router", () => {
         .values(defs as never);
 
       const res = await request(app)
-        .get("/api/connector-definitions?sortBy=invalid_field")
+        .get("/api/connector-definitions")
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
@@ -365,6 +365,16 @@ describe("Connector Definition Router", () => {
         (d: { display: string }) => d.display
       );
       expect(displays).toEqual(["Alpha", "Bravo"]);
+    });
+
+    // #756: an unknown sortBy is a 400 naming it, not a silent fallback.
+    it("should refuse an invalid sortBy with a 400", async () => {
+      const res = await request(app)
+        .get("/api/connector-definitions?sortBy=invalid_field")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_DEFINITION_INVALID_QUERY);
     });
 
     // ── Soft-delete awareness ───────────────────────────────────────

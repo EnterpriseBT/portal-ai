@@ -34,7 +34,7 @@ describe("stations.api", () => {
       const params = {
         limit: 10,
         offset: 0,
-        sortBy: "created",
+        sortBy: "created" as const,
         sortOrder: "asc" as const,
         search: "test",
       };

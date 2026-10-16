@@ -156,6 +156,12 @@ function matchesCustomSearch(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/ToolpackListResponse'
+ *       400:
+ *         description: Malformed query, e.g. an unknown kind (TOOLPACK_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 toolpacksRouter.get(
   "/",
@@ -165,8 +171,19 @@ toolpacksRouter.get(
   // is the boundary (owner/admin pass via `* *`; members are denied 403).
   requirePermission("resource.read", "toolpack"),
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = ToolpackListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.TOOLPACK_INVALID_QUERY,
+          "Invalid toolpack list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
-      const { search, kind } = ToolpackListRequestQuerySchema.parse(req.query);
+      const { search, kind } = parsedQuery.data;
       const { organizationId } = req.application!.metadata;
 
       const builtinList: Toolpack[] =

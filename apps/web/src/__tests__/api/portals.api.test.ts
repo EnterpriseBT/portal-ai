@@ -34,7 +34,7 @@ describe("portals.api", () => {
       const params = {
         limit: 20,
         offset: 0,
-        sortBy: "created",
+        sortBy: "created" as const,
         sortOrder: "asc" as const,
         stationId: "station-123",
       };

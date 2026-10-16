@@ -32,6 +32,7 @@ export type FieldMappingWithConnectorEntity = z.infer<
 
 export const FieldMappingListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
+    sortBy: z.enum(["sourceField", "created"]).optional().default("created"),
     connectorEntityId: z.string().optional(),
     columnDefinitionId: z.string().optional(),
     include: z.string().optional(),

@@ -22,6 +22,10 @@ import {
 
 export const ColumnDefinitionListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
+    sortBy: z
+      .enum(["key", "label", "type", "created"])
+      .optional()
+      .default("created"),
     type: z.string().optional(),
     system: z.enum(["true", "false"]).optional(),
   });

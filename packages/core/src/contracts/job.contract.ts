@@ -27,6 +27,7 @@ export const JobCreateRequestBodySchema = z
 export type JobCreateRequestBody = z.infer<typeof JobCreateRequestBodySchema>;
 
 export const JobListRequestQuerySchema = PaginationRequestQuerySchema.extend({
+  sortBy: z.enum(["created", "status", "type"]).optional().default("created"),
   status: z.string().optional(),
   type: z.string().optional(),
 });

@@ -11,14 +11,21 @@ import {
   ConnectorDefinitionListRequestQuerySchema,
   type ConnectorDefinitionListResponsePayload,
   type ConnectorDefinitionGetResponsePayload,
+  type ConnectorDefinitionListRequestQuery,
 } from "@portalai/core/contracts";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 
 const logger = createLogger({ module: "connector-definition" });
 
 export const connectorDefinitionRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<
+  ConnectorDefinitionListRequestQuery["sortBy"],
+  Column
+> = {
   display: connectorDefinitions.display,
   category: connectorDefinitions.category,
   slug: connectorDefinitions.slug,
@@ -45,7 +52,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         schema:
  *           type: string
  *           enum: [display, category, slug, created, version]
- *           default: created
+ *           default: display
  *         description: Field to sort by
  *       - in: query
  *         name: category
@@ -80,6 +87,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/ConnectorDefinitionListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (CONNECTOR_DEFINITION_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -91,15 +104,20 @@ connectorDefinitionRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      logger.info(
-        {
-          rawQuery: req.query,
-          rawIsActive: req.query.isActive,
-          typeofIsActive: typeof req.query.isActive,
-        },
-        "DEBUG raw query before parse"
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = ConnectorDefinitionListRequestQuerySchema.safeParse(
+      req.query
+    );
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.CONNECTOR_DEFINITION_INVALID_QUERY,
+          "Invalid connector definition list query",
+          parsedQuery.error
+        )
       );
+    }
+    try {
       const {
         limit,
         offset,
@@ -109,7 +127,7 @@ connectorDefinitionRouter.get(
         authType,
         isActive,
         search,
-      } = ConnectorDefinitionListRequestQuerySchema.parse(req.query);
+      } = parsedQuery.data;
 
       // Build filter conditions
       const filters: SQL[] = [];
@@ -139,7 +157,7 @@ connectorDefinitionRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = filters.length > 0 ? and(...filters) : undefined;
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.display;
+      const column = SORTABLE_COLUMNS[sortBy];
 
       const [data, total] = await Promise.all([
         DbService.repository.connectorDefinitions.findMany(where, {

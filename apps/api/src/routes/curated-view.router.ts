@@ -30,6 +30,7 @@ import {
   validateFilterLimits,
   validateOperatorTypeCompat,
   type FilterGroup,
+  type CuratedViewListRequestQuery,
 } from "@portalai/core/contracts";
 
 import { createLogger } from "../utils/logger.util.js";
@@ -58,11 +59,14 @@ const logger = createLogger({ module: "curated-view" });
 export const curatedViewRouter = Router();
 
 /** Sortable field names → their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
-  label: curatedViews.label,
-  key: curatedViews.key,
-  created: curatedViews.created,
-};
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<CuratedViewListRequestQuery["sortBy"], Column> =
+  {
+    label: curatedViews.label,
+    key: curatedViews.key,
+    created: curatedViews.created,
+  };
 
 /**
  * Validate a `FilterGroup` against an entity's column types (depth/count
@@ -256,11 +260,28 @@ async function assertProjection(
  *                     total: { type: integer }
  *                     limit: { type: integer }
  *                     offset: { type: integer }
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (CURATED_VIEW_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 curatedViewRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = CuratedViewListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.CURATED_VIEW_INVALID_QUERY,
+          "Invalid curated view list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const {
         limit,
@@ -270,7 +291,7 @@ curatedViewRouter.get(
         search,
         connectorEntityId,
         stationId,
-      } = CuratedViewListRequestQuerySchema.parse(req.query);
+      } = parsedQuery.data;
       const { organizationId } = req.application!.metadata;
 
       const filters: SQL[] = [eq(curatedViews.organizationId, organizationId)];
@@ -322,7 +343,7 @@ curatedViewRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
 
       const [data, total] = await Promise.all([
         // #646: enrich each view with its connector entity's key + label.

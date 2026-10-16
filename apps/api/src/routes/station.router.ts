@@ -11,6 +11,7 @@ import {
   type StationGetResponsePayload,
   type StationCreateResponsePayload,
   type StationUpdateResponsePayload,
+  StationGetRequestQuerySchema,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -171,6 +172,12 @@ async function denyUnentitledBuiltins(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/StationListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (STATION_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -182,9 +189,19 @@ stationRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = StationListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.STATION_INVALID_QUERY,
+          "Invalid station list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
-      const { limit, offset, sortBy, sortOrder, search } =
-        StationListRequestQuerySchema.parse(req.query);
+      const { limit, offset, sortBy, sortOrder, search } = parsedQuery.data;
       const ctx = req.application!.metadata;
       const { organizationId } = ctx;
 
@@ -310,6 +327,12 @@ stationRouter.get(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/StationGetResponsePayload'
+ *       400:
+ *         description: Malformed query, e.g. a repeated include (STATION_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Station not found
  *         content:
@@ -327,13 +350,24 @@ stationRouter.get(
   "/:id",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a repeated `include` (an array) is a 400, not a TypeError's 500.
+    const parsedQuery = StationGetRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.STATION_INVALID_QUERY,
+          "Invalid station query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const { id } = req.params;
       const ctx = req.application!.metadata;
       const { organizationId } = ctx;
 
       const include_ =
-        (req.query.include as string | undefined)
+        parsedQuery.data.include
           ?.split(",")
           .map((s) => s.trim())
           .filter(Boolean) ?? [];

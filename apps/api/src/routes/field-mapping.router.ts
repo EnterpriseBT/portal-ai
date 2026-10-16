@@ -14,6 +14,7 @@ import {
   type FieldMappingDeleteResponsePayload,
   type FieldMappingImpactResponsePayload,
   type FieldMappingBidirectionalValidationResponsePayload,
+  type FieldMappingListRequestQuery,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -74,10 +75,13 @@ async function loadReadableMapping(
 }
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
-  sourceField: fieldMappings.sourceField,
-  created: fieldMappings.created,
-};
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<FieldMappingListRequestQuery["sortBy"], Column> =
+  {
+    sourceField: fieldMappings.sourceField,
+    created: fieldMappings.created,
+  };
 
 /**
  * @openapi
@@ -133,6 +137,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/FieldMappingListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (FIELD_MAPPING_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -144,6 +154,17 @@ fieldMappingRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = FieldMappingListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.FIELD_MAPPING_INVALID_QUERY,
+          "Invalid field mapping list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
       const {
         limit,
@@ -154,7 +175,7 @@ fieldMappingRouter.get(
         connectorEntityId,
         columnDefinitionId,
         include,
-      } = FieldMappingListRequestQuerySchema.parse(req.query);
+      } = parsedQuery.data;
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(fieldMappings.organizationId, organizationId)];
@@ -180,7 +201,7 @@ fieldMappingRouter.get(
       }
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
       const include_ = include
         ?.split(",")
         .map((s) => s.trim())

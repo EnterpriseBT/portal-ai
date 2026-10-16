@@ -18,6 +18,7 @@ import {
 
 export const StationListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
+    sortBy: z.enum(["name", "created"]).optional().default("created"),
     search: z.string().optional(),
     include: z.string().optional(),
   });

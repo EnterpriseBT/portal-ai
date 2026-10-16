@@ -10,6 +10,7 @@ import {
   type EntityTagCreateResponsePayload,
   EntityTagUpdateRequestBodySchema,
   type EntityTagUpdateResponsePayload,
+  type EntityTagListRequestQuery,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -27,7 +28,9 @@ const logger = createLogger({ module: "entity-tag" });
 export const entityTagRouter = Router();
 
 /** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
+// #756: keyed by the schema's `sortBy` enum, so every value the schema
+// accepts has a column and nothing else reaches the lookup.
+const SORTABLE_COLUMNS: Record<EntityTagListRequestQuery["sortBy"], Column> = {
   name: entityTags.name,
   created: entityTags.created,
 };
@@ -71,6 +74,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/EntityTagListResponse'
+ *       400:
+ *         description: Malformed query, e.g. limit, offset or sortOrder (ENTITY_TAG_INVALID_QUERY)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -82,9 +91,19 @@ entityTagRouter.get(
   "/",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
+    // #756: a malformed query is a 400 naming the field, not a 500.
+    const parsedQuery = EntityTagListRequestQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return next(
+        invalidPayload(
+          ApiCode.ENTITY_TAG_INVALID_QUERY,
+          "Invalid entity tag list query",
+          parsedQuery.error
+        )
+      );
+    }
     try {
-      const { limit, offset, sortBy, sortOrder, search } =
-        EntityTagListRequestQuerySchema.parse(req.query);
+      const { limit, offset, sortBy, sortOrder, search } = parsedQuery.data;
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(entityTags.organizationId, organizationId)];
@@ -107,7 +126,7 @@ entityTagRouter.get(
       if (visibility) filters.push(visibility);
 
       const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const column = SORTABLE_COLUMNS[sortBy];
       const listOpts = {
         limit,
         offset,

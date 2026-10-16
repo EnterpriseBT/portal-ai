@@ -16,6 +16,11 @@
  * `invalidPayload`, so the first issue is in the message and every issue is
  * in `details`. `schemaFailure400s` flags a hand-built 400 in a routes file
  * that sits in an `if (!x.success)` branch or carries `issues` by hand.
+ *
+ * #756 adds the third: a route never `.parse()`s a request (`req.query`,
+ * `req.body`, `req.params`). The throw lands in the route's `catch`, which
+ * wraps it as a 500, so a malformed query answered `500 *_NOT_FOUND`.
+ * `requestParses` flags the call; `safeParse` + `invalidPayload` replaces it.
  */
 import { describe, it, expect } from "@jest/globals";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -155,6 +160,60 @@ export function schemaFailure400s(
           code: n.arguments[1].getText(sf).replace(/^ApiCode\./, ""),
         });
       }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+/** #756: routes and middleware that `.parse()` a request directly. Empty,
+ *  and only shrinks. */
+const REQUEST_PARSE_ALLOWED: Array<{ file: string; call: string }> = [];
+
+/** #756 code review: the request data a parse argument reads, seen through
+ *  a cast, a `satisfies`, a non-null `!`, brackets, or a spread into an object
+ *  literal. A copy into a variable first isn't followed. */
+function readsRequest(e: ts.Expression, sf: ts.SourceFile): boolean {
+  if (
+    ts.isParenthesizedExpression(e) ||
+    ts.isAsExpression(e) ||
+    ts.isSatisfiesExpression(e) ||
+    ts.isNonNullExpression(e) ||
+    ts.isTypeAssertionExpression(e)
+  ) {
+    return readsRequest(e.expression, sf);
+  }
+  if (ts.isObjectLiteralExpression(e)) {
+    return e.properties.some(
+      (p) => ts.isSpreadAssignment(p) && readsRequest(p.expression, sf)
+    );
+  }
+  return /^req\.(query|body|params)$/.test(e.getText(sf));
+}
+
+/** #756: every `<schema>.parse(req.query | req.body | req.params)`, or
+ *  `parseAsync`. Its ZodError becomes the route's 500, never a 400.
+ *  `JSON.parse` is not a schema parse (the webhook route parses its raw
+ *  body). */
+export function requestParses(
+  source: string
+): Array<{ line: number; call: string }> {
+  const sf = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, true);
+  const out: Array<{ line: number; call: string }> = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      ["parse", "parseAsync"].includes(n.expression.name.getText(sf)) &&
+      n.expression.expression.getText(sf) !== "JSON" &&
+      n.arguments.length >= 1 &&
+      readsRequest(n.arguments[0], sf)
+    ) {
+      out.push({
+        line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+        call: n.getText(sf).replace(/\s+/g, ""),
+      });
     }
     ts.forEachChild(n, visit);
   };
@@ -318,6 +377,87 @@ describe("a schema failure answers through invalidPayload (#745)", () => {
           'if (!parsed.success) { log(); } else { next(new ApiError(400, ApiCode.X_CONFLICT, "dup")); }',
           // A callback declared in the branch is a different scope.
           'if (!p.success) { run(() => new ApiError(400, ApiCode.Y_INVALID_PAYLOAD, "later")); }',
+        ].join("\n")
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("a route never .parse()s a request (#756)", () => {
+  const found = [
+    ...sourceFiles(join(apiSrc, "routes")),
+    ...sourceFiles(join(apiSrc, "middleware")),
+  ].flatMap((path) =>
+    requestParses(readFileSync(path, "utf8")).map((f) => ({
+      file: relative(apiSrc, path),
+      ...f,
+    }))
+  );
+
+  it("no route parses a request outside the allowlist", () => {
+    const offenders = found
+      .filter(
+        (f) =>
+          !REQUEST_PARSE_ALLOWED.some(
+            (a) => a.file === f.file && a.call === f.call
+          )
+      )
+      .map((f) => `${f.file}:${f.line}: ${f.call}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("every allowlist entry still exists (the list only shrinks)", () => {
+    for (const a of REQUEST_PARSE_ALLOWED) {
+      expect([
+        a,
+        found.some((f) => f.file === a.file && f.call === a.call),
+      ]).toEqual([a, true]);
+    }
+  });
+
+  it("flags a schema parse of the query, body or params", () => {
+    expect(
+      requestParses(
+        [
+          "const q = PortalListRequestQuerySchema.parse(req.query);",
+          "const b = schemas.Body.parse(req.body);",
+          "const { id } = ParamsSchema.parse(",
+          "  req.params",
+          ");",
+        ].join("\n")
+      )
+    ).toEqual([
+      { line: 1, call: "PortalListRequestQuerySchema.parse(req.query)" },
+      { line: 2, call: "schemas.Body.parse(req.body)" },
+      { line: 3, call: "ParamsSchema.parse(req.params)" },
+    ]);
+  });
+
+  it("sees through casts, brackets, spreads and parseAsync", () => {
+    expect(
+      requestParses(
+        [
+          "Schema.parse(req.query as unknown);",
+          "Schema.parse((req.body));",
+          "Schema.parse({ ...req.query, page: 1 });",
+          "Schema.parse(req.params!);",
+          "Schema.parse(req.body satisfies object);",
+          "await Schema.parseAsync(req.body);",
+        ].join("\n")
+      ).map((f) => f.line)
+    ).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("ignores safeParse, JSON.parse and other arguments", () => {
+    expect(
+      requestParses(
+        [
+          "const parsed = Schema.safeParse(req.query);",
+          "const raw = JSON.parse(req.body);",
+          "const v = Schema.parse(req.query.filters);",
+          "const w = Schema.parse(value);",
+          "Schema.parse({ page: req.query.page });",
+          "await Schema.safeParseAsync(req.body);",
         ].join("\n")
       )
     ).toEqual([]);

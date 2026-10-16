@@ -7,7 +7,10 @@ import {
 
 export const ConnectorDefinitionListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
-    sortBy: z.string().optional().default("display"),
+    sortBy: z
+      .enum(["display", "category", "slug", "created", "version"])
+      .optional()
+      .default("display"),
     category: z.string().optional(),
     authType: z.string().optional(),
     isActive: z
