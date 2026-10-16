@@ -14,6 +14,7 @@ import { publicSiteRouter } from "./routes/public-site.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { jsonBodyOnly } from "./middleware/json-body-only.middleware.js";
+import { rejectNul } from "./middleware/reject-nul.middleware.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
 import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import {
@@ -88,6 +89,9 @@ app.use(
 // #775: a body express.json() skipped would reach routes as `{}`; refuse
 // it. After cors() so a cross-origin caller can read the 415.
 app.use(jsonBodyOnly);
+// #805: Postgres can't store U+0000, so a NUL in a body, param or query
+// failed at the database as a route's 500. Refuse it here with one typed 400.
+app.use(rejectNul);
 
 app.use("/api/docs", swaggerRouter);
 app.use("/api/health", healthRouter);
@@ -168,6 +172,25 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       "JWT auth rejected by middleware"
     );
     return HttpService.error(res, new ApiError(status, code, err.message));
+  }
+
+  // #805: Express's router decodes each route param with decodeURIComponent
+  // and, on malformed percent-encoding, passes a URIError carrying status 400.
+  // It used to fall through to the 500 below. The message names the raw
+  // param, so it isn't echoed.
+  if (err instanceof URIError && (err as { status?: number }).status === 400) {
+    log.warn(
+      { route: redactUrl(req.originalUrl) },
+      "Malformed percent-encoding in the request URL"
+    );
+    return HttpService.error(
+      res,
+      new ApiError(
+        400,
+        ApiCode.REQUEST_URL_INVALID_ENCODING,
+        "The request URL isn't valid percent-encoded UTF-8"
+      )
+    );
   }
 
   // Body-parser surfaces structured errors with `type` / `status` set by

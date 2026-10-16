@@ -123,10 +123,11 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
     // 2. Fetch the workbook fresh from Graph. The cache layer's
     //    refresh-token rotation persistence runs transparently inside
     //    `MicrosoftAccessTokenCacheService.getOrRefresh`.
-    const workbook = await MicrosoftExcelConnectorService.fetchWorkbookForSync(
-      instance.id,
-      instance.organizationId
-    );
+    const { workbook, nulStrippedValues } =
+      await MicrosoftExcelConnectorService.fetchWorkbookForSync(
+        instance.id,
+        instance.organizationId
+      );
     progress?.({ percent: 40 });
 
     // 3. Run the commit pipeline with sync overrides:
@@ -200,6 +201,8 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
         deleted,
       },
       ...(mirrorDegraded ? { mirrorDegraded: true as const } : {}),
+      // #805: U+0000 the fetch stripped on ingest.
+      ...(nulStrippedValues > 0 ? { nulStrippedValues } : {}),
     };
   },
 

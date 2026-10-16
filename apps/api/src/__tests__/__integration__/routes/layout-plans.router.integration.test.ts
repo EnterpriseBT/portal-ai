@@ -658,6 +658,88 @@ describe("Layout Plans Draft Router", () => {
       expect(entities.length).toBeGreaterThanOrEqual(1);
     });
 
+    // #805: the session writer strips U+0000 on ingest and records how many
+    // strings it changed; the commit that stores the data reports it.
+    async function commitWithSessionCount(count?: number) {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+      if (count !== undefined) {
+        const metaKey = `upload-session:${uploadSessionId}:meta`;
+        redisStore.set(
+          metaKey,
+          JSON.stringify({
+            ...JSON.parse(redisStore.get(metaKey)!),
+            nulStrippedValues: count,
+          })
+        );
+      }
+      return runDraftCommitInline({
+        connectorDefinitionId,
+        name: "My CSV upload",
+        plan: makePlan(emailId, nameId),
+        uploadSessionId,
+      });
+    }
+
+    it("reports the session's NUL-stripped count on the commit result", async () => {
+      const result = await commitWithSessionCount(2);
+      expect(result.nulStrippedValues).toBe(2);
+    });
+
+    // Code review on #805: the count is report-only, so reading it must never
+    // fail a commit that landed (a final-attempt failure rolls the commit
+    // back), and it's read before the commit, ahead of markSessionCommitted's
+    // background deleteSession on the same prefix.
+    it("reads the count before the commit, and a failed read doesn't fail the commit", async () => {
+      const { WorkbookCacheService } =
+        await import("../../../services/workbook-cache.service.js");
+      const { LayoutPlanCommitService } =
+        await import("../../../services/layout-plan-commit.service.js");
+      const realGetMeta = WorkbookCacheService.getSessionMeta;
+      let calls = 0;
+      const metaSpy = jest
+        .spyOn(WorkbookCacheService, "getSessionMeta")
+        .mockImplementation(async (prefix) => {
+          calls++;
+          // The first read is resolveWorkbook's; the second is the count.
+          if (calls === 2) throw new Error("redis down");
+          return realGetMeta.call(WorkbookCacheService, prefix);
+        });
+      const commitSpy = jest.spyOn(LayoutPlanCommitService, "commit");
+
+      try {
+        const result = await commitWithSessionCount(2);
+
+        expect(result.connectorInstanceId).toBeDefined();
+        expect(result).not.toHaveProperty("nulStrippedValues");
+        expect(metaSpy.mock.invocationCallOrder[1]!).toBeLessThan(
+          commitSpy.mock.invocationCallOrder[0]!
+        );
+      } finally {
+        metaSpy.mockRestore();
+        commitSpy.mockRestore();
+      }
+    });
+
+    it("omits the NUL-stripped count when the session stripped nothing", async () => {
+      const result = await commitWithSessionCount();
+      expect(result).not.toHaveProperty("nulStrippedValues");
+    });
+
     it("writes entity_records.normalizedData keyed by the same normalizedKey the FieldMapping rows use", async () => {
       // Seed catalog columns whose `key` differs from the spreadsheet's
       // header text. The source-derived default `normalizedKey` should

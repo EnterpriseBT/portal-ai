@@ -1047,6 +1047,65 @@ describe("buildAnalyticsTools()", () => {
     spy.mockRestore();
   });
 
+  // -----------------------------------------------------------------------
+  // Input character gate (#805) — the guard: EVERY built-in tool refuses
+  // U+0000 in its input before the cost gate runs, so a refused call is never
+  // admitted or charged. The cost gate charges any result that resolves, so a
+  // gate wired inside it would charge every refusal.
+  // -----------------------------------------------------------------------
+
+  it("#805: every built tool refuses NUL input before admission, uncharged", async () => {
+    setupStationMocks([
+      "data_query",
+      "visualize",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+      "entity_management",
+      "gis",
+    ]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
+    ]);
+    const admission = jest.spyOn(CostGateService, "checkAdmission");
+    const commit = jest.spyOn(CostGateService, "commitCharge");
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+    const names = Object.keys(tools);
+    expect(names.length).toBeGreaterThan(5);
+
+    for (const name of names) {
+      const out = await (tools[name] as any).execute(
+        { query: "a\u0000b" },
+        {
+          toolCallId: "t",
+          messages: [],
+          abortSignal: new AbortController().signal,
+        }
+      );
+      expect(out).toEqual({
+        error: expect.objectContaining({
+          code: ApiCode.TOOL_INPUT_INVALID_CHARACTERS,
+          path: "query",
+        }),
+      });
+    }
+    expect(admission).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+
+    admission.mockRestore();
+    commit.mockRestore();
+  });
+
   it("#629: every write tool has an authorization descriptor (coverage guard)", async () => {
     const { ALL_TOOL_CAPABILITIES, TOOL_AUTHORIZATION } =
       await import("@portalai/core/registries");

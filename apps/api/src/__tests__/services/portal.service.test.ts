@@ -1503,6 +1503,71 @@ describe("PortalService", () => {
       });
     });
 
+    // #805: model output (text, or a custom tool's result) can carry U+0000,
+    // which the jsonb blocks column can't store, so the turn failed to save.
+    it("persists an assistant turn whose text or tool result holds U+0000, stripped", async () => {
+      mockWarn.mockClear();
+      const chunks = [
+        { type: "text-delta", text: "Hel\u0000lo" },
+        {
+          type: "tool-result",
+          toolName: "cluster",
+          toolCallId: "tc-nul",
+          output: { label: "gro\u0000up" },
+        },
+        { type: "finish" },
+      ];
+      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        userId: "user-001",
+        sse: makeSse() as any,
+      });
+
+      const saved = (mockCreate_message.mock.calls.at(-1) as unknown[])[0] as {
+        blocks: unknown[];
+      };
+      const json = JSON.stringify(saved.blocks);
+      expect(json).not.toContain("\\u0000");
+      expect(json).toContain("Hello");
+      expect(json).toContain("group");
+      expect(mockWarn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          portalId: PORTAL_ID,
+          stripped: expect.any(Number),
+        }),
+        expect.any(String)
+      );
+    });
+
+    it("doesn't warn when the assistant turn is clean", async () => {
+      mockWarn.mockClear();
+      mockStreamText.mockReturnValue({
+        fullStream: makeStream([
+          { type: "text-delta", text: "Hello" },
+          { type: "finish" },
+        ]),
+      });
+
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        userId: "user-001",
+        sse: makeSse() as any,
+      });
+
+      expect(mockWarn).not.toHaveBeenCalledWith(
+        expect.objectContaining({ stripped: expect.anything() }),
+        expect.anything()
+      );
+    });
+
     it("sends data-table SSE event for sql_query tool results", async () => {
       const queryResult = { rows: [{ id: 1, name: "Alice" }] };
       const chunks = [

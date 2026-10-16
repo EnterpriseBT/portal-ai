@@ -120,10 +120,11 @@ export const googleSheetsAdapter: ConnectorAdapter = {
     progress?.({ percent: 10 });
 
     // 2. Fetch the workbook fresh from Google.
-    const workbook = await GoogleSheetsConnectorService.fetchWorkbookForSync(
-      instance.id,
-      instance.organizationId
-    );
+    const { workbook, nulStrippedValues } =
+      await GoogleSheetsConnectorService.fetchWorkbookForSync(
+        instance.id,
+        instance.organizationId
+      );
     progress?.({ percent: 40 });
 
     // 3. Run the commit pipeline with sync overrides:
@@ -197,6 +198,8 @@ export const googleSheetsAdapter: ConnectorAdapter = {
         deleted,
       },
       ...(mirrorDegraded ? { mirrorDegraded: true as const } : {}),
+      // #805: U+0000 the fetch stripped on ingest.
+      ...(nulStrippedValues > 0 ? { nulStrippedValues } : {}),
     };
   },
 

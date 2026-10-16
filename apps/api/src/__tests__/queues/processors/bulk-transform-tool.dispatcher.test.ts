@@ -155,4 +155,36 @@ describe("dispatchBatch (Phase 4 slice 0)", () => {
       c_diameter_km_min: 0.02,
     });
   });
+
+  // #805: a custom webhook tool's result can carry U+0000, and its values are
+  // written into entity_records' wide table, which can't store one.
+  it("strips U+0000 from each tool result and counts the changed strings", async () => {
+    const tool = jest.fn(async (input: { sourceKey: string }) => ({
+      label: `x${input.sourceKey}\u0000`,
+      nested: { ok: "fine" },
+    }));
+
+    const result = await dispatchBatch({
+      toolMetadata: { maxConcurrency: 2, timeoutMs: 5_000, idempotent: true },
+      keyField: "sourceKey",
+      batch: [{ sourceKey: "a" }, { sourceKey: "b" }],
+      toolExecutor: tool as never,
+    });
+
+    expect(result.successes.map((s) => s.value)).toEqual([
+      { label: "xa", nested: { ok: "fine" } },
+      { label: "xb", nested: { ok: "fine" } },
+    ]);
+    expect(result.nulStrippedValues).toBe(2);
+  });
+
+  it("counts nothing for clean results", async () => {
+    const result = await dispatchBatch({
+      toolMetadata: { maxConcurrency: 1, timeoutMs: 5_000, idempotent: true },
+      keyField: "sourceKey",
+      batch: [{ sourceKey: "a" }],
+      toolExecutor: (async () => ({ v: "tab\there" })) as never,
+    });
+    expect(result.nulStrippedValues).toBe(0);
+  });
 });

@@ -188,6 +188,18 @@ describe("connectorSyncProcessor — sync ownership lock (#460)", () => {
     expect(result).not.toHaveProperty("superseded");
   });
 
+  // #805: the adapter's NUL-stripped count reaches the job result unchanged.
+  it("passes the adapter's nulStrippedValues through to the job result", async () => {
+    mockSyncInstance.mockResolvedValue({
+      recordCounts: { created: 1, updated: 0, unchanged: 0, deleted: 0 },
+      nulStrippedValues: 3,
+    });
+
+    const result = await connectorSyncProcessor(bullJob() as never);
+
+    expect(result).toMatchObject({ nulStrippedValues: 3 });
+  });
+
   it("takes the lock keyed by the connector instance", async () => {
     await connectorSyncProcessor(bullJob() as never);
 

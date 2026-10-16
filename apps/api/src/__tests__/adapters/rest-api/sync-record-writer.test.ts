@@ -141,6 +141,7 @@ function makeCtx(
       geometryRepaired: 0,
       geometryRejected: 0,
       geometryRejectedSample: [] as string[],
+      nulStrippedValues: 0,
     },
   } as never;
 }
@@ -610,5 +611,143 @@ describe("createSyncRecordWriter — unchanged rows skip no-op work (#440)", () 
     expect(upsertWideManyMock).toHaveBeenCalledTimes(1);
     expect(upsertWideManyMock.mock.calls[0][1]).toHaveLength(1);
     expect(selectMissingWideRowIdsMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── NUL stripping (#805) ──────────────────────────────────────────────
+//
+// Postgres can't store U+0000 in jsonb, so one stray byte in a remote record
+// failed the whole sync. Both record entry points strip it before the source
+// id and checksum are derived, and count what they stripped.
+
+describe("NUL stripping (#805)", () => {
+  const counts = (ctx: unknown) =>
+    (ctx as { counts: Record<string, number> }).counts;
+
+  it("writes stripped data and source id, counting every changed string", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "a\u0000b", v: { deep: "x\u0000", ok: "y" } });
+    await w.flush();
+
+    const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
+    expect(rows[0]).toMatchObject({
+      sourceId: "ab",
+      data: { pid: "ab", v: { deep: "x", ok: "y" } },
+    });
+    expect(counts(ctx).nulStrippedValues).toBe(2);
+  });
+
+  it("reports an unchanged remote record containing a NUL as unchanged on re-sync", async () => {
+    const mod = await import("../../../adapters/rest-api/rest-api.adapter.js");
+    findBySourceIdsForSyncMock.mockResolvedValue([
+      {
+        id: "r1",
+        sourceId: "ab",
+        checksum: mod.checksumRecord({ pid: "ab", v: "same" }),
+        created: 1,
+        createdBy: "u0",
+      },
+    ]);
+
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "a\u0000b", v: "sa\u0000me" });
+    await w.flush();
+
+    expect(counts(ctx).unchanged).toBe(1);
+    expect(counts(ctx).updated).toBe(0);
+  });
+
+  it("copies null-prototype sub-objects into plain objects", async () => {
+    const sub = Object.create(null) as Record<string, unknown>;
+    sub.note = "n\u0000";
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "p", sub });
+    await w.flush();
+
+    const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
+    const data = rows[0]!.data as { sub: object };
+    expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(data.sub)).toBe(Object.prototype);
+    expect(data.sub).toEqual({ note: "n" });
+  });
+
+  it("leaves a clean record alone and counts nothing", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "p", v: "tab\there" });
+    await w.flush();
+
+    const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
+    expect(rows[0]).toMatchObject({ data: { pid: "p", v: "tab\there" } });
+    expect(counts(ctx).nulStrippedValues).toBe(0);
+  });
+
+  it("strips on the per-record path too", async () => {
+    const ctx = makeCtx();
+    await upsertRecord({ pid: "a\u0000b", v: "c\u0000" }, ctx);
+
+    const row = upsertBySourceIdMock.mock.calls[0]![0];
+    expect(row).toMatchObject({ sourceId: "ab", data: { pid: "ab", v: "c" } });
+    expect(counts(ctx).nulStrippedValues).toBe(2);
+  });
+});
+
+// ── Duplicate source ids in one batch ─────────────────────────────────
+//
+// #805 adversarial walk: an upstream that repeats an id within one batch (or
+// two ids that only differ by a stripped U+0000) made one INSERT … ON CONFLICT
+// touch the same row twice, and Postgres failed the whole sync with SQLSTATE
+// 21000. The batch now keeps the last record per source id.
+
+describe("duplicate source ids within a batch", () => {
+  const counts = (ctx: unknown) =>
+    (ctx as { counts: Record<string, number> }).counts;
+
+  it("writes one row per source id, the last record winning", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "b", v: "one" });
+    await w.add({ pid: "c", v: "solo" });
+    await w.add({ pid: "b", v: "two" });
+    await w.flush();
+
+    const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
+    expect(rows.map((r) => [r.sourceId, (r.data as { v: string }).v])).toEqual(
+      expect.arrayContaining([
+        ["b", "two"],
+        ["c", "solo"],
+      ])
+    );
+    expect(rows).toHaveLength(2);
+    expect(counts(ctx).created).toBe(2);
+  });
+
+  it("dedupes ids that only collide once U+0000 is stripped", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "b\u0000", v: "one" });
+    await w.add({ pid: "b", v: "two" });
+    await w.flush();
+
+    const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sourceId: "b",
+      data: { pid: "b", v: "two" },
+    });
+    expect(counts(ctx).nulStrippedValues).toBe(1);
+  });
+
+  it("looks up each source id once", async () => {
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add({ pid: "b", v: "one" });
+    await w.add({ pid: "b", v: "two" });
+    await w.flush();
+
+    expect(findBySourceIdsForSyncMock.mock.calls[0]![1]).toEqual(["b"]);
   });
 });

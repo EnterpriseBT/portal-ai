@@ -68,6 +68,7 @@ import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository
 import { SystemUtilities } from "../../utils/system.util.js";
 import { NormalizationService } from "../../services/normalization.service.js";
 import { wideTableStatementCache } from "../../services/wide-table-statement.cache.js";
+import { stripNulDeep } from "../../utils/nul-character.util.js";
 import {
   projectToWideRow,
   buildMappingsForProjection,
@@ -253,6 +254,8 @@ async function syncInstance(
   // #441/#456: set when any endpoint's reap cascade degraded. Sticky across
   // endpoints — one stale mirror is the whole run's mirror being stale.
   let mirrorDegraded = false;
+  // #805: U+0000 stripped from records across every endpoint.
+  let totalNulStrippedValues = 0;
 
   // #458 (replaces the #94 asymptotic page curve): progress during the
   // endpoint loop is a cumulative RECORD count, never a synthetic percent.
@@ -301,6 +304,7 @@ async function syncInstance(
     totalGeometryRepaired += counts.geometryRepaired;
     totalGeometryRejected += counts.geometryRejected;
     if (counts.mirrorDegraded) mirrorDegraded = true;
+    totalNulStrippedValues += counts.nulStrippedValues;
     for (const sid of counts.geometryRejectedSample) {
       if (geometryRejectedSample.length < GEOMETRY_REJECTED_SAMPLE_CAP) {
         geometryRejectedSample.push(sid);
@@ -339,6 +343,9 @@ async function syncInstance(
       deleted: totalDeleted,
     },
     ...(mirrorDegraded ? { mirrorDegraded: true as const } : {}),
+    ...(totalNulStrippedValues > 0
+      ? { nulStrippedValues: totalNulStrippedValues }
+      : {}),
     ...(totalGeometryRepaired > 0 || totalGeometryRejected > 0
       ? {
           geometry: {
@@ -458,6 +465,8 @@ async function syncOneEndpoint(
   geometryRejectedSample: string[];
   /** #441/#456: this endpoint's reap cascade degraded rather than throwing. */
   mirrorDegraded: boolean;
+  /** #805: strings whose U+0000 was stripped before the write. */
+  nulStrippedValues: number;
 }> {
   const pagination = reconstructPagination(
     endpoint.config.pagination,
@@ -478,6 +487,7 @@ async function syncOneEndpoint(
     geometryRepaired: 0,
     geometryRejected: 0,
     geometryRejectedSample: [] as string[],
+    nulStrippedValues: 0,
   };
 
   // Pre-fetch field mappings + the wide-table statement once per
@@ -615,6 +625,7 @@ async function syncOneEndpoint(
     geometryRepaired: counts.geometryRepaired,
     geometryRejected: counts.geometryRejected,
     geometryRejectedSample: counts.geometryRejectedSample,
+    nulStrippedValues: counts.nulStrippedValues,
   };
 }
 
@@ -676,7 +687,28 @@ export interface UpsertContext {
     geometryRepaired: number;
     geometryRejected: number;
     geometryRejectedSample: string[];
+    /** #805: strings whose U+0000 was stripped before the write. */
+    nulStrippedValues: number;
   };
+}
+
+/**
+ * A record ready for `entity_records`: a plain top-level object (a
+ * null-prototype one makes Drizzle's `is(v, SQL)` throw) with U+0000
+ * stripped from every key and string, since no Postgres jsonb value can
+ * store one and a single stray byte used to fail the whole sync (#805).
+ * Runs before `deriveSourceId` and `checksumRecord`, so the id and checksum
+ * are those of the stored data and an unchanged remote record stays
+ * `unchanged` across syncs. `stripNulDeep` copies into plain objects, so a
+ * stripped sub-object loses a null prototype too.
+ */
+function toStorableRecord(
+  record: object,
+  ctx: UpsertContext
+): Record<string, unknown> {
+  const { value, stripped } = stripNulDeep(record);
+  ctx.counts.nulStrippedValues += stripped;
+  return { ...(value as Record<string, unknown>) };
 }
 
 /** Cap on the number of rejected geometry sourceIds surfaced (bounded growth). */
@@ -732,12 +764,34 @@ export interface SyncRecordWriter {
  * `recordIndex` advances in upstream order and synthetic source ids stay
  * aligned with the per-record path.
  */
+/**
+ * One record per source id, the last occurrence winning. An upstream that
+ * repeats an id within a batch (or two ids that only differ by a stripped
+ * U+0000, #805) would otherwise make one `INSERT … ON CONFLICT` touch the
+ * same row twice, which Postgres refuses (SQLSTATE 21000), failing the whole
+ * sync. Ids repeated across batches need nothing: each batch is its own
+ * statement, so the later one simply updates the row.
+ */
+function lastPerSourceId(batch: PendingRecord[]): PendingRecord[] {
+  const bySourceId = new Map<string, PendingRecord>();
+  for (const p of batch) bySourceId.set(p.sourceId, p);
+  if (bySourceId.size === batch.length) return batch;
+  logger.warn(
+    {
+      event: "rest-api.sync.duplicate-source-ids",
+      duplicates: batch.length - bySourceId.size,
+    },
+    "Upstream repeated source ids within a batch; keeping the last record for each"
+  );
+  return [...bySourceId.values()];
+}
+
 export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
   let pending: PendingRecord[] = [];
 
   async function flush(): Promise<void> {
     if (pending.length === 0) return;
-    const batch = pending;
+    const batch = lastPerSourceId(pending);
     pending = [];
 
     const existing =
@@ -852,7 +906,7 @@ export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
       }
       // Same defensive prototype normalization as the per-record path: a
       // null-prototype sub-object makes Drizzle's `is(v, SQL)` throw.
-      const recordObj = { ...(record as Record<string, unknown>) };
+      const recordObj = toStorableRecord(record, ctx);
       const sourceId = deriveSourceId(
         recordObj,
         ctx.endpoint.config.idField,
@@ -985,7 +1039,9 @@ export async function upsertRecord(
   // all Drizzle needs to introspect at insert time. Sub-objects
   // keep whatever shape they came in with — jsonb stores them
   // verbatim either way.
-  const recordObj = { ...(record as Record<string, unknown>) };
+  //
+  // #805: U+0000 is stripped here too (see `toStorableRecord`).
+  const recordObj = toStorableRecord(record, ctx);
   const sourceId = deriveSourceId(
     recordObj,
     ctx.endpoint.config.idField,

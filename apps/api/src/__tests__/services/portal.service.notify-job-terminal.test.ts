@@ -167,6 +167,21 @@ describe("PortalService.notifyJobTerminal", () => {
     expect(persisted.blocks[0].content).toMatch(/Failed: syntax error/);
   });
 
+  // #805: the blocks column is jsonb, which can't store U+0000.
+  it("persists a job-terminal message whose text holds U+0000, stripped", async () => {
+    await PortalService.notifyJobTerminal("portal-1", "job-1", {
+      status: "failed",
+      recordsProcessed: 0,
+      recordsFailed: 0,
+      durationMs: 100,
+      errorMessage: "bad\u0000 value",
+    });
+    const persisted = mockPortalMessagesCreate.mock.calls[0][0] as {
+      blocks: Array<{ content: string }>;
+    };
+    expect(persisted.blocks[0].content).toBe("Failed: bad value.");
+  });
+
   it("publishes a bulk_job_terminal event on the portal-events channel", async () => {
     await PortalService.notifyJobTerminal("portal-1", "job-1", {
       status: "completed",

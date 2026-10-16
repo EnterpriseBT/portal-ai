@@ -67,6 +67,9 @@ export interface SyncInstanceResult {
    * point at deleted records is the unbounded growth #327 exists to prevent.
    */
   mirrorDegraded?: true;
+  /** #805: strings whose U+0000 was stripped on ingest (Postgres can't store
+   *  one). Omitted when none. */
+  nulStrippedValues?: number;
   // #460 deliberately does NOT add a `superseded` field here. A pass that
   // cannot take the instance's sync lock never reaches an adapter at all —
   // the lock is held in `connector-sync.processor.ts`, the single call site

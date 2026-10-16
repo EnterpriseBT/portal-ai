@@ -208,6 +208,7 @@ async function runToolDispatchLoop(
   const partialFailures: NonNullable<BulkTransformResult["partialFailures"]> =
     [];
   const droppedAcc = new DroppedAccumulator();
+  let nulStrippedValues = 0;
   const maxIterations = Math.ceil(totalRecords / opts.batchSize) + 1;
   let iter = 0;
 
@@ -262,6 +263,7 @@ async function runToolDispatchLoop(
       userId: opts.userId,
     });
     droppedAcc.absorb(fanOut.droppedByTarget);
+    nulStrippedValues += dispatched.nulStrippedValues;
 
     recordsProcessed +=
       dispatched.successes.length + dispatched.failures.length;
@@ -319,6 +321,7 @@ async function runToolDispatchLoop(
     recordsProcessed,
     partialFailures,
     droppedAcc,
+    nulStrippedValues,
   });
 }
 
@@ -666,6 +669,8 @@ function finalize(args: {
   recordsProcessed: number;
   partialFailures: NonNullable<BulkTransformResult["partialFailures"]>;
   droppedAcc: DroppedAccumulator;
+  /** #805: tool-kind only; strings stripped of U+0000 by the dispatcher. */
+  nulStrippedValues?: number;
 }): BulkTransformResult {
   const dropped = args.droppedAcc.toResult();
   // Cap partialFailures so a pathological run can't bloat the jobs
@@ -693,5 +698,8 @@ function finalize(args: {
     ...(partialFailures.length > 0 ? { partialFailures } : {}),
     ...(partialFailuresOmitted > 0 ? { partialFailuresOmitted } : {}),
     ...dropped,
+    ...(args.nulStrippedValues && args.nulStrippedValues > 0
+      ? { nulStrippedValues: args.nulStrippedValues }
+      : {}),
   };
 }

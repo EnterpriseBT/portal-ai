@@ -462,6 +462,34 @@ describe("googleSheetsAdapter.syncInstance", () => {
     expect(after?.lastErrorMessage).toBeNull();
   });
 
+  // #805: Postgres can't store U+0000, so a remote cell holding one failed the
+  // whole sync at the jsonb write. Sync now strips it and reports the count.
+  it("syncs a cell containing U+0000, stores it stripped and reports the count", async () => {
+    const { instance, entityId } = await seedCommittedInstance({
+      rows: [{ email: "alice@example.com", name: "Alice" }],
+      identityKind: "rowPosition",
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockSheetsApiResponse([
+          { email: "alice@example.com", name: "Al\u0000ice" },
+        ])
+      )
+    );
+
+    const result = await googleSheetsAdapter.syncInstance!(instance, userId);
+
+    // One cell (its value and formatted raw text count once).
+    expect(result.nulStrippedValues).toBe(1);
+    const rows = await db
+      .select()
+      .from(entityRecords)
+      .where(eq(entityRecords.connectorEntityId, entityId));
+    const alice = rows.find((r) => r.sourceId === "row-2" && !r.deleted);
+    expect(alice?.data).toEqual({ email: "alice@example.com", name: "Alice" });
+  });
+
   it("calls progress with monotonically-increasing percents through 100", async () => {
     const { instance } = await seedCommittedInstance({
       rows: [{ email: "alice@example.com", name: "Alice" }],

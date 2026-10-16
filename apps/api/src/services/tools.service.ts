@@ -27,6 +27,7 @@ import {
   type PermissionContext,
 } from "./permission.service.js";
 import { wrapWithLockGate } from "./lock-gate.service.js";
+import { wrapWithInputCharacterGate } from "./input-character-gate.service.js";
 import { wrapWithPermissionGate } from "./permission-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
@@ -974,6 +975,15 @@ export class ToolService {
           deferChargeToJob: !isCustom && capability?.resultKind === "progress",
         };
       }
+    );
+
+    // #805: a NUL in a built-in tool's input is refused with a typed result.
+    // Applied after (so outside) the cost gate, which charges any result that
+    // resolves: a refusal from inside it would be charged. The guard test
+    // asserts no refused call reaches admission.
+    wrapWithInputCharacterGate(
+      tools as unknown as Record<string, GateableTool>,
+      (name) => customToolNames.has(name)
     );
 
     // #726: what the model reads of each result is byte-capped (the stream,

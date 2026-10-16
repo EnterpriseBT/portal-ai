@@ -15,6 +15,7 @@
 
 import { pLimit } from "../../adapters/rest-api/p-limit.util.js";
 import { TokenBucket } from "../../utils/token-bucket.util.js";
+import { stripNulDeep } from "../../utils/nul-character.util.js";
 
 export interface BulkDispatchMetadata {
   /** Max concurrent in-flight invocations per batch. */
@@ -61,6 +62,8 @@ export interface DispatchFailure {
 
 export interface DispatchResult {
   successes: DispatchSuccess[];
+  /** #805: strings whose U+0000 was stripped from the tool results. */
+  nulStrippedValues: number;
   failures: DispatchFailure[];
   batchDurationMs: number;
 }
@@ -102,6 +105,7 @@ export async function dispatchBatch(
 
   const successes: DispatchSuccess[] = [];
   const failures: DispatchFailure[] = [];
+  let nulStrippedValues = 0;
 
   const results = await Promise.allSettled(
     opts.batch.map((row) => {
@@ -149,7 +153,11 @@ export async function dispatchBatch(
     if (r.status === "fulfilled") {
       const v = r.value;
       if (v.kind === "ok") {
-        successes.push({ sourceKey: v.sourceKey, value: v.value });
+        // #805: tool results are written into the target's wide table, and a
+        // custom webhook's output can carry U+0000, which Postgres can't store.
+        const { value, stripped } = stripNulDeep(v.value);
+        nulStrippedValues += stripped;
+        successes.push({ sourceKey: v.sourceKey, value });
       } else {
         failures.push({ sourceKey: v.sourceKey, error: v.error });
       }
@@ -167,5 +175,10 @@ export async function dispatchBatch(
     }
   }
 
-  return { successes, failures, batchDurationMs: Date.now() - start };
+  return {
+    successes,
+    failures,
+    nulStrippedValues,
+    batchDurationMs: Date.now() - start,
+  };
 }

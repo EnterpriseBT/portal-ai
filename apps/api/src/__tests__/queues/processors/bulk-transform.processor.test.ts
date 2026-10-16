@@ -517,6 +517,30 @@ describe("bulkTransformProcessor — tool path multi-write (Phase 4 / #99 slice 
     expect(result.recordsProcessed).toBe(20);
   });
 
+  // #805: the dispatcher strips U+0000 from tool results; the job reports it.
+  it("reports the tool results' NUL-stripped count on the job result, and omits it when clean", async () => {
+    const write = [
+      {
+        targetConnectorEntityId: TARGET_A,
+        column: "c_label",
+        valueFrom: { kind: "tool_path", path: "label" },
+      },
+    ];
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({ label: "a\u0000b" }),
+      metadata: { maxConcurrency: 4, timeoutMs: 5_000, idempotent: true },
+    });
+    const dirty = await bulkTransformProcessor(makeToolJob(write));
+    expect(dirty.nulStrippedValues).toBe(2);
+    const committed = mockUpsertSuccesses.mock.calls[0]![0] as {
+      successes: Array<{ value: Record<string, unknown> }>;
+    };
+    expect(committed.successes[0]!.value).toEqual({ c_label: "ab" });
+
+    const clean = await bulkTransformProcessor(makeToolJob(write));
+    expect(clean).not.toHaveProperty("nulStrippedValues");
+  });
+
   it("groups two writes against one target into a single upsertSuccesses call carrying both columns", async () => {
     const job = makeToolJob([
       {

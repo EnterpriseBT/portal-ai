@@ -100,7 +100,7 @@ function uniqueSheetName(name: string, taken: Set<string>): string {
  * shapes (rows, merges, meta) live underneath this prefix — see
  * `workbook-cache.service.ts`.
  */
-function uploadSessionCachePrefix(uploadSessionId: string): string {
+export function uploadSessionCachePrefix(uploadSessionId: string): string {
   return `upload-session:${uploadSessionId}`;
 }
 

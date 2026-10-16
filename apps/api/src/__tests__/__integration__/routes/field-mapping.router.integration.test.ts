@@ -47,6 +47,7 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { DbService } = await import("../../../services/db.service.js");
 
 const {
   connectorDefinitions,
@@ -499,13 +500,22 @@ describe("Field Mapping Router", () => {
     });
 
     // #687: a DB error used to come back as the raw Drizzle message, the SQL
-    // text and its bound params. A NUL byte in the id is enough to trigger one.
+    // text and its bound params. (This used a NUL in the id to trigger one,
+    // until #805 refused NULs at the boundary.)
     it("answers a DB failure with a generic 500 that carries no SQL", async () => {
       await seedFullChain(db as ReturnType<typeof drizzle>);
+      const failedQuery = new Error(
+        'Failed query: select "id" from "field_mappings" where "id" = $1\nparams: x'
+      );
+      failedQuery.name = "DrizzleQueryError";
+      const spy = jest
+        .spyOn(DbService.repository.fieldMappings, "findById")
+        .mockRejectedValueOnce(failedQuery);
 
       const res = await request(app)
-        .get("/api/field-mappings/%00")
+        .get(`/api/field-mappings/${generateId()}`)
         .set("Authorization", "Bearer test-token");
+      spy.mockRestore();
 
       expect(res.status).toBe(500);
       expect(res.body.message).toBe("Internal server error");
@@ -515,6 +525,18 @@ describe("Field Mapping Router", () => {
       expect(JSON.stringify(res.body)).not.toMatch(
         /failed query|select|params/i
       );
+    });
+
+    // #805: Postgres can't bind a NUL, so the id is refused before the route.
+    it("refuses a NUL in the id with 400", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .get("/api/field-mappings/%00")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.REQUEST_INVALID_CHARACTERS);
     });
 
     it("should return a field mapping by id", async () => {

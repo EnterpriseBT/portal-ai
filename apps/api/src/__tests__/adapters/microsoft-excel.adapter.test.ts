@@ -210,7 +210,10 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       id: "plan-1",
       plan: {},
     });
-    fetchWorkbookForSyncMock.mockResolvedValue({ sheets: [] });
+    fetchWorkbookForSyncMock.mockResolvedValue({
+      workbook: { sheets: [] },
+      nulStrippedValues: 0,
+    });
     commitMock.mockResolvedValue({
       recordCounts: { created: 3, updated: 1, unchanged: 7 },
       connectorEntityIds: ["ce-1", "ce-2"],
@@ -245,6 +248,7 @@ describe("microsoftExcelAdapter.syncInstance", () => {
     // Commit is called with skipDriftGate: true and a captured runStartedAt.
     expect(commitMock).toHaveBeenCalledTimes(1);
     const commitArgs = commitMock.mock.calls[0]!;
+    expect(commitArgs[4]).toEqual({ workbook: { sheets: [] } });
     const opts = commitArgs[5] as Record<string, unknown>;
     expect(opts.skipDriftGate).toBe(true);
     expect(typeof opts.syncedAt).toBe("number");
@@ -312,12 +316,47 @@ describe("microsoftExcelAdapter.syncInstance", () => {
     expect(updateInstanceMock).not.toHaveBeenCalled();
   });
 
+  // #805: the fetch stripped U+0000 on ingest; the sync result says how much.
+  it("reports the fetch's NUL-stripped count, and omits it when zero", async () => {
+    findCurrentByConnectorInstanceIdMock.mockResolvedValue({
+      id: "plan-1",
+      plan: {},
+    });
+    commitMock.mockResolvedValue({
+      recordCounts: { created: 1, updated: 0, unchanged: 0 },
+      connectorEntityIds: [],
+    });
+
+    fetchWorkbookForSyncMock.mockResolvedValueOnce({
+      workbook: { sheets: [] },
+      nulStrippedValues: 5,
+    });
+    const dirty = await microsoftExcelAdapter.syncInstance!(
+      INSTANCE as never,
+      "user-1"
+    );
+    expect(dirty.nulStrippedValues).toBe(5);
+
+    fetchWorkbookForSyncMock.mockResolvedValueOnce({
+      workbook: { sheets: [] },
+      nulStrippedValues: 0,
+    });
+    const clean = await microsoftExcelAdapter.syncInstance!(
+      INSTANCE as never,
+      "user-1"
+    );
+    expect(clean).not.toHaveProperty("nulStrippedValues");
+  });
+
   it("sums per-entity reap counts across multiple connectorEntityIds", async () => {
     findCurrentByConnectorInstanceIdMock.mockResolvedValue({
       id: "plan-1",
       plan: {},
     });
-    fetchWorkbookForSyncMock.mockResolvedValue({ sheets: [] });
+    fetchWorkbookForSyncMock.mockResolvedValue({
+      workbook: { sheets: [] },
+      nulStrippedValues: 0,
+    });
     commitMock.mockResolvedValue({
       recordCounts: { created: 0, updated: 0, unchanged: 0 },
       connectorEntityIds: ["ce-a", "ce-b", "ce-c"],

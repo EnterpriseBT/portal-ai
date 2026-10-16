@@ -33,6 +33,7 @@ import type {
   SheetChunkMeta,
 } from "../services/workbook-cache.service.js";
 import { WorkbookCacheService } from "../services/workbook-cache.service.js";
+import { stripNul } from "./nul-character.util.js";
 
 /** A preview-shape sheet — what the parse-session / select-sheet routes return. */
 export interface PreviewSheet {
@@ -44,7 +45,8 @@ export interface PreviewSheet {
 
 /** Stable sheet id the client uses to address a tab. */
 export function sheetId(index: number, name: string): string {
-  const slug = name.replace(/\s+/g, "_").toLowerCase();
+  // #805: the id lands in layout plans (jsonb), which can't hold U+0000.
+  const slug = stripNul(name).replace(/\s+/g, "_").toLowerCase();
   return `sheet_${index}_${slug}`;
 }
 

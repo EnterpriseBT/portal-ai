@@ -208,6 +208,11 @@ export const ConnectorSyncResultSchema = z.object({
    */
   mirrorDegraded: z.literal(true).optional(),
   /**
+   * #805: strings (cells, keys or values) whose U+0000 was stripped on ingest,
+   * since no Postgres text or jsonb value can store one. Absent when none.
+   */
+  nulStrippedValues: z.number().int().positive().optional(),
+  /**
    * #460: this pass did no work because another live session held the
    * instance's sync lock. Not a failure — nothing went wrong, there was simply
    * nothing for this pass to do.
@@ -342,6 +347,11 @@ export const LayoutPlanCommitJobResultSchema = z.object({
     unchanged: z.number().int().nonnegative(),
     invalid: z.number().int().nonnegative(),
   }),
+  /**
+   * #805: strings (cells, keys or values) whose U+0000 was stripped on ingest,
+   * since no Postgres text or jsonb value can store one. Absent when none.
+   */
+  nulStrippedValues: z.number().int().positive().optional(),
 });
 export type LayoutPlanCommitJobResult = z.infer<
   typeof LayoutPlanCommitJobResultSchema
@@ -503,6 +513,9 @@ export const BulkTransformResultSchema = z.object({
   /** Aggregate count of records that experienced at least one dropped
    *  write across any target. */
   droppedRecords: z.number().int().nonnegative().optional(),
+  /** #805: strings whose U+0000 was stripped from tool results before they
+   *  were written (a custom webhook's output can carry one). Absent when none. */
+  nulStrippedValues: z.number().int().positive().optional(),
   /** Count of `partialFailures` entries that were elided from the
    *  array to keep the result row bounded. The processor caps the
    *  array at a fixed size (see `MAX_PARTIAL_FAILURES`); when a
