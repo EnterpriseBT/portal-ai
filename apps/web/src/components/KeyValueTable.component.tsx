@@ -29,6 +29,11 @@ export interface KeyValueTableUIProps {
   valueErrors?: Array<string | undefined>;
   /** What one row is, for the button and accessible names ("parameter"). */
   itemNoun?: string;
+  /**
+   * Prefixes the fields' and remove buttons' accessible names, so two tables
+   * on one form don't both offer "Key 1" ("Count" → "Count key 1").
+   */
+  ariaLabelPrefix?: string;
   keyLabel?: string;
   valueLabel?: string;
   /** One line shown when there are no rows. */
@@ -50,6 +55,7 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
   keyErrors = [],
   valueErrors = [],
   itemNoun = "parameter",
+  ariaLabelPrefix,
   keyLabel = "Key",
   valueLabel = "Value",
   emptyHint,
@@ -61,6 +67,13 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
   const remove = (index: number) =>
     onChange(rows.filter((_, i) => i !== index));
   const add = () => onChange([...rows, newKeyValueRow()]);
+  const fieldName = (label: string, n: number) =>
+    ariaLabelPrefix
+      ? `${ariaLabelPrefix} ${label.toLowerCase()} ${n}`
+      : `${label} ${n}`;
+  const removeNoun = ariaLabelPrefix
+    ? `${ariaLabelPrefix.toLowerCase()} ${itemNoun}`
+    : itemNoun;
 
   return (
     <Box>
@@ -104,7 +117,7 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
                       helperText={error}
                       slotProps={{
                         htmlInput: {
-                          "aria-label": `${keyLabel} ${n}`,
+                          "aria-label": fieldName(keyLabel, n),
                           "aria-invalid": !!error,
                         },
                       }}
@@ -124,7 +137,7 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
                       helperText={valueError}
                       slotProps={{
                         htmlInput: {
-                          "aria-label": `${valueLabel} ${n}`,
+                          "aria-label": fieldName(valueLabel, n),
                           "aria-invalid": !!valueError,
                         },
                       }}
@@ -135,7 +148,7 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
                       type="button"
                       size="small"
                       onClick={() => remove(i)}
-                      aria-label={`Remove ${itemNoun} ${row.key.trim() || n}`}
+                      aria-label={`Remove ${removeNoun} ${row.key.trim() || n}`}
                     >
                       <CloseIcon fontSize="small" />
                     </IconButton>

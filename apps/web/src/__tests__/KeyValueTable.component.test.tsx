@@ -112,4 +112,21 @@ describe("KeyValueTableUI (#808)", () => {
     fireEvent.blur(value);
     expect(onValueBlur).toHaveBeenCalledWith(0);
   });
+
+  it("prefixes the accessible names so two tables on a form stay distinct", () => {
+    setup([newKeyValueRow("returnCountOnly", "true")], {
+      ariaLabelPrefix: "Count",
+    });
+    expect(
+      screen.getByRole("textbox", { name: "Count key 1" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Count value 1" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Remove count parameter returnCountOnly",
+      })
+    ).toBeInTheDocument();
+  });
 });

@@ -505,6 +505,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
               </FormLabel>
               <KeyValueTableUI
                 rows={draft.totalCountParams}
+                ariaLabelPrefix="Count"
                 onChange={(rows) => onChange("totalCountParams", rows)}
                 onKeyBlur={(i) => onParamKeyBlur("totalCountParams", i)}
                 onValueBlur={(i) => onParamValueBlur("totalCountParams", i)}

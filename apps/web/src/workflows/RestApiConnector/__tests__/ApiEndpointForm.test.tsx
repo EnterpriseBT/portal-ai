@@ -975,4 +975,26 @@ describe("ApiEndpointForm — query parameters (#808)", () => {
       "false"
     );
   });
+
+  it("names the count table's fields apart from the endpoint table's", () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "parcels",
+          label: "Parcels",
+          path: "/query",
+          queryParams: [newKeyValueRow("f", "json")],
+          totalCountParams: [newKeyValueRow("returnCountOnly", "true")],
+          totalCountPath: "count",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    expect(screen.getAllByRole("textbox", { name: "Key 1" })).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "Count key 1" })).toHaveValue(
+      "returnCountOnly"
+    );
+  });
 });
