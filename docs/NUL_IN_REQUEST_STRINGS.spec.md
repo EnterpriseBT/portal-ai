@@ -197,6 +197,13 @@ The PR's code review changed four things after the slices landed:
 - **Webhook staging:** `POST /api/webhook/handle/:sessionId` carries a custom webhook's result rows, which are org-hosted tool output staged in Redis. `rejectNul` skips that route's body (its URL is still checked), and the route strips `rows` and `schema` with `stripNulDeep`.
 - **Google Sheets count:** `fetchWorkbookForSync` strips the freshly mapped `WorkbookData` in place (`stripNulFromWorkbookData`), counting each sheet name and each cell once, as the cache writer does. `findNul` builds its path only on a hit, and visits keys and values strictly in document order.
 
+### Adversarial-walk amendments
+
+The adversarial walk found two client-triggerable failures that predate #805, and both were fixed in this PR:
+
+- **Malformed percent-encoding in a route param** (`/api/stations/%C0%80`): Express's `URIError` (status 400) fell through to a 500. `app.ts`'s catch-all now answers `400 REQUEST_URL_INVALID_ENCODING`, "The request URL isn't valid percent-encoded UTF-8", without echoing the param.
+- **Duplicate source ids in one REST batch** (an upstream repeat, or ids that only differ by a stripped U+0000) made the batch's `INSERT … ON CONFLICT` touch one row twice, so the sync failed with SQLSTATE 21000. `createSyncRecordWriter`'s flush keeps the last record per source id (`lastPerSourceId`) and logs how many it dropped.
+
 ## Migration / Seed
 
 None. There's no schema change: `nulStrippedValues` lives in the existing `jobs.result` jsonb and in Redis session meta.
