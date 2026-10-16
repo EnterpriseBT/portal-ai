@@ -2066,6 +2066,63 @@ describe("restApiAdapter.probeEndpointDraft", () => {
     expect(findByInstanceMock).not.toHaveBeenCalled();
   });
 
+  // #810: a sync strips U+0000 before storing (#805's toStorableRecord), so
+  // the probe infers from stripped records too: samples, keys and what the
+  // classifier sees all match what lands in entity_records.
+  it("strips U+0000 from sampled values before inference", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([
+        { id: "a", name: "Al\u0000ice" },
+        { id: "b\u0000", name: "Bob" },
+      ])
+    );
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    const byKey = new Map(result.columns.map((c) => [c.key, c]));
+    expect(byKey.get("name")?.samples).toEqual(["Alice", "Bob"]);
+    expect(byKey.get("id")?.samples).toEqual(["a", "b"]);
+    expect(JSON.stringify(result.columns)).not.toContain("\\u0000");
+  });
+
+  it("strips U+0000 from upstream keys, so the column is the key a sync stores", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([{ id: "a", "na\u0000me": "x" }])
+    );
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    const name = result.columns.find(
+      (c) => c.label === "name" || c.key === "name"
+    );
+    expect(name).toMatchObject({ key: "name", sourceField: "name" });
+    expect(result.columns.map((c) => c.key).sort()).toEqual(["id", "name"]);
+  });
+
+  it("never sends a U+0000 to the column classifier", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([{ id: "a", "na\u0000me": "Al\u0000ice" }])
+    );
+    const classify = jest.fn(async () => []);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: { classify: classify as never },
+    });
+
+    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    expect(classify).toHaveBeenCalledTimes(1);
+    const [candidates] = classify.mock.calls[0] as unknown as [unknown[]];
+    expect(JSON.stringify(candidates)).not.toContain("\\u0000");
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceField: "name", samples: ["Alice"] }),
+      ])
+    );
+  });
+
   it("surfaces transform failures as degradation: 'transform-failed'", async () => {
     fetchMock.mockResolvedValueOnce(okResponse({ data: [{ id: 1 }] }));
     configureRestApiAdapterDeps({
