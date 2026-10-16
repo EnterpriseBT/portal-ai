@@ -73,8 +73,9 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 }));
 
 // #629: the permission gate + its loadSet are exercised in their own suites
-// (permission-gate.service.test). Here they are no-ops so the cost-gate guard
-// (which runs after) sees every write tool reach the cost wrap.
+// (permission-gate.service.test). Here they are no-ops, so every write tool
+// reaches the cost wrap inside them (#811: the cost gate is applied first, so
+// it wraps innermost).
 jest.unstable_mockModule("../../services/permission-gate.service.js", () => ({
   wrapWithPermissionGate: jest.fn(),
 }));
@@ -1154,36 +1155,40 @@ describe("buildAnalyticsTools()", () => {
       });
       const admission = jest.spyOn(CostGateService, "checkAdmission");
       const commit = jest.spyOn(CostGateService, "commitCharge");
-
-      const tools = await buildAnalyticsTools(
-        ORG_ID,
-        STATION_ID,
-        "user-001",
-        "portal-001"
-      );
-      const names = Object.keys(tools);
-      // A metered tool is among them, so a charge was possible.
-      expect(names).toContain("web_search");
-
-      for (const name of names) {
-        const out = await (tools[name] as any).execute(
-          { query: "q" },
-          {
-            toolCallId: "t",
-            messages: [],
-            abortSignal: new AbortController().signal,
-          }
+      try {
+        const tools = await buildAnalyticsTools(
+          ORG_ID,
+          STATION_ID,
+          "user-001",
+          "portal-001"
         );
-        expect([name, out]).toEqual([
-          name,
-          { error: expect.objectContaining({ code }) },
-        ]);
-      }
-      expect(admission).not.toHaveBeenCalled();
-      expect(commit).not.toHaveBeenCalled();
+        const names = Object.keys(tools);
+        // A metered tool is among them, so a charge was possible.
+        expect(names).toContain("web_search");
 
-      admission.mockRestore();
-      commit.mockRestore();
+        for (const name of names) {
+          const out = await (tools[name] as any).execute(
+            { query: "q" },
+            {
+              toolCallId: "t",
+              messages: [],
+              abortSignal: new AbortController().signal,
+            }
+          );
+          expect([name, out]).toEqual([
+            name,
+            { error: expect.objectContaining({ code }) },
+          ]);
+        }
+        expect(admission).not.toHaveBeenCalled();
+        expect(commit).not.toHaveBeenCalled();
+      } finally {
+        // A failure mid-test must not leak the spies, or an unconsumed
+        // refusing implementation, into later tests.
+        admission.mockRestore();
+        commit.mockRestore();
+        spy.mockReset();
+      }
     }
   );
 
@@ -1240,11 +1245,34 @@ describe("buildAnalyticsTools()", () => {
     expect(authFor("entity_record_update")).toBe(
       TOOL_AUTHORIZATION.entity_record_update
     );
-    // Applied first, so it wraps innermost: the permission check runs before
-    // the lock check, and an unauthorized caller never learns a job runs.
+    // Applied before the permission gate, so inside it: the permission check
+    // runs before the lock check, and an unauthorized caller never learns a
+    // job runs. (#811: the cost gate is applied before both, innermost.)
     expect(mockWrapWithLockGate.mock.invocationCallOrder[0]).toBeLessThan(
       permissionGate.mock.invocationCallOrder[0]
     );
+  });
+
+  // #811 trade-off guard. A `target` lock holds its scope locks (and a pooled
+  // connection) for the whole call, and the cost gate sits inside it so a
+  // lock refusal is never admitted. For a charged tool that would put the
+  // usage commit inside the lock's transaction (billed before it commits) and
+  // let an over-quota org occupy lock-admission slots. Every such tool is free
+  // today, which makes both moot: a charged one fails here, so the order is
+  // revisited before it ships.
+  it("#811: every target-locked write tool is free", async () => {
+    const { TOOL_AUTHORIZATION, ALL_TOOL_CAPABILITIES } =
+      await import("@portalai/core/registries");
+    const targetLocked = Object.entries(TOOL_AUTHORIZATION).filter(
+      ([, auth]) => "target" in auth.lock
+    );
+    expect(targetLocked.length).toBeGreaterThan(0);
+    for (const [name] of targetLocked) {
+      expect([name, ALL_TOOL_CAPABILITIES[name]?.costHint]).toEqual([
+        name,
+        "free",
+      ]);
+    }
   });
 
   it("#769: every write tool declares a job lock that matches its input", async () => {

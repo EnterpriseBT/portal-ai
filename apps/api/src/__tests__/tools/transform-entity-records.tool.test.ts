@@ -875,3 +875,56 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     expect(result.estimatedSeconds).toBeGreaterThan(0);
   });
 });
+
+// #811: the lock gate refuses this tool before it runs (and so before the
+// cost gate inside it admits the call), reading the entity ids from the
+// tool's real input through `TOOL_AUTHORIZATION`'s `entityIdArgs`.
+describe("TransformEntityRecordsTool — behind the lock gate (#811)", () => {
+  it("is refused before it runs when its source or a target is locked", async () => {
+    const { wrapWithLockGate } =
+      await import("../../services/lock-gate.service.js");
+    const { TOOL_AUTHORIZATION } = await import("@portalai/core/registries");
+    jest.clearAllMocks();
+    mockAssertNoneRunning
+      .mockReset()
+      .mockRejectedValue(
+        new ApiError(
+          409,
+          ApiCode.ENTITY_LOCKED_BY_JOB,
+          "Sync is running on this connector."
+        )
+      );
+
+    const tools = { transform_entity_records: buildTool() };
+    wrapWithLockGate(
+      tools as never,
+      { organizationId: ORG_ID },
+      (name) => TOOL_AUTHORIZATION[name]
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const out = await (tools.transform_entity_records as any).execute(
+      VALID_INPUT,
+      {
+        toolCallId: "t",
+        messages: [],
+        abortSignal: new AbortController().signal,
+      }
+    );
+
+    expect(out).toEqual({
+      error: expect.objectContaining({ code: ApiCode.ENTITY_LOCKED_BY_JOB }),
+    });
+    expect(mockAssertNoneRunning).toHaveBeenCalledTimes(1);
+    expect(mockAssertNoneRunning).toHaveBeenCalledWith(
+      [
+        { kind: "connectorEntity", id: "ce-source" },
+        { kind: "connectorEntity", id: TARGET_ID },
+      ],
+      { organizationId: ORG_ID }
+    );
+    // The tool body never ran.
+    expect(mockFindEntityById).not.toHaveBeenCalled();
+    expect(mockCountSourceRows).not.toHaveBeenCalled();
+    expect(mockEnqueueExclusive).not.toHaveBeenCalled();
+  });
+});

@@ -1842,13 +1842,19 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     verb: "write",
     resourceType: "entity_record",
     mode: "bulk",
-    lock: { enqueues: "bulk_geocode" },
+    lock: { enqueues: "bulk_geocode", entityIdArgs: ["connectorEntityId"] },
   },
   transform_entity_records: {
     verb: "write",
     resourceType: "entity_record",
     mode: "bulk",
-    lock: { enqueues: "bulk_transform" },
+    lock: {
+      enqueues: "bulk_transform",
+      entityIdArgs: [
+        "sourceConnectorEntityId",
+        "expression.writes[].targetConnectorEntityId",
+      ],
+    },
   },
 };
 
