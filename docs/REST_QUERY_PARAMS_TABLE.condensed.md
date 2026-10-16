@@ -20,7 +20,7 @@
 The params become rows: `KeyValueRow = { id, key, value }`, with `id` a stable React key. `EndpointDraft.queryParams: KeyValueRow[]` is new, and `totalCountParams` changes from `string` to `KeyValueRow[]`. The row type and the generic row helpers (`newKeyValueRow`, `keyValueRowsToRecord`, `validateKeyValueRows`) live in `apps/web/src/utils/key-value-rows.util.ts`, because #809's headers table reuses them. The REST-specific ones live in `rest-api-validation.util.ts`:
 - `splitPathQuery(path)`: `{ path, rows }`, decoding through `URLSearchParams`.
 - `queryParamsConfig(rows)`: `{ queryParams }` for the create body and the preview/probe request, or nothing when no row survives (fully empty rows are dropped).
-- `validateParamRows(rows, field)`: returns `FormErrors` keyed `<field>.<i>.key`.
+- `validateKeyValueRows(rows, field)` (shared): returns `FormErrors` keyed `<field>.<i>.key`.
   - A value with no key is an error ("Key is required").
   - A duplicate key is an error on the later row ("Duplicate key").
 - `previewRequestUrl(path, rows)`: the encoded `path?k=v`, with `{{cursor}}` / `{{pageNumber}}` restored unencoded.
