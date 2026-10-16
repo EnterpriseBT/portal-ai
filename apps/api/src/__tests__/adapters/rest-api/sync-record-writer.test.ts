@@ -1,17 +1,15 @@
 /**
  * The batched sync record writer (#440, slice 2).
  *
- * Replaces `upsertRecord`'s per-record 3–4 round-trips with one bulk read,
- * in-memory classification, and one bulk write per batch — the shape
- * `record-import.util.ts`'s `flushBatch` already uses in production.
+ * Replaced the old per-record write path's 3–4 round-trips per record with
+ * one bulk read, in-memory classification, and one bulk write per batch —
+ * the shape `record-import.util.ts`'s `flushBatch` already uses in
+ * production. The per-record path is gone (#812); the writer is the only
+ * REST sync write path.
  *
- * This slice is deliberately **behaviour-preserving**: statement volume
- * changes and nothing else. The unchanged path still re-upserts its wide-row
- * mirror exactly as today; removing that no-op work is slice 3. The counts
- * contract (`created` / `updated` / `unchanged`, plus the geometry tallies)
- * reaches an API response and an SSE consumer, so the final describe block
- * drives one fixture through both the old and new paths and asserts the
- * tallies are identical.
+ * The counts contract (`created` / `updated` / `unchanged`, plus the
+ * geometry tallies) reaches an API response and an SSE consumer, so a
+ * describe block pins the tallies one fixture produces.
  */
 
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
@@ -32,20 +30,6 @@ const findBySourceIdsForSyncMock = jest.fn<
     }>
   >
 >();
-const findBySourceIdsMock = jest.fn<
-  (
-    entityId: string,
-    sourceIds: string[]
-  ) => Promise<
-    Array<{
-      id: string;
-      sourceId: string;
-      checksum: string;
-      created: number;
-      createdBy: string;
-    }>
-  >
->();
 const upsertManyBySourceIdMock =
   jest.fn<
     (
@@ -53,8 +37,6 @@ const upsertManyBySourceIdMock =
       client?: unknown
     ) => Promise<unknown[]>
   >();
-const upsertBySourceIdMock =
-  jest.fn<(row: Record<string, unknown>) => Promise<{ id: string }>>();
 const bulkUpdateSyncedAtMock =
   jest.fn<
     (ids: string[], syncedAt: number, client?: unknown) => Promise<number>
@@ -82,9 +64,7 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
     repository: {
       entityRecords: {
         findBySourceIdsForSync: findBySourceIdsForSyncMock,
-        findBySourceIds: findBySourceIdsMock,
         upsertManyBySourceId: upsertManyBySourceIdMock,
-        upsertBySourceId: upsertBySourceIdMock,
         bulkUpdateSyncedAt: bulkUpdateSyncedAtMock,
       },
       wideTable: {
@@ -105,7 +85,7 @@ jest.unstable_mockModule("../../../db/client.js", () => ({
   db: { execute: jest.fn(async () => undefined) },
 }));
 
-const { createSyncRecordWriter, SYNC_WRITE_BATCH_SIZE, upsertRecord } =
+const { createSyncRecordWriter, SYNC_WRITE_BATCH_SIZE, checksumRecord } =
   await import("../../../adapters/rest-api/rest-api.adapter.js");
 
 // ── Fixture ───────────────────────────────────────────────────────────
@@ -151,11 +131,7 @@ const rec = (pid: string) => ({ pid, v: pid });
 beforeEach(() => {
   jest.clearAllMocks();
   findBySourceIdsForSyncMock.mockResolvedValue([]);
-  findBySourceIdsMock.mockResolvedValue([]);
   upsertManyBySourceIdMock.mockResolvedValue([]);
-  upsertBySourceIdMock.mockImplementation(async (row) => ({
-    id: String((row as { id: string }).id),
-  }));
   bulkUpdateSyncedAtMock.mockResolvedValue(0);
   upsertWideManyMock.mockResolvedValue({ repaired: 0, rejected: [] });
   selectMissingWideRowIdsMock.mockResolvedValue([]);
@@ -424,25 +400,17 @@ describe("createSyncRecordWriter — wide-table mirror", () => {
 
 // ── Counts contract ───────────────────────────────────────────────────
 
-describe("counts contract — batched writer vs upsertRecord", () => {
+describe("counts contract", () => {
   /**
-   * Drive one fixture — a created, an updated and an unchanged record —
-   * through either path and return the resulting tallies.
-   *
-   * Self-configuring: every mock it depends on is set here rather than
-   * inherited from `beforeEach`, so the two invocations inside one test
-   * cannot contaminate each other and no mid-test `clearAllMocks` is needed.
+   * One fixture — a created, an updated and an unchanged record — whose
+   * tallies reach the sync's API response and SSE consumer.
    */
-  async function drive(
-    mode: "writer" | "perRecord"
-  ): Promise<Record<string, number>> {
-    const mod = await import("../../../adapters/rest-api/rest-api.adapter.js");
-    const sums = mod.checksumRecord;
-    const existing = [
+  async function drive(): Promise<Record<string, number>> {
+    findBySourceIdsForSyncMock.mockResolvedValue([
       {
         id: "r1",
         sourceId: "p1",
-        checksum: sums({ pid: "p1", v: "p1" }),
+        checksum: checksumRecord({ pid: "p1", v: "p1" }),
         created: 1,
         createdBy: "u0",
       },
@@ -453,62 +421,25 @@ describe("counts contract — batched writer vs upsertRecord", () => {
         created: 2,
         createdBy: "u0",
       },
-    ];
-
-    findBySourceIdsForSyncMock.mockReset();
-    findBySourceIdsForSyncMock.mockResolvedValue(existing);
-    findBySourceIdsMock.mockReset();
-    findBySourceIdsMock.mockImplementation(async (_e, sourceIds) =>
-      existing.filter((r) => sourceIds.includes(r.sourceId))
-    );
-    upsertManyBySourceIdMock.mockReset();
-    upsertManyBySourceIdMock.mockResolvedValue([]);
-    upsertBySourceIdMock.mockReset();
-    upsertBySourceIdMock.mockImplementation(async (row) => ({
-      id: String((row as { id: string }).id),
-    }));
-    bulkUpdateSyncedAtMock.mockReset();
-    bulkUpdateSyncedAtMock.mockResolvedValue(0);
-    upsertWideManyMock.mockReset();
-    upsertWideManyMock.mockResolvedValue({ repaired: 0, rejected: [] });
-    transactionMock.mockReset();
-    transactionMock.mockImplementation((fn) => fn("tx"));
+    ]);
 
     const ctx = makeCtx();
-    const records = [rec("p1"), rec("p2"), rec("p3")];
-
-    if (mode === "writer") {
-      const w = mod.createSyncRecordWriter(ctx);
-      for (const r of records) await w.add(r);
-      await w.flush();
-    } else {
-      for (const r of records) await upsertRecord(r, ctx);
-    }
+    const w = createSyncRecordWriter(ctx);
+    for (const r of [rec("p1"), rec("p2"), rec("p3")]) await w.add(r);
+    await w.flush();
     return (ctx as unknown as { counts: Record<string, number> }).counts;
   }
 
-  it("produces identical created / updated / unchanged tallies", async () => {
-    const viaWriter = await drive("writer");
-    const viaPerRecord = await drive("perRecord");
-
-    expect({
-      created: viaWriter.created,
-      updated: viaWriter.updated,
-      unchanged: viaWriter.unchanged,
-    }).toEqual({
-      created: viaPerRecord.created,
-      updated: viaPerRecord.updated,
-      unchanged: viaPerRecord.unchanged,
+  it("tallies one created, one updated and one unchanged record", async () => {
+    expect(await drive()).toMatchObject({
+      created: 1,
+      updated: 1,
+      unchanged: 1,
     });
-    // And they are the tallies the fixture actually describes.
-    expect(viaWriter).toMatchObject({ created: 1, updated: 1, unchanged: 1 });
   });
 
-  it("advances recordIndex identically", async () => {
-    const viaWriter = await drive("writer");
-    const viaPerRecord = await drive("perRecord");
-    expect(viaWriter.recordIndex).toBe(viaPerRecord.recordIndex);
-    expect(viaWriter.recordIndex).toBe(3);
+  it("advances recordIndex once per record", async () => {
+    expect((await drive()).recordIndex).toBe(3);
   });
 });
 
@@ -617,8 +548,8 @@ describe("createSyncRecordWriter — unchanged rows skip no-op work (#440)", () 
 // ── NUL stripping (#805) ──────────────────────────────────────────────
 //
 // Postgres can't store U+0000 in jsonb, so one stray byte in a remote record
-// failed the whole sync. Both record entry points strip it before the source
-// id and checksum are derived, and count what they stripped.
+// failed the whole sync. The writer strips it before the source id and
+// checksum are derived, and counts what it stripped.
 
 describe("NUL stripping (#805)", () => {
   const counts = (ctx: unknown) =>
@@ -683,15 +614,6 @@ describe("NUL stripping (#805)", () => {
     const [rows] = upsertManyBySourceIdMock.mock.calls[0]!;
     expect(rows[0]).toMatchObject({ data: { pid: "p", v: "tab\there" } });
     expect(counts(ctx).nulStrippedValues).toBe(0);
-  });
-
-  it("strips on the per-record path too", async () => {
-    const ctx = makeCtx();
-    await upsertRecord({ pid: "a\u0000b", v: "c\u0000" }, ctx);
-
-    const row = upsertBySourceIdMock.mock.calls[0]![0];
-    expect(row).toMatchObject({ sourceId: "ab", data: { pid: "ab", v: "c" } });
-    expect(counts(ctx).nulStrippedValues).toBe(2);
   });
 });
 
