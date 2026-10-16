@@ -36,7 +36,7 @@ A forward data migration finds every `public.er__%` table's `geometry` column th
 
 **Files**
 - edit `apps/api/src/services/wide-table-reconciler.service.ts`: `gistIndexName` → `er__${id}__${md5(col).slice(0,16)}_gist` (`node:crypto`). The geometry→json branch drops by catalog lookup (new private `dropGistIndexesOnColumn(table, col, tx)`).
-- new `apps/api/drizzle/0123_backfill-wide-table-gist-indexes.sql` and a hand-added `meta/_journal.json` entry, with no snapshot. A data-only migration changes no schema, and `db:generate` refuses to run because the 0115 and 0116 snapshots share an id; 0117–0122 were added the same way.
+- new `apps/api/drizzle/0123_backfill-wide-table-gist-indexes.sql` + journal entry + `0123_snapshot.json` (`npm run db:generate -- --custom --name backfill-wide-table-gist-indexes`). This also repairs the snapshot chain. `0116_snapshot.json` was a byte-for-byte copy of 0115's (same `id`), so `db:generate` refused to run, and 0117–0122 landed without snapshots. 0116 gets its own id, and 0123's snapshot captures the current schema, so a plain `db:generate` reports no changes again.
 
 **Tests**
 - unit `src/__tests__/services/wide-table-reconciler.gist-name.test.ts`: the name is ≤ 63 bytes for a 58-byte key column. Two columns sharing a long prefix get distinct names. The name is stable for the same input, starts with `er__<entityId>__` and ends `_gist`.
