@@ -16,6 +16,10 @@ import { users } from "../db/schema/users.table.js";
 import type { PortalResultSelect } from "../db/schema/zod.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
+import {
+  PermissionService,
+  type PermissionContext,
+} from "./permission.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
 type DefinerRow = Pick<
@@ -70,6 +74,77 @@ export class PinDefinerService {
       );
     if (!membership) throw new DefinerAccessLostError(row.id);
     return { userId: row.definerPrincipalId };
+  }
+
+  /**
+   * The refusal for a pin whose definer can no longer reach its data. Only a
+   * caller who can manage the pin learns why; anyone else gets a neutral
+   * message that reveals nothing about another user's access.
+   */
+  static unavailableError(viewer: {
+    canWrite: boolean;
+    isDefiner: boolean;
+  }): ApiError {
+    if (!viewer.canWrite) {
+      return new ApiError(
+        422,
+        ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+        "This pin's data isn't available."
+      );
+    }
+    return new ApiError(
+      422,
+      ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST,
+      viewer.isDefiner
+        ? "You no longer have access to the data behind this pin."
+        : "The person this pin's data is shown as no longer has access to it."
+    );
+  }
+
+  /**
+   * Authorize a read of a pin-owned query handle. The caller must be able to
+   * read the pin in its own org (else the same 404 as an expired handle), and
+   * the pin must still execute as the user the handle was produced as, who must
+   * still be an active member. Runs on every read, so unsharing or offboarding
+   * closes a handle that is already open.
+   */
+  static async authorizeHandleRead(
+    handle: { portalResultId: string; userId: string | undefined },
+    ctx: PermissionContext
+  ): Promise<void> {
+    const notFound = () =>
+      new ApiError(
+        404,
+        ApiCode.READ_HANDLE_EXPIRED,
+        "Query handle not found or expired"
+      );
+    const row = await DbService.repository.portalResults.findById(
+      handle.portalResultId
+    );
+    if (!row || row.organizationId !== ctx.organizationId) throw notFound();
+    const set = await PermissionService.loadSet(ctx);
+    const object = {
+      type: "pin" as const,
+      id: row.id,
+      createdBy: row.createdBy,
+    };
+    if (!set.can("resource.read", object)) throw notFound();
+    const viewer = {
+      canWrite: set.can("resource.write", object),
+      isDefiner: row.definerPrincipalId === ctx.userId,
+    };
+    // A rebound definer means the handle shows someone else's data now.
+    if (row.definerPrincipalId !== handle.userId) {
+      throw PinDefinerService.unavailableError(viewer);
+    }
+    try {
+      await PinDefinerService.assertDefinerActive(row);
+    } catch (err) {
+      if (err instanceof DefinerAccessLostError) {
+        throw PinDefinerService.unavailableError(viewer);
+      }
+      throw err;
+    }
   }
 
   /** The definer as a pin reader sees it, plus whether that reader is them. */

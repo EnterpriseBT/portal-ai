@@ -12,12 +12,22 @@ const mockMembership =
   jest.fn<(orgId: string, userId: string) => Promise<unknown>>();
 const mockUsersFindMany = jest.fn<(where: unknown) => Promise<User[]>>();
 
+const mockFindPin = jest.fn<(id: string) => Promise<unknown>>();
+const mockCan = jest.fn<(action: string, object: unknown) => boolean>();
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       organizationUsers: { findByOrganizationAndUser: mockMembership },
       users: { findMany: mockUsersFindMany },
+      portalResults: { findById: mockFindPin },
     },
+  },
+}));
+
+jest.unstable_mockModule("../../services/permission.service.js", () => ({
+  PermissionService: {
+    loadSet: async () => ({ can: mockCan }),
   },
 }));
 
@@ -119,5 +129,71 @@ describe("PinDefinerService.describe (#640)", () => {
     const out = await PinDefinerService.describeMany([], "viewer");
     expect(out.size).toBe(0);
     expect(mockUsersFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("PinDefinerService.authorizeHandleRead (#640)", () => {
+  const ctx = { userId: "sharee", organizationId: "org-1", roles: [] };
+  const handle = { portalResultId: "pin-1", userId: "definer-1" };
+  const row = { ...pin(), createdBy: "definer-1" };
+  const canRead = (action: string) => action === "resource.read";
+
+  it("lets a reader who isn't the definer page the definer's handle", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockImplementation(canRead);
+    mockMembership.mockResolvedValue({ id: "ou-1" });
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).resolves.toBeUndefined();
+  });
+
+  it("answers an expired handle once the pin is unshared, or in another org", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockReturnValue(false);
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({ status: 404, code: ApiCode.READ_HANDLE_EXPIRED });
+
+    mockFindPin.mockResolvedValue({ ...row, organizationId: "org-2" });
+    mockCan.mockReturnValue(true);
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({ status: 404, code: ApiCode.READ_HANDLE_EXPIRED });
+  });
+
+  it("refuses neutrally to a reader once the definer is removed", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockImplementation(canRead);
+    mockMembership.mockResolvedValue(undefined);
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({
+      status: 422,
+      code: ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+    });
+  });
+
+  it("tells a caller who manages the pin why", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockReturnValue(true);
+    mockMembership.mockResolvedValue(undefined);
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({
+      status: 422,
+      code: ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST,
+    });
+  });
+
+  it("refuses a handle produced as someone other than the pin's definer", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockImplementation(canRead);
+    mockMembership.mockResolvedValue({ id: "ou-1" });
+    await expect(
+      PinDefinerService.authorizeHandleRead(
+        { ...handle, userId: "someone-else" },
+        ctx
+      )
+    ).rejects.toMatchObject({ status: 422 });
   });
 });

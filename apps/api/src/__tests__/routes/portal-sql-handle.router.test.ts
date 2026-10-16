@@ -13,6 +13,11 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   },
 }));
 
+const mockAuthorizePinHandle = jest.fn<() => Promise<void>>();
+jest.unstable_mockModule("../../services/pin-definer.service.js", () => ({
+  PinDefinerService: { authorizeHandleRead: mockAuthorizePinHandle },
+}));
+
 jest.unstable_mockModule("../../middleware/metadata.middleware.js", () => ({
   getApplicationMetadata: (
     req: Request,
@@ -157,6 +162,59 @@ describe("GET /api/portal-sql/handle/:handleId — authorization (#685)", () => 
     mockGetSnapshot.mockResolvedValueOnce(ok);
     const res = await request(app).get("/api/portal-sql/handle/qh-rows");
     expect(res.status).toBe(200);
+  });
+
+  // #640: a pin's handle holds its definer's data, so its readers are the
+  // pin's readers — not the handle's `_userId`.
+  it("authorizes a pin-owned handle through the pin, not the handle's user", async () => {
+    mockGetMeta.mockResolvedValue({
+      _organizationId: "org-001",
+      _userId: "the-definer",
+      _portalResultId: "pin-1",
+    });
+    mockAuthorizePinHandle.mockResolvedValue(undefined);
+    mockGetSnapshot.mockResolvedValueOnce({ rows: [], total: 0 });
+
+    const res = await request(app).get("/api/portal-sql/handle/qh-pin");
+
+    expect(res.status).toBe(200);
+    expect(mockAuthorizePinHandle).toHaveBeenCalledWith(
+      { portalResultId: "pin-1", userId: "the-definer" },
+      expect.objectContaining({ organizationId: "org-001", userId: "user-001" })
+    );
+  });
+
+  it("serves no rows when the pin refuses the read", async () => {
+    mockGetMeta.mockResolvedValue({
+      _organizationId: "org-001",
+      _userId: "the-definer",
+      _portalResultId: "pin-1",
+    });
+    mockAuthorizePinHandle.mockRejectedValue(
+      Object.assign(new Error("gone"), {
+        status: 422,
+        code: ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+      })
+    );
+
+    const res = await request(app).get("/api/portal-sql/handle/qh-pin");
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE);
+    expect(mockGetSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("refuses another org's pin-owned handle before asking the pin", async () => {
+    mockGetMeta.mockResolvedValue({
+      _organizationId: "org-other",
+      _userId: "the-definer",
+      _portalResultId: "pin-1",
+    });
+
+    const res = await request(app).get("/api/portal-sql/handle/qh-pin");
+
+    expect(res.status).toBe(404);
+    expect(mockAuthorizePinHandle).not.toHaveBeenCalled();
   });
 
   it("no longer exports an SSE stream router", async () => {
