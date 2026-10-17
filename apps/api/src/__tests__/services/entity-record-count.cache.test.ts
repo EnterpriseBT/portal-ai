@@ -53,6 +53,36 @@ describe("EntityRecordCountCache.fingerprint", () => {
     );
   });
 
+  it("#649: a view scope changes the fingerprint", () => {
+    // Two callers of one view with different readable columns search
+    // different column sets, so they must never share a cached total.
+    const scope = { search: "x2", viewScope: "view-1:1:age,email" };
+    expect(EntityRecordCountCache.fingerprint(scope)).not.toBe(
+      EntityRecordCountCache.fingerprint({
+        ...scope,
+        viewScope: "view-1:1:email",
+      })
+    );
+    expect(EntityRecordCountCache.fingerprint(scope)).not.toBe(
+      EntityRecordCountCache.fingerprint({ search: "x2" })
+    );
+  });
+
+  it("#649: without a view scope, the entity-records fingerprint is unchanged", () => {
+    // Pinned from main before #649: adding viewScope must not re-key (and so
+    // cold-start) every cached entity-records total.
+    expect(EntityRecordCountCache.fingerprint({})).toBe(
+      "6f3ef42b7e8572130c3f9f1ccfa7a878"
+    );
+    expect(
+      EntityRecordCountCache.fingerprint({
+        search: "boston",
+        filters: "abc",
+        isValid: "true",
+      })
+    ).toBe("b7ee4cf64792cdebca9953c060b2b7b6");
+  });
+
   it("treats an omitted input and an empty one alike", () => {
     expect(EntityRecordCountCache.fingerprint({})).toBe(
       EntityRecordCountCache.fingerprint({ search: "", filters: "" })

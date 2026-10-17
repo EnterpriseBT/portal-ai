@@ -1015,15 +1015,18 @@ curatedViewRouter.delete(
  *     description: >
  *       Returns the view's rows scoped to the caller's readable columns and the view's filter, plus the
  *       caller's readable projected `columns` as ResolvedColumns (#678). Rows are keyed by `normalizedKey`,
- *       plus `_record_id` and `_source_id`. `sortBy` names a projected column's normalizedKey (anything else,
- *       e.g. the default `created`, falls back to the stable record-id order; an unsortable type such as json
- *       or an array is a 400). `search` is a case-insensitive substring match across the projected columns.
- *       Unreadable == 404.
+ *       plus `_record_id` and `_source_id`. `sortBy` is `created` (the default, the record's creation time) or a
+ *       projected column's normalizedKey; anything else falls back to the stable record-id order, and an
+ *       unsortable type such as json or an array is a 400. Pages by keyset `cursor` (#649): pass the previous
+ *       response's `nextCursor`. `offset` stays valid. `search` is a case-insensitive substring match across
+ *       the projected columns. Unreadable == 404.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
  *       - $ref: '#/components/parameters/limitParam'
  *       - $ref: '#/components/parameters/offsetParam'
+ *       - $ref: '#/components/parameters/cursorParam'
+ *       - $ref: '#/components/parameters/reverseParam'
  *       - $ref: '#/components/parameters/sortByParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
  *       - { in: query, name: search, required: false, schema: { type: string }, description: Case-insensitive substring match across projected columns }
@@ -1043,6 +1046,7 @@ curatedViewRouter.delete(
  *                 total: { type: number }
  *                 limit: { type: number }
  *                 offset: { type: number }
+ *                 nextCursor: { type: [string, "null"], description: "Cursor for the following page; null on the last page (#649)" }
  *       400: { description: "Invalid query parameters, e.g. sortOrder or limit (CURATED_VIEW_INVALID_QUERY); invalid filters, or one naming a column outside the caller's readable projection (CURATED_VIEW_INVALID_FILTER); sortBy names an unsortable column (CURATED_VIEW_INVALID_SORT)" }
  *       404: { description: Not found or not readable }
  */
@@ -1063,14 +1067,23 @@ curatedViewRouter.get(
           )
         );
       }
-      const { limit, offset, sortBy, sortOrder, search, filters } = query.data;
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        search,
+        filters,
+        cursor,
+        reverse,
+      } = query.data;
       const { organizationId, userId } = req.application!.metadata;
 
       const result = await PortalSqlService.queryCuratedViewRecords(
         req.params.id,
         organizationId,
         userId,
-        { limit, offset, sortBy, sortOrder, search, filters }
+        { limit, offset, sortBy, sortOrder, search, filters, cursor, reverse }
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -1095,6 +1108,7 @@ curatedViewRouter.get(
         total: result.total,
         limit,
         offset,
+        nextCursor: result.nextCursor,
       });
     } catch (error) {
       return next(error);

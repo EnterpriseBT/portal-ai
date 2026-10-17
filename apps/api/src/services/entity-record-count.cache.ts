@@ -48,6 +48,13 @@ export interface CountCacheScope {
   search?: string;
   filters?: string;
   isValid?: string;
+  /**
+   * #649: the curated-view records table's scope: the view, its version and
+   * the caller's readable columns (search runs over those, so two callers with
+   * different field grants can match different row counts). Absent for the
+   * entity records list, whose fingerprint is unchanged.
+   */
+  viewScope?: string;
 }
 
 export class EntityRecordCountCache {
@@ -63,6 +70,8 @@ export class EntityRecordCountCache {
       search: scope.search ?? "",
       filters: scope.filters ?? "",
       isValid: scope.isValid ?? "",
+      // Only when present, so entity-records fingerprints keep their value.
+      ...(scope.viewScope ? { viewScope: scope.viewScope } : {}),
     });
     return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
   }

@@ -200,6 +200,10 @@ export type CuratedViewAttachResponsePayload = z.infer<
 
 // ── Records ───────────────────────────────────────────────────────────
 
+/**
+ * #649: pages by keyset. `cursor` (and `reverse`, for the last page) come from
+ * `PaginationRequestQuerySchema`, and the response carries `nextCursor`.
+ */
 export const CuratedViewRecordsRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
     /**
