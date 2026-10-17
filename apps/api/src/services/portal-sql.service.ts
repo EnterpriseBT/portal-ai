@@ -784,9 +784,14 @@ export class PortalSqlServiceImpl {
       tiebreaker: sort.tiebreaker,
       ...ordering,
     });
+    // `r.deleted IS NULL` is what lets the planner use the partial
+    // `(connector_entity_id, created, id) WHERE deleted IS NULL` index: without
+    // it every `created` page seq-scanned both tables (measured on 400K rows:
+    // 155ms vs 0.08ms for page one, the deep seek and the last page alike).
     const createdJoin = byCreated
       ? `  JOIN "entity_records" r ON r."id" = w."entity_record_id"` +
-        ` AND r."connector_entity_id" = ${quoteLiteral(view.connectorEntityId)}\n`
+        ` AND r."connector_entity_id" = ${quoteLiteral(view.connectorEntityId)}` +
+        ` AND r."deleted" IS NULL\n`
       : "";
 
     // One row past the page tells "a full page" from "a full page with more
