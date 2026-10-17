@@ -1019,7 +1019,8 @@ curatedViewRouter.delete(
  *       projected column's normalizedKey; anything else falls back to the stable record-id order, and an
  *       unsortable type such as json or an array is a 400. Pages by keyset `cursor` (#649): pass the previous
  *       response's `nextCursor`. `offset` stays valid. `search` is a case-insensitive substring match across
- *       the projected columns. Unreadable == 404.
+ *       the caller's readable projected **text** columns (string, enum, reference); number and date values
+ *       are reached through `filters` (#649). Unreadable == 404.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: path, name: id, required: true, schema: { type: string } }
@@ -1029,7 +1030,7 @@ curatedViewRouter.delete(
  *       - $ref: '#/components/parameters/reverseParam'
  *       - $ref: '#/components/parameters/sortByParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
- *       - { in: query, name: search, required: false, schema: { type: string }, description: Case-insensitive substring match across projected columns }
+ *       - { in: query, name: search, required: false, schema: { type: string }, description: "Case-insensitive substring match across the readable projected text columns (#649). A view with no text column matches nothing." }
  *       - { in: query, name: filters, required: false, schema: { type: string }, description: "#678: base64 JSON FilterExpression (the entity records list's format) over the caller's readable projected columns, ANDed after the view's own filter (narrow-only)" }
  *     responses:
  *       200:

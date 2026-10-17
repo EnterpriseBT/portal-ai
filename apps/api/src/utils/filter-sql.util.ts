@@ -248,31 +248,36 @@ function buildTypedConditionSQL(
     case "reference-array":
       return buildTypedArrayCondition(colRef, operator, value);
     case "string":
+      // #649: a string column is `text`, so the cast is a no-op; leaving it
+      // off keeps the predicate on the bare column the trigram index covers.
+      return buildTypedStringCondition(colRef, operator, value, false);
     case "json":
     default:
-      return buildTypedStringCondition(colRef, operator, value);
+      return buildTypedStringCondition(colRef, operator, value, true);
   }
 }
 
 function buildTypedStringCondition(
   colRef: SQL,
   operator: FilterOperator,
-  value: unknown
+  value: unknown,
+  castToText: boolean
 ): SQL {
   const val = String(value ?? "");
+  const text = castToText ? sql`${colRef}::text` : colRef;
   switch (operator) {
     case "eq":
       return sql`${colRef} = ${val}`;
     case "neq":
       return sql`(${colRef} IS NULL OR ${colRef} <> ${val})`;
     case "contains":
-      return sql`${colRef}::text ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\'`;
+      return sql`${text} ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\'`;
     case "not_contains":
-      return sql`(${colRef} IS NULL OR ${colRef}::text NOT ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\')`;
+      return sql`(${colRef} IS NULL OR ${text} NOT ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\')`;
     case "starts_with":
-      return sql`${colRef}::text ILIKE ${escapeLike(val) + "%"} ESCAPE '\\'`;
+      return sql`${text} ILIKE ${escapeLike(val) + "%"} ESCAPE '\\'`;
     case "ends_with":
-      return sql`${colRef}::text ILIKE ${"%" + escapeLike(val)} ESCAPE '\\'`;
+      return sql`${text} ILIKE ${"%" + escapeLike(val)} ESCAPE '\\'`;
     default:
       return sql`TRUE`;
   }

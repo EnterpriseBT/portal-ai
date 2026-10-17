@@ -37,6 +37,7 @@ import {
 } from "../db/repositories/entity-records.repository.js";
 import { EntityRecordCountCache } from "./entity-record-count.cache.js";
 import { readViewSortValue } from "./portal-sql-view-records.util.js";
+import { pgTypeForColumnDefinitionType } from "./wide-table-reconciler.service.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
@@ -676,19 +677,29 @@ export class PortalSqlServiceImpl {
       if (typeof rendered !== "string") throw invalid(rendered.message);
       whereParts.push(`(${rendered})`);
     }
-    // Search: case-insensitive **literal** substring across the projected
-    // columns only (never an un-projected column). The LIKE metacharacters
-    // (\ % _) are escaped so the term matches literally (ILIKE's default escape
-    // char is backslash), then wrapped in %…%; quoteLiteral handles the
-    // SQL-quote escaping — injection-safe.
+    // Search: case-insensitive **literal** substring across the caller's
+    // readable projected **text** columns (string/enum/reference, #649). Only
+    // those carry a trigram index, and one unindexed branch in the OR would
+    // scan the whole table anyway; number and date cells are reached through
+    // typed filters instead. No `::text` cast, so the index matches the bare
+    // column. With no text column a search matches nothing rather than being
+    // silently ignored. The LIKE metacharacters (\ % _) are escaped so the
+    // term matches literally (ILIKE's default escape char is backslash), then
+    // wrapped in %…%; quoteLiteral handles the SQL-quote escaping —
+    // injection-safe.
     const search = opts.search?.trim();
-    if (search && columns.length > 0) {
+    if (search) {
+      const textColumns = readable.filter(
+        (c) => pgTypeForColumnDefinitionType(c.type) === "text"
+      );
       const escaped = search.replace(/[\\%_]/g, (ch) => `\\${ch}`);
       const term = quoteLiteral(`%${escaped}%`);
-      const clauses = columns.map(
-        (c) => `w.${quoteIdent(c.columnName)}::text ILIKE ${term}`
+      const clauses = textColumns.map(
+        (c) => `w.${quoteIdent(c.columnName)} ILIKE ${term}`
       );
-      whereParts.push(`(${clauses.join(" OR ")})`);
+      whereParts.push(
+        clauses.length > 0 ? `(${clauses.join(" OR ")})` : "FALSE"
+      );
     }
     const whereSql = whereParts.join(" AND ");
     const limit = Math.max(1, Math.min(opts.limit, 500));

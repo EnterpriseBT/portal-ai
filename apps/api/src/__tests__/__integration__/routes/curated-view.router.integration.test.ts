@@ -503,11 +503,12 @@ describe("curated-view.router integration", () => {
     expect(emailRows.length).toBe(1);
     expect(emailRows[0].email).toBe("a@b.co");
 
-    // The numeric column is searchable via a text cast.
+    // #649: search matches text columns only (the trigram-indexed ones), so
+    // a number cell isn't searched; a filter on the column finds it.
     const ageHit = await request(app).get(
       `/api/curated-views/${id}/records?search=42`
     );
-    expect((ageHit.body.payload.records as unknown[]).length).toBe(1);
+    expect((ageHit.body.payload.records as unknown[]).length).toBe(0);
 
     // LIKE metacharacters are escaped — a literal `%` is not a wildcard, so it
     // matches nothing here (no value contains a literal percent sign).
@@ -1851,6 +1852,37 @@ describe("curated-view.router integration", () => {
       cursor: "not-a-cursor",
     });
     expect(garbage.records).toEqual(baseline);
+  });
+
+  it("#649: search never matches a number cell or a column outside the view", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "search_text_only",
+      label: "Search text only",
+      fieldMappingIds: [emailFmId, ageFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    // A text column matches.
+    expect((await page(id, { search: "a@b" })).total).toBe(1);
+    // 25 is only an age, a number column.
+    expect((await page(id, { search: "25" })).total).toBe(0);
+    // "x2" is only in backup_email, which this view doesn't project.
+    expect((await page(id, { search: "x2" })).total).toBe(0);
+  });
+
+  it("#649: search on a view with no text columns matches nothing", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "no_text_columns",
+      label: "No text columns",
+      fieldMappingIds: [ageFmId, tagsFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    expect((await page(id, {})).total).toBe(2);
+    // "2" is in both ages (25, 42), which a text cast used to match.
+    const searched = await page(id, { search: "2" });
+    expect(searched.records).toHaveLength(0);
+    expect(searched.total).toBe(0);
   });
 
   it("#649: callers with different field grants never share a cached total", async () => {
