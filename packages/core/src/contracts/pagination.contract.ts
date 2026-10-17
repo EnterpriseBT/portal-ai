@@ -21,6 +21,18 @@ export const PaginationRequestQuerySchema = z.object({
    * has not adopted cursors is unaffected.
    */
   cursor: z.string().optional(),
+  /**
+   * Walk the exact mirror of the requested ordering (#649). The keyset "last
+   * page" is page one of this walk. Flipping `sortOrder` isn't a mirror:
+   * NULLs sort last in both directions, so `1,2,3,∅` flipped is `3,2,1,∅`.
+   * Only keyset endpoints read it.
+   */
+  // Optional on the outside so hand-built request params needn't carry it;
+  // read it as `reverse ?? false`.
+  reverse: z
+    .enum(["true", "false"])
+    .transform((v) => v === "true")
+    .optional(),
 });
 
 export type PaginationRequestQuery = z.infer<
@@ -65,6 +77,8 @@ export const KeysetCursorSchema = z.object({
   sortOrder: z.enum(["asc", "desc"]),
   value: z.union([z.string(), z.number(), z.null()]),
   id: z.string(),
+  /** Minted on a `reverse` walk (#649). Absent on older cursors ≡ false. */
+  reverse: z.boolean().optional(),
 });
 
 export type KeysetCursor = z.infer<typeof KeysetCursorSchema>;

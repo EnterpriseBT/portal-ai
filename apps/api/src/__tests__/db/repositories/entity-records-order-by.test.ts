@@ -27,6 +27,7 @@ import { sql } from "drizzle-orm";
 import {
   buildKeysetPredicate,
   buildOrderByClause,
+  keysetOrdering,
 } from "../../../db/repositories/entity-records.repository.js";
 import { entityRecords } from "../../../db/schema/entity-records.table.js";
 
@@ -201,6 +202,88 @@ describe("custom tiebreaker (#649)", () => {
     );
     expect(out).toMatch(
       /\("entity_records"\."created", "entity_records"\."id"\) > /
+    );
+  });
+});
+
+/**
+ * #649 (Q4): the last page is served by walking the mirror ordering. With
+ * NULLs last in both directions, flipping the direction alone isn't a mirror
+ * (`1,2,3,∅` flipped is `3,2,1,∅`), so the reverse walk also moves NULLs first.
+ */
+describe("reverse ordering (#649)", () => {
+  const city = sql.raw(`w."c_city"`);
+  const recordId = sql.raw(`w."entity_record_id"`);
+
+  it("keysetOrdering mirrors the direction and the NULL placement", () => {
+    expect(keysetOrdering("asc", false)).toEqual({
+      direction: "asc",
+      nulls: "last",
+    });
+    expect(keysetOrdering("asc", true)).toEqual({
+      direction: "desc",
+      nulls: "first",
+    });
+    expect(keysetOrdering("desc", true)).toEqual({
+      direction: "asc",
+      nulls: "first",
+    });
+  });
+
+  it("emits NULLS FIRST for a nullable column only", () => {
+    expect(
+      render(
+        buildOrderByClause({
+          column: city,
+          nullable: true,
+          direction: "desc",
+          nulls: "first",
+          tiebreaker: recordId,
+        })
+      )
+    ).toBe(` ORDER BY w."c_city" DESC NULLS FIRST, w."entity_record_id" DESC`);
+    expect(
+      render(
+        buildOrderByClause({
+          column: entityRecords.created,
+          direction: "desc",
+          nulls: "first",
+        })
+      )
+    ).not.toMatch(/NULLS/);
+  });
+
+  it("seeks past a value anchor with the NULL region already behind", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: city,
+        value: "Boston",
+        id: "rec-1",
+        direction: "desc",
+        nullable: true,
+        nulls: "first",
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(
+      `(w."c_city" < $1 OR (w."c_city" = $2 AND w."entity_record_id" < $3))`
+    );
+  });
+
+  it("seeks from a NULL anchor through the rest of the NULLs, then every value", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: city,
+        value: null,
+        id: "rec-1",
+        direction: "desc",
+        nullable: true,
+        nulls: "first",
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(
+      `((w."c_city" IS NULL AND w."entity_record_id" < $1) OR w."c_city" IS NOT NULL)`
     );
   });
 });

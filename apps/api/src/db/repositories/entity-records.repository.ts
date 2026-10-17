@@ -755,6 +755,7 @@ export class EntityRecordsRepository extends Repository<
           buildKeysetPredicate({
             ...opts.keyset,
             direction: opts.orderBy?.direction,
+            nulls: opts.orderBy?.nulls,
           })
         )
       : filters;
@@ -992,6 +993,9 @@ export function buildKeysetPredicate(opts: {
   /** The unique tiebreaker (#649). Defaults to `entity_records.id`; the
    *  curated-view records table seeks on the wide table's own key. */
   tiebreaker?: Column | SQL;
+  /** Where the NULL region sits (#649). `"first"` only on a reverse walk;
+   *  see {@link keysetOrdering}. */
+  nulls?: "first" | "last";
 }): SQL {
   const {
     column: col,
@@ -1000,6 +1004,7 @@ export function buildKeysetPredicate(opts: {
     direction = "asc",
     nullable,
     tiebreaker = entityRecords.id,
+    nulls = "last",
   } = opts;
   const ahead = direction === "desc" ? sql`<` : sql`>`;
   const tiebreak = sql`${tiebreaker} ${ahead} ${id}`;
@@ -1008,6 +1013,16 @@ export function buildKeysetPredicate(opts: {
     // NULL never reaches here, so the row-value form is safe and lets the
     // planner drive the composite index directly.
     return sql`(${col}, ${tiebreaker}) ${ahead} (${value}, ${id})`;
+  }
+
+  if (nulls === "first") {
+    // The reverse walk (#649): NULLs come first. From a NULL anchor, the rest
+    // of the NULL region and then every value; from a value, the NULL region
+    // is already behind.
+    if (value === null) {
+      return sql`((${col} IS NULL AND ${tiebreak}) OR ${col} IS NOT NULL)`;
+    }
+    return sql`(${col} ${ahead} ${value} OR (${col} = ${value} AND ${tiebreak}))`;
   }
 
   if (value === null) {
@@ -1024,11 +1039,14 @@ export function buildOrderByClause(opts: {
   nullable?: boolean;
   /** The unique tiebreaker (#649). Defaults to `entity_records.id`. */
   tiebreaker?: Column | SQL;
+  /** Where NULLs sort on a nullable column (#649). Default `"last"`. */
+  nulls?: "first" | "last";
 }): SQL {
   const {
     column: col,
     direction = "asc",
     tiebreaker = entityRecords.id,
+    nulls: nullsAt = "last",
   } = opts;
   const dir = direction === "desc" ? sql`DESC` : sql`ASC`;
 
@@ -1040,11 +1058,30 @@ export function buildOrderByClause(opts: {
 
   const nullable =
     col instanceof Column ? !col.notNull : (opts.nullable ?? true);
-  const nulls = nullable ? sql` NULLS LAST` : sql``;
+  const nulls = !nullable
+    ? sql``
+    : nullsAt === "first"
+      ? sql` NULLS FIRST`
+      : sql` NULLS LAST`;
 
   // The tiebreaker takes the same direction as the sort key: mismatched
   // directions cannot be served by a single index scan.
   return sql` ORDER BY ${col} ${dir}${nulls}, ${tiebreaker} ${dir}`;
+}
+
+/**
+ * The ordering for a keyset walk (#649). A forward walk is the requested
+ * direction with NULLs last. A reverse walk (the last page, and Prev from it)
+ * is its exact mirror: the flipped direction with NULLs **first**. Flipping
+ * the direction alone keeps NULLs last, which isn't a mirror, so the last
+ * page of a nullable sort showed the highest values instead of the NULLs.
+ */
+export function keysetOrdering(
+  sortOrder: "asc" | "desc",
+  reverse: boolean
+): { direction: "asc" | "desc"; nulls: "first" | "last" } {
+  if (!reverse) return { direction: sortOrder, nulls: "last" };
+  return { direction: sortOrder === "asc" ? "desc" : "asc", nulls: "first" };
 }
 
 /** Singleton instance. */

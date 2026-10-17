@@ -721,6 +721,16 @@ const options: swaggerJsdoc.Options = {
             "different `sortBy`/`sortOrder`, or one that fails to decode, is ignored " +
             "and the first page is served — it is a stale address, not an error.",
         },
+        reverseParam: {
+          in: "query",
+          name: "reverse",
+          schema: { type: "string", enum: ["true", "false"] },
+          description:
+            "Walk the exact mirror of the requested ordering (#649): the flipped " +
+            "direction with NULLs first. The keyset last page is page one of this " +
+            "walk. Flipping `sortOrder` instead isn't a mirror, because NULLs sort " +
+            "last in both directions. A cursor minted on the other walk is ignored.",
+        },
         sortByParam: {
           in: "query",
           name: "sortBy",

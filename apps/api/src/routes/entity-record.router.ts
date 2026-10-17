@@ -53,7 +53,10 @@ import { NormalizationService } from "../services/normalization.service.js";
 import { RecordWriteService } from "../services/record-write.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
-import type { EntityRecordHydratedListItem } from "../db/repositories/entity-records.repository.js";
+import {
+  keysetOrdering,
+  type EntityRecordHydratedListItem,
+} from "../db/repositories/entity-records.repository.js";
 import {
   buildJsonbObjectExpr,
   wideTableStatementCache,
@@ -170,6 +173,7 @@ async function resolveEntityOrThrow(
  *       - $ref: '#/components/parameters/limitParam'
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/cursorParam'
+ *       - $ref: '#/components/parameters/reverseParam'
  *       - $ref: '#/components/parameters/sortByParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
  *       - in: query
@@ -243,6 +247,7 @@ entityRecordRouter.get(
         filters,
         isValid,
         cursor,
+        reverse = false,
       } = query.data;
 
       // Resolve column definitions and the wide-table statement cache up
@@ -342,7 +347,9 @@ entityRecordRouter.get(
       const keysetAnchor =
         decodedCursor &&
         decodedCursor.sortBy === effectiveSortBy &&
-        decodedCursor.sortOrder === sortOrder
+        decodedCursor.sortOrder === sortOrder &&
+        // #649: a forward cursor is meaningless on the mirror walk.
+        (decodedCursor.reverse ?? false) === reverse
           ? {
               column: orderByExpr,
               value: decodedCursor.value,
@@ -397,7 +404,12 @@ entityRecordRouter.get(
         DbService.repository.entityRecords.findHydratedMany(connectorEntityId, {
           where,
           offset,
-          orderBy: { column: orderByExpr, direction: sortOrder },
+          // #649: a reverse walk (the keyset last page) orders by the exact
+          // mirror, NULLs first, so its page one is the forward walk's tail.
+          orderBy: {
+            column: orderByExpr,
+            ...keysetOrdering(sortOrder, reverse),
+          },
           normalizedDataProjection,
           // #433: the table renders from `normalizedData`; shipping the raw
           // payload cost ~2KB/row and spilled the join to disk.
@@ -446,6 +458,7 @@ entityRecordRouter.get(
           ? encodeCursor({
               sortBy: effectiveSortBy,
               sortOrder,
+              ...(reverse ? { reverse: true } : {}),
               value: anchorValue.value,
               id: lastRow.id,
             })

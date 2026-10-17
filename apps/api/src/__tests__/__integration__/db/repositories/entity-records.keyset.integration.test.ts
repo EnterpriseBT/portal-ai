@@ -29,6 +29,7 @@ import postgres from "postgres";
 
 import {
   EntityRecordsRepository,
+  keysetOrdering,
   type EntityRecordHydratedListItem,
 } from "../../../../db/repositories/entity-records.repository.js";
 import type { DbClient } from "../../../../db/repositories/base.repository.js";
@@ -247,6 +248,8 @@ describe("EntityRecords keyset seeking (#433)", () => {
       | typeof schema.entityRecords.created;
     nullable: boolean;
     direction: "asc" | "desc";
+    /** #649: "first" walks the mirror ordering (the last-page walk). */
+    nulls?: "first" | "last";
     pageSize: number;
     readValue: (row: Record<string, unknown>) => string | number | null;
   }): Promise<string[]> {
@@ -258,7 +261,11 @@ describe("EntityRecords keyset seeking (#433)", () => {
         entityId,
         {
           limit: opts.pageSize,
-          orderBy: { column: opts.column, direction: opts.direction },
+          orderBy: {
+            column: opts.column,
+            direction: opts.direction,
+            nulls: opts.nulls,
+          },
           includeData: false,
           keyset: anchor
             ? {
@@ -422,4 +429,25 @@ describe("EntityRecords keyset seeking (#433)", () => {
 
     expect(byKeyset).toEqual(byOffset);
   });
+
+  // ── Reverse walk (#649, Q4) ──────────────────────────────────────
+
+  it.each(["asc", "desc"] as const)(
+    "a reverse walk over a nullable column is the %s walk exactly reversed",
+    async (sortOrder) => {
+      // The last page is served by walking the mirror ordering. Flipping the
+      // direction alone would keep NULLs last and show the wrong rows.
+      const column = await cityColumn();
+      const forward = await drainByOffset({ column, direction: sortOrder });
+      const reverse = await drain({
+        column,
+        nullable: true,
+        ...keysetOrdering(sortOrder, true),
+        pageSize: 3,
+        readValue: readCity,
+      });
+
+      expect(reverse).toEqual([...forward].reverse());
+    }
+  );
 });
