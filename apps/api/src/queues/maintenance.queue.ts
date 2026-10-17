@@ -38,6 +38,11 @@ export const AUDIT_LOG_RETENTION_PURGE_JOB = "audit-log-retention-purge";
 export const DISSOLVE_SCOPE_RETENTION_PURGE_JOB =
   "dissolve-scope-retention-purge";
 
+/** Job name AND scheduler id for the hourly wide-table trigram-index sweep
+ *  (#649). Same one-const contract as the purges. */
+export const WIDE_TABLE_SEARCH_INDEX_SWEEP_JOB =
+  "wide-table-search-index-sweep";
+
 let _maintenanceQueue: Queue | null = null;
 
 /**
@@ -116,5 +121,13 @@ export const registerMaintenanceSchedulers = async (): Promise<void> => {
     // for the worker's single slot.
     { pattern: "0 6 * * *" },
     { name: DISSOLVE_SCOPE_RETENTION_PURGE_JOB }
+  );
+  await getMaintenanceQueue().upsertJobScheduler(
+    WIDE_TABLE_SEARCH_INDEX_SWEEP_JOB,
+    // Hourly at :45, clear of the purges' :00/:30 starts. Hourly rather than
+    // daily so existing tables gain their indexes within an hour of a deploy;
+    // a converged run is two catalog reads.
+    { pattern: "45 * * * *" },
+    { name: WIDE_TABLE_SEARCH_INDEX_SWEEP_JOB }
   );
 };

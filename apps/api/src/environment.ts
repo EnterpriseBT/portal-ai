@@ -242,6 +242,14 @@ export const environment = {
     process.env.DISSOLVE_SCOPE_TTL_MS || String(30 * 24 * 60 * 60 * 1000),
     10
   ),
+  // Trigram indexes the hourly wide-table search-index sweep may build (or
+  // rebuild) per run (#649). Bounds how long one run holds the maintenance
+  // worker; the rest wait for the next hour. 0 builds nothing (indexes on
+  // retired columns are still dropped).
+  WIDE_TABLE_SEARCH_INDEX_SWEEP_MAX_BUILDS: parseInt(
+    process.env.WIDE_TABLE_SEARCH_INDEX_SWEEP_MAX_BUILDS || "25",
+    10
+  ),
   // Stranded-job reconciliation (#391). A non-terminal job whose BullMQ
   // entry is gone AND whose last write is older than the threshold is
   // presumed dead and marked failed by the sweep; the sweep runs at boot
