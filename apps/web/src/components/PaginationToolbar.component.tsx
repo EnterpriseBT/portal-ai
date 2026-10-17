@@ -675,6 +675,8 @@ export interface PaginationToolbarProps {
   advancedFilterConditionCount?: number;
   /** Column definitions for the advanced filter builder. */
   columnDefinitions?: ResolvedColumn[];
+  /** The search box's placeholder (#649). Default "Search...". */
+  searchPlaceholder?: string;
 }
 
 export const PaginationToolbar = React.forwardRef<
@@ -685,6 +687,7 @@ export const PaginationToolbar = React.forwardRef<
     {
       search,
       onSearchChange,
+      searchPlaceholder = "Search...",
       filterConfigs,
       filters,
       onFilterValueChange,
@@ -743,7 +746,7 @@ export const PaginationToolbar = React.forwardRef<
           <TextField
             autoFocus
             size="small"
-            placeholder="Search..."
+            placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             slotProps={{

@@ -946,6 +946,17 @@ describe("PaginationToolbar", () => {
       );
       expect(container.firstChild).toMatchSnapshot();
     });
+
+    it("#649: shows a custom search placeholder when given one", () => {
+      render(
+        <PaginationToolbar
+          {...makeProps({ searchPlaceholder: "Search text columns" })}
+        />
+      );
+      expect(
+        screen.getByPlaceholderText("Search text columns")
+      ).toBeInTheDocument();
+    });
   });
 });
 
