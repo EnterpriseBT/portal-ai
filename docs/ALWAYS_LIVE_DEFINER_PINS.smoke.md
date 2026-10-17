@@ -114,6 +114,11 @@ To switch identity: `npm run --workspace @portalai/e2e e2e:use <owner|admin|memb
   - Expected: both get `200` with **byte-identical** bodies (`cmp`). They hold 4 features with `c_population_2000` 626932 / 33871648 / 3421399 / 5894121 (AK, CA, OR, WA). There are **no Mountain states**, though the admin can read them.
 - [ ] As **Admin**, open "Smoke 640 map". It shows the same 5 Pacific states, not all 51. **— manual** (visual comparison)
 - [ ] The cities map's tile ETag changes on its own within about 3 minutes, so it isn't stuck on stale data. Compare the `ETag` header from two fetches more than 3 minutes apart. **— backend**
+- [ ] As **Admin**, open "Smoke 640 cities map". The points render, and the network shows `GET …/data` → `200` with payload `{"kind":"tiles"}`: the query isn't run for a tiled map, so no `portal-sql/handle` is created. Then the tile requests follow.
+- [ ] A pinned map's zoomed-out shapes stay current. **— backend**
+  - Read when they were computed: `SELECT zoom_band, max(created) FROM map_dissolve_geometries WHERE portal_result_id = '<Smoke 640 map id>' GROUP BY 1;`
+  - More than 3 minutes later, fetch a low-zoom tile as member (`…/tiles/pin/<pinId>/2/0/1.mvt`). It answers `200` straight away with the stored shapes.
+  - Within a few seconds a new `dissolve_precompute` job for the pin completes (`SELECT status FROM jobs WHERE type='dissolve_precompute' ORDER BY created DESC LIMIT 1;`), and re-running the first query shows a later `created`.
 
 ## §5 — Removing the definer empties the pin (slices 1, 3, 5)
 
