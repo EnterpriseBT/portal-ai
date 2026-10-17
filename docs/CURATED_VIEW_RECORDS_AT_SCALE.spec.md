@@ -14,7 +14,7 @@ This spec pins the contract that gives `GET /api/curated-views/:id/records` keys
 6. **Index lifecycle** (D5). The reconciler builds a `_trgm` index at column add, inside its transaction, as GiST already does. A repeatable maintenance sweep **converges** each table: it builds missing indexes `CONCURRENTLY`, rebuilds `INVALID` ones, and drops indexes on retired columns. The reconciler has no drop path, because columns are only ever retired (`applyRetires` marks `retired_at`; nothing drops a column).
 7. **Total from `EntityRecordCountCache`** (D6), with the caller's view scope in the fingerprint.
 8. **`pg_trgm` via an idempotent migration** (Q2). It's a trusted extension, and the Helm README gains a line beside the PostGIS one. Creatability is verified on app-dev during smoke.
-9. **Last-page inversion** (Q4) uses the shared helpers unchanged. A walk-to-last-page test over a column with NULLs pins the behavior.
+9. **Last page is an exact server-side reverse** (Q4, resolved during slice 2). NULLs sort last in both directions (#433), so flipping `sortOrder` is not the reverse of a nullable sort: `1,2,3,∅` flipped is `3,2,1,∅`, not `∅,3,2,1`. The entity table already shows the wrong last page today. The fix is a `reverse=true` query param. The client keeps its `sortOrder` and sends `reverse` while on the inverted walk, and the server runs the mirror ordering (`<flipped dir> NULLS FIRST, <tiebreaker> <flipped dir>`) with the matching seek. It's shared, so both tables get it. Empty cells stay at the bottom of every displayed page order.
 
 ## Scope
 
@@ -60,6 +60,21 @@ export function buildOrderByClause(opts: {
 
 The behavior is unchanged when `tiebreaker` is omitted, so entity-records callers stay byte-identical. The "already ordering by the tiebreaker" short-circuit compares `col === tiebreaker`, by identity, in place of the hard-coded `entityRecords.id`.
 
+### Reverse ordering (Q4) — shared
+
+- **`packages/core/src/contracts/pagination.contract.ts`:**
+  - `PaginationRequestQuerySchema` gains `reverse: z.enum(["true","false"]).optional().transform(v => v === "true")`. It's keyset-only and ignored without a cursor-capable endpoint. Additive.
+  - `KeysetCursorSchema` gains `reverse: z.boolean().optional()`, absent ≡ `false`, so old cursors still decode.
+- **`entity-records.repository.ts`:**
+  - Both helpers take `nulls?: "last" | "first"` (default `"last"`). `buildOrderByClause` emits `NULLS FIRST` for a nullable column when `nulls === "first"`.
+  - `buildKeysetPredicate`'s nullable branch under `"first"`:
+    - anchor `null` → `((col IS NULL AND <tiebreak>) OR col IS NOT NULL)`
+    - anchor `v` → `(col <ahead> v OR (col = v AND <tiebreak>))`
+  - A new `keysetOrdering(sortOrder, reverse): { direction, nulls }` returns `{ flip(sortOrder), "first" }` under reverse, else `{ sortOrder, "last" }`.
+  - `ListOptions.orderBy` (`base.repository.ts:74`) gains `nulls?`, which `findHydratedMany` forwards to the predicate.
+- **`entity-record.router.ts`:** reads `reverse`, orders via `keysetOrdering`, accepts a cursor only when `(cursor.reverse ?? false) === reverse` (besides `sortBy`/`sortOrder`), and mints `reverse` into `nextCursor`.
+- **`PaginationToolbar.component.tsx`:** the inverted walk sends the unchanged `sortOrder` plus `reverse: "true"`, where it used to flip `sortOrder`. `transformPage` still reverses rows for display.
+
 ### View records query — `apps/api/src/services/portal-sql.service.ts:568`
 
 ```ts
@@ -92,7 +107,7 @@ async queryCuratedViewRecords(
 
 An unsortable type still throws `400 CURATED_VIEW_INVALID_SORT`.
 
-**Cursor handling** mirrors `entity-record.router.ts:341-352`:
+**Cursor handling** mirrors `entity-record.router.ts:341-352`, including `reverse` (ordered via `keysetOrdering`):
 - `decodeCursor(cursor)`. The anchor is used only when its `sortBy`/`sortOrder` equal the effective ones. Otherwise the request serves the first page; it is never an error.
 - With an anchor, the query ANDs `buildKeysetPredicate(...)` into the WHERE and runs no `OFFSET`. Without one, `OFFSET offset` stays.
 - The query fetches `limit + 1` rows.
@@ -231,6 +246,25 @@ Run per package: `npm run test:unit -- --testPathPattern <file>` and `npm run te
   - dispatches the sweep job name
   - **(1)**
 
+### Reverse ordering (Q4)
+
+- **`__tests__/db/repositories/entity-records-order-by.test.ts`** (extend):
+  - `NULLS FIRST` under `nulls: "first"` on a nullable column only
+  - the nulls-first predicate for a value anchor and for a NULL anchor
+  - `keysetOrdering` both ways
+  - **(4)**
+- **`packages/core` `pagination.contract` test** (extend):
+  - `reverse` parses `"true"`/absent
+  - a cursor without `reverse` still decodes
+  - **(2)**
+- **`__integration__/db/repositories/entity-records.keyset.integration.test.ts`** (extend):
+  - a reverse walk over a nullable wide column equals the forward walk reversed
+  - a forward cursor is ignored under `reverse`
+  - **(2)**
+- **`apps/web/src/__tests__/PaginationToolbar.test.tsx`** (extend):
+  - Last sends the original `sortOrder` with `reverse: "true"`
+  - **(1)**
+
 ### `apps/api` integration
 
 - **`__integration__/routes/curated-view.router.integration.test.ts`** (extend):
@@ -240,7 +274,7 @@ Run per package: `npm run test:unit -- --testPathPattern <file>` and `npm run te
   - `nextCursor` is null on the last page
   - `_sort_value` is never in `records`
   - DESC column sort with NULLs: NULLs last, ties broken DESC
-  - walking to the last page by inverted sort over a column with NULLs matches the forward walk's tail (Q4)
+  - a `reverse=true` walk over a column with NULLs is exactly the forward walk reversed (Q4)
   - search matches a text column, never a number/date cell, never a hidden column
   - search on a view with no text columns returns 0 rows and `total: 0`
   - the cursor value is bound, not inlined (a `'` in a string sort value round-trips)

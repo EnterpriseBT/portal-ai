@@ -61,6 +61,32 @@ Close-out comes after slice 6. It isn't a slice, because it adds no tests: the m
 
 ---
 
+## Slice 1b — Exact reverse for the last page (Q4, both tables)
+
+Found while writing slice 2's tests. NULLs sort last in both directions, so the toolbar's "flip `sortOrder`" isn't the reverse of a nullable sort, and the entity table's last page is already wrong for wide-column sorts. Decided: a server-side `reverse` flag (spec Key decision 9, "Reverse ordering").
+
+**Files**
+
+- Edit: `packages/core/src/contracts/pagination.contract.ts`: `reverse` on the request schema and the cursor.
+- Edit:
+  - `apps/api/src/db/repositories/entity-records.repository.ts`: `nulls` on both helpers, plus `keysetOrdering`
+  - `apps/api/src/db/repositories/base.repository.ts`: `orderBy.nulls`
+  - `apps/api/src/routes/entity-record.router.ts`: read `reverse`, match it, mint it
+- Edit: `apps/web/src/components/PaginationToolbar.component.tsx`: send `reverse` instead of flipping `sortOrder`.
+- Tests: `entity-records-order-by.test.ts`, the core pagination contract test, `entity-records.keyset.integration.test.ts`, `PaginationToolbar.test.tsx`.
+
+**Steps**
+
+1. **Tests (spec "Reverse ordering", 9 cases).** Run; fail.
+2. **Implement.** Green. Re-run the full keyset integration suites and `EntityDetail` tests.
+3. Lint + type-check, then a root build (core contract changed).
+
+**Done when:** the 9 cases pass and the entity table's last page under a nullable sort shows the true tail.
+
+**Risk:** a cursor minted by an old client carries no `reverse`, which decodes as forward. Correct.
+
+---
+
 ## Slice 2 — Keyset paging + cached total on the view endpoint
 
 `queryCuratedViewRecords` takes `cursor`, fetches `limit+1`, mints `nextCursor`, and reads `total` through `EntityRecordCountCache` with `viewScope`. The route passes `cursor` through and returns `nextCursor`. Search is unchanged in this slice.
@@ -95,7 +121,7 @@ Close-out comes after slice 6. It isn't a slice, because it adds no tests: the m
    - The last page carries `nextCursor: null`.
    - No `_sort_value` appears in `records`.
    - A DESC sort with NULLs puts NULLs last and breaks ties DESC.
-   - The inverted last-page walk equals the forward tail.
+   - A `reverse=true` walk equals the forward walk reversed.
    - A `'` in a string sort value round-trips.
    - Callers with different field grants get independent totals.
    - A record write refreshes the total.
@@ -245,6 +271,7 @@ Close-out comes after slice 6. It isn't a slice, because it adds no tests: the m
 | # | Lands | Gate |
 |---|---|---|
 | 1 | `tiebreaker` on the keyset helpers | 5 unit + existing keyset suites |
+| 1b | `reverse` ordering (server + toolbar), both tables | 9 cases + keyset suites |
 | 2 | View keyset + `nextCursor` + cached total | 7 unit + 10 integration |
 | 3 | `pg_trgm` migration, `trgmIndexName`, index at add | 6 cases + `lint:migrations` |
 | 4 | Text-only search, cast-free string filters | 7 cases + existing filter suites |
