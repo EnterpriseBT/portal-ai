@@ -441,6 +441,30 @@ describe("GET /api/portal-results/:id/data (#640)", () => {
     await request(app).get(`/api/portal-sql/handle/${handle}`).expect(404);
   });
 
+  it("closes an open handle once the definer loses the view its query reads", async () => {
+    await insertContacts(
+      Array.from({ length: 150 }, (_, i) => [`bulk-${i}@x.co`, 60] as const)
+    );
+    const pinId = await pin();
+    const res = await data(pinId).expect(200);
+    const handle = res.body.payload.queryHandle as string;
+    await request(app)
+      .get(`/api/portal-sql/handle/${handle}`)
+      .query({ offset: 0, limit: 10 })
+      .expect(200);
+
+    // The definer's view grant goes; the pin's share with the sharee stays.
+    await db
+      .update(schema.permissionGrants)
+      .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+      .where(eq(schema.permissionGrants.principalId, definerId));
+    const page = await request(app)
+      .get(`/api/portal-sql/handle/${handle}`)
+      .query({ offset: 10, limit: 10 })
+      .expect(422);
+    expect(page.body.code).toBe(ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE);
+  });
+
   it("answers 429 past the shared per-org refresh window", async () => {
     const { incrementRateWindow } =
       await import("../../../utils/rate-limit.util.js");

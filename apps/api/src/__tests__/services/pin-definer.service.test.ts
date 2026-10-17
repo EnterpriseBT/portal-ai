@@ -31,8 +31,16 @@ jest.unstable_mockModule("../../services/permission.service.js", () => ({
   },
 }));
 
+const mockExplain = jest.fn<(params: unknown) => Promise<unknown>>();
+jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
+  PortalSqlService: { explainSqlQuery: mockExplain },
+}));
+
 const { PinDefinerService, DefinerAccessLostError } =
   await import("../../services/pin-definer.service.js");
+const { ApiError } = await import("../../services/http.service.js");
+const { STALE_REFERENCE } =
+  await import("../../services/portal-sql-validation.util.js");
 
 function pin(
   over: Partial<{
@@ -135,8 +143,26 @@ describe("PinDefinerService.describe (#640)", () => {
 describe("PinDefinerService.authorizeHandleRead (#640)", () => {
   const ctx = { userId: "sharee", organizationId: "org-1", roles: [] };
   const handle = { portalResultId: "pin-1", userId: "definer-1" };
-  const row = { ...pin(), createdBy: "definer-1" };
+  const PIPELINE = {
+    sql: 'SELECT c_email FROM "contacts"',
+    stationId: "st-1",
+    organizationId: "org-1",
+  };
+  const row = {
+    ...pin(),
+    createdBy: "definer-1",
+    content: { columns: ["c_email"], pipeline: PIPELINE },
+  };
   const canRead = (action: string) => action === "resource.read";
+  const staleView = async () => {
+    throw new ApiError(400, ApiCode.PORTAL_SQL_FORBIDDEN, "unknown entity", {
+      reason: STALE_REFERENCE,
+    });
+  };
+
+  beforeEach(() => {
+    mockExplain.mockResolvedValue({ totalCost: 1, estimatedRows: 1 });
+  });
 
   it("lets a reader who isn't the definer page the definer's handle", async () => {
     mockFindPin.mockResolvedValue(row);
@@ -195,5 +221,62 @@ describe("PinDefinerService.authorizeHandleRead (#640)", () => {
         ctx
       )
     ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it("plans the pin's query as the definer, in the pin's org, on every read", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockImplementation(canRead);
+    mockMembership.mockResolvedValue({ id: "ou-1" });
+    await PinDefinerService.authorizeHandleRead(handle, ctx);
+    expect(mockExplain).toHaveBeenCalledWith({
+      sql: PIPELINE.sql,
+      stationId: "st-1",
+      organizationId: "org-1",
+      userId: "definer-1",
+    });
+  });
+
+  it("closes an open handle once the definer loses the view its query reads", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockMembership.mockResolvedValue({ id: "ou-1" });
+    mockExplain.mockImplementation(staleView);
+
+    mockCan.mockImplementation(canRead);
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({
+      status: 422,
+      code: ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+    });
+
+    mockCan.mockReturnValue(true);
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({
+      status: 422,
+      code: ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST,
+    });
+  });
+
+  it("any other planning failure propagates as itself", async () => {
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockImplementation(canRead);
+    mockMembership.mockResolvedValue({ id: "ou-1" });
+    mockExplain.mockRejectedValue(
+      new ApiError(503, ApiCode.PORTAL_SQL_UNAVAILABLE, "no reader role")
+    );
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("answers expired for a pin with no stored query", async () => {
+    mockFindPin.mockResolvedValue({ ...row, content: { columns: ["c"] } });
+    mockCan.mockImplementation(canRead);
+    mockMembership.mockResolvedValue({ id: "ou-1" });
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({ status: 404, code: ApiCode.READ_HANDLE_EXPIRED });
+    expect(mockExplain).not.toHaveBeenCalled();
   });
 });

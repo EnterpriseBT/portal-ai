@@ -12,6 +12,8 @@
 
 import { inArray } from "drizzle-orm";
 
+import { VizPipelineSchema } from "@portalai/core/contracts";
+
 import { users } from "../db/schema/users.table.js";
 import type { PortalResultSelect } from "../db/schema/zod.js";
 import { DbService } from "./db.service.js";
@@ -21,6 +23,8 @@ import {
   type PermissionContext,
 } from "./permission.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { PortalSqlService } from "./portal-sql.service.js";
+import { STALE_REFERENCE } from "./portal-sql-validation.util.js";
 
 type DefinerRow = Pick<
   PortalResultSelect,
@@ -105,12 +109,16 @@ export class PinDefinerService {
    * Authorize a read of a pin-owned query handle. The caller must be able to
    * read the pin in its own org (else the same 404 as an expired handle), and
    * the pin must still execute as the user the handle was produced as, who must
-   * still be an active member. Runs on every read, so unsharing or offboarding
+   * still be an active member, and the pin's query must still plan as them:
+   * a page is served from rows cached when the handle was made, so a view the
+   * definer has since lost would otherwise stay readable until the handle
+   * expires. Runs on every read, so unsharing, offboarding or a revoked view
    * closes a handle that is already open.
    */
   static async authorizeHandleRead(
     handle: { portalResultId: string; userId: string | undefined },
-    ctx: PermissionContext
+    ctx: PermissionContext,
+    deps: { explainSqlQuery?: typeof PortalSqlService.explainSqlQuery } = {}
   ): Promise<void> {
     const notFound = () =>
       new ApiError(
@@ -137,10 +145,32 @@ export class PinDefinerService {
     if (row.definerPrincipalId !== handle.userId) {
       throw PinDefinerService.unavailableError(viewer);
     }
+    const pipeline = VizPipelineSchema.safeParse(
+      (row.content as { pipeline?: unknown } | null)?.pipeline
+    );
+    if (!pipeline.success) throw notFound();
+    const explain =
+      deps.explainSqlQuery ??
+      PortalSqlService.explainSqlQuery.bind(PortalSqlService);
     try {
-      await PinDefinerService.assertDefinerActive(row);
+      const { userId: definerId } =
+        await PinDefinerService.assertDefinerActive(row);
+      await explain({
+        sql: pipeline.data.sql,
+        stationId: pipeline.data.stationId,
+        organizationId: row.organizationId,
+        userId: definerId,
+      });
     } catch (err) {
       if (err instanceof DefinerAccessLostError) {
+        throw PinDefinerService.unavailableError(viewer);
+      }
+      // The query names a view or column the definer no longer exposes.
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
+        err.details?.reason === STALE_REFERENCE
+      ) {
         throw PinDefinerService.unavailableError(viewer);
       }
       throw err;
