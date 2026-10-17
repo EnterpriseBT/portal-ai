@@ -18,6 +18,10 @@ for evaluation and **disable-able to managed endpoints** for production.
   `CREATE EXTENSION postgis` (migration `0076`). Managed PostGIS (e.g. RDS with
   the `postgis` extension enabled, or a superuser-run `CREATE EXTENSION`) is
   required — a plain Postgres without PostGIS fails migration.
+  It must also be able to run `CREATE EXTENSION pg_trgm` (migration `0126`,
+  #649; trigram indexes for curated-view search). pg_trgm is a trusted contrib
+  extension, so the database owner can create it on any Postgres 13+ that ships
+  contrib (RDS does); otherwise a superuser pre-creates it.
 
 ## Install
 

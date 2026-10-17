@@ -65,7 +65,7 @@ Extend `Repository<TTable, TSelect, TInsert>`. Base provides: `findById`, `findM
 
 ## Paginated lists at scale (#433)
 
-`created` is every list's default `sortBy`. A table that can grow needs `(<scope>, created, id) WHERE deleted IS NULL` — scope first, then the sort key, then `id`. Every paginated `ORDER BY` ends in a unique tiebreaker: ties otherwise come back in an undefined order, and paginating over that **repeats and skips rows**. Emit `NULLS LAST` only for nullable sort columns (a btree cannot serve `DESC NULLS LAST`). Indexing does not fix deep `OFFSET` — the planner abandons the index; a big list pages by keyset cursor (`usePagination`'s `mode: "keyset"`), while `offset` stays valid for small ones.
+`created` is every list's default `sortBy`. A table that can grow needs `(<scope>, created, id) WHERE deleted IS NULL` — scope first, then the sort key, then `id`. Every paginated `ORDER BY` ends in a unique tiebreaker: ties otherwise come back in an undefined order, and paginating over that **repeats and skips rows**. Emit `NULLS LAST` only for nullable sort columns (a btree cannot serve `DESC NULLS LAST`). Indexing does not fix deep `OFFSET` — the planner abandons the index; a big list pages by keyset cursor (`usePagination`'s `mode: "keyset"`), while `offset` stays valid for small ones. A keyset endpoint honours `reverse=true` (the last page walks the mirror ordering, NULLs first; order via `keysetOrdering`).
 
 ## Soft-delete retention (#442)
 
