@@ -539,6 +539,15 @@ export class SeatService {
         "user",
         target.userId
       );
+      // #640: drop policies attached to the member directly. `loadSet` reads a
+      // user principal's attachments without checking membership, so they
+      // would otherwise keep granting after removal (and a pin they define
+      // would keep resolving their views).
+      await DbService.repository.policyAttachments.softDeleteUserInOrganization(
+        orgId,
+        target.userId,
+        caller.userId
+      );
       // #637: drop the member's group memberships, so a since-removed user never
       // lingers in a group's roster (which would surface a non-member id and
       // block that group's next edit at assertMembers).

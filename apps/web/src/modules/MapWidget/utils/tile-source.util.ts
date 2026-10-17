@@ -29,6 +29,9 @@ export interface TileStatus {
   /** The caller's per-user tile rate limit is spent (429 API_RATE_LIMITED,
    *  #705) — tiles resume after the `Retry-After` pause; not a failure. */
   rateLimited: boolean;
+  /** #640: a pin's definer can no longer reach its data (422), so every tile
+   *  is empty by design — not a failure to retry. */
+  unavailable: boolean;
 }
 
 export const EMPTY_TILE_STATUS: TileStatus = {
@@ -39,6 +42,7 @@ export const EMPTY_TILE_STATUS: TileStatus = {
   failed: false,
   busy: false,
   rateLimited: false,
+  unavailable: false,
 };
 
 /**
@@ -66,6 +70,8 @@ export function readTileStatus(
   // #705: our limiter's 429 always carries Retry-After. One without it is a
   // proxy or WAF throttle — a failure to report, not a pause to wait out.
   const rateLimited = status === 429 && headers.get("Retry-After") != null;
+  // #640: the tile route answers 422 only for a pin whose data is unavailable.
+  const unavailable = status === 422;
   return {
     simplified: headers.get("X-Portal-Tile-Simplified") != null,
     truncated: headers.get("X-Portal-Tile-Truncated") != null,
@@ -74,9 +80,15 @@ export function readTileStatus(
     // A 504 is the timeout case above; 204/304 are legitimately empty; 503 and
     // our limiter's 429 are timed pauses (#698, #705). Anything else >= 400
     // is a genuine failure the widget should report (#449).
-    failed: status >= 400 && status !== 504 && status !== 503 && !rateLimited,
+    failed:
+      status >= 400 &&
+      status !== 504 &&
+      status !== 503 &&
+      !rateLimited &&
+      !unavailable,
     busy: status === 503,
     rateLimited,
+    unavailable,
   };
 }
 

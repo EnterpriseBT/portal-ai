@@ -1,10 +1,15 @@
 /**
- * Pin-time materialization (#312): a pin persists a **self-contained**
- * snapshot, never a bare handle envelope — the 24h Redis handle TTL must not
- * outlive a pin. The pin route validates the source block against its
- * per-type contract (`PINNED_CONTENT_SCHEMAS`), hydrates handle-backed
- * content up to `PIN_SNAPSHOT_ROW_CAP` rows, and derives the durable
- * `pipeline` that makes the pin refreshable (#312 slice 3).
+ * Pin-time materialization (#312, recast by #640): a data pin stores a
+ * **recipe** — the query that produces its data and how to draw it — never the
+ * rows. Its data executes live as the pin's definer on every view
+ * (`PortalVizRefreshService.executePin`), so a pin can't hold rows its definer
+ * no longer sees, and it empties when they lose access.
+ *
+ * The pin route validates the source block against its per-type contract
+ * (`PINNED_CONTENT_SCHEMAS`). A data block must carry a re-executable query
+ * (its own `pipeline`, its `sql`, or the `sql` its query handle retains); one
+ * without is refused with `PORTAL_RESULT_NOT_REEXECUTABLE`, since there would
+ * be nothing to run. Narrative text stays self-contained.
  */
 import { z } from "zod";
 import {
@@ -13,45 +18,31 @@ import {
   type VizPipeline,
 } from "@portalai/core/contracts";
 import type { PortalResultType } from "@portalai/core/models";
-import { PIN_SNAPSHOT_ROW_CAP } from "@portalai/core/constants";
-import { DateFactory } from "@portalai/core/utils";
 
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
-import { resolveSqlDelivery as defaultResolveSqlDelivery } from "../tools/result-sink.js";
-import {
-  geometryColumnsFromSpec,
-  geoReencodeRows as defaultGeoReencodeRows,
-} from "../tools/geo-delivery.util.js";
 
-/** DI seam (test): the handle readers + the SQL delivery resolver. */
+/** DI seam (test): the handle meta reader. */
 export interface MaterializeDeps {
-  getSnapshot?: typeof PortalSqlHandleService.getSnapshot;
   getMeta?: typeof PortalSqlHandleService.getMeta;
-  resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
-  /**
-   * Re-encode a handle snapshot's geometry from WKB hex to GeoJSON at pin time
-   * (#371) — a handle-backed map otherwise persists raw WKB, which MapLibre
-   * can't read, so the pin renders empty until a manual refresh. Injectable for
-   * unit tests; defaults to the real `geoReencodeRows`.
-   */
-  geoReencodeRows?: typeof defaultGeoReencodeRows;
 }
 
 export interface MaterializeScope {
   stationId: string;
   organizationId: string;
-  /** #599: the user the pin's re-execution is view-scoped to (the pinner).
-   *  #640 will rebind this to the pin's definer; for now it is the caller. */
-  userId: string;
 }
 
 export interface MaterializedPin {
   content: Record<string, unknown> | string;
-  /** Epoch ms of this snapshot — written to `portal_results.snapshot_updated_at`. */
-  snapshotUpdatedAt: number;
 }
+
+/** The keys each data kind keeps: the recipe, never the rows. */
+const RECIPE_KEYS: Partial<Record<PortalResultType, readonly string[]>> = {
+  "data-table": [],
+  d3: ["program", "title", "params"],
+  geo: ["spec", "title", "program"],
+};
 
 function contentMismatch(type: PortalResultType): ApiError {
   return new ApiError(
@@ -61,80 +52,30 @@ function contentMismatch(type: PortalResultType): ApiError {
   );
 }
 
-/**
- * The durable pipeline for a block: its own `pipeline` when present (d3),
- * else derived from the handle envelope's retained `sql` (data-table).
- * `sql: null` (externally-supplied rows) yields no pipeline — the pin is a
- * static snapshot.
- */
-function derivePipeline(
-  source: Record<string, unknown>,
-  scope: MaterializeScope
-): VizPipeline | undefined {
-  const own = VizPipelineSchema.safeParse(source.pipeline);
-  if (own.success) return own.data;
-  if (typeof source.sql === "string" && source.sql.length > 0) {
-    return {
-      sql: source.sql,
-      stationId: scope.stationId,
-      organizationId: scope.organizationId,
-    };
-  }
-  return undefined;
+function notReexecutable(): ApiError {
+  return new ApiError(
+    422,
+    ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE,
+    "This result has no query to re-run, so it can't be pinned — re-run the prompt and pin the new result."
+  );
 }
 
-async function assemble(
-  source: Record<string, unknown>,
-  rows: Array<Record<string, unknown>>,
-  total: number,
-  pipeline: VizPipeline | undefined,
-  deps: MaterializeDeps
-): Promise<Record<string, unknown>> {
-  const schemaNames = Array.isArray(source.schema)
-    ? (source.schema as Array<{ name?: unknown }>)
-        .map((c) => c?.name)
-        .filter((n): n is string => typeof n === "string")
-    : [];
-  const columns = Array.isArray(source.columns) ? source.columns : schemaNames;
-
-  // #371: a handle snapshot carries geometry as raw PostGIS WKB hex, which
-  // MapLibre can't read — a pinned handle-backed map rendered empty until a
-  // manual refresh. Re-encode the geometry values to GeoJSON in place (the row
-  // set is already correct; only the encoding differs). A no-op for non-geo
-  // pins (`geometryColumnsFromSpec` → []) and for values that are already
-  // GeoJSON, so the inline path and data-table pins are untouched.
-  const geomCols = geometryColumnsFromSpec(source.spec);
-  const outRows =
-    geomCols.length > 0 && rows.length > 0
-      ? await (deps.geoReencodeRows ?? defaultGeoReencodeRows)(rows, geomCols)
-      : rows;
-
-  const truncated = total > outRows.length;
-  // #371: a geo pin whose source outran the inline snapshot must render the
-  // full dataset via the pin's tile endpoint on mount, not the bounded `rows`
-  // subset. Only mark it when refreshable — the tile endpoint re-runs the
-  // persisted `pipeline`, so without one there are no tiles to serve and the
-  // inline snapshot is all there is.
-  const tiled = geomCols.length > 0 && truncated && pipeline != null;
-
-  return {
-    ...source,
-    columns,
-    rows: outRows,
-    rowCount: total,
-    truncated,
-    ...(tiled ? { tiled: true } : {}),
-    ...(pipeline ? { pipeline } : {}),
-  };
+function pipelineFromSql(
+  sql: unknown,
+  scope: MaterializeScope
+): VizPipeline | undefined {
+  return typeof sql === "string" && sql.length > 0
+    ? { sql, stationId: scope.stationId, organizationId: scope.organizationId }
+    : undefined;
 }
 
 export class PortalResultPinService {
   /**
-   * Validate `blockContent` against the per-type contract and resolve it to
-   * a self-contained snapshot (≤ `PIN_SNAPSHOT_ROW_CAP` rows). Handle-backed
-   * content is hydrated from the live handle; an expired handle is
-   * re-executed through its pipeline, or rejected with
-   * `PORTAL_RESULT_CONTENT_EXPIRED` when no pipeline exists.
+   * Validate `blockContent` against the per-type contract and reduce it to the
+   * pin's recipe. The pipeline is the block's own, else its `sql`, else the
+   * `sql` retained by its query handle's meta (the persisted display block
+   * omits it). A handle that expired or retains no `sql` leaves no query: the
+   * pin is refused.
    */
   static async materialize(
     type: PortalResultType,
@@ -150,106 +91,62 @@ export class PortalResultPinService {
         `Block type "${type}" has no pinned-content contract`
       );
     }
-    const snapshotUpdatedAt = new DateFactory("UTC").now().getTime();
 
     if (type === "text") {
       const parsed = schema.safeParse(blockContent);
       if (!parsed.success) throw contentMismatch(type);
-      return { content: parsed.data as string, snapshotUpdatedAt };
+      return { content: parsed.data as string };
     }
 
     const source = (blockContent ?? {}) as Record<string, unknown>;
-    const candidate =
-      typeof source.queryHandle === "string"
-        ? await this.materializeFromHandle(source, scope, deps)
-        : source;
+    const pipeline = await this.derivePipeline(source, scope, deps);
+    if (!pipeline) throw notReexecutable();
 
-    const parsed = schema.safeParse(candidate);
+    const recipe: Record<string, unknown> = { pipeline };
+    for (const key of RECIPE_KEYS[type] ?? []) {
+      if (source[key] !== undefined) recipe[key] = source[key];
+    }
+    if (type === "data-table") {
+      recipe.columns = Array.isArray(source.columns)
+        ? source.columns
+        : Array.isArray(source.schema)
+          ? (source.schema as Array<{ name?: unknown }>)
+              .map((c) => c?.name)
+              .filter((n): n is string => typeof n === "string")
+          : [];
+    }
+    // #371: a map whose source was a handle (larger than an inline result)
+    // renders through the pin's tile endpoint from the start.
+    if (type === "geo" && typeof source.queryHandle === "string") {
+      recipe.tiled = true;
+    }
+
+    const parsed = schema.safeParse(recipe);
     if (!parsed.success) throw contentMismatch(type);
-    return {
-      content: parsed.data as Record<string, unknown>,
-      snapshotUpdatedAt,
-    };
+    return { content: parsed.data as Record<string, unknown> };
   }
 
-  private static async materializeFromHandle(
+  private static async derivePipeline(
     source: Record<string, unknown>,
     scope: MaterializeScope,
     deps: MaterializeDeps
-  ): Promise<Record<string, unknown>> {
-    const getSnapshot =
-      deps.getSnapshot ??
-      PortalSqlHandleService.getSnapshot.bind(PortalSqlHandleService);
+  ): Promise<VizPipeline | undefined> {
+    const own = VizPipelineSchema.safeParse(source.pipeline);
+    if (own.success) return own.data;
+    const fromSql = pipelineFromSql(source.sql, scope);
+    if (fromSql) return fromSql;
+    if (typeof source.queryHandle !== "string") return undefined;
     const getMeta =
       deps.getMeta ??
       PortalSqlHandleService.getMeta.bind(PortalSqlHandleService);
-    const resolveSqlDelivery =
-      deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
-    let pipeline = derivePipeline(source, scope);
-
     try {
-      const snap = await getSnapshot(source.queryHandle as string, {
-        offset: 0,
-        limit: PIN_SNAPSHOT_ROW_CAP,
-      });
-      if (!pipeline) {
-        // The persisted display block omits the envelope's retained `sql`
-        // (it carries only what the client renderer needs) — the
-        // server-side handle meta is the authoritative source (#312 smoke
-        // find). A failed meta read degrades to a static snapshot.
-        try {
-          const meta = await getMeta(source.queryHandle as string);
-          if (typeof meta.sql === "string" && meta.sql.length > 0) {
-            pipeline = {
-              sql: meta.sql,
-              stationId: scope.stationId,
-              organizationId: scope.organizationId,
-            };
-          }
-        } catch {
-          // expired between the snapshot and meta reads — static pin
-        }
-      }
-      return await assemble(source, snap.rows, snap.total, pipeline, deps);
+      return pipelineFromSql((await getMeta(source.queryHandle)).sql, scope);
     } catch (err) {
-      const expired =
-        err instanceof ApiError && err.code === ApiCode.READ_HANDLE_EXPIRED;
-      if (!expired) throw err;
-      if (!pipeline) {
-        throw new ApiError(
-          422,
-          ApiCode.PORTAL_RESULT_CONTENT_EXPIRED,
-          "This result's data has expired and it has no re-executable query — re-run the prompt and pin the fresh result"
-        );
+      // An expired handle leaves no query to keep.
+      if (err instanceof ApiError && err.code === ApiCode.READ_HANDLE_EXPIRED) {
+        return undefined;
       }
-      // Materialize by re-execution — the same funnel the refresh path uses.
-      const delivery = await resolveSqlDelivery(
-        { sql: pipeline.sql },
-        {
-          stationId: scope.stationId,
-          organizationId: scope.organizationId,
-          userId: scope.userId,
-        }
-      );
-      if (delivery.kind === "inline") {
-        const result = delivery.result as {
-          rows?: Array<Record<string, unknown>>;
-          sample?: Array<Record<string, unknown>>;
-        };
-        const rows = result.rows ?? result.sample ?? [];
-        return await assemble(source, rows, rows.length, pipeline, deps);
-      }
-      const snap = await getSnapshot(delivery.envelope.queryHandle, {
-        offset: 0,
-        limit: PIN_SNAPSHOT_ROW_CAP,
-      });
-      return await assemble(
-        source,
-        snap.rows,
-        delivery.envelope.rowCount,
-        pipeline,
-        deps
-      );
+      throw err;
     }
   }
 }

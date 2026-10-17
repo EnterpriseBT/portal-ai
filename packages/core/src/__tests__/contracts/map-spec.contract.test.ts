@@ -342,11 +342,11 @@ describe("MAP_LAYER_FEATURE_CAP", () => {
 });
 
 describe("PINNED_CONTENT_SCHEMAS.geo", () => {
-  it("is defined and accepts the inline geo shape", () => {
+  it("is defined and accepts a spec with its query (#640: no rows)", () => {
     expect(PINNED_CONTENT_SCHEMAS.geo).toBeDefined();
     const res = PINNED_CONTENT_SCHEMAS.geo!.safeParse({
       spec: { layers: [pointsLayer] },
-      rows: [{ latitude: 1, longitude: 2 }],
+      pipeline: { sql: "SELECT 1", stationId: "s", organizationId: "o" },
     });
     expect(res.success).toBe(true);
   });

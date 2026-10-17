@@ -77,11 +77,13 @@ jest.unstable_mockModule("../api/sdk", () => ({
           .mockResolvedValue(undefined),
         isPending: false,
       }),
-      refresh: () => ({
-        mutateAsync: jest
-          .fn<() => Promise<unknown>>()
-          .mockResolvedValue(undefined),
-        isPending: false,
+      // #640: a pin's live data query (inert here — no pin refs).
+      data: () => ({
+        data: undefined,
+        error: null,
+        isFetching: false,
+        dataUpdatedAt: 0,
+        refetch: jest.fn(),
       }),
     },
     // Used by TableWidget when a streaming or persisted chart/table block

@@ -75,6 +75,10 @@ export interface D3WidgetUIProps {
   /** Render/data status shown as a chip in the frame (#271). `ready` shows no
    *  chip (the chart speaks for itself); the rest surface attention states. */
   status?: "loading" | "rendering" | "ready" | "error" | "refreshing" | "stale";
+  /** Identifies the data the frame renders. The sandbox accumulates rows, so
+   *  a delivery that replaces them (a pin's live data, a refresh) needs a new
+   *  frame rather than more batches on the old one. */
+  frameKey?: string | number;
 }
 
 export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
@@ -100,6 +104,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   notRefreshable = false,
   degraded = false,
   status = "ready",
+  frameKey,
 }) => {
   // #340: display the TRUE matched total (fallback to totalRows for pre-#340
   // blocks); "N+" only when it's a lower bound, not exact.
@@ -152,7 +157,8 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
       >
         <CircularProgress size={16} />
         <Typography variant="caption" color="text.secondary">
-          Loading {totalLabel} rows…
+          {/* A pin's count isn't known until its data arrives. */}
+          Loading {matched > 0 ? `${totalLabel} ` : ""}rows…
         </Typography>
       </Box>
     );
@@ -161,6 +167,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
       <>
         <div style={CHART_BOUNDS}>
           <D3SandboxFrameUI
+            key={frameKey}
             program={program}
             params={params}
             theme={theme}
@@ -247,11 +254,18 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
 
   const progressive = useProgressiveHandleRows(effectiveHandle);
 
-  const inlineRows = freshInlineRows ?? (fresh ? null : baseInlineRows);
+  // #640: a pin stores no rows; its data is only ever the live delivery, so
+  // there is nothing to draw until that arrives.
+  const isPin = blockRef?.kind === "pin";
+  const inlineRows =
+    freshInlineRows ?? (fresh || isPin ? null : baseInlineRows);
   const inlineBatches = useMemo<ProgressiveBatch[]>(
     () => (inlineRows ? [{ rows: inlineRows, seq: 0, done: true }] : []),
     [inlineRows]
   );
+  // Each delivery replaces the data, so it gets its own frame (see frameKey);
+  // every delivery stamps its own hydration time.
+  const frameKey = fresh ? `delivery-${lastUpdatedAt}` : "base";
 
   if (!parsedContent) {
     return (
@@ -354,6 +368,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       // failure already replaces the body above and the chip would be noise.
       degraded={refreshError != null && hasData}
       status={status}
+      frameKey={frameKey}
     />
   );
 };

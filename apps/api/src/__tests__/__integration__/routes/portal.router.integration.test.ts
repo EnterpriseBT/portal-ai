@@ -492,6 +492,8 @@ describe("Portal Router", () => {
         content: { value: "kept" },
         created: now,
         createdBy: "SYSTEM_TEST",
+        definerPrincipalType: "user",
+        definerPrincipalId: "SYSTEM_TEST",
         updated: null,
         updatedBy: null,
         deleted: null,

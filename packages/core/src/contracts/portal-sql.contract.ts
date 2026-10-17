@@ -88,5 +88,8 @@ export const WidgetRefreshResponseSchema = z.discriminatedUnion("kind", [
     rows: z.array(z.record(z.string(), z.unknown())),
   }),
   QueryHandleEnvelopeFieldsSchema.extend({ kind: z.literal("handle") }),
+  // #640: a tiled map pin draws only from its tile endpoint, so its data read
+  // checks access and answers this without running the query.
+  z.object({ kind: z.literal("tiles") }),
 ]);
 export type WidgetRefreshResponse = z.infer<typeof WidgetRefreshResponseSchema>;

@@ -22,7 +22,10 @@ const makePinnedResult = (
   content: { text: "Total revenue: $1.2M" },
   created: Date.now() - 3600000, // 1 hour ago
   createdBy: "user-1",
-  snapshotUpdatedAt: null,
+  definerPrincipalType: "user",
+  definerPrincipalId: "user-1",
+  definer: { id: "user-1", displayName: "Test User" },
+  viewerIsDefiner: true,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -101,6 +104,43 @@ describe("PinnedResultCardUI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
     expect(onUnpin).toHaveBeenCalledWith("result-1");
     expect(onResultClick).not.toHaveBeenCalled();
+  });
+
+  // #640: a shared pin shows its definer's data.
+  it("names the definer on a data pin the viewer didn't define", () => {
+    render(
+      <PinnedResultCardUI
+        result={makePinnedResult({
+          type: "data-table",
+          viewerIsDefiner: false,
+          definer: { id: "u-9", displayName: "Ada Lovelace" },
+        })}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId("pinned-result-definer")).toHaveTextContent(
+      "Data as Ada Lovelace sees it"
+    );
+  });
+
+  it("names no definer on the viewer's own pin, or on a text pin", () => {
+    const { rerender } = render(
+      <PinnedResultCardUI
+        result={makePinnedResult({ type: "data-table", viewerIsDefiner: true })}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
+    );
+    expect(screen.queryByTestId("pinned-result-definer")).toBeNull();
+    rerender(
+      <PinnedResultCardUI
+        result={makePinnedResult({ type: "text", viewerIsDefiner: false })}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
+    );
+    expect(screen.queryByTestId("pinned-result-definer")).toBeNull();
   });
 
   it("should render portal name when portalName is provided", () => {

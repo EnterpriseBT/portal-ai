@@ -157,10 +157,20 @@ export type UpdatePortalResultBody = z.infer<
 
 // ── Portal Result List ────────────────────────────────────────────────
 
+/**
+ * #640: who a pin's data executes as, named for its readers. `viewerIsDefiner`
+ * lets the UI skip "Data as <name> sees it" on the definer's own pins.
+ */
+export const PinDefinerFieldsSchema = z.object({
+  definer: z.object({ id: z.string(), displayName: z.string() }),
+  viewerIsDefiner: z.boolean(),
+});
+export type PinDefinerFields = z.infer<typeof PinDefinerFieldsSchema>;
+
 /** A pin as the list returns it: `portalName` is present with include=portal. */
 export const PortalResultListItemSchema = PortalResultSchema.extend({
   portalName: z.string().nullable().optional(),
-});
+}).extend(PinDefinerFieldsSchema.shape);
 export type PortalResultListItem = z.infer<typeof PortalResultListItemSchema>;
 
 /** #688: the pin list, each row with the caller's capabilities on it. */
@@ -177,7 +187,9 @@ export type PortalResultListResponsePayload = z.infer<
 /** #688: one pin with the caller's capabilities on it (replaces the #621
  *  canShare/canWrite/canDelete flags). */
 export const PortalResultGetResponsePayloadSchema = z.object({
-  portalResult: withShareableCapabilities(PortalResultSchema),
+  portalResult: withShareableCapabilities(
+    PortalResultSchema.extend(PinDefinerFieldsSchema.shape)
+  ),
 });
 export type PortalResultGetResponsePayload = z.infer<
   typeof PortalResultGetResponsePayloadSchema

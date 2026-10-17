@@ -485,6 +485,8 @@ describe("Read access (#692)", () => {
         type: "text",
         content: {},
         ...base(createdBy),
+        definerPrincipalType: "user",
+        definerPrincipalId: createdBy,
       } as never);
       return id;
     };
@@ -722,6 +724,8 @@ describe("Read access (#692)", () => {
       type: "text",
       content: { value: "hello" },
       ...base(fx.ownerId),
+      definerPrincipalType: "user",
+      definerPrincipalId: fx.ownerId,
     } as never);
     await shareWith(fx.memberId, "read", "pin", pinId);
 

@@ -149,6 +149,8 @@ async function pin(db: Db, fx: TenancyFixture, createdBy: string) {
     type: "text",
     content: { text: "hello" },
     ...base(createdBy),
+    definerPrincipalType: "user",
+    definerPrincipalId: createdBy,
   } as never);
   return id;
 }
@@ -476,11 +478,7 @@ const writesFor = (t: TypeCase): WriteRoute[] => {
     case "station":
       return [patch({ name: "renamed" }), del];
     case "pin":
-      return [
-        patch({ name: "renamed" }),
-        del,
-        { method: "post", path: (s) => `${one(s)}/refresh` },
-      ];
+      return [patch({ name: "renamed" }), del];
     case "curated_view":
       return [patch({ label: "renamed" }), del];
     case "portal":

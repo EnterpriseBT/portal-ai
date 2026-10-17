@@ -356,9 +356,9 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Pinned Result",
     category: GlossaryCategory.Analytics,
     definition:
-      "A portal result you've saved for quick access from the dashboard or the pinned-results page. Any durable answer pins — text, tables, and charts. Pinned tables and charts remember the query behind them, so opening one shows live data, with the last saved snapshot as the fallback.",
+      "A portal result you've saved for quick access from the dashboard or the pinned-results page. Any durable answer pins — text, tables, charts, and maps. A pinned table, chart, or map keeps the query behind it, never a copy of the data, so opening it always shows live data as the person who pinned it sees it now. Share it and others see that same view; if the person who pinned it loses access to the data, the pin empties rather than showing anything stale. A result with no query behind it can't be pinned.",
     example:
-      "Pin a quarterly-revenue chart so it's one click away from the dashboard — it refreshes itself when you open it.",
+      "Pin a quarterly-revenue chart so it's one click away from the dashboard — it shows current numbers every time you open it.",
     relatedTerms: ["Portal Result", "Default Station"],
   },
   {

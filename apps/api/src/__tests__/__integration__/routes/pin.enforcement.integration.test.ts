@@ -84,6 +84,8 @@ describe("pin object enforcement — member perspective (#621 slice 3b)", () => 
       name: `pin-${id.slice(0, 6)}`,
       type: "text",
       content: { value: "x" },
+      definerPrincipalType: "user",
+      definerPrincipalId: createdBy,
       created: Date.now(),
       createdBy,
       updated: null,

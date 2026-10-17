@@ -4,8 +4,8 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 /**
  * Portal Result model.
  * Represents a pinned/saved result produced during a portal session —
- * any durable block kind (#312): narrative text, a data-table snapshot,
- * or a re-executable visualization (`d3`, `geo`). Transient kinds
+ * any durable block kind (#312): narrative text, or a data-table / `d3` /
+ * `geo` recipe whose data executes live as the pin's definer (#640). Transient kinds
  * (job progress) are deliberately not part of this vocabulary.
  *
  * Sync with the Drizzle `portal_results` table is enforced at compile
@@ -21,6 +21,20 @@ export const PortalResultTypeSchema = z.enum([
 
 export type PortalResultType = z.infer<typeof PortalResultTypeSchema>;
 
+/**
+ * Who a pin's data is executed as (#640): the pin shows its data as the
+ * definer sees it, now. `user` is the only definer written today; `role`
+ * is admitted so a team-shared pin can later rebind to a role without a
+ * schema change.
+ */
+export const PIN_DEFINER_PRINCIPAL_TYPES = ["user", "role"] as const;
+export const PinDefinerPrincipalTypeSchema = z.enum(
+  PIN_DEFINER_PRINCIPAL_TYPES
+);
+export type PinDefinerPrincipalType = z.infer<
+  typeof PinDefinerPrincipalTypeSchema
+>;
+
 export const PortalResultSchema = CoreSchema.extend({
   organizationId: z.string(),
   stationId: z.string(),
@@ -30,10 +44,8 @@ export const PortalResultSchema = CoreSchema.extend({
   name: z.string().min(1),
   type: PortalResultTypeSchema,
   content: z.record(z.string(), z.unknown()),
-  /** Epoch ms of the last successful snapshot write — pin time, then each
-   *  persist-back refresh (#312). Seeds the web freshness clock. Null on
-   *  rows pinned before #312. */
-  snapshotUpdatedAt: z.number().int().nullable(),
+  definerPrincipalType: PinDefinerPrincipalTypeSchema,
+  definerPrincipalId: z.string(),
 });
 
 export type PortalResult = z.infer<typeof PortalResultSchema>;

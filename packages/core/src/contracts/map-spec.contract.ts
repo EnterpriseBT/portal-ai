@@ -193,7 +193,7 @@ export type MapSpec = z.infer<typeof MapSpecSchema>;
 
 // ── Geo block content (mirrors d3-widget.contract.ts, handle branch first) ──
 
-const GeoBaseContentSchema = z.object({
+export const GeoBaseContentSchema = z.object({
   spec: MapSpecSchema,
   title: z.string().optional(),
   /** Durable re-executable pipeline (shared with d3). */

@@ -12,29 +12,26 @@
 
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
 import { VizPipelineSchema, type VizPipeline } from "@portalai/core/contracts";
-import { PIN_SNAPSHOT_ROW_CAP } from "@portalai/core/constants";
-import { DateFactory } from "@portalai/core/utils";
 
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { STALE_REFERENCE } from "./portal-sql-validation.util.js";
-import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "../tools/result-sink.js";
 import {
   geometryColumnsFromSpec,
   geoInlineRows,
 } from "../tools/geo-delivery.util.js";
 import { AnalyticsService } from "./analytics.service.js";
+import { PortalSqlService } from "./portal-sql.service.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
-import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
 import type {
   PortalMessageSelect,
   PortalResultSelect,
-  PortalResultInsert,
 } from "../db/schema/zod.js";
-import { createLogger } from "../utils/logger.util.js";
-
-const logger = createLogger({ module: "portal-viz-refresh" });
+import {
+  DefinerAccessLostError,
+  PinDefinerService,
+} from "./pin-definer.service.js";
 
 /** DI seam (test): the message loader + the SQL delivery resolver. `sqlQuery`
  *  is the geometry→GeoJSON display query a `geo` widget needs on the inline
@@ -45,18 +42,19 @@ export interface VizRefreshDeps {
   sqlQuery?: typeof AnalyticsService.sqlQuery;
 }
 
-/** DI seam (test) for the pin addresser (#312). */
-export interface PinRefreshDeps {
-  findPortalResultById?: (
-    id: string
-  ) => Promise<PortalResultSelect | undefined>;
-  updatePortalResult?: (
-    id: string,
-    patch: Partial<PortalResultInsert>
-  ) => Promise<PortalResultSelect | undefined>;
-  getSnapshot?: typeof PortalSqlHandleService.getSnapshot;
+/** DI seam (test) for the live pin read (#640). */
+export interface PinDataDeps {
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
   sqlQuery?: typeof AnalyticsService.sqlQuery;
+  assertDefinerActive?: typeof PinDefinerService.assertDefinerActive;
+  explainSqlQuery?: typeof PortalSqlService.explainSqlQuery;
+}
+
+/** Who is reading a pin (#640) — it decides how much a refusal explains. */
+export interface PinViewer {
+  userId: string;
+  /** May manage the pin (`resource.write`): told why its data is gone. */
+  canWrite: boolean;
 }
 
 export interface VizRefreshParams {
@@ -145,95 +143,83 @@ export class PortalVizRefreshService {
   }
 
   /**
-   * Pin addresser (#312): re-execute a pinned result's stored pipeline.
-   * Scope gates on the row's own `organizationId` (cross-org → the same 404
-   * as a missing row — no existence leak), then **persists back** the fresh
-   * snapshot (rows ≤ `PIN_SNAPSHOT_ROW_CAP`, `rowCount`, `truncated`,
-   * `snapshotUpdatedAt`). Persist-back failure is non-fatal: the live
-   * delivery already succeeded and the stale stored snapshot self-heals on
-   * the next refresh.
+   * #640: a pin's data, live, as its **definer** sees it now. Nothing is
+   * persisted: the pin is a recipe, and the rows exist only in this response
+   * (or in a pin-owned handle, readable by the pin's readers).
+   *
+   * The caller has already authorized the viewer's read on `row`. Here the
+   * definer must still be an active member of the pin's org, and the query
+   * must still match the views they can read; either failing empties the pin
+   * (a reason for a viewer who manages it, a neutral message otherwise). A
+   * definer whose views simply match no rows gets an ordinary empty result.
    */
-  static async refreshPinnedResult(
-    params: { portalResultId: string; organizationId: string; userId: string },
-    deps: PinRefreshDeps = {}
+  static async executePin(
+    row: PortalResultSelect,
+    viewer: PinViewer,
+    deps: PinDataDeps = {}
   ): Promise<WidgetRefreshResponse> {
-    const findPortalResultById =
-      deps.findPortalResultById ??
-      ((id: string) => portalResultsRepo.findById(id));
-    const updatePortalResult =
-      deps.updatePortalResult ??
-      ((id: string, patch: Partial<PortalResultInsert>) =>
-        portalResultsRepo.update(id, patch));
-    const getSnapshot =
-      deps.getSnapshot ??
-      PortalSqlHandleService.getSnapshot.bind(PortalSqlHandleService);
     const resolveSqlDelivery =
       deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
     const sqlQuery =
       deps.sqlQuery ?? AnalyticsService.sqlQuery.bind(AnalyticsService);
-
-    const row = await findPortalResultById(params.portalResultId);
-    if (!row || row.organizationId !== params.organizationId) {
-      throw new ApiError(
-        404,
-        ApiCode.PORTAL_RESULT_NOT_FOUND,
-        "Pinned result not found"
-      );
-    }
+    const assertDefinerActive =
+      deps.assertDefinerActive ?? PinDefinerService.assertDefinerActive;
 
     const content = (row.content ?? {}) as Record<string, unknown>;
     const parsed = VizPipelineSchema.safeParse(content.pipeline);
     if (!parsed.success) {
       throw new ApiError(
         422,
-        ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
-        "This pinned result has no durable pipeline and can't be refreshed."
+        ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE,
+        "This pin can't refresh — re-pin it from a new result."
       );
     }
 
-    const delivery = await this.executePipeline(
-      parsed.data,
-      params.organizationId,
-      params.userId,
-      resolveSqlDelivery,
-      geometryColumnsFromSpec(content.spec),
-      sqlQuery
-    );
+    const unavailable = () =>
+      PinDefinerService.unavailableError({
+        canWrite: viewer.canWrite,
+        isDefiner: row.definerPrincipalId === viewer.userId,
+      });
 
     try {
-      let rows: Array<Record<string, unknown>>;
-      let total: number;
-      if (delivery.kind === "inline") {
-        rows = delivery.rows;
-        total = rows.length;
-      } else {
-        const snap = await getSnapshot(delivery.queryHandle, {
-          offset: 0,
-          limit: PIN_SNAPSHOT_ROW_CAP,
+      const { userId: definerId } = await assertDefinerActive(row);
+      // A tiled map draws only from its tile endpoint, which runs the query
+      // per tile. Planning it as the definer refuses exactly what running it
+      // would (a lost view or column), without the full scan or a handle no
+      // one reads.
+      if (row.type === "geo" && content.tiled === true) {
+        const explain =
+          deps.explainSqlQuery ??
+          PortalSqlService.explainSqlQuery.bind(PortalSqlService);
+        await explain({
+          sql: parsed.data.sql,
+          stationId: parsed.data.stationId,
+          organizationId: row.organizationId,
+          userId: definerId,
         });
-        rows = snap.rows;
-        total = delivery.rowCount;
+        return { kind: "tiles" };
       }
-      await updatePortalResult(row.id, {
-        content: {
-          ...content,
-          rows,
-          rowCount: total,
-          // #340: `total` here is the true snapshot total → exact matched count.
-          matchedCount: total,
-          matchedCountExact: true,
-          truncated: total > rows.length,
-        },
-        snapshotUpdatedAt: new DateFactory("UTC").now().getTime(),
-      });
-    } catch (err) {
-      logger.warn(
-        { err, portalResultId: row.id },
-        "pin refresh persist-back failed; stored snapshot left stale"
+      return await this.runPipeline(
+        parsed.data,
+        row.organizationId,
+        definerId,
+        resolveSqlDelivery,
+        geometryColumnsFromSpec(content.spec),
+        sqlQuery,
+        row.id
       );
+    } catch (err) {
+      if (err instanceof DefinerAccessLostError) throw unavailable();
+      // The query names a view or column the definer no longer exposes.
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
+        err.details?.reason === STALE_REFERENCE
+      ) {
+        throw unavailable();
+      }
+      throw err;
     }
-
-    return delivery;
   }
 
   /**
@@ -276,11 +262,18 @@ export class PortalVizRefreshService {
     geometryColumns: string[] = [],
     sqlQuery: typeof AnalyticsService.sqlQuery = AnalyticsService.sqlQuery.bind(
       AnalyticsService
-    )
+    ),
+    /** #640: the pin being delivered; a staged handle then belongs to it. */
+    portalResultId?: string
   ): Promise<WidgetRefreshResponse> {
     const delivery = await resolveSqlDelivery(
       { sql: pipeline.sql },
-      { stationId: pipeline.stationId, organizationId, userId }
+      {
+        stationId: pipeline.stationId,
+        organizationId,
+        userId,
+        ...(portalResultId ? { portalResultId } : {}),
+      }
     );
 
     // A large delivery rides its handle — the map widget re-tiles it through

@@ -109,7 +109,6 @@ describe("portal-results.api", () => {
     it.each([
       ["rename", () => portalResults.rename("result-123")],
       ["remove", () => portalResults.remove()],
-      ["refresh", () => portalResults.refresh()],
     ])(
       "%s invalidates portalResults.root on a permission denial",
       (_, call) => {

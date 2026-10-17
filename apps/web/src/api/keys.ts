@@ -223,6 +223,10 @@ export const queryKeys = {
     list: (params?: Record<string, unknown>) =>
       [...queryKeys.portalResults.root, "list", params] as const,
     get: (id: string) => [...queryKeys.portalResults.root, "get", id] as const,
+    /** #640: a pin's live data. Under `root`, so every pin invalidation
+     *  (delete, rename, share) refetches it too. */
+    data: (id: string) =>
+      [...queryKeys.portalResults.root, "data", id] as const,
   },
   portalSql: {
     root: ["portalSql"] as const,

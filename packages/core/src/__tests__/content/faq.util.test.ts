@@ -69,10 +69,11 @@ describe("FAQ_ENTRIES", () => {
     "What are entity groups and when should I use them?",
     'What is a "link field" in an entity group?',
     "How do tags work?",
-    // Analytics & Portals (11 — #366 added 3; four were never pinned)
+    // Analytics & Portals (12 — #366 added 3; four were never pinned; #640 added 1)
     "What are tool packs?",
     "Why is a tool pack on my station greyed out, and why won't the assistant use it?",
     "How do I save results from a portal session?",
+    "What do people see when I share a pinned result?",
     "What's the difference between a portal and a portal result?",
     "Why do some results appear inline and others as a separate streamed table?",
     "How do I refresh a chart, map, or table with the latest data?",
@@ -86,8 +87,8 @@ describe("FAQ_ENTRIES", () => {
     "Why did my job fail?",
   ];
 
-  it("includes every question listed in the audit doc (30 total)", () => {
-    expect(expectedQuestions).toHaveLength(30);
+  it("includes every question listed in the audit doc (31 total)", () => {
+    expect(expectedQuestions).toHaveLength(31);
     for (const question of expectedQuestions) {
       const match = FAQ_ENTRIES.find((e) => e.question === question);
       expect(match).toBeDefined();
@@ -249,13 +250,13 @@ describe("portal best-practices FAQ", () => {
   const find = (question: string) =>
     FAQ_ENTRIES.find((e) => e.question === question);
 
-  it("has 11 Analytics & Portals questions", () => {
+  it("has 12 Analytics & Portals questions", () => {
     // A real fence, mirroring the Jobs count above. `expectedQuestions` only
     // asserts that each listed question exists, so without this a category
     // could silently lose an entry.
     expect(
       FAQ_ENTRIES.filter((e) => e.category === FAQCategory.Analytics)
-    ).toHaveLength(11);
+    ).toHaveLength(12);
   });
 
   it.each([VAGUE, WORDING, RUNNING_JOB])(

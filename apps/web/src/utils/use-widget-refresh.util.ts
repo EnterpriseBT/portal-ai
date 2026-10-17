@@ -6,6 +6,7 @@ import type { WidgetRefreshResponse } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
 import { toServerError, type ServerError } from "./api.util";
+import { pinDataRefusal } from "./pin-data.util";
 
 /**
  * Session-scoped last-hydration clock, keyed by the discriminated BlockRef
@@ -21,9 +22,9 @@ const keyOf = (ref: BlockRef): string =>
     : `pin:${ref.portalResultId}`;
 
 export interface UseWidgetRefreshResult {
-  /** Whether this caller may refresh the block at all: a persisted block, and
-   *  not a pin they can't write (#690). Gates both the mount refresh and the
-   *  manual button. */
+  /** Whether this caller may refresh the block at all: any persisted block.
+   *  A pin's data is a read (#640), so every reader of a pin may. Gates both
+   *  the mount refresh and the manual button. */
   allowed: boolean;
   /** Fresh delivery from the last successful refresh, or null. */
   fresh: WidgetRefreshResponse | null;
@@ -46,25 +47,25 @@ export interface UseWidgetRefreshResult {
  * `blockRef` (streaming/unpersisted) → no refresh at all.
  *
  * Dispatch follows the ref's kind: message-block refs hit the
- * widget-refresh endpoint; pin refs hit the pinned-result refresh endpoint
- * (which also persists the fresh snapshot back server-side).
+ * widget-refresh endpoint. A pin stores no data (#640): its data is always
+ * the live `portalResults.data` query, cached for the freshness window, and
+ * the manual button refetches it.
  */
 export function useWidgetRefresh(
   blockRef: BlockRef | undefined,
   dataUpdatedAt: number | undefined
 ): UseWidgetRefreshResult {
   const key = blockRef ? keyOf(blockRef) : undefined;
-  // #690: a read-only pin can't be refreshed (the server 403s a sharee's
-  // refresh), so it neither auto-refreshes nor offers the button. The data's
-  // age still shows through lastUpdatedAt.
-  const allowed =
-    blockRef != null &&
-    !(blockRef.kind === "pin" && blockRef.canRefresh === false);
+  // The mount refresh and the manual button below serve message blocks; a
+  // pin's data comes from its live query.
+  const allowed = blockRef?.kind === "message";
   const allowedRef = useRef(allowed);
   allowedRef.current = allowed;
 
+  const pinId = blockRef?.kind === "pin" ? blockRef.portalResultId : "";
+  const pinData = sdk.portalResults.data(pinId, { enabled: pinId !== "" });
+
   const { mutateAsync: refreshMessageBlock } = sdk.portalSql.widgetRefresh();
-  const { mutateAsync: refreshPin } = sdk.portalResults.refresh();
   const [fresh, setFresh] = useState<WidgetRefreshResponse | null>(null);
   const [error, setError] = useState<ServerError | null>(null);
   const [notRefreshable, setNotRefreshable] = useState(false);
@@ -84,15 +85,13 @@ export function useWidgetRefresh(
   const refresh = useCallback(async () => {
     const ref = refRef.current;
     if (ref == null || !allowedRef.current) return;
+    if (ref.kind !== "message") return;
     setIsRefreshing(true);
     try {
-      const res =
-        ref.kind === "message"
-          ? await refreshMessageBlock({
-              messageId: ref.messageId,
-              blockIndex: ref.blockIndex,
-            })
-          : await refreshPin({ id: ref.portalResultId });
+      const res = await refreshMessageBlock({
+        messageId: ref.messageId,
+        blockIndex: ref.blockIndex,
+      });
       const now = Date.now();
       lastHydratedAt.set(keyOf(ref), now);
       setError(null);
@@ -108,7 +107,7 @@ export function useWidgetRefresh(
     } finally {
       setIsRefreshing(false);
     }
-  }, [refreshMessageBlock, refreshPin]);
+  }, [refreshMessageBlock]);
 
   // Auto-refresh once on mount when stale. #271 owns the viewport-driven
   // trigger that fans this across many widgets on a dashboard.
@@ -123,6 +122,21 @@ export function useWidgetRefresh(
       void refresh();
     }
   }, [key, allowed, dataUpdatedAt, refresh]);
+
+  if (blockRef?.kind === "pin") {
+    const refusal = pinDataRefusal(pinData.error);
+    return {
+      allowed: true,
+      fresh: pinData.data ?? null,
+      isRefreshing: pinData.isFetching,
+      // A refusal is the pin's state, which its view renders in place of the
+      // block; only an unexpected failure is the widget's error.
+      error: refusal ? null : toServerError(pinData.error),
+      notRefreshable: refusal === "not-reexecutable",
+      lastUpdatedAt: pinData.dataUpdatedAt || null,
+      refresh: () => void pinData.refetch(),
+    };
+  }
 
   return {
     allowed,

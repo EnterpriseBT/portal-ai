@@ -1,10 +1,7 @@
 import { describe, it, expect, jest } from "@jest/globals";
 
 import { PortalVizRefreshService } from "../../services/portal-viz-refresh.service.js";
-import type {
-  VizRefreshDeps,
-  PinRefreshDeps,
-} from "../../services/portal-viz-refresh.service.js";
+import type { VizRefreshDeps } from "../../services/portal-viz-refresh.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
 import { STALE_REFERENCE } from "../../services/portal-sql-validation.util.js";
@@ -285,52 +282,6 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
   });
 });
 
-// ── refreshPinnedResult (#312) ───────────────────────────────────────
-
-function pinRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "pr-1",
-    organizationId: "org-1",
-    stationId: "st-1",
-    portalId: "portal-1",
-    messageId: null,
-    blockIndex: null,
-    name: "Pinned chart",
-    type: "d3",
-    content: {
-      program: "api.d3;",
-      rows: [{ month: "Dec", total: 1 }],
-      pipeline: PIPELINE,
-    },
-    snapshotUpdatedAt: 111,
-    created: 100,
-    createdBy: "u-1",
-    updated: null,
-    updatedBy: null,
-    deleted: null,
-    deletedBy: null,
-    ...overrides,
-  } as never;
-}
-
-function pinDeps(over: Partial<PinRefreshDeps> = {}): PinRefreshDeps {
-  return {
-    findPortalResultById: jest.fn(async () => pinRow()) as never,
-    updatePortalResult: jest.fn(async () => pinRow()) as never,
-    resolveSqlDelivery: jest.fn(async () => inlineDelivery) as never,
-    getSnapshot: jest.fn(async () => ({
-      rows: [{ month: "Jan", total: 12 }],
-      total: 5000,
-      offset: 0,
-      limit: 5000,
-    })) as never,
-    ...over,
-  };
-}
-
-// #349 — tables join d3/geo as a refreshable widget kind. Until now a
-// data-table block 404'd here: it wasn't "not refreshable", it wasn't a widget
-// at all as far as this service was concerned.
 describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
   function tableMessage(content: Record<string, unknown>) {
     return {
@@ -533,151 +484,6 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
   });
 });
 
-describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
-  it("executes the row's pipeline and maps an inline delivery", async () => {
-    const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
-    const out = await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
-      pinDeps({ resolveSqlDelivery: resolveSqlDelivery as never })
-    );
-    expect(out).toEqual({
-      kind: "inline",
-      rows: [{ month: "Jan", total: 12 }],
-    });
-    expect(resolveSqlDelivery).toHaveBeenCalledWith(
-      { sql: PIPELINE.sql },
-      { stationId: "st-1", organizationId: "org-1", userId: "user-1" }
-    );
-  });
-
-  it("maps a handle delivery to the handle variant", async () => {
-    const out = await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
-      pinDeps({
-        resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
-      })
-    );
-    expect(out).toMatchObject({
-      kind: "handle",
-      queryHandle: "qh-fresh",
-      rowCount: 5000,
-    });
-  });
-
-  it("missing row → PORTAL_RESULT_NOT_FOUND (404)", async () => {
-    await expectApiCode(
-      PortalVizRefreshService.refreshPinnedResult(
-        { portalResultId: "nope", organizationId: "org-1", userId: "user-1" },
-        pinDeps({
-          findPortalResultById: jest.fn(async () => undefined) as never,
-        })
-      ),
-      ApiCode.PORTAL_RESULT_NOT_FOUND,
-      404
-    );
-  });
-
-  it("cross-org caller → PORTAL_RESULT_NOT_FOUND (404, no existence leak)", async () => {
-    await expectApiCode(
-      PortalVizRefreshService.refreshPinnedResult(
-        {
-          portalResultId: "pr-1",
-          organizationId: "other-org",
-          userId: "user-1",
-        },
-        pinDeps()
-      ),
-      ApiCode.PORTAL_RESULT_NOT_FOUND,
-      404
-    );
-  });
-
-  it("pin without a pipeline → VIZ_WIDGET_NOT_REFRESHABLE (422)", async () => {
-    const staticPin = pinRow({
-      type: "data-table",
-      content: { columns: ["a"], rows: [{ a: 1 }] },
-    });
-    await expectApiCode(
-      PortalVizRefreshService.refreshPinnedResult(
-        { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
-        pinDeps({
-          findPortalResultById: jest.fn(async () => staticPin) as never,
-        })
-      ),
-      ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
-      422
-    );
-  });
-
-  it("persists the fresh snapshot back onto the row (inline delivery)", async () => {
-    const updatePortalResult = jest.fn(async () => pinRow());
-    const before = Date.now();
-    await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
-      pinDeps({ updatePortalResult: updatePortalResult as never })
-    );
-    expect(updatePortalResult).toHaveBeenCalledTimes(1);
-    const [id, patch] = updatePortalResult.mock.calls[0] as unknown as [
-      string,
-      {
-        content: Record<string, unknown>;
-        snapshotUpdatedAt: number;
-      },
-    ];
-    expect(id).toBe("pr-1");
-    // The stored content keeps its identity (program, pipeline) and swaps
-    // in the fresh rows.
-    expect(patch.content.program).toBe("api.d3;");
-    expect(patch.content.pipeline).toEqual(PIPELINE);
-    expect(patch.content.rows).toEqual([{ month: "Jan", total: 12 }]);
-    expect(patch.content.rowCount).toBe(1);
-    expect(patch.content.truncated).toBe(false);
-    expect(patch.snapshotUpdatedAt).toBeGreaterThanOrEqual(before);
-  });
-
-  it("hydrates the persist-back snapshot from a handle delivery", async () => {
-    const updatePortalResult = jest.fn(async () => pinRow());
-    const getSnapshot = jest.fn(async () => ({
-      rows: [{ month: "Jan", total: 12 }],
-      total: 5000,
-      offset: 0,
-      limit: 5000,
-    }));
-    await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
-      pinDeps({
-        resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
-        updatePortalResult: updatePortalResult as never,
-        getSnapshot: getSnapshot as never,
-      })
-    );
-    expect(getSnapshot).toHaveBeenCalledWith(
-      "qh-fresh",
-      expect.objectContaining({ offset: 0 })
-    );
-    const [, patch] = updatePortalResult.mock.calls[0] as unknown as [
-      string,
-      { content: Record<string, unknown> },
-    ];
-    expect(patch.content.rowCount).toBe(5000);
-    expect(patch.content.truncated).toBe(true);
-  });
-
-  it("a persist-back failure is non-fatal — the delivery still returns", async () => {
-    const updatePortalResult = jest.fn(async () => {
-      throw new Error("db blip");
-    });
-    const out = await PortalVizRefreshService.refreshPinnedResult(
-      { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
-      pinDeps({ updatePortalResult: updatePortalResult as never })
-    );
-    expect(out).toEqual({
-      kind: "inline",
-      rows: [{ month: "Jan", total: 12 }],
-    });
-  });
-});
-
 // #727: a stored pipeline naming a column (or view) the caller's views no
 // longer expose was refused by the SQL layer, then answered 500. It's a
 // widget that can't be refreshed until its prompt is re-run: the 422 the web
@@ -703,26 +509,6 @@ describe("PortalVizRefreshService — stale pipelines (#727)", () => {
           userId: "user-1",
         },
         deps({ resolveSqlDelivery: unknownColumn() as never })
-      ),
-      ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
-      422
-    );
-  });
-
-  it("pin refresh: an unknown entity → VIZ_WIDGET_NOT_REFRESHABLE (422)", async () => {
-    await expectApiCode(
-      PortalVizRefreshService.refreshPinnedResult(
-        { portalResultId: "pr-1", organizationId: "org-1", userId: "user-1" },
-        pinDeps({
-          resolveSqlDelivery: jest.fn(async () => {
-            throw new ApiError(
-              400,
-              ApiCode.PORTAL_SQL_FORBIDDEN,
-              "unknown entity: customers",
-              { reason: STALE_REFERENCE }
-            );
-          }) as never,
-        })
       ),
       ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
       422
@@ -774,6 +560,225 @@ describe("PortalVizRefreshService — stale pipelines (#727)", () => {
       ),
       ApiCode.PORTAL_SQL_TIMEOUT,
       400
+    );
+  });
+});
+
+// ── #640: live, definer's-rights pin reads ─────────────────────────────────
+
+describe("PortalVizRefreshService.executePin (#640)", () => {
+  const pinRow = (content: Record<string, unknown> = { pipeline: PIPELINE }) =>
+    ({
+      id: "pin-1",
+      organizationId: "org-1",
+      stationId: "st-1",
+      type: "d3",
+      content: { program: "api.d3;", ...content },
+      createdBy: "definer-1",
+      definerPrincipalType: "user",
+      definerPrincipalId: "definer-1",
+    }) as never;
+  const sharee = { userId: "sharee-1", canWrite: false };
+  const manager = { userId: "admin-1", canWrite: true };
+  const activeDefiner = () =>
+    jest.fn(async () => ({ userId: "definer-1" })) as never;
+  const lostDefiner = () =>
+    jest.fn(async () => {
+      const { DefinerAccessLostError } =
+        await import("../../services/pin-definer.service.js");
+      throw new DefinerAccessLostError("pin-1");
+    }) as never;
+
+  it("executes as the definer, not the viewer, in the pin's own org", async () => {
+    const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
+    const out = await PortalVizRefreshService.executePin(pinRow(), sharee, {
+      resolveSqlDelivery: resolveSqlDelivery as never,
+      assertDefinerActive: activeDefiner(),
+    });
+    expect(out).toEqual({
+      kind: "inline",
+      rows: [{ month: "Jan", total: 12 }],
+    });
+    expect(resolveSqlDelivery).toHaveBeenCalledWith(
+      { sql: PIPELINE.sql },
+      {
+        stationId: "st-1",
+        organizationId: "org-1",
+        userId: "definer-1",
+        portalResultId: "pin-1",
+      }
+    );
+  });
+
+  it("returns a large result as a handle that belongs to the pin", async () => {
+    const out = await PortalVizRefreshService.executePin(pinRow(), sharee, {
+      resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
+      assertDefinerActive: activeDefiner(),
+    });
+    expect(out).toMatchObject({ kind: "handle", queryHandle: "qh-fresh" });
+  });
+
+  it("returns an ordinary empty result when the definer's views match no rows", async () => {
+    const out = await PortalVizRefreshService.executePin(pinRow(), sharee, {
+      resolveSqlDelivery: jest.fn(async () => ({
+        kind: "inline",
+        result: { rows: [] },
+      })) as never,
+      assertDefinerActive: activeDefiner(),
+    });
+    expect(out).toEqual({ kind: "inline", rows: [] });
+  });
+
+  it("a pin with no stored query → PORTAL_RESULT_NOT_REEXECUTABLE (422), without executing", async () => {
+    const resolveSqlDelivery = jest.fn();
+    await expectApiCode(
+      PortalVizRefreshService.executePin(
+        pinRow({ pipeline: undefined }),
+        manager,
+        {
+          resolveSqlDelivery: resolveSqlDelivery as never,
+          assertDefinerActive: activeDefiner(),
+        }
+      ),
+      ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE,
+      422
+    );
+    expect(resolveSqlDelivery).not.toHaveBeenCalled();
+  });
+
+  it("a removed definer: neutral for a reader, the reason for a manager", async () => {
+    const resolveSqlDelivery = jest.fn();
+    await expectApiCode(
+      PortalVizRefreshService.executePin(pinRow(), sharee, {
+        resolveSqlDelivery: resolveSqlDelivery as never,
+        assertDefinerActive: lostDefiner(),
+      }),
+      ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+      422
+    );
+    await expectApiCode(
+      PortalVizRefreshService.executePin(pinRow(), manager, {
+        resolveSqlDelivery: resolveSqlDelivery as never,
+        assertDefinerActive: lostDefiner(),
+      }),
+      ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST,
+      422
+    );
+    expect(resolveSqlDelivery).not.toHaveBeenCalled();
+  });
+
+  it("a query naming a view the definer lost is the same access loss", async () => {
+    const stale = jest.fn(async () => {
+      throw new ApiError(400, ApiCode.PORTAL_SQL_FORBIDDEN, "unknown entity", {
+        reason: STALE_REFERENCE,
+      });
+    });
+    await expectApiCode(
+      PortalVizRefreshService.executePin(pinRow(), sharee, {
+        resolveSqlDelivery: stale as never,
+        assertDefinerActive: activeDefiner(),
+      }),
+      ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+      422
+    );
+  });
+
+  describe("a tiled map pin", () => {
+    const tiledPin = () =>
+      ({
+        ...(pinRow() as object),
+        type: "geo",
+        content: { spec: {}, tiled: true, pipeline: PIPELINE },
+      }) as never;
+
+    it("plans the query as the definer and answers tiles, without running it", async () => {
+      const resolveSqlDelivery = jest.fn();
+      const explainSqlQuery = jest.fn(async () => ({
+        totalCost: 1,
+        estimatedRows: 1,
+      }));
+      const out = await PortalVizRefreshService.executePin(tiledPin(), sharee, {
+        resolveSqlDelivery: resolveSqlDelivery as never,
+        explainSqlQuery: explainSqlQuery as never,
+        assertDefinerActive: activeDefiner(),
+      });
+      expect(out).toEqual({ kind: "tiles" });
+      expect(explainSqlQuery).toHaveBeenCalledWith({
+        sql: PIPELINE.sql,
+        stationId: PIPELINE.stationId,
+        organizationId: "org-1",
+        userId: "definer-1",
+      });
+      expect(resolveSqlDelivery).not.toHaveBeenCalled();
+    });
+
+    it("a view the definer lost is the same access loss", async () => {
+      const explainSqlQuery = jest.fn(async () => {
+        throw new ApiError(
+          400,
+          ApiCode.PORTAL_SQL_FORBIDDEN,
+          "unknown entity",
+          {
+            reason: STALE_REFERENCE,
+          }
+        );
+      });
+      await expectApiCode(
+        PortalVizRefreshService.executePin(tiledPin(), manager, {
+          explainSqlQuery: explainSqlQuery as never,
+          assertDefinerActive: activeDefiner(),
+        }),
+        ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST,
+        422
+      );
+    });
+
+    it("a removed definer is refused before planning", async () => {
+      const explainSqlQuery = jest.fn();
+      await expectApiCode(
+        PortalVizRefreshService.executePin(tiledPin(), sharee, {
+          explainSqlQuery: explainSqlQuery as never,
+          assertDefinerActive: lostDefiner(),
+        }),
+        ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+        422
+      );
+      expect(explainSqlQuery).not.toHaveBeenCalled();
+    });
+
+    it("an untiled map pin still runs its query", async () => {
+      const resolveSqlDelivery = jest.fn(async () => ({
+        kind: "inline",
+        result: { rows: [] },
+      }));
+      const explainSqlQuery = jest.fn();
+      const untiled = {
+        ...(pinRow() as object),
+        type: "geo",
+        content: { spec: {}, pipeline: PIPELINE },
+      } as never;
+      await PortalVizRefreshService.executePin(untiled, sharee, {
+        resolveSqlDelivery: resolveSqlDelivery as never,
+        explainSqlQuery: explainSqlQuery as never,
+        sqlQuery: jest.fn() as never,
+        assertDefinerActive: activeDefiner(),
+      });
+      expect(resolveSqlDelivery).toHaveBeenCalled();
+      expect(explainSqlQuery).not.toHaveBeenCalled();
+    });
+  });
+
+  it("any other failure propagates as itself", async () => {
+    const boom = jest.fn(async () => {
+      throw new ApiError(503, ApiCode.PORTAL_SQL_UNAVAILABLE, "no reader role");
+    });
+    await expectApiCode(
+      PortalVizRefreshService.executePin(pinRow(), sharee, {
+        resolveSqlDelivery: boom as never,
+        assertDefinerActive: activeDefiner(),
+      }),
+      ApiCode.PORTAL_SQL_UNAVAILABLE,
+      503
     );
   });
 });

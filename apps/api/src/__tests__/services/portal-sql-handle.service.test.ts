@@ -537,3 +537,42 @@ describe("samplePeek is capped for the model (#704)", () => {
     expect(stagedRows()[0].geom).toBe(bigGeom);
   });
 });
+
+// #640: a pin's handle carries the pin, so the snapshot route authorizes its
+// readers by the pin; the definer stays `_userId` for cursor re-execution.
+describe("produce for a pin (#640)", () => {
+  const storedMeta = () =>
+    mockRedisSet.mock.calls
+      .map((c) => (c as unknown as [string, string])[1])
+      .map((v) => JSON.parse(v) as unknown)
+      .find(
+        (v): v is Record<string, unknown> =>
+          !!v && !Array.isArray(v) && "_organizationId" in (v as object)
+      );
+
+  it("records the pin beside the definer", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await PortalSqlHandleService.produce({
+      stationId: "s",
+      organizationId: "o",
+      userId: "definer-1",
+      sql: "SELECT id FROM parcels",
+      portalResultId: "pin-1",
+    });
+    expect(storedMeta()).toMatchObject({
+      _userId: "definer-1",
+      _portalResultId: "pin-1",
+    });
+  });
+
+  it("records no pin for an ordinary handle", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await PortalSqlHandleService.produce({
+      stationId: "s",
+      organizationId: "o",
+      userId: "user-1",
+      sql: "SELECT id FROM parcels",
+    });
+    expect(storedMeta()).not.toHaveProperty("_portalResultId");
+  });
+});
