@@ -7,6 +7,7 @@ import { PG_IDENTIFIER_MAX_BYTES } from "@portalai/core/contracts";
 import {
   gistIndexName,
   sanitizeColumnName,
+  trgmIndexName,
 } from "../../services/wide-table-reconciler.service.js";
 
 const ENTITY = "0b6c2a8e-6f1d-4c3a-9a51-2f7d8e4b1c90";
@@ -48,5 +49,29 @@ describe("gistIndexName (#804)", () => {
     expect(gistIndexName(ENTITY, "c_boundary")).toBe(
       `er__${ENTITY}__${md5.slice(0, 16)}_gist`
     );
+  });
+});
+
+describe("trgmIndexName (#649)", () => {
+  it("is exactly 63 bytes for any column name", () => {
+    const longest = sanitizeColumnName("k".repeat(58), new Set());
+    expect(Buffer.byteLength(trgmIndexName(ENTITY, longest))).toBe(
+      PG_IDENTIFIER_MAX_BYTES
+    );
+    expect(Buffer.byteLength(trgmIndexName(ENTITY, "c_a"))).toBe(
+      PG_IDENTIFIER_MAX_BYTES
+    );
+  });
+
+  it("distinguishes two columns sharing a long prefix", () => {
+    expect(trgmIndexName(ENTITY, "c_parcel_owner_name_a")).not.toBe(
+      trgmIndexName(ENTITY, "c_parcel_owner_name_b")
+    );
+  });
+
+  it("shares gistIndexName's hash, with a _trgm suffix", () => {
+    const gist = gistIndexName(ENTITY, "c_city");
+    const trgm = trgmIndexName(ENTITY, "c_city");
+    expect(trgm).toBe(gist.replace(/_gist$/, "_trgm"));
   });
 });

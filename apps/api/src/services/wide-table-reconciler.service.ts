@@ -199,6 +199,22 @@ export function gistIndexName(
 }
 
 /**
+ * Trigram GIN index name for a text column (#649): the curated-view records
+ * search and string filters (`ILIKE '%term%'`) use it. Same fixed 63-byte
+ * scheme as {@link gistIndexName}, suffixed `_trgm`, so the two never collide
+ * and a long column name can't be truncated into another column's index.
+ */
+export function trgmIndexName(
+  connectorEntityId: string,
+  columnName: string
+): string {
+  return gistIndexName(connectorEntityId, columnName).replace(
+    /_gist$/,
+    "_trgm"
+  );
+}
+
+/**
  * The name Postgres stores for an identifier: its first 63 bytes. Wide-table
  * column names are `[a-z0-9_]`, so bytes and characters agree.
  */
@@ -623,6 +639,20 @@ export class WideTableReconcilerService {
             `CREATE INDEX IF NOT EXISTS ${quoteIdent(
               gistIndexName(connectorEntityId, columnName)
             )} ON ${tableName} USING GIST (${quoteIdent(columnName)})`
+          )
+        );
+      }
+      // #649: text columns get a trigram GIN index, so substring search and
+      // string filters don't sequentially scan the table. In-transaction for
+      // the same reason as the GiST index above: the column is new and empty.
+      // Columns that predate this, or that become text on a populated table,
+      // are built CONCURRENTLY by the wide-table-search-index sweep.
+      if (add.pgType === "text") {
+        await (tx as typeof db).execute(
+          sql.raw(
+            `CREATE INDEX IF NOT EXISTS ${quoteIdent(
+              trgmIndexName(connectorEntityId, columnName)
+            )} ON ${tableName} USING GIN (${quoteIdent(columnName)} gin_trgm_ops)`
           )
         );
       }
