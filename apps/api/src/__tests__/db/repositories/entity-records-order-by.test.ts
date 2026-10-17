@@ -24,7 +24,10 @@ import { describe, it, expect } from "@jest/globals";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-import { buildOrderByClause } from "../../../db/repositories/entity-records.repository.js";
+import {
+  buildKeysetPredicate,
+  buildOrderByClause,
+} from "../../../db/repositories/entity-records.repository.js";
 import { entityRecords } from "../../../db/schema/entity-records.table.js";
 
 const dialect = new PgDialect();
@@ -111,5 +114,93 @@ describe("buildOrderByClause (#433)", () => {
       );
       expect(out).not.toMatch(/NULLS LAST/);
     });
+  });
+});
+
+/**
+ * #649: the curated-view records table pages the wide table alone, so its
+ * tiebreaker is `w."entity_record_id"` (or `r."id"` under the `created` sort),
+ * not `entity_records.id`. Both helpers take it as an argument; omitting it
+ * keeps the entity-records shape unchanged.
+ */
+describe("custom tiebreaker (#649)", () => {
+  const recordId = sql.raw(`w."entity_record_id"`);
+
+  it("orders by a custom tiebreaker in the sort's direction", () => {
+    const out = render(
+      buildOrderByClause({
+        column: sql.raw(`w."c_city"`),
+        nullable: true,
+        direction: "desc",
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toMatch(
+      /"c_city" DESC NULLS LAST, w\."entity_record_id" DESC$/
+    );
+    expect(out).not.toMatch(/"entity_records"\."id"/);
+  });
+
+  it("does not repeat the tiebreaker when it is the sort column", () => {
+    const out = render(
+      buildOrderByClause({ column: recordId, tiebreaker: recordId })
+    );
+    expect(out).toBe(` ORDER BY w."entity_record_id" ASC`);
+  });
+
+  it("uses the custom tiebreaker in the NOT NULL row-value predicate", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: sql.raw(`r."created"`),
+        value: 1700000000000,
+        id: "rec-1",
+        nullable: false,
+        tiebreaker: sql.raw(`r."id"`),
+      })
+    );
+    expect(out).toBe(`(r."created", r."id") > ($1, $2)`);
+  });
+
+  it("uses the custom tiebreaker in the nullable predicate", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_city"`),
+        value: "Boston",
+        id: "rec-1",
+        direction: "desc",
+        nullable: true,
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(
+      `(w."c_city" < $1 OR (w."c_city" = $2 AND w."entity_record_id" < $3) OR w."c_city" IS NULL)`
+    );
+  });
+
+  it("uses the custom tiebreaker in the NULL-anchor predicate", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_city"`),
+        value: null,
+        id: "rec-1",
+        nullable: true,
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(`(w."c_city" IS NULL AND w."entity_record_id" > $1)`);
+  });
+
+  it("defaults the predicate's tiebreaker to entity_records.id", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: entityRecords.created,
+        value: 1,
+        id: "rec-1",
+        nullable: false,
+      })
+    );
+    expect(out).toMatch(
+      /\("entity_records"\."created", "entity_records"\."id"\) > /
+    );
   });
 });

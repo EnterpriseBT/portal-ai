@@ -989,15 +989,25 @@ export function buildKeysetPredicate(opts: {
   id: string;
   direction?: "asc" | "desc";
   nullable: boolean;
+  /** The unique tiebreaker (#649). Defaults to `entity_records.id`; the
+   *  curated-view records table seeks on the wide table's own key. */
+  tiebreaker?: Column | SQL;
 }): SQL {
-  const { column: col, value, id, direction = "asc", nullable } = opts;
+  const {
+    column: col,
+    value,
+    id,
+    direction = "asc",
+    nullable,
+    tiebreaker = entityRecords.id,
+  } = opts;
   const ahead = direction === "desc" ? sql`<` : sql`>`;
-  const tiebreak = sql`${entityRecords.id} ${ahead} ${id}`;
+  const tiebreak = sql`${tiebreaker} ${ahead} ${id}`;
 
   if (!nullable) {
     // NULL never reaches here, so the row-value form is safe and lets the
     // planner drive the composite index directly.
-    return sql`(${col}, ${entityRecords.id}) ${ahead} (${value}, ${id})`;
+    return sql`(${col}, ${tiebreaker}) ${ahead} (${value}, ${id})`;
   }
 
   if (value === null) {
@@ -1012,12 +1022,19 @@ export function buildOrderByClause(opts: {
   column: Column | SQL;
   direction?: "asc" | "desc";
   nullable?: boolean;
+  /** The unique tiebreaker (#649). Defaults to `entity_records.id`. */
+  tiebreaker?: Column | SQL;
 }): SQL {
-  const { column: col, direction = "asc" } = opts;
+  const {
+    column: col,
+    direction = "asc",
+    tiebreaker = entityRecords.id,
+  } = opts;
   const dir = direction === "desc" ? sql`DESC` : sql`ASC`;
 
-  // Already ordering by the tiebreaker — don't repeat it.
-  if (col instanceof Column && col === entityRecords.id) {
+  // Already ordering by the tiebreaker — don't repeat it. Compared by
+  // identity, so a raw SQL tiebreaker must be passed as the same object.
+  if (col === tiebreaker) {
     return sql` ORDER BY ${col} ${dir}`;
   }
 
@@ -1027,7 +1044,7 @@ export function buildOrderByClause(opts: {
 
   // The tiebreaker takes the same direction as the sort key: mismatched
   // directions cannot be served by a single index scan.
-  return sql` ORDER BY ${col} ${dir}${nulls}, ${entityRecords.id} ${dir}`;
+  return sql` ORDER BY ${col} ${dir}${nulls}, ${tiebreaker} ${dir}`;
 }
 
 /** Singleton instance. */
