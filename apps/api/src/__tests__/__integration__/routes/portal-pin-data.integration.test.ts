@@ -62,6 +62,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 const { SeatService } = await import("../../../services/seat.service.js");
+const { AnalyticsService } =
+  await import("../../../services/analytics.service.js");
 
 const AGE_OVER = (n: number) => ({
   combinator: "and" as const,
@@ -126,7 +128,8 @@ describe("GET /api/portal-results/:id/data (#640)", () => {
         stationId,
         organizationId: fx.orgId,
       },
-    }
+    },
+    type = "data-table"
   ): Promise<string> {
     const id = generateId();
     await db.insert(schema.portalResults).values({
@@ -136,7 +139,7 @@ describe("GET /api/portal-results/:id/data (#640)", () => {
       stationId,
       portalId: null,
       name: "Contacts",
-      type: "data-table",
+      type,
       content,
       definerPrincipalType: "user",
       definerPrincipalId: definerId,
@@ -364,6 +367,40 @@ describe("GET /api/portal-results/:id/data (#640)", () => {
       .where(eq(schema.permissionGrants.principalId, definerId));
     const res = await data(pinId).expect(422);
     expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE);
+  });
+
+  describe("a tiled map pin", () => {
+    const tiledMap = () =>
+      pin(
+        {
+          spec: { layers: [] },
+          tiled: true,
+          pipeline: {
+            sql: "SELECT c_email FROM contacts",
+            stationId,
+            organizationId: fx.orgId,
+          },
+        },
+        "geo"
+      );
+
+    it("answers tiles without running its query or staging a handle", async () => {
+      const run = jest.spyOn(AnalyticsService, "sqlQuery");
+      const res = await data(await tiledMap()).expect(200);
+      expect(res.body.payload).toEqual({ kind: "tiles" });
+      expect(run).not.toHaveBeenCalled();
+      run.mockRestore();
+    });
+
+    it("still empties once the definer loses the view its query reads", async () => {
+      const pinId = await tiledMap();
+      await db
+        .update(schema.permissionGrants)
+        .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+        .where(eq(schema.permissionGrants.principalId, definerId));
+      const res = await data(pinId).expect(422);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE);
+    });
   });
 
   it("answers a pin with no stored query as not re-executable", async () => {

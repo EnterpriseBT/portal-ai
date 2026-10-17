@@ -320,7 +320,10 @@ portalResultsRouter.post(
  *         description: Pinned result id
  *     responses:
  *       200:
- *         description: The pin's data, inline or as a pin-owned handle
+ *         description: >
+ *           The pin's data, inline or as a pin-owned handle. A tiled map pin
+ *           answers `{ kind: "tiles" }` once its query plans as the definer:
+ *           it draws from its tile endpoint, so the query isn't run here.
  *         content:
  *           application/json:
  *             schema:

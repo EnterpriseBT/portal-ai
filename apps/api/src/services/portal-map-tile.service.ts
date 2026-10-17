@@ -908,17 +908,19 @@ export class PortalMapTileService {
     // serve from the same table, so the serve column is the colorBy column or
     // the sentinel — never blocked on "has a colorBy".
     const dissolveColumn = aggregation.colorByColumn ?? DISSOLVE_ALL_KEY;
-    const dissolveReady =
+    // #643: only a precompute for THIS caller's scope is served.
+    const computedAt =
       aggregation.treatment === "dissolve" &&
       band !== null &&
-      dissolveOwner != null &&
-      // #643: only a precompute for THIS caller's scope is served.
-      (await this.hasDissolvePrecompute(
-        dissolveOwner,
-        dissolveColumn,
-        band,
-        scopeHash
-      ));
+      dissolveOwner != null
+        ? await this.dissolvePrecomputedAt(
+            dissolveOwner,
+            dissolveColumn,
+            band,
+            scopeHash
+          )
+        : null;
+    const dissolveReady = computedAt !== null;
 
     // Polygon dissolve is handled from the precompute, count-driven inside
     // `runDissolveTile` (individuals ≤ cap, merged coverage over).
@@ -932,6 +934,14 @@ export class PortalMapTileService {
         band!,
         scopeHash
       );
+      // #640: a pin is live, so its precompute is recomputed once it is older
+      // than the freshness window. The stored geometry still serves meanwhile.
+      if (
+        dissolveOwner!.kind === "pin" &&
+        Date.now() - computedAt! > VIZ_REFRESH_FRESHNESS_MS
+      ) {
+        this.enqueueLazyDissolve(dissolveOwner!, organizationId, userId);
+      }
       return this.runDissolveTile(
         dissolveOwner!,
         dissolveColumn,
@@ -951,17 +961,7 @@ export class PortalMapTileService {
       band !== null &&
       dissolveOwner != null
     ) {
-      void import("./dissolve-precompute.service.js")
-        .then(({ DissolvePrecomputeService }) =>
-          DissolvePrecomputeService.enqueueLazyFill({
-            owner: dissolveOwner,
-            organizationId,
-            userId,
-          })
-        )
-        .catch(() => {
-          /* best-effort: a failed lazy fill just means raw tiles persist */
-        });
+      this.enqueueLazyDissolve(dissolveOwner, organizationId, userId);
     }
 
     // #532 slices 3–4: points/lines are count-driven per tile so nothing is ever
@@ -1304,17 +1304,64 @@ export class PortalMapTileService {
     band: number,
     scopeHash: string
   ): Promise<boolean> {
+    return (
+      (await this.dissolvePrecomputedAt(
+        owner,
+        colorByColumn,
+        band,
+        scopeHash
+      )) !== null
+    );
+  }
+
+  /**
+   * When the precompute for `(owner, column, band, scope)` was computed
+   * (epoch ms), or `null` when there is none (#640). The processor writes a
+   * pass's rows in one delete-then-insert transaction, so any one row dates it,
+   * and reading one keeps this as cheap as an existence check. A pin's serve
+   * path compares it against the freshness window to keep a live pin's
+   * low-zoom geometry current.
+   */
+  private static async dissolvePrecomputedAt(
+    owner: DissolveOwner,
+    colorByColumn: string,
+    band: number,
+    scopeHash: string
+  ): Promise<number | null> {
     const r = (await db.execute(sql`
-      SELECT EXISTS(
-        SELECT 1 FROM map_dissolve_geometries mdg
-        WHERE ${dissolveOwnerCond(owner)}
-          AND mdg.column_name = ${colorByColumn}
-          AND mdg.zoom_band = ${band}
-          AND mdg.scope_hash = ${scopeHash}
-          AND mdg.deleted IS NULL
-      ) AS e
-    `)) as unknown as Array<{ e: boolean }>;
-    return r[0]?.e === true;
+      SELECT mdg.created AS c FROM map_dissolve_geometries mdg
+      WHERE ${dissolveOwnerCond(owner)}
+        AND mdg.column_name = ${colorByColumn}
+        AND mdg.zoom_band = ${band}
+        AND mdg.scope_hash = ${scopeHash}
+        AND mdg.deleted IS NULL
+      LIMIT 1
+    `)) as unknown as Array<{ c: string | number | null }>;
+    const c = r[0]?.c;
+    return c == null ? null : Number(c);
+  }
+
+  /**
+   * Queue a background per-scope dissolve precompute (#643), deduplicated
+   * against one already running. Fire-and-forget; the dynamic import avoids a
+   * cycle with the enqueue service.
+   */
+  private static enqueueLazyDissolve(
+    owner: DissolveOwner,
+    organizationId: string,
+    userId: string
+  ): void {
+    void import("./dissolve-precompute.service.js")
+      .then(({ DissolvePrecomputeService }) =>
+        DissolvePrecomputeService.enqueueLazyFill({
+          owner,
+          organizationId,
+          userId,
+        })
+      )
+      .catch(() => {
+        /* best-effort: a failed lazy fill just means the current tiles persist */
+      });
   }
 
   /**

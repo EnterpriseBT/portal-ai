@@ -683,6 +683,91 @@ describe("PortalVizRefreshService.executePin (#640)", () => {
     );
   });
 
+  describe("a tiled map pin", () => {
+    const tiledPin = () =>
+      ({
+        ...(pinRow() as object),
+        type: "geo",
+        content: { spec: {}, tiled: true, pipeline: PIPELINE },
+      }) as never;
+
+    it("plans the query as the definer and answers tiles, without running it", async () => {
+      const resolveSqlDelivery = jest.fn();
+      const explainSqlQuery = jest.fn(async () => ({
+        totalCost: 1,
+        estimatedRows: 1,
+      }));
+      const out = await PortalVizRefreshService.executePin(tiledPin(), sharee, {
+        resolveSqlDelivery: resolveSqlDelivery as never,
+        explainSqlQuery: explainSqlQuery as never,
+        assertDefinerActive: activeDefiner(),
+      });
+      expect(out).toEqual({ kind: "tiles" });
+      expect(explainSqlQuery).toHaveBeenCalledWith({
+        sql: PIPELINE.sql,
+        stationId: PIPELINE.stationId,
+        organizationId: "org-1",
+        userId: "definer-1",
+      });
+      expect(resolveSqlDelivery).not.toHaveBeenCalled();
+    });
+
+    it("a view the definer lost is the same access loss", async () => {
+      const explainSqlQuery = jest.fn(async () => {
+        throw new ApiError(
+          400,
+          ApiCode.PORTAL_SQL_FORBIDDEN,
+          "unknown entity",
+          {
+            reason: STALE_REFERENCE,
+          }
+        );
+      });
+      await expectApiCode(
+        PortalVizRefreshService.executePin(tiledPin(), manager, {
+          explainSqlQuery: explainSqlQuery as never,
+          assertDefinerActive: activeDefiner(),
+        }),
+        ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST,
+        422
+      );
+    });
+
+    it("a removed definer is refused before planning", async () => {
+      const explainSqlQuery = jest.fn();
+      await expectApiCode(
+        PortalVizRefreshService.executePin(tiledPin(), sharee, {
+          explainSqlQuery: explainSqlQuery as never,
+          assertDefinerActive: lostDefiner(),
+        }),
+        ApiCode.PORTAL_RESULT_DATA_UNAVAILABLE,
+        422
+      );
+      expect(explainSqlQuery).not.toHaveBeenCalled();
+    });
+
+    it("an untiled map pin still runs its query", async () => {
+      const resolveSqlDelivery = jest.fn(async () => ({
+        kind: "inline",
+        result: { rows: [] },
+      }));
+      const explainSqlQuery = jest.fn();
+      const untiled = {
+        ...(pinRow() as object),
+        type: "geo",
+        content: { spec: {}, pipeline: PIPELINE },
+      } as never;
+      await PortalVizRefreshService.executePin(untiled, sharee, {
+        resolveSqlDelivery: resolveSqlDelivery as never,
+        explainSqlQuery: explainSqlQuery as never,
+        sqlQuery: jest.fn() as never,
+        assertDefinerActive: activeDefiner(),
+      });
+      expect(resolveSqlDelivery).toHaveBeenCalled();
+      expect(explainSqlQuery).not.toHaveBeenCalled();
+    });
+  });
+
   it("any other failure propagates as itself", async () => {
     const boom = jest.fn(async () => {
       throw new ApiError(503, ApiCode.PORTAL_SQL_UNAVAILABLE, "no reader role");

@@ -20,6 +20,8 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
+import { VIZ_REFRESH_FRESHNESS_MS } from "@portalai/core/constants";
+
 import { PortalMapTileService } from "../../../services/portal-map-tile.service.js";
 import { PortalSqlReaderRoleService } from "../../../services/portal-sql-reader-role.service.js";
 import { environment } from "../../../environment.js";
@@ -930,7 +932,12 @@ describe("Portal map tile route (#316)", () => {
     return id;
   };
 
-  const insertDissolveRow = (pin: string, col: string, band: number) =>
+  const insertDissolveRow = (
+    pin: string,
+    col: string,
+    band: number,
+    computedAt = Date.now()
+  ) =>
     connection.unsafe(
       `INSERT INTO map_dissolve_geometries
          (id, created, created_by, organization_id, portal_result_id,
@@ -939,7 +946,7 @@ describe("Portal map tile route (#316)", () => {
          ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($7),4326)))`,
       [
         generateId(),
-        Date.now(),
+        computedAt,
         orgId,
         pin,
         col,
@@ -984,6 +991,74 @@ describe("Portal map tile route (#316)", () => {
     expect(res.aggregated).toBe(false); // real geometry, not centroid bins
     expect(pipelineRun).not.toHaveBeenCalled();
     pipelineRun.mockRestore();
+  });
+
+  it("#640: a pin's precompute older than the freshness window still serves, and is recomputed in the background", async () => {
+    const { DissolvePrecomputeService } =
+      await import("../../../services/dissolve-precompute.service.js");
+    const lazyFill = jest
+      .spyOn(DissolvePrecomputeService, "enqueueLazyFill")
+      .mockResolvedValue(undefined);
+    const pin = await createColorByPin(
+      'SELECT "c_geom" AS geom, c_own_type FROM parcels',
+      "c_own_type"
+    );
+    await insertDissolveRow(
+      pin,
+      "c_own_type",
+      0,
+      Date.now() - VIZ_REFRESH_FRESHNESS_MS - 1000
+    );
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+      userId,
+      authorizeSource: allowAllSources,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // The enqueue is fire-and-forget behind a dynamic import.
+    for (let i = 0; i < 50 && lazyFill.mock.calls.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    // As the definer, so the recompute is for the scope tiles serve.
+    expect(lazyFill).toHaveBeenCalledWith({
+      owner: { kind: "pin", portalResultId: pin },
+      organizationId: orgId,
+      userId,
+    });
+    lazyFill.mockRestore();
+  });
+
+  it("#640: a pin's precompute within the freshness window isn't recomputed", async () => {
+    const { DissolvePrecomputeService } =
+      await import("../../../services/dissolve-precompute.service.js");
+    const lazyFill = jest
+      .spyOn(DissolvePrecomputeService, "enqueueLazyFill")
+      .mockResolvedValue(undefined);
+    const pin = await createColorByPin(
+      'SELECT "c_geom" AS geom, c_own_type FROM parcels',
+      "c_own_type"
+    );
+    await insertDissolveRow(pin, "c_own_type", 0);
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+      userId,
+      authorizeSource: allowAllSources,
+    });
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(lazyFill).not.toHaveBeenCalled();
+    lazyFill.mockRestore();
   });
 
   it("#660: a raw-table pipeline serves nothing even when precomputed dissolve rows exist for the caller's scope", async () => {

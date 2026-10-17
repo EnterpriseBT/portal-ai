@@ -22,6 +22,7 @@ import {
   geoInlineRows,
 } from "../tools/geo-delivery.util.js";
 import { AnalyticsService } from "./analytics.service.js";
+import { PortalSqlService } from "./portal-sql.service.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import type {
   PortalMessageSelect,
@@ -46,6 +47,7 @@ export interface PinDataDeps {
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
   sqlQuery?: typeof AnalyticsService.sqlQuery;
   assertDefinerActive?: typeof PinDefinerService.assertDefinerActive;
+  explainSqlQuery?: typeof PortalSqlService.explainSqlQuery;
 }
 
 /** Who is reading a pin (#640) — it decides how much a refusal explains. */
@@ -181,6 +183,22 @@ export class PortalVizRefreshService {
 
     try {
       const { userId: definerId } = await assertDefinerActive(row);
+      // A tiled map draws only from its tile endpoint, which runs the query
+      // per tile. Planning it as the definer refuses exactly what running it
+      // would (a lost view or column), without the full scan or a handle no
+      // one reads.
+      if (row.type === "geo" && content.tiled === true) {
+        const explain =
+          deps.explainSqlQuery ??
+          PortalSqlService.explainSqlQuery.bind(PortalSqlService);
+        await explain({
+          sql: parsed.data.sql,
+          stationId: parsed.data.stationId,
+          organizationId: row.organizationId,
+          userId: definerId,
+        });
+        return { kind: "tiles" };
+      }
       return await this.runPipeline(
         parsed.data,
         row.organizationId,
