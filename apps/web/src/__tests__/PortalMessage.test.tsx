@@ -271,6 +271,54 @@ describe("PortalMessageUI", () => {
     });
   });
 
+  // #640: a pin re-runs its query on every view, so only a block carrying a
+  // query can be pinned.
+  describe("pinning needs a re-runnable query (#640)", () => {
+    const renderBlock = (content: Record<string, unknown>) =>
+      render(
+        <PortalMessageUI
+          canPin
+          message={makeMessage({
+            role: "assistant",
+            blocks: [{ type: "data-table", content }],
+          })}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn(async () => {})}
+          onUnpin={jest.fn()}
+        />
+      );
+    const pinButton = () => screen.getByRole("button", { name: /pin result/i });
+
+    it("disables Pin, with the reason, for rows supplied with no query", async () => {
+      renderBlock({ columns: ["name"], rows: [{ name: "Bob" }] });
+      expect(pinButton()).toHaveAttribute("aria-disabled", "true");
+      fireEvent.mouseOver(pinButton());
+      expect(
+        await screen.findByText(
+          "This result can't be re-run, so it can't be pinned."
+        )
+      ).toBeInTheDocument();
+    });
+
+    it("offers Pin for a block with its query", () => {
+      renderBlock({
+        columns: ["name"],
+        rows: [{ name: "Bob" }],
+        pipeline: {
+          sql: "SELECT name FROM t",
+          stationId: "s",
+          organizationId: "o",
+        },
+      });
+      expect(pinButton()).not.toHaveAttribute("aria-disabled");
+    });
+
+    it("offers Pin for a handle-backed block (the server resolves its query)", () => {
+      renderBlock({ columns: ["name"], queryHandle: "qh-1", rowCount: 500 });
+      expect(pinButton()).not.toHaveAttribute("aria-disabled");
+    });
+  });
+
   describe("empty / non-pinnable blocks", () => {
     it("does not render blocks with empty object content", () => {
       const message = makeMessage({

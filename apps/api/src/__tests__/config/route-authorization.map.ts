@@ -424,7 +424,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/portal-map/tiles/pin/{portalResultId}/{z}/{x}/{y}": {
     kind: "authorized",
-    by: "pin in org + resource.read pin via authorizeSource (404) (#692); rows caller-view-scoped (#643)",
+    by: "pin in org + resource.read pin via authorizeSource (404) (#692); rows scoped to the pin's definer, who must be an active member (#640)",
   },
   "GET /api/portal-results": {
     kind: "authorized",
@@ -434,9 +434,13 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     kind: "authorized",
     by: "org scope + per-object resource.read pin (404) (#621)",
   },
+  "GET /api/portal-results/{id}/data": {
+    kind: "authorized",
+    by: "org scope + per-object resource.read pin (404); executes as the pin's definer, who must be an active member (#640)",
+  },
   "GET /api/portal-sql/handle/{handleId}": {
     kind: "authorized",
-    by: "handle meta org === caller org, and _userId === caller when present (404) (#685)",
+    by: "handle meta org === caller org, and _userId === caller when present (404) (#685); a pin's handle: resource.read pin + live definer (#640)",
   },
   "GET /api/portals": {
     kind: "authorized",
@@ -807,11 +811,6 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     kind: "authorized",
     by: "owned create resource.write pin + source portal via PortalAccessService (#621, #685)",
     locks: { none: "pins; no scoped job writes them" },
-  },
-  "POST /api/portal-results/{id}/refresh": {
-    kind: "authorized",
-    by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
-    locks: { none: "starts a query, which locks nothing" },
   },
   "POST /api/portal-sql/widget-refresh": {
     kind: "authorized",

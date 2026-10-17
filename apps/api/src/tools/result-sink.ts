@@ -41,6 +41,9 @@ export interface ResultSinkContext {
   organizationId: string;
   /** #599: the calling user — every SQL-backed sink is per-user view-scoped. */
   userId: string;
+  /** #640: the pin being delivered; `userId` is then its definer and a staged
+   *  handle belongs to the pin (see `StoredHandleMeta._portalResultId`). */
+  portalResultId?: string;
 }
 
 /** Rows in a `sqlQuery` response, across its three shapes. */
@@ -85,6 +88,7 @@ export async function resolveSqlDelivery(
     stationId: ctx.stationId,
     organizationId: ctx.organizationId,
     userId: ctx.userId,
+    ...(ctx.portalResultId ? { portalResultId: ctx.portalResultId } : {}),
   });
   return { kind: "handle", envelope };
 }

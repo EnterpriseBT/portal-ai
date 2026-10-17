@@ -21,7 +21,8 @@ const validPortalResultFields = {
   name: "Q4 Revenue Table",
   type: "data-table" as const,
   content: { columns: ["quarter", "revenue"], rows: [] },
-  snapshotUpdatedAt: null,
+  definerPrincipalType: "user" as const,
+  definerPrincipalId: "user-1",
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -31,6 +32,38 @@ const validPortalResultFields = {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("PortalResultSchema", () => {
+  // #640: every pin names the principal its data executes as.
+  it("requires the definer", () => {
+    const data = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      ...validPortalResultFields,
+    };
+    const { definerPrincipalId: _id, ...withoutId } = data;
+    const { definerPrincipalType: _type, ...withoutType } = data;
+    expect(PortalResultSchema.safeParse(data).success).toBe(true);
+    expect(PortalResultSchema.safeParse(withoutId).success).toBe(false);
+    expect(PortalResultSchema.safeParse(withoutType).success).toBe(false);
+  });
+
+  it("admits a user or role definer and nothing else", () => {
+    const base = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      ...validPortalResultFields,
+    };
+    expect(
+      PortalResultSchema.safeParse({ ...base, definerPrincipalType: "role" })
+        .success
+    ).toBe(true);
+    expect(
+      PortalResultSchema.safeParse({ ...base, definerPrincipalType: "group" })
+        .success
+    ).toBe(false);
+  });
+
   it("should accept valid data with all fields", () => {
     const data = {
       id: "pr-1",
@@ -48,7 +81,8 @@ describe("PortalResultSchema", () => {
       name: "Q4 Revenue Table",
       type: "data-table",
       content: { columns: ["quarter", "revenue"], rows: [] },
-      snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -91,7 +125,8 @@ describe("PortalResultSchema", () => {
       name: "Summary",
       type: "text",
       content: { body: "hello" },
-      snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -134,7 +169,8 @@ describe("PortalResultSchema", () => {
       name: "Text Result",
       type: "text",
       content: { body: "Some text" },
-      snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -157,7 +193,8 @@ describe("PortalResultSchema", () => {
       name: "Table Result",
       type: "data-table",
       content: { columns: ["a"], rows: [{ a: 1 }] },
-      snapshotUpdatedAt: null,
+      definerPrincipalType: "user",
+      definerPrincipalId: "user-1",
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -186,70 +223,9 @@ describe("PortalResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  // #312: `snapshotUpdatedAt` is required-nullable, like `messageId`.
-  it("should accept a numeric snapshotUpdatedAt", () => {
-    const data = {
-      id: "pr-1",
-      created: Date.now(),
-      createdBy: "user-1",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      organizationId: "org-1",
-      stationId: "station-1",
-      portalId: "portal-1",
-      messageId: null,
-      blockIndex: null,
-      name: "Snapshotted",
-      type: "d3",
-      content: { program: "api.svg;", rows: [] },
-      snapshotUpdatedAt: Date.now(),
-    };
-    expect(PortalResultSchema.safeParse(data).success).toBe(true);
-  });
-
-  it("should reject a missing snapshotUpdatedAt", () => {
-    const data = {
-      id: "pr-1",
-      created: Date.now(),
-      createdBy: "user-1",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      organizationId: "org-1",
-      stationId: "station-1",
-      portalId: null,
-      messageId: null,
-      blockIndex: null,
-      name: "No snapshot key",
-      type: "text",
-      content: { body: "x" },
-    };
-    expect(PortalResultSchema.safeParse(data).success).toBe(false);
-  });
-
-  it("should reject a non-integer snapshotUpdatedAt", () => {
-    const data = {
-      id: "pr-1",
-      created: Date.now(),
-      createdBy: "user-1",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      organizationId: "org-1",
-      stationId: "station-1",
-      portalId: null,
-      messageId: null,
-      blockIndex: null,
-      name: "Bad snapshot",
-      type: "text",
-      content: { body: "x" },
-      snapshotUpdatedAt: 1.5,
-    };
-    expect(PortalResultSchema.safeParse(data).success).toBe(false);
+  // #640: a pin stores no snapshot, so it has no snapshot clock.
+  it("carries no snapshotUpdatedAt", () => {
+    expect(PortalResultSchema.shape).not.toHaveProperty("snapshotUpdatedAt");
   });
 });
 
@@ -343,7 +319,8 @@ describe("PortalResultModelFactory", () => {
       expect(shape).toHaveProperty("name");
       expect(shape).toHaveProperty("type");
       expect(shape).toHaveProperty("content");
-      expect(shape).toHaveProperty("snapshotUpdatedAt");
+      expect(shape).toHaveProperty("definerPrincipalType");
+      expect(shape).toHaveProperty("definerPrincipalId");
     });
 
     it("should allow updating domain fields after creation", () => {

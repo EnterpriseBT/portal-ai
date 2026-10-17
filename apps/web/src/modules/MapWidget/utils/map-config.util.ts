@@ -53,7 +53,8 @@ export function pickMapRows(
 
 /**
  * Decide whether a geo block renders through vector **tiles** rather than
- * inline rows (#314/#371). Tiles when: a fresh refresh delivered a handle; or,
+ * inline rows (#314/#371). Tiles when: a fresh refresh delivered a handle, or a
+ * tiled pin's data read answered `tiles` (#640); or,
  * on mount (no refresh yet), the block is handle-backed — either a live message
  * block still carrying a `queryHandle`, or a materialized pin marked `tiled`
  * (its `queryHandle` was stripped at pin time) **and** a `blockRef` exists to
@@ -68,7 +69,7 @@ export function isTileBoundGeo(
   hasRef: boolean
 ): boolean {
   if (fresh?.kind === "inline") return false;
-  if (fresh?.kind === "handle") return true;
+  if (fresh?.kind === "handle" || fresh?.kind === "tiles") return true;
   if (fresh != null) return false;
   if ("queryHandle" in content) return true;
   return (content as { tiled?: boolean }).tiled === true && hasRef;

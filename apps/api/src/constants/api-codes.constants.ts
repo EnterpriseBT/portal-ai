@@ -355,10 +355,26 @@ export enum ApiCode {
   /** The requested `blockIndex` is outside the target message's blocks. */
   PORTAL_RESULT_BLOCK_INDEX_INVALID = "PORTAL_RESULT_BLOCK_INDEX_INVALID",
   /**
-   * #312: pin attempt whose handle-backed data has expired and which carries
-   * no re-executable pipeline — there is nothing durable to materialize.
+   * #640: invariant — a pin's definer has a principal type nothing can execute
+   * as yet (`role`, admitted by the schema for a later rebind).
    */
-  PORTAL_RESULT_CONTENT_EXPIRED = "PORTAL_RESULT_CONTENT_EXPIRED",
+  PORTAL_RESULT_DEFINER_UNSUPPORTED = "PORTAL_RESULT_DEFINER_UNSUPPORTED",
+  /**
+   * #640: a data block with no re-executable query — refused at pin time, and
+   * answered by the data route for a pin saved before #640 without one.
+   */
+  PORTAL_RESULT_NOT_REEXECUTABLE = "PORTAL_RESULT_NOT_REEXECUTABLE",
+  /**
+   * #640: the pin's definer can no longer reach its data (removed from the org,
+   * or lost access to the views its query reads). Sent only to a caller who
+   * can manage the pin; everyone else gets `PORTAL_RESULT_DATA_UNAVAILABLE`.
+   */
+  PORTAL_RESULT_DEFINER_ACCESS_LOST = "PORTAL_RESULT_DEFINER_ACCESS_LOST",
+  /**
+   * #640: the neutral form of the above, for a reader who doesn't manage the
+   * pin — it says nothing about another user's access.
+   */
+  PORTAL_RESULT_DATA_UNAVAILABLE = "PORTAL_RESULT_DATA_UNAVAILABLE",
   PORTAL_INVALID_STATION = "PORTAL_INVALID_STATION",
   PORTAL_STATION_NO_TOOLS = "PORTAL_STATION_NO_TOOLS",
   PORTAL_STREAM_FAILED = "PORTAL_STREAM_FAILED",
@@ -890,6 +906,10 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
   [ApiCode.READ_STREAM_INTERRUPTED]: "Reload to refetch the cached snapshot.",
   [ApiCode.VIZ_WIDGET_NOT_FOUND]:
     "That visualization widget wasn't found, or isn't available to your organization.",
+  [ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE]:
+    "Re-run the prompt and pin the new result.",
+  [ApiCode.PORTAL_RESULT_DEFINER_ACCESS_LOST]:
+    "Re-run the prompt and pin the result again with someone who can see this data, or restore their access.",
   [ApiCode.VIZ_WIDGET_NOT_REFRESHABLE]:
     "This chart can't be refreshed: it predates live refresh, or its query no longer matches the data the user can see (#727). Re-run the prompt to regenerate it with current data.",
   [ApiCode.VIZ_REFRESH_RATE_LIMITED]:

@@ -138,6 +138,32 @@ export class PolicyAttachmentsRepository extends Repository<
       .returning();
     return rows.length;
   }
+
+  /**
+   * #640: tombstone a user's direct attachments in **one** org — a user, unlike
+   * a role or group, is a principal in every org they belong to, so the
+   * unscoped `softDeleteByPrincipal` would reach their other orgs.
+   */
+  async softDeleteUserInOrganization(
+    organizationId: string,
+    userId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: Date.now(), deletedBy })
+      .where(
+        and(
+          eq(policyAttachments.organizationId, organizationId),
+          eq(policyAttachments.principalType, "user"),
+          eq(policyAttachments.principalId, userId),
+          this.notDeleted()
+        )
+      )
+      .returning();
+    return rows.length;
+  }
 }
 
 export const policyAttachmentsRepo = new PolicyAttachmentsRepository();

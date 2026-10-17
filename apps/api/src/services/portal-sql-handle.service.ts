@@ -56,6 +56,10 @@ export interface ProduceOptions {
    *  view-scoped, so the id is persisted in the handle meta (`_userId`). */
   userId: string;
   sql: string;
+  /** #640: the pin this handle delivers. A pin's data executes as its
+   *  definer (`userId`), and anyone who can read the pin may read the
+   *  handle — re-checked per read, so unsharing closes an open handle. */
+  portalResultId?: string;
   /** Override the synchronous `statement_timeout` — set by the job tier
    *  (#130 E1) so a long scan runs off-thread at `SQL_QUERY_JOB_TIMEOUT_MS`. */
   statementTimeoutMs?: number;
@@ -77,6 +81,9 @@ export interface StoredHandleMeta extends QueryHandleEnvelope {
   /** #599: the user the handle's `sql` re-executes as (per-user view-scoped).
    *  Absent for row/stream handles that carry no re-executable `sql`. */
   _userId?: string;
+  /** #640: set when the handle delivers a pin's data. `_userId` is then the
+   *  pin's definer, and reads are authorized by pin read, not by `_userId`. */
+  _portalResultId?: string;
   /** #159: a derived "transform handle" — instead of a `sql` to re-run, its
    *  rows are a deterministic fold over `sourceHandle`. The cursor tier
    *  re-folds the source (via `applyTransformFold`) past the snapshot, the
@@ -217,7 +224,9 @@ export class PortalSqlHandleService {
       envelope,
       opts.stationId,
       opts.organizationId,
-      opts.userId
+      opts.userId,
+      undefined,
+      opts.portalResultId
     );
   }
 
@@ -431,7 +440,8 @@ export class PortalSqlHandleService {
     stationId: string,
     organizationId: string,
     userId?: string,
-    transform?: TransformDescriptor
+    transform?: TransformDescriptor,
+    portalResultId?: string
   ): Promise<{ envelope: QueryHandleEnvelope }> {
     const redis = getRedisClient();
     const ttlSeconds = Math.ceil(READ_HANDLE_TTL_MS / 1000);
@@ -441,6 +451,7 @@ export class PortalSqlHandleService {
       _organizationId: organizationId,
       ...(userId ? { _userId: userId } : {}),
       ...(transform ? { _transform: transform } : {}),
+      ...(portalResultId ? { _portalResultId: portalResultId } : {}),
     };
     await redis.set(
       metaKey(handleId),

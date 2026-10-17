@@ -8,8 +8,16 @@ import type { ToastApi } from "../utils/toast.context";
 
 const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 const mockRename = jest.fn();
-const mockPinRefresh = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 let currentGetQuery: Record<string, unknown> = {};
+/** #640: the pin's live data query (shared by the view and its widget). */
+const idleDataQuery = () => ({
+  data: undefined,
+  error: null as { code: string; message: string } | null,
+  isFetching: false,
+  dataUpdatedAt: 0,
+  refetch: jest.fn(),
+});
+let currentDataQuery = idleDataQuery();
 let renamePending = false;
 
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -30,10 +38,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
           isPending: false,
           error: null,
         }) as Partial<UseMutationResult>,
-      refresh: () =>
-        ({
-          mutateAsync: mockPinRefresh,
-        }) as Partial<UseMutationResult>,
+      data: () => currentDataQuery,
     },
     // useWidgetRefresh's message-branch endpoint (unused here, but the hook
     // instantiates both).
@@ -97,7 +102,8 @@ const makePinnedResult = (
   content: { value: "Total revenue: **$1.2M**" },
   created: Date.now() - 3600000,
   createdBy: "user-1",
-  snapshotUpdatedAt: null,
+  definerPrincipalType: "user",
+  definerPrincipalId: "user-1",
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -172,11 +178,13 @@ describe("PinnedResultDetailUI", () => {
     expect(screen.getByText("Map")).toBeInTheDocument();
   });
 
-  it("threads a pin blockRef + snapshot timestamp to the block renderer", () => {
-    registerBlockRenderer("d3", (_b, ctx) => (
+  it("threads a pin blockRef to the block renderer, over an empty binding (#640)", () => {
+    registerBlockRenderer("d3", (b, ctx) => (
       <div data-testid="pin-blockref-stub">
         {ctx?.blockRef?.kind === "pin"
-          ? `${ctx.blockRef.portalResultId}:${ctx?.dataUpdatedAt}`
+          ? `${ctx.blockRef.portalResultId}:${ctx?.dataUpdatedAt}:${JSON.stringify(
+              (b.content as { rows?: unknown }).rows
+            )}`
           : "no-pin-ref"}
       </div>
     ));
@@ -185,27 +193,15 @@ describe("PinnedResultDetailUI", () => {
         {...defaultProps}
         result={makePinnedResult({
           type: "d3",
-          content: { program: "api.svg;", rows: [] },
-          snapshotUpdatedAt: 424242,
+          created: 424242,
+          content: { program: "api.svg;", pipeline: { sql: "SELECT 1" } },
         })}
       />
     );
+    // The pin stores no rows; its widget renders the live delivery.
     expect(screen.getByTestId("pin-blockref-stub")).toHaveTextContent(
-      "result-1:424242"
+      "result-1:424242:[]"
     );
-  });
-
-  it("shows an expired-data notice for a legacy snapshot-less pin", () => {
-    render(
-      <PinnedResultDetailUI
-        {...defaultProps}
-        result={makePinnedResult({
-          type: "data-table",
-          content: { queryHandle: "qh-dead", columns: ["a"] },
-        })}
-      />
-    );
-    expect(screen.getByTestId("pinned-expired-notice")).toBeInTheDocument();
   });
 
   it("marks a tombstoned source portal instead of offering the link", () => {
@@ -414,83 +410,98 @@ describe("PinnedResultDetailUI", () => {
 // hand-rolled `fetchWithAuth` calls. Both now route through one handler on
 // the SDK mutation, so both paths need container-level coverage.
 
-describe("PinnedResultDetailView container — live refresh (#312)", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockPinRefresh
-      .mockReset()
-      .mockResolvedValue({ kind: "inline", rows: [{ a: 2 }] });
-  });
-
-  /**
-   * #349: the page no longer runs its own `useWidgetRefresh`. A stale pin used
-   * to fire the mount auto-refresh TWICE — once page-level, once inside the
-   * widget via the same pin `blockRef` — spending two calls of the per-org
-   * rate budget for one view. The widget is now the single refresher.
-   *
-   * Tradeoff recorded: the page-level hook also invalidated the pin's `get`
-   * query so the stored row refetched after a refresh. That invalidation is
-   * gone. It is not user-visible — the widget renders its own fresh delivery
-   * over the stored rows — but the page's cached row stays stale until the
-   * next natural refetch.
-   */
-  it("does not fire a page-level refresh for a stale pin", async () => {
-    currentGetQuery = {
-      data: {
-        portalResult: makePinnedResult({
+describe("PinnedResultDetailView container — live data (#640)", () => {
+  const sharedPin = (viewerIsDefiner = false) => ({
+    data: {
+      portalResult: {
+        ...makePinnedResult({
           id: "result-live-1",
           type: "data-table",
           content: {
             columns: ["a"],
-            rows: [{ a: 1 }],
             pipeline: {
               sql: "SELECT a FROM t",
               stationId: "st-1",
               organizationId: "org-1",
             },
           },
-          snapshotUpdatedAt: Date.now() - 10 * 60 * 1000, // stale
         }),
+        definer: { id: "user-9", displayName: "Ada Lovelace" },
+        viewerIsDefiner,
+        capabilities: { read: true, write: false, delete: false, share: false },
       },
-      isLoading: false,
-      error: null,
-    };
+    },
+    isLoading: false,
+    error: null,
+  });
+  const renderView = () =>
     render(
       <ToastContext.Provider value={mockToast}>
         <PinnedResultDetailView portalResultId="result-live-1" />
-      </ToastContext.Provider>
-    );
-
-    await waitFor(() =>
-      expect(screen.getByTestId("result-content")).toBeInTheDocument()
-    );
-    expect(mockPinRefresh).not.toHaveBeenCalled();
-  });
-
-  it("never wires page-level refresh for a pipeline-less pin", async () => {
-    currentGetQuery = {
-      data: {
-        portalResult: makePinnedResult({
-          id: "result-static-1",
-          type: "data-table",
-          content: { columns: ["a"], rows: [{ a: 1 }] },
-          snapshotUpdatedAt: Date.now() - 10 * 60 * 1000,
-        }),
-      },
-      isLoading: false,
-      error: null,
-    };
-    render(
-      <ToastContext.Provider value={mockToast}>
-        <PinnedResultDetailView portalResultId="result-static-1" />
       </ToastContext.Provider>,
       { queryClient: new QueryClient() }
     );
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+    currentDataQuery = idleDataQuery();
+  });
+
+  it("names the definer for a sharee", async () => {
+    currentGetQuery = sharedPin();
+    renderView();
     expect(
-      screen.queryByRole("button", { name: /refresh data/i })
-    ).not.toBeInTheDocument();
-    expect(mockPinRefresh).not.toHaveBeenCalled();
+      await screen.findByText("As Ada Lovelace sees it")
+    ).toBeInTheDocument();
+  });
+
+  it("doesn't name the definer to the definer", async () => {
+    currentGetQuery = sharedPin(true);
+    renderView();
+    await screen.findByTestId("result-content");
+    expect(screen.queryByText(/sees it/)).not.toBeInTheDocument();
+  });
+
+  it("shows a neutral notice, and no definer, when the data is unavailable", async () => {
+    currentGetQuery = sharedPin();
+    currentDataQuery = {
+      ...idleDataQuery(),
+      error: { code: "PORTAL_RESULT_DATA_UNAVAILABLE", message: "x" },
+    };
+    renderView();
+    expect(
+      await screen.findByTestId("pinned-data-unavailable")
+    ).toHaveTextContent("This pin's data isn't available.");
+    expect(screen.queryByText(/sees it/)).not.toBeInTheDocument();
+  });
+
+  it("tells a caller who manages the pin why, in the server's words", async () => {
+    currentGetQuery = sharedPin(true);
+    currentDataQuery = {
+      ...idleDataQuery(),
+      error: {
+        code: "PORTAL_RESULT_DEFINER_ACCESS_LOST",
+        message: "You no longer have access to the data behind this pin.",
+      },
+    };
+    renderView();
+    expect(
+      await screen.findByTestId("pinned-definer-access-lost")
+    ).toHaveTextContent(
+      "You no longer have access to the data behind this pin."
+    );
+  });
+
+  it("asks for a re-pin when the pin has no stored query", async () => {
+    currentGetQuery = sharedPin(true);
+    currentDataQuery = {
+      ...idleDataQuery(),
+      error: { code: "PORTAL_RESULT_NOT_REEXECUTABLE", message: "x" },
+    };
+    renderView();
+    expect(
+      await screen.findByTestId("pinned-not-reexecutable")
+    ).toHaveTextContent(/re-pin/i);
   });
 });
 
@@ -516,6 +527,8 @@ describe("PinnedResultDetailView container — remove", () => {
         // server-computed capabilities.
         portalResult: {
           ...makePinnedResult(),
+          definer: { id: "user-1", displayName: "Test User" },
+          viewerIsDefiner: true,
           capabilities: { read: true, write: true, delete: true, share: true },
         },
       },

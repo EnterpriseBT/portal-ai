@@ -298,8 +298,9 @@ export async function denyForUser(
 
 /**
  * #710: allow `verb resourceType` to `userId` through a policy attached to
- * the user. Member removal doesn't tombstone such an attachment, so it
- * outlives the membership.
+ * the user. Tombstoning the membership row directly leaves such an attachment
+ * in place, so it outlives the membership (`SeatService.removeMember` drops it
+ * since #640).
  */
 export async function allowForUser(
   db: Db,

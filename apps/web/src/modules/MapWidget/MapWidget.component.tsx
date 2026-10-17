@@ -365,6 +365,15 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             A map tile timed out — pan or zoom to retry.
           </Typography>
         ) : null}
+        {tiles.unavailable ? (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="map-widget-tile-unavailable"
+          >
+            This pin&apos;s data isn&apos;t available.
+          </Typography>
+        ) : null}
         {tiles.failed ? (
           <Typography
             variant="caption"

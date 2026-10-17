@@ -40,6 +40,7 @@ describe("readTileStatus", () => {
       failed: false,
       busy: false,
       rateLimited: false,
+      unavailable: false,
     });
     expect(
       readTileStatus(200, headers({ "X-Portal-Tile-Truncated": "1" }))
@@ -62,6 +63,13 @@ describe("readTileStatus", () => {
       failed: false,
       busy: false,
       rateLimited: false,
+      unavailable: false,
+    });
+  });
+  it("#640: a 422 is a pin whose data is unavailable — not a failure to retry", () => {
+    expect(readTileStatus(422, headers({}))).toMatchObject({
+      unavailable: true,
+      failed: false,
     });
   });
   it("flags a 503 as busy — neither failed nor timedOut (#698)", () => {
@@ -77,6 +85,7 @@ describe("readTileStatus", () => {
     );
     expect(readTileStatus(503, headers({}))).toMatchObject({
       rateLimited: false,
+      unavailable: false,
     });
   });
   it("a 429 with no Retry-After is not our limiter — it reads as failed (#705)", () => {

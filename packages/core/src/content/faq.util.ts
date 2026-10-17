@@ -214,9 +214,16 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I save results from a portal session?",
     answer:
-      "When the assistant returns a chart, table, or text block you want to keep, click the pin action on that portal result. Pinned results show up on your dashboard and on the Pinned Results page so you can return to them without rerunning the conversation.",
+      "When the assistant returns a chart, table, map, or text block you want to keep, click the pin action on that portal result. Pinned results show up on your dashboard and on the Pinned Results page so you can return to them without rerunning the conversation. A pinned chart, table, or map keeps the query behind it rather than a copy of the data, so it's always current; a result that has no query behind it can't be pinned, and the pin action says so.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Portal Result", "Pinned Result", "Portal Message"],
+  },
+  {
+    question: "What do people see when I share a pinned result?",
+    answer:
+      "They see live data as you see it, not as they would. A pinned chart, table, or map runs its query with your access every time it's opened, so someone you share it with sees your current view of the data, even data they couldn't open themselves, and never more than you can see. A shared pin is labelled with whose view it shows. If you lose access to that data, or leave the organization, the pin empties for everyone: people you shared it with see that its data isn't available, and you see why. To share a view that outlasts a change in your access, have someone who keeps access pin it.",
+    category: FAQCategory.Analytics,
+    relatedGlossaryTerms: ["Pinned Result", "Portal Result"],
   },
   {
     question: "What's the difference between a portal and a portal result?",
@@ -241,7 +248,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I refresh a chart, map, or table with the latest data?",
     answer:
-      "You usually don't have to. Every visualization — chart, map, or table, at any size — remembers the query behind it, so when you reopen a session it reloads current data on its own instead of showing a stale snapshot; no need to ask the assistant again. If you want to be sure it's current right now, each one has a refresh button, and an “Updated … ago” note tells you how fresh the data is. A refresh re-runs the whole query, so a “top 10” list picks up a new leader rather than just restating the old rows. If a refresh can't reach your data, the widget keeps showing the last good result and says so instead of going blank. Refreshing is always free — it never uses your usage allocation. (If a visualization predates this feature, it'll say so and you can re-run the prompt to regenerate it.)",
+      "You usually don't have to. Every visualization — chart, map, or table, at any size — remembers the query behind it, so when you reopen a session it reloads current data on its own instead of showing a stale snapshot; no need to ask the assistant again. If you want to be sure it's current right now, each one has a refresh button, and an “Updated … ago” note tells you how fresh the data is. A refresh re-runs the whole query, so a “top 10” list picks up a new leader rather than just restating the old rows. If a refresh can't reach your data, a widget in a session keeps showing the last good result and says so instead of going blank. A pinned one keeps no copy of the data, so it opens with current data every time, as the person who pinned it sees it. Refreshing is always free — it never uses your usage allocation. (If a visualization predates this feature, it'll say so and you can re-run the prompt to regenerate it.)",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Visualization Widget", "Portal Result"],
   },

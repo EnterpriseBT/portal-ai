@@ -29,7 +29,14 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
     portalResults: {
-      refresh: () => ({ mutateAsync: jest.fn() }),
+      // #640: a pin's live data query (inert here — no pin refs).
+      data: () => ({
+        data: undefined,
+        error: null,
+        isFetching: false,
+        dataUpdatedAt: 0,
+        refetch: jest.fn(),
+      }),
     },
   },
 }));

@@ -822,6 +822,11 @@ describe("isTileBoundGeo (#371 — tile-on-mount decision)", () => {
     expect(isTileBoundGeo(fresh, inline, true)).toBe(true);
   });
 
+  it("#640: a tiled pin's tiles answer tiles", () => {
+    const fresh: WidgetRefreshResponse = { kind: "tiles" };
+    expect(isTileBoundGeo(fresh, tiledPin, true)).toBe(true);
+  });
+
   it("a fresh inline delivery renders inline even over a tiled pin", () => {
     const fresh = {
       kind: "inline",

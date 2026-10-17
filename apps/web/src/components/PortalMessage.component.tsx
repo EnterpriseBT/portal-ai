@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, Paper } from "@portalai/core/ui";
+import { Box, GatedIconButton, IconName, Paper } from "@portalai/core/ui";
 import { Typography, IconButton, Tooltip } from "@mui/material";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
@@ -55,6 +55,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { sdk, queryKeys } from "../api/sdk";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { toServerError } from "../utils/api.util";
+import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import type { ServerError } from "../utils/api.util";
 
@@ -69,6 +70,24 @@ function hasRenderableContent(block: PortalMessageBlock): boolean {
 function hasPinnableContent(block: PortalMessageBlock): boolean {
   if (!PINNABLE_BLOCK_TYPES.has(block.type as PortalResultType)) return false;
   return hasRenderableContent(block);
+}
+
+/**
+ * #640: a pin stores no data — it re-runs its query on every view — so a data
+ * block pins only if it carries a query to re-run. A block of rows supplied
+ * with no query can't be. A handle-only block's query is resolved server-side,
+ * so it stays pinnable here and the server has the final say.
+ */
+const NOT_RERUNNABLE_REASON =
+  "This result can't be re-run, so it can't be pinned.";
+function isReRunnableBlock(block: PortalMessageBlock): boolean {
+  if (block.type === "text") return true;
+  const c = (block.content ?? {}) as Record<string, unknown>;
+  return (
+    c.pipeline != null ||
+    (typeof c.sql === "string" && c.sql.length > 0) ||
+    typeof c.queryHandle === "string"
+  );
 }
 
 /**
@@ -246,7 +265,24 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
                   <PushPinIcon fontSize="small" color="primary" />
                 </IconButton>
               </Tooltip>
-            ) : !canPin ? null : (
+            ) : !canPin ? null : !isReRunnableBlock(block) ? (
+              <GatedIconButton
+                size="small"
+                className="pin-button"
+                aria-label="Pin result"
+                gate={decideActionGate({
+                  allowed: true,
+                  blocked: NOT_RERUNNABLE_REASON,
+                })}
+                icon={IconName.PushPin}
+                sx={{
+                  flexShrink: 0,
+                  ml: 1,
+                  opacity: 0,
+                  transition: "opacity 0.15s",
+                }}
+              />
+            ) : (
               <Tooltip title="Pin result">
                 <IconButton
                   size="small"

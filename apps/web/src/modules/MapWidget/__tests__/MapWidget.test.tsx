@@ -200,6 +200,7 @@ describe("MapWidgetUI", () => {
           failed: false,
           busy: false,
           rateLimited: false,
+          unavailable: false,
         }}
       />
     );
@@ -218,6 +219,7 @@ describe("MapWidgetUI", () => {
           failed: false,
           busy: false,
           rateLimited: false,
+          unavailable: false,
         }}
       />
     );
@@ -234,6 +236,7 @@ describe("MapWidgetUI", () => {
           failed: false,
           busy: false,
           rateLimited: false,
+          unavailable: false,
         }}
       />
     );
@@ -251,6 +254,7 @@ describe("MapWidgetUI", () => {
           failed: false,
           busy: true,
           rateLimited: false,
+          unavailable: false,
         }}
       />
     );
@@ -268,10 +272,32 @@ describe("MapWidgetUI", () => {
           failed: true,
           busy: false,
           rateLimited: false,
+          unavailable: false,
         }}
       />
     );
     expect(screen.getByTestId("map-widget-tile-failed")).toBeInTheDocument();
+
+    // #640: a pin whose definer lost access — explained, not a failure.
+    rerender(
+      <MapWidgetUI
+        {...tileProps}
+        tileStatus={{
+          simplified: false,
+          truncated: false,
+          timedOut: false,
+          aggregated: false,
+          failed: false,
+          busy: false,
+          rateLimited: false,
+          unavailable: true,
+        }}
+      />
+    );
+    expect(screen.getByTestId("map-widget-tile-unavailable")).toHaveTextContent(
+      "This pin's data isn't available."
+    );
+    expect(screen.queryByTestId("map-widget-tile-failed")).toBeNull();
 
     // #705: over the per-user tile limit is a timed pause, never a failure.
     rerender(
@@ -285,6 +311,7 @@ describe("MapWidgetUI", () => {
           failed: false,
           busy: false,
           rateLimited: true,
+          unavailable: false,
         }}
       />
     );
@@ -316,6 +343,7 @@ describe("MapWidgetUI", () => {
         failed: false,
         busy: false,
         rateLimited: false,
+        unavailable: false,
       },
     };
     // Line layer → "most prominent" copy.
@@ -346,6 +374,7 @@ describe("MapWidgetUI", () => {
           failed: false,
           busy: false,
           rateLimited: false,
+          unavailable: false,
         }}
       />
     );

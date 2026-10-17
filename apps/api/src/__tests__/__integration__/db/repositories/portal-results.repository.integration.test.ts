@@ -82,6 +82,8 @@ describe("PortalResultsRepository Integration Tests", () => {
       name: `result-${generateId().slice(0, 8)}`,
       type: "text",
       content: {},
+      definerPrincipalType: "user",
+      definerPrincipalId: "test-system",
       created: now,
       createdBy: "test-system",
       updated: null,
@@ -98,7 +100,7 @@ describe("PortalResultsRepository Integration Tests", () => {
     it("should insert and return the full row", async () => {
       const tableContent = {
         columns: ["a", "b"],
-        rows: [{ a: 1, b: 2 }],
+        pipeline: { sql: "SELECT 1", stationId: "s", organizationId: "o" },
       };
       const data = makeResult({
         name: "Sales Table",

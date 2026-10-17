@@ -18,6 +18,7 @@ import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { HttpService } from "../services/http.service.js";
 import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
+import { PinDefinerService } from "../services/pin-definer.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
@@ -70,7 +71,13 @@ export const portalSqlHandleRouter = Router();
  *                 payload:
  *                   $ref: '#/components/schemas/QueryHandleSnapshotResponse'
  *       404:
- *         description: Handle expired or unknown, or belonging to another org or user (#685; the same response, so it reveals nothing)
+ *         description: Handle expired or unknown, or belonging to another org or user (#685; the same response, so it reveals nothing). A pin's handle (#640) is readable by anyone who can read the pin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: A pin's handle whose definer can no longer reach its data (#640) — `PORTAL_RESULT_DEFINER_ACCESS_LOST` for a caller who manages the pin, else `PORTAL_RESULT_DATA_UNAVAILABLE`
  *         content:
  *           application/json:
  *             schema:
@@ -96,12 +103,24 @@ portalSqlHandleRouter.get(
       // #685: a handle is readable only by its own org, and by its own user
       // when it records one (the agent's query handles do). Anything else is
       // the same 404 as an expired handle, so the check reveals nothing.
-      const { organizationId, userId } = req.application!.metadata;
+      const ctx = req.application!.metadata;
+      const { organizationId, userId } = ctx;
       const meta = await PortalSqlHandleService.getMeta(handleId);
-      if (
-        meta._organizationId !== organizationId ||
-        (meta._userId !== undefined && meta._userId !== userId)
-      ) {
+      if (meta._organizationId !== organizationId) {
+        throw new ApiError(
+          404,
+          ApiCode.READ_HANDLE_EXPIRED,
+          "Query handle not found or expired"
+        );
+      }
+      if (meta._portalResultId) {
+        // #640: a pin's handle holds its definer's data; anyone who can read
+        // the pin may page it, re-checked on every read.
+        await PinDefinerService.authorizeHandleRead(
+          { portalResultId: meta._portalResultId, userId: meta._userId },
+          ctx
+        );
+      } else if (meta._userId !== undefined && meta._userId !== userId) {
         throw new ApiError(
           404,
           ApiCode.READ_HANDLE_EXPIRED,

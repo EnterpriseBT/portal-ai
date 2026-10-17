@@ -2,11 +2,18 @@ import {
   PINNED_CONTENT_SCHEMAS,
   PinnedDataTableContentSchema,
   PinnedD3ContentSchema,
-  PinRefreshResponseSchema,
+  PinnedGeoContentSchema,
+  PinDataResponseSchema,
 } from "../../contracts/pinned-result.contract.js";
 import { WidgetRefreshResponseSchema } from "../../contracts/portal-sql.contract.js";
 
-// ── PINNED_CONTENT_SCHEMAS registry ──────────────────────────────────
+// #640: a data pin stores a recipe — its query and how to draw it — never rows.
+
+const PIPELINE = {
+  sql: "SELECT a FROM t",
+  stationId: "station-1",
+  organizationId: "org-1",
+};
 
 describe("PINNED_CONTENT_SCHEMAS", () => {
   it("registers text, data-table, d3, and geo", () => {
@@ -14,35 +21,6 @@ describe("PINNED_CONTENT_SCHEMAS", () => {
     expect(PINNED_CONTENT_SCHEMAS["data-table"]).toBeDefined();
     expect(PINNED_CONTENT_SCHEMAS.d3).toBeDefined();
     expect(PINNED_CONTENT_SCHEMAS.geo).toBeDefined();
-  });
-
-  // #312 Open Q4 resolved: the geo entry ships with #84/#314, so geo blocks
-  // pin and inherit materialization + refresh. It stores the inline geo shape
-  // (a handle/tile-backed map is materialized to rows at pin time).
-  it("geo schema accepts the inline geo shape", () => {
-    const res = PINNED_CONTENT_SCHEMAS.geo!.safeParse({
-      spec: {
-        layers: [
-          { kind: "points", source: { latColumn: "lat", lngColumn: "lng" } },
-        ],
-      },
-      rows: [{ lat: 40.7, lng: -111.9 }],
-    });
-    expect(res.success).toBe(true);
-  });
-
-  // #371: a large geo pin carries a durable `tiled` marker so the widget
-  // renders the full dataset via the pin's tile endpoint on mount.
-  it("geo schema keeps the tiled marker", () => {
-    const res = PINNED_CONTENT_SCHEMAS.geo!.safeParse({
-      spec: {
-        layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
-      },
-      rows: [{ geom: { type: "Point", coordinates: [0, 0] } }],
-      tiled: true,
-    });
-    expect(res.success).toBe(true);
-    expect((res as { data: { tiled?: boolean } }).data.tiled).toBe(true);
   });
 
   it("text schema accepts markdown and rejects the empty string", () => {
@@ -56,82 +34,101 @@ describe("PINNED_CONTENT_SCHEMAS", () => {
   });
 });
 
-// ── PinnedDataTableContentSchema ─────────────────────────────────────
-
-describe("PinnedDataTableContentSchema", () => {
-  const rows = [{ a: 1 }, { a: 2 }];
-
-  it("accepts a snapshot without a pipeline (static pin)", () => {
-    const result = PinnedDataTableContentSchema.safeParse({
-      columns: ["a"],
-      rows,
-    });
-    expect(result.success).toBe(true);
+describe("PinnedDataTableContentSchema (#640)", () => {
+  it("accepts columns and a query", () => {
+    expect(
+      PinnedDataTableContentSchema.safeParse({
+        columns: ["a"],
+        pipeline: PIPELINE,
+      }).success
+    ).toBe(true);
   });
 
-  it("accepts a snapshot with pipeline, rowCount, and truncated", () => {
-    const result = PinnedDataTableContentSchema.safeParse({
-      columns: ["a"],
-      rows,
-      rowCount: 120_000,
-      truncated: true,
-      pipeline: {
-        sql: "SELECT a FROM t",
-        stationId: "station-1",
-        organizationId: "org-1",
-      },
-    });
-    expect(result.success).toBe(true);
+  it("requires the query", () => {
+    expect(
+      PinnedDataTableContentSchema.safeParse({ columns: ["a"] }).success
+    ).toBe(false);
   });
 
-  it("rejects content without materialized rows", () => {
-    const result = PinnedDataTableContentSchema.safeParse({
-      columns: ["a"],
-      queryHandle: "qh-1",
-    });
-    expect(result.success).toBe(false);
+  it("refuses stored rows, counts or a handle", () => {
+    for (const extra of [
+      { rows: [{ a: 1 }] },
+      { rowCount: 1, truncated: false },
+      { queryHandle: "qh-1" },
+    ]) {
+      expect(
+        PinnedDataTableContentSchema.safeParse({
+          columns: ["a"],
+          pipeline: PIPELINE,
+          ...extra,
+        }).success
+      ).toBe(false);
+    }
   });
 
   it("rejects a pipeline missing its sql", () => {
-    const result = PinnedDataTableContentSchema.safeParse({
-      columns: ["a"],
-      rows,
-      pipeline: { stationId: "station-1", organizationId: "org-1" },
-    });
-    expect(result.success).toBe(false);
+    expect(
+      PinnedDataTableContentSchema.safeParse({
+        columns: ["a"],
+        pipeline: { stationId: "station-1", organizationId: "org-1" },
+      }).success
+    ).toBe(false);
   });
 });
 
-// ── PinnedD3ContentSchema ────────────────────────────────────────────
-
-describe("PinnedD3ContentSchema", () => {
-  it("accepts the inline d3 shape (program + rows)", () => {
-    const result = PinnedD3ContentSchema.safeParse({
-      program: "api.svg.append('g');",
-      rows: [{ x: 1 }],
-      pipeline: {
-        sql: "SELECT x FROM t",
-        stationId: "station-1",
-        organizationId: "org-1",
-      },
-    });
-    expect(result.success).toBe(true);
+describe("PinnedD3ContentSchema (#640)", () => {
+  it("accepts a program with its query", () => {
+    expect(
+      PinnedD3ContentSchema.safeParse({
+        program: "api.svg.append('g');",
+        pipeline: PIPELINE,
+      }).success
+    ).toBe(true);
   });
 
-  it("rejects a handle-only shape (no materialized rows)", () => {
-    const result = PinnedD3ContentSchema.safeParse({
-      program: "api.svg.append('g');",
-      queryHandle: "qh-1",
-      rowCount: 3,
-    });
-    expect(result.success).toBe(false);
+  it("refuses stored rows, and a program with no query", () => {
+    expect(
+      PinnedD3ContentSchema.safeParse({
+        program: "api.svg.append('g');",
+        pipeline: PIPELINE,
+        rows: [{ x: 1 }],
+      }).success
+    ).toBe(false);
+    expect(
+      PinnedD3ContentSchema.safeParse({ program: "api.svg.append('g');" })
+        .success
+    ).toBe(false);
   });
 });
 
-// ── PinRefreshResponseSchema ─────────────────────────────────────────
+describe("PinnedGeoContentSchema (#640)", () => {
+  const spec = {
+    layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+  };
 
-describe("PinRefreshResponseSchema", () => {
-  it("is the widget-refresh response union (one contract, two addressers)", () => {
-    expect(PinRefreshResponseSchema).toBe(WidgetRefreshResponseSchema);
+  it("accepts a spec with its query, keeping the #371 tiled marker", () => {
+    const res = PinnedGeoContentSchema.safeParse({
+      spec,
+      pipeline: PIPELINE,
+      tiled: true,
+    });
+    expect(res.success).toBe(true);
+    expect((res as { data: { tiled?: boolean } }).data.tiled).toBe(true);
+  });
+
+  it("refuses stored rows", () => {
+    expect(
+      PinnedGeoContentSchema.safeParse({
+        spec,
+        pipeline: PIPELINE,
+        rows: [{ geom: { type: "Point", coordinates: [0, 0] } }],
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("PinDataResponseSchema", () => {
+  it("is the widget-refresh delivery union: inline rows or a handle", () => {
+    expect(PinDataResponseSchema).toBe(WidgetRefreshResponseSchema);
   });
 });

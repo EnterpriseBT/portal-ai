@@ -23,15 +23,38 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
 import { PortalResultPinService } from "../services/portal-result-pin.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
+import { PinDefinerService } from "../services/pin-definer.service.js";
 import { DissolvePrecomputeService } from "../services/dissolve-precompute.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { setDbCancelPolicy } from "../utils/request-context.util.js";
 import { DateFactory } from "@portalai/core/utils";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 
 const logger = createLogger({ module: "portal-results" });
 
 export const portalResultsRouter = Router();
+
+/**
+ * Per-org rate limit shared by every widget/pin re-execution (one budget
+ * across the addressers). Fail-open on a Redis blip: the re-execution is
+ * already bounded (read-only + statement_timeout + LIMIT).
+ */
+async function consumeVizRefreshBudget(organizationId: string): Promise<void> {
+  try {
+    const count = await incrementRateWindow(`viz-refresh:${organizationId}`);
+    if (count > VIZ_REFRESH_RATE_PER_MIN) {
+      throw new ApiError(
+        429,
+        ApiCode.VIZ_REFRESH_RATE_LIMITED,
+        "Too many widget refreshes this minute."
+      );
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err; // the 429 propagates
+    logger.warn({ err }, "viz-refresh rate limiter unavailable; failing open");
+  }
+}
 
 // ── POST /api/portal-results ──────────────────────────────────────────────
 
@@ -42,7 +65,11 @@ export const portalResultsRouter = Router();
  *     tags:
  *       - Portal Results
  *     summary: Pin a result
- *     description: Pins a content block from the most recent assistant message in a portal as a named result.
+ *     description: >
+ *       Pins a content block from the most recent assistant message in a
+ *       portal as a named result. A data block (table, chart, map) is stored
+ *       as its query, never its rows (#640); its data runs live, as the user
+ *       who pinned it, through `GET /api/portal-results/{id}/data`.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -102,8 +129,9 @@ export const portalResultsRouter = Router();
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       422:
  *         description: >
- *           The block's handle-backed data has expired and it carries no
- *           re-executable pipeline (`PORTAL_RESULT_CONTENT_EXPIRED`).
+ *           A data block with no query to re-run
+ *           (`PORTAL_RESULT_NOT_REEXECUTABLE`) — #640: a pin stores its query,
+ *           never rows, so there would be nothing to show.
  *         content:
  *           application/json:
  *             schema:
@@ -199,15 +227,15 @@ portalResultsRouter.post(
       }
       const type = blockType as PortalResultType;
 
-      // #312: materialize — validate against the per-type contract and
-      // resolve a self-contained snapshot (handle envelopes never persist).
-      // Display blocks from resolveDisplayBlock follow { type, content }.
-      const { content, snapshotUpdatedAt } =
-        await PortalResultPinService.materialize(type, block.content, {
-          stationId: portal.stationId,
-          organizationId,
-          userId,
-        });
+      // #640: materialize — validate against the per-type contract and keep
+      // the pin's recipe (its query + how to draw it), never rows. A data
+      // block with no query to re-run is refused. Display blocks from
+      // resolveDisplayBlock follow { type, content }.
+      const { content } = await PortalResultPinService.materialize(
+        type,
+        block.content,
+        { stationId: portal.stationId, organizationId }
+      );
 
       const now = new DateFactory("UTC").now().getTime();
       const portalResult = await DbService.repository.portalResults.create({
@@ -220,7 +248,9 @@ portalResultsRouter.post(
         name,
         type,
         content: content as Record<string, unknown>,
-        snapshotUpdatedAt,
+        // #640: the pin's data executes as the user who pinned it.
+        definerPrincipalType: "user",
+        definerPrincipalId: userId,
         created: now,
         createdBy: userId,
         updated: null,
@@ -263,23 +293,22 @@ portalResultsRouter.post(
   }
 );
 
-// ── POST /api/portal-results/:id/refresh ──────────────────────────────────
+// ── GET /api/portal-results/:id/data ──────────────────────────────────────
 
 /**
  * @openapi
- * /api/portal-results/{id}/refresh:
- *   post:
+ * /api/portal-results/{id}/data:
+ *   get:
  *     tags:
  *       - Portal Results
- *     summary: Re-execute a pinned result's durable pipeline for fresh data
+ *     summary: A pinned result's data, live, as its definer sees it
  *     description: >
- *       Pin-addressed live refresh (#312). The server reads the pipeline from
- *       the pinned row's own stored content and re-runs it read-only under the
- *       caller's organization — the client never supplies SQL. A successful
- *       refresh persists the fresh snapshot back onto the row
- *       (`snapshotUpdatedAt`), so the stored fallback is always the last known
- *       good data. Free and unmetered; shares the per-org widget-refresh rate
- *       window.
+ *       #640: a pin stores no rows. This executes its stored query on every
+ *       read, read-only and under the **definer's** current access (the user
+ *       who pinned it), not the caller's and not the org's. Any caller who can
+ *       read the pin may call it. Nothing is persisted. A large result is a
+ *       query handle that belongs to the pin, so the pin's readers can page it.
+ *       Free and unmetered; shares the per-org widget-refresh rate window.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -291,7 +320,10 @@ portalResultsRouter.post(
  *         description: Pinned result id
  *     responses:
  *       200:
- *         description: A fresh delivery for the pinned result
+ *         description: >
+ *           The pin's data, inline or as a pin-owned handle. A tiled map pin
+ *           answers `{ kind: "tiles" }` once its query plans as the definer:
+ *           it draws from its tile endpoint, so the query isn't run here.
  *         content:
  *           application/json:
  *             schema:
@@ -301,13 +333,17 @@ portalResultsRouter.post(
  *                 payload:
  *                   $ref: '#/components/schemas/WidgetRefreshResponse'
  *       404:
- *         description: No pinned result for this id (or cross-org)
+ *         description: No pin the caller can read with this id (or cross-org)
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       422:
- *         description: The pinned result has no durable pipeline
+ *         description: >
+ *           `PORTAL_RESULT_NOT_REEXECUTABLE` when the pin has no stored query;
+ *           when its definer can no longer reach the data,
+ *           `PORTAL_RESULT_DEFINER_ACCESS_LOST` for a caller who manages the
+ *           pin and `PORTAL_RESULT_DATA_UNAVAILABLE` otherwise
  *         content:
  *           application/json:
  *             schema:
@@ -319,76 +355,40 @@ portalResultsRouter.post(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  */
-portalResultsRouter.post(
-  "/:id/refresh",
+portalResultsRouter.get(
+  "/:id/data",
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const ctx = req.application!.metadata;
-      const organizationId = ctx.organizationId;
+      const { organizationId, userId } = ctx;
 
-      // Per-org rate limit — the same window as the message-block
-      // widget-refresh (one budget across both addressers). Fail-open on a
-      // Redis blip: the re-execution is already bounded (read-only +
-      // statement_timeout + LIMIT).
-      try {
-        const count = await incrementRateWindow(
-          `viz-refresh:${organizationId}`
+      // After the cheap rate-limit gate, so a nonexistent id is still bounded.
+      await consumeVizRefreshBudget(organizationId);
+
+      const notFound = () =>
+        new ApiError(
+          404,
+          ApiCode.PORTAL_RESULT_NOT_FOUND,
+          "Portal result not found"
         );
-        if (count > VIZ_REFRESH_RATE_PER_MIN) {
-          throw new ApiError(
-            429,
-            ApiCode.VIZ_REFRESH_RATE_LIMITED,
-            "Too many widget refreshes this minute."
-          );
-        }
-      } catch (err) {
-        if (err instanceof ApiError) throw err; // the 429 propagates
-        logger.warn(
-          { err },
-          "viz-refresh rate limiter unavailable; failing open"
-        );
-      }
-
-      // #621: a viz refresh mutates the pin's stored result — a write. Guard it
-      // (a read-only grantee can't refresh a shared pin); 404 when unreadable.
-      // After the cheap rate-limit gate so a nonexistent id is still bounded.
-      // #713: one the caller can't read answers 404, like its GET.
-      ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(ctx),
-        organizationId,
-        "pin",
-        await DbService.repository.portalResults.findById(req.params.id),
-        "write",
-        () =>
-          new ApiError(
-            404,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
-            "Portal result not found"
-          )
-      );
-
-      const payload = await PortalVizRefreshService.refreshPinnedResult({
-        portalResultId: req.params.id,
-        organizationId,
-        userId: req.application!.metadata.userId,
-      });
-
-      // #472: recompute the low-zoom dissolve over the freshly-refreshed data.
-      // Best-effort; a non-polygon/no-colorBy pin is a no-op.
-      const pin = await DbService.repository.portalResults.findById(
+      const row = await DbService.repository.portalResults.findById(
         req.params.id
       );
-      if (pin) {
-        await DissolvePrecomputeService.enqueueForPin({
-          portalResultId: pin.id,
-          organizationId,
-          userId: req.application!.metadata.userId,
-          type: pin.type,
-          content: pin.content,
-        });
+      if (!row || row.organizationId !== organizationId) {
+        return next(notFound());
       }
+      // Reading a pin's data is reading the pin: a read-only sharee may.
+      const set = await PermissionService.loadSet(ctx);
+      const object = { type: "pin", id: row.id, createdBy: row.createdBy };
+      if (!set.can("resource.read", object)) return next(notFound());
 
+      // Read-only work, safe to stop mid-statement when the client leaves.
+      setDbCancelPolicy("always");
+      const payload = await PortalVizRefreshService.executePin(row, {
+        userId,
+        canWrite: set.can("resource.write", object),
+      });
       return HttpService.success(res, payload);
     } catch (err) {
       return next(err);
@@ -511,12 +511,15 @@ portalResultsRouter.get(
         DbService.repository.portalResults.count(where),
       ]);
 
+      // #640: each pin names its definer, so a sharee knows whose access it
+      // shows.
+      const definers = await PinDefinerService.describeMany(data, ctx.userId);
       return HttpService.success<PortalResultListResponsePayload>(res, {
         // #688: each pin with the caller's capabilities on it.
         portalResults: ObjectCapabilitiesService.attach(
           set,
           "pin",
-          data
+          data.map((row) => ({ ...row, ...definers.get(row.id)! }))
         ) as unknown as PortalResultListResponsePayload["portalResults"],
         total,
         limit,
@@ -605,6 +608,7 @@ portalResultsRouter.get(
       return HttpService.success<PortalResultGetResponsePayload>(res, {
         portalResult: {
           ...portalResult,
+          ...(await PinDefinerService.describe(portalResult, ctx.userId)),
           capabilities: ObjectCapabilitiesService.for(set, "pin", portalResult),
         } as unknown as PortalResultGetResponsePayload["portalResult"],
       });

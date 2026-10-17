@@ -21,7 +21,6 @@ const { connectorInstances } =
   await import("../../api/connector-instances.api");
 const { toolpacks } = await import("../../api/toolpacks.api");
 const { portalSql } = await import("../../api/portal-sql.api");
-const { portalResults } = await import("../../api/portal-results.api");
 const { entityRecords } = await import("../../api/entity-records.api");
 const { connectorEntities } = await import("../../api/connector-entities.api");
 const { organizations } = await import("../../api/organizations.api");
@@ -78,7 +77,6 @@ describe("long write timeouts (#789)", () => {
     ["connectorEntities.delete", () => connectorEntities.delete("ce-1")],
     ["organizations.delete", () => organizations.delete("org-1")],
     ["portalSql.widgetRefresh", () => portalSql.widgetRefresh()],
-    ["portalResults.refresh", () => portalResults.refresh()],
     ["entityRecords.import", () => entityRecords.import("ce-1")],
   ])("%s declares LONG_WRITE_TIMEOUT_MS", (_, call) => {
     call();

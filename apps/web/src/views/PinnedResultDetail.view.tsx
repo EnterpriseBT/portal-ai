@@ -29,20 +29,24 @@ import { RenamePinnedResultDialog } from "../components/RenamePinnedResultDialog
 import { ShareDialog } from "../components/ShareDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { pinDataRefusal, type PinDataRefusal } from "../utils/pin-data.util";
 import { useToast } from "../utils/toast.context";
 import type { PortalResultPayload } from "../api/portal-results.api";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /**
- * Reconstruct a block that ContentBlockRenderer can handle.
- * Pinned result content is stored exactly as the display block's content field,
- * so we pass it through directly.
+ * Reconstruct a block that ContentBlockRenderer can handle. A data pin stores
+ * its recipe, not rows (#640): its widget renders the live delivery from
+ * `portalResults.data`, so it starts from an empty inline binding.
  */
 const toContentBlock = (
   result: PortalResult
 ): { type: string; content: unknown } => {
-  return { type: result.type, content: result.content };
+  if (result.type === "text") {
+    return { type: result.type, content: result.content };
+  }
+  return { type: result.type, content: { ...result.content, rows: [] } };
 };
 
 /** Type-chip labels — one entry per durable kind (#312). */
@@ -53,15 +57,26 @@ const TYPE_LABELS: Record<string, string> = {
   geo: "Map",
 };
 
-/**
- * A pre-#312 pin that stored a bare handle envelope: its Redis handle is long
- * expired and no rows were materialized — render an explicit notice instead
- * of a silently empty table.
- */
-const isSnapshotless = (result: PortalResult): boolean => {
-  if (result.type !== "data-table" && result.type !== "d3") return false;
-  const c = result.content as { queryHandle?: unknown; rows?: unknown };
-  return typeof c?.queryHandle === "string" && !Array.isArray(c?.rows);
+/** #640: why a pin shows no data, in the words its reader may see. */
+const REFUSAL_NOTICES: Record<
+  PinDataRefusal,
+  { severity: "info" | "warning"; testId: string; text: string }
+> = {
+  "not-reexecutable": {
+    severity: "warning",
+    testId: "pinned-not-reexecutable",
+    text: "This pin can't refresh — re-pin it from a new result.",
+  },
+  "access-lost": {
+    severity: "warning",
+    testId: "pinned-definer-access-lost",
+    text: "The access this pin's data is shown with is gone, so it has no data. Re-run the prompt and pin the new result.",
+  },
+  unavailable: {
+    severity: "info",
+    testId: "pinned-data-unavailable",
+    text: "This pin's data isn't available.",
+  },
 };
 
 // ── Pure UI ─────────────────────────────────────────────────────────
@@ -84,6 +99,14 @@ export interface PinnedResultDetailUIProps {
   removing?: boolean;
   onOpenPortal: (portalId: string, messageId: string | null) => void;
   onNavigate: (href: string) => void;
+  /** #640: whose access the pin's data shows, named only when the viewer
+   *  isn't them. */
+  definerName?: string | null;
+  /** #640: the pin's data is refused for a reason its state explains. */
+  dataRefusal?: PinDataRefusal | null;
+  /** The server's wording for the refusal, which knows whether the viewer is
+   *  the definer. Falls back to the built-in notice. */
+  dataRefusalMessage?: string | null;
 }
 
 export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
@@ -98,8 +121,17 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   removing = false,
   onOpenPortal,
   onNavigate,
+  definerName = null,
+  dataRefusal = null,
+  dataRefusalMessage = null,
 }) => {
   const contentBlock = toContentBlock(result);
+  const refusal = dataRefusal ? REFUSAL_NOTICES[dataRefusal] : null;
+  // Naming the definer beside an unavailable pin would say whose access ended.
+  const showDefiner =
+    definerName != null &&
+    dataRefusal !== "access-lost" &&
+    dataRefusal !== "unavailable";
   const removeGate = decideActionGate({
     allowed: canDelete,
     blocked: removing ? "Removing this pin…" : undefined,
@@ -183,28 +215,27 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
               ...(result.portalId == null
                 ? [{ label: "Source", value: "Portal deleted" }]
                 : []),
+              // #640: a shared pin shows its definer's data, not the viewer's.
+              ...(showDefiner
+                ? [{ label: "Data", value: `As ${definerName} sees it` }]
+                : []),
             ]}
           />
         </PageHeader>
 
         <PageSection variant="outlined" data-testid="result-content">
-          {isSnapshotless(result) ? (
-            <Alert severity="warning" data-testid="pinned-expired-notice">
-              The saved data for this result has expired. Re-run the prompt and
-              pin the fresh result.
+          {refusal ? (
+            <Alert severity={refusal.severity} data-testid={refusal.testId}>
+              {(dataRefusal === "access-lost" && dataRefusalMessage) ||
+                refusal.text}
             </Alert>
           ) : (
             <Box sx={{ overflow: "auto" }}>
               <ContentBlockRenderer
                 block={contentBlock}
-                // #690: a pin the caller can't write isn't refreshed (the
-                // server would 403 the refresh).
-                blockRef={{
-                  kind: "pin",
-                  portalResultId: result.id,
-                  canRefresh: canWrite,
-                }}
-                dataUpdatedAt={result.snapshotUpdatedAt ?? result.created}
+                // #640: the widget reads the pin's live data through this ref.
+                blockRef={{ kind: "pin", portalResultId: result.id }}
+                dataUpdatedAt={result.created}
               />
             </Box>
           )}
@@ -332,6 +363,15 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   // #688: the caller's capabilities on this pin (missing → fail closed).
   const capabilities = payload?.portalResult.capabilities;
   const [shareOpen, setShareOpen] = useState(false);
+  // #640: the same query the pin's widget reads (one request between them);
+  // here only its refusal matters, which replaces the block.
+  const pinData = sdk.portalResults.data(portalResultId, {
+    enabled: portalResult != null && portalResult.type !== "text",
+  });
+  const dataRefusal = pinDataRefusal(pinData.error);
+  const definerName = payload?.portalResult.viewerIsDefiner
+    ? null
+    : (payload?.portalResult.definer?.displayName ?? null);
 
   return (
     <DataResult results={{ result: resultQuery }}>
@@ -351,6 +391,9 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
               removing={removeMutation.isPending}
               onOpenPortal={handleOpenPortal}
               onNavigate={handleNavigate}
+              definerName={definerName}
+              dataRefusal={dataRefusal}
+              dataRefusalMessage={pinData.error?.message ?? null}
             />
             {renameOpen && (
               <RenamePinnedResultDialog

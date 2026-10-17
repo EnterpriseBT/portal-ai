@@ -73,6 +73,16 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
         <Typography variant="caption" color="text.secondary">
           {DateFactory.relativeTime(result.created)}
         </Typography>
+        {/* #640: a shared pin shows its definer's data, not the viewer's. */}
+        {!result.viewerIsDefiner && result.type !== "text" && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="pinned-result-definer"
+          >
+            Data as {result.definer.displayName} sees it
+          </Typography>
+        )}
       </Stack>
     </DetailCard>
   );

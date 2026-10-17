@@ -2037,6 +2037,8 @@ const options: swaggerJsdoc.Options = {
             "name",
             "type",
             "content",
+            "definerPrincipalType",
+            "definerPrincipalId",
             "created",
             "createdBy",
           ],
@@ -2046,17 +2048,19 @@ const options: swaggerJsdoc.Options = {
             stationId: { type: "string" },
             portalId: { type: "string" },
             name: { type: "string", example: "Q1 Revenue Table" },
+            definerPrincipalType: {
+              type: "string",
+              enum: ["user", "role"],
+              description:
+                "#640: the principal the pin's data executes as. Only `user` is written today.",
+            },
+            definerPrincipalId: { type: "string" },
             type: {
               type: "string",
               enum: ["text", "data-table", "d3", "geo"],
               example: "data-table",
             },
             content: { type: "object", additionalProperties: true },
-            snapshotUpdatedAt: {
-              type: ["number", "null"],
-              description:
-                "Epoch ms of the last successful snapshot write (#312) — pin time, then each persist-back refresh. Null on pre-#312 rows.",
-            },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
             updated: { type: ["number", "null"] },
@@ -2072,7 +2076,21 @@ const options: swaggerJsdoc.Options = {
             { $ref: "#/components/schemas/PortalResult" },
             {
               type: "object",
-              properties: { portalName: { type: ["string", "null"] } },
+              required: ["definer", "viewerIsDefiner"],
+              properties: {
+                portalName: { type: ["string", "null"] },
+                definer: {
+                  type: "object",
+                  required: ["id", "displayName"],
+                  description:
+                    "#640: who the pin's data shows, as a reader sees them.",
+                  properties: {
+                    id: { type: "string" },
+                    displayName: { type: "string" },
+                  },
+                },
+                viewerIsDefiner: { type: "boolean" },
+              },
             },
             withCapabilitiesRef(true),
           ],
