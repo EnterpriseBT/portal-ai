@@ -19,6 +19,23 @@ const mutateAsync =
     }) => Promise<HandleSnapshotPayload>
   >();
 
+// #640: the live data query a pin ref reads; tests swap it per case.
+interface PinDataState {
+  data: WidgetRefreshResponse | undefined;
+  error: null;
+  isFetching: boolean;
+  dataUpdatedAt: number;
+  refetch: () => void;
+}
+const pinDataIdle = (): PinDataState => ({
+  data: undefined,
+  error: null,
+  isFetching: false,
+  dataUpdatedAt: 0,
+  refetch: jest.fn(),
+});
+let pinData: PinDataState = pinDataIdle();
+
 const refreshMutate =
   jest.fn<
     (vars: {
@@ -34,14 +51,8 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
     portalResults: {
-      // #640: a pin's live data query (inert here — no pin refs).
-      data: () => ({
-        data: undefined,
-        error: null,
-        isFetching: false,
-        dataUpdatedAt: 0,
-        refetch: jest.fn(),
-      }),
+      // #640: a pin's live data query — inert unless a test sets it.
+      data: () => pinData,
     },
   },
 }));
@@ -77,6 +88,7 @@ const uiBase = {
 beforeEach(() => {
   mutateAsync.mockReset();
   refreshMutate.mockReset();
+  pinData = pinDataIdle();
 });
 
 // Unique block refs per test so the module-level freshness map doesn't leak
@@ -455,5 +467,66 @@ describe("D3Widget container refresh (#270)", () => {
         screen.getByTestId("d3-widget-not-refreshable")
       ).toBeInTheDocument()
     );
+  });
+});
+
+// ── #640: a pin's data arrives after mount; the frame must show it ───
+
+describe("D3Widget pin data (#640)", () => {
+  const pinRef = () => ({
+    kind: "pin" as const,
+    portalResultId: `pin-${++refSeq}`,
+  });
+  // The pin detail view hands the widget its recipe with no rows.
+  const pinBlock = () => ({ program: PROGRAM, rows: [] }) as D3BlockContent;
+
+  it("shows the loading state, not an empty chart, until the pin's data arrives", () => {
+    pinData = { ...pinDataIdle(), isFetching: true };
+    const { container } = render(
+      <D3Widget content={pinBlock()} blockRef={pinRef()} />
+    );
+    expect(screen.getByTestId("d3-widget-loading")).toBeInTheDocument();
+    expect(screen.getByText("Loading rows…")).toBeInTheDocument();
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("renders the chart once the pin's data arrives", () => {
+    const ref = pinRef();
+    pinData = { ...pinDataIdle(), isFetching: true };
+    const { container, rerender } = render(
+      <D3Widget content={pinBlock()} blockRef={ref} />
+    );
+    pinData = {
+      ...pinDataIdle(),
+      data: { kind: "inline", rows: [{ x: 1 }, { x: 2 }] },
+      dataUpdatedAt: Date.now(),
+    };
+    rerender(<D3Widget content={pinBlock()} blockRef={ref} />);
+    expect(container.querySelector("iframe")).not.toBeNull();
+    expect(screen.queryByTestId("d3-widget-loading")).not.toBeInTheDocument();
+  });
+});
+
+describe("D3Widget frame replacement", () => {
+  // The sandbox accumulates rows, so a delivery that REPLACES the data must
+  // start a new frame; reusing the old one dropped it (#640 smoke walk).
+  it("mounts a new frame when a refresh replaces the rendered rows", async () => {
+    refreshMutate.mockResolvedValue({ kind: "inline", rows: [{ x: 2 }] });
+    const { container } = render(
+      <D3Widget
+        content={inlineBlock()}
+        blockRef={freshRef()}
+        dataUpdatedAt={Date.now()}
+      />
+    );
+    const before = container.querySelector("iframe");
+    expect(before).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /refresh chart/i }));
+    await waitFor(() => expect(refreshMutate).toHaveBeenCalled());
+    await waitFor(() => {
+      const after = container.querySelector("iframe");
+      expect(after).not.toBeNull();
+      expect(after).not.toBe(before);
+    });
   });
 });
