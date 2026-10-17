@@ -1,49 +1,50 @@
 /**
- * PortalResultPinService.materialize (#312): per-type validation + the
- * self-contained snapshot a pin persists. All deps injected — no Redis, no DB.
+ * PortalResultPinService.materialize (#312, recast by #640): per-type
+ * validation + the **recipe** a pin persists — its query and how to draw it,
+ * never rows. All deps injected — no Redis, no DB.
  */
 import { jest, describe, it, expect } from "@jest/globals";
-import { PIN_SNAPSHOT_ROW_CAP } from "@portalai/core/constants";
 
 import { PortalResultPinService } from "../../services/portal-result-pin.service.js";
-import type { MaterializeDeps } from "../../services/portal-result-pin.service.js";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
-const SCOPE = {
+const SCOPE = { stationId: "station-1", organizationId: "org-1" };
+
+const PIPELINE = {
+  sql: "SELECT region, total FROM sales",
   stationId: "station-1",
   organizationId: "org-1",
-  userId: "user-1",
 };
 
 const expiredError = () =>
   new ApiError(404, ApiCode.READ_HANDLE_EXPIRED, "expired");
 
-/** A live-handle snapshot reader returning `total` rows (capped by limit). */
-const fakeSnapshot = (total: number) =>
-  jest.fn(async (_id: string, range: { offset?: number; limit?: number }) => {
-    const limit = range.limit ?? total;
-    const n = Math.min(total, limit);
-    return {
-      rows: Array.from({ length: n }, (_, i) => ({ a: i })),
-      total,
-      offset: 0,
-      limit,
-    };
-  });
+/** Everything a source block may carry that a pin must not keep. */
+const DATA_BEARING = {
+  rows: [{ region: "NE", total: 7 }],
+  samplePeek: [{ region: "NE", total: 7 }],
+  rowCount: 1,
+  matchedCount: 1,
+  matchedCountExact: true,
+  truncated: false,
+  sampled: false,
+  schema: [
+    { name: "region", type: "text" },
+    { name: "total", type: "numeric" },
+  ],
+};
 
 describe("PortalResultPinService.materialize", () => {
   // ── text ────────────────────────────────────────────────────────────
 
-  it("passes a text block through and stamps snapshotUpdatedAt", async () => {
-    const before = Date.now();
+  it("passes a text block through", async () => {
     const result = await PortalResultPinService.materialize(
       "text",
       "## Total revenue: $1.2M",
       SCOPE
     );
     expect(result.content).toBe("## Total revenue: $1.2M");
-    expect(result.snapshotUpdatedAt).toBeGreaterThanOrEqual(before);
   });
 
   it("rejects text content that is not a string", async () => {
@@ -54,406 +55,183 @@ describe("PortalResultPinService.materialize", () => {
     });
   });
 
-  // ── unregistered type ───────────────────────────────────────────────
-
-  it("rejects a type with no registered content schema (geo pre-#84)", async () => {
+  it("rejects a type with no pinned-content contract", async () => {
     await expect(
-      PortalResultPinService.materialize("geo", { layers: [] }, SCOPE)
+      PortalResultPinService.materialize(
+        "bulk-job-progress" as never,
+        {},
+        SCOPE
+      )
     ).rejects.toMatchObject({
       code: ApiCode.PORTAL_RESULT_TYPE_NOT_PINNABLE,
     });
   });
 
-  // ── inline content ──────────────────────────────────────────────────
+  // ── #640: a recipe, never rows ──────────────────────────────────────
 
-  it("stores an inline data-table as-is with no derived pipeline", async () => {
+  it("keeps a data-table's query and columns, and none of its data", async () => {
     const result = await PortalResultPinService.materialize(
       "data-table",
-      { columns: ["a"], rows: [{ a: 1 }] },
+      {
+        type: "data-table",
+        columns: ["region", "total"],
+        pipeline: PIPELINE,
+        ...DATA_BEARING,
+      },
       SCOPE
     );
-    expect(result.content).toEqual({ columns: ["a"], rows: [{ a: 1 }] });
+    expect(result.content).toEqual({
+      columns: ["region", "total"],
+      pipeline: PIPELINE,
+    });
   });
 
-  it("stores an inline d3 block as-is, preserving its pipeline", async () => {
-    const content = {
-      program: "api.svg;",
-      rows: [{ x: 1 }],
-      pipeline: {
-        sql: "SELECT x FROM t",
-        stationId: "station-1",
-        organizationId: "org-1",
-      },
-    };
+  it("names a handle table's columns from its schema", async () => {
     const result = await PortalResultPinService.materialize(
-      "d3",
-      content,
+      "data-table",
+      { queryHandle: "qh-1", ...DATA_BEARING, sql: PIPELINE.sql },
       SCOPE
     );
-    expect(result.content).toEqual(content);
-  });
-
-  // ── handle-backed content, live handle ──────────────────────────────
-
-  it("materializes a handle-backed data-table: rows ≤ cap, rowCount, truncated, derived pipeline", async () => {
-    const getSnapshot = fakeSnapshot(PIN_SNAPSHOT_ROW_CAP + 500);
-    const deps: MaterializeDeps = { getSnapshot: getSnapshot as never };
-    const result = await PortalResultPinService.materialize(
-      "data-table",
-      {
-        queryHandle: "qh-1",
-        rowCount: PIN_SNAPSHOT_ROW_CAP + 500,
-        schema: [{ name: "a", type: "number" }],
-        sampled: false,
-        truncated: false,
-        samplePeek: [],
-        sql: "SELECT a FROM t",
-      },
-      SCOPE,
-      deps
-    );
-    const content = result.content as Record<string, unknown>;
-    expect(getSnapshot).toHaveBeenCalledWith("qh-1", {
-      offset: 0,
-      limit: PIN_SNAPSHOT_ROW_CAP,
-    });
-    expect((content.rows as unknown[]).length).toBe(PIN_SNAPSHOT_ROW_CAP);
-    expect(content.columns).toEqual(["a"]);
-    expect(content.rowCount).toBe(PIN_SNAPSHOT_ROW_CAP + 500);
-    expect(content.truncated).toBe(true);
-    expect(content.pipeline).toEqual({
-      sql: "SELECT a FROM t",
-      stationId: "station-1",
-      organizationId: "org-1",
-    });
-    // The ephemeral envelope never persists.
-    expect(content.queryHandle).toBeUndefined();
-  });
-
-  it("derives no pipeline when the envelope's sql is null (produceFromRows)", async () => {
-    const deps: MaterializeDeps = {
-      getSnapshot: fakeSnapshot(3) as never,
-      getMeta: jest.fn(async () => ({ sql: null })) as never,
-    };
-    const result = await PortalResultPinService.materialize(
-      "data-table",
-      {
-        queryHandle: "qh-2",
-        rowCount: 3,
-        schema: [{ name: "a", type: "number" }],
-        sampled: false,
-        truncated: false,
-        samplePeek: [],
-        sql: null,
-      },
-      SCOPE,
-      deps
-    );
-    const content = result.content as Record<string, unknown>;
-    expect((content.rows as unknown[]).length).toBe(3);
-    expect(content.truncated).toBe(false);
-    expect(content.pipeline).toBeUndefined();
-  });
-
-  // #312 smoke find: the persisted display block omits the envelope's
-  // retained sql — the server-side handle meta is the authoritative source.
-  it("derives the pipeline from server-side handle meta when the block omits sql", async () => {
-    const getMeta = jest.fn(async () => ({ sql: "SELECT a FROM t" }));
-    const result = await PortalResultPinService.materialize(
-      "data-table",
-      {
-        // The real block shape: no `sql`, no `truncated` (see portal.service
-        // resolveDisplayBlock) — only what the client renderer needs.
-        queryHandle: "qh-4",
-        rowCount: 3,
-        schema: [{ name: "a", type: "number" }],
-        sampled: false,
-        samplePeek: [],
-      },
-      SCOPE,
-      { getSnapshot: fakeSnapshot(3) as never, getMeta: getMeta as never }
-    );
-    expect(getMeta).toHaveBeenCalledWith("qh-4");
-    const content = result.content as Record<string, unknown>;
-    expect(content.pipeline).toEqual({
-      sql: "SELECT a FROM t",
-      stationId: "station-1",
-      organizationId: "org-1",
+    expect(result.content).toEqual({
+      columns: ["region", "total"],
+      pipeline: PIPELINE,
     });
   });
 
-  it("stays a static snapshot when the meta read fails mid-pin", async () => {
-    const getMeta = jest.fn(async () => {
-      throw expiredError();
-    });
-    const result = await PortalResultPinService.materialize(
-      "data-table",
-      {
-        queryHandle: "qh-5",
-        rowCount: 3,
-        schema: [{ name: "a", type: "number" }],
-        sampled: false,
-        samplePeek: [],
-      },
-      SCOPE,
-      { getSnapshot: fakeSnapshot(3) as never, getMeta: getMeta as never }
-    );
-    const content = result.content as Record<string, unknown>;
-    expect((content.rows as unknown[]).length).toBe(3);
-    expect(content.pipeline).toBeUndefined();
-  });
-
-  it("keeps a handle-backed d3 block's own pipeline and strips the envelope", async () => {
-    const deps: MaterializeDeps = { getSnapshot: fakeSnapshot(10) as never };
+  it("keeps a chart's program, title and params with its query", async () => {
     const result = await PortalResultPinService.materialize(
       "d3",
       {
-        program: "api.svg;",
-        queryHandle: "qh-3",
-        rowCount: 10,
-        schema: [{ name: "x", type: "number" }],
-        sampled: false,
-        truncated: false,
-        samplePeek: [],
-        sql: "SELECT x FROM t",
-        pipeline: {
-          sql: "SELECT x FROM t",
-          stationId: "station-1",
-          organizationId: "org-1",
-        },
+        program: "api.d3;",
+        title: "Sales",
+        params: { color: "teal" },
+        pipeline: PIPELINE,
+        ...DATA_BEARING,
       },
-      SCOPE,
-      deps
+      SCOPE
     );
-    const content = result.content as Record<string, unknown>;
-    expect(content.program).toBe("api.svg;");
-    expect((content.rows as unknown[]).length).toBe(10);
-    expect(content.pipeline).toBeDefined();
-    expect(content.queryHandle).toBeUndefined();
-  });
-
-  // ── geo pins: WKB → GeoJSON re-encode (#371) ────────────────────────
-
-  const geoSpec = {
-    layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
-  };
-
-  it("re-encodes a handle-backed geo pin's WKB geometry to GeoJSON", async () => {
-    const wkbRows = [
-      { geom: "0101000020E610000000000000000000000000000000000000", c_id: 1 },
-      { geom: "0101000020E610000000000000000000000000000000000000", c_id: 2 },
-    ];
-    const geoReencodeRows = jest.fn(
-      async (rows: Array<Record<string, unknown>>) =>
-        rows.map((r) => ({
-          ...r,
-          geom: { type: "Point", coordinates: [0, 0] },
-        }))
-    );
-    const result = await PortalResultPinService.materialize(
-      "geo",
-      {
-        queryHandle: "qh-geo",
-        spec: geoSpec,
-        rows: [],
-        sql: "SELECT geom, c_id FROM parcels",
-      },
-      SCOPE,
-      {
-        getSnapshot: jest.fn(async () => ({
-          rows: wkbRows,
-          total: 2,
-          offset: 0,
-          limit: PIN_SNAPSHOT_ROW_CAP,
-        })) as never,
-        geoReencodeRows: geoReencodeRows as never,
-      }
-    );
-    // Re-encode ran over the snapshot rows for the spec's geometry column.
-    expect(geoReencodeRows).toHaveBeenCalledWith(wkbRows, ["geom"]);
-    const content = result.content as Record<string, unknown>;
-    expect(content.rows).toEqual([
-      { geom: { type: "Point", coordinates: [0, 0] }, c_id: 1 },
-      { geom: { type: "Point", coordinates: [0, 0] }, c_id: 2 },
-    ]);
-    // Snapshot held every row (total 2 = rows 2), so it is not tile-backed.
-    expect(content.tiled).toBeUndefined();
-  });
-
-  // #371: a geo pin whose source outran the inline snapshot is marked `tiled`
-  // so the widget renders the full dataset via the pin's tile endpoint on mount.
-  it("marks a truncated, refreshable geo pin as tiled", async () => {
-    const geoReencodeRows = jest.fn(
-      async (rows: Array<Record<string, unknown>>) =>
-        rows.map((r) => ({
-          ...r,
-          geom: { type: "Point", coordinates: [0, 0] },
-        }))
-    );
-    const result = await PortalResultPinService.materialize(
-      "geo",
-      {
-        queryHandle: "qh-geo-big",
-        spec: geoSpec,
-        rows: [],
-        sql: "SELECT geom FROM parcels",
-      },
-      SCOPE,
-      {
-        getSnapshot: jest.fn(async () => ({
-          rows: [
-            { geom: "0101000020E610000000000000000000000000000000000000" },
-          ],
-          total: 100_001,
-          offset: 0,
-          limit: PIN_SNAPSHOT_ROW_CAP,
-        })) as never,
-        geoReencodeRows: geoReencodeRows as never,
-      }
-    );
-    const content = result.content as Record<string, unknown>;
-    expect(content.tiled).toBe(true);
-    // The inline rows persist as a fallback even when tile-backed.
-    expect((content.rows as unknown[]).length).toBe(1);
-  });
-
-  it("does not mark a truncated geo pin tiled when it has no pipeline", async () => {
-    const result = await PortalResultPinService.materialize(
-      "geo",
-      // No `sql` and no `pipeline` on the block → not refreshable.
-      { queryHandle: "qh-geo-static", spec: geoSpec, rows: [] },
-      SCOPE,
-      {
-        getSnapshot: jest.fn(async () => ({
-          rows: [
-            { geom: "0101000020E610000000000000000000000000000000000000" },
-          ],
-          total: 100_001,
-          offset: 0,
-          limit: PIN_SNAPSHOT_ROW_CAP,
-        })) as never,
-        // Meta read yields no sql → pipeline stays undefined → static snapshot.
-        getMeta: jest.fn(async () => ({})) as never,
-        geoReencodeRows: (async (rows: Array<Record<string, unknown>>) =>
-          rows.map((r) => ({
-            ...r,
-            geom: { type: "Point", coordinates: [0, 0] },
-          }))) as never,
-      }
-    );
-    const content = result.content as Record<string, unknown>;
-    expect(content.tiled).toBeUndefined();
-  });
-
-  it("does not re-encode a non-geo (data-table) pin", async () => {
-    const geoReencodeRows = jest.fn(
-      async (rows: Array<Record<string, unknown>>) => rows
-    );
-    await PortalResultPinService.materialize(
-      "data-table",
-      {
-        queryHandle: "qh-dt",
-        rowCount: 2,
-        schema: [{ name: "a", type: "number" }],
-        sampled: false,
-        truncated: false,
-        samplePeek: [],
-        sql: "SELECT a FROM t",
-      },
-      SCOPE,
-      {
-        getSnapshot: fakeSnapshot(2) as never,
-        geoReencodeRows: geoReencodeRows as never,
-      }
-    );
-    expect(geoReencodeRows).not.toHaveBeenCalled();
-  });
-
-  it("materializes a geo pin with no rows without calling the re-encoder", async () => {
-    const geoReencodeRows = jest.fn(
-      async (rows: Array<Record<string, unknown>>) => rows
-    );
-    const result = await PortalResultPinService.materialize(
-      "geo",
-      {
-        queryHandle: "qh-geo-empty",
-        spec: geoSpec,
-        rows: [],
-        sql: "SELECT geom FROM t",
-      },
-      SCOPE,
-      {
-        getSnapshot: jest.fn(async () => ({
-          rows: [],
-          total: 0,
-          offset: 0,
-          limit: PIN_SNAPSHOT_ROW_CAP,
-        })) as never,
-        geoReencodeRows: geoReencodeRows as never,
-      }
-    );
-    expect(geoReencodeRows).not.toHaveBeenCalled();
-    expect((result.content as Record<string, unknown>).rows).toEqual([]);
-  });
-
-  // ── handle-backed content, expired handle ───────────────────────────
-
-  it("re-executes the pipeline when the handle has expired", async () => {
-    const getSnapshot = jest.fn(async () => {
-      throw expiredError();
+    expect(result.content).toEqual({
+      program: "api.d3;",
+      title: "Sales",
+      params: { color: "teal" },
+      pipeline: PIPELINE,
     });
-    const resolveSqlDelivery = jest.fn(async () => ({
-      kind: "inline" as const,
-      result: { rows: [{ a: 1 }, { a: 2 }] },
-    }));
+  });
+
+  it("keeps a map's spec, and marks a handle-backed map tiled", async () => {
+    const spec = {
+      layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
+    };
+    const inline = await PortalResultPinService.materialize(
+      "geo",
+      { spec, pipeline: PIPELINE, ...DATA_BEARING },
+      SCOPE
+    );
+    expect(inline.content).toEqual({
+      spec: expect.objectContaining(spec),
+      pipeline: PIPELINE,
+    });
+
+    const large = await PortalResultPinService.materialize(
+      "geo",
+      { spec, pipeline: PIPELINE, queryHandle: "qh-1", rowCount: 9000 },
+      SCOPE
+    );
+    expect(large.content).toEqual({
+      spec: expect.objectContaining(spec),
+      pipeline: PIPELINE,
+      tiled: true,
+    });
+  });
+
+  // ── where the query comes from ──────────────────────────────────────
+
+  it("derives the query from a block's sql", async () => {
     const result = await PortalResultPinService.materialize(
       "data-table",
-      {
-        queryHandle: "qh-dead",
-        rowCount: 2,
-        schema: [{ name: "a", type: "number" }],
-        sampled: false,
-        truncated: false,
-        samplePeek: [],
-        sql: "SELECT a FROM t",
-      },
-      SCOPE,
-      {
-        getSnapshot: getSnapshot as never,
-        resolveSqlDelivery: resolveSqlDelivery as never,
-      }
+      { columns: ["region"], sql: PIPELINE.sql, rows: [] },
+      SCOPE
     );
-    expect(resolveSqlDelivery).toHaveBeenCalledWith(
-      { sql: "SELECT a FROM t" },
-      { stationId: "station-1", organizationId: "org-1", userId: "user-1" }
+    expect((result.content as { pipeline: unknown }).pipeline).toEqual(
+      PIPELINE
     );
-    const content = result.content as Record<string, unknown>;
-    expect(content.rows).toEqual([{ a: 1 }, { a: 2 }]);
-    expect(content.pipeline).toBeDefined();
   });
 
-  it("throws 422 PORTAL_RESULT_CONTENT_EXPIRED when expired with no pipeline", async () => {
-    const getSnapshot = jest.fn(async () => {
-      throw expiredError();
-    });
+  it("derives the query from the handle's retained sql when the block omits it", async () => {
+    const getMeta = jest.fn(async () => ({ sql: PIPELINE.sql }));
+    const result = await PortalResultPinService.materialize(
+      "data-table",
+      { columns: ["region"], queryHandle: "qh-1" },
+      SCOPE,
+      { getMeta: getMeta as never }
+    );
+    expect(getMeta).toHaveBeenCalledWith("qh-1");
+    expect((result.content as { pipeline: unknown }).pipeline).toEqual(
+      PIPELINE
+    );
+  });
+
+  it("refuses rows supplied with no query (nothing to re-run)", async () => {
     await expect(
       PortalResultPinService.materialize(
         "data-table",
-        {
-          queryHandle: "qh-dead",
-          rowCount: 2,
-          schema: [{ name: "a", type: "number" }],
-          sampled: false,
-          truncated: false,
-          samplePeek: [],
-          sql: null,
-        },
-        SCOPE,
-        { getSnapshot: getSnapshot as never }
+        { columns: ["region"], rows: [{ region: "NE" }], sql: null },
+        SCOPE
       )
     ).rejects.toMatchObject({
       status: 422,
-      code: ApiCode.PORTAL_RESULT_CONTENT_EXPIRED,
+      code: ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE,
     });
+  });
+
+  it("refuses a handle that has expired, rather than pinning a snapshot", async () => {
+    await expect(
+      PortalResultPinService.materialize(
+        "data-table",
+        { columns: ["region"], queryHandle: "qh-gone" },
+        SCOPE,
+        {
+          getMeta: jest.fn(async () => {
+            throw expiredError();
+          }) as never,
+        }
+      )
+    ).rejects.toMatchObject({ code: ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE });
+  });
+
+  it("refuses a handle whose meta retains no sql (a transform)", async () => {
+    await expect(
+      PortalResultPinService.materialize(
+        "data-table",
+        { columns: ["region"], queryHandle: "qh-t" },
+        SCOPE,
+        { getMeta: jest.fn(async () => ({})) as never }
+      )
+    ).rejects.toMatchObject({ code: ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE });
+  });
+
+  it("lets any other handle failure propagate", async () => {
+    await expect(
+      PortalResultPinService.materialize(
+        "data-table",
+        { columns: ["region"], queryHandle: "qh-1" },
+        SCOPE,
+        {
+          getMeta: jest.fn(async () => {
+            throw new Error("redis down");
+          }) as never,
+        }
+      )
+    ).rejects.toThrow("redis down");
+  });
+
+  it("rejects a chart whose recipe doesn't match the contract", async () => {
+    await expect(
+      PortalResultPinService.materialize(
+        "d3",
+        { program: "", pipeline: PIPELINE },
+        SCOPE
+      )
+    ).rejects.toMatchObject({ code: ApiCode.PORTAL_RESULT_TYPE_NOT_PINNABLE });
   });
 });

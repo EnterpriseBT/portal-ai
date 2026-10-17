@@ -113,7 +113,6 @@ describe("map_dissolve_geometries storage (#472)", () => {
       name: "choropleth",
       type: "geo",
       content: {},
-      snapshotUpdatedAt: null,
       created: now,
       createdBy: "test-system",
       definerPrincipalType: "user",

@@ -4,16 +4,11 @@ import type {
   PortalResultListResponsePayload,
   PinDataResponse,
   UpdatePortalResultBody,
-  WidgetRefreshResponse,
 } from "@portalai/core/contracts";
 import { VIZ_REFRESH_FRESHNESS_MS } from "@portalai/core/constants";
 import type { PortalResult } from "@portalai/core/models";
 
-import {
-  useAuthQuery,
-  useAuthMutation,
-  LONG_WRITE_TIMEOUT_MS,
-} from "../utils/api.util";
+import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { isPinDataRefusal } from "../utils/pin-data.util";
 import { queryKeys } from "./keys";
@@ -101,23 +96,6 @@ export const portalResults = {
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}`,
       method: "DELETE",
       body: () => undefined,
-      onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
-    }),
-
-  /**
-   * Re-execute a pinned result's durable pipeline for live data (#312).
-   * Id-in-variables like `remove` — the widget-refresh hook serves many
-   * refs. The server persists the fresh snapshot back onto the row, so
-   * consumers should invalidate `queryKeys.portalResults.get(id)` on
-   * success.
-   */
-  refresh: () =>
-    useAuthMutation<WidgetRefreshResponse, { id: string }>({
-      url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}/refresh`,
-      timeoutMs: LONG_WRITE_TIMEOUT_MS,
-      body: () => undefined,
-      // #753: a manual refresh must not join an auto-refresh in flight.
-      dedupeInFlight: false,
       onPermissionDenied: { invalidate: () => [queryKeys.portalResults.root] },
     }),
 };

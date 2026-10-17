@@ -36,14 +36,17 @@ import type { PortalResultPayload } from "../api/portal-results.api";
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /**
- * Reconstruct a block that ContentBlockRenderer can handle.
- * Pinned result content is stored exactly as the display block's content field,
- * so we pass it through directly.
+ * Reconstruct a block that ContentBlockRenderer can handle. A data pin stores
+ * its recipe, not rows (#640): its widget renders the live delivery from
+ * `portalResults.data`, so it starts from an empty inline binding.
  */
 const toContentBlock = (
   result: PortalResult
 ): { type: string; content: unknown } => {
-  return { type: result.type, content: result.content };
+  if (result.type === "text") {
+    return { type: result.type, content: result.content };
+  }
+  return { type: result.type, content: { ...result.content, rows: [] } };
 };
 
 /** Type-chip labels — one entry per durable kind (#312). */
@@ -52,17 +55,6 @@ const TYPE_LABELS: Record<string, string> = {
   "data-table": "Table",
   d3: "Chart",
   geo: "Map",
-};
-
-/**
- * A pre-#312 pin that stored a bare handle envelope: its Redis handle is long
- * expired and no rows were materialized — render an explicit notice instead
- * of a silently empty table.
- */
-const isSnapshotless = (result: PortalResult): boolean => {
-  if (result.type !== "data-table" && result.type !== "d3") return false;
-  const c = result.content as { queryHandle?: unknown; rows?: unknown };
-  return typeof c?.queryHandle === "string" && !Array.isArray(c?.rows);
 };
 
 /** #640: why a pin shows no data, in the words its reader may see. */
@@ -237,18 +229,13 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
               {(dataRefusal === "access-lost" && dataRefusalMessage) ||
                 refusal.text}
             </Alert>
-          ) : isSnapshotless(result) ? (
-            <Alert severity="warning" data-testid="pinned-expired-notice">
-              The saved data for this result has expired. Re-run the prompt and
-              pin the fresh result.
-            </Alert>
           ) : (
             <Box sx={{ overflow: "auto" }}>
               <ContentBlockRenderer
                 block={contentBlock}
                 // #640: the widget reads the pin's live data through this ref.
                 blockRef={{ kind: "pin", portalResultId: result.id }}
-                dataUpdatedAt={result.snapshotUpdatedAt ?? result.created}
+                dataUpdatedAt={result.created}
               />
             </Box>
           )}

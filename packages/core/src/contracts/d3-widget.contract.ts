@@ -42,7 +42,7 @@ export const VizPipelineSchema = z.object({
 });
 export type VizPipeline = z.infer<typeof VizPipelineSchema>;
 
-const D3BaseContentSchema = z.object({
+export const D3BaseContentSchema = z.object({
   /** Function-body source (see module doc above). Never empty. */
   program: z.string().min(1),
   title: z.string().optional(),

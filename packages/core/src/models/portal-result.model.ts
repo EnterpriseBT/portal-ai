@@ -4,8 +4,8 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 /**
  * Portal Result model.
  * Represents a pinned/saved result produced during a portal session —
- * any durable block kind (#312): narrative text, a data-table snapshot,
- * or a re-executable visualization (`d3`, `geo`). Transient kinds
+ * any durable block kind (#312): narrative text, or a data-table / `d3` /
+ * `geo` recipe whose data executes live as the pin's definer (#640). Transient kinds
  * (job progress) are deliberately not part of this vocabulary.
  *
  * Sync with the Drizzle `portal_results` table is enforced at compile
@@ -46,10 +46,6 @@ export const PortalResultSchema = CoreSchema.extend({
   content: z.record(z.string(), z.unknown()),
   definerPrincipalType: PinDefinerPrincipalTypeSchema,
   definerPrincipalId: z.string(),
-  /** Epoch ms of the last successful snapshot write — pin time, then each
-   *  persist-back refresh (#312). Seeds the web freshness clock. Null on
-   *  rows pinned before #312. */
-  snapshotUpdatedAt: z.number().int().nullable(),
 });
 
 export type PortalResult = z.infer<typeof PortalResultSchema>;

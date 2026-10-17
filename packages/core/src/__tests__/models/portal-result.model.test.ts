@@ -21,7 +21,6 @@ const validPortalResultFields = {
   name: "Q4 Revenue Table",
   type: "data-table" as const,
   content: { columns: ["quarter", "revenue"], rows: [] },
-  snapshotUpdatedAt: null,
   definerPrincipalType: "user" as const,
   definerPrincipalId: "user-1",
   updated: null,
@@ -82,7 +81,6 @@ describe("PortalResultSchema", () => {
       name: "Q4 Revenue Table",
       type: "data-table",
       content: { columns: ["quarter", "revenue"], rows: [] },
-      snapshotUpdatedAt: null,
       definerPrincipalType: "user",
       definerPrincipalId: "user-1",
     };
@@ -127,7 +125,6 @@ describe("PortalResultSchema", () => {
       name: "Summary",
       type: "text",
       content: { body: "hello" },
-      snapshotUpdatedAt: null,
       definerPrincipalType: "user",
       definerPrincipalId: "user-1",
     };
@@ -172,7 +169,6 @@ describe("PortalResultSchema", () => {
       name: "Text Result",
       type: "text",
       content: { body: "Some text" },
-      snapshotUpdatedAt: null,
       definerPrincipalType: "user",
       definerPrincipalId: "user-1",
     };
@@ -197,7 +193,6 @@ describe("PortalResultSchema", () => {
       name: "Table Result",
       type: "data-table",
       content: { columns: ["a"], rows: [{ a: 1 }] },
-      snapshotUpdatedAt: null,
       definerPrincipalType: "user",
       definerPrincipalId: "user-1",
     };
@@ -228,74 +223,9 @@ describe("PortalResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  // #312: `snapshotUpdatedAt` is required-nullable, like `messageId`.
-  it("should accept a numeric snapshotUpdatedAt", () => {
-    const data = {
-      id: "pr-1",
-      created: Date.now(),
-      createdBy: "user-1",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      organizationId: "org-1",
-      stationId: "station-1",
-      portalId: "portal-1",
-      messageId: null,
-      blockIndex: null,
-      name: "Snapshotted",
-      type: "d3",
-      content: { program: "api.svg;", rows: [] },
-      snapshotUpdatedAt: Date.now(),
-      definerPrincipalType: "user",
-      definerPrincipalId: "user-1",
-    };
-    expect(PortalResultSchema.safeParse(data).success).toBe(true);
-  });
-
-  it("should reject a missing snapshotUpdatedAt", () => {
-    const data = {
-      id: "pr-1",
-      created: Date.now(),
-      createdBy: "user-1",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      organizationId: "org-1",
-      stationId: "station-1",
-      portalId: null,
-      messageId: null,
-      blockIndex: null,
-      name: "No snapshot key",
-      type: "text",
-      content: { body: "x" },
-    };
-    expect(PortalResultSchema.safeParse(data).success).toBe(false);
-  });
-
-  it("should reject a non-integer snapshotUpdatedAt", () => {
-    const data = {
-      id: "pr-1",
-      created: Date.now(),
-      createdBy: "user-1",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      organizationId: "org-1",
-      stationId: "station-1",
-      portalId: null,
-      messageId: null,
-      blockIndex: null,
-      name: "Bad snapshot",
-      type: "text",
-      content: { body: "x" },
-      snapshotUpdatedAt: 1.5,
-      definerPrincipalType: "user",
-      definerPrincipalId: "user-1",
-    };
-    expect(PortalResultSchema.safeParse(data).success).toBe(false);
+  // #640: a pin stores no snapshot, so it has no snapshot clock.
+  it("carries no snapshotUpdatedAt", () => {
+    expect(PortalResultSchema.shape).not.toHaveProperty("snapshotUpdatedAt");
   });
 });
 
@@ -389,7 +319,8 @@ describe("PortalResultModelFactory", () => {
       expect(shape).toHaveProperty("name");
       expect(shape).toHaveProperty("type");
       expect(shape).toHaveProperty("content");
-      expect(shape).toHaveProperty("snapshotUpdatedAt");
+      expect(shape).toHaveProperty("definerPrincipalType");
+      expect(shape).toHaveProperty("definerPrincipalId");
     });
 
     it("should allow updating domain fields after creation", () => {

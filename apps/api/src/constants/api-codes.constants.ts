@@ -355,11 +355,6 @@ export enum ApiCode {
   /** The requested `blockIndex` is outside the target message's blocks. */
   PORTAL_RESULT_BLOCK_INDEX_INVALID = "PORTAL_RESULT_BLOCK_INDEX_INVALID",
   /**
-   * #312: pin attempt whose handle-backed data has expired and which carries
-   * no re-executable pipeline — there is nothing durable to materialize.
-   */
-  PORTAL_RESULT_CONTENT_EXPIRED = "PORTAL_RESULT_CONTENT_EXPIRED",
-  /**
    * #640: invariant — a pin's definer has a principal type nothing can execute
    * as yet (`role`, admitted by the schema for a later rebind).
    */

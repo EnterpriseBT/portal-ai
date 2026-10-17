@@ -48,7 +48,6 @@ describe("dissolve-scope retention purge (#643)", () => {
         name: "Choropleth",
         type: "geo",
         content: {},
-        snapshotUpdatedAt: null,
         created: t,
         createdBy: "SYSTEM_TEST",
         definerPrincipalType: "user",

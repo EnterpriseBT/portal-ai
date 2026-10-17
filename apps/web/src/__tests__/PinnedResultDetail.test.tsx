@@ -102,7 +102,6 @@ const makePinnedResult = (
   content: { value: "Total revenue: **$1.2M**" },
   created: Date.now() - 3600000,
   createdBy: "user-1",
-  snapshotUpdatedAt: null,
   definerPrincipalType: "user",
   definerPrincipalId: "user-1",
   updated: null,
@@ -179,11 +178,13 @@ describe("PinnedResultDetailUI", () => {
     expect(screen.getByText("Map")).toBeInTheDocument();
   });
 
-  it("threads a pin blockRef + snapshot timestamp to the block renderer", () => {
-    registerBlockRenderer("d3", (_b, ctx) => (
+  it("threads a pin blockRef to the block renderer, over an empty binding (#640)", () => {
+    registerBlockRenderer("d3", (b, ctx) => (
       <div data-testid="pin-blockref-stub">
         {ctx?.blockRef?.kind === "pin"
-          ? `${ctx.blockRef.portalResultId}:${ctx?.dataUpdatedAt}`
+          ? `${ctx.blockRef.portalResultId}:${ctx?.dataUpdatedAt}:${JSON.stringify(
+              (b.content as { rows?: unknown }).rows
+            )}`
           : "no-pin-ref"}
       </div>
     ));
@@ -192,27 +193,15 @@ describe("PinnedResultDetailUI", () => {
         {...defaultProps}
         result={makePinnedResult({
           type: "d3",
-          content: { program: "api.svg;", rows: [] },
-          snapshotUpdatedAt: 424242,
+          created: 424242,
+          content: { program: "api.svg;", pipeline: { sql: "SELECT 1" } },
         })}
       />
     );
+    // The pin stores no rows; its widget renders the live delivery.
     expect(screen.getByTestId("pin-blockref-stub")).toHaveTextContent(
-      "result-1:424242"
+      "result-1:424242:[]"
     );
-  });
-
-  it("shows an expired-data notice for a legacy snapshot-less pin", () => {
-    render(
-      <PinnedResultDetailUI
-        {...defaultProps}
-        result={makePinnedResult({
-          type: "data-table",
-          content: { queryHandle: "qh-dead", columns: ["a"] },
-        })}
-      />
-    );
-    expect(screen.getByTestId("pinned-expired-notice")).toBeInTheDocument();
   });
 
   it("marks a tombstoned source portal instead of offering the link", () => {

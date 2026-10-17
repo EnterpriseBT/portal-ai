@@ -1,5 +1,4 @@
 import {
-  bigint,
   index,
   integer,
   pgTable,
@@ -46,9 +45,6 @@ export const portalResults = pgTable(
     name: text("name").notNull(),
     type: portalResultTypeEnum("type").notNull(),
     content: jsonb("content").$type<Record<string, unknown>>().notNull(),
-    /** Epoch ms of the last successful snapshot write (#312) — pin time,
-     *  then each persist-back refresh. Null on pre-#312 rows. */
-    snapshotUpdatedAt: bigint("snapshot_updated_at", { mode: "number" }),
     /** Whose access the pin's data executes under (#640). Queryable, not
      *  in `content`, so offboarding and revocation can find a definer's
      *  pins. */

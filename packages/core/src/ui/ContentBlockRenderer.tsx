@@ -41,8 +41,8 @@ export type BlockRef =
  */
 export interface BlockRenderContext {
   blockRef?: BlockRef;
-  /** Epoch ms the block's data was produced/persisted (the message's
-   *  `created`, or a pin's `snapshotUpdatedAt`). A renderer uses it to seed
+  /** Epoch ms the block's data was produced (the message's `created`; a
+   *  pin's data is live, #640, so its `created`). A renderer uses it to seed
    *  a freshness clock (#270) so a just-minted widget isn't auto-refreshed
    *  while a reopened one is. */
   dataUpdatedAt?: number;

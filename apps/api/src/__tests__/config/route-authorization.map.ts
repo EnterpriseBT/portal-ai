@@ -812,11 +812,6 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     by: "owned create resource.write pin + source portal via PortalAccessService (#621, #685)",
     locks: { none: "pins; no scoped job writes them" },
   },
-  "POST /api/portal-results/{id}/refresh": {
-    kind: "authorized",
-    by: "org scope + read, else 404 (#713) + per-object resource.write/delete pin (#621)",
-    locks: { none: "starts a query, which locks nothing" },
-  },
   "POST /api/portal-sql/widget-refresh": {
     kind: "authorized",
     by: "message's portal via PortalAccessService; SQL re-runs as the caller (#685)",

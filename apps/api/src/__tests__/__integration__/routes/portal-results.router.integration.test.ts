@@ -300,9 +300,9 @@ describe("Portal Results Router", () => {
         .expect(201);
     });
 
-    // #312: durable viz kinds pin end-to-end — the stored content is the
-    // materialized inline shape and snapshotUpdatedAt is stamped.
-    it("pins a d3 block with its materialized inline shape", async () => {
+    // #640: a viz pin stores its recipe — the program and its query — never
+    // the block's rows.
+    it("pins a d3 block as its program and query, without rows", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -350,15 +350,15 @@ describe("Portal Results Router", () => {
 
       const pr = res.body.payload.portalResult;
       expect(pr.type).toBe("d3");
-      expect(pr.content.program).toBe("api.svg.append('g');");
-      expect(pr.content.rows).toEqual([{ x: 1 }]);
-      expect(pr.content.pipeline).toEqual(pipeline);
-      expect(typeof pr.snapshotUpdatedAt).toBe("number");
+      expect(pr.content).toEqual({
+        program: "api.svg.append('g');",
+        pipeline,
+      });
     });
 
-    // #312: a handle-backed table pins as a self-contained snapshot — the
-    // ephemeral envelope is hydrated (real Redis) and never persisted.
-    it("pins a handle-backed data-table as a materialized snapshot", async () => {
+    // #640: rows staged with no query (a produceFromRows handle) have nothing
+    // to re-run, so they can't be pinned — never a snapshot.
+    it("refuses a handle-backed table with no query to re-run", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -395,18 +395,12 @@ describe("Portal Results Router", () => {
       const res = await request(app)
         .post("/api/portal-results")
         .send({ portalId: portal.id, blockIndex: 0, name: "My Table" })
-        .expect(201);
-
-      const pr = res.body.payload.portalResult;
-      expect(pr.type).toBe("data-table");
-      expect(pr.content.rows).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
-      expect(pr.content.columns).toEqual(["a"]);
-      expect(pr.content.truncated).toBe(false);
-      // The ephemeral envelope never persists; produceFromRows handles have
-      // no query to re-execute, so no pipeline is derived either.
-      expect(pr.content.queryHandle).toBeUndefined();
-      expect(pr.content.pipeline).toBeUndefined();
-      expect(typeof pr.snapshotUpdatedAt).toBe("number");
+        .expect(422);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE);
+      const stored = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portalResults);
+      expect(stored).toHaveLength(0);
     });
 
     // #312 smoke find: the display block for a query-backed handle carries no
@@ -461,16 +455,16 @@ describe("Portal Results Router", () => {
         organizationId,
       });
       expect(pr.content.queryHandle).toBeUndefined();
+      expect(pr.content.rows).toBeUndefined();
     });
 
     /**
-     * #349: an INLINE table block now carries its own pipeline, so pinning one
-     * yields a refreshable pin. This needs no pin-side code — the pin service
-     * already prefers the source block's own `pipeline` — so a failure here
-     * points upstream at the sink or the block projection, not at
-     * `portal-result-pin.service.ts`.
+     * #349/#640: an INLINE table block carries its own pipeline, so pinning one
+     * yields a live pin: its stored rows are dropped and its data re-runs on
+     * read. A failure here points upstream at the sink or the block
+     * projection, not at `portal-result-pin.service.ts`.
      */
-    it("an inline data-table pin is refreshable end to end", async () => {
+    it("an inline data-table pin reads live data end to end", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -501,7 +495,7 @@ describe("Portal Results Router", () => {
             content: {
               type: "data-table",
               columns: ["x"],
-              rows: [{ x: 999 }], // stale snapshot the refresh replaces
+              rows: [{ x: 999 }], // the block's rows, never stored
               pipeline,
             },
           },
@@ -518,160 +512,26 @@ describe("Portal Results Router", () => {
 
       const pin = pinRes.body.payload.portalResult;
       expect(pin.type).toBe("data-table");
-      expect(pin.content.pipeline).toEqual(pipeline);
+      expect(pin.content).toEqual({ columns: ["x"], pipeline });
 
-      const refreshed = await request(app)
-        .post(`/api/portal-results/${pin.id}/refresh`)
-        .send()
+      const live = await request(app)
+        .get(`/api/portal-results/${pin.id}/data`)
         .expect(200);
 
-      expect(refreshed.body.payload).toEqual({
+      expect(live.body.payload).toEqual({
         kind: "inline",
         rows: [{ x: 1 }],
       });
     });
   });
 
-  // ── POST /api/portal-results/:id/refresh (#312) ───────────────────
-
+  // #640: a pin stores no snapshot to refresh; its data is read live.
   describe("POST /api/portal-results/:id/refresh", () => {
-    it("re-executes the stored pipeline and persists the snapshot back", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-
-      const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
-
-      const portal = createPortal(organizationId, station.id);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(portals)
-        .values(portal as never);
-
-      const pipeline = {
-        sql: "SELECT 1 AS x",
-        stationId: station.id,
-        organizationId,
-      };
-      const assistantMsg = createPortalMessage(
-        organizationId,
-        portal.id,
-        "assistant",
-        [
-          {
-            type: "d3",
-            content: {
-              program: "api.svg.append('g');",
-              rows: [{ x: 999 }], // stale snapshot the refresh replaces
-              pipeline,
-            },
-          },
-        ]
-      );
-      await (db as ReturnType<typeof drizzle>)
-        .insert(portalMessages)
-        .values(assistantMsg as never);
-
-      const pinned = await request(app)
-        .post("/api/portal-results")
-        .send({ portalId: portal.id, blockIndex: 0, name: "Live Chart" })
-        .expect(201);
-      const id = pinned.body.payload.portalResult.id as string;
-      const pinnedAt = pinned.body.payload.portalResult
-        .snapshotUpdatedAt as number;
-
-      const res = await request(app)
-        .post(`/api/portal-results/${id}/refresh`)
-        .expect(200);
-      expect(res.body.payload).toEqual({ kind: "inline", rows: [{ x: 1 }] });
-
-      // Persist-back: the stored snapshot now holds the fresh rows.
-      const after = await request(app)
-        .get(`/api/portal-results/${id}`)
-        .expect(200);
-      expect(after.body.payload.portalResult.content.rows).toEqual([{ x: 1 }]);
-      expect(
-        after.body.payload.portalResult.snapshotUpdatedAt
-      ).toBeGreaterThanOrEqual(pinnedAt);
-    });
-
-    it("returns 404 for an unknown pinned result", async () => {
+    it("is gone", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
-
-      const res = await request(app)
+      await request(app)
         .post(`/api/portal-results/${generateId()}/refresh`)
         .expect(404);
-      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_NOT_FOUND);
-    });
-
-    it("returns 422 for a pin with no durable pipeline", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-
-      const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
-
-      const portal = createPortal(organizationId, station.id);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(portals)
-        .values(portal as never);
-
-      const staticPin = createPortalResult(
-        organizationId,
-        station.id,
-        portal.id,
-        {
-          type: "data-table",
-          content: { columns: ["a"], rows: [{ a: 1 }] },
-        }
-      );
-      await (db as ReturnType<typeof drizzle>)
-        .insert(portalResults)
-        .values(staticPin as never);
-
-      const res = await request(app)
-        .post(`/api/portal-results/${staticPin.id}/refresh`)
-        .expect(422);
-      expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_NOT_REFRESHABLE);
-    });
-
-    it("returns 429 past the per-org refresh window", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-
-      const { incrementRateWindow } =
-        await import("../../../utils/rate-limit.util.js");
-      const { VIZ_REFRESH_RATE_PER_MIN } =
-        await import("@portalai/core/constants");
-      // Exhaust the shared viz-refresh window (same budget as the
-      // message-block addresser). The 429 fires before row lookup.
-      //
-      // The window is a wall-clock minute (`floor(now / 60_000)`), so a loop
-      // that straddles a boundary leaves its increments split across two
-      // windows and the request below sees a fresh one. Re-exhaust until the
-      // whole loop lands inside a single minute.
-      const currentMinute = () => Math.floor(Date.now() / 60_000);
-      let minute: number;
-      do {
-        minute = currentMinute();
-        for (let i = 0; i <= VIZ_REFRESH_RATE_PER_MIN; i++) {
-          await incrementRateWindow(`viz-refresh:${organizationId}`);
-        }
-      } while (currentMinute() !== minute);
-
-      const res = await request(app)
-        .post(`/api/portal-results/${generateId()}/refresh`)
-        .expect(429);
-      expect(res.body.code).toBe(ApiCode.VIZ_REFRESH_RATE_LIMITED);
     });
   });
 

@@ -1,51 +1,57 @@
 import { z } from "zod";
 
 import {
-  D3InlineContentSchema,
+  D3BaseContentSchema,
   VizPipelineSchema,
 } from "./d3-widget.contract.js";
-import { GeoInlineContentSchema } from "./map-spec.contract.js";
+import { GeoBaseContentSchema } from "./map-spec.contract.js";
 import { WidgetRefreshResponseSchema } from "./portal-sql.contract.js";
 import type { PortalResultType } from "../models/portal-result.model.js";
 
 /**
- * Stored-content contracts for pinned portal results (#312).
+ * Stored-content contracts for pinned portal results (#312, #640).
  *
- * A pin **materializes**: the pin route validates the source block against
- * the per-type schema below and persists a self-contained snapshot (rows
- * bounded by `PIN_SNAPSHOT_ROW_CAP`) plus, where derivable, the durable
- * `pipeline` that makes the pin refreshable. Handle envelopes are never
- * stored — the 24h Redis handle TTL must not outlive a pin.
+ * A data pin is a **recipe**, not a snapshot (#640): it stores the query that
+ * produces its data (`pipeline`) and how to draw it, never the rows. Its data
+ * is executed on every view as the pin's definer
+ * (`GET /api/portal-results/:id/data`), so it is always current, never holds
+ * rows its definer can't see now, and empties when the definer loses access.
+ * Every data kind therefore requires a `pipeline`; a block without one can't
+ * be pinned. Narrative text stays self-contained.
+ *
+ * These are the **write** contracts. Pins saved before #640 may lack a
+ * `pipeline`; the read path keeps `content` loose so they still list and open
+ * (their data route answers `PORTAL_RESULT_NOT_REEXECUTABLE`).
  */
 
-/** Stored content of a pinned data-table (post-materialization). */
-export const PinnedDataTableContentSchema = z.object({
-  columns: z.array(z.string()),
-  /** Materialized snapshot, ≤ `PIN_SNAPSHOT_ROW_CAP` rows. */
-  rows: z.array(z.record(z.string(), z.unknown())),
-  /** Source total — a lower bound when `truncated` is true (#147 semantics). */
-  rowCount: z.number().int().nonnegative().optional(),
-  truncated: z.boolean().optional(),
-  /** Present ⇢ the pin is refreshable. Derived from the source handle
-   *  envelope's retained `sql` (null for externally-supplied rows). */
-  pipeline: VizPipelineSchema.optional(),
-});
+/** Stored content of a pinned data-table. */
+export const PinnedDataTableContentSchema = z
+  .object({
+    /** Display-order hint; the live rows are authoritative. */
+    columns: z.array(z.string()),
+    pipeline: VizPipelineSchema,
+  })
+  .strict();
 export type PinnedDataTableContent = z.infer<
   typeof PinnedDataTableContentSchema
 >;
 
-/**
- * Stored content of a pinned d3 widget: always the inline shape — a
- * handle-backed widget is materialized at pin time.
- */
-export const PinnedD3ContentSchema = D3InlineContentSchema;
+/** Stored content of a pinned d3 widget: the program and its query. */
+export const PinnedD3ContentSchema = D3BaseContentSchema.extend({
+  pipeline: VizPipelineSchema,
+}).strict();
 export type PinnedD3Content = z.infer<typeof PinnedD3ContentSchema>;
 
-/**
- * Stored content of a pinned geo widget: always the inline shape — a
- * handle/tile-backed map is materialized to inline rows at pin time (#84/#314).
- */
-export const PinnedGeoContentSchema = GeoInlineContentSchema;
+/** Stored content of a pinned map: the spec and its query. */
+export const PinnedGeoContentSchema = GeoBaseContentSchema.extend({
+  pipeline: VizPipelineSchema,
+  /**
+   * #371: the source was larger than an inline result when pinned, so the
+   * widget renders through the pin's tile endpoint from the start rather than
+   * waiting for the live delivery to say so.
+   */
+  tiled: z.boolean().optional(),
+}).strict();
 export type PinnedGeoContent = z.infer<typeof PinnedGeoContentSchema>;
 
 /**
@@ -61,14 +67,6 @@ export const PINNED_CONTENT_SCHEMAS: Partial<
   d3: PinnedD3ContentSchema,
   geo: PinnedGeoContentSchema,
 };
-
-/**
- * Refresh response of `POST /api/portal-results/:id/refresh` — identical
- * union to the message-block widget-refresh endpoint: one contract, two
- * addressers.
- */
-export const PinRefreshResponseSchema = WidgetRefreshResponseSchema;
-export type PinRefreshResponse = z.infer<typeof PinRefreshResponseSchema>;
 
 /**
  * #640: `GET /api/portal-results/:id/data` — a pin's data, live, as its

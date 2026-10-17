@@ -214,11 +214,10 @@ This slice removes the old path: the stored rows, the refresh route and the snap
   - `packages/core/src/contracts/pinned-result.contract.ts`: rows-free schemas with a required `pipeline`; export `D3BaseContentSchema` / `GeoBaseContentSchema`; remove `PinRefreshResponseSchema`.
   - `portal-result.model.ts`: remove `snapshotUpdatedAt`.
   - `portal-results.table.ts`, `zod.ts`, `type-checks.ts`.
-  - `apps/api/drizzle/0125_strip-pin-snapshots.sql` + meta: strip the content keys on data types (including soft-deleted rows), and `DROP COLUMN snapshot_updated_at` with `-- destructive-ok`.
+  - `apps/api/drizzle/0125_strip-pin-snapshots.sql` + meta: reduce each data pin's content to its type's recipe keys (an allowlist, including soft-deleted rows), and `DROP COLUMN snapshot_updated_at` with `-- destructive-ok`.
   - `services/portal-result-pin.service.ts`: no rows; a meta failure means no pipeline.
   - `routes/portal-results.router.ts`: create refuses with `NOT_REEXECUTABLE`; delete `POST /:id/refresh` and its `@openapi`.
   - `portal-viz-refresh.service.ts`: delete `refreshPinnedResult` and the write-back.
-  - `portal-map-tile.service.ts`: the ETag drops `snapshotUpdatedAt`.
   - `route-authorization.map.ts`: remove refresh.
   - Web: remove `sdk.portalResults.refresh`, `isSnapshotless` and the expired notice, and every `snapshotUpdatedAt` reference.
   - Update the 42 `snapshotUpdatedAt` test references (spec list).
@@ -230,7 +229,6 @@ This slice removes the old path: the stored rows, the refresh route and the snap
    - core contract (6);
    - materialize (4);
    - create refuses a static block, `POST /:id/refresh` → 404 (2);
-   - the ETag case (1);
    - 0125 migration: data rows, legacy `queryHandle`, text untouched, soft-deleted stripped (4).
    
    Fail.

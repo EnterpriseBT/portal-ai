@@ -197,7 +197,7 @@ Two forward migrations, each generated with `npm run db:generate -- --name <name
 
 **0125 `strip-pin-snapshots`** (slice 6, the cutover):
 
-1. `UPDATE portal_results SET content = content - 'rows' - 'rowCount' - 'matchedCount' - 'matchedCountExact' - 'truncated' - 'queryHandle' WHERE type IN ('data-table','d3','geo');`
+1. Reduce each data pin's `content` to its type's recipe keys, as an **allowlist**: data-table `columns, pipeline`; d3 `program, title, params, pipeline`; geo `spec, title, pipeline, program, tiled`. Pins before #640 copied their whole source block, so a deny list would leave `samplePeek`, `schema` and other envelope fields behind.
 2. `ALTER TABLE portal_results DROP COLUMN snapshot_updated_at; -- destructive-ok: snapshots no longer exist (#640)`
 
 Rows are stripped from soft-deleted pins too: a tombstoned pin must not retain gated data. Expand-only otherwise.

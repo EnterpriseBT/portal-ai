@@ -57,7 +57,6 @@ const makePinnedResult = (
   content: { text: "Total revenue: $1.2M" },
   created: Date.now() - 3600000,
   createdBy: "user-1",
-  snapshotUpdatedAt: null,
   definerPrincipalType: "user",
   definerPrincipalId: "user-1",
   definer: { id: "user-1", displayName: "Test User" },

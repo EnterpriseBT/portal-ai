@@ -876,6 +876,13 @@
       "when": 1792192600183,
       "tag": "0124_pin-definer-columns",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1792194848771,
+      "tag": "0125_strip-pin-snapshots",
+      "breakpoints": true
     }
   ]
 }
