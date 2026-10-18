@@ -24,6 +24,7 @@ import {
   trgmIndexName,
 } from "../../../services/wide-table-reconciler.service.js";
 import { wideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
+import { withEntityLock } from "../../../db/advisory-lock.util.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import * as schema from "../../../db/schema/index.js";
 import {
@@ -308,6 +309,40 @@ describe("wide-table search-index sweep (#649)", () => {
     expect(summary.built).toBe(0);
   });
 
+  it("skips an entity whose lock a reconcile or write holds, and releases its own", async () => {
+    const id = await textEntity();
+    await dropIndex(id);
+
+    // A reconcile (or a commit's write) holds the entity lock. A build here
+    // would make the reconcile's ALTER queue behind it, and every read of the
+    // table behind that, so the sweep leaves the entity for the next run.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const acquired = new Promise<void>((r) => (locked = r));
+    const holder = withEntityLock(db, id, async () => {
+      locked();
+      await held;
+    });
+    await acquired;
+    const busy = await wideTableSearchIndexSweepProcessor({ entityIds: [id] });
+    release();
+    await holder;
+
+    expect(busy).toMatchObject({ built: 0, busy: 1, failed: 0 });
+    expect(await indexState(id)).toBe("missing");
+
+    const next = await wideTableSearchIndexSweepProcessor({ entityIds: [id] });
+    expect(next).toMatchObject({ built: 1, busy: 0 });
+    // The sweep released its session lock: the entity locks straight away.
+    await withEntityLock(db, id, async (tx) => {
+      const rows = (await (tx as ReturnType<typeof drizzle>).execute(
+        sql`SELECT 1 AS ok`
+      )) as unknown as Array<{ ok: number }>;
+      expect(rows[0]!.ok).toBe(1);
+    });
+  });
+
   it("stops at maxBuilds and reports the rest as deferred", async () => {
     const a = await textEntity(2);
     const b = await textEntity(2);
@@ -341,6 +376,7 @@ describe("wide-table search-index sweep (#649)", () => {
       rebuilt: 0,
       dropped: 0,
       skipped: 0,
+      busy: 0,
       deferred: 0,
       failed: 0,
     });

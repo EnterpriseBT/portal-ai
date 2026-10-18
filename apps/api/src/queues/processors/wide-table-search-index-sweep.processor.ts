@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
-import { db } from "../../db/client.js";
+import { entityLockKey } from "../../db/advisory-lock.util.js";
+import { db, reserveConnection } from "../../db/client.js";
 import { environment } from "../../environment.js";
 import { trgmIndexName } from "../../services/wide-table-reconciler.service.js";
 import { createLogger } from "../../utils/logger.util.js";
@@ -18,6 +19,9 @@ export interface WideTableSearchIndexSweepSummary {
   dropped: number;
   /** Table or column gone mid-sweep (an entity delete, a reconcile). */
   skipped: number;
+  /** Columns left for the next run because a reconcile or a write held the
+   *  entity's lock. */
+  busy: number;
   /** Builds left for the next run because the budget was spent. */
   deferred: number;
   /** Anything else that failed; logged at warn, retried next run. */
@@ -45,8 +49,18 @@ function pgCode(error: unknown): string | undefined {
  *
  * Every build and drop is `CONCURRENTLY`, so a sync writing the table is never
  * blocked, which also means no statement here can run inside a transaction.
- * Statements run one at a time, so the sweep holds at most one connection of
- * the shared pool. `maxBuilds` caps builds plus rebuilds per run, so a large
+ * Statements run one at a time on one reserved connection, so the sweep holds
+ * one connection of the shared pool.
+ *
+ * Each statement runs under the entity's advisory lock (`withEntityLock`'s
+ * key, taken session-scoped with `pg_try_advisory_lock`), and an entity whose
+ * lock is held is left for the next run (`busy`). A concurrent build holds a
+ * lock the reconciler's `ALTER TABLE` conflicts with. Without the advisory
+ * lock a reconcile would queue behind a minutes-long build on a large table,
+ * and every read of the table would queue behind the reconcile. With it, the
+ * reconcile waits on the advisory lock before it touches the table, so reads
+ * carry on. A build also waits for every older transaction, so starting one
+ * while a reconcile's transaction is open would only stall both. `maxBuilds` caps builds plus rebuilds per run, so a large
  * backlog spreads over several hourly runs instead of holding the maintenance
  * worker's single slot. Idempotent: a second run over a converged table does
  * nothing.
@@ -70,6 +84,7 @@ export const wideTableSearchIndexSweepProcessor = async (opts?: {
     deferred: 0,
     failed: 0,
     durationMs: 0,
+    busy: 0,
   };
 
   // Desired state: every registered text column of a live entity whose table
@@ -114,60 +129,98 @@ export const wideTableSearchIndexSweepProcessor = async (opts?: {
   summary.tablesScanned = new Set(columns.map((c) => c.entity_id)).size;
   let builds = 0;
 
-  for (const col of columns) {
-    const table = `"er__${col.entity_id}"`;
-    const name = trgmIndexName(col.entity_id, col.column_name);
-    const quotedName = `"${name}"`;
-    const state = existing.get(name);
-
+  const reserved = await reserveConnection();
+  /** Runs `statement` holding the entity's lock; false when it's held. */
+  const underEntityLock = async (
+    entityId: string,
+    statement: string
+  ): Promise<boolean> => {
+    const key = entityLockKey(entityId).toString();
+    const rows = (await reserved.unsafe(
+      `SELECT pg_try_advisory_lock($1::bigint) AS locked`,
+      [key]
+    )) as unknown as Array<{ locked: boolean }>;
+    if (rows[0]?.locked !== true) return false;
     try {
-      if (col.retired) {
-        if (state === undefined) continue;
-        await db.execute(
-          sql.raw(`DROP INDEX CONCURRENTLY IF EXISTS ${quotedName}`)
-        );
-        summary.dropped += 1;
-        continue;
-      }
-      if (!col.table_exists) {
-        summary.skipped += 1;
-        continue;
-      }
-      if (state === true) continue;
+      await reserved.unsafe(statement);
+      return true;
+    } finally {
+      await reserved.unsafe(`SELECT pg_advisory_unlock($1::bigint)`, [key]);
+    }
+  };
 
-      if (builds >= maxBuilds) {
-        summary.deferred += 1;
-        continue;
-      }
-      builds += 1;
-      if (state === false) {
-        await db.execute(
-          sql.raw(`DROP INDEX CONCURRENTLY IF EXISTS ${quotedName}`)
-        );
-      }
-      await db.execute(
-        sql.raw(
+  try {
+    for (const col of columns) {
+      const table = `"er__${col.entity_id}"`;
+      const name = trgmIndexName(col.entity_id, col.column_name);
+      const quotedName = `"${name}"`;
+      const state = existing.get(name);
+
+      try {
+        if (col.retired) {
+          if (state === undefined) continue;
+          const dropped = await underEntityLock(
+            col.entity_id,
+            `DROP INDEX CONCURRENTLY IF EXISTS ${quotedName}`
+          );
+          if (dropped) summary.dropped += 1;
+          else summary.busy += 1;
+          continue;
+        }
+        if (!col.table_exists) {
+          summary.skipped += 1;
+          continue;
+        }
+        if (state === true) continue;
+
+        if (builds >= maxBuilds) {
+          summary.deferred += 1;
+          continue;
+        }
+        // Counted before the attempt so a failing build still spends budget;
+        // handed back when the entity was busy and nothing ran.
+        builds += 1;
+        if (state === false) {
+          const dropped = await underEntityLock(
+            col.entity_id,
+            `DROP INDEX CONCURRENTLY IF EXISTS ${quotedName}`
+          );
+          if (!dropped) {
+            builds -= 1;
+            summary.busy += 1;
+            continue;
+          }
+        }
+        const built = await underEntityLock(
+          col.entity_id,
           `CREATE INDEX CONCURRENTLY IF NOT EXISTS ${quotedName} ON ${table} ` +
             `USING GIN ("${col.column_name}" gin_trgm_ops)`
-        )
-      );
-      if (state === false) summary.rebuilt += 1;
-      else summary.built += 1;
-    } catch (error) {
-      if (VANISHED_CODES.has(pgCode(error) ?? "")) {
-        summary.skipped += 1;
-        continue;
+        );
+        if (!built) {
+          builds -= 1;
+          summary.busy += 1;
+          continue;
+        }
+        if (state === false) summary.rebuilt += 1;
+        else summary.built += 1;
+      } catch (error) {
+        if (VANISHED_CODES.has(pgCode(error) ?? "")) {
+          summary.skipped += 1;
+          continue;
+        }
+        summary.failed += 1;
+        logger.warn(
+          {
+            index: name,
+            code: pgCode(error),
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Search index build failed; the next sweep retries it"
+        );
       }
-      summary.failed += 1;
-      logger.warn(
-        {
-          index: name,
-          code: pgCode(error),
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Search index build failed; the next sweep retries it"
-      );
     }
+  } finally {
+    reserved.release();
   }
 
   summary.durationMs = Date.now() - started;

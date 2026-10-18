@@ -176,6 +176,7 @@ export interface WideTableSearchIndexSweepSummary {
   dropped: number;     // on retired columns
   skipped: number;     // table/column vanished mid-sweep
   deferred: number;    // left for the next run (budget reached)
+  busy: number;        // left for the next run (entity lock held)
   durationMs: number;
 }
 export const wideTableSearchIndexSweepProcessor: (opts?: { maxBuilds?: number }) => Promise<WideTableSearchIndexSweepSummary>;
@@ -195,6 +196,7 @@ export const wideTableSearchIndexSweepProcessor: (opts?: { maxBuilds?: number })
 
 **Budget and errors:**
 - `maxBuilds` (env `WIDE_TABLE_SEARCH_INDEX_SWEEP_MAX_BUILDS`, default `25`) caps builds plus rebuilds per run. The remainder is `deferred`.
+- Each statement runs under the entity's advisory lock (`entityLockKey`, session-scoped `pg_try_advisory_lock` on one reserved connection). A held lock means a reconcile or a commit write is running: the column is `busy` and waits for the next run. Without it a reconcile's `ALTER TABLE` queues behind a long concurrent build, and every read of the table queues behind the reconcile (code-review finding).
 - An `undefined_table`/`undefined_column` error counts as `skipped`. Any other error is logged at warn with the index name, and the sweep continues.
 - The summary is the BullMQ return value.
 
@@ -293,6 +295,7 @@ Run per package: `npm run test:unit -- --testPathPattern <file>` and `npm run te
   - skips a dropped table
   - skips a soft-deleted entity
   - respects `maxBuilds` and reports `deferred`
+  - skips an entity whose lock is held (`busy`) and releases its own lock
   - a second run is a no-op
   - **(7)**
 - **`__integration__/db/migrations` / the fresh-DB run:** covered by CI's migrate. The extension test is the reconciler case above. **(0)**

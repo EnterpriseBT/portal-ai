@@ -2,9 +2,11 @@
  * Keyset cursor value for the curated-view records table (#649).
  *
  * The table's rows come from raw SQL, so the sort value arrives as the driver
- * returns it: `text` as a string, `numeric` as a string, `timestamptz` as a
- * `Date`. A cursor carries a string, number or null, so a `Date` becomes ISO
- * (Postgres reads it back as a `timestamptz` literal).
+ * returns it. Drizzle's postgres-js driver returns `text`, `numeric`, `date`
+ * and `timestamptz` all as their stored text, so the cursor round-trips the
+ * exact value (a `timestamptz` keeps its microseconds). A `Date` is only
+ * handled in case a driver parses one; `toISOString` would round it to
+ * milliseconds.
  *
  * Returns `null` for anything else. The caller then mints no cursor and the
  * client stays on offset paging. It must never fall back to `{ value: null }`:

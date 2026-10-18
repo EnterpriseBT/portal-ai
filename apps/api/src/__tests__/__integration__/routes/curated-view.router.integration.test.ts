@@ -1854,6 +1854,51 @@ describe("curated-view.router integration", () => {
     expect(garbage.records).toEqual(baseline);
   });
 
+  it.each(["asc", "desc"] as const)(
+    "#649: a datetime walk (%s) with sub-millisecond ties repeats and skips nothing",
+    async (sortOrder) => {
+      // timestamptz holds microseconds and a JS Date only milliseconds. The
+      // driver hands the value back as text, so the cursor carries it exactly;
+      // a Date would round it and repeat or skip the anchor's peers.
+      const dbT = db as ReturnType<typeof drizzle>;
+      const now = Date.now();
+      const cdSeen = generateId();
+      await dbT
+        .insert(schema.columnDefinitions)
+        .values(
+          mkColumnDef(cdSeen, orgId, "seen", "Seen", "datetime", now) as never
+        );
+      await dbT
+        .insert(schema.fieldMappings)
+        .values(
+          mkMapping(
+            generateId(),
+            orgId,
+            entityId,
+            cdSeen,
+            "seen",
+            now + 10,
+            "SYSTEM_TEST"
+          ) as never
+        );
+      await reconciler.reconcileEntity(entityId, db);
+      singletonStatementCache.clear();
+      await seedMoreRows();
+      // Every row lands in one millisecond, three microsecond values apart.
+      await dbT.execute(
+        sql.raw(
+          `UPDATE "er__${entityId}" SET c_seen = '2024-01-15T10:00:00.123Z'::timestamptz ` +
+            `+ ((('x' || substr(entity_record_id::text, 1, 2))::bit(8)::int % 3) * interval '1 microsecond') + interval '100 microseconds'`
+        )
+      );
+      const id = await allColumnsView(`seen_${sortOrder}`);
+      const expected = await fullOrder(id, { sortBy: "seen", sortOrder });
+      const seen = await walk(id, { sortBy: "seen", sortOrder }, 4);
+      expect(seen).toEqual(expected);
+      expect(new Set(seen).size).toBe(expected.length);
+    }
+  );
+
   it("#649: search never matches a number cell or a column outside the view", async () => {
     const created = await createView({
       connectorEntityId: entityId,
