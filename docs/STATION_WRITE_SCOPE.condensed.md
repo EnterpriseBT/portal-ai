@@ -28,7 +28,7 @@ This fixes the gate, and tells the agent the real reason when writes truly aren'
 **Decision: A.** `resolveStationCapabilities` takes its instance set from `station_instances ∪ instanceIdsForStation`, and keeps its contract ("every connector instance attached to a station").
 - `resolveEntityCapabilities` is unaffected. It still takes its entities from views (the read scope #599 set) and only looks capability up by instance, so the extra instances are inert there.
 
-**Plus the explanation.** `ConnectorInstanceContext` gains `writable: boolean`, filled by `loadConnectorInstanceContexts` from `resolveCapabilities(definition, instance).write`. When `entity_management` is effective but no attached connector is writable, the system prompt says so:
+**Plus the explanation.** `ConnectorInstanceContext` gains `writable: boolean`, filled by `loadConnectorInstanceContexts` from `resolveCapabilities(definition, instance).write`. When `entity_management` is effective but no connector the station reaches is writable, the system prompt says so. The condition is `StationContext.stationWritable`, computed from the same `resolveStationCapabilities` the gate uses, so the prompt says writes are off exactly when the gate withheld the tools. *Amended after code review:* a first version keyed it off `station_instances` only, and a station writable through a view was then told its tools didn't exist.
 - Its create, update and delete tools are unavailable because no connector attached to this station allows writes.
 - The user can enable write on a connector or attach a write-enabled one.
 - It is **not** a plan limit.
@@ -39,7 +39,7 @@ The agent no longer has to infer the reason from a missing tool.
 
 **Files**
 - Edit: `apps/api/src/utils/resolve-capabilities.util.ts`: `resolveStationCapabilities` takes its instances from the de-duplicated union of `stationInstancesRepo.findByStationId` and `instanceIdsForStation`. Its #599 comment explains why writes include the directly attached connectors.
-- Edit: `apps/api/src/prompts/system.prompt.ts`: `ConnectorInstanceContext.writable`, and a "Read-only connectors" paragraph rendered when `entity_management` is effective and every listed connector has `writable: false`.
+- Edit: `apps/api/src/prompts/system.prompt.ts`: `ConnectorInstanceContext.writable`, and a "Read-only connectors" paragraph rendered when `entity_management` is effective and `stationWritable` is false.
 - Edit: `apps/api/src/services/portal.service.ts`: `loadConnectorInstanceContexts` sets `writable`.
 
 **Tests** (`npm run test:unit` / `npm run test:integration` from `apps/api`)
