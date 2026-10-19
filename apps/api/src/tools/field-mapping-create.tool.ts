@@ -165,7 +165,19 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
           // gate authorized "a new mapping the caller owns", not a change to a
           // mapping someone else may own, so an existing key is refused and
           // the agent is pointed at the update tool, which checks write on it.
+          // A key repeated within this batch would trip the unique index on
+          // the second insert; refuse it up front, naming the repeat.
+          const seenKeys = new Set<string>();
           for (const [index, item] of items.entries()) {
+            const batchKey = `${item.connectorEntityId}:${item.normalizedKey}`;
+            if (seenKeys.has(batchKey)) {
+              failures.push({
+                index,
+                error: `This batch repeats mapping key "${item.normalizedKey}" for the same entity; send each mapping once.`,
+              });
+              continue;
+            }
+            seenKeys.add(batchKey);
             const existing =
               await DbService.repository.fieldMappings.findByEntityAndNormalizedKey(
                 item.connectorEntityId,

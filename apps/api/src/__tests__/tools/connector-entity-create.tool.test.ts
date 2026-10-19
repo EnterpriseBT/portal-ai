@@ -250,6 +250,20 @@ describe("ConnectorEntityCreateTool", () => {
     expect(mockCreateEntity).not.toHaveBeenCalled();
   });
 
+  it("refuses a key repeated within the batch, naming the repeat, and writes nothing", async () => {
+    const result: any = await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "orders", label: "Orders" },
+        { connectorInstanceId: "ci-1", key: "orders", label: "Orders again" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([expect.objectContaining({ index: 1 })]);
+    expect(result.failures[0].error).toMatch(/repeats/i);
+    expect(result.failures[0].error).not.toContain("connector_entity_update");
+    expect(mockCreateEntity).not.toHaveBeenCalled();
+  });
+
   it("reports a key taken concurrently as already existing, not as created", async () => {
     mockCreateEntity.mockRejectedValueOnce(
       Object.assign(new Error("duplicate key value"), { code: "23505" })

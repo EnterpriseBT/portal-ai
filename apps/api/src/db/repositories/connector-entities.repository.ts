@@ -110,7 +110,6 @@ export class ConnectorEntitiesRepository extends Repository<
       )) as ConnectorEntitySelect[];
   }
 
-  /** Find a single entity by connector instance + key. */
   /**
    * #825: the live entity holding `key` in the organization, if any. Keys
    * are unique per org (the match `upsertByKey` uses), so this is the
@@ -135,6 +134,7 @@ export class ConnectorEntitiesRepository extends Repository<
     return row as ConnectorEntitySelect | undefined;
   }
 
+  /** Find a single entity by connector instance + key. */
   async findByKey(
     connectorInstanceId: string,
     key: string,

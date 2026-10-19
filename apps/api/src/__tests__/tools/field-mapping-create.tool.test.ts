@@ -200,6 +200,22 @@ describe("FieldMappingCreateTool", () => {
     expect(mockCreateMapping).not.toHaveBeenCalled();
   });
 
+  it("refuses a mapping key repeated within the batch for the same entity", async () => {
+    const item = {
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "Name",
+      normalizedKey: "name",
+    };
+    const result: any = await exec({
+      items: [item, { ...item, sourceField: "Name2" }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([expect.objectContaining({ index: 1 })]);
+    expect(result.failures[0].error).toMatch(/repeats/i);
+    expect(mockCreateMapping).not.toHaveBeenCalled();
+  });
+
   it("reports a mapping key taken concurrently as already existing, not as created", async () => {
     mockCreateMapping.mockRejectedValueOnce(
       Object.assign(new Error("duplicate key value"), { code: "23505" })

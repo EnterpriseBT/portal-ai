@@ -146,9 +146,21 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
           // an entity someone else may own, so an existing key is refused
           // and the agent is pointed at the update tool, which checks write
           // on that entity.
+          // A key repeated within this batch would trip the unique index on
+          // the second insert; refuse it up front, naming the repeat.
+          const seenKeys = new Set<string>();
           for (const [index, item] of items.entries()) {
             const orgId = instanceOrgMap.get(item.connectorInstanceId);
             if (!orgId) continue;
+            const batchKey = `${orgId}:${item.key}`;
+            if (seenKeys.has(batchKey)) {
+              failures.push({
+                index,
+                error: `This batch repeats key "${item.key}"; send each entity once.`,
+              });
+              continue;
+            }
+            seenKeys.add(batchKey);
             const existing =
               await DbService.repository.connectorEntities.findByOrganizationAndKey(
                 orgId,
