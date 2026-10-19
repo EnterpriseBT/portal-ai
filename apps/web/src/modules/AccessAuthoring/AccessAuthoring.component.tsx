@@ -14,13 +14,15 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Stack, Button, Typography } from "@portalai/core/ui";
+import { isSessionGenerated } from "@portalai/core/models";
+import { Box, Stack, Button, Typography } from "@portalai/core/ui";
 import type { PolicyView, RoleView, GroupView } from "@portalai/core/contracts";
 
 import { sdk } from "../../api/sdk";
 import { queryKeys } from "../../api/keys";
 import { useToast } from "../../utils/toast.context";
 import { toServerError } from "../../utils/api.util";
+import { SessionGeneratedChipUI } from "../../components/SessionGeneratedChip.component";
 import { PolicyEditorDialog } from "./PolicyEditorDialog.component";
 import { RoleEditorDialog } from "./RoleEditorDialog.component";
 import { GroupEditorDialog } from "./GroupEditorDialog.component";
@@ -48,6 +50,8 @@ interface Row {
   name: string;
   system: boolean;
   detail: string;
+  /** #641: created by the agent in a portal session (provenance only). */
+  sessionGenerated: boolean;
 }
 
 // ── UI (pure) ────────────────────────────────────────────────────────────
@@ -141,6 +145,11 @@ export const AccessAuthoringUI: React.FC<AccessAuthoringUIProps> = ({
             }
           >
             <ListItemText primary={row.name} secondary={row.detail} />
+            {row.sessionGenerated && (
+              <Box sx={{ mr: row.system ? 1 : 6 }}>
+                <SessionGeneratedChipUI />
+              </Box>
+            )}
             {row.system && <Chip size="small" label="system" sx={{ mr: 6 }} />}
           </ListItem>
         ))}
@@ -198,6 +207,7 @@ export const AccessAuthoring: React.FC = () => {
           name: p.name,
           system: p.kind === "system",
           detail: pluralize(p.statements.length, "statement", "statements"),
+          sessionGenerated: isSessionGenerated(p),
         }))
       : section === "roles"
         ? roles.map((r) => ({
@@ -205,11 +215,13 @@ export const AccessAuthoring: React.FC = () => {
             name: r.name,
             system: r.kind === "system",
             detail: pluralize(r.policyIds.length, "policy", "policies"),
+            sessionGenerated: isSessionGenerated(r),
           }))
         : groups.map((g) => ({
             id: g.id,
             name: g.name,
             system: false,
+            sessionGenerated: isSessionGenerated(g),
             detail: `${pluralize(g.memberCount, "member", "members")}, ${pluralize(
               g.policyIds.length,
               "policy",

@@ -186,8 +186,8 @@ The "Created in a portal session" chip goes on the spec's surfaces, and the owne
   - `apps/web/src/components/SessionGeneratedChip.component.tsx`
   - `apps/web/src/__tests__/SessionGeneratedChip.test.tsx`
 - Edit, web:
-  - `views/EntityDetail.view.tsx`, `views/PinnedResultDetail.view.tsx`
-  - `components/EntityRecordMetadata.component.tsx`, `components/ConnectorEntity.component.tsx` (card and `FieldMappingTableUI` row), `components/PinnedResultsList.component.tsx`
+  - `views/EntityDetail.view.tsx` (pins get no chip: amended in slice 6, see spec)
+  - `components/EntityRecordMetadata.component.tsx`, `components/ConnectorEntity.component.tsx` (card and `FieldMappingTableUI` row)
   - `modules/AccessAuthoring/AccessAuthoring.component.tsx` (`Row.sessionGenerated` and the chip)
 - Edit, docs: `CLAUDE.md` (`### Ownership & provenance (#641)`), `.github/copilot-instructions.md`, `docs/PROD_PROVISIONING.runbook.md:266`
 

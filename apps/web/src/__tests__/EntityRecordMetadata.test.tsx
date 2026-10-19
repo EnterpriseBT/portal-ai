@@ -81,4 +81,28 @@ describe("EntityRecordMetadata", () => {
     render(<EntityRecordMetadata record={record} />);
     expect(screen.getByText("—")).toBeInTheDocument();
   });
+
+  // #641: provenance badge.
+  it("badges a record an agent session created", () => {
+    render(
+      <EntityRecordMetadata
+        record={{ ...stubRecord, origin: "portal", sourcePortalId: "portal-1" }}
+      />
+    );
+    expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
+  });
+
+  it("badges a record the agent created before #641 (origin portal, no id)", () => {
+    render(
+      <EntityRecordMetadata record={{ ...stubRecord, origin: "portal" }} />
+    );
+    expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
+  });
+
+  it("doesn't badge a synced record", () => {
+    render(<EntityRecordMetadata record={stubRecord} />);
+    expect(
+      screen.queryByText("Created in a portal session")
+    ).not.toBeInTheDocument();
+  });
 });

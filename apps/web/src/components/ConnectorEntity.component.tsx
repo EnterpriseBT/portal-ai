@@ -7,6 +7,7 @@ import type {
   ConnectorEntityWithMappings,
   FieldMappingWithColumnDefinition,
 } from "@portalai/core/contracts";
+import { isSessionGenerated } from "@portalai/core/models";
 import {
   Box,
   Card,
@@ -29,6 +30,7 @@ import { Link } from "@tanstack/react-router";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
+import { SessionGeneratedChipUI } from "./SessionGeneratedChip.component";
 
 // ── Data component ──────────────────────────────────────────────────
 
@@ -74,6 +76,12 @@ const fieldMappingColumns: DataTableColumn[] = [
     render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
   },
   { key: "sourceField", label: "Source Field" },
+  {
+    // #641: provenance only; the mapping is still its creator's.
+    key: "sessionGenerated",
+    label: "Provenance",
+    render: (value) => (value ? <SessionGeneratedChipUI /> : null),
+  },
 ];
 
 export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
@@ -86,6 +94,7 @@ export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
     isPrimaryKey: fm.isPrimaryKey,
     required: fm.required,
     sourceField: fm.sourceField,
+    sessionGenerated: isSessionGenerated(fm),
   }));
 
   return (
@@ -137,6 +146,7 @@ export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
                 size="small"
                 variant="outlined"
               />
+              {isSessionGenerated(entity) && <SessionGeneratedChipUI />}
             </Stack>
           </Box>
           <IconButton

@@ -263,7 +263,7 @@ printf '%s' 'https://app.portalsai.io' | portalops vars set CORS_ORIGIN - --env 
 node -e "console.log(require('crypto').randomUUID())" | portalops vars set SYSTEM_ID - --env $ENV $GUARD
 ```
 
-> **`SYSTEM_ID` is the system-actor id.** `SystemUtilities.id.system` returns it, and it is written as `createdBy` / `updatedBy` on platform-initiated rows (seeds, webhook and billing writes, wide-table reconciliation). Outside prod it is the literal sentinel `"SYSTEM"`; prod gets a UUID so system-attributed rows are traceable to this environment.
+> **`SYSTEM_ID` is the system-actor id.** `SystemUtilities.id.system` returns it, and it is written as `createdBy` / `updatedBy` on platform-initiated rows only: platform seeds and org-provisioned defaults, billing and identity housekeeping, and wide-table and map materializations. It is never written on an object a user or an agent session created (#641); `system-principal.guard.test.ts` holds the list. Outside prod it is the literal sentinel `"SYSTEM"`; prod gets a UUID so system-attributed rows are traceable to this environment.
 >
 > **Write-once in intent.** Changing it re-attributes only *future* writes — existing rows keep whichever value minted them — so treat it as write-once and verify with a readback:
 >

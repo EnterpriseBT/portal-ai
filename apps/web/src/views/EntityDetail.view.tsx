@@ -18,6 +18,7 @@ import type {
   RunningJobSummary,
   ConnectorEntityImpactResponsePayload,
 } from "@portalai/core/contracts";
+import { isSessionGenerated } from "@portalai/core/models";
 import {
   Box,
   GatedButton,
@@ -43,6 +44,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { invalidateAfterConnectorEntityDelete } from "../utils/delete-invalidation.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { UnauthorizedState } from "../components/UnauthorizedState.component";
+import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
@@ -385,6 +387,13 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                 label: "Last sync",
                 value: lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "",
                 hidden: !lastSyncAt,
+              },
+              {
+                // #641: provenance only; the entity is still its creator's.
+                label: "Provenance",
+                value: <SessionGeneratedChipUI />,
+                variant: "chip",
+                hidden: !isSessionGenerated(entity),
               },
             ]}
           />

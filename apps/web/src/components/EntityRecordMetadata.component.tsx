@@ -1,11 +1,12 @@
 import React from "react";
 
-import type { EntityRecord } from "@portalai/core/models";
+import { isSessionGenerated, type EntityRecord } from "@portalai/core/models";
 import { MetadataList, Stack, Typography } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 
 import { Formatter } from "../utils/format.util";
+import { SessionGeneratedChipUI } from "./SessionGeneratedChip.component";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -39,6 +40,13 @@ export const EntityRecordMetadata: React.FC<EntityRecordMetadataProps> = ({
             variant: "mono",
           },
           { label: "Origin", value: record.origin, variant: "chip" },
+          {
+            // #641: provenance only; the record is still its creator's.
+            label: "Provenance",
+            value: <SessionGeneratedChipUI />,
+            variant: "chip",
+            hidden: !isSessionGenerated(record),
+          },
           {
             label: "Valid",
             value: (

@@ -15,7 +15,7 @@ This spec pins the contract for #641. Objects an agent creates in a portal sessi
 6. **Missing actors fall back to the job row's `createdBy`, never `"SYSTEM"`** (D5).
 7. **A guard test enforces the system-principal allowlist** (D4). The allowlist only shrinks.
 8. **The badge is a plain chip with no link** (discovery OQ2: a portal may be unreadable to another reader). It renders only when `sessionGenerated` is true.
-9. **Records created before this ticket badge through `origin = 'portal'`.** `sessionGenerated` for a record is `sourcePortalId != null || origin === "portal"`. Editing a marked object keeps its marker (OQ1). Provisioned defaults stay system-owned (OQ3), and pins count as session-generated (OQ4).
+9. **Records created before this ticket badge through `origin = 'portal'`.** `sessionGenerated` for a record is `sourcePortalId != null || origin === "portal"`. Editing a marked object keeps its marker (OQ1). Provisioned defaults stay system-owned (OQ3). Pins are all session output (OQ4), so they get no chip (*amended in slice 6*; see the web table).
 
 ## Scope
 
@@ -132,7 +132,7 @@ The new `components/SessionGeneratedChip.component.tsx` is pure UI: `SessionGene
 | Record | `components/EntityRecordMetadata.component.tsx:29`, the same item beside "Origin" (`:41`) | none (the data table is cell data; not this ticket) |
 | Field mapping | none (no detail page) | `components/ConnectorEntity.component.tsx:79` `FieldMappingTableUI` row |
 | Role / policy / group | none (editor dialogs only) | `modules/AccessAuthoring/AccessAuthoring.component.tsx:144`, beside the `system` chip; `Row` (`:46`) gains `sessionGenerated` |
-| Pin | `views/PinnedResultDetail.view.tsx:200` `MetadataList` item | `components/PinnedResultsList.component.tsx:44` card |
+| Pin | none (*amended in slice 6:* every pin is agent output, and deleting its portal nulls `portalId`, so a badge would carry no information and vanish with the portal; the detail page already shows "Source: Portal deleted") | none |
 
 ### Docs
 - **`CLAUDE.md`:** a new `### Ownership & provenance (#641)` under `## Database Schema Workflow (Dual-Schema)` (after `:414`). It defines three categories:
@@ -189,14 +189,14 @@ Run from each package: `npm run test:unit` / `npm run test:integration` (never r
 
 ### web unit
 - `__tests__/SessionGeneratedChip.test.tsx` (new): renders the label. 1 case.
-- `EntityRecordMetadata`, `ConnectorEntity` (card and field-mapping row), `AccessAuthoringUI` row, `PinnedResultCard` and the `EntityDetailViewUI` / `PinnedResultDetailUI` tests each gain: the chip shows when `sessionGenerated` is true and is absent when false. About 7 cases.
+- `EntityRecordMetadata`, `ConnectorEntity` (card and field-mapping row), `AccessAuthoringUI` row, and the `EntityDetailViewUI` tests each gain: the chip shows when `sessionGenerated` is true and is absent when false. About 7 cases.
 
 **Totals ≈ 48 cases.**
 
 ## Acceptance criteria
 - [ ] A connector entity, field mapping, record, role, policy or group the agent creates in a portal is owned by the prompting user (`createdBy`, capabilities, sharing, `created_by_caller`), exactly like a hand-created twin.
 - [ ] That object's API payload carries `sourcePortalId` = the portal's id. A REST-created object carries `null`.
-- [ ] `isSessionGenerated` is true for those objects, for pins that came from a portal, and for records the agent created before this ticket (`origin = 'portal'`).
+- [ ] `isSessionGenerated` is true for those objects, and for records the agent created before this ticket (`origin = 'portal'`).
 - [ ] No permission check, visibility predicate or capability reads `sourcePortalId`.
 - [ ] `created_by_system` matches only rows written by the allowlisted seed, provisioning, housekeeping and materialization paths. CI fails a new writer outside the list.
 - [ ] No job stamps `"SYSTEM"` as an actor. A job missing `userId` in its metadata uses its row's `createdBy`.
@@ -228,8 +228,8 @@ Run from each package: `npm run test:unit` / `npm run test:integration` (never r
   - processors: `bulk-transform.processor.ts`, `bulk-geocode.processor.ts`
   - routes: `connector-entity.router.ts`, `field-mapping.router.ts`, `entity-record.router.ts`, `portal-results.router.ts`, `role.router.ts`, `group.router.ts`, `policy.router.ts`
 - **Edit, web:**
-  - `views/EntityDetail.view.tsx`, `views/PinnedResultDetail.view.tsx`
-  - `components/EntityRecordMetadata.component.tsx`, `components/ConnectorEntity.component.tsx`, `components/PinnedResultsList.component.tsx`
+  - `views/EntityDetail.view.tsx`
+  - `components/EntityRecordMetadata.component.tsx`, `components/ConnectorEntity.component.tsx`
   - `modules/AccessAuthoring/AccessAuthoring.component.tsx`
 - **Edit, docs:** `CLAUDE.md`, `.github/copilot-instructions.md`, `docs/PROD_PROVISIONING.runbook.md`
 

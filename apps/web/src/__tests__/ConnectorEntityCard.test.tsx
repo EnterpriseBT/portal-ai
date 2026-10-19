@@ -91,3 +91,50 @@ describe("ConnectorEntityCardUI — Test endpoint (#780)", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("ConnectorEntityCardUI — provenance (#641)", () => {
+  it("badges an entity an agent session created", () => {
+    render(
+      <ConnectorEntityCardUI
+        connectorEntity={{ ...entity, sourcePortalId: "portal-1" }}
+      />
+    );
+    expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
+  });
+
+  it("doesn't badge an entity made by hand", () => {
+    render(
+      <ConnectorEntityCardUI
+        connectorEntity={{ ...entity, sourcePortalId: null }}
+      />
+    );
+    expect(
+      screen.queryByText("Created in a portal session")
+    ).not.toBeInTheDocument();
+  });
+
+  it("badges a field mapping an agent session created, and only that one", async () => {
+    const mapping = (id: string, sourcePortalId: string | null) => ({
+      id,
+      normalizedKey: id,
+      sourceField: id,
+      isPrimaryKey: false,
+      required: false,
+      columnDefinition: null,
+      sourcePortalId,
+    });
+    render(
+      <ConnectorEntityCardUI
+        connectorEntity={
+          {
+            ...entity,
+            sourcePortalId: null,
+            fieldMappings: [mapping("name", "portal-1"), mapping("city", null)],
+          } as unknown as ConnectorEntityCardUIProps["connectorEntity"]
+        }
+      />
+    );
+    await expand();
+    expect(screen.getAllByText("Created in a portal session")).toHaveLength(1);
+  });
+});
