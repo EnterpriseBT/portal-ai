@@ -37,7 +37,10 @@ import {
   buildSystemPrompt,
   type StationContext,
 } from "../prompts/system.prompt.js";
-import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
+import {
+  resolveCapabilities,
+  resolveEntityCapabilities,
+} from "../utils/resolve-capabilities.util.js";
 import { isValidIanaTimezone } from "../utils/timezone.util.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
@@ -1371,6 +1374,7 @@ export async function loadConnectorInstanceContexts(
       name: inst.name,
       display: def.display,
       slug: def.slug,
+      writable: resolveCapabilities(def, inst).write,
     });
   }
   return result;

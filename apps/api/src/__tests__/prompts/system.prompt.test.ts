@@ -610,12 +610,14 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
             name: "Sandbox",
             display: "REST API",
             slug: "rest-api",
+            writable: true,
           },
           {
             id: "ci-2",
             name: "Personal",
             display: "File Upload",
             slug: "file-upload",
+            writable: true,
           },
         ],
       })
@@ -638,6 +640,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
             name: "Sandbox",
             display: "REST API",
             slug: "rest-api",
+            writable: true,
           },
         ],
       })
@@ -656,6 +659,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
             name: "Sandbox",
             display: "REST API",
             slug: "rest-api",
+            writable: true,
           },
         ],
       })
@@ -671,6 +675,71 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
       })
     );
     expect(prompt).not.toContain("## Connector Instances");
+  });
+});
+
+// #824: when no attached connector allows writes, the entity write tools are
+// withheld; the agent is told why instead of guessing it's a plan limit.
+describe("buildSystemPrompt — read-only connectors (#824)", () => {
+  const instance = (writable: boolean) => ({
+    id: "ci-1",
+    name: "Sandbox",
+    display: "Sandbox",
+    slug: "sandbox",
+    writable,
+  });
+
+  it("explains that no attached connector allows writes, and that it isn't the plan", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query", "entity_management"],
+        connectorInstances: [instance(false)],
+      })
+    );
+    expect(prompt).toContain("## Read-only connectors");
+    // The role section mentions billing for real plan limits; this one mustn't.
+    const section = prompt
+      .split("## Read-only connectors")[1]
+      .split("\n## ")[0];
+    expect(section).toMatch(
+      /no connector attached to this station allows writes/i
+    );
+    expect(section).toMatch(/not a plan limit/i);
+    expect(section).not.toMatch(/Subscription & Billing/);
+  });
+
+  it("explains it when no connector is attached at all", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query", "entity_management"],
+        connectorInstances: [],
+      })
+    );
+    expect(prompt).toContain("## Read-only connectors");
+    expect(prompt).toMatch(/no connector is attached to this station/i);
+  });
+
+  it("says nothing when an attached connector is writable", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query", "entity_management"],
+        connectorInstances: [
+          instance(false),
+          { ...instance(true), id: "ci-2" },
+        ],
+      })
+    );
+    expect(prompt).not.toContain("## Read-only connectors");
+  });
+
+  it("says nothing when entity_management isn't in the session", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        connectorInstances: [instance(false)],
+      })
+    );
+    expect(prompt).not.toContain("## Read-only connectors");
   });
 });
 
