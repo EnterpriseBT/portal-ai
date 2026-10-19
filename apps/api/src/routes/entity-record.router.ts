@@ -28,6 +28,7 @@ import {
   decodeCursor,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
+import { isPgDataException, unwrapPgError } from "../utils/pg-error.util.js";
 import {
   parseFilterPayload,
   buildFilterSqlForEntity,
@@ -400,7 +401,7 @@ entityRecordRouter.get(
       // unfiltered count doesn't need the JOIN at all.
       const countRequiresWideTable = Boolean(search || filters);
 
-      const [probedRecords, total] = await Promise.all([
+      const findPage = (keyset: typeof keysetAnchor) =>
         DbService.repository.entityRecords.findHydratedMany(connectorEntityId, {
           where,
           offset,
@@ -414,12 +415,29 @@ entityRecordRouter.get(
           // #433: the table renders from `normalizedData`; shipping the raw
           // payload cost ~2KB/row and spilled the join to disk.
           includeData: false,
-          keyset: keysetAnchor,
+          keyset,
           // One row past the page, to tell "exactly a full page" from "a
           // full page with more behind it". The probe row is dropped before
           // responding; without it the final page would hand back a cursor
           // that leads nowhere.
           limit: limit + 1,
+        });
+
+      const [probedRecords, total] = await Promise.all([
+        // #649: a cursor is client-supplied, so a forged one can carry a
+        // value the sort column's type rejects (`"abc"` for a number). That
+        // cursor doesn't fit this ordering either: serve the first page.
+        findPage(keysetAnchor).catch((error: unknown) => {
+          if (!keysetAnchor || !isPgDataException(error)) throw error;
+          logger.warn(
+            {
+              connectorEntityId,
+              sortBy: effectiveSortBy,
+              ...unwrapPgError(error),
+            },
+            "Entity record cursor value rejected by its sort column; serving the first page"
+          );
+          return findPage(undefined);
         }),
         cachedTotal !== null
           ? Promise.resolve(cachedTotal)

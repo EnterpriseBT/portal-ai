@@ -7,6 +7,7 @@ import {
   afterEach,
 } from "@jest/globals";
 import request from "supertest";
+import { encodeCursor } from "@portalai/core/contracts";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -1854,6 +1855,27 @@ describe("curated-view.router integration", () => {
     expect(garbage.records).toEqual(baseline);
   });
 
+  it.each([
+    ["age", "abc"],
+    ["age", "1e999999"],
+    ["created", "abc"],
+  ] as Array<[string, string]>)(
+    "#649: a forged cursor whose %s value its column's type rejects (%s) serves page one",
+    async (sortBy, value) => {
+      await seedMoreRows();
+      const id = await allColumnsView(`forged_${sortBy}_${value.length}`);
+      const baseline = (await page(id, { sortBy, limit: 5 })).records;
+      const forged = encodeCursor({
+        sortBy,
+        sortOrder: "asc",
+        value,
+        id: "00000000-0000-0000-0000-000000000000",
+      });
+      const res = await page(id, { sortBy, limit: 5, cursor: forged });
+      expect(res.records).toEqual(baseline);
+    }
+  );
+
   it.each(["asc", "desc"] as const)(
     "#649: a datetime walk (%s) with sub-millisecond ties repeats and skips nothing",
     async (sortOrder) => {
@@ -1896,6 +1918,26 @@ describe("curated-view.router integration", () => {
       const seen = await walk(id, { sortBy: "seen", sortOrder }, 4);
       expect(seen).toEqual(expected);
       expect(new Set(seen).size).toBe(expected.length);
+
+      // A forged cursor whose value the column can't take serves page one:
+      // a number (which once crashed in the driver) and a non-date string.
+      const pageOne = (await page(id, { sortBy: "seen", sortOrder, limit: 4 }))
+        .records;
+      for (const value of [12345, "not a date"]) {
+        const forged = encodeCursor({
+          sortBy: "seen",
+          sortOrder,
+          value,
+          id: "00000000-0000-0000-0000-000000000000",
+        });
+        const res = await page(id, {
+          sortBy: "seen",
+          sortOrder,
+          limit: 4,
+          cursor: forged,
+        });
+        expect(res.records).toEqual(pageOne);
+      }
     }
   );
 

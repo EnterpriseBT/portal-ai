@@ -48,7 +48,7 @@ import {
 } from "../utils/filter-sql.util.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 import { memoizeForRequest } from "../utils/request-context.util.js";
-import { unwrapPgError } from "../utils/pg-error.util.js";
+import { isPgDataException, unwrapPgError } from "../utils/pg-error.util.js";
 import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
 import { curatedViewsRepo } from "../db/repositories/curated-views.repository.js";
 import { curatedViewFieldMappingsRepo } from "../db/repositories/curated-view-field-mappings.repository.js";
@@ -760,7 +760,7 @@ export class PortalSqlServiceImpl {
     const reverse = opts.reverse ?? false;
     const ordering = keysetOrdering(sortOrder, reverse);
     const decoded = opts.cursor ? decodeCursor(opts.cursor) : null;
-    const anchor =
+    const decodedAnchor =
       decoded &&
       decoded.sortBy === sort.key &&
       decoded.sortOrder === sortOrder &&
@@ -768,16 +768,17 @@ export class PortalSqlServiceImpl {
         ? decoded
         : null;
     // The anchor's value and id travel as bound parameters, never inlined.
-    const seek = anchor
-      ? sql` AND ${buildKeysetPredicate({
-          column: sort.expr,
-          value: anchor.value,
-          id: anchor.id,
-          nullable: sort.nullable,
-          tiebreaker: sort.tiebreaker,
-          ...ordering,
-        })}`
-      : sql``;
+    const seekFor = (anchor: typeof decodedAnchor) =>
+      anchor
+        ? sql` AND ${buildKeysetPredicate({
+            column: sort.expr,
+            value: anchor.value,
+            id: anchor.id,
+            nullable: sort.nullable,
+            tiebreaker: sort.tiebreaker,
+            ...ordering,
+          })}`
+        : sql``;
     const orderBy = buildOrderByClause({
       column: sort.expr,
       nullable: sort.nullable,
@@ -797,14 +798,15 @@ export class PortalSqlServiceImpl {
     // One row past the page tells "a full page" from "a full page with more
     // behind it". `_sort_value` is what the next cursor is minted from; the
     // `_` prefix can't collide with a normalizedKey, and it's stripped below.
-    const rowsQuery = sql`${sql.raw(
-      `SELECT ${selectList}, ${sort.exprSql} AS "_sort_value"\n` +
-        `  FROM ${quoteIdent(tableName)} w\n` +
-        createdJoin +
-        `  WHERE ${whereSql}`
-    )}${seek}${orderBy}${sql.raw(
-      ` LIMIT ${limit + 1}` + (anchor ? "" : ` OFFSET ${offset}`)
-    )}`;
+    const rowsQueryFor = (anchor: typeof decodedAnchor) =>
+      sql`${sql.raw(
+        `SELECT ${selectList}, ${sort.exprSql} AS "_sort_value"\n` +
+          `  FROM ${quoteIdent(tableName)} w\n` +
+          createdJoin +
+          `  WHERE ${whereSql}`
+      )}${seekFor(anchor)}${orderBy}${sql.raw(
+        ` LIMIT ${limit + 1}` + (anchor ? "" : ` OFFSET ${offset}`)
+      )}`;
     const countSql =
       `SELECT COUNT(*)::int AS n FROM ${quoteIdent(tableName)} w ` +
       `WHERE ${whereSql}`;
@@ -832,7 +834,18 @@ export class PortalSqlServiceImpl {
     );
 
     const [rowsRes, total] = await Promise.all([
-      client.execute(rowsQuery),
+      // A cursor is client-supplied: a forged one can carry a value the sort
+      // column's type rejects (`"abc"` for a number). That cursor doesn't fit
+      // this ordering, so it serves the first page like any other misfit
+      // rather than failing the request.
+      client.execute(rowsQueryFor(decodedAnchor)).catch((error: unknown) => {
+        if (!decodedAnchor || !isPgDataException(error)) throw error;
+        logger.warn(
+          { viewId, sortBy: sort.key, ...unwrapPgError(error) },
+          "Curated view cursor value rejected by its sort column; serving the first page"
+        );
+        return client.execute(rowsQueryFor(null));
+      }),
       cachedTotal !== null
         ? Promise.resolve(cachedTotal)
         : client.execute(sql.raw(countSql)).then(async (res) => {

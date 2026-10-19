@@ -287,3 +287,43 @@ describe("reverse ordering (#649)", () => {
     );
   });
 });
+
+describe("cursor value binding (#649)", () => {
+  it("binds a number as text, so the column's type parses it", () => {
+    // A forged cursor can put a number on a timestamptz sort. Bound as a JS
+    // number it crashes in the driver with no SQLSTATE; as text, Postgres
+    // rejects it as a data exception the routes turn into page one.
+    const { params } = dialect.sqlToQuery(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_seen"`),
+        value: 12345,
+        id: "rec-1",
+        nullable: true,
+        tiebreaker: sql.raw(`w."entity_record_id"`),
+      })
+    );
+    expect(params).toEqual(["12345", "12345", "rec-1"]);
+  });
+
+  it("leaves a string and a NULL anchor as they are", () => {
+    const { params } = dialect.sqlToQuery(
+      buildKeysetPredicate({
+        column: entityRecords.created,
+        value: "2025-03-01 10:00:00.12+00",
+        id: "rec-1",
+        nullable: false,
+      })
+    );
+    expect(params).toEqual(["2025-03-01 10:00:00.12+00", "rec-1"]);
+    const nullAnchor = dialect.sqlToQuery(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_seen"`),
+        value: null,
+        id: "rec-1",
+        nullable: true,
+        tiebreaker: sql.raw(`w."entity_record_id"`),
+      })
+    );
+    expect(nullAnchor.params).toEqual(["rec-1"]);
+  });
+});

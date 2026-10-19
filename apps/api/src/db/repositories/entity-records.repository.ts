@@ -999,13 +999,20 @@ export function buildKeysetPredicate(opts: {
 }): SQL {
   const {
     column: col,
-    value,
+    value: rawValue,
     id,
     direction = "asc",
     nullable,
     tiebreaker = entityRecords.id,
     nulls = "last",
   } = opts;
+  // The value comes from a client-supplied cursor, so its JS type needn't
+  // match the column's (#649). Bound as text, Postgres parses it as the
+  // column's type: a minted value round-trips, and a forged one fails as a
+  // data exception (SQLSTATE 22) the keyset routes turn into page one. A JS
+  // number bound against a timestamptz column would instead crash in the
+  // driver, where no SQLSTATE says what went wrong.
+  const value = typeof rawValue === "number" ? String(rawValue) : rawValue;
   const ahead = direction === "desc" ? sql`<` : sql`>`;
   const tiebreak = sql`${tiebreaker} ${ahead} ${id}`;
 
