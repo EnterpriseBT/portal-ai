@@ -9,7 +9,8 @@ const mockFindColDef = jest.fn<any>().mockResolvedValue({
   organizationId: "org-1",
   label: "Column 1",
 });
-const mockUpsert = jest.fn<any>().mockResolvedValue({ id: "fm-1" });
+const mockCreateMapping = jest.fn<any>().mockResolvedValue({ id: "fm-1" });
+const mockFindByEntityAndKey = jest.fn<any>().mockResolvedValue(undefined);
 const mockTransaction = jest
   .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
   .mockImplementation((fn) => fn("mock-tx"));
@@ -22,7 +23,11 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       columnDefinitions: { findById: mockFindColDef },
-      fieldMappings: { upsertByEntityAndNormalizedKey: mockUpsert },
+      // #825: the tool only ever inserts; an existing key is refused.
+      fieldMappings: {
+        create: mockCreateMapping,
+        findByEntityAndNormalizedKey: mockFindByEntityAndKey,
+      },
     },
   },
 }));
@@ -89,7 +94,7 @@ describe("FieldMappingCreateTool", () => {
     expect(result.items).toHaveLength(1);
     expect(mockAssertStationScope).toHaveBeenCalledTimes(1);
     expect(mockAssertWriteCapability).toHaveBeenCalledTimes(1);
-    expect(mockUpsert).toHaveBeenCalledWith(
+    expect(mockCreateMapping).toHaveBeenCalledWith(
       expect.objectContaining({
         connectorEntityId: "ce-1",
         columnDefinitionId: "cd-1",
@@ -116,7 +121,7 @@ describe("FieldMappingCreateTool", () => {
       },
       "portal-1"
     );
-    expect(mockUpsert).toHaveBeenCalledWith(
+    expect(mockCreateMapping).toHaveBeenCalledWith(
       expect.objectContaining({
         createdBy: "user-1",
         sourcePortalId: "portal-1",
@@ -137,7 +142,7 @@ describe("FieldMappingCreateTool", () => {
         organizationId: "org-1",
         label: "C2",
       });
-    mockUpsert
+    mockCreateMapping
       .mockResolvedValueOnce({ id: "fm-1" })
       .mockResolvedValueOnce({ id: "fm-2" })
       .mockResolvedValueOnce({ id: "fm-3" });
@@ -169,8 +174,64 @@ describe("FieldMappingCreateTool", () => {
     expect(result.count).toBe(3);
     expect(mockAssertStationScope).toHaveBeenCalledTimes(1);
     expect(mockAssertWriteCapability).toHaveBeenCalledTimes(1);
-    expect(mockUpsert).toHaveBeenCalledTimes(3);
+    expect(mockCreateMapping).toHaveBeenCalledTimes(3);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  // #825: an agent "create" on an existing (entity, normalizedKey) used to
+  // upsert, rewriting another user's mapping (source field, column definition,
+  // primary key) under a create-only permission check.
+  it("refuses an existing mapping key, pointing at the update tool, and writes nothing", async () => {
+    mockFindByEntityAndKey.mockResolvedValueOnce({ id: "fm-existing" });
+    const result: any = await exec({
+      items: [
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "Name",
+          normalizedKey: "name",
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(result.failures[0].error).toMatch(/already exists/i);
+    expect(result.failures[0].error).toContain("field_mapping_update");
+    expect(mockFindByEntityAndKey).toHaveBeenCalledWith("ce-1", "name");
+    expect(mockCreateMapping).not.toHaveBeenCalled();
+  });
+
+  it("refuses a mapping key repeated within the batch for the same entity", async () => {
+    const item = {
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "Name",
+      normalizedKey: "name",
+    };
+    const result: any = await exec({
+      items: [item, { ...item, sourceField: "Name2" }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([expect.objectContaining({ index: 1 })]);
+    expect(result.failures[0].error).toMatch(/repeats/i);
+    expect(mockCreateMapping).not.toHaveBeenCalled();
+  });
+
+  it("reports a mapping key taken concurrently as already existing, not as created", async () => {
+    mockCreateMapping.mockRejectedValueOnce(
+      Object.assign(new Error("duplicate key value"), { code: "23505" })
+    );
+    const result: any = await exec({
+      items: [
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "Name",
+          normalizedKey: "name",
+        },
+      ],
+    });
+    expect(result.success).not.toBe(true);
+    expect(JSON.stringify(result)).toMatch(/already exists/i);
   });
 
   it("validation failure — column definition not found for one item", async () => {
@@ -201,7 +262,7 @@ describe("FieldMappingCreateTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.failures.some((f: any) => f.index === 1)).toBe(true);
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockCreateMapping).not.toHaveBeenCalled();
   });
 
   it("validation failure — column definition belongs to different org", async () => {
@@ -223,7 +284,7 @@ describe("FieldMappingCreateTool", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockCreateMapping).not.toHaveBeenCalled();
   });
 
   it("batch column definition lookup — deduplicates findById calls", async () => {
@@ -232,7 +293,7 @@ describe("FieldMappingCreateTool", () => {
       organizationId: "org-1",
       label: "C1",
     });
-    mockUpsert.mockResolvedValue({ id: "fm-1" });
+    mockCreateMapping.mockResolvedValue({ id: "fm-1" });
 
     await exec({
       items: [
@@ -283,7 +344,7 @@ describe("FieldMappingCreateTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.failures).toHaveLength(2);
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockCreateMapping).not.toHaveBeenCalled();
   });
 });
 

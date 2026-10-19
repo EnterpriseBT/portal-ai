@@ -19,9 +19,12 @@ const mockFindDefinitionById = jest
     id: "cd-1",
     capabilityFlags: { read: true, write: true },
   });
-const mockUpsertByKey = jest
+const mockCreateEntity = jest
   .fn<() => Promise<unknown>>()
   .mockResolvedValue({ id: "ce-new" });
+const mockFindByOrganizationAndKey = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue(undefined);
 const mockTransaction = jest
   .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
   .mockImplementation((fn) => fn("mock-tx"));
@@ -42,7 +45,11 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       connectorInstances: { findById: mockFindInstanceById },
-      connectorEntities: { upsertByKey: mockUpsertByKey },
+      // #825: the tool only ever inserts; an existing key is refused.
+      connectorEntities: {
+        create: mockCreateEntity,
+        findByOrganizationAndKey: mockFindByOrganizationAndKey,
+      },
     },
   },
 }));
@@ -95,7 +102,7 @@ describe("ConnectorEntityCreateTool", () => {
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].entityId).toBe("ce-new");
-    expect(mockUpsertByKey).toHaveBeenCalledWith(
+    expect(mockCreateEntity).toHaveBeenCalledWith(
       expect.objectContaining({ key: "contacts", label: "Contacts" }),
       "mock-tx"
     );
@@ -112,7 +119,7 @@ describe("ConnectorEntityCreateTool", () => {
       },
       "portal-1"
     );
-    expect(mockUpsertByKey).toHaveBeenCalledWith(
+    expect(mockCreateEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         createdBy: "user-1",
         sourcePortalId: "portal-1",
@@ -151,7 +158,7 @@ describe("ConnectorEntityCreateTool", () => {
   });
 
   it("bulk create — 3 entities in transaction", async () => {
-    mockUpsertByKey
+    mockCreateEntity
       .mockResolvedValueOnce({ id: "ce-1" })
       .mockResolvedValueOnce({ id: "ce-2" })
       .mockResolvedValueOnce({ id: "ce-3" });
@@ -168,7 +175,7 @@ describe("ConnectorEntityCreateTool", () => {
     expect(result.count).toBe(3);
     expect(mockFindByStationId).toHaveBeenCalledTimes(1);
     expect(mockFindInstanceById).toHaveBeenCalledTimes(1); // grouped by ci-1
-    expect(mockUpsertByKey).toHaveBeenCalledTimes(3);
+    expect(mockCreateEntity).toHaveBeenCalledTimes(3);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
@@ -190,7 +197,7 @@ describe("ConnectorEntityCreateTool", () => {
         connectorDefinitionId: "cd-1",
         enabledCapabilityFlags: null,
       });
-    mockUpsertByKey
+    mockCreateEntity
       .mockResolvedValueOnce({ id: "ce-1" })
       .mockResolvedValueOnce({ id: "ce-2" });
 
@@ -206,6 +213,70 @@ describe("ConnectorEntityCreateTool", () => {
     expect(mockFindInstanceById).toHaveBeenCalledTimes(2);
   });
 
+  // #825: an agent "create" on an existing key used to upsert, changing a row
+  // the caller may not own (the create gate only checks a row they'd own).
+  it("refuses an existing key, pointing at the update tool, and writes nothing", async () => {
+    mockFindByOrganizationAndKey.mockResolvedValueOnce({
+      id: "ce-existing",
+      key: "contacts",
+    });
+    const result: any = await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(result.failures[0].error).toMatch(/already exists/i);
+    expect(result.failures[0].error).toContain("connector_entity_update");
+    expect(mockFindByOrganizationAndKey).toHaveBeenCalledWith(
+      "org-1",
+      "contacts"
+    );
+    expect(mockCreateEntity).not.toHaveBeenCalled();
+  });
+
+  it("refuses the whole batch when one item's key exists", async () => {
+    mockFindByOrganizationAndKey
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ id: "ce-existing", key: "b" });
+    const result: any = await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "a", label: "A" },
+        { connectorInstanceId: "ci-1", key: "b", label: "B" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([expect.objectContaining({ index: 1 })]);
+    expect(mockCreateEntity).not.toHaveBeenCalled();
+  });
+
+  it("refuses a key repeated within the batch, naming the repeat, and writes nothing", async () => {
+    const result: any = await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "orders", label: "Orders" },
+        { connectorInstanceId: "ci-1", key: "orders", label: "Orders again" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([expect.objectContaining({ index: 1 })]);
+    expect(result.failures[0].error).toMatch(/repeats/i);
+    expect(result.failures[0].error).not.toContain("connector_entity_update");
+    expect(mockCreateEntity).not.toHaveBeenCalled();
+  });
+
+  it("reports a key taken concurrently as already existing, not as created", async () => {
+    mockCreateEntity.mockRejectedValueOnce(
+      Object.assign(new Error("duplicate key value"), { code: "23505" })
+    );
+    const result: any = await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" },
+      ],
+    });
+    expect(result.success).not.toBe(true);
+    expect(JSON.stringify(result)).toMatch(/already exists/i);
+  });
+
   it("validation failure — instance not attached to station", async () => {
     const result: any = await exec({
       items: [{ connectorInstanceId: "ci-other", key: "k", label: "L" }],
@@ -213,7 +284,7 @@ describe("ConnectorEntityCreateTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.failures[0].error).toContain("not attached");
-    expect(mockUpsertByKey).not.toHaveBeenCalled();
+    expect(mockCreateEntity).not.toHaveBeenCalled();
   });
 
   it("validation failure — write capability disabled", async () => {
@@ -228,7 +299,7 @@ describe("ConnectorEntityCreateTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.failures[0].error).toContain("write capability");
-    expect(mockUpsertByKey).not.toHaveBeenCalled();
+    expect(mockCreateEntity).not.toHaveBeenCalled();
   });
 });
 

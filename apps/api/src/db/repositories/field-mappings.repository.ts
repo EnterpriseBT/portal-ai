@@ -85,6 +85,30 @@ export class FieldMappingsRepository extends Repository<
     );
   }
 
+  /**
+   * #825: the live mapping holding `normalizedKey` on the entity, if any (the
+   * conflict target of `upsertByEntityAndNormalizedKey`). The existing-key
+   * check for a create that must never modify an existing mapping.
+   */
+  async findByEntityAndNormalizedKey(
+    connectorEntityId: string,
+    normalizedKey: string,
+    client: DbClient = db
+  ): Promise<FieldMappingSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(fieldMappings.connectorEntityId, connectorEntityId),
+          eq(fieldMappings.normalizedKey, normalizedKey),
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return row as FieldMappingSelect | undefined;
+  }
+
   /** Find all field mappings for a given connector entity. */
   async findByConnectorEntityId(
     connectorEntityId: string,

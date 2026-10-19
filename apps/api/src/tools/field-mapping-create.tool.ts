@@ -14,6 +14,7 @@ import {
 import { Repository } from "../db/repositories/base.repository.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { createLogger } from "../utils/logger.util.js";
+import { unwrapPgError } from "../utils/pg-error.util.js";
 
 const logger = createLogger({ module: "field-mapping-create-tool" });
 
@@ -71,11 +72,21 @@ const InputSchema = z.object({
     .describe("Field mappings to create (1–100)"),
 });
 
+/** #825: the per-item refusal for a key the entity already maps. */
+function alreadyExists(normalizedKey: string | null): string {
+  return (
+    (normalizedKey
+      ? `A field mapping "${normalizedKey}" already exists on this entity`
+      : "A field mapping with one of these keys already exists on this entity") +
+    ". This tool only creates mappings; use field_mapping_update to change an existing one."
+  );
+}
+
 export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_create";
   name = "Field Mapping Create Tool";
   description =
-    "Creates or updates one or more field mappings between source fields and column definitions. Accepts 1–100 items. Get valid `columnDefinitionId`s from `station_context` (the `columnDefinitions` catalog) — map an entity's columns here before creating records, or those records won't be queryable.";
+    "Creates one or more field mappings between source fields and column definitions. Accepts 1–100 items. An existing mapping key is refused; use `field_mapping_update` to change it. Get valid `columnDefinitionId`s from `station_context` (the `columnDefinitions` catalog) — map an entity's columns here before creating records, or those records won't be queryable.";
 
   get schema() {
     return InputSchema;
@@ -150,6 +161,36 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
             }
           }
 
+          // #825: a create never modifies an existing mapping. The permission
+          // gate authorized "a new mapping the caller owns", not a change to a
+          // mapping someone else may own, so an existing key is refused and
+          // the agent is pointed at the update tool, which checks write on it.
+          // A key repeated within this batch would trip the unique index on
+          // the second insert; refuse it up front, naming the repeat.
+          const seenKeys = new Set<string>();
+          for (const [index, item] of items.entries()) {
+            const batchKey = `${item.connectorEntityId}:${item.normalizedKey}`;
+            if (seenKeys.has(batchKey)) {
+              failures.push({
+                index,
+                error: `This batch repeats mapping key "${item.normalizedKey}" for the same entity; send each mapping once.`,
+              });
+              continue;
+            }
+            seenKeys.add(batchKey);
+            const existing =
+              await DbService.repository.fieldMappings.findByEntityAndNormalizedKey(
+                item.connectorEntityId,
+                item.normalizedKey
+              );
+            if (existing) {
+              failures.push({
+                index,
+                error: alreadyExists(item.normalizedKey),
+              });
+            }
+          }
+
           if (failures.length > 0) {
             return {
               success: false,
@@ -178,17 +219,21 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
                 enumValues: item.enumValues ?? null,
                 refNormalizedKey: null,
                 refEntityKey: null,
-                // Insert only: the upsert's conflict update never rewrites
-                // an existing mapping's provenance.
                 sourcePortalId: portalId,
               });
-              const result =
-                await DbService.repository.fieldMappings.upsertByEntityAndNormalizedKey(
-                  model.parse(),
-                  tx
-                );
+              const result = await DbService.repository.fieldMappings.create(
+                model.parse(),
+                tx
+              );
               results.push(result);
             }
+          }).catch((err: unknown) => {
+            // A key taken between the check above and this insert trips the
+            // unique index: still "already exists", never an update.
+            if (unwrapPgError(err).code === "23505") {
+              throw new Error(alreadyExists(null));
+            }
+            throw err;
           });
 
           // Reconcile the wide-table for each affected entity so the
