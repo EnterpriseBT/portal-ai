@@ -946,6 +946,17 @@ describe("PaginationToolbar", () => {
       );
       expect(container.firstChild).toMatchSnapshot();
     });
+
+    it("#649: shows a custom search placeholder when given one", () => {
+      render(
+        <PaginationToolbar
+          {...makeProps({ searchPlaceholder: "Search text columns" })}
+        />
+      );
+      expect(
+        screen.getByPlaceholderText("Search text columns")
+      ).toBeInTheDocument();
+    });
   });
 });
 
@@ -1117,7 +1128,10 @@ describe("usePagination — keyset mode (#433)", () => {
 
     expect(result.current.toolbarProps.currentPage).toBe(4);
     expect(result.current.queryParams.cursor).toBeUndefined();
-    expect(result.current.queryParams.sortOrder).toBe("desc"); // flipped
+    // #649: the sort is kept and the server walks its exact mirror. Flipping
+    // sortOrder kept NULLs last, so a nullable sort showed the wrong rows.
+    expect(result.current.queryParams.sortOrder).toBe("asc");
+    expect(result.current.queryParams.reverse).toBe("true");
     // 35 rows, 10 per page → the last page holds 5. Asking for exactly that
     // many keeps the server's nextCursor anchored on the right row.
     expect(result.current.queryParams.limit).toBe(5);
@@ -1145,7 +1159,8 @@ describe("usePagination — keyset mode (#433)", () => {
 
     expect(result.current.toolbarProps.currentPage).toBe(3);
     expect(result.current.queryParams.cursor).toBe("inv-1");
-    expect(result.current.queryParams.sortOrder).toBe("desc"); // still inverted
+    expect(result.current.queryParams.sortOrder).toBe("asc");
+    expect(result.current.queryParams.reverse).toBe("true"); // still inverted
     expect(result.current.queryParams.limit).toBe(10); // full page now
   });
 
@@ -1157,6 +1172,7 @@ describe("usePagination — keyset mode (#433)", () => {
 
     expect(result.current.toolbarProps.currentPage).toBe(1);
     expect(result.current.queryParams.sortOrder).toBe("asc");
+    expect(result.current.queryParams.reverse).toBeUndefined();
     expect(result.current.queryParams.limit).toBe(10);
     expect(result.current.transformPage([1, 2, 3])).toEqual([1, 2, 3]);
   });

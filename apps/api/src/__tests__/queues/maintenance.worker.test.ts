@@ -45,6 +45,7 @@ const mockEntityRecord = jest.fn<() => Promise<unknown>>();
 const mockMessageDissolve = jest.fn<() => Promise<unknown>>();
 const mockAuditLog = jest.fn<() => Promise<unknown>>();
 const mockDissolveScope = jest.fn<() => Promise<unknown>>();
+const mockSearchIndexSweep = jest.fn<() => Promise<unknown>>();
 
 jest.unstable_mockModule(
   "../../queues/processors/ledger-retention-purge.processor.js",
@@ -66,6 +67,10 @@ jest.unstable_mockModule(
   "../../queues/processors/dissolve-scope-retention-purge.processor.js",
   () => ({ dissolveScopeRetentionPurgeProcessor: mockDissolveScope })
 );
+jest.unstable_mockModule(
+  "../../queues/processors/wide-table-search-index-sweep.processor.js",
+  () => ({ wideTableSearchIndexSweepProcessor: mockSearchIndexSweep })
+);
 
 const { createMaintenanceWorker } =
   await import("../../queues/maintenance.worker.js");
@@ -76,6 +81,7 @@ const {
   MESSAGE_DISSOLVE_RETENTION_PURGE_JOB,
   AUDIT_LOG_RETENTION_PURGE_JOB,
   DISSOLVE_SCOPE_RETENTION_PURGE_JOB,
+  WIDE_TABLE_SEARCH_INDEX_SWEEP_JOB,
 } = await import("../../queues/maintenance.queue.js");
 
 describe("maintenance worker dispatch", () => {
@@ -86,6 +92,7 @@ describe("maintenance worker dispatch", () => {
     mockMessageDissolve.mockReset().mockResolvedValue({ purged: 0 });
     mockAuditLog.mockReset().mockResolvedValue({ purged: 0 });
     mockDissolveScope.mockReset().mockResolvedValue({ purged: 0 });
+    mockSearchIndexSweep.mockReset().mockResolvedValue({ built: 0 });
     mockUpsertJobScheduler.mockReset().mockResolvedValue(undefined);
     createMaintenanceWorker();
   });
@@ -120,6 +127,20 @@ describe("maintenance worker dispatch", () => {
     expect(mockDissolveScope).toHaveBeenCalledTimes(1);
     expect(mockLedger).not.toHaveBeenCalled();
     expect(mockMessageDissolve).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the wide-table search-index sweep (#649)", async () => {
+    await capturedHandler!({ name: WIDE_TABLE_SEARCH_INDEX_SWEEP_JOB });
+    expect(mockSearchIndexSweep).toHaveBeenCalledTimes(1);
+    expect(mockDissolveScope).not.toHaveBeenCalled();
+  });
+
+  it("schedules the search-index sweep hourly (#649)", async () => {
+    await registerMaintenanceSchedulers();
+    const call = mockUpsertJobScheduler.mock.calls.find(
+      (c) => c[0] === WIDE_TABLE_SEARCH_INDEX_SWEEP_JOB
+    );
+    expect(call?.[1]).toEqual({ pattern: "45 * * * *" });
   });
 
   it("throws on an unknown job name rather than resolving quietly", async () => {

@@ -54,6 +54,28 @@ describe("renderFilterGroupToSql", () => {
     }
   });
 
+  it.each(["contains", "not_contains", "starts_with", "ends_with"] as const)(
+    "#649: string %s compares the text column directly, with no ::text cast",
+    (operator) => {
+      // The trigram index is on the bare column; a cast in the predicate
+      // shouldn't be what decides whether the planner can use it.
+      const sql = render({
+        combinator: "and",
+        conditions: [{ field: "region", operator, value: "north" }],
+      });
+      expect(sql).toMatch(/"w"\."c_region" (NOT )?ILIKE /);
+      expect(sql).not.toContain("::text");
+    }
+  );
+
+  it("#649: a column of unknown type keeps the ::text cast", () => {
+    const sql = render({
+      combinator: "and",
+      conditions: [{ field: "status", operator: "contains", value: "open" }],
+    });
+    expect(sql).toContain(`"w"."c_status"::text ILIKE`);
+  });
+
   it("renders a string equality with the value inlined + quoted", () => {
     const sql = render({
       combinator: "and",

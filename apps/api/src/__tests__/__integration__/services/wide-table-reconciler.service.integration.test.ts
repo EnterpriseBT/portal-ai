@@ -19,7 +19,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
 
-import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
+import {
+  WideTableReconcilerService,
+  trgmIndexName,
+} from "../../../services/wide-table-reconciler.service.js";
 import { WideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -299,6 +302,65 @@ describe("WideTableReconcilerService integration tests", () => {
       .from(schema.wideTableColumns)
       .where(sql`${schema.wideTableColumns.connectorEntityId} = ${entityId}`);
     expect(meta).toHaveLength(3);
+  });
+
+  // ── #649 — trigram index on text columns ─────────────────────────
+
+  async function indexesOn(tableName: string) {
+    return (await db.execute(
+      sql`SELECT c.relname AS name, am.amname AS method, x.indisvalid AS valid,
+                 pg_get_indexdef(x.indexrelid) AS def
+          FROM pg_index x
+          JOIN pg_class c ON c.oid = x.indexrelid
+          JOIN pg_am am ON am.oid = c.relam
+          WHERE x.indrelid = to_regclass(${`"${tableName}"`})`
+    )) as unknown as Array<{
+      name: string;
+      method: string;
+      valid: boolean;
+      def: string;
+    }>;
+  }
+
+  it("#649: a text column gets a valid trigram GIN index at add", async () => {
+    await seedFieldMapping(generateId(), {
+      normalizedKey: "stage",
+      columnDefinitionId: columnDefIdString,
+    });
+    await reconciler.reconcileEntity(entityId, db);
+
+    const trgm = (await indexesOn(`er__${entityId}`)).filter((i) =>
+      i.name.endsWith("_trgm")
+    );
+    expect(trgm).toHaveLength(1);
+    expect(trgm[0]!.name).toBe(trgmIndexName(entityId, "c_stage"));
+    expect(trgm[0]!.method).toBe("gin");
+    expect(trgm[0]!.valid).toBe(true);
+    expect(trgm[0]!.def).toMatch(/c_stage gin_trgm_ops/);
+  });
+
+  it("#649: a number column gets no trigram index", async () => {
+    await seedFieldMapping(generateId(), { normalizedKey: "amount" });
+    await reconciler.reconcileEntity(entityId, db);
+
+    expect(
+      (await indexesOn(`er__${entityId}`)).filter((i) => i.method === "gin")
+    ).toHaveLength(0);
+  });
+
+  it("#649: re-reconciling keeps exactly one trigram index", async () => {
+    await seedFieldMapping(generateId(), {
+      normalizedKey: "stage",
+      columnDefinitionId: columnDefIdString,
+    });
+    await reconciler.reconcileEntity(entityId, db);
+    await reconciler.reconcileEntity(entityId, db);
+
+    expect(
+      (await indexesOn(`er__${entityId}`)).filter((i) =>
+        i.name.endsWith("_trgm")
+      )
+    ).toHaveLength(1);
   });
 
   // ── Case 11 — reconcileEntity is a no-op when desired = actual ───

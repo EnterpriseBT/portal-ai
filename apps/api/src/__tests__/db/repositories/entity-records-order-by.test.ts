@@ -24,7 +24,11 @@ import { describe, it, expect } from "@jest/globals";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-import { buildOrderByClause } from "../../../db/repositories/entity-records.repository.js";
+import {
+  buildKeysetPredicate,
+  buildOrderByClause,
+  keysetOrdering,
+} from "../../../db/repositories/entity-records.repository.js";
 import { entityRecords } from "../../../db/schema/entity-records.table.js";
 
 const dialect = new PgDialect();
@@ -111,5 +115,215 @@ describe("buildOrderByClause (#433)", () => {
       );
       expect(out).not.toMatch(/NULLS LAST/);
     });
+  });
+});
+
+/**
+ * #649: the curated-view records table pages the wide table alone, so its
+ * tiebreaker is `w."entity_record_id"` (or `r."id"` under the `created` sort),
+ * not `entity_records.id`. Both helpers take it as an argument; omitting it
+ * keeps the entity-records shape unchanged.
+ */
+describe("custom tiebreaker (#649)", () => {
+  const recordId = sql.raw(`w."entity_record_id"`);
+
+  it("orders by a custom tiebreaker in the sort's direction", () => {
+    const out = render(
+      buildOrderByClause({
+        column: sql.raw(`w."c_city"`),
+        nullable: true,
+        direction: "desc",
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toMatch(
+      /"c_city" DESC NULLS LAST, w\."entity_record_id" DESC$/
+    );
+    expect(out).not.toMatch(/"entity_records"\."id"/);
+  });
+
+  it("does not repeat the tiebreaker when it is the sort column", () => {
+    const out = render(
+      buildOrderByClause({ column: recordId, tiebreaker: recordId })
+    );
+    expect(out).toBe(` ORDER BY w."entity_record_id" ASC`);
+  });
+
+  it("uses the custom tiebreaker in the NOT NULL row-value predicate", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: sql.raw(`r."created"`),
+        value: 1700000000000,
+        id: "rec-1",
+        nullable: false,
+        tiebreaker: sql.raw(`r."id"`),
+      })
+    );
+    expect(out).toBe(`(r."created", r."id") > ($1, $2)`);
+  });
+
+  it("uses the custom tiebreaker in the nullable predicate", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_city"`),
+        value: "Boston",
+        id: "rec-1",
+        direction: "desc",
+        nullable: true,
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(
+      `(w."c_city" < $1 OR (w."c_city" = $2 AND w."entity_record_id" < $3) OR w."c_city" IS NULL)`
+    );
+  });
+
+  it("uses the custom tiebreaker in the NULL-anchor predicate", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_city"`),
+        value: null,
+        id: "rec-1",
+        nullable: true,
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(`(w."c_city" IS NULL AND w."entity_record_id" > $1)`);
+  });
+
+  it("defaults the predicate's tiebreaker to entity_records.id", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: entityRecords.created,
+        value: 1,
+        id: "rec-1",
+        nullable: false,
+      })
+    );
+    expect(out).toMatch(
+      /\("entity_records"\."created", "entity_records"\."id"\) > /
+    );
+  });
+});
+
+/**
+ * #649 (Q4): the last page is served by walking the mirror ordering. With
+ * NULLs last in both directions, flipping the direction alone isn't a mirror
+ * (`1,2,3,∅` flipped is `3,2,1,∅`), so the reverse walk also moves NULLs first.
+ */
+describe("reverse ordering (#649)", () => {
+  const city = sql.raw(`w."c_city"`);
+  const recordId = sql.raw(`w."entity_record_id"`);
+
+  it("keysetOrdering mirrors the direction and the NULL placement", () => {
+    expect(keysetOrdering("asc", false)).toEqual({
+      direction: "asc",
+      nulls: "last",
+    });
+    expect(keysetOrdering("asc", true)).toEqual({
+      direction: "desc",
+      nulls: "first",
+    });
+    expect(keysetOrdering("desc", true)).toEqual({
+      direction: "asc",
+      nulls: "first",
+    });
+  });
+
+  it("emits NULLS FIRST for a nullable column only", () => {
+    expect(
+      render(
+        buildOrderByClause({
+          column: city,
+          nullable: true,
+          direction: "desc",
+          nulls: "first",
+          tiebreaker: recordId,
+        })
+      )
+    ).toBe(` ORDER BY w."c_city" DESC NULLS FIRST, w."entity_record_id" DESC`);
+    expect(
+      render(
+        buildOrderByClause({
+          column: entityRecords.created,
+          direction: "desc",
+          nulls: "first",
+        })
+      )
+    ).not.toMatch(/NULLS/);
+  });
+
+  it("seeks past a value anchor with the NULL region already behind", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: city,
+        value: "Boston",
+        id: "rec-1",
+        direction: "desc",
+        nullable: true,
+        nulls: "first",
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(
+      `(w."c_city" < $1 OR (w."c_city" = $2 AND w."entity_record_id" < $3))`
+    );
+  });
+
+  it("seeks from a NULL anchor through the rest of the NULLs, then every value", () => {
+    const out = render(
+      buildKeysetPredicate({
+        column: city,
+        value: null,
+        id: "rec-1",
+        direction: "desc",
+        nullable: true,
+        nulls: "first",
+        tiebreaker: recordId,
+      })
+    );
+    expect(out).toBe(
+      `((w."c_city" IS NULL AND w."entity_record_id" < $1) OR w."c_city" IS NOT NULL)`
+    );
+  });
+});
+
+describe("cursor value binding (#649)", () => {
+  it("binds a number as text, so the column's type parses it", () => {
+    // A forged cursor can put a number on a timestamptz sort. Bound as a JS
+    // number it crashes in the driver with no SQLSTATE; as text, Postgres
+    // rejects it as a data exception the routes turn into page one.
+    const { params } = dialect.sqlToQuery(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_seen"`),
+        value: 12345,
+        id: "rec-1",
+        nullable: true,
+        tiebreaker: sql.raw(`w."entity_record_id"`),
+      })
+    );
+    expect(params).toEqual(["12345", "12345", "rec-1"]);
+  });
+
+  it("leaves a string and a NULL anchor as they are", () => {
+    const { params } = dialect.sqlToQuery(
+      buildKeysetPredicate({
+        column: entityRecords.created,
+        value: "2025-03-01 10:00:00.12+00",
+        id: "rec-1",
+        nullable: false,
+      })
+    );
+    expect(params).toEqual(["2025-03-01 10:00:00.12+00", "rec-1"]);
+    const nullAnchor = dialect.sqlToQuery(
+      buildKeysetPredicate({
+        column: sql.raw(`w."c_seen"`),
+        value: null,
+        id: "rec-1",
+        nullable: true,
+        tiebreaker: sql.raw(`w."entity_record_id"`),
+      })
+    );
+    expect(nullAnchor.params).toEqual(["rec-1"]);
   });
 });

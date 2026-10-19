@@ -42,8 +42,10 @@ const DEFAULT_SORT_ORDER = "asc";
  *   fails to render shares the code, and there's nothing for the reader to
  *   clear.
  *
- * Offset paging (keyset for views is #649). Kept out of the view so it can be
- * tested without a route match.
+ * Keyset paging (#649), as on the entity records table; the records response
+ * carries `nextCursor`. Search covers the view's text columns only, and the
+ * toolbar's placeholder says so. Kept out of the view so it can be tested
+ * without a route match.
  */
 export function useCuratedViewTablePagination(
   viewId: string,
@@ -88,6 +90,7 @@ export function useCuratedViewTablePagination(
   );
 
   const pagination = usePagination({
+    mode: "keyset",
     // The entity records table's sort (the record's creation time). Column
     // sorts come from the table headers.
     sortFields: [{ field: "created", label: "Created" }],
@@ -136,5 +139,16 @@ export function useCuratedViewTablePagination(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reacting to a new error code only; the setters are stable and advancedFilters is read at that moment.
   }, [errorCode]);
 
-  return pagination;
+  // #649: search matches the readable text columns only (the trigram-indexed
+  // ones); number and date values are reached through filters.
+  return React.useMemo(
+    () => ({
+      ...pagination,
+      toolbarProps: {
+        ...pagination.toolbarProps,
+        searchPlaceholder: "Search text columns",
+      },
+    }),
+    [pagination]
+  );
 }

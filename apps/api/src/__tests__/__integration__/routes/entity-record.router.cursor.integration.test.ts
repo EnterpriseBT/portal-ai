@@ -26,6 +26,7 @@ import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
+import { encodeCursor } from "@portalai/core/contracts";
 
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -284,6 +285,45 @@ describe("GET /api/connector-entities/:id/records — cursors (#433)", () => {
     ).toEqual(baseline.body.payload.records.map((r: { id: string }) => r.id));
   });
 
+  it("#649: a reverse walk returns the forward walk exactly reversed", async () => {
+    const walk = async (reverse: boolean) => {
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      for (;;) {
+        const query: Record<string, unknown> = { limit: 4 };
+        if (reverse) query.reverse = "true";
+        if (cursor) query.cursor = cursor;
+        const res = await request(app).get(url()).query(query).expect(200);
+        seen.push(...res.body.payload.records.map((r: { id: string }) => r.id));
+        cursor = res.body.payload.nextCursor;
+        if (!cursor) break;
+      }
+      return seen;
+    };
+    const forward = await walk(false);
+    expect(await walk(true)).toEqual([...forward].reverse());
+  });
+
+  it("#649: ignores a forward cursor on a reverse request", async () => {
+    const first = await request(app).get(url()).query({ limit: 3 }).expect(200);
+    const reused = await request(app)
+      .get(url())
+      .query({
+        limit: 3,
+        reverse: "true",
+        cursor: first.body.payload.nextCursor,
+      })
+      .expect(200);
+    const baseline = await request(app)
+      .get(url())
+      .query({ limit: 3, reverse: "true" })
+      .expect(200);
+
+    expect(
+      reused.body.payload.records.map((r: { id: string }) => r.id)
+    ).toEqual(baseline.body.payload.records.map((r: { id: string }) => r.id));
+  });
+
   it("serves the first page for a corrupted cursor, without an error code", async () => {
     const baseline = await request(app)
       .get(url())
@@ -301,6 +341,28 @@ describe("GET /api/connector-entities/:id/records — cursors (#433)", () => {
         baseline.body.payload.records.map((r: { id: string }) => r.id)
       );
     }
+  });
+
+  it("#649: serves the first page for a cursor whose value its sort column's type rejects", async () => {
+    const baseline = await request(app)
+      .get(url())
+      .query({ limit: 3, sortBy: "created" })
+      .expect(200);
+
+    const forged = encodeCursor({
+      sortBy: "created",
+      sortOrder: "asc",
+      value: "abc",
+      id: "00000000-0000-0000-0000-000000000000",
+    });
+    const res = await request(app)
+      .get(url())
+      .query({ limit: 3, sortBy: "created", cursor: forged })
+      .expect(200);
+
+    expect(res.body.payload.records.map((r: { id: string }) => r.id)).toEqual(
+      baseline.body.payload.records.map((r: { id: string }) => r.id)
+    );
   });
 
   it("keeps `total` correct after a write invalidates the cached count", async () => {

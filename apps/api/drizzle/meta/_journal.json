@@ -883,6 +883,13 @@
       "when": 1792194848771,
       "tag": "0125_strip-pin-snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1792267035176,
+      "tag": "0126_enable-pg-trgm",
+      "breakpoints": true
     }
   ]
 }

@@ -229,13 +229,27 @@ export const CuratedViewDetail: React.FC = () => {
   }, [recordsResult.data?.columns]);
   React.useEffect(() => {
     setErrorCode(toServerError(recordsResult.error)?.code ?? null);
-  }, [recordsResult.error]);
+    // #649: a records 404 means the view is gone for this caller (deleted, or
+    // access revoked, under the open page), but its own query is still cached
+    // and fresh. Refetch it so the page shows "View not found" rather than
+    // the view's header over an empty table.
+    if (recordsResult.error?.status === 404) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.curatedViews.get(viewId),
+      });
+    }
+  }, [recordsResult.error, queryClient, viewId]);
 
   React.useEffect(() => {
     if (recordsResult.data?.total !== undefined) {
       pagination.setTotal(recordsResult.data.total);
     }
   }, [recordsResult.data?.total, pagination]);
+  // #649: keyset paging — Next seeks from the response's cursor.
+  const { setNextCursor } = pagination;
+  React.useEffect(() => {
+    setNextCursor(recordsResult.data?.nextCursor ?? null);
+  }, [recordsResult.data?.nextCursor, setNextCursor]);
 
   const {
     mutate: removeView,
@@ -278,9 +292,7 @@ export const CuratedViewDetail: React.FC = () => {
       pagination.setSortBy(column);
       pagination.setSortOrder("asc");
     }
-    // Re-sorting changes the whole ordering — return to page one (offset mode
-    // doesn't reset on sort the way keyset does).
-    pagination.setOffset(0);
+    // Keyset mode starts the walk over on a sort change.
   };
 
   return (
@@ -288,7 +300,9 @@ export const CuratedViewDetail: React.FC = () => {
       <CuratedViewDetailUI
         view={view}
         columns={recordsResult.data?.columns ?? columns}
-        records={recordsResult.data?.records ?? []}
+        // The keyset last page arrives in reverse (#433); transformPage puts
+        // it back in display order.
+        records={pagination.transformPage(recordsResult.data?.records ?? [])}
         recordsLoading={recordsResult.isLoading}
         recordsError={recordsResult.isError}
         paginationToolbar={<PaginationToolbar {...pagination.toolbarProps} />}

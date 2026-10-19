@@ -71,7 +71,12 @@ export interface ListOptions {
   offset?: number;
   includeDeleted?: boolean;
   organizationId?: string;
-  orderBy?: { column: Column | SQL; direction?: "asc" | "desc" };
+  orderBy?: {
+    column: Column | SQL;
+    direction?: "asc" | "desc";
+    /** NULL placement on a nullable column (#649); default last. */
+    nulls?: "first" | "last";
+  };
   /**
    * Keyset anchor (#433). When set, the query seeks past this position
    * instead of counting rows to skip, and `offset` is ignored. `value` is

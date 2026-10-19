@@ -492,12 +492,11 @@ export function usePagination(
           // back.
           limit: atInvertedStart ? lastPageSize : limit,
           sortBy,
-          // Inverting the sort is what turns "last page" into "page one".
-          sortOrder: inverted
-            ? sortOrder === "asc"
-              ? "desc"
-              : "asc"
-            : sortOrder,
+          sortOrder,
+          // Walking the mirror ordering is what turns "last page" into "page
+          // one". The server mirrors it (#649): flipping sortOrder here kept
+          // NULLs last, so a nullable sort's last page showed the wrong rows.
+          reverse: inverted ? "true" : undefined,
           cursor: cursor ?? undefined,
         }
       : {
@@ -676,6 +675,8 @@ export interface PaginationToolbarProps {
   advancedFilterConditionCount?: number;
   /** Column definitions for the advanced filter builder. */
   columnDefinitions?: ResolvedColumn[];
+  /** The search box's placeholder (#649). Default "Search...". */
+  searchPlaceholder?: string;
 }
 
 export const PaginationToolbar = React.forwardRef<
@@ -686,6 +687,7 @@ export const PaginationToolbar = React.forwardRef<
     {
       search,
       onSearchChange,
+      searchPlaceholder = "Search...",
       filterConfigs,
       filters,
       onFilterValueChange,
@@ -744,7 +746,7 @@ export const PaginationToolbar = React.forwardRef<
           <TextField
             autoFocus
             size="small"
-            placeholder="Search..."
+            placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             slotProps={{

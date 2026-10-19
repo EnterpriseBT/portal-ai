@@ -160,3 +160,45 @@ describe("useCuratedViewTablePagination (#678)", () => {
     expect(onRecovered).toHaveBeenCalledWith("sort");
   });
 });
+
+describe("useCuratedViewTablePagination — keyset (#649)", () => {
+  const walkTo = (result: {
+    current: ReturnType<typeof mount>["result"]["current"];
+  }) => {
+    act(() => result.current.setTotal(30));
+    act(() => result.current.setNextCursor("cursor-2"));
+    act(() => result.current.toolbarProps.onNext());
+  };
+
+  it("pages by cursor, not offset", () => {
+    const { result } = mount({ columns: COLUMNS });
+    expect(result.current.queryParams).not.toHaveProperty("offset");
+    walkTo(result);
+    expect(result.current.queryParams.cursor).toBe("cursor-2");
+    expect(result.current.toolbarProps.currentPage).toBe(2);
+  });
+
+  it("Prev returns to the page before", () => {
+    const { result } = mount({ columns: COLUMNS });
+    walkTo(result);
+    act(() => result.current.toolbarProps.onPrev());
+    expect(result.current.queryParams.cursor).toBeUndefined();
+    expect(result.current.toolbarProps.currentPage).toBe(1);
+  });
+
+  it("a sort change starts the walk over", () => {
+    const { result } = mount({ columns: COLUMNS });
+    walkTo(result);
+    act(() => result.current.setSortBy("age"));
+    expect(result.current.queryParams.cursor).toBeUndefined();
+    expect(result.current.toolbarProps.currentPage).toBe(1);
+  });
+
+  it("says search covers text columns", () => {
+    const { result } = mount({ columns: COLUMNS });
+    render(<PaginationToolbar {...result.current.toolbarProps} />);
+    expect(
+      screen.getByPlaceholderText("Search text columns")
+    ).toBeInTheDocument();
+  });
+});

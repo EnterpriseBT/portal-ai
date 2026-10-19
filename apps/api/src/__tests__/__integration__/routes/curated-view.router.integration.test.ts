@@ -7,6 +7,7 @@ import {
   afterEach,
 } from "@jest/globals";
 import request from "supertest";
+import { encodeCursor } from "@portalai/core/contracts";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -17,6 +18,7 @@ import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { wideTableStatementCache as singletonStatementCache } from "../../../services/wide-table-statement.cache.js";
+import { EntityRecordCountCache } from "../../../services/entity-record-count.cache.js";
 import {
   generateId,
   seedUserAndOrg,
@@ -502,11 +504,12 @@ describe("curated-view.router integration", () => {
     expect(emailRows.length).toBe(1);
     expect(emailRows[0].email).toBe("a@b.co");
 
-    // The numeric column is searchable via a text cast.
+    // #649: search matches text columns only (the trigram-indexed ones), so
+    // a number cell isn't searched; a filter on the column finds it.
     const ageHit = await request(app).get(
       `/api/curated-views/${id}/records?search=42`
     );
-    expect((ageHit.body.payload.records as unknown[]).length).toBe(1);
+    expect((ageHit.body.payload.records as unknown[]).length).toBe(0);
 
     // LIKE metacharacters are escaped — a literal `%` is not a wildcard, so it
     // matches nothing here (no value contains a literal percent sign).
@@ -1665,6 +1668,367 @@ describe("curated-view.router integration", () => {
       label: "Member View",
     });
     expect(create.status).toBe(403);
+  });
+
+  // ── #649: keyset paging + cached total ───────────────────────────
+
+  /**
+   * 23 more rows on top of the fixture's two (25 total), shaped like real
+   * data: tied `created` values, duplicate ages with a NULL region, NULL
+   * emails, and one email carrying a quote (a cursor value that must travel
+   * bound, never inlined).
+   */
+  async function seedMoreRows(): Promise<number> {
+    const dbT = db as ReturnType<typeof drizzle>;
+    const now = Date.now();
+    const n = 23;
+    for (let i = 0; i < n; i++) {
+      const id = generateId();
+      const src = `more-${i}`;
+      await dbT.insert(schema.entityRecords).values({
+        id,
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        sourceId: src,
+        isValid: true,
+        validationErrors: null,
+        normalizedData: {},
+        syncedAt: now,
+        data: {},
+        checksum: `chk-${src}`,
+        origin: "sync",
+        created: now + 2000 + (i % 4),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      const age = i % 5 === 0 ? null : i % 3;
+      const email =
+        i % 7 === 0 ? null : i === 3 ? "o'brien@x.co" : `u${i % 4}@x.co`;
+      await dbT.execute(
+        sql`INSERT INTO ${sql.raw(`"er__${entityId}"`)} ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", "c_email", "c_age") VALUES (${id}, ${orgId}, ${now}, true, ${src}, ${email}, ${age})`
+      );
+    }
+    return n + 2;
+  }
+
+  type Row = { _record_id: string; age: string | null; email: string | null };
+
+  async function page(id: string, query: Record<string, unknown>) {
+    const res = await request(app)
+      .get(`/api/curated-views/${id}/records`)
+      .query(query);
+    expect(res.status).toBe(200);
+    return res.body.payload as {
+      records: Row[];
+      total: number;
+      nextCursor?: string | null;
+    };
+  }
+
+  /** Walk every page by cursor, `limit` rows at a time. */
+  async function walk(
+    id: string,
+    query: Record<string, unknown>,
+    limit: number
+  ): Promise<string[]> {
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    for (let guard = 0; guard < 100; guard++) {
+      const p = await page(id, {
+        ...query,
+        limit,
+        ...(cursor ? { cursor } : {}),
+      });
+      seen.push(...p.records.map((r) => r._record_id));
+      cursor = p.nextCursor;
+      if (!cursor) break;
+    }
+    return seen;
+  }
+
+  async function fullOrder(id: string, query: Record<string, unknown>) {
+    return (await page(id, { ...query, limit: 100 })).records.map(
+      (r) => r._record_id
+    );
+  }
+
+  async function allColumnsView(key: string): Promise<string> {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key,
+      label: key,
+    });
+    expect(created.status).toBe(201);
+    return created.body.payload.curatedView.id as string;
+  }
+
+  it.each([
+    ["created", "asc"],
+    ["created", "desc"],
+    ["age", "asc"],
+    ["age", "desc"],
+    ["email", "asc"],
+    ["email", "desc"],
+  ] as Array<[string, "asc" | "desc"]>)(
+    "#649: a keyset walk by %s %s returns every row once, in order",
+    async (sortBy, sortOrder) => {
+      const total = await seedMoreRows();
+      const id = await allColumnsView(`walk_${sortBy}_${sortOrder}`);
+      const expected = await fullOrder(id, { sortBy, sortOrder });
+      const seen = await walk(id, { sortBy, sortOrder }, 4);
+      expect(seen).toEqual(expected);
+      expect(new Set(seen).size).toBe(total);
+    }
+  );
+
+  it.each([
+    ["age", "asc"],
+    ["email", "desc"],
+    ["created", "asc"],
+  ] as Array<[string, "asc" | "desc"]>)(
+    "#649: a reverse walk by %s %s is the forward order exactly reversed",
+    async (sortBy, sortOrder) => {
+      await seedMoreRows();
+      const id = await allColumnsView(`rev_${sortBy}_${sortOrder}`);
+      const forward = await fullOrder(id, { sortBy, sortOrder });
+      const reverse = await walk(id, { sortBy, sortOrder, reverse: "true" }, 3);
+      expect(reverse).toEqual([...forward].reverse());
+    }
+  );
+
+  it("#649: a descending sort keeps NULLs last and breaks ties descending", async () => {
+    await seedMoreRows();
+    const id = await allColumnsView("desc_nulls");
+    const rows = (
+      await page(id, { sortBy: "age", sortOrder: "desc", limit: 100 })
+    ).records;
+    const firstNull = rows.findIndex((r) => r.age === null);
+    expect(firstNull).toBeGreaterThan(0);
+    expect(rows.slice(firstNull).every((r) => r.age === null)).toBe(true);
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].age === rows[i - 1].age) {
+        expect(rows[i]._record_id < rows[i - 1]._record_id).toBe(true);
+      }
+    }
+  });
+
+  it("#649: the last page carries no nextCursor and rows carry no sort framing", async () => {
+    await seedMoreRows();
+    const id = await allColumnsView("last_page");
+    const first = await page(id, { sortBy: "age", limit: 10 });
+    expect(typeof first.nextCursor).toBe("string");
+    const all = await page(id, { sortBy: "age", limit: 100 });
+    expect(all.nextCursor).toBeNull();
+    for (const r of [...first.records, ...all.records]) {
+      expect(r).not.toHaveProperty("_sort_value");
+    }
+  });
+
+  it("#649: a cursor from another sort, or a garbage one, serves page one", async () => {
+    await seedMoreRows();
+    const id = await allColumnsView("stale_cursor");
+    const byAge = await page(id, { sortBy: "age", limit: 5 });
+    const baseline = (await page(id, { sortBy: "email", limit: 5 })).records;
+    const crossed = await page(id, {
+      sortBy: "email",
+      limit: 5,
+      cursor: byAge.nextCursor,
+    });
+    expect(crossed.records).toEqual(baseline);
+    const reversed = await page(id, {
+      sortBy: "age",
+      limit: 5,
+      reverse: "true",
+      cursor: byAge.nextCursor,
+    });
+    expect(reversed.records).toEqual(
+      (await page(id, { sortBy: "age", limit: 5, reverse: "true" })).records
+    );
+    const garbage = await page(id, {
+      sortBy: "email",
+      limit: 5,
+      cursor: "not-a-cursor",
+    });
+    expect(garbage.records).toEqual(baseline);
+  });
+
+  it.each([
+    ["age", "abc"],
+    ["age", "1e999999"],
+    ["created", "abc"],
+  ] as Array<[string, string]>)(
+    "#649: a forged cursor whose %s value its column's type rejects (%s) serves page one",
+    async (sortBy, value) => {
+      await seedMoreRows();
+      const id = await allColumnsView(`forged_${sortBy}_${value.length}`);
+      const baseline = (await page(id, { sortBy, limit: 5 })).records;
+      const forged = encodeCursor({
+        sortBy,
+        sortOrder: "asc",
+        value,
+        id: "00000000-0000-0000-0000-000000000000",
+      });
+      const res = await page(id, { sortBy, limit: 5, cursor: forged });
+      expect(res.records).toEqual(baseline);
+    }
+  );
+
+  it.each(["asc", "desc"] as const)(
+    "#649: a datetime walk (%s) with sub-millisecond ties repeats and skips nothing",
+    async (sortOrder) => {
+      // timestamptz holds microseconds and a JS Date only milliseconds. The
+      // driver hands the value back as text, so the cursor carries it exactly;
+      // a Date would round it and repeat or skip the anchor's peers.
+      const dbT = db as ReturnType<typeof drizzle>;
+      const now = Date.now();
+      const cdSeen = generateId();
+      await dbT
+        .insert(schema.columnDefinitions)
+        .values(
+          mkColumnDef(cdSeen, orgId, "seen", "Seen", "datetime", now) as never
+        );
+      await dbT
+        .insert(schema.fieldMappings)
+        .values(
+          mkMapping(
+            generateId(),
+            orgId,
+            entityId,
+            cdSeen,
+            "seen",
+            now + 10,
+            "SYSTEM_TEST"
+          ) as never
+        );
+      await reconciler.reconcileEntity(entityId, db);
+      singletonStatementCache.clear();
+      await seedMoreRows();
+      // Every row lands in one millisecond, three microsecond values apart.
+      await dbT.execute(
+        sql.raw(
+          `UPDATE "er__${entityId}" SET c_seen = '2024-01-15T10:00:00.123Z'::timestamptz ` +
+            `+ ((('x' || substr(entity_record_id::text, 1, 2))::bit(8)::int % 3) * interval '1 microsecond') + interval '100 microseconds'`
+        )
+      );
+      const id = await allColumnsView(`seen_${sortOrder}`);
+      const expected = await fullOrder(id, { sortBy: "seen", sortOrder });
+      const seen = await walk(id, { sortBy: "seen", sortOrder }, 4);
+      expect(seen).toEqual(expected);
+      expect(new Set(seen).size).toBe(expected.length);
+
+      // A forged cursor whose value the column can't take serves page one:
+      // a number (which once crashed in the driver) and a non-date string.
+      const pageOne = (await page(id, { sortBy: "seen", sortOrder, limit: 4 }))
+        .records;
+      for (const value of [12345, "not a date"]) {
+        const forged = encodeCursor({
+          sortBy: "seen",
+          sortOrder,
+          value,
+          id: "00000000-0000-0000-0000-000000000000",
+        });
+        const res = await page(id, {
+          sortBy: "seen",
+          sortOrder,
+          limit: 4,
+          cursor: forged,
+        });
+        expect(res.records).toEqual(pageOne);
+      }
+    }
+  );
+
+  it("#649: search never matches a number cell or a column outside the view", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "search_text_only",
+      label: "Search text only",
+      fieldMappingIds: [emailFmId, ageFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    // A text column matches.
+    expect((await page(id, { search: "a@b" })).total).toBe(1);
+    // 25 is only an age, a number column.
+    expect((await page(id, { search: "25" })).total).toBe(0);
+    // "x2" is only in backup_email, which this view doesn't project.
+    expect((await page(id, { search: "x2" })).total).toBe(0);
+  });
+
+  it("#649: search on a view with no text columns matches nothing", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "no_text_columns",
+      label: "No text columns",
+      fieldMappingIds: [ageFmId, tagsFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    expect((await page(id, {})).total).toBe(2);
+    // "2" is in both ages (25, 42), which a text cast used to match.
+    const searched = await page(id, { search: "2" });
+    expect(searched.records).toHaveLength(0);
+    expect(searched.total).toBe(0);
+  });
+
+  it("#649: callers with different field grants never share a cached total", async () => {
+    const created = await createView({
+      connectorEntityId: entityId,
+      key: "grant_scoped_total",
+      label: "Grant scoped",
+      fieldMappingIds: [emailFmId, backupFmId],
+    });
+    const id = created.body.payload.curatedView.id as string;
+    const base = {
+      organizationId: orgId,
+      principalType: "user",
+      principalId: memberId,
+      effect: "allow",
+      verb: "read",
+      condition: null,
+      conditionParam: null,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.permissionGrants)
+      .values([
+        {
+          ...base,
+          id: generateId(),
+          resourceType: "curated_view",
+          resourceId: id,
+        },
+        {
+          ...base,
+          id: generateId(),
+          resourceType: "field_mapping",
+          resourceId: emailFmId,
+        },
+      ] as never);
+
+    // "x2" is only in backup_email, which the member can't read.
+    const owner = await page(id, { search: "x2" });
+    expect(owner.total).toBe(1);
+    currentSub = MEMBER_SUB;
+    const member = await page(id, { search: "x2" });
+    expect(member.records).toHaveLength(0);
+    expect(member.total).toBe(0);
+  });
+
+  it("#649: a record write's count invalidation refreshes the total", async () => {
+    const id = await allColumnsView("count_refresh");
+    expect((await page(id, {})).total).toBe(2);
+    await seedMoreRows();
+    // Writes bump the entity's count version (record-write.service); this is
+    // that bump.
+    await EntityRecordCountCache.invalidate(entityId);
+    expect((await page(id, {})).total).toBe(25);
   });
 });
 

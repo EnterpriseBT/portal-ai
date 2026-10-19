@@ -28,6 +28,7 @@ import {
   decodeCursor,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
+import { isPgDataException, unwrapPgError } from "../utils/pg-error.util.js";
 import {
   parseFilterPayload,
   buildFilterSqlForEntity,
@@ -53,7 +54,10 @@ import { NormalizationService } from "../services/normalization.service.js";
 import { RecordWriteService } from "../services/record-write.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
-import type { EntityRecordHydratedListItem } from "../db/repositories/entity-records.repository.js";
+import {
+  keysetOrdering,
+  type EntityRecordHydratedListItem,
+} from "../db/repositories/entity-records.repository.js";
 import {
   buildJsonbObjectExpr,
   wideTableStatementCache,
@@ -170,6 +174,7 @@ async function resolveEntityOrThrow(
  *       - $ref: '#/components/parameters/limitParam'
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/cursorParam'
+ *       - $ref: '#/components/parameters/reverseParam'
  *       - $ref: '#/components/parameters/sortByParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
  *       - in: query
@@ -243,6 +248,7 @@ entityRecordRouter.get(
         filters,
         isValid,
         cursor,
+        reverse = false,
       } = query.data;
 
       // Resolve column definitions and the wide-table statement cache up
@@ -342,7 +348,9 @@ entityRecordRouter.get(
       const keysetAnchor =
         decodedCursor &&
         decodedCursor.sortBy === effectiveSortBy &&
-        decodedCursor.sortOrder === sortOrder
+        decodedCursor.sortOrder === sortOrder &&
+        // #649: a forward cursor is meaningless on the mirror walk.
+        (decodedCursor.reverse ?? false) === reverse
           ? {
               column: orderByExpr,
               value: decodedCursor.value,
@@ -393,21 +401,43 @@ entityRecordRouter.get(
       // unfiltered count doesn't need the JOIN at all.
       const countRequiresWideTable = Boolean(search || filters);
 
-      const [probedRecords, total] = await Promise.all([
+      const findPage = (keyset: typeof keysetAnchor) =>
         DbService.repository.entityRecords.findHydratedMany(connectorEntityId, {
           where,
           offset,
-          orderBy: { column: orderByExpr, direction: sortOrder },
+          // #649: a reverse walk (the keyset last page) orders by the exact
+          // mirror, NULLs first, so its page one is the forward walk's tail.
+          orderBy: {
+            column: orderByExpr,
+            ...keysetOrdering(sortOrder, reverse),
+          },
           normalizedDataProjection,
           // #433: the table renders from `normalizedData`; shipping the raw
           // payload cost ~2KB/row and spilled the join to disk.
           includeData: false,
-          keyset: keysetAnchor,
+          keyset,
           // One row past the page, to tell "exactly a full page" from "a
           // full page with more behind it". The probe row is dropped before
           // responding; without it the final page would hand back a cursor
           // that leads nowhere.
           limit: limit + 1,
+        });
+
+      const [probedRecords, total] = await Promise.all([
+        // #649: a cursor is client-supplied, so a forged one can carry a
+        // value the sort column's type rejects (`"abc"` for a number). That
+        // cursor doesn't fit this ordering either: serve the first page.
+        findPage(keysetAnchor).catch((error: unknown) => {
+          if (!keysetAnchor || !isPgDataException(error)) throw error;
+          logger.warn(
+            {
+              connectorEntityId,
+              sortBy: effectiveSortBy,
+              ...unwrapPgError(error),
+            },
+            "Entity record cursor value rejected by its sort column; serving the first page"
+          );
+          return findPage(undefined);
         }),
         cachedTotal !== null
           ? Promise.resolve(cachedTotal)
@@ -446,6 +476,7 @@ entityRecordRouter.get(
           ? encodeCursor({
               sortBy: effectiveSortBy,
               sortOrder,
+              ...(reverse ? { reverse: true } : {}),
               value: anchorValue.value,
               id: lastRow.id,
             })

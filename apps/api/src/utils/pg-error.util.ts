@@ -24,3 +24,14 @@ export function unwrapPgError(err: unknown): PgErrorInfo {
     typeof inner?.message === "string" ? inner.message : undefined;
   return { code, message };
 }
+
+/**
+ * SQLSTATE class 22, a data exception: a bound value the target type can't
+ * take (`22P02` bad text, `22007` bad datetime, `22008`/`22003` out of range).
+ * A keyset cursor is client-supplied, so a forged one can carry a value its
+ * sort column's type rejects; the keyset routes read this as "the cursor
+ * doesn't fit" and serve the first page (#649).
+ */
+export function isPgDataException(err: unknown): boolean {
+  return unwrapPgError(err).code?.startsWith("22") ?? false;
+}

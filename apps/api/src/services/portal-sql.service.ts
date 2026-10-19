@@ -27,8 +27,17 @@
 import { createHash } from "node:crypto";
 
 import { sql } from "drizzle-orm";
+import { decodeCursor, encodeCursor } from "@portalai/core/contracts";
 
 import { db } from "../db/client.js";
+import {
+  buildKeysetPredicate,
+  buildOrderByClause,
+  keysetOrdering,
+} from "../db/repositories/entity-records.repository.js";
+import { EntityRecordCountCache } from "./entity-record-count.cache.js";
+import { readViewSortValue } from "./portal-sql-view-records.util.js";
+import { pgTypeForColumnDefinitionType } from "./wide-table-reconciler.service.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
@@ -39,7 +48,7 @@ import {
 } from "../utils/filter-sql.util.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 import { memoizeForRequest } from "../utils/request-context.util.js";
-import { unwrapPgError } from "../utils/pg-error.util.js";
+import { isPgDataException, unwrapPgError } from "../utils/pg-error.util.js";
 import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
 import { curatedViewsRepo } from "../db/repositories/curated-views.repository.js";
 import { curatedViewFieldMappingsRepo } from "../db/repositories/curated-view-field-mappings.repository.js";
@@ -583,12 +592,19 @@ export class PortalSqlServiceImpl {
       search?: string;
       /** #678: base64 FilterExpression over the readable projected columns. */
       filters?: string;
+      /** #649: opaque keyset cursor. Takes precedence over `offset` when it
+       *  decodes and was minted under the effective sort and walk. */
+      cursor?: string;
+      /** #649: walk the mirror ordering (the keyset last page). */
+      reverse?: boolean;
     },
     client: DbClient = db
   ): Promise<{
     records: Record<string, unknown>[];
     total: number;
     columns: ResolvedColumn[];
+    /** #649: cursor for the following page, or null at the end. */
+    nextCursor: string | null;
   } | null> {
     const resolved = await this.resolveViewColumnsById(
       viewId,
@@ -661,34 +677,44 @@ export class PortalSqlServiceImpl {
       if (typeof rendered !== "string") throw invalid(rendered.message);
       whereParts.push(`(${rendered})`);
     }
-    // Search: case-insensitive **literal** substring across the projected
-    // columns only (never an un-projected column). The LIKE metacharacters
-    // (\ % _) are escaped so the term matches literally (ILIKE's default escape
-    // char is backslash), then wrapped in %…%; quoteLiteral handles the
-    // SQL-quote escaping — injection-safe.
+    // Search: case-insensitive **literal** substring across the caller's
+    // readable projected **text** columns (string/enum/reference, #649). Only
+    // those carry a trigram index, and one unindexed branch in the OR would
+    // scan the whole table anyway; number and date cells are reached through
+    // typed filters instead. No `::text` cast, so the index matches the bare
+    // column. With no text column a search matches nothing rather than being
+    // silently ignored. The LIKE metacharacters (\ % _) are escaped so the
+    // term matches literally (ILIKE's default escape char is backslash), then
+    // wrapped in %…%; quoteLiteral handles the SQL-quote escaping —
+    // injection-safe.
     const search = opts.search?.trim();
-    if (search && columns.length > 0) {
+    if (search) {
+      const textColumns = readable.filter(
+        (c) => pgTypeForColumnDefinitionType(c.type) === "text"
+      );
       const escaped = search.replace(/[\\%_]/g, (ch) => `\\${ch}`);
       const term = quoteLiteral(`%${escaped}%`);
-      const clauses = columns.map(
-        (c) => `w.${quoteIdent(c.columnName)}::text ILIKE ${term}`
+      const clauses = textColumns.map(
+        (c) => `w.${quoteIdent(c.columnName)} ILIKE ${term}`
       );
-      whereParts.push(`(${clauses.join(" OR ")})`);
+      whereParts.push(
+        clauses.length > 0 ? `(${clauses.join(" OR ")})` : "FALSE"
+      );
     }
     const whereSql = whereParts.join(" AND ");
     const limit = Math.max(1, Math.min(opts.limit, 500));
     const offset = Math.max(0, opts.offset);
 
     // ORDER BY `created` or the requested projected column (by normalizedKey,
-    // #678), always ending in the unique `entity_record_id` tiebreaker (#433:
-    // a paginated order must be total). `created` is the record's creation
-    // time; it lives on `entity_records`, not the wide table, so that sort
-    // joins it (scoped to the entity, so the (connector_entity_id, created, id)
-    // index applies). As on the entity records endpoint, the system field
-    // wins over a column that happens to share the name. A `sortBy` that names
-    // neither falls back to record-id order; one naming an unsortable type is
-    // refused.
-    const dir = opts.sortOrder === "desc" ? "DESC" : "ASC";
+    // #678), always ending in a unique tiebreaker (#433: a paginated order
+    // must be total). `created` is the record's creation time; it lives on
+    // `entity_records`, not the wide table, so that sort joins it (scoped to
+    // the entity, so the (connector_entity_id, created, id) index applies, and
+    // its tiebreaker is `r.id` for the same reason). As on the entity records
+    // endpoint, the system field wins over a column that happens to share the
+    // name. A `sortBy` that names neither falls back to record-id order; one
+    // naming an unsortable type is refused.
+    const sortOrder = opts.sortOrder === "desc" ? "desc" : "asc";
     const byCreated = opts.sortBy === "created";
     const sortCol = byCreated
       ? undefined
@@ -700,36 +726,159 @@ export class PortalSqlServiceImpl {
         `Column "${sortCol.normalizedKey}" can't be sorted`
       );
     }
-    const orderBySql = byCreated
-      ? `r."created" ${dir}, w."entity_record_id" ASC`
-      : sortCol
-        ? `w.${quoteIdent(sortCol.columnName)} ${dir}, w."entity_record_id" ASC`
-        : `w."entity_record_id" ${dir}`;
+    // `key` is the sort a cursor is minted under: the request's, or
+    // `_record_id` for the fallback (a normalizedKey can't start with `_`).
+    // `exprSql` is a safe identifier reference (quoteIdent).
+    const sortSpec: { key: string; exprSql: string; nullable: boolean } =
+      byCreated
+        ? { key: "created", exprSql: `r."created"`, nullable: false }
+        : sortCol
+          ? {
+              key: sortCol.normalizedKey,
+              exprSql: `w.${quoteIdent(sortCol.columnName)}`,
+              // Every wide-table data column is nullable.
+              nullable: true,
+            }
+          : {
+              key: "_record_id",
+              exprSql: `w."entity_record_id"`,
+              nullable: false,
+            };
+    const sortExpr = sql.raw(sortSpec.exprSql);
+    // The fallback sorts by the tiebreaker itself, so it must be the same
+    // object (buildOrderByClause compares by identity and doesn't repeat it).
+    const tiebreaker =
+      sortSpec.key === "_record_id"
+        ? sortExpr
+        : sql.raw(byCreated ? `r."id"` : `w."entity_record_id"`);
+    const sort = { ...sortSpec, expr: sortExpr, tiebreaker };
+
+    // #649: keyset paging, as on the entity records endpoint. A cursor counts
+    // only under the ordering it was minted in; anything else (another sort,
+    // the other walk, a garbage token) serves the first page, never an error.
+    // A reverse walk (the last page) orders by the exact mirror.
+    const reverse = opts.reverse ?? false;
+    const ordering = keysetOrdering(sortOrder, reverse);
+    const decoded = opts.cursor ? decodeCursor(opts.cursor) : null;
+    const decodedAnchor =
+      decoded &&
+      decoded.sortBy === sort.key &&
+      decoded.sortOrder === sortOrder &&
+      (decoded.reverse ?? false) === reverse
+        ? decoded
+        : null;
+    // The anchor's value and id travel as bound parameters, never inlined.
+    const seekFor = (anchor: typeof decodedAnchor) =>
+      anchor
+        ? sql` AND ${buildKeysetPredicate({
+            column: sort.expr,
+            value: anchor.value,
+            id: anchor.id,
+            nullable: sort.nullable,
+            tiebreaker: sort.tiebreaker,
+            ...ordering,
+          })}`
+        : sql``;
+    const orderBy = buildOrderByClause({
+      column: sort.expr,
+      nullable: sort.nullable,
+      tiebreaker: sort.tiebreaker,
+      ...ordering,
+    });
+    // `r.deleted IS NULL` is what lets the planner use the partial
+    // `(connector_entity_id, created, id) WHERE deleted IS NULL` index: without
+    // it every `created` page seq-scanned both tables (measured on 400K rows:
+    // 155ms vs 0.08ms for page one, the deep seek and the last page alike).
     const createdJoin = byCreated
       ? `  JOIN "entity_records" r ON r."id" = w."entity_record_id"` +
-        ` AND r."connector_entity_id" = ${quoteLiteral(view.connectorEntityId)}\n`
+        ` AND r."connector_entity_id" = ${quoteLiteral(view.connectorEntityId)}` +
+        ` AND r."deleted" IS NULL\n`
       : "";
 
-    const rowsSql =
-      `SELECT ${selectList}\n` +
-      `  FROM ${quoteIdent(tableName)} w\n` +
-      createdJoin +
-      `  WHERE ${whereSql}\n` +
-      `  ORDER BY ${orderBySql}\n` +
-      `  LIMIT ${limit} OFFSET ${offset}`;
+    // One row past the page tells "a full page" from "a full page with more
+    // behind it". `_sort_value` is what the next cursor is minted from; the
+    // `_` prefix can't collide with a normalizedKey, and it's stripped below.
+    const rowsQueryFor = (anchor: typeof decodedAnchor) =>
+      sql`${sql.raw(
+        `SELECT ${selectList}, ${sort.exprSql} AS "_sort_value"\n` +
+          `  FROM ${quoteIdent(tableName)} w\n` +
+          createdJoin +
+          `  WHERE ${whereSql}`
+      )}${seekFor(anchor)}${orderBy}${sql.raw(
+        ` LIMIT ${limit + 1}` + (anchor ? "" : ` OFFSET ${offset}`)
+      )}`;
     const countSql =
       `SELECT COUNT(*)::int AS n FROM ${quoteIdent(tableName)} w ` +
       `WHERE ${whereSql}`;
 
-    const [rowsRes, countRes] = await Promise.all([
-      client.execute(sql.raw(rowsSql)),
-      client.execute(sql.raw(countSql)),
+    // #649: the total comes through the entity's count cache. The scope holds
+    // the view, its version and the caller's readable columns: search runs
+    // over those, so two callers with different field grants can match
+    // different counts and must never share one. Record writes bump the
+    // entity's version; a view edit changes `updated`.
+    const countFingerprint = EntityRecordCountCache.fingerprint({
+      search: search ?? "",
+      filters: opts.filters,
+      viewScope: [
+        view.id,
+        view.updated ?? view.created,
+        readable
+          .map((c) => c.normalizedKey)
+          .sort()
+          .join(","),
+      ].join(":"),
+    });
+    const cachedTotal = await EntityRecordCountCache.get(
+      view.connectorEntityId,
+      countFingerprint
+    );
+
+    const [rowsRes, total] = await Promise.all([
+      // A cursor is client-supplied: a forged one can carry a value the sort
+      // column's type rejects (`"abc"` for a number). That cursor doesn't fit
+      // this ordering, so it serves the first page like any other misfit
+      // rather than failing the request.
+      client.execute(rowsQueryFor(decodedAnchor)).catch((error: unknown) => {
+        if (!decodedAnchor || !isPgDataException(error)) throw error;
+        logger.warn(
+          { viewId, sortBy: sort.key, ...unwrapPgError(error) },
+          "Curated view cursor value rejected by its sort column; serving the first page"
+        );
+        return client.execute(rowsQueryFor(null));
+      }),
+      cachedTotal !== null
+        ? Promise.resolve(cachedTotal)
+        : client.execute(sql.raw(countSql)).then(async (res) => {
+            const n = Number(
+              (res as unknown as Array<{ n: number }>)[0]?.n ?? 0
+            );
+            await EntityRecordCountCache.set(
+              view.connectorEntityId,
+              countFingerprint,
+              n
+            );
+            return n;
+          }),
     ]);
-    const records = rowsRes as unknown as Record<string, unknown>[];
-    const countRows = countRes as unknown as Array<{ n: number }>;
+    const probed = rowsRes as unknown as Record<string, unknown>[];
+    const hasMore = probed.length > limit;
+    const pageRows = hasMore ? probed.slice(0, limit) : probed;
+    const last = hasMore ? pageRows[pageRows.length - 1] : undefined;
+    const anchorValue = last ? readViewSortValue(last._sort_value) : null;
+    const nextCursor =
+      last && anchorValue
+        ? encodeCursor({
+            sortBy: sort.key,
+            sortOrder,
+            ...(reverse ? { reverse: true } : {}),
+            value: anchorValue.value,
+            id: String(last._record_id),
+          })
+        : null;
     return {
-      records,
-      total: Number(countRows[0]?.n ?? 0),
+      records: pageRows.map(({ _sort_value: _sortValue, ...row }) => row),
+      total,
+      nextCursor,
       columns: readable.map(({ columnName: _columnName, ...c }) => c),
     };
   }
