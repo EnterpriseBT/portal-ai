@@ -52,6 +52,9 @@ export const PolicyViewSchema = z.object({
   kind: RbacKindSchema,
   description: z.string().nullable(),
   statements: z.array(PolicyStatementInputSchema),
+  /** #641: the portal whose agent session created it, or null. Provenance
+   *  only; see `isSessionGenerated`. */
+  sourcePortalId: z.string().nullable(),
 });
 export type PolicyView = z.infer<typeof PolicyViewSchema>;
 
@@ -85,6 +88,9 @@ export const RoleViewSchema = z.object({
   slug: z.string(),
   kind: RbacKindSchema,
   policyIds: z.array(z.string()),
+  /** #641: the portal whose agent session created it, or null. Provenance
+   *  only; see `isSessionGenerated`. */
+  sourcePortalId: z.string().nullable(),
 });
 export type RoleView = z.infer<typeof RoleViewSchema>;
 
@@ -117,6 +123,9 @@ export const GroupViewSchema = z.object({
   description: z.string().nullable(),
   policyIds: z.array(z.string()),
   memberCount: z.number().int().nonnegative(),
+  /** #641: the portal whose agent session created it, or null. Provenance
+   *  only; see `isSessionGenerated`. */
+  sourcePortalId: z.string().nullable(),
 });
 export type GroupView = z.infer<typeof GroupViewSchema>;
 

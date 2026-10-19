@@ -129,13 +129,13 @@ Session-produced rows now store `sourcePortalId`, and REST-created rows store `n
 
 ## Slice 4 — Read paths: payloads, RBAC views, pins
 
-Responses carry `sourcePortalId` and `sessionGenerated`. This is the contract change.
+Responses carry `sourcePortalId`. Spread types already do; the RBAC views gain it. *Amended:* no separate `sessionGenerated` field; readers use `isSessionGenerated` (spec, API payloads). This is the contract change.
 
 **Files**
 - Edit, contracts: `connector-entity.contract.ts`, `field-mapping.contract.ts`, `entity-record.contract.ts`, `rbac-authoring.contract.ts`, `portal.contract.ts`
 - Edit, routes: `connector-entity.router.ts`, `field-mapping.router.ts`, `entity-record.router.ts`, `portal-results.router.ts`
 - Edit, services: `policy.service.ts` / `group.service.ts` `toView`; `role.service.ts` folds its four inline views into one `toView`
-- Edit, web and site: typed fixtures and stories that build these payloads gain `sessionGenerated`
+- Edit, web and site: typed fixtures and stories that build these payloads gain `sourcePortalId`
 
 **Steps**
 1. **Tests (spec, api integration `object-provenance`, the payload cases).**
@@ -209,7 +209,7 @@ The "Created in a portal session" chip goes on the spec's surfaces, and the owne
 | 1 | Column ×6, model fields, `isSessionGenerated` | core unit, `lint:migrations`, root build |
 | 2 | `resolveJobActor`, no `"SYSTEM"` in processors | api unit + bulk-transform actor case |
 | 3 | Tools / RBAC / bulk-transform store `sourcePortalId` | tool unit, ownership + RBAC row integration |
-| 4 | Payload `sourcePortalId` + `sessionGenerated`, RBAC views, pins | 18 integration cases, root build |
+| 4 | Payload `sourcePortalId` on RBAC views (spread types already carry it) | provenance integration cases, root build |
 | 5 | System-principal guard | guard green on tree, red on fixtures |
 | 6 | Chips + CLAUDE.md / mirror / runbook | web unit, lint, doc pointers |
 

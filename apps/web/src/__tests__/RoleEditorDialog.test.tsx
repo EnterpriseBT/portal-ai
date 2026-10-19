@@ -10,6 +10,7 @@ const role = (kind: "system" | "custom") => ({
   slug: "admin",
   kind,
   policyIds: ["p-1"],
+  sourcePortalId: null,
 });
 const props = {
   open: true,

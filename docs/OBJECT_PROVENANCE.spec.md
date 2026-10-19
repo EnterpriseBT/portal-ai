@@ -4,7 +4,7 @@ This spec pins the contract for #641. Objects an agent creates in a portal sessi
 
 ## Key decisions (flag for review)
 
-1. **The marker is a portal reference, `sourcePortalId: string | null`, with a derived `sessionGenerated: boolean`.** It is not a boolean column (discovery D1). The value is the portal whose session produced the object, written once at creation.
+1. **The marker is a portal reference, `sourcePortalId: string | null`.** It is not a boolean column (discovery D1). The value is the portal whose session produced the object, written once at creation. *Amended in slice 4:* "session-generated" is derived by `isSessionGenerated(row)` from `@portalai/core` wherever it's shown, not shipped as a separate `sessionGenerated` payload field (see API payloads).
 2. **Columns go on the six types a session produces today:** `connector_entities`, `field_mappings`, `entity_records`, `roles`, `permission_policies` and `groups`.
    - Pins reuse their existing `portal_results.portal_id` and get no new column.
    - Jobs keep `metadata.portalId`.
@@ -75,15 +75,13 @@ sourcePortalId: text("source_portal_id"),
   It is exported from the models barrel.
 
 ### API payloads (`packages/core/src/contracts/`)
-- **Spread types** (connector entity, field mapping, record): `withCapabilities(XSchema)` already spreads the model, so `sourcePortalId` flows through. Each response row also gains `sessionGenerated: z.boolean()`, added in `withCapabilities`'s siblings for these three contracts:
-  - `connector-entity.contract.ts:64/96/119/140`
-  - `field-mapping.contract.ts:48/80/134/164`
-  - `entity-record.contract.ts:70/122/155/177`
-
-  The routes set it with `isSessionGenerated(row)` where they already spread the row: `connector-entity.router.ts:376`, `field-mapping.router.ts:332`, `entity-record.router.ts:697`, and the by-id and list builders beside them.
-- **RBAC views** (built by hand): `PolicyViewSchema` (`rbac-authoring.contract.ts:49`), `RoleViewSchema` (`:81`) and `GroupViewSchema` (`:114`) each gain `sourcePortalId: z.string().nullable()` and `sessionGenerated: z.boolean()`. Those fields are set in `PolicyService.toView` (`policy.service.ts:146`), `GroupService.toView` (`group.service.ts:98`) and the four inline role views in `role.service.ts` (about `:205`, `:222`, `:272`, `:319`). The role views are folded into one `RoleService.toView`, so a fifth view can't miss the fields.
-- **Pins:** `PortalResultListItemSchema` (`portal.contract.ts:171`) and `PortalResultGetResponsePayloadSchema` (`:190`) gain `sessionGenerated: z.boolean()`, set to `portalId != null` in `portal-results.router.ts` at the list spread (`:522`) and the GET. `sourcePortalId` isn't duplicated for pins: `portalId` is their reference.
-- The OpenAPI components for these payloads pick up the fields through their `z.toJSONSchema` registrations in `swagger.config.ts`. No route JSDoc spells them inline.
+*Amended in slice 4.* The spec first added a derived `sessionGenerated: boolean` to every payload. Every route builds its response by hand behind an `as unknown as` cast, so a route that missed the field would still type-check. The payload therefore carries only the marker itself, and every reader derives the flag with the one shared `isSessionGenerated` helper.
+- **Spread types** (connector entity, field mapping, record): the routes spread the full row, and `withCapabilities(XSchema)` spreads the model, so `sourcePortalId` (and a record's `origin`) reach GET, list and write responses with no route change.
+- **RBAC views** (built by hand): `PolicyViewSchema` (`rbac-authoring.contract.ts:49`), `RoleViewSchema` (`:81`) and `GroupViewSchema` (`:114`) each gain `sourcePortalId: z.string().nullable()`.
+  - It is set in `PolicyService.toView` and `GroupService.toView`.
+  - The four inline role views in `role.service.ts` are folded into one `RoleService.toView`, so a fifth view can't miss the field.
+- **Pins:** no change. Their existing `portalId` is the reference, and the web reads `isSessionGenerated({ sourcePortalId: pin.portalId })`.
+- The OpenAPI components pick up the RBAC view field through their `z.toJSONSchema` registrations in `swagger.config.ts`.
 
 ### Tools and RBAC threading (`apps/api/src/`)
 - **Tool signatures:**
@@ -181,11 +179,10 @@ Run from each package: `npm run test:unit` / `npm run test:integration` (never r
 
 ### api integration
 - `__tests__/__integration__/routes/object-provenance.integration.test.ts` (new):
-  - For each spread type (entity, field mapping, record): a row with `source_portal_id` set reads back `sourcePortalId` and `sessionGenerated: true` on GET and list; a REST-created row reads `null`/`false`. (6 cases)
-  - A record with `origin = 'portal'` and a null id reads `sessionGenerated: true`. (1 case)
-  - RBAC: a role, a policy and a group created through `RoleService.create` etc. with `agentAudit("p1")` read back `sourcePortalId: "p1"`, `sessionGenerated: true` on their list views; a REST create reads `null`. (6 cases)
-  - Pins: a pin with a `portalId` lists with `sessionGenerated: true`. (1 case)
-  - **Ownership is unaffected:** a member creates a field mapping and a role through the tools with a portal id. `createdBy` equals the member, the member's capabilities on it equal those on a REST-created twin, and `visibilityPredicate` still excludes it for another member without a grant. (3 cases)
+  - For each spread type (entity, field mapping, record): a row with `source_portal_id` set reads back `sourcePortalId` on GET and list; a REST-created row reads `null`. (3 cases)
+  - RBAC: a role, a policy and a group created through the services with `agentAudit("portal-1")` store and list `sourcePortalId: "portal-1"`, owned by the caller; a REST create stores and lists `null`; an update keeps the marker. (10 cases)
+  - The `origin = 'portal'` fallback is covered by core's `isSessionGenerated` unit cases. Pins need no API case, since `portalId` is unchanged.
+  - *Amended:* ownership is asserted as `createdBy = caller` on every created row (above, and in the tool unit cases). "Authorization never reads `sourcePortalId`" is held by the slice-5 guard as a source check over the authorization files, not by per-type capability comparisons.
   - An update to a marked entity keeps its `sourcePortalId`. (1 case)
   - 18 cases.
 - `__tests__/__integration__/queues/bulk-transform…` (the existing suite) gains: inserted target records carry the job's `portalId`; with `userId` absent from the metadata, audit columns stamp the job row's `createdBy`, not `"SYSTEM"`. 2 cases.
@@ -198,8 +195,8 @@ Run from each package: `npm run test:unit` / `npm run test:integration` (never r
 
 ## Acceptance criteria
 - [ ] A connector entity, field mapping, record, role, policy or group the agent creates in a portal is owned by the prompting user (`createdBy`, capabilities, sharing, `created_by_caller`), exactly like a hand-created twin.
-- [ ] That object's API payload carries `sourcePortalId` = the portal's id and `sessionGenerated: true`. A REST-created object carries `null` / `false`.
-- [ ] Pins report `sessionGenerated: true` when they came from a portal, and records created by the agent before this ticket report `sessionGenerated: true`.
+- [ ] That object's API payload carries `sourcePortalId` = the portal's id. A REST-created object carries `null`.
+- [ ] `isSessionGenerated` is true for those objects, for pins that came from a portal, and for records the agent created before this ticket (`origin = 'portal'`).
 - [ ] No permission check, visibility predicate or capability reads `sourcePortalId`.
 - [ ] `created_by_system` matches only rows written by the allowlisted seed, provisioning, housekeeping and materialization paths. CI fails a new writer outside the list.
 - [ ] No job stamps `"SYSTEM"` as an actor. A job missing `userId` in its metadata uses its row's `createdBy`.
@@ -209,7 +206,7 @@ Run from each package: `npm run test:unit` / `npm run test:integration` (never r
 ## Risks & rollback
 - **A missed RBAC view drops the fields.** The hand-built role views are folded into one `toView`, and the integration cases assert the fields on list responses.
 - **The guard regex hits a legitimate `"SYSTEM"`** (e.g. a log label). The fix is a code change or an allowlist entry with a reason. The guard can't silently pass a new writer.
-- **A required-field ripple to web and site fixtures.** The new response field `sessionGenerated` is required in the contracts, so typed fixtures in web stories and tests must add it. Run the full root `npm run build` / `type-check` before pushing (per memory), not per-package only.
+- **A required-field ripple to web and site fixtures.** `sourcePortalId` is required on the model output and RBAC view types, so typed fixtures in web stories and tests must add it. This surfaced in slices 1 and 4. Run the full root `npm run build` / `type-check` before pushing (per memory), not per-package only.
 - **Fail mode:** provenance is fail-open by nature. A missing `portalId` writes `NULL`, so the object is just not badged. Ownership is never at risk, because authorization never reads the field.
 - **Rollback:** revert the PR. The columns stay (expand-only) and are harmless.
 

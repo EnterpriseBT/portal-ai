@@ -85,8 +85,14 @@ describe("RBAC authoring contracts — policy (#622)", () => {
       kind: "custom" as const,
       description: null,
       statements: [stmt],
+      sourcePortalId: null,
     };
     expect(PolicyViewSchema.safeParse(view).success).toBe(true);
+    // #641: a policy the agent created carries its portal.
+    expect(
+      PolicyViewSchema.safeParse({ ...view, sourcePortalId: "portal-1" })
+        .success
+    ).toBe(true);
     expect(
       PolicyListResponseSchema.safeParse({ policies: [view] }).success
     ).toBe(true);
@@ -117,6 +123,7 @@ describe("RBAC authoring contracts — role (#622)", () => {
       slug: "analyst",
       kind: "custom" as const,
       policyIds: ["pol-1"],
+      sourcePortalId: null,
     };
     expect(RoleViewSchema.safeParse(view).success).toBe(true);
     expect(RoleListResponseSchema.safeParse({ roles: [view] }).success).toBe(
@@ -141,6 +148,7 @@ describe("RBAC authoring contracts — group + object search (#622)", () => {
         description: null,
         policyIds: ["pol-1"],
         memberCount: 3,
+        sourcePortalId: null,
       }).success
     ).toBe(true);
     // memberCount must be a non-negative integer.
@@ -151,6 +159,7 @@ describe("RBAC authoring contracts — group + object search (#622)", () => {
         description: null,
         policyIds: [],
         memberCount: -1,
+        sourcePortalId: null,
       }).success
     ).toBe(false);
   });

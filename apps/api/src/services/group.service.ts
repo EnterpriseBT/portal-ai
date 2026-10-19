@@ -106,6 +106,7 @@ export class GroupService {
       description: group.description,
       policyIds,
       memberCount,
+      sourcePortalId: group.sourcePortalId,
     };
   }
 

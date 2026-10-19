@@ -188,6 +188,21 @@ export class RoleService {
     }
   }
 
+  /** The one shape every role response takes, so none can miss a field. */
+  private static toView(
+    role: Pick<RoleSelect, "id" | "name" | "slug" | "kind" | "sourcePortalId">,
+    policyIds: string[]
+  ): RoleView {
+    return {
+      id: role.id,
+      name: role.name,
+      slug: role.slug,
+      kind: role.kind,
+      policyIds,
+      sourcePortalId: role.sourcePortalId,
+    };
+  }
+
   static async list(caller: PermissionContext): Promise<RoleView[]> {
     await RoleService.gate(caller);
     const roles = await DbService.repository.roles.findByOrganizationId(
@@ -206,26 +221,17 @@ export class RoleService {
       list.push(a.policyId);
       byRole.set(a.principalId, list);
     }
-    return roles.map((r) => ({
-      id: r.id,
-      name: r.name,
-      slug: r.slug,
-      kind: r.kind,
-      policyIds: byRole.get(r.id) ?? [],
-    }));
+    return roles.map((r) => RoleService.toView(r, byRole.get(r.id) ?? []));
   }
 
   static async get(caller: PermissionContext, id: string): Promise<RoleView> {
     await RoleService.gate(caller);
     const role = await RoleService.load(caller, id);
     const current = await RoleService.currentPolicyIds(id);
-    return {
-      id: role.id,
-      name: role.name,
-      slug: role.slug,
-      kind: role.kind,
-      policyIds: current.map((c) => c.policyId),
-    };
+    return RoleService.toView(
+      role,
+      current.map((c) => c.policyId)
+    );
   }
 
   static async create(
@@ -270,13 +276,7 @@ export class RoleService {
     });
     RoleService.auditDiff(caller, role.id, diff, audit);
 
-    return {
-      id: role.id,
-      name: role.name,
-      slug: role.slug,
-      kind: role.kind,
-      policyIds,
-    };
+    return RoleService.toView(role, policyIds);
   }
 
   static async update(
@@ -316,14 +316,8 @@ export class RoleService {
     });
     RoleService.auditDiff(caller, id, diff, audit);
 
-    return {
-      id,
-      name: req.name,
-      // Slug is stable across renames (#622) — the loaded role keeps its slug.
-      slug: role.slug,
-      kind: role.kind,
-      policyIds,
-    };
+    // Slug is stable across renames (#622): the loaded role keeps its slug.
+    return RoleService.toView({ ...role, name: req.name }, policyIds);
   }
 
   static async remove(

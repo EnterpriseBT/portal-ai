@@ -164,6 +164,7 @@ export class PolicyService {
         resourceId: s.resourceId,
         condition: s.condition,
       })),
+      sourcePortalId: policy.sourcePortalId,
     };
   }
 
