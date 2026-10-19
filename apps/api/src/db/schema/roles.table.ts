@@ -23,6 +23,8 @@ export const roles = pgTable(
      *  slugified at creation. */
     slug: text("slug").notNull(),
     kind: text("kind", { enum: RBAC_KINDS }).notNull(),
+    /** #641: the portal whose agent session created this row; null otherwise. Provenance only, never read by authorization. */
+    sourcePortalId: text("source_portal_id"),
   },
   (t) => [
     uniqueIndex("roles_org_name_unique")

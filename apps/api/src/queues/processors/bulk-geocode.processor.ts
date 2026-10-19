@@ -16,6 +16,7 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 import { environment } from "../../environment.js";
 import { createLogger } from "../../utils/logger.util.js";
 import { databaseErrorText } from "../../utils/job-error-text.util.js";
+import { resolveJobActor } from "./job-actor.util.js";
 
 const logger = createLogger({ module: "bulk-geocode.processor" });
 
@@ -201,6 +202,10 @@ export const bulkGeocodeProcessor: TypedJobProcessor<"bulk_geocode"> = async (
     );
   }
 
+  // The charge's actor: the caller who queued the job, or its row's creator
+  // for a job enqueued without one (#641), never a phantom system actor.
+  const actorUserId = await resolveJobActor(jobId, data.userId);
+
   const provider = new MapboxGeocodingProvider(
     environment.GEOCODING_API_KEY as string
   );
@@ -244,7 +249,7 @@ export const bulkGeocodeProcessor: TypedJobProcessor<"bulk_geocode"> = async (
           organizationId,
           costClass: ALL_TOOL_CAPABILITIES.bulk_geocode_records.costHint,
           units,
-          actor: { userId: data.userId ?? "SYSTEM" },
+          actor: { userId: actorUserId },
           toolName: "bulk_geocode_records",
           toolCallId: `job:${jobId}`,
           stationId: data.stationId ?? "",

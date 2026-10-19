@@ -120,6 +120,7 @@ const stubEntity = {
   organizationId: "org-1",
   key: "contacts",
   label: "Contacts",
+  sourcePortalId: null,
   created: Date.now(),
   createdBy: "system",
   updated: null,
@@ -172,6 +173,23 @@ describe("EntityDetailViewUI", () => {
     expect(screen.getByText("My CSV")).toBeInTheDocument();
     expect(screen.getByText("150")).toBeInTheDocument();
     expect(screen.getByText("Last sync")).toBeInTheDocument();
+  });
+
+  // #641: provenance badge.
+  it("badges an entity an agent session created", () => {
+    render(
+      <EntityDetailViewUI
+        entity={{ ...stubEntity, sourcePortalId: "portal-1" }}
+      />
+    );
+    expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
+  });
+
+  it("doesn't badge an entity made by hand", () => {
+    render(<EntityDetailViewUI entity={stubEntity} />);
+    expect(
+      screen.queryByText("Created in a portal session")
+    ).not.toBeInTheDocument();
   });
 
   it("never renders a Sync button (entity-level sync was removed; sync now happens at the connector instance level)", () => {

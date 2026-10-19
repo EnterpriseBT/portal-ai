@@ -290,7 +290,8 @@ describe("Entity management tool integration", () => {
       const tool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
 
       const result = (await tool.execute!(
@@ -328,7 +329,8 @@ describe("Entity management tool integration", () => {
       const tool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
 
       const result = (await tool.execute!(
@@ -366,7 +368,8 @@ describe("Entity management tool integration", () => {
       const tool = new EntityRecordCreateTool().build(
         otherStation.id,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
 
       const result = (await tool.execute!(
@@ -391,7 +394,8 @@ describe("Entity management tool integration", () => {
       const createTool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
       const created = (await createTool.execute!(
         {
@@ -465,7 +469,8 @@ describe("Entity management tool integration", () => {
       const createTool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
       const created = (await createTool.execute!(
         {
@@ -524,7 +529,8 @@ describe("Entity management tool integration", () => {
       const createTool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
       const created = (await createTool.execute!(
         {
@@ -571,7 +577,8 @@ describe("Entity management tool integration", () => {
       const createTool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
       const created = (await createTool.execute!(
         {
@@ -624,7 +631,8 @@ describe("Entity management tool integration", () => {
       const createTool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
       await createTool.execute!(
         {
@@ -701,7 +709,8 @@ describe("Entity management tool integration", () => {
       const createTool = new EntityRecordCreateTool().build(
         s.stationId,
         s.organizationId,
-        s.userId
+        s.userId,
+        null
       );
       await createTool.execute!(
         {

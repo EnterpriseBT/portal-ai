@@ -43,6 +43,8 @@ export const fieldMappings = pgTable(
     // Reference fields (populated when the mapped column has type "reference" or "reference-array")
     refNormalizedKey: text("ref_normalized_key"),
     refEntityKey: text("ref_entity_key"),
+    /** #641: the portal whose agent session created this row; null otherwise. Provenance only, never read by authorization. */
+    sourcePortalId: text("source_portal_id"),
   },
   (table) => [
     uniqueIndex("field_mappings_entity_normalized_key_unique")

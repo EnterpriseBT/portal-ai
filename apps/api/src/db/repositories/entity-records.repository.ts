@@ -787,7 +787,8 @@ export class EntityRecordsRepository extends Repository<
         "entity_records".id, "entity_records".organization_id,
         "entity_records".connector_entity_id, "entity_records".source_id,
         "entity_records".checksum, "entity_records".synced_at,
-        "entity_records".origin, "entity_records".validation_errors,
+        "entity_records".origin, "entity_records".source_portal_id,
+        "entity_records".validation_errors,
         "entity_records".is_valid, ${dataColumn}
         "entity_records".created, "entity_records".created_by,
         "entity_records".updated, "entity_records".updated_by,
@@ -864,7 +865,8 @@ export class EntityRecordsRepository extends Repository<
         "entity_records".id, "entity_records".organization_id,
         "entity_records".connector_entity_id, "entity_records".source_id,
         "entity_records".checksum, "entity_records".synced_at,
-        "entity_records".origin, "entity_records".validation_errors,
+        "entity_records".origin, "entity_records".source_portal_id,
+        "entity_records".validation_errors,
         "entity_records".is_valid, "entity_records".data,
         "entity_records".created, "entity_records".created_by,
         "entity_records".updated, "entity_records".updated_by,
@@ -915,6 +917,7 @@ function rowToListItem(
     checksum: r.checksum as string,
     syncedAt: r.synced_at as number,
     origin: r.origin as EntityRecordSelect["origin"],
+    sourcePortalId: (r.source_portal_id as string | null) ?? null,
     validationErrors:
       r.validation_errors as EntityRecordSelect["validationErrors"],
     isValid: r.is_valid as boolean,

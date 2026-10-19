@@ -750,10 +750,12 @@ export class ToolService {
       // Write tools are built here; the capability-driven write gate below
       // (#121) removes them when no attached connector instance permits
       // writes — replacing the pack-level `hasWrite` wrapper.
+      // #641: creating tools record the portal session as provenance.
       tools.entity_record_create = new EntityRecordCreateTool().build(
         stationId,
         organizationId,
-        userId
+        userId,
+        portalId ?? null
       );
       tools.entity_record_update = new EntityRecordUpdateTool().build(
         stationId,
@@ -765,7 +767,8 @@ export class ToolService {
       );
       tools.connector_entity_create = new ConnectorEntityCreateTool().build(
         stationId,
-        userId
+        userId,
+        portalId ?? null
       );
       tools.connector_entity_update = new ConnectorEntityUpdateTool().build(
         stationId,
@@ -778,7 +781,8 @@ export class ToolService {
       tools.field_mapping_create = new FieldMappingCreateTool().build(
         stationId,
         organizationId,
-        userId
+        userId,
+        portalId ?? null
       );
       tools.field_mapping_update = new FieldMappingUpdateTool().build(
         stationId,
@@ -813,15 +817,24 @@ export class ToolService {
     // per-tool service gate is the real enforcement.
     if (enabledPacks.has("rbac_management")) {
       tools.policy_list = new PolicyListTool().build(permissionContext);
-      tools.policy_create = new PolicyCreateTool().build(permissionContext);
+      tools.policy_create = new PolicyCreateTool().build(
+        permissionContext,
+        portalId ?? null
+      );
       tools.policy_update = new PolicyUpdateTool().build(permissionContext);
       tools.policy_delete = new PolicyDeleteTool().build(permissionContext);
       tools.role_list = new RoleListTool().build(permissionContext);
-      tools.role_create = new RoleCreateTool().build(permissionContext);
+      tools.role_create = new RoleCreateTool().build(
+        permissionContext,
+        portalId ?? null
+      );
       tools.role_update = new RoleUpdateTool().build(permissionContext);
       tools.role_delete = new RoleDeleteTool().build(permissionContext);
       tools.group_list = new GroupListTool().build(permissionContext);
-      tools.group_create = new GroupCreateTool().build(permissionContext);
+      tools.group_create = new GroupCreateTool().build(
+        permissionContext,
+        portalId ?? null
+      );
       tools.group_update = new GroupUpdateTool().build(permissionContext);
       tools.group_delete = new GroupDeleteTool().build(permissionContext);
       tools.group_set_members = new GroupSetMembersTool().build(

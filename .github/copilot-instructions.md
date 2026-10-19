@@ -59,6 +59,10 @@ New table workflow:
 4. Bidirectional `IsAssignable` checks in `type-checks.ts`
 5. `npm run db:generate -- --name <descriptive-name> && npm run db:migrate`
 
+## Ownership & provenance (#641)
+
+Ownership is `createdBy`; authorization reads nothing else. `SystemUtilities.id.system` (and the `created_by_system` condition) is only for platform seeds, org-provisioned defaults, billing/identity housekeeping and platform materializations, in the files `system-principal.guard.test.ts` allowlists. An object the agent creates in a portal session is owned by the prompting user and records the session as `sourcePortalId` (provenance only, never ownership); the web shows a "Created in a portal session" chip via core's `isSessionGenerated`. A new session-creating tool joins the guard's `SESSION_CREATING_TOOLS` and writes `sourcePortalId`. Jobs act as their creator (`resolveJobActor`), never `"SYSTEM"`.
+
 ## Repositories
 
 Extend `Repository<TTable, TSelect, TInsert>`. Base provides: `findById`, `findMany`, `count`, `create`, `createMany`, `update`, `updateWhere`, `updateMany`, `softDelete`, `hardDelete`, and more. Soft-delete aware — skips rows where `deleted IS NOT NULL`.

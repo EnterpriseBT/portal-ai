@@ -422,6 +422,23 @@ A new entry therefore ships with **two** things:
 
 **This is now mechanically enforced (#581).** A backfill-coverage test (`apps/api/src/__tests__/services/seed-backfill-coverage.test.ts`) fails CI if a `SYSTEM_COLUMN_DEFINITIONS` key is neither in the pre-guard baseline nor proven by a `-- backfill:system-column:<key>` marker in some `drizzle/*.sql`. Adding a key without the paired backfill therefore fails the build — it cannot silently strand existing orgs on upgrade the way #316 did. This is not hypothetical bookkeeping: #316 added three geospatial definitions with a schema-only migration and stranded four app-dev orgs, which is what #414 had to repair. The same rule applies to any table seeded per-organization rather than globally — global seeds (tiers, connector definitions) are covered by `SeedService.seed()` and `portalops db seed`, which are safe to re-run.
 
+### Ownership & provenance (#641)
+
+Ownership is `createdBy`, and authorization reads nothing else. Every object falls into one of three categories:
+
+- **Platform seed or provisioned default.** `createdBy = SystemUtilities.id.system`, which members read through the `created_by_system` condition. This covers tiers, connector definitions, system column definitions, system roles and policies, and the defaults provisioned into a new org (the Sandbox connector, My Station). Housekeeping writes (seats, billing, tier grants) and platform materializations (wide-table columns, dissolve geometries) use it too.
+- **Session-generated.** An object the agent creates in a portal session is owned by the **prompting user** (`createdBy = caller`) and records the session as `sourcePortalId`, on `connector_entities`, `field_mappings`, `entity_records`, `roles`, `permission_policies` and `groups`. It is provenance only: it never changes who owns, sees or can share the object. The web derives the "Created in a portal session" chip with `isSessionGenerated` from `@portalai/core` (a record the agent created before #641 counts through `origin = 'portal'`).
+- **User-created.** `createdBy = caller`, `sourcePortalId = null`.
+
+Never reach for the system principal on an object a user or an agent session created: it makes the object system-owned, so its creator loses `created_by_caller` and can't share it. A job acts as its creator (`resolveJobActor`), never a phantom `"SYSTEM"`.
+
+`system-principal.guard.test.ts` enforces this:
+- the system principal appears only in its `ALLOWED_SYSTEM` files, each with a reason, and the list only shrinks;
+- every tool in `SESSION_CREATING_TOOLS` is built with the session's `portalId`;
+- the authorization files never read `sourcePortalId`.
+
+A new tool that creates one of these types joins `SESSION_CREATING_TOOLS` and writes `sourcePortalId`. A new type a session can produce gets the column, the model field, and a chip.
+
 ### Indexing and ordering a table that will grow (#433)
 
 `created` is the default `sortBy` for **every** paginated list in the app (`usePagination`'s `defaultSortBy`), and before #433 **no table in the schema indexed it**. Every list endpoint was doing a full sort; it was only visible on `entity_records` because that was the only large table. Two rules follow, and they apply to any table that can grow:

@@ -36,6 +36,11 @@ import type {
 export interface RbacAuditContext {
   sourceIp: string | null;
   userAgent: string | null;
+  /**
+   * #641: the portal session behind an agent-initiated create, recorded on
+   * the new row as provenance. Absent on every REST and non-create path.
+   */
+  sourcePortalId?: string | null;
 }
 
 export class PolicyService {
@@ -159,6 +164,7 @@ export class PolicyService {
         resourceId: s.resourceId,
         condition: s.condition,
       })),
+      sourcePortalId: policy.sourcePortalId,
     };
   }
 
@@ -209,6 +215,7 @@ export class PolicyService {
         name: req.name,
         kind: "custom",
         description: req.description ?? null,
+        sourcePortalId: audit.sourcePortalId ?? null,
       })
       .parse();
     const rows = PolicyService.buildStatements(

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SourcePortalIdSchema } from "./provenance.model.js";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
@@ -16,6 +17,7 @@ export const ConnectorEntitySchema = CoreSchema.extend({
   connectorInstanceId: z.string(),
   key: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string(),
+  sourcePortalId: SourcePortalIdSchema,
 });
 
 export type ConnectorEntity = z.infer<typeof ConnectorEntitySchema>;

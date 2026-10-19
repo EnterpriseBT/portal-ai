@@ -64,11 +64,13 @@ type Item = {
   format?: string | null;
   enumValues?: string[] | null;
 };
-const exec = (input: { items: Item[] }) =>
-  new FieldMappingCreateTool().build("station-1", "org-1", "user-1").execute!(
-    input,
-    { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
-  );
+const exec = (input: { items: Item[] }, portalId: string | null = null) =>
+  new FieldMappingCreateTool().build("station-1", "org-1", "user-1", portalId)
+    .execute!(input, {
+    toolCallId: "t",
+    messages: [],
+    abortSignal: new AbortController().signal,
+  });
 
 describe("FieldMappingCreateTool", () => {
   it("single-item regression — upserts one mapping", async () => {
@@ -93,6 +95,31 @@ describe("FieldMappingCreateTool", () => {
         columnDefinitionId: "cd-1",
         sourceField: "Name",
         normalizedKey: "name",
+      }),
+      "mock-tx"
+    );
+  });
+
+  // #641: the portal session that ran the tool is recorded as provenance;
+  // the prompting user still owns the mapping.
+  it("records the portal session as provenance, owned by the caller (#641)", async () => {
+    await exec(
+      {
+        items: [
+          {
+            connectorEntityId: "ce-1",
+            columnDefinitionId: "cd-1",
+            sourceField: "Name",
+            normalizedKey: "name",
+          },
+        ],
+      },
+      "portal-1"
+    );
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createdBy: "user-1",
+        sourcePortalId: "portal-1",
       }),
       "mock-tx"
     );

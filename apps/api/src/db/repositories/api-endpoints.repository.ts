@@ -152,6 +152,8 @@ export class ApiEndpointsRepository extends Repository<
         connectorInstanceId: input.connectorInstanceId,
         key: input.key,
         label: input.label,
+        // A REST endpoint is configured by hand, never in a portal session (#641).
+        sourcePortalId: null,
       };
       await (tx as typeof db).insert(connectorEntities).values(entityRow);
 

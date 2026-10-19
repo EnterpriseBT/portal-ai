@@ -12,8 +12,20 @@ const baseProps = {
 };
 
 const rows = [
-  { id: "sys-1", name: "FullAccess", system: true, detail: "1 statement(s)" },
-  { id: "cus-1", name: "Analysts", system: false, detail: "2 statement(s)" },
+  {
+    id: "sys-1",
+    name: "FullAccess",
+    system: true,
+    detail: "1 statement(s)",
+    sessionGenerated: false,
+  },
+  {
+    id: "cus-1",
+    name: "Analysts",
+    system: false,
+    detail: "2 statement(s)",
+    sessionGenerated: false,
+  },
 ];
 
 describe("AccessAuthoringUI (#622)", () => {
@@ -62,5 +74,25 @@ describe("AccessAuthoringUI (#622)", () => {
   it("shows an empty state when there are no rows", () => {
     render(<AccessAuthoringUI {...baseProps} rows={[]} />);
     expect(screen.getByText(/No policies yet/i)).toBeInTheDocument();
+  });
+
+  // #641: provenance badge on a row the agent created.
+  it("badges a row an agent session created, and only that row", () => {
+    render(
+      <AccessAuthoringUI
+        {...baseProps}
+        rows={[
+          { ...rows[1], sessionGenerated: true },
+          {
+            id: "cus-2",
+            name: "Ops",
+            system: false,
+            detail: "1 statement",
+            sessionGenerated: false,
+          },
+        ]}
+      />
+    );
+    expect(screen.getAllByText("Created in a portal session")).toHaveLength(1);
   });
 });

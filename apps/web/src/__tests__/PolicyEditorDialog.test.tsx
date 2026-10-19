@@ -17,6 +17,7 @@ const policy = (kind: "system" | "custom") => ({
   kind,
   description: "Everything",
   statements: [statement],
+  sourcePortalId: null,
 });
 const props = {
   open: true,

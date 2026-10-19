@@ -106,6 +106,7 @@ export class GroupService {
       description: group.description,
       policyIds,
       memberCount,
+      sourcePortalId: group.sourcePortalId,
     };
   }
 
@@ -179,6 +180,7 @@ export class GroupService {
         organizationId: caller.organizationId,
         name: req.name,
         description: req.description ?? null,
+        sourcePortalId: audit.sourcePortalId ?? null,
       })
       .parse();
 

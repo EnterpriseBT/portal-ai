@@ -57,6 +57,8 @@ export const entityRecords = pgTable(
     validationErrors:
       jsonb("validation_errors").$type<{ field: string; error: string }[]>(),
     isValid: boolean("is_valid").notNull(),
+    /** #641: the portal whose agent session created this row; null otherwise. Provenance only, never read by authorization. */
+    sourcePortalId: text("source_portal_id"),
   },
   (table) => [
     uniqueIndex("entity_records_entity_source_unique")

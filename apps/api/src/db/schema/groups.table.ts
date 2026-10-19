@@ -18,6 +18,8 @@ export const groups = pgTable(
       .references(() => organizations.id),
     name: text("name").notNull(),
     description: text("description"),
+    /** #641: the portal whose agent session created this row; null otherwise. Provenance only, never read by authorization. */
+    sourcePortalId: text("source_portal_id"),
   },
   (t) => [
     uniqueIndex("groups_org_name_unique")

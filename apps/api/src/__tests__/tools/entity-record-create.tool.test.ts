@@ -108,11 +108,13 @@ type ItemInput = {
   sourceId?: string;
   data: Record<string, unknown>;
 };
-const exec = (input: { items: ItemInput[] }) =>
-  new EntityRecordCreateTool().build("station-1", "org-1", "user-1").execute!(
-    input,
-    { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
-  );
+const exec = (input: { items: ItemInput[] }, portalId: string | null = null) =>
+  new EntityRecordCreateTool().build("station-1", "org-1", "user-1", portalId)
+    .execute!(input, {
+    toolCallId: "t",
+    messages: [],
+    abortSignal: new AbortController().signal,
+  });
 
 describe("EntityRecordCreateTool", () => {
   it("#757: a geometry the wide table refuses fails the call, naming the field", async () => {
@@ -233,6 +235,25 @@ describe("EntityRecordCreateTool", () => {
           connectorEntityId: "ce-1",
           origin: "portal",
           checksum: "manual",
+        }),
+      ],
+      "mock-tx"
+    );
+  });
+
+  // #641: the portal session that ran the tool is recorded as provenance;
+  // the prompting user still owns the record.
+  it("records the portal session as provenance, owned by the caller (#641)", async () => {
+    await exec(
+      { items: [{ connectorEntityId: "ce-1", data: { Name: "Jane" } }] },
+      "portal-1"
+    );
+    expect(mockCreateMany).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          createdBy: "user-1",
+          origin: "portal",
+          sourcePortalId: "portal-1",
         }),
       ],
       "mock-tx"

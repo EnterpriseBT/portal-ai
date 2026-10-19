@@ -52,7 +52,7 @@ describe("rbac_management tools — integration (#629)", () => {
   ): Promise<Executable> {
     const set = await PermissionService.loadSet(ctx);
     const tools: Record<string, GateableTool> = {
-      policy_create: new PolicyCreateTool().build(ctx) as GateableTool,
+      policy_create: new PolicyCreateTool().build(ctx, null) as GateableTool,
     };
     wrapWithPermissionGate(
       tools,

@@ -26,6 +26,8 @@ export const connectorEntities = pgTable(
       .references(() => connectorInstances.id),
     key: text("key").notNull(),
     label: text("label").notNull(),
+    /** #641: the portal whose agent session created this row; null otherwise. Provenance only, never read by authorization. */
+    sourcePortalId: text("source_portal_id"),
   },
   (table) => [
     uniqueIndex("connector_entities_org_key_unique")

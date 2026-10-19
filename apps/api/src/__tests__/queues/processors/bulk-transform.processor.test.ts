@@ -81,6 +81,19 @@ jest.unstable_mockModule("../../../services/cost-gate.service.js", () => ({
   resolveCallCost: mockResolveCallCost,
 }));
 
+// #641: the processor resolves its actor through resolveJobActor, which reads
+// the job row when the metadata carries no userId. Stand in for the row.
+const mockResolveJobActor = jest.fn(
+  async (_jobId: string, userId: string | undefined) =>
+    userId ?? "job-row-creator"
+);
+jest.unstable_mockModule(
+  "../../../queues/processors/job-actor.util.js",
+  () => ({
+    resolveJobActor: mockResolveJobActor,
+  })
+);
+
 const { bulkTransformProcessor } =
   await import("../../../queues/processors/bulk-transform.processor.js");
 
@@ -741,6 +754,17 @@ describe("bulkTransformProcessor — charge on job success (#183)", () => {
       stationId: "",
       portalId: null,
     });
+  });
+
+  // #641: a job enqueued without a userId acts as its row's creator, never
+  // the phantom "SYSTEM".
+  it("charges the job row's creator when the metadata has no userId (#641)", async () => {
+    await bulkTransformProcessor(makeJob({}));
+
+    expect(mockResolveJobActor).toHaveBeenCalledWith("job-bt-001", undefined);
+    expect(mockCommitCharge).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: { userId: "job-row-creator" } })
+    );
   });
 
   // case 13 (#179) — the deferred charge threads the enqueue metadata's

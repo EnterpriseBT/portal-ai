@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SourcePortalIdSchema } from "./provenance.model.js";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
@@ -26,6 +27,8 @@ export const FieldMappingSchema = CoreSchema.extend({
   // Reference fields (populated when the mapped column has type "reference" or "reference-array")
   refNormalizedKey: z.string().nullable(),
   refEntityKey: z.string().nullable(),
+
+  sourcePortalId: SourcePortalIdSchema,
 });
 
 export type FieldMapping = z.infer<typeof FieldMappingSchema>;

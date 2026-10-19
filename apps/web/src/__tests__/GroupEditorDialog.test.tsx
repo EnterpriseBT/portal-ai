@@ -57,6 +57,7 @@ const editGroup = {
   description: null,
   policyIds: [],
   memberCount: 1,
+  sourcePortalId: null,
 };
 
 beforeEach(() => {
