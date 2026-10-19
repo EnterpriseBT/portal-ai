@@ -386,10 +386,10 @@ function buildTypedEnumCondition(
 
 /**
  * Escapes LIKE's wildcards (`%`, `_`) and its escape character, so a
- * contains / starts_with / ends_with value matches literally (#678). Paired
- * with an explicit `ESCAPE '\'`.
+ * contains / starts_with / ends_with value, or an entity records search term
+ * (#821), matches literally (#678). Paired with an explicit `ESCAPE '\'`.
  */
-function escapeLike(value: string): string {
+export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 

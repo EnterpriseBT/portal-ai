@@ -430,73 +430,12 @@ describe("WideTableStatementCache integration tests", () => {
     expect(stmt.columnRefByNormalizedKey.get("not_a_key")).toBeUndefined();
   });
 
-  // ── Case 14 — searchableConcatSql skips numeric / boolean ────────
-
-  it("searchableConcatSql includes text columns and excludes numeric / boolean", async () => {
-    await seedAmountAndStageColumns();
-    const stmt = await cache.get(connectorEntityId, db);
-
-    const expr = stmt.searchableConcatSql();
-    expect(expr).toContain("concat_ws(' '");
-    expect(expr).toContain(`"w"."c_stage"::text`);
-    expect(expr).not.toContain(`"w"."c_amount"`); // numeric — excluded
-  });
-
-  // ── Case 15 — searchableConcatSql arrays use array_to_string ─────
-
-  it("searchableConcatSql arrays use array_to_string", async () => {
-    // Repoint field-mapping[2] to a text[] column.
-    const { sql: drizzleSql } = await import("drizzle-orm");
-    const dbTyped = db as ReturnType<typeof drizzle>;
-    await dbTyped
-      .update(schema.fieldMappings)
-      .set({ normalizedKey: "tags" } as never)
-      .where(drizzleSql`${schema.fieldMappings.id} = ${fieldMappingIds[2]!}`);
-    await columnsRepo.create(
-      makeCol({
-        columnName: "c_tags",
-        created: 1_000,
-        fieldMappingId: fieldMappingIds[2]!,
-        pgType: "text[]",
-      }),
-      db
-    );
-
-    const stmt = await cache.get(connectorEntityId, db);
-    const expr = stmt.searchableConcatSql();
-    expect(expr).toContain(`array_to_string("w"."c_tags", ' ')`);
-  });
-
-  // ── Case 16 — searchableConcatSql jsonb cast to text ─────────────
-
-  it("searchableConcatSql jsonb columns cast to text", async () => {
-    const { sql: drizzleSql } = await import("drizzle-orm");
-    const dbTyped = db as ReturnType<typeof drizzle>;
-    await dbTyped
-      .update(schema.fieldMappings)
-      .set({ normalizedKey: "payload" } as never)
-      .where(drizzleSql`${schema.fieldMappings.id} = ${fieldMappingIds[0]!}`);
-    await columnsRepo.create(
-      makeCol({
-        columnName: "c_payload",
-        created: 1_000,
-        fieldMappingId: fieldMappingIds[0]!,
-        pgType: "jsonb",
-      }),
-      db
-    );
-
-    const stmt = await cache.get(connectorEntityId, db);
-    const expr = stmt.searchableConcatSql();
-    expect(expr).toContain(`"w"."c_payload"::text`);
-  });
-
   // ── Case 17 — invalidate rebuilds the new fields ─────────────────
 
-  it("invalidate rebuilds searchableConcatSql when columns retire", async () => {
+  it("invalidate drops a retired column from columns and the key map", async () => {
     await seedAmountAndStageColumns();
     const stmt1 = await cache.get(connectorEntityId, db);
-    expect(stmt1.searchableConcatSql()).toContain(`"w"."c_stage"::text`);
+    expect(stmt1.columns.map((c) => c.columnName)).toContain("c_stage");
 
     // Retire the text column.
     const liveCols = await columnsRepo.findByConnectorEntityId(
@@ -510,9 +449,9 @@ describe("WideTableStatementCache integration tests", () => {
     cache.invalidate(connectorEntityId);
     const stmt2 = await cache.get(connectorEntityId, db);
 
-    // c_stage is retired — searchable list drops it; with only c_amount
-    // (numeric) remaining, the expression collapses to the empty literal.
-    expect(stmt2.searchableConcatSql()).toBe(`''`);
+    // c_stage is retired, so the columns entity search reads (#821) drop it
+    // and only c_amount (numeric) remains.
+    expect(stmt2.columns.map((c) => c.columnName)).toEqual(["c_amount"]);
     expect(stmt2.columnRefByNormalizedKey.has("stage")).toBe(false);
   });
 });
