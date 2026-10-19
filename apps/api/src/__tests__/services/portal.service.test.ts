@@ -126,6 +126,12 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveEntityCapabilities: mockResolveEntityCapabilities,
   // #824: each connector in the prompt context carries `writable`.
   resolveCapabilities: () => ({ read: true, write: true, push: false }),
+  resolveStationCapabilities: async () => [
+    {
+      connectorInstanceId: "ci-1",
+      capabilities: { read: true, write: true, push: false },
+    },
+  ],
 }));
 
 // #599: buildStationContext scopes its entities to the caller's granted

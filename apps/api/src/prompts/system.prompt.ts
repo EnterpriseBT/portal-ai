@@ -89,6 +89,11 @@ export interface StationContext {
    *  `connectorInstanceId`. Empty array is fine (no entity-mgmt tool
    *  call possible). */
   connectorInstances?: ConnectorInstanceContext[];
+  /** #824: whether any connector the station reaches, attached directly or
+   *  through its views, allows writes. Computed from the same
+   *  `resolveStationCapabilities` the write gate uses, so the prompt says
+   *  writes are off exactly when the gate withheld the write tools. */
+  stationWritable?: boolean;
   /** IANA timezone for the org owning this portal. Always present;
    *  resolved at session start and falls back to "UTC" if the stored
    *  value isn't a recognized IANA name. The system prompt names it so
@@ -940,25 +945,23 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
   }
 
-  // #824: the write gate withholds the entity write tools when no attached
-  // connector allows writes. Say so, or the agent infers the missing tools
-  // are a plan limit and sends the user to billing.
+  // #824: the write gate withholds the entity write tools when no connector
+  // the station reaches allows writes. Say so, or the agent infers the
+  // missing tools are a plan limit and sends the user to billing.
   if (
     stationContext.effectiveToolPacks.includes("entity_management") &&
-    stationContext.connectorInstances &&
-    !stationContext.connectorInstances.some((c) => c.writable)
+    stationContext.stationWritable === false
   ) {
     lines.push("## Read-only connectors");
     lines.push("");
     lines.push(
-      (stationContext.connectorInstances.length === 0
-        ? "No connector is attached to this station, so "
-        : "No connector attached to this station allows writes, so ") +
-        "the entity create, update and delete tools are not available in " +
-        "this session. If the user asks to create or change entities, field " +
-        "mappings or records, say that, and that they can enable writes on " +
-        "a connector or attach a write-enabled one to this station. It is " +
-        "not a plan limit: don't point them at their plan or billing."
+      "No connector this station reaches, attached directly or through its " +
+        "views, allows writes, so the entity create, update and delete " +
+        "tools are not available in this session. If the user asks to " +
+        "create or change entities, field mappings or records, say that, " +
+        "and that they can enable writes on a connector or attach a " +
+        "write-enabled one to this station. It is not a plan limit: don't " +
+        "point them at their plan or billing."
     );
     lines.push("");
   }

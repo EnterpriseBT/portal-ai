@@ -40,6 +40,7 @@ import {
 import {
   resolveCapabilities,
   resolveEntityCapabilities,
+  resolveStationCapabilities,
 } from "../utils/resolve-capabilities.util.js";
 import { isValidIanaTimezone } from "../utils/timezone.util.js";
 import { getRedisClient } from "../utils/redis.util.js";
@@ -1281,6 +1282,13 @@ export async function buildStationContext(args: {
     entityManagementAvailable
       ? await loadConnectorInstanceContexts(station.id)
       : undefined;
+  // #824: the same resolution the write gate uses, so the prompt says writes
+  // are off exactly when the gate withheld the write tools.
+  const stationWritable = entityManagementAvailable
+    ? (await resolveStationCapabilities(station.id)).some(
+        (c) => c.capabilities.write
+      )
+    : undefined;
   const organizationTimezone = await loadOrganizationTimezone(organizationId);
 
   // #599: the roster shows the caller's granted curated views (view key is the
@@ -1329,6 +1337,7 @@ export async function buildStationContext(args: {
     customToolPacks,
     entityCapabilities,
     connectorInstances,
+    stationWritable,
     // #674: attachment counts for the empty-station lines.
     attachments: await StationAttachmentService.countsForCaller(
       station.id,
