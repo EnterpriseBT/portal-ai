@@ -104,6 +104,8 @@ const {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // #824: no directly attached connectors unless a case seeds them.
+  mockFindByStationId.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -341,6 +343,53 @@ describe("resolveStationCapabilities", () => {
 // ---------------------------------------------------------------------------
 // assertStationScope
 // ---------------------------------------------------------------------------
+
+// #824: the write gate counts the station's directly attached connectors as
+// well as those behind its views, matching the per-tool scope checks
+// (assertStationScope, the entity-create tool), which use station_instances.
+describe("resolveStationCapabilities — attached connectors (#824)", () => {
+  const writableInstance = () => {
+    mockConnInstanceFindById.mockResolvedValue({
+      id: "ci-1",
+      connectorDefinitionId: "cd-1",
+      enabledCapabilityFlags: null,
+    });
+    mockConnDefFindById.mockResolvedValue({
+      id: "cd-1",
+      capabilityFlags: { read: true, write: true },
+    });
+  };
+
+  it("resolves a directly attached connector on a station with no views", async () => {
+    seedViewChain([]);
+    mockFindByStationId.mockResolvedValue([{ connectorInstanceId: "ci-1" }]);
+    writableInstance();
+
+    expect(await resolveStationCapabilities("station-1")).toEqual([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true, push: false },
+      },
+    ]);
+  });
+
+  it("lists an instance reached both directly and through a view once", async () => {
+    seedViewChain([{ entityId: "e-1", connectorInstanceId: "ci-1" }]);
+    mockFindByStationId.mockResolvedValue([{ connectorInstanceId: "ci-1" }]);
+    writableInstance();
+
+    const result = await resolveStationCapabilities("station-1");
+    expect(result.map((r) => r.connectorInstanceId)).toEqual(["ci-1"]);
+  });
+
+  it("keeps an instance reached only through a view", async () => {
+    seedViewChain([{ entityId: "e-1", connectorInstanceId: "ci-1" }]);
+    writableInstance();
+
+    const result = await resolveStationCapabilities("station-1");
+    expect(result.map((r) => r.connectorInstanceId)).toEqual(["ci-1"]);
+  });
+});
 
 describe("assertStationScope", () => {
   it("passes for entity belonging to an attached instance", async () => {

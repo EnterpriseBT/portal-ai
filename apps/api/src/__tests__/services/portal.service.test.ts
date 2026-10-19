@@ -124,6 +124,14 @@ jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveEntityCapabilities: mockResolveEntityCapabilities,
+  // #824: each connector in the prompt context carries `writable`.
+  resolveCapabilities: () => ({ read: true, write: true, push: false }),
+  resolveStationCapabilities: async () => [
+    {
+      connectorInstanceId: "ci-1",
+      capabilities: { read: true, write: true, push: false },
+    },
+  ],
 }));
 
 // #599: buildStationContext scopes its entities to the caller's granted
@@ -867,6 +875,7 @@ describe("PortalService", () => {
           name: "NASA NeoWs",
           display: "REST API",
           slug: "rest-api",
+          writable: true,
         },
       ]);
       expect(ctx.entityCapabilities).toEqual({
@@ -1034,6 +1043,7 @@ describe("PortalService", () => {
           name: "Late-bound",
           display: "REST API",
           slug: "rest-api",
+          writable: true,
         },
       ]);
     });

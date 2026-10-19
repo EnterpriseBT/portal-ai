@@ -37,6 +37,10 @@ export interface ConnectorInstanceContext {
   display: string;
   /** Machine slug, e.g. "rest-api". */
   slug: string;
+  /** #824: whether this connector allows writes (definition ceiling ∩
+   *  instance flags). With none writable, the entity write tools are withheld
+   *  and the prompt says why. */
+  writable: boolean;
 }
 
 export interface StationContext {
@@ -85,6 +89,11 @@ export interface StationContext {
    *  `connectorInstanceId`. Empty array is fine (no entity-mgmt tool
    *  call possible). */
   connectorInstances?: ConnectorInstanceContext[];
+  /** #824: whether any connector the station reaches, attached directly or
+   *  through its views, allows writes. Computed from the same
+   *  `resolveStationCapabilities` the write gate uses, so the prompt says
+   *  writes are off exactly when the gate withheld the write tools. */
+  stationWritable?: boolean;
   /** IANA timezone for the org owning this portal. Always present;
    *  resolved at session start and falls back to "UTC" if the stored
    *  value isn't a recognized IANA name. The system prompt names it so
@@ -932,6 +941,27 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "`id`, `name`, `display`, and `slug`. Never invent a " +
         "`connectorInstanceId`, never ask the user — the value is in " +
         "the tool response."
+    );
+    lines.push("");
+  }
+
+  // #824: the write gate withholds the entity write tools when no connector
+  // the station reaches allows writes. Say so, or the agent infers the
+  // missing tools are a plan limit and sends the user to billing.
+  if (
+    stationContext.effectiveToolPacks.includes("entity_management") &&
+    stationContext.stationWritable === false
+  ) {
+    lines.push("## Read-only connectors");
+    lines.push("");
+    lines.push(
+      "No connector this station reaches, attached directly or through its " +
+        "views, allows writes, so the entity create, update and delete " +
+        "tools are not available in this session. If the user asks to " +
+        "create or change entities, field mappings or records, say that, " +
+        "and that they can enable writes on a connector or attach a " +
+        "write-enabled one to this station. It is not a plan limit: don't " +
+        "point them at their plan or billing."
     );
     lines.push("");
   }

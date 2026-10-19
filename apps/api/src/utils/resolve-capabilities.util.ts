@@ -92,10 +92,22 @@ export interface StationInstanceCapability {
 export async function resolveStationCapabilities(
   stationId: string
 ): Promise<StationInstanceCapability[]> {
-  // #599: a station's data attachment is its curated views (`station_views`),
-  // not connector instances. The instance set is derived through
+  // #599: a station's data attachment is its curated views (`station_views`):
   // station_views → curated_view → connector_entity → connector_instance.
-  const instanceIds = await instanceIdsForStation(stationId);
+  // #824: writes also go through the connectors attached to the station
+  // directly (`station_instances`), which is what the write tools check
+  // (`assertStationScope`, the entity-create tool). Counting only the views
+  // made a station with none lose every write tool its connectors allow.
+  const [viewInstanceIds, links] = await Promise.all([
+    instanceIdsForStation(stationId),
+    stationInstancesRepo.findByStationId(stationId),
+  ]);
+  const instanceIds = [
+    ...new Set([
+      ...links.map((l) => l.connectorInstanceId),
+      ...viewInstanceIds,
+    ]),
+  ];
   if (instanceIds.length === 0) return [];
 
   // Load definitions for all instances
