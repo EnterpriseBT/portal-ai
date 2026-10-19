@@ -13,6 +13,7 @@ import { createLogger } from "../../utils/logger.util.js";
 import { BATCH_ROW_PAYLOAD_LIMIT } from "@portalai/core/constants";
 import { dispatchBatch } from "./bulk-transform-tool.dispatcher.js";
 import { shapeWritesForRecord } from "./bulk-transform-writes.util.js";
+import { resolveJobActor } from "./job-actor.util.js";
 import type {
   BulkTransformResult,
   BulkTransformWrite,
@@ -55,11 +56,13 @@ export const bulkTransformProcessor: TypedJobProcessor<
   // a Record, so the field arrives as part of `bullJob.data`.)
   const organizationId = (bullJob.data as unknown as { organizationId: string })
     .organizationId;
-  // Stamped into the entity_records audit columns on each batch insert.
-  // Defaults to "SYSTEM" for back-compat with jobs enqueued before the
-  // tool started forwarding userId in metadata.
-  const userId =
-    (bullJob.data as unknown as { userId?: string }).userId ?? "SYSTEM";
+  // Stamped into the entity_records audit columns on each batch insert, and
+  // the charge's actor. A job enqueued before the tool forwarded userId acts
+  // as its row's creator (#641), never a phantom system actor.
+  const userId = await resolveJobActor(
+    jobId,
+    (bullJob.data as unknown as { userId?: string }).userId
+  );
 
   logger.info(
     {
