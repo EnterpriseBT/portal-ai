@@ -505,7 +505,12 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             </Stack>
           }
         >
-          <PaginationToolbar {...pagination.toolbarProps} />
+          <PaginationToolbar
+            {...pagination.toolbarProps}
+            // #821: search matches text columns only (the trigram-indexed
+            // ones), as on views; other values are reached through filters.
+            searchPlaceholder="Search text columns"
+          />
 
           <Box sx={{ mt: 2 }}>
             <EntityRecordDataTable

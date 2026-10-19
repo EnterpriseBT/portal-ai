@@ -34,6 +34,7 @@ import {
   buildFilterSqlForEntity,
   buildSortExpression,
   isFilterError,
+  escapeLike,
 } from "../utils/filter-sql.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -181,8 +182,11 @@ async function resolveEntityOrThrow(
  *         name: search
  *         schema: { type: string }
  *         description: >
- *           Case-insensitive substring match across the entity's text-shaped
- *           columns.
+ *           Case-insensitive literal substring match across the entity's
+ *           text columns (string, enum and reference; #821). `%` and `_`
+ *           match themselves. Array, json and reference-array cells aren't
+ *           searched; reach them with `filters`. An entity with no text
+ *           column matches nothing.
  *       - in: query
  *         name: columns
  *         schema: { type: string }
@@ -266,11 +270,25 @@ entityRecordRouter.get(
       }
 
       if (search) {
-        const concatExpr = stmt.searchableConcatSql("w");
-        // Empty searchable set collapses to `''`, which never matches a
-        // non-empty pattern. The wrapping `WHERE` is still well-formed.
+        // #821: a case-insensitive **literal** substring across the entity's
+        // text columns (string/enum/reference), as curated-view search does
+        // (#649). Each column is matched on its own with no cast, so its
+        // trigram index serves the branch; one unindexed branch (an array or
+        // json cell cast to text) would scan the table anyway, so those are
+        // reached through typed filters instead. `\ % _` are escaped so the
+        // term matches literally. With no text column a search matches
+        // nothing rather than being silently ignored.
+        const term = `%${escapeLike(search)}%`;
+        const clauses = stmt.columns
+          .filter((c) => c.pgType === "text")
+          .map(
+            (c) =>
+              sql`${sql.raw(`"w"."${c.columnName.replace(/"/g, '""')}"`)} ILIKE ${term} ESCAPE '\\'`
+          );
         conditions.push(
-          sql`${sql.raw(concatExpr)} ILIKE ${"%" + search + "%"}`
+          clauses.length > 0
+            ? sql`(${sql.join(clauses, sql` OR `)})`
+            : sql`FALSE`
         );
       }
 

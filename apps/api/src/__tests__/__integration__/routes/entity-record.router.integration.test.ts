@@ -3655,3 +3655,181 @@ describe("Entity Record Router — array and json columns (#761)", () => {
     });
   });
 });
+
+// #821: search ILIKEd one concat over every text-shaped column, which no
+// index serves, and didn't escape the term, so `%` matched every row. It now
+// matches each text column (string/enum/reference) on its own, with no cast,
+// so the per-column trigram indexes serve it, and `\ % _` match literally.
+describe("Entity Record Router — search (#821)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  const recordsUrl = (id: string) => `/api/connector-entities/${id}/records`;
+
+  async function seedEntity(
+    columns: ReadonlyArray<readonly [string, string]>,
+    records: Array<Record<string, unknown>>
+  ) {
+    const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+    const def = createConnectorDefinition();
+    await db.insert(connectorDefinitions).values(def as never);
+    const inst = createConnectorInstance(def.id, organizationId);
+    await db.insert(connectorInstances).values(inst as never);
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+    for (const [key, type] of columns) {
+      const colDef = createColumnDef(organizationId, key, type);
+      await db.insert(columnDefinitions).values(colDef as never);
+      await db
+        .insert(fieldMappings)
+        .values(
+          createFieldMapping(organizationId, entity.id, colDef.id, key) as never
+        );
+    }
+    wideTableStatementCache.clear();
+    await wideTableReconcilerService.reconcileEntity(
+      entity.id,
+      db as unknown as DbClient
+    );
+    await insertEntityRecordsWithWide(
+      db,
+      entity.id,
+      records.map((data, i) =>
+        createEntityRecord(
+          organizationId,
+          entity.id,
+          data,
+          String(i + 1),
+          userId
+        )
+      )
+    );
+    return entity.id;
+  }
+
+  const seedContacts = () =>
+    seedEntity(
+      [
+        ["name", "string"],
+        ["city", "string"],
+        ["tags", "array"],
+        ["refs", "reference-array"],
+        ["meta", "json"],
+      ],
+      [
+        { name: "Okafor", city: "100%_off" },
+        { name: "Patel", city: "Boston" },
+        { name: "O'Brien", city: "back\\slash" },
+        {
+          name: "Chen",
+          city: null,
+          tags: ["needle-tag"],
+          refs: ["needle-ref"],
+          meta: { k: "needle-json" },
+        },
+        { name: "Kim", city: "50 percent" },
+      ]
+    );
+
+  async function search(connectorEntityId: string, term: string) {
+    const res = await request(app)
+      .get(recordsUrl(connectorEntityId))
+      .query({ limit: 100, search: term })
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(200);
+    return {
+      total: res.body.payload.total as number,
+      names: (
+        res.body.payload.records as Array<{
+          normalizedData: Record<string, unknown>;
+        }>
+      )
+        .map((r) => r.normalizedData.name)
+        .sort(),
+    };
+  }
+
+  it.each([["%"], ["_"], ["0%_"]])(
+    "a LIKE wildcard in the term (%s) matches only cells that contain it",
+    async (term) => {
+      const id = await seedContacts();
+      expect(await search(id, term)).toEqual({ total: 1, names: ["Okafor"] });
+    }
+  );
+
+  it.each([["\\"], ["'"]])(
+    "a backslash or quote in the term (%s) matches literally",
+    async (term) => {
+      const id = await seedContacts();
+      expect(await search(id, term)).toEqual({ total: 1, names: ["O'Brien"] });
+    }
+  );
+
+  it("matches any text column, case-insensitively", async () => {
+    const id = await seedContacts();
+    expect(await search(id, "BOST")).toEqual({ total: 1, names: ["Patel"] });
+    expect(await search(id, "o")).toEqual({
+      total: 3,
+      names: ["O'Brien", "Okafor", "Patel"],
+    });
+  });
+
+  it("doesn't match a value held only in an array, json or reference-array column", async () => {
+    const id = await seedContacts();
+    expect(await search(id, "needle")).toEqual({ total: 0, names: [] });
+  });
+
+  it("matches nothing on an entity with no text column", async () => {
+    const id = await seedEntity(
+      [
+        ["score", "number"],
+        ["meta", "json"],
+      ],
+      [
+        { score: "1", meta: { k: "1" } },
+        { score: "12", meta: { k: "x" } },
+      ]
+    );
+    expect(await search(id, "1")).toEqual({ total: 0, names: [] });
+  });
+
+  it("walks a search by keyset cursor, every match exactly once", async () => {
+    const id = await seedContacts();
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let total = -1;
+    for (let page = 0; page < 10; page++) {
+      const res: request.Response = await request(app)
+        .get(recordsUrl(id))
+        .query({
+          limit: 1,
+          search: "o",
+          sortBy: "created",
+          sortOrder: "asc",
+          ...(cursor ? { cursor } : {}),
+        })
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+      total = res.body.payload.total;
+      for (const r of res.body.payload.records) seen.push(r.id);
+      cursor = res.body.payload.nextCursor;
+      if (!cursor) break;
+    }
+    expect(total).toBe(3);
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen).size).toBe(3);
+  });
+});

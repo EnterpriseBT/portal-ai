@@ -76,13 +76,6 @@ export interface CachedStatements {
    * key to its underlying typed column.
    */
   columnRefByNormalizedKey: Map<string, AliasedExprBuilder>;
-  /**
-   * ILIKE-able `concat_ws` expression over text-shaped data columns —
-   * scalar `text` casts to text, `text[]` uses `array_to_string(col, ' ')`,
-   * `jsonb` casts to text. Returns `''` (empty string literal expression)
-   * when no text-shaped columns exist.
-   */
-  searchableConcatSql: AliasedExprBuilder;
 }
 
 /**
@@ -102,9 +95,6 @@ export const WIDE_TABLE_METADATA_COLUMNS = [
 ] as const;
 
 const METADATA_SET = new Set<string>(WIDE_TABLE_METADATA_COLUMNS);
-
-/** Postgres types that the searchable-concat expression projects. */
-const SEARCHABLE_PG_TYPES = new Set<string>(["text", "text[]", "jsonb"]);
 
 /** Quote a Postgres identifier. */
 function quoteIdent(name: string): string {
@@ -182,26 +172,6 @@ function selectProjection(columnName: string, pgType: string): string {
  */
 function readValueExpr(ref: string, pgType: string): string {
   return isGeometryPgType(pgType) ? `ST_AsGeoJSON(${ref})::jsonb` : ref;
-}
-
-/**
- * Emit the per-column searchable fragment given the column's pgType.
- * Caller wraps the result list inside `concat_ws(' ', …)`.
- */
-function searchableFragment(
-  columnName: string,
-  pgType: string,
-  alias: string
-): string {
-  const ref = `${quoteIdent(alias)}.${quoteIdent(columnName)}`;
-  switch (pgType) {
-    case "text[]":
-      return `array_to_string(${ref}, ' ')`;
-    case "jsonb":
-    case "text":
-    default:
-      return `${ref}::text`;
-  }
 }
 
 export class WideTableStatementCache {
@@ -405,17 +375,6 @@ export class WideTableStatementCache {
       );
     }
 
-    const searchableCols = cols.filter((c) =>
-      SEARCHABLE_PG_TYPES.has(c.pgType)
-    );
-    const searchableConcatSql: AliasedExprBuilder = (alias = "w") => {
-      if (searchableCols.length === 0) return `''`;
-      const frags = searchableCols.map((c) =>
-        searchableFragment(c.columnName, c.pgType, alias)
-      );
-      return `concat_ws(' ', ${frags.join(", ")})`;
-    };
-
     // Sanity: any caller that passes a metadata column as a normalizedKey
     // gets a focused error rather than a silent miss. (Unlikely in practice
     // — METADATA_SET is fixed and disjoint from sanitized user keys.)
@@ -432,7 +391,6 @@ export class WideTableStatementCache {
       schemaVersion: this.versions.get(connectorEntityId) ?? 0,
       normalizedDataJsonbExpr,
       columnRefByNormalizedKey,
-      searchableConcatSql,
     };
   }
 }
