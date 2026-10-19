@@ -229,7 +229,16 @@ export const CuratedViewDetail: React.FC = () => {
   }, [recordsResult.data?.columns]);
   React.useEffect(() => {
     setErrorCode(toServerError(recordsResult.error)?.code ?? null);
-  }, [recordsResult.error]);
+    // #649: a records 404 means the view is gone for this caller (deleted, or
+    // access revoked, under the open page), but its own query is still cached
+    // and fresh. Refetch it so the page shows "View not found" rather than
+    // the view's header over an empty table.
+    if (recordsResult.error?.status === 404) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.curatedViews.get(viewId),
+      });
+    }
+  }, [recordsResult.error, queryClient, viewId]);
 
   React.useEffect(() => {
     if (recordsResult.data?.total !== undefined) {
