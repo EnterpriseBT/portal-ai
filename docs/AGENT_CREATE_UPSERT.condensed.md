@@ -69,3 +69,36 @@ The fix: the agent's **create** tools only create, and changing an existing obje
 
 - The shared repository upserts' null `updatedBy` on their update branch, used by layout-plan commit, reconcile and demo seed. Those are system flows; a follow-up if their audit trail matters.
 - A REST `POST /api/connector-entities` on a taken key probably surfaces as `500 CONNECTOR_ENTITY_CREATE_FAILED` (the unique-index error is wrapped as a 500 in its catch) rather than a `409`. Unverified; a separate bug if confirmed.
+
+## Adversarial
+
+Probes for how the fix breaks. Each runs the agent tool as a session builds it (every gate wraps it), on a station that reaches Sandbox. A `— backend` probe is a direct tool call or SQL check rather than a portal prompt.
+
+### §2 — Malformed input
+- [ ] Create with a key differing only in case from an existing one (`Smoke_Widgets` against `smoke_widgets`). Expected SAFE: refused by the key schema (lowercase only), nothing written. A case variant can never slip past the existence check into a second row. — backend
+
+### §3 — Concurrency
+- [ ] Two `connector_entity_create` calls for the same **new** key, fired concurrently. Expected SAFE: exactly one row. The other call is refused as "already exists" (pre-check or the unique index), and neither call updates the other's row. — backend
+- [ ] The same for `field_mapping_create` on one entity and a new `normalizedKey`. Expected SAFE: one mapping, one refusal. — backend
+
+### §4 — Auth boundaries
+- [ ] As the **member**, `connector_entity_create` on the owner's existing key. Expected SAFE: refused, the owner's row byte-identical, no entity id in the result. — backend
+- [ ] As the **member**, `field_mapping_create` on the owner's existing mapping key, with a different `sourceField` and `isPrimaryKey: true`. Expected SAFE: refused, the mapping unchanged. — backend
+- [ ] As the **member**, `connector_entity_update` on the owner's entity, the path the refusal points to. Expected SAFE: refused by the per-object permission check (the member has no write on it), and the row is unchanged. The pointer never becomes a way around the gate. — backend
+
+### §5 — Multi-tenant
+- [ ] A key that exists only in **another org**. Expected SAFE: the create in this org succeeds as a new row. The other org's row is untouched, and the refusal never fires across orgs. — backend
+
+### §6 — Lifecycle
+- [ ] Create over a **soft-deleted** entity's key. Expected SAFE: a new row with a new id. The deleted row stays deleted and unchanged; it's neither resurrected nor modified. — backend
+
+### §7 — Misuse sequences
+- [ ] One call with the same new key twice. Expected SAFE: refused with "This batch repeats key", naming item 1, and nothing written. — backend
+- [ ] One call mixing a new key with an existing one. Expected SAFE: the whole call refused, nothing written (all-or-nothing), the new key not created either. — backend
+
+N/A: §1 boundary (no size or range input changed).
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk)_ | | | |
