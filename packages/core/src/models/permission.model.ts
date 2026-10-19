@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SourcePortalIdSchema } from "./provenance.model.js";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
@@ -465,6 +466,7 @@ export const PolicySchema = CoreSchema.extend({
   name: z.string().min(1),
   kind: RbacKindSchema,
   description: z.string().nullable(),
+  sourcePortalId: SourcePortalIdSchema,
 });
 export type Policy = z.infer<typeof PolicySchema>;
 
@@ -619,6 +621,7 @@ export const RoleSchema = CoreSchema.extend({
    *  creation. Unique per org. */
   slug: z.string().min(1),
   kind: RbacKindSchema,
+  sourcePortalId: SourcePortalIdSchema,
 });
 export type Role = z.infer<typeof RoleSchema>;
 
@@ -652,6 +655,7 @@ export const GroupSchema = CoreSchema.extend({
   organizationId: z.string(),
   name: z.string().min(1),
   description: z.string().nullable(),
+  sourcePortalId: SourcePortalIdSchema,
 });
 export type Group = z.infer<typeof GroupSchema>;
 

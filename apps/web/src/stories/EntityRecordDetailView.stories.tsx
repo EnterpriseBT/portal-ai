@@ -12,6 +12,7 @@ const stubEntity: ConnectorEntity = {
   connectorInstanceId: "inst-1",
   key: "contacts",
   label: "Contacts",
+  sourcePortalId: null,
   created: 1700000000000,
   createdBy: "system",
   updated: null,
@@ -26,6 +27,7 @@ const stubRecord: EntityRecordGetResponsePayload["record"] = {
   connectorEntityId: "ent-1",
   data: {},
   origin: "manual",
+  sourcePortalId: null,
   validationErrors: null,
   isValid: true,
   normalizedData: {

@@ -12,6 +12,7 @@ const stubRecord: EntityRecord = {
   checksum: "deadbeef1234",
   syncedAt: 1718438400000,
   origin: "sync",
+  sourcePortalId: null,
   validationErrors: null,
   isValid: true,
   created: 1700000000000,

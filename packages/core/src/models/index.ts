@@ -1,6 +1,9 @@
 /** Base model schema & type */
 export * from "./base.model.js";
 
+/** #641: object provenance (agent-session marker) */
+export * from "./provenance.model.js";
+
 /** User profile model schema & type */
 export * from "./user.model.js";
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SourcePortalIdSchema } from "./provenance.model.js";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
@@ -25,6 +26,7 @@ export const EntityRecordSchema = CoreSchema.extend({
   checksum: z.string(),
   syncedAt: z.number(),
   origin: EntityRecordOriginSchema.default("manual"),
+  sourcePortalId: SourcePortalIdSchema,
   validationErrors: z
     .array(z.object({ field: z.string(), error: z.string() }))
     .nullable(),

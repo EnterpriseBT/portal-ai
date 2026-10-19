@@ -19,6 +19,8 @@ export const permissionPolicies = pgTable(
     name: text("name").notNull(),
     kind: text("kind", { enum: RBAC_KINDS }).notNull(),
     description: text("description"),
+    /** #641: the portal whose agent session created this row; null otherwise. Provenance only, never read by authorization. */
+    sourcePortalId: text("source_portal_id"),
   },
   (t) => [
     // Full name uniqueness per org (partial on the soft-delete guard).

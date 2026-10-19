@@ -120,6 +120,7 @@ const stubEntity = {
   organizationId: "org-1",
   key: "contacts",
   label: "Contacts",
+  sourcePortalId: null,
   created: Date.now(),
   createdBy: "system",
   updated: null,
