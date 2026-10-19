@@ -904,7 +904,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "connector_entity_create",
       description:
-        "Creates one or more connector entities under attached connector instances. Accepts 1–100 items.",
+        "Creates one or more connector entities under attached connector instances. Accepts 1–100 items. An existing key is refused; use `connector_entity_update` to change an entity.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -956,7 +956,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_create",
       description:
-        "Creates or updates one or more field mappings between source fields and column definitions. Accepts 1–100 items. Get valid `columnDefinitionId`s from `station_context` (the `columnDefinitions` catalog) — map an entity's columns here before creating records, or those records won't be queryable.",
+        "Creates one or more field mappings between source fields and column definitions. Accepts 1–100 items. An existing mapping key is refused; use `field_mapping_update` to change it. Get valid `columnDefinitionId`s from `station_context` (the `columnDefinitions` catalog) — map an entity's columns here before creating records, or those records won't be queryable.",
       parameterSchema: objectSchema(
         {
           items: {

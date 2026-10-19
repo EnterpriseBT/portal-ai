@@ -111,6 +111,30 @@ export class ConnectorEntitiesRepository extends Repository<
   }
 
   /** Find a single entity by connector instance + key. */
+  /**
+   * #825: the live entity holding `key` in the organization, if any. Keys
+   * are unique per org (the match `upsertByKey` uses), so this is the
+   * existing-key check for a create that must never modify an existing row.
+   */
+  async findByOrganizationAndKey(
+    organizationId: string,
+    key: string,
+    client: DbClient = db
+  ): Promise<ConnectorEntitySelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(connectorEntities.organizationId, organizationId),
+          eq(connectorEntities.key, key),
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return row as ConnectorEntitySelect | undefined;
+  }
+
   async findByKey(
     connectorInstanceId: string,
     key: string,

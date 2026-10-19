@@ -37,7 +37,7 @@ The fix: the agent's **create** tools only create, and changing an existing obje
 - Inside each tool's existing write transaction, look the key up first:
   - entity: an existing `(organizationId, key)`, matching `upsertByKey`'s match
   - mapping: `(connectorEntityId, normalizedKey)`
-- **Found** → a per-item failure. The other items still run, as the tools' existing per-item failures already do.
+- **Found** → a per-item validation failure. As with the tools' other validation failures, the call is all-or-nothing: if any item fails, nothing is written. *(Amended during implementation; the first draft said the other items still run.)*
 - **Not found** → insert with `create` (not upsert).
 - **A concurrent insert of the same key** trips the unique index; that item is reported as the same "already exists" failure, never as an update.
 
@@ -54,7 +54,7 @@ The fix: the agent's **create** tools only create, and changing an existing obje
   - an existing key yields a per-item failure naming the update tool
   - `upsertByKey` / `upsertByEntityAndNormalizedKey` are **not** called
   - a new key still creates
-  - a mixed batch creates the new items and fails only the existing ones
+  - a batch with one existing key fails that item and writes nothing (all-or-nothing, like the tools' other validation)
 - New integration `src/__tests__/__integration__/tools/agent-create-existing-key.integration.test.ts`: as a member with `created_by_caller` write, `connector_entity_create` and `field_mapping_create` on the owner's existing key leave the owner's row byte-for-byte unchanged and return the failure. A new key still creates, owned by the member.
 - `builtin-toolpacks.test.ts` (core) keeps the tool and mirror descriptions in sync.
 

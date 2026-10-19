@@ -10,6 +10,7 @@ import { connectorDefinitionsRepo } from "../db/repositories/connector-definitio
 import { resolveCapabilities } from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+import { unwrapPgError } from "../utils/pg-error.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "connector-entity-create-tool" });
@@ -35,11 +36,21 @@ const InputSchema = z.object({
     .describe("Connector entities to create (1–100)"),
 });
 
+/** #825: the per-item refusal for a key the organization already uses. */
+function alreadyExists(key: string | null): string {
+  return (
+    (key
+      ? `An entity with key "${key}" already exists in this organization`
+      : "An entity with one of these keys already exists in this organization") +
+    ". This tool only creates entities; use connector_entity_update to change an existing one."
+  );
+}
+
 export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_create";
   name = "Connector Entity Create Tool";
   description =
-    "Creates one or more connector entities under attached connector instances. Accepts 1–100 items.";
+    "Creates one or more connector entities under attached connector instances. Accepts 1–100 items. An existing key is refused; use `connector_entity_update` to change an entity.";
 
   get schema() {
     return InputSchema;
@@ -130,6 +141,24 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
             instanceOrgMap.set(connectorInstanceId, instance.organizationId);
           }
 
+          // #825: a create never modifies an existing row. The permission
+          // gate authorized "a new entity the caller owns", not a change to
+          // an entity someone else may own, so an existing key is refused
+          // and the agent is pointed at the update tool, which checks write
+          // on that entity.
+          for (const [index, item] of items.entries()) {
+            const orgId = instanceOrgMap.get(item.connectorInstanceId);
+            if (!orgId) continue;
+            const existing =
+              await DbService.repository.connectorEntities.findByOrganizationAndKey(
+                orgId,
+                item.key
+              );
+            if (existing) {
+              failures.push({ index, error: alreadyExists(item.key) });
+            }
+          }
+
           if (failures.length > 0) {
             return {
               success: false,
@@ -151,17 +180,22 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
                 connectorInstanceId: item.connectorInstanceId,
                 key: item.key,
                 label: item.label,
-                // Insert only: upsertByKey never rewrites an existing
-                // entity's provenance.
                 sourcePortalId: portalId,
               });
               const result =
-                await DbService.repository.connectorEntities.upsertByKey(
+                await DbService.repository.connectorEntities.create(
                   model.parse(),
                   tx
                 );
               results.push(result);
             }
+          }).catch((err: unknown) => {
+            // A key taken between the check above and this insert trips the
+            // unique index: still "already exists", never an update.
+            if (unwrapPgError(err).code === "23505") {
+              throw new Error(alreadyExists(null));
+            }
+            throw err;
           });
 
           // Provision each new entity's `er__<id>` wide-table so any curated
