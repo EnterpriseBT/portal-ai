@@ -1,4 +1,5 @@
 import { ApiError } from "../../services/http.service.js";
+import type { RbacAuditContext } from "../../services/policy.service.js";
 
 /**
  * Shared helpers for the `rbac_management` toolpack (#629 slice 3) — the
@@ -19,6 +20,15 @@ export const AGENT_AUDIT = {
   sourceIp: null,
   userAgent: "portal-agent",
 } as const;
+
+/**
+ * #641: `AGENT_AUDIT` for a create, carrying the portal session the new row
+ * records as provenance. It never affects ownership: the row's `createdBy`
+ * is the caller.
+ */
+export function agentAudit(portalId: string | null): RbacAuditContext {
+  return { ...AGENT_AUDIT, sourcePortalId: portalId };
+}
 
 /**
  * Run an RBAC service call for a tool. A **403** (the service's own permission

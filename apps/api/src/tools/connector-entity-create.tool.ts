@@ -45,7 +45,11 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, userId: string) {
+  /**
+   * `portalId` is the portal session running the tool, recorded on the row as
+   * provenance (#641). It never affects ownership: `createdBy` is the caller.
+   */
+  build(stationId: string, userId: string, portalId: string | null) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -147,6 +151,9 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
                 connectorInstanceId: item.connectorInstanceId,
                 key: item.key,
                 label: item.label,
+                // Insert only: upsertByKey never rewrites an existing
+                // entity's provenance.
+                sourcePortalId: portalId,
               });
               const result =
                 await DbService.repository.connectorEntities.upsertByKey(

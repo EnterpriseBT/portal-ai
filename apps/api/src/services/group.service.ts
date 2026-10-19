@@ -179,6 +179,7 @@ export class GroupService {
         organizationId: caller.organizationId,
         name: req.name,
         description: req.description ?? null,
+        sourcePortalId: audit.sourcePortalId ?? null,
       })
       .parse();
 

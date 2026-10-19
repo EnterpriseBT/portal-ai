@@ -6,7 +6,7 @@ import { PolicyUpsertRequestSchema } from "@portalai/core/contracts";
 import { Tool } from "../../types/tools.js";
 import { PolicyService } from "../../services/policy.service.js";
 import type { PermissionContext } from "../../services/permission.service.js";
-import { AGENT_AUDIT, runRbac } from "./rbac-tool.util.js";
+import { AGENT_AUDIT, runRbac, agentAudit } from "./rbac-tool.util.js";
 
 const ListInput = z.object({});
 const CreateInput = PolicyUpsertRequestSchema;
@@ -47,7 +47,8 @@ export class PolicyCreateTool extends Tool<typeof CreateInput> {
     return CreateInput;
   }
 
-  build(ctx: PermissionContext) {
+  /** `portalId` is the session's portal, recorded on the new row (#641). */
+  build(ctx: PermissionContext, portalId: string | null) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -56,7 +57,7 @@ export class PolicyCreateTool extends Tool<typeof CreateInput> {
           const req = this.validate(input);
           return {
             success: true,
-            policy: await PolicyService.create(ctx, req, AGENT_AUDIT),
+            policy: await PolicyService.create(ctx, req, agentAudit(portalId)),
           };
         }),
     });

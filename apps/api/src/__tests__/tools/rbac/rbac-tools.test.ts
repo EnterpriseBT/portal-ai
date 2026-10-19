@@ -75,10 +75,12 @@ describe("rbac_management tools (#629)", () => {
   it("policy_create routes to the service with the caller ctx + the agent audit stamp", async () => {
     policyCreate.mockResolvedValue({ id: "pol_9", name: "P" });
     const input = { name: "P", statements: validStatements };
-    const r = await exec(new PolicyCreateTool().build(ctx), input);
+    const r = await exec(new PolicyCreateTool().build(ctx, "portal-1"), input);
+    // #641: the portal session reaches the service as provenance.
     expect(policyCreate).toHaveBeenCalledWith(ctx, input, {
       sourceIp: null,
       userAgent: "portal-agent",
+      sourcePortalId: "portal-1",
     });
     expect(r).toEqual({ success: true, policy: { id: "pol_9", name: "P" } });
   });
@@ -88,7 +90,7 @@ describe("rbac_management tools (#629)", () => {
       new ApiError(403, ApiCode.PERMISSION_DENIED, "not allowed")
     );
     await expect(
-      exec(new PolicyCreateTool().build(ctx), {
+      exec(new PolicyCreateTool().build(ctx, null), {
         name: "P",
         statements: validStatements,
       })
@@ -99,7 +101,7 @@ describe("rbac_management tools (#629)", () => {
     policyCreate.mockRejectedValue(
       new ApiError(404, ApiCode.POLICY_NOT_FOUND, "policy not found")
     );
-    const r = await exec(new PolicyCreateTool().build(ctx), {
+    const r = await exec(new PolicyCreateTool().build(ctx, null), {
       name: "P",
       statements: validStatements,
     });
@@ -107,7 +109,7 @@ describe("rbac_management tools (#629)", () => {
   });
 
   it("invalid input is returned as { error }, not a throw", async () => {
-    const r = (await exec(new PolicyCreateTool().build(ctx), {
+    const r = (await exec(new PolicyCreateTool().build(ctx, null), {
       name: "",
       statements: [],
     })) as { error?: string };
@@ -121,29 +123,37 @@ describe("rbac_management tools (#629)", () => {
   it.each([
     [
       "policy_create",
-      () => new PolicyCreateTool(),
+      () => new PolicyCreateTool().build(ctx, null),
       { name: "P", statements: validStatements },
     ],
     [
       "policy_update",
-      () => new PolicyUpdateTool(),
+      () => new PolicyUpdateTool().build(ctx),
       { id: "p_1", name: "P", statements: validStatements },
     ],
-    ["role_create", () => new RoleCreateTool(), { name: "R", policyIds: [] }],
+    [
+      "role_create",
+      () => new RoleCreateTool().build(ctx, null),
+      { name: "R", policyIds: [] },
+    ],
     [
       "role_update",
-      () => new RoleUpdateTool(),
+      () => new RoleUpdateTool().build(ctx),
       { id: "r_1", name: "R", policyIds: [] },
     ],
-    ["group_create", () => new GroupCreateTool(), { name: "G", policyIds: [] }],
+    [
+      "group_create",
+      () => new GroupCreateTool().build(ctx, null),
+      { name: "G", policyIds: [] },
+    ],
     [
       "group_update",
-      () => new GroupUpdateTool(),
+      () => new GroupUpdateTool().build(ctx),
       { id: "g_1", name: "G", policyIds: [] },
     ],
     [
       "grant_share",
-      () => new GrantShareTool(),
+      () => new GrantShareTool().build(ctx),
       {
         resourceType: "station",
         resourceId: "st_1",
@@ -152,7 +162,7 @@ describe("rbac_management tools (#629)", () => {
       },
     ],
   ])("%s refuses an unknown key, naming it", async (_slug, make, input) => {
-    const r = (await exec(make().build(ctx), { ...input, color: "blue" })) as {
+    const r = (await exec(make(), { ...input, color: "blue" })) as {
       error?: string;
     };
     expect(r.error).toMatch(/color/);

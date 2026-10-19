@@ -249,6 +249,7 @@ export class RoleService {
         name: req.name,
         slug,
         kind: "custom",
+        sourcePortalId: audit.sourcePortalId ?? null,
       })
       .parse();
 

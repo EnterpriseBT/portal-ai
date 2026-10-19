@@ -76,8 +76,9 @@ beforeEach(() => {
 });
 
 type Item = { connectorInstanceId: string; key: string; label: string };
-const exec = (input: { items: Item[] }) =>
-  new ConnectorEntityCreateTool().build("station-1", "user-1").execute!(input, {
+const exec = (input: { items: Item[] }, portalId: string | null = null) =>
+  new ConnectorEntityCreateTool().build("station-1", "user-1", portalId)
+    .execute!(input, {
     toolCallId: "t",
     messages: [],
     abortSignal: new AbortController().signal,
@@ -96,6 +97,26 @@ describe("ConnectorEntityCreateTool", () => {
     expect(result.items[0].entityId).toBe("ce-new");
     expect(mockUpsertByKey).toHaveBeenCalledWith(
       expect.objectContaining({ key: "contacts", label: "Contacts" }),
+      "mock-tx"
+    );
+  });
+
+  // #641: the portal session that ran the tool is recorded as provenance;
+  // the prompting user still owns the entity.
+  it("records the portal session as provenance, owned by the caller (#641)", async () => {
+    await exec(
+      {
+        items: [
+          { connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" },
+        ],
+      },
+      "portal-1"
+    );
+    expect(mockUpsertByKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createdBy: "user-1",
+        sourcePortalId: "portal-1",
+      }),
       "mock-tx"
     );
   });

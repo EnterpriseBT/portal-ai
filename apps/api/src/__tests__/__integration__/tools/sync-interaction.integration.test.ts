@@ -253,7 +253,8 @@ describe("Sync-after-mutation interaction", () => {
     const tool = new EntityRecordCreateTool().build(
       s.stationId,
       s.organizationId,
-      s.userId
+      s.userId,
+      null
     );
     const result = (await tool.execute!(
       {

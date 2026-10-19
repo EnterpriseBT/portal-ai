@@ -57,7 +57,16 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, organizationId: string, userId: string) {
+  /**
+   * `portalId` is the portal session running the tool, recorded on the row as
+   * provenance (#641). It never affects ownership: `createdBy` is the caller.
+   */
+  build(
+    stationId: string,
+    organizationId: string,
+    userId: string,
+    portalId: string | null
+  ) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -158,6 +167,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
               checksum: "manual",
               syncedAt: Date.now(),
               origin: "portal",
+              sourcePortalId: portalId,
               isValid: norm.isValid,
               validationErrors: norm.validationErrors,
             });

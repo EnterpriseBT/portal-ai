@@ -160,6 +160,9 @@ export interface UpsertSuccessesOptions {
   /** User id stamped into the created entity_records audit columns
    *  (same FK-aware pattern runBatch uses). */
   userId: string;
+  /** #641: the portal session that started the job, recorded on each record
+   *  this inserts as provenance; null when the job has none. */
+  sourcePortalId: string | null;
 }
 
 export interface UpsertSuccessesResult {
@@ -458,6 +461,10 @@ export class BulkTransformService {
     // then upsert the wide table referencing the returned ids.
     const targetEntityIdLit = `'${opts.targetConnectorEntityId.replace(/'/g, "''")}'`;
     const userIdLit = `'${opts.userId.replace(/'/g, "''")}'`;
+    const sourcePortalIdLit =
+      opts.sourcePortalId === null
+        ? "NULL"
+        : `'${opts.sourcePortalId.replace(/'/g, "''")}'`;
 
     const valueLiteral = (v: unknown): string => {
       if (v === null || v === undefined) return "NULL";
@@ -515,7 +522,8 @@ export class BulkTransformService {
       `upserted_records AS (` +
       `  INSERT INTO "entity_records" (` +
       `    "id", "organization_id", "connector_entity_id", "data", "source_id", ` +
-      `    "checksum", "synced_at", "origin", "is_valid", "created", "created_by"` +
+      `    "checksum", "synced_at", "origin", "source_portal_id", "is_valid", ` +
+      `    "created", "created_by"` +
       `  ) ` +
       `  SELECT ` +
       `    gen_random_uuid(), ` +
@@ -526,6 +534,7 @@ export class BulkTransformService {
       `    md5("src_id"::text || '|' || ${now}::text), ` +
       `    ${now}, ` +
       `    'portal'::entity_record_origin, ` +
+      `    ${sourcePortalIdLit}, ` +
       `    true, ` +
       `    ${now}, ` +
       `    ${userIdLit} ` +
