@@ -167,6 +167,27 @@ describe("PermissionSet — visibilityPredicate shapes (spec case 7)", () => {
     ]);
     expect(nothing.visibilityPredicate("station", cols)).toBeDefined();
   });
+
+  it("#829: filters by the verb asked for", () => {
+    // A class-level read with only own-row write: every row is readable, only
+    // the caller's are writable.
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "read", resourceType: "station", condition: null }),
+      S({
+        verb: "write",
+        resourceType: "station",
+        condition: "created_by_caller",
+      }),
+    ]);
+    expect(set.visibilityPredicate("station", cols)).toBeUndefined();
+    expect(set.visibilityPredicate("station", cols, "write")).toBeDefined();
+    const writer = new PermissionSet(ctx("owner"), [
+      S({ verb: "write", resourceType: "station", condition: null }),
+    ]);
+    expect(
+      writer.visibilityPredicate("station", cols, "write")
+    ).toBeUndefined();
+  });
 });
 
 describe("PermissionSet — switch parity (spec case 8)", () => {

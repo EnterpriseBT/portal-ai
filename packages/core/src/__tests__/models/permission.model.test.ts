@@ -31,6 +31,10 @@ import {
   isVerbValidForResource,
   validateStatement,
   validateStatements,
+  PART_OWNERS,
+  PART_TYPES,
+  OBJECT_CONTAINERS,
+  isContainedType,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -643,5 +647,32 @@ describe("validateStatement — shared statement validity (#630)", () => {
       expect(r.index).toBe(1);
       expect(r.reason).toMatch(/not valid/);
     }
+  });
+});
+
+describe("objects and parts (#829)", () => {
+  it("records and field mappings are parts owned by their entity", () => {
+    expect(PART_TYPES).toEqual(["entity_record", "field_mapping"]);
+    for (const t of PART_TYPES) {
+      expect(PART_OWNERS[t]).toEqual({
+        ownerType: "entity",
+        ownerKey: "connectorEntityId",
+      });
+    }
+  });
+
+  it("an entity is contained in its connector instance", () => {
+    expect(OBJECT_CONTAINERS).toEqual({
+      entity: {
+        containerType: "connector_instance",
+        containerKey: "connectorInstanceId",
+      },
+    });
+  });
+
+  it("isContainedType matches own keys only", () => {
+    expect(isContainedType("entity")).toBe(true);
+    expect(isContainedType("entity_record")).toBe(false);
+    expect(isContainedType("toString")).toBe(false);
   });
 });

@@ -9,18 +9,18 @@ import type { PermissionContext } from "../../services/permission.service.js";
  * to check it, with the 404-before-403 split of `loadForVerb`.
  */
 type Row = { id: string; organizationId: string; createdBy: string };
-const mockEntityFindById = jest.fn<(id: string) => Promise<Row | undefined>>();
-const mockEntityFindMany = jest.fn<(where: unknown) => Promise<Row[]>>();
-const mockInstanceFindMany = jest.fn<(where: unknown) => Promise<Row[]>>();
+const mockEntityAuthRows = jest.fn<(ids: string[]) => Promise<Row[]>>();
+const mockInstanceAuthRows = jest.fn<(ids: string[]) => Promise<Row[]>>();
+const mockInstanceFindById = jest.fn();
+const mockInstanceFindMany = jest.fn();
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
-      connectorEntities: {
-        findById: mockEntityFindById,
-        findMany: mockEntityFindMany,
-      },
+      connectorEntities: { findAuthRows: mockEntityAuthRows },
       connectorInstances: {
-        findById: jest.fn(),
+        findAuthRows: mockInstanceAuthRows,
+        // A permission check must never read (and decrypt) a full instance.
+        findById: mockInstanceFindById,
         findMany: mockInstanceFindMany,
       },
     },
@@ -89,8 +89,9 @@ const status = (fn: () => unknown) => {
 };
 
 beforeEach(() => {
-  mockEntityFindById.mockReset();
-  mockEntityFindMany.mockReset();
+  mockEntityAuthRows.mockReset();
+  mockInstanceAuthRows.mockReset();
+  mockInstanceFindById.mockReset();
   mockInstanceFindMany.mockReset();
 });
 
@@ -148,7 +149,7 @@ describe("ParentAccessService.assertWritableParent (#829)", () => {
 
 describe("ParentAccessService batch checks (#829)", () => {
   it("writableParentIds keeps only in-org, readable, writable parents", async () => {
-    mockEntityFindMany.mockResolvedValue([
+    mockEntityAuthRows.mockResolvedValue([
       writable,
       readOnly,
       unreadable,
@@ -161,11 +162,11 @@ describe("ParentAccessService batch checks (#829)", () => {
       [writable.id, readOnly.id, unreadable.id, otherOrg.id, "missing"]
     );
     expect([...ids]).toEqual([writable.id]);
-    expect(mockEntityFindMany).toHaveBeenCalledTimes(1);
+    expect(mockEntityAuthRows).toHaveBeenCalledTimes(1);
   });
 
   it("firstRefusal reports a missing parent as not_found ahead of a denied one", async () => {
-    mockEntityFindMany.mockResolvedValue([writable, readOnly]);
+    mockEntityAuthRows.mockResolvedValue([writable, readOnly]);
     expect(
       await ParentAccessService.firstRefusal(
         memberSet(),
@@ -175,7 +176,7 @@ describe("ParentAccessService batch checks (#829)", () => {
         "write"
       )
     ).toEqual({ id: "missing", reason: "not_found" });
-    mockEntityFindMany.mockResolvedValue([writable, readOnly]);
+    mockEntityAuthRows.mockResolvedValue([writable, readOnly]);
     expect(
       await ParentAccessService.firstRefusal(
         memberSet(),
@@ -185,7 +186,7 @@ describe("ParentAccessService batch checks (#829)", () => {
         "write"
       )
     ).toEqual({ id: readOnly.id, reason: "denied" });
-    mockEntityFindMany.mockResolvedValue([writable, readOnly]);
+    mockEntityAuthRows.mockResolvedValue([writable, readOnly]);
     expect(
       await ParentAccessService.firstRefusal(
         memberSet(),
@@ -198,7 +199,7 @@ describe("ParentAccessService batch checks (#829)", () => {
   });
 
   it("firstRefusal looks up each distinct id once, in one query", async () => {
-    mockInstanceFindMany.mockResolvedValue([writable]);
+    mockInstanceAuthRows.mockResolvedValue([writable]);
     expect(
       await ParentAccessService.firstRefusal(
         memberSet(),
@@ -208,7 +209,86 @@ describe("ParentAccessService batch checks (#829)", () => {
         "write"
       )
     ).toBeNull();
-    expect(mockInstanceFindMany).toHaveBeenCalledTimes(1);
-    expect(mockEntityFindMany).not.toHaveBeenCalled();
+    expect(mockInstanceAuthRows).toHaveBeenCalledTimes(1);
+    expect(mockEntityAuthRows).not.toHaveBeenCalled();
+  });
+});
+
+describe("ParentAccessService parts and containers (#829)", () => {
+  it("assertOwner answers read and write on the entity with the 404/403 split", () => {
+    const set = memberSet();
+    expect(ParentAccessService.assertOwner(set, ORG, readOnly, "read")).toBe(
+      readOnly
+    );
+    expect(
+      status(() => ParentAccessService.assertOwner(set, ORG, readOnly, "write"))
+    ).toEqual({ status: 403, code: ApiCode.PERMISSION_DENIED });
+    expect(
+      status(() =>
+        ParentAccessService.assertOwner(set, ORG, unreadable, "read")
+      )
+    ).toEqual({ status: 404, code: ApiCode.CONNECTOR_ENTITY_NOT_FOUND });
+    expect(
+      status(() => ParentAccessService.assertOwner(set, ORG, otherOrg, "read"))
+    ).toEqual({ status: 404, code: ApiCode.CONNECTOR_ENTITY_NOT_FOUND });
+  });
+
+  it("loadOwner 404s a deleted (absent) entity", async () => {
+    mockEntityAuthRows.mockResolvedValue([]);
+    await expect(
+      ParentAccessService.loadOwner(memberSet(), ORG, "e-gone", "read")
+    ).rejects.toMatchObject({
+      status: 404,
+      code: ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+    });
+  });
+
+  it("ownerCapabilities mirrors each entity, delete = write, in one query", async () => {
+    mockEntityAuthRows.mockResolvedValue([writable, readOnly, unreadable]);
+    const caps = await ParentAccessService.ownerCapabilities(memberSet(), ORG, [
+      writable.id,
+      readOnly.id,
+      unreadable.id,
+      "missing",
+      writable.id,
+    ]);
+    expect(Object.fromEntries(caps)).toEqual({
+      [writable.id]: { read: true, write: true, delete: true },
+      [readOnly.id]: { read: true, write: false, delete: false },
+      [unreadable.id]: { read: false, write: false, delete: false },
+      missing: { read: false, write: false, delete: false },
+    });
+    expect(mockEntityAuthRows).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks an entity's container for write, without reading credentials", async () => {
+    mockInstanceAuthRows.mockResolvedValue([readOnly]);
+    await expect(
+      ParentAccessService.loadWritableContainer(
+        memberSet(),
+        ORG,
+        "entity",
+        readOnly.id
+      )
+    ).rejects.toMatchObject({ status: 403, code: ApiCode.PERMISSION_DENIED });
+    mockInstanceAuthRows.mockResolvedValue([writable, readOnly, otherOrg]);
+    const ids = await ParentAccessService.writableContainerIds(
+      memberSet(),
+      ORG,
+      "entity",
+      [writable.id, readOnly.id, otherOrg.id]
+    );
+    expect([...ids]).toEqual([writable.id]);
+    expect(mockInstanceFindById).not.toHaveBeenCalled();
+    expect(mockInstanceFindMany).not.toHaveBeenCalled();
+  });
+
+  it("ownerIdOf reads the part's entity id", () => {
+    expect(
+      ParentAccessService.ownerIdOf("entity_record", {
+        connectorEntityId: "e-1",
+      })
+    ).toBe("e-1");
+    expect(ParentAccessService.ownerIdOf("field_mapping", {})).toBeNull();
   });
 });

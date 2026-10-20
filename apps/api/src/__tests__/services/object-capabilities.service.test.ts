@@ -9,8 +9,8 @@ const mockEntityFindMany = jest.fn<(where: unknown) => Promise<ParentRow[]>>();
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
-      connectorEntities: { findById: jest.fn(), findMany: mockEntityFindMany },
-      connectorInstances: { findById: jest.fn(), findMany: jest.fn() },
+      connectorEntities: { findAuthRows: mockEntityFindMany },
+      connectorInstances: { findAuthRows: jest.fn() },
     },
   },
 }));

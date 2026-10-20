@@ -83,6 +83,31 @@ export class ConnectorInstancesRepository extends Repository<
     super(connectorInstances);
   }
 
+  /**
+   * #829: the authorization columns of live instances, in one query. Never
+   * selects (or decrypts) `credentials`: a permission check needs only who
+   * owns the row and where it lives.
+   */
+  async findAuthRows(
+    ids: string[],
+    client: DbClient = db
+  ): Promise<Array<{ id: string; organizationId: string; createdBy: string }>> {
+    if (ids.length === 0) return [];
+    return client
+      .select({
+        id: connectorInstances.id,
+        organizationId: connectorInstances.organizationId,
+        createdBy: connectorInstances.createdBy,
+      })
+      .from(connectorInstances)
+      .where(
+        and(
+          inArray(connectorInstances.id, ids),
+          isNull(connectorInstances.deleted)
+        )
+      );
+  }
+
   // ── Overrides: encrypt on write, decrypt on read ────────────
 
   override async findById(

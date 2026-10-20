@@ -92,6 +92,43 @@ export const isChildResourceType = (t: string): t is ChildResourceType =>
   Object.prototype.hasOwnProperty.call(CHILD_RESOURCE_PARENTS, t);
 
 /**
+ * #829: parts have no permission of their own. A record or field mapping is
+ * part of its entity, and the entity's permission governs it: read the entity
+ * to read its parts, write the entity to create, edit or delete them.
+ * `ownerKey` is the key on the part row (and a create's input item) holding
+ * the owner's id.
+ */
+export const PART_OWNERS = {
+  entity_record: { ownerType: "entity", ownerKey: "connectorEntityId" },
+  field_mapping: { ownerType: "entity", ownerKey: "connectorEntityId" },
+} as const satisfies Record<
+  string,
+  { ownerType: PermissionResourceType; ownerKey: string }
+>;
+export type PartType = keyof typeof PART_OWNERS;
+export const PART_TYPES = Object.keys(PART_OWNERS) as [PartType, ...PartType[]];
+
+/**
+ * #829: an object inside another object follows the directory rule. Creating
+ * or deleting it needs `write` on its container; editing it needs only its
+ * own `write`.
+ */
+export const OBJECT_CONTAINERS = {
+  entity: {
+    containerType: "connector_instance",
+    containerKey: "connectorInstanceId",
+  },
+} as const satisfies Partial<
+  Record<
+    PermissionResourceType,
+    { containerType: PermissionResourceType; containerKey: string }
+  >
+>;
+export type ContainedType = keyof typeof OBJECT_CONTAINERS;
+export const isContainedType = (t: string): t is ContainedType =>
+  Object.prototype.hasOwnProperty.call(OBJECT_CONTAINERS, t);
+
+/**
  * The data object types a member's ownership condition + object grants apply to
  * — the user-created/connector-materialized entities, excluding the privileged
  * pseudo-resources (`billing`/`org`/`member`/`audit`) and the `*` wildcard.

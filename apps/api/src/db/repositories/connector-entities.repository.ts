@@ -45,6 +45,38 @@ export class ConnectorEntitiesRepository extends Repository<
   }
 
   /**
+   * #829: the authorization columns of live entities (plus the container
+   * key), in one query.
+   */
+  async findAuthRows(
+    ids: string[],
+    client: DbClient = db
+  ): Promise<
+    Array<{
+      id: string;
+      organizationId: string;
+      createdBy: string;
+      connectorInstanceId: string;
+    }>
+  > {
+    if (ids.length === 0) return [];
+    return client
+      .select({
+        id: connectorEntities.id,
+        organizationId: connectorEntities.organizationId,
+        createdBy: connectorEntities.createdBy,
+        connectorInstanceId: connectorEntities.connectorInstanceId,
+      })
+      .from(connectorEntities)
+      .where(
+        and(
+          inArray(connectorEntities.id, ids),
+          isNull(connectorEntities.deleted)
+        )
+      );
+  }
+
+  /**
    * Find entities matching `where`, with optional eager-loaded relations.
    * Pass `include` to attach any combination of `connectorInstance`, `fieldMappings`, and `tags`.
    */
