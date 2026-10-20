@@ -26,6 +26,9 @@ const noopSearch = () => ({
   labelMap: {},
 });
 
+// #829: the options each connector-entity picker asks the search hook for.
+const connectorEntitySearchOptions: unknown[] = [];
+
 // #689: the caller's type-level permissions (field-mapping create).
 let currentResourcePermissions: Record<string, Record<string, boolean>> = {};
 
@@ -48,7 +51,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       search: noopSearch,
     },
     connectorEntities: {
-      search: noopSearch,
+      search: (options?: unknown) => {
+        connectorEntitySearchOptions.push(options);
+        return noopSearch();
+      },
     },
     fieldMappings: {
       list: () => currentFieldMappingListQuery,
@@ -584,5 +590,39 @@ describe("ColumnDefinitionDetailView", () => {
         screen.queryByRole("button", { name: /^Create$/ })
       ).not.toBeInTheDocument();
     });
+  });
+
+  // #829: a mapping is a child of its entity, so the create dialog's entity
+  // picker offers only entities the caller can write. The ref-key picker only
+  // references an entity, so it lists every readable one.
+  it("filters the mapping dialog's entity picker to writable entities", () => {
+    connectorEntitySearchOptions.length = 0;
+    currentGetQuery = {
+      data: { columnDefinition: makeColumnDefinition() },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      error: null,
+    } as unknown as Partial<GetQuery>;
+    currentFieldMappingListQuery = {
+      data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+    render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+    type Opts = {
+      mapItem?: unknown;
+      filterItem?: (e: { capabilities: { write: boolean } }) => boolean;
+    };
+    const opts = connectorEntitySearchOptions as Array<Opts | undefined>;
+    const picker = opts.find((o) => o?.filterItem);
+    expect(picker?.filterItem?.({ capabilities: { write: true } })).toBe(true);
+    expect(picker?.filterItem?.({ capabilities: { write: false } })).toBe(
+      false
+    );
+    const refKey = opts.find((o) => o?.mapItem);
+    expect(refKey?.filterItem).toBeUndefined();
   });
 });

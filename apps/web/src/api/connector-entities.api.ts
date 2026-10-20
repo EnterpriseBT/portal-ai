@@ -14,6 +14,7 @@ import type {
   ConnectorEntityPatchRequestBody,
   ConnectorEntityPatchResponsePayload,
   ConnectorEntityRunningJobsResponse,
+  ObjectCapabilities,
 } from "@portalai/core/contracts";
 import type { ConnectorEntity } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
@@ -27,6 +28,11 @@ import {
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions, SearchHookOptions, SearchResult } from "./types";
+
+/** A search result row: the entity with the caller's capabilities (#688). */
+type ConnectorEntityRow = ConnectorEntity & {
+  capabilities: ObjectCapabilities;
+};
 
 const CONNECTOR_ENTITIES_URL = "/api/connector-entities";
 
@@ -132,11 +138,11 @@ export const connectorEntities = {
     }),
 
   search: <TOption extends SelectOption = SelectOption>(
-    options?: SearchHookOptions<ConnectorEntity, TOption>
+    options?: SearchHookOptions<ConnectorEntityRow, TOption>
   ): SearchResult<TOption> => {
     const { fetchWithAuth } = useAuthFetch();
     const mapFn = (options?.mapItem ?? defaultMapItem) as (
-      item: ConnectorEntity
+      item: ConnectorEntityRow
     ) => TOption;
     const [labelMap, setLabelMap] = useState<Record<string, string>>({});
     // C2: track the owning connectorInstance name per entity id so callers
@@ -155,9 +161,10 @@ export const connectorEntities = {
         const res = await fetchWithAuth<
           ApiSuccessResponse<ConnectorEntityListWithInstanceResponsePayload>
         >(buildUrl(CONNECTOR_ENTITIES_URL, params));
-        const mapped = res.payload.connectorEntities.map((e) =>
-          mapFn(e as ConnectorEntity)
-        );
+        const filterFn = options?.filterItem;
+        const mapped = res.payload.connectorEntities
+          .filter((e) => !filterFn || filterFn(e as ConnectorEntityRow))
+          .map((e) => mapFn(e as ConnectorEntityRow));
         setLabelMap((prev) => {
           const next = { ...prev };
           for (const opt of mapped) next[String(opt.value)] = opt.label;
@@ -185,7 +192,9 @@ export const connectorEntities = {
         const res = await fetchWithAuth<
           ApiSuccessResponse<ConnectorEntityGetResponsePayload>
         >(`${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`);
-        const option = mapFn(res.payload.connectorEntity);
+        const option = mapFn(
+          res.payload.connectorEntity as unknown as ConnectorEntityRow
+        );
         setLabelMap((prev) => ({
           ...prev,
           [String(option.value)]: option.label,

@@ -156,8 +156,13 @@ export const ColumnDefinitionDetailView: React.FC<
     [updateMutation, queryClient, columnDefinitionId]
   );
 
+  // #829: a new mapping is a child of its entity, so the picker offers only
+  // entities the caller can write. The ref-key picker below only references
+  // an entity, so it lists every readable one.
   const { onSearch: handleSearchConnectorEntities } =
-    sdk.connectorEntities.search();
+    sdk.connectorEntities.search({
+      filterItem: (ce) => ce.capabilities.write,
+    });
   const { onSearch: handleSearchConnectorEntitiesForRefKey } =
     sdk.connectorEntities.search({
       mapItem: (ce) => ({ value: ce.key, label: `${ce.label} (${ce.key})` }),

@@ -51,6 +51,15 @@ describe("entityDetailActionGates", () => {
     expect(g.delete).toEqual({ kind: "allow" });
   });
 
+  it("hides Create record without write on the entity, even with the create rule (#829)", () => {
+    const g = entityDetailActionGates({
+      ...base,
+      capabilities: { read: true, write: false, delete: false },
+      recordPermissions: { create: true, revalidate: false, clear: false },
+    });
+    expect(g.createRecord).toEqual({ kind: "hide" });
+  });
+
   it("hides entity Delete without delete on the entity", () => {
     const g = entityDetailActionGates({
       ...base,

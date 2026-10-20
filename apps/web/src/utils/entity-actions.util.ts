@@ -49,7 +49,7 @@ const firstReason = (...reasons: (string | false | null)[]): string | null =>
  * asserts it, then the job lock, then the action's own pending state.
  *
  * - Entity PATCH: entity write + flag + lock. DELETE: entity delete + lock.
- * - Record create: an owned create + flag + lock.
+ * - Record create: an owned create + entity write (#829) + flag + lock.
  * - Clear: unconditional class delete + flag + lock.
  * - Re-validate: unconditional class write + lock.
  */
@@ -73,8 +73,10 @@ export function entityDetailActionGates({
       allowed: capabilities.delete,
       blocked: firstReason(lockedReason, isDeleting && "Deleting…"),
     }),
+    // #829: a record is a child of the entity, so creating one also needs
+    // write on it (the entity's capabilities fold in its connector too).
     createRecord: decideActionGate({
-      allowed: recordPermissions.create,
+      allowed: recordPermissions.create && capabilities.write,
       blocked: firstReason(flag, lockedReason),
     }),
     clearRecords: decideActionGate({

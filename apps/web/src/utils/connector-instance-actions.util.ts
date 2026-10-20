@@ -32,7 +32,8 @@ export interface ConnectorInstanceActionGates {
 /**
  * #689: the connector-instance page's gates, from the same checks its
  * routes enforce — instance `resource.write` for edit/sync/reconnect/plan
- * (and the flags), `resource.delete` for delete, and an owned entity create.
+ * (and the flags), `resource.delete` for delete, and an owned entity create
+ * plus instance write (#829).
  * The running-job lock blocks everything that writes the instance's data;
  * reconnect only replaces credentials, so the server doesn't lock it.
  */
@@ -53,8 +54,10 @@ export function connectorInstanceActionGates({
       allowed: capabilities.delete,
       blocked: lockedReason,
     }),
+    // #829: an entity is a child of the instance; creating one needs write
+    // on the instance as well as the create rule.
     createEntity: decideActionGate({
-      allowed: canCreateEntity,
+      allowed: canCreateEntity && capabilities.write,
       blocked: !isWriteEnabled ? WRITES_DISABLED_REASON : lockedReason,
     }),
     canEditFlags: capabilities.write,
