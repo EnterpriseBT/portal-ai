@@ -38,6 +38,9 @@ describe("wrapWithPermissionGate (#629)", () => {
   let can: jest.Mock;
   let set: PermissionSet;
   let firstRefusal: jest.SpiedFunction<typeof ParentAccessService.firstRefusal>;
+  let unreadableIds: jest.SpiedFunction<
+    typeof ParentAccessService.unreadableIds
+  >;
 
   beforeEach(() => {
     jest.restoreAllMocks();
@@ -47,6 +50,10 @@ describe("wrapWithPermissionGate (#629)", () => {
     firstRefusal = jest
       .spyOn(ParentAccessService, "firstRefusal")
       .mockResolvedValue(null);
+    // #835: every owning entity is readable unless a test says otherwise.
+    unreadableIds = jest
+      .spyOn(ParentAccessService, "unreadableIds")
+      .mockResolvedValue(new Set());
   });
 
   it("create: allow runs the tool and checks write with createdBy = the caller", async () => {
@@ -573,7 +580,7 @@ describe("wrapWithPermissionGate (#629)", () => {
     jest
       .spyOn(RbacObjectResolver, "resolvePartOwner")
       .mockResolvedValue("e-hidden");
-    firstRefusal.mockResolvedValue({ id: "e-hidden", reason: "not_found" });
+    unreadableIds.mockResolvedValue(new Set(["e-hidden"]));
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
     wrapWithPermissionGate(tools, set, ctx, partsById);
@@ -582,6 +589,67 @@ describe("wrapWithPermissionGate (#629)", () => {
       {}
     );
     expect(r).toEqual(targetNotFound("Field mapping fm-7 was not found."));
+    expect(JSON.stringify(r)).not.toContain("e-hidden");
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["unreadable first", ["fm-hidden", "fm-gone"], "fm-hidden"],
+    ["absent first", ["fm-gone", "fm-hidden"], "fm-gone"],
+  ])(
+    "#835 parts by id: absent and unreadable parts are refused in input order (%s)",
+    async (_label, ids, named) => {
+      jest
+        .spyOn(RbacObjectResolver, "resolvePartOwner")
+        .mockImplementation(async (_org, _type, id) =>
+          id === "fm-hidden" ? "e-hidden" : null
+        );
+      unreadableIds.mockResolvedValue(new Set(["e-hidden"]));
+      const inner = jest.fn();
+      const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
+      wrapWithPermissionGate(tools, set, ctx, partsById);
+      const r = await tools.fm_update.execute!(
+        { items: ids.map((fieldMappingId) => ({ fieldMappingId })) },
+        {}
+      );
+      expect(r).toEqual(
+        targetNotFound(`Field mapping ${named} was not found.`)
+      );
+      expect(inner).not.toHaveBeenCalled();
+    }
+  );
+
+  it("#835 parts by id: an unreadable counterpart entity is refused without saying the visible mapping is missing", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolvePartOwner")
+      .mockResolvedValue("e-own");
+    jest
+      .spyOn(RbacObjectResolver, "resolveMappingCounterpartOwner")
+      .mockResolvedValue("e-hidden");
+    unreadableIds.mockResolvedValue(new Set(["e-hidden"]));
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { fm_delete: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "entity",
+        mode: "parts",
+        partType: "field_mapping",
+        itemsArg: "items",
+        idField: "fieldMappingId",
+        counterparts: true,
+      })
+    );
+    const r = await tools.fm_delete.execute!(
+      { items: [{ fieldMappingId: "fm-1" }] },
+      {}
+    );
+    expect(r).toEqual(
+      targetNotFound("The entity field mapping fm-1 links to was not found.")
+    );
     expect(JSON.stringify(r)).not.toContain("e-hidden");
     expect(inner).not.toHaveBeenCalled();
   });

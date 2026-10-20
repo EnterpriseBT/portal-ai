@@ -163,67 +163,77 @@ export function wrapWithPermissionGate(
             : extractItems(input, auth.itemsArg).map((item) =>
                 extractId(item, auth.idField)
               );
+        /**
+         * #835: each part's owning entity (and, for a mapping delete, its
+         * counterpart's), or null to refuse. Every part is resolved before
+         * any is refused, and then refused in input order whether it's
+         * absent, another org's, or under an entity the caller can't read,
+         * so the id a refusal names never tells those apart. A missing input
+         * id is the generic denial.
+         */
+        const partOwners = async (
+          partType: PartType,
+          counterparts: boolean | undefined
+        ): Promise<string[] | null> => {
+          const label = PART_LABELS[partType];
+          const parts: Array<{
+            id: string;
+            owner: string | null;
+            counterpart: string | null;
+          }> = [];
+          for (const id of targetIds()) {
+            if (!id) return null;
+            const owner = await RbacObjectResolver.resolvePartOwner(
+              ctx.organizationId,
+              partType,
+              id
+            );
+            const counterpart =
+              owner && counterparts
+                ? await RbacObjectResolver.resolveMappingCounterpartOwner(
+                    ctx.organizationId,
+                    id
+                  )
+                : null;
+            parts.push({ id, owner, counterpart });
+          }
+          const unreadable = await ParentAccessService.unreadableIds(
+            permissionSet,
+            ctx.organizationId,
+            "entity",
+            parts.flatMap((p) =>
+              [p.owner, p.counterpart].filter((e): e is string => !!e)
+            )
+          );
+          for (const p of parts) {
+            if (!p.owner || unreadable.has(p.owner)) {
+              refused = notFoundResult(label, p.id);
+              return null;
+            }
+            if (p.counterpart && unreadable.has(p.counterpart)) {
+              // The mapping is visible; what it links to isn't.
+              refused = targetNotFound(
+                `The entity ${label} ${p.id} links to was not found.`
+              );
+              return null;
+            }
+          }
+          return parts.flatMap((p) =>
+            p.counterpart ? [p.owner!, p.counterpart] : [p.owner!]
+          );
+        };
         try {
           if (auth.mode === "parts") {
             // Owners from input paths, or from each stored part; any part
             // that doesn't resolve (missing, another org) denies.
             let owners: string[] | null = fromPaths(auth.objectPaths);
-            /** #835: the part id each owning entity was reached through, so
-             *  a refusal names what the caller sent, not the entity. */
-            const partOf = new Map<string, string>();
             if (auth.partType) {
-              const partLabel = PART_LABELS[auth.partType];
-              owners = [];
-              for (const id of targetIds()) {
-                const owner = id
-                  ? await RbacObjectResolver.resolvePartOwner(
-                      ctx.organizationId,
-                      auth.partType,
-                      id
-                    )
-                  : null;
-                if (!owner) {
-                  // #835: absent or another org's: not found, unless the
-                  // input named no id at all (the generic denial).
-                  if (id) refused = notFoundResult(partLabel, id);
-                  owners = null;
-                  break;
-                }
-                owners.push(owner);
-                if (!partOf.has(owner)) partOf.set(owner, id!);
-                // A field-mapping delete also writes its counterpart's entity.
-                if (auth.counterparts) {
-                  const counterpart =
-                    await RbacObjectResolver.resolveMappingCounterpartOwner(
-                      ctx.organizationId,
-                      id!
-                    );
-                  if (counterpart) {
-                    owners.push(counterpart);
-                    if (!partOf.has(counterpart)) partOf.set(counterpart, id!);
-                  }
-                }
-              }
+              owners = await partOwners(auth.partType, auth.counterparts);
             }
-            /** #835: write on every owning entity; an unreadable one is
-             *  refused as its part, so the refusal doesn't disclose the
-             *  entity's id. */
-            const ownersWritable = async (ids: string[]) => {
-              const refusal = await ParentAccessService.firstRefusal(
-                permissionSet,
-                ctx.organizationId,
-                "entity",
-                ids,
-                "write"
-              );
-              if (!refusal) return true;
-              const part = partOf.get(refusal.id);
-              refused =
-                part && auth.partType && refusal.reason === "not_found"
-                  ? notFoundResult(PART_LABELS[auth.partType], part)
-                  : refusalResult("entity", refusal);
-              return false;
-            };
+            /** Write on every owning entity. By here each one is readable
+             *  (#835), so a refusal can name it. */
+            const ownersWritable = (ids: string[]) =>
+              allPass("entity", ids, "write");
             const readIds = fromPaths(auth.readPaths);
             /** #832: every referenced object (a mapping's column
              *  definition) must be readable. */

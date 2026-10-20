@@ -95,6 +95,25 @@ beforeEach(() => {
   mockInstanceFindMany.mockReset();
 });
 
+describe("ParentAccessService.unreadableIds (#835)", () => {
+  it("returns the absent and unreadable ids, from one lookup", async () => {
+    mockEntityAuthRows.mockResolvedValue([
+      writable,
+      readOnly,
+      unreadable,
+      { ...writable, id: "e-other-org", organizationId: "org-other" },
+    ]);
+    const hidden = await ParentAccessService.unreadableIds(
+      memberSet(),
+      ORG,
+      "entity",
+      [writable.id, readOnly.id, unreadable.id, "missing", "e-other-org"]
+    );
+    expect([...hidden].sort()).toEqual(["e-other", "e-other-org", "missing"]);
+    expect(mockEntityAuthRows).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("ParentAccessService.firstRefusal (#829)", () => {
   it("firstRefusal reports a missing parent as not_found ahead of a denied one", async () => {
     mockEntityAuthRows.mockResolvedValue([writable, readOnly]);
