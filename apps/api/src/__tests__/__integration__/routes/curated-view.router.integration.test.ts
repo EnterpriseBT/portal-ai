@@ -637,7 +637,10 @@ describe("curated-view.router integration", () => {
     expect(view.filter).toBeNull();
     expect(view.filtered).toBe(true);
     expect(view.projected).toBe(true);
-    expect(view.fieldMappingIds).toEqual([emailFmId, ageFmId]);
+    // The projection is a set; rows inserted together tie on `created`.
+    expect([...view.fieldMappingIds].sort()).toEqual(
+      [emailFmId, ageFmId].sort()
+    );
     // The filter's contents don't survive anywhere in the payload.
     expect(JSON.stringify(got.body)).not.toContain('"age"');
 
