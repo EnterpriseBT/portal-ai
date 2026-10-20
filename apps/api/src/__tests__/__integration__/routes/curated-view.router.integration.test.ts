@@ -1100,6 +1100,37 @@ describe("curated-view.router integration", () => {
     expect(res.status).toBe(200);
   });
 
+  it("#829: a view writer who can't read its entity can't change its filter, but can resend it", async () => {
+    const { id } = await memberOwnedView("member_unreadable_filter", [
+      emailFmId,
+    ]);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update curated_views set filter = ${JSON.stringify(AGE_FILTER)}::jsonb where id = ${id}`
+    );
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update connector_entities set created_by = 'someone-else' where id = ${entityId}`
+    );
+    const probe = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({
+        filter: {
+          combinator: "and",
+          conditions: [{ field: "age", operator: "gt", value: 40 }],
+        },
+      });
+    expect(probe.status).toBe(403);
+    expect(probe.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    const cleared = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ filter: null });
+    expect(cleared.status).toBe(403);
+    // The editor sends the stored filter back on a rename: no change.
+    const rename = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed", filter: AGE_FILTER });
+    expect(rename.status).toBe(200);
+  });
+
   it("#829: a writer can add a column someone else mapped", async () => {
     const { id, secret } = await memberOwnedView("member_add_secret", [
       emailFmId,

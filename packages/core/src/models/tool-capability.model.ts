@@ -381,6 +381,10 @@ export const ToolAuthorizationSchema = z
     /** #829, `parts`: the part type the target ids name; its owner comes
      *  from the stored row, never from input. */
     partType: z.enum(PART_TYPES).optional(),
+    /** #829, `parts` on field mappings by id: the delete also clears each
+     *  mapping's counterpart on another entity, so that entity needs write
+     *  too. */
+    counterparts: z.literal(true).optional(),
     /** #829, `parts`: input paths naming entities the tool only reads (each
      *  must be readable). */
     readPaths: z.array(z.string()).min(1).optional(),
@@ -430,5 +434,8 @@ export const ToolAuthorizationSchema = z
       a.mode === "parts" ||
       (a.objectPaths == null && a.partType == null && a.readPaths == null),
     { message: "objectPaths, partType and readPaths are allowed only on parts" }
-  );
+  )
+  .refine((a) => a.counterparts == null || a.partType === "field_mapping", {
+    message: "counterparts applies only to field mappings by id",
+  });
 export type ToolAuthorization = z.infer<typeof ToolAuthorizationSchema>;

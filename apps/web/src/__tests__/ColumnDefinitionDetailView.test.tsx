@@ -11,6 +11,7 @@ type GetQuery = UseQueryResult<ColumnDefinitionGetResponsePayload, ApiError>;
 type ListQuery = UseQueryResult<FieldMappingListResponsePayload, ApiError>;
 
 let currentGetQuery: Partial<GetQuery> = {};
+let currentWritableEntities = 1;
 let currentFieldMappingListQuery: Partial<ListQuery> = {};
 // #769: jobs running on entities that map the column definition.
 let currentRunningJobs: unknown[] = [];
@@ -51,6 +52,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
       search: noopSearch,
     },
     connectorEntities: {
+      // #829: how many entities the caller can write (Create's gate).
+      list: () => ({
+        data: { total: currentWritableEntities },
+        isLoading: false,
+      }),
       search: (options?: unknown) => {
         connectorEntitySearchOptions.push(options);
         return noopSearch();
@@ -577,16 +583,29 @@ describe("ColumnDefinitionDetailView", () => {
       ).not.toBeInTheDocument();
     });
 
-    // #829: a mapping create needs write on its entity, which the picker
-    // decides; there's no field_mapping create rule any more.
-    it("offers the field mapping Create to anyone on the page", () => {
+    // #829: Create needs some entity the caller can write; with none it's
+    // disabled with a grant hint rather than opening an empty picker.
+    it("offers the field mapping Create when the caller can write an entity", () => {
       currentResourcePermissions = {};
+      currentWritableEntities = 1;
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
       expect(
         screen.getByRole("button", { name: /^Create$/ })
-      ).toBeInTheDocument();
+      ).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("disables Create with a grant hint when the caller can write no entity", () => {
+      currentWritableEntities = 0;
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.getByRole("button", { name: /^Create$/ })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
+      currentWritableEntities = 1;
     });
   });
 

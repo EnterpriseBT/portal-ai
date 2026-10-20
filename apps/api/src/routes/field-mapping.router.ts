@@ -1141,6 +1141,20 @@ fieldMappingRouter.delete(
         mappingToDelete.connectorEntityId,
         "write"
       );
+      // #829: the delete also clears the counterpart mapping's back-reference
+      // on its entity, so that entity needs write too.
+      const counterpartEntityId =
+        await FieldMappingValidationService.counterpartEntityId(
+          mappingToDelete
+        );
+      if (counterpartEntityId) {
+        await ParentAccessService.loadOwner(
+          set,
+          organizationId,
+          counterpartEntityId,
+          "write"
+        );
+      }
 
       // Assert write capability on the parent connector instance.
       await assertWriteCapability(mappingToDelete.connectorEntityId);

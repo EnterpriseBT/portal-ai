@@ -384,6 +384,40 @@ describe("wrapWithPermissionGate (#629)", () => {
     );
   });
 
+  it("parts by id with counterparts: a mapping delete also checks its counterpart's entity", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolvePartOwner")
+      .mockResolvedValue("e-own");
+    jest
+      .spyOn(RbacObjectResolver, "resolveMappingCounterpartOwner")
+      .mockResolvedValue("e-other");
+    const tools: Record<string, GateableTool> = {
+      fm_delete: tool(async () => "ok"),
+    };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "entity",
+        mode: "parts",
+        partType: "field_mapping",
+        itemsArg: "items",
+        idField: "fieldMappingId",
+        counterparts: true,
+      })
+    );
+    await tools.fm_delete.execute!({ items: [{ fieldMappingId: "fm-1" }] }, {});
+    expect(firstRefusal).toHaveBeenCalledWith(
+      set,
+      "org-1",
+      "entity",
+      ["e-own", "e-other"],
+      "write"
+    );
+  });
+
   it("parts by id: an unresolvable part denies the whole call", async () => {
     jest
       .spyOn(RbacObjectResolver, "resolvePartOwner")

@@ -456,6 +456,21 @@ describe("ToolAuthorizationSchema — parts and containers (#829)", () => {
     ).toBe(false);
   });
 
+  it("allows counterparts only on field mappings by id", () => {
+    const byId = {
+      resourceType: "entity",
+      mode: "parts",
+      itemsArg: "items",
+      counterparts: true,
+    };
+    expect(
+      parse({ ...byId, partType: "field_mapping", idField: "fieldMappingId" })
+    ).toBe(true);
+    expect(
+      parse({ ...byId, partType: "entity_record", idField: "entityRecordId" })
+    ).toBe(false);
+  });
+
   it("has no bulk mode", () => {
     expect(
       parse({ resourceType: "entity", mode: "bulk", objectPaths: ["x"] })

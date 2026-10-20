@@ -305,6 +305,10 @@ describe("TOOL_AUTHORIZATION parts and containers (#829)", () => {
     }
   });
 
+  it("field_mapping_delete also checks each counterpart's entity", () => {
+    expect(TOOL_AUTHORIZATION.field_mapping_delete?.counterparts).toBe(true);
+  });
+
   it("transform reads its source and writes every target", () => {
     expect(TOOL_AUTHORIZATION.transform_entity_records?.readPaths).toEqual([
       "sourceConnectorEntityId",

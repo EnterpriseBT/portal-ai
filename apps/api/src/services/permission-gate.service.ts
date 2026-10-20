@@ -168,6 +168,15 @@ export function wrapWithPermissionGate(
                   break;
                 }
                 owners.push(owner);
+                // A field-mapping delete also writes its counterpart's entity.
+                if (auth.counterparts) {
+                  const counterpart =
+                    await RbacObjectResolver.resolveMappingCounterpartOwner(
+                      ctx.organizationId,
+                      id!
+                    );
+                  if (counterpart) owners.push(counterpart);
+                }
               }
             }
             const readIds = fromPaths(auth.readPaths);

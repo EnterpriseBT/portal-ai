@@ -212,6 +212,38 @@ export class FieldMappingValidationService {
   }
 
   /**
+   * #829: the entity of the counterpart mapping that deleting `mapping` would
+   * clear (`executeDelete` nulls its back-reference), or null when there's
+   * none. Deleting a mapping writes that entity too, so the caller needs
+   * write on it as well. Org-scoped.
+   */
+  static async counterpartEntityId(
+    mapping: {
+      organizationId: string;
+      connectorEntityId: string;
+      refEntityKey: string | null;
+      refNormalizedKey: string | null;
+    },
+    client: DbClient = db
+  ): Promise<string | null> {
+    if (!mapping.refEntityKey || !mapping.refNormalizedKey) return null;
+    const entity = await DbService.repository.connectorEntities.findById(
+      mapping.connectorEntityId,
+      client
+    );
+    if (!entity) return null;
+    const counterpart =
+      await DbService.repository.fieldMappings.findCounterpart(
+        mapping.organizationId,
+        entity.key,
+        mapping.refEntityKey,
+        mapping.refNormalizedKey,
+        client
+      );
+    return counterpart?.connectorEntityId ?? null;
+  }
+
+  /**
    * Execute a cascade soft-delete of a field mapping, its dependent
    * entity group members, and clear bidirectional counterpart reference.
    *

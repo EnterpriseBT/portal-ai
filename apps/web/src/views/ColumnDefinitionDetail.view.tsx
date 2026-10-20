@@ -3,6 +3,7 @@ import React, { useState, useCallback, useMemo } from "react";
 import type {
   ColumnDefinitionGetResponsePayload,
   ColumnDefinitionUpdateRequestBody,
+  ConnectorEntityListRequestQuery,
   FieldMappingCreateRequestBody,
   FieldMappingListRequestQuery,
   FieldMappingListWithConnectorEntityResponsePayload,
@@ -11,7 +12,6 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
   DataTable,
   GatedButton,
   GatedIconButton,
@@ -36,6 +36,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { decideActionGate } from "../utils/action-gate.util";
 import { fieldMappingRowGates } from "../utils/entity-actions.util";
 import { columnDefinitionActionGates } from "../utils/column-definition-actions.util";
 import { jobLockReason } from "../utils/running-job-label.util";
@@ -66,6 +67,21 @@ export const ColumnDefinitionDetailView: React.FC<
 > = ({ columnDefinitionId }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // #829: a mapping is part of its entity, so creating one needs write on
+  // some entity; the dialog's picker lists only those. One row is enough to
+  // know whether there's any.
+  const writableEntities = sdk.connectorEntities.list({
+    capability: "write",
+    limit: 1,
+  } as ConnectorEntityListRequestQuery);
+  const createFieldMappingGate = decideActionGate({
+    allowed: (writableEntities.data?.total ?? 0) > 0,
+    primary: {
+      plausible: true,
+      grantHint: "Ask for access to edit an entity",
+    },
+  });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -340,19 +356,15 @@ export const ColumnDefinitionDetailView: React.FC<
                     title="Field Mappings"
                     icon={<Icon name={IconName.Link} />}
                     primaryAction={
-                      // #829: a mapping create needs write on the entity it's
-                      // created in, which the dialog's picker decides (it
-                      // offers only writable entities); the action itself is
-                      // open to anyone on the page.
-                      <Button
-                        type="button"
+                      <GatedButton
                         variant="outlined"
                         size="small"
                         startIcon={<AddIcon />}
                         onClick={() => setCreateFieldMappingOpen(true)}
+                        gate={createFieldMappingGate}
                       >
                         Create
-                      </Button>
+                      </GatedButton>
                     }
                   >
                     <PaginationToolbar {...mappingsPagination.toolbarProps} />

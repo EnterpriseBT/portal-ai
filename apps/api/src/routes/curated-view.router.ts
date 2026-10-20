@@ -196,6 +196,22 @@ async function assertProjection(
     }
   }
 
+  await assertEntityReadable(set, organizationId, connectorEntityId);
+  return live;
+}
+
+/**
+ * #829: a view conveys its definition (projection and filter) to everyone who
+ * reads it, so changing either needs read on the view's entity, which covers
+ * every column and row of it. Without this, a view writer who can't read the
+ * entity could widen what the view shows, or probe unprojected columns with
+ * a filter. `403 PERMISSION_DENIED`.
+ */
+async function assertEntityReadable(
+  set: PermissionSet,
+  organizationId: string,
+  connectorEntityId: string
+): Promise<void> {
   const entity = (
     await DbService.repository.connectorEntities.findAuthRows([
       connectorEntityId,
@@ -211,7 +227,20 @@ async function assertProjection(
       createdBy,
     });
   }
-  return live;
+}
+
+/** JSON with object keys sorted, so a filter round-tripped through jsonb
+ *  (which reorders keys) compares equal to the one the editor sends back. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0
+          )
+        )
+      : v
+  );
 }
 
 /**
@@ -635,7 +664,7 @@ curatedViewRouter.post(
  *     responses:
  *       200: { description: Updated }
  *       400: { description: "Invalid filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the view's entity (CURATED_VIEW_INVALID_PAYLOAD)" }
- *       403: { description: "Not permitted, or the projection changes and the caller can't read the view's entity (#829, PERMISSION_DENIED). Resending the stored fieldMappingIds, in any order, is no change and isn't checked." }
+ *       403: { description: "Not permitted, or the projection or filter changes and the caller can't read the view's entity (#829, PERMISSION_DENIED). Resending the stored fieldMappingIds (in any order) or filter is no change and isn't checked." }
  *       404: { description: Not found }
  */
 curatedViewRouter.patch(
@@ -681,6 +710,20 @@ curatedViewRouter.patch(
         ]);
         if (body.filter) {
           await validateFilter(body.filter, existing.connectorEntityId);
+        }
+        // #829: a filter change needs read on the entity, like a column
+        // change. The editor sends the stored filter back on every save, so
+        // an unchanged one isn't checked (a rename still works).
+        if (
+          body.filter !== undefined &&
+          canonicalJson(body.filter ?? null) !==
+            canonicalJson(existing.filter ?? null)
+        ) {
+          await assertEntityReadable(
+            set,
+            organizationId,
+            existing.connectorEntityId
+          );
         }
         const patch: Record<string, unknown> = {
           updated: Date.now(),

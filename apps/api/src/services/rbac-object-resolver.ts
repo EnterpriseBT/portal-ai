@@ -22,6 +22,7 @@ import {
 } from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
+import { FieldMappingValidationService } from "./field-mapping-validation.service.js";
 
 type ResolvableRow = { organizationId: string; createdBy: string } | undefined;
 
@@ -133,5 +134,20 @@ export class RbacObjectResolver {
     if (!row || row.organizationId !== organizationId) return null;
     const owner = row[PART_OWNERS[partType].ownerKey];
     return typeof owner === "string" ? owner : null;
+  }
+
+  /**
+   * #829: the entity of the counterpart mapping a delete of this field
+   * mapping would clear, or null (none, or the mapping is absent / in another
+   * org).
+   */
+  static async resolveMappingCounterpartOwner(
+    organizationId: string,
+    fieldMappingId: string
+  ): Promise<string | null> {
+    const mapping =
+      await DbService.repository.fieldMappings.findById(fieldMappingId);
+    if (!mapping || mapping.organizationId !== organizationId) return null;
+    return FieldMappingValidationService.counterpartEntityId(mapping);
   }
 }

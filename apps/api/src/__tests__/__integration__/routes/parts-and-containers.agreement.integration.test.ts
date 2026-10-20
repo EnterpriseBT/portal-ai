@@ -148,6 +148,38 @@ describe("objects and parts (#829)", () => {
     return id;
   }
 
+  /** #829: a mapping on `a` and its counterpart on `b`, referencing each
+   *  other, so deleting the first clears the second's back-reference. */
+  async function linkedMappings(a: string, b: string) {
+    const keyOf = async (id: string) =>
+      (
+        await db
+          .select({ key: schema.connectorEntities.key })
+          .from(schema.connectorEntities)
+          .where(eq(schema.connectorEntities.id, id))
+      )[0].key;
+    const [aKey, bKey] = [await keyOf(a), await keyOf(b)];
+    const onA = await mapping(a, fx.memberId);
+    const onB = await mapping(b, SYSTEM);
+    const nk = async (id: string) =>
+      (
+        await db
+          .select({ nk: schema.fieldMappings.normalizedKey })
+          .from(schema.fieldMappings)
+          .where(eq(schema.fieldMappings.id, id))
+      )[0].nk;
+    const [aNk, bNk] = [await nk(onA), await nk(onB)];
+    await db
+      .update(schema.fieldMappings)
+      .set({ refEntityKey: bKey, refNormalizedKey: bNk } as never)
+      .where(eq(schema.fieldMappings.id, onA));
+    await db
+      .update(schema.fieldMappings)
+      .set({ refEntityKey: aKey, refNormalizedKey: aNk } as never)
+      .where(eq(schema.fieldMappings.id, onB));
+    return { onA, onB };
+  }
+
   async function record(entityId: string, createdBy: string) {
     const id = generateId();
     await db.insert(schema.entityRecords).values({
@@ -375,6 +407,24 @@ describe("objects and parts (#829)", () => {
       );
     });
   });
+
+  describe.each(["readOnly", "writable"] as const)(
+    "field mapping delete, counterpart's entity %s",
+    (state) => {
+      it("needs write on the counterpart's entity too", async () => {
+        const a = await entity(fx.memberId);
+        const b = await entity(parentOwner(state));
+        const { onA, onB } = await linkedMappings(a, b);
+        const res = await request(app).delete(`/api/field-mappings/${onA}`);
+        expectOutcome(res, state, ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+        const [counterpart] = await db
+          .select()
+          .from(schema.fieldMappings)
+          .where(eq(schema.fieldMappings.id, onB));
+        expect(counterpart.refEntityKey === null).toBe(state === "writable");
+      });
+    }
+  );
 
   describe.each(["unreadable", "readOnly"] as const)(
     "entity-wide record writes, entity %s",
@@ -787,6 +837,22 @@ describe("objects and parts (#829)", () => {
         );
         if (state !== "writable") expect(await count()).toBe(1);
       });
+    });
+
+    it("field_mapping_delete needs write on the counterpart's entity too", async () => {
+      const a = await entity(fx.memberId);
+      const b = await entity(SYSTEM);
+      const { onA } = await linkedMappings(a, b);
+      await reach(await instanceOf(a), [a]);
+      const result = await (
+        await memberTool("field_mapping_delete")
+      )({ items: [{ fieldMappingId: onA }] });
+      expect(result).toHaveProperty("error.code", "TOOL_PERMISSION_DENIED");
+      const [still] = await db
+        .select()
+        .from(schema.fieldMappings)
+        .where(eq(schema.fieldMappings.id, onA));
+      expect(still.deleted).toBeNull();
     });
 
     describe("transform_entity_records checks every target and its source", () => {

@@ -1838,6 +1838,8 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     resourceType: "entity",
     mode: "parts",
     partType: "field_mapping",
+    // It also clears each mapping's counterpart on another entity.
+    counterparts: true,
     itemsArg: "items",
     idField: "fieldMappingId",
     lock: {
