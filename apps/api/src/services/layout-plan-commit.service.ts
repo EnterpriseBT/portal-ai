@@ -233,6 +233,23 @@ export class LayoutPlanCommitService {
 
     const bindingsByTarget = LayoutPlanCommitService.bindingsByTarget(plan);
 
+    // #834: every column definition a reconciled target binds must still be
+    // in the org catalog (not another org's, not since deleted). Refused here,
+    // before the first target writes, so a commit is never left part-done;
+    // reconcile re-checks per target.
+    for (const targetId of recordsByTarget.keys()) {
+      const missing = (bindingsByTarget.get(targetId) ?? []).find(
+        (b) => !b.excluded && !catalogById.has(b.columnDefinitionId)
+      );
+      if (missing) {
+        throw new ApiError(
+          404,
+          ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+          `Column definition ${missing.columnDefinitionId} not found. Bind that column to another column definition in the plan.`
+        );
+      }
+    }
+
     // #802: committing soft-deletes each reconciled entity's mappings the
     // plan no longer binds — refuse before any write if a curated view uses
     // one, so the common case leaves nothing half-written. Only the targets

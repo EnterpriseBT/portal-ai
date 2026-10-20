@@ -201,6 +201,7 @@ async function resolveColumns(
       organizationId
     );
   const byKey = new Map<string, string>();
+  const unreadableKeys = new Set<string>();
   for (const cd of existing) {
     if (
       permissions.can("resource.read", {
@@ -210,6 +211,8 @@ async function resolveColumns(
       })
     ) {
       byKey.set(cd.key, cd.id);
+    } else {
+      unreadableKeys.add(cd.key);
     }
   }
 
@@ -218,8 +221,21 @@ async function resolveColumns(
     columnDefinitionId:
       col.columnDefinitionId ?? byKey.get(col.normalizedKey) ?? null,
   }));
-  if (resolved.some((r) => r.columnDefinitionId === null)) {
+  const fresh = resolved.filter((r) => r.columnDefinitionId === null);
+  if (fresh.length > 0) {
     permissions.check("resource.write", { type: "column_definition" });
+    // Only a caller who may create one gets here, so a member's answer is the
+    // same 403 whether or not the key is taken. Keys are unique per org, so
+    // creating one held by a definition the caller can't read would fail
+    // after the entity is written; refuse it first.
+    const taken = fresh.find((r) => unreadableKeys.has(r.col.normalizedKey));
+    if (taken) {
+      throw new ApiError(
+        409,
+        ApiCode.COLUMN_DEFINITION_KEY_CONFLICT,
+        `A column definition with key "${taken.col.normalizedKey}" already exists`
+      );
+    }
   }
   return resolved;
 }

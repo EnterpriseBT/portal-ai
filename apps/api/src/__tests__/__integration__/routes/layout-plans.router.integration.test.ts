@@ -530,6 +530,46 @@ describe("Layout Plans Draft Router", () => {
   }
 
   describe("POST /api/layout-plans/commit", () => {
+    it("#834: a commit whose plan binds a since-deleted column definition refuses before writing any mapping", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      await (db as Db)
+        .update(schema.columnDefinitions)
+        .set({ deleted: Date.now(), deletedBy: userId })
+        .where(eq(schema.columnDefinitions.id, nameId));
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+
+      await expect(
+        runDraftCommitInline({
+          connectorDefinitionId,
+          name: "Deleted reference",
+          plan: makePlan(emailId, nameId),
+          uploadSessionId,
+        })
+      ).rejects.toMatchObject({
+        status: 404,
+        code: ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      });
+      const mappings = await (db as Db)
+        .select()
+        .from(schema.fieldMappings)
+        .where(eq(schema.fieldMappings.organizationId, organizationId));
+      expect(mappings).toHaveLength(0);
+    });
+
     it("#834: a plan mapping another org's column definition → 404 COLUMN_DEFINITION_NOT_FOUND, and no instance is created", async () => {
       const other = await seedUserAndOrg(
         db as Db,

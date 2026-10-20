@@ -16,6 +16,7 @@ import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { SystemUtilities } from "../../../utils/system.util.js";
 import {
+  allowForUser,
   generateId,
   seedTenancyFixture,
   teardownOrg,
@@ -301,6 +302,22 @@ describe("REST-API endpoint save: column-definition references (#834)", () => {
     expect(await definitionsWithKey(fresh)).toHaveLength(0);
   });
 
+  it("a caller who may create column definitions but can't read the one holding the key → 409 before anything is written", async () => {
+    await allowForUser(db, {
+      organizationId: fx.orgId,
+      userId: fx.memberId,
+      verb: "write",
+      resourceType: "column_definition",
+    });
+    const key = `ep_${suffix()}`;
+    const res = await save(key, [{ normalizedKey: ownerColKey }]);
+    expect([res.status, res.body.code]).toEqual([
+      409,
+      ApiCode.COLUMN_DEFINITION_KEY_CONFLICT,
+    ]);
+    expect(await entityExists(key)).toBe(false);
+  });
+
   it("the owner, who holds the create rule, gets the new column definition created and mapped", async () => {
     currentSub = OWNER_SUB;
     const key = `ep_${suffix()}`;
@@ -313,5 +330,121 @@ describe("REST-API endpoint save: column-definition references (#834)", () => {
     const created = await definitionsWithKey(fresh);
     expect(created).toHaveLength(1);
     expect(await mappedDefinitions(key)).toEqual([created[0].id]);
+  });
+
+  describe("layout plan patch, as a member", () => {
+    /** The member's own spreadsheet connector with a stored plan binding
+     *  the system definition. */
+    async function memberPlan() {
+      const definitionId = generateId();
+      await db.insert(schema.connectorDefinitions).values({
+        id: definitionId,
+        slug: `file-upload-${suffix()}`,
+        display: "File Upload",
+        category: "file",
+        authType: "none",
+        configSchema: {},
+        capabilityFlags: { sync: true },
+        isActive: true,
+        version: "1.0.0",
+        iconUrl: null,
+        ...base("SYSTEM_TEST"),
+      } as never);
+      const connectorInstanceId = generateId();
+      await db.insert(schema.connectorInstances).values({
+        id: connectorInstanceId,
+        connectorDefinitionId: definitionId,
+        organizationId: fx.orgId,
+        name: "Member upload",
+        status: "active",
+        config: null,
+        credentials: null,
+        lastSyncAt: null,
+        lastErrorMessage: null,
+        enabledCapabilityFlags: null,
+        ...base(fx.memberId),
+      } as never);
+      const plan = planBinding(systemColId);
+      const planId = generateId();
+      await db.insert(schema.connectorInstanceLayoutPlans).values({
+        id: planId,
+        connectorInstanceId,
+        planVersion: plan.planVersion,
+        revisionTag: null,
+        plan,
+        interpretationTrace: null,
+        supersededBy: null,
+        ...base(fx.memberId),
+      } as never);
+      return { connectorInstanceId, planId };
+    }
+
+    const planBinding = (columnDefinitionId: string) => ({
+      planVersion: "1.0.0",
+      workbookFingerprint: {
+        sheetNames: ["Sheet1"],
+        dimensions: { Sheet1: { rows: 2, cols: 1 } },
+        anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
+      },
+      regions: [
+        {
+          id: "r1",
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 1 },
+          targetEntityDefinitionId: "contacts",
+          headerAxes: ["row"],
+          segmentsByAxis: { row: [{ kind: "field", positionCount: 1 }] },
+          headerStrategyByAxis: {
+            row: {
+              kind: "row",
+              locator: { kind: "row", sheet: "Sheet1", row: 1 },
+              confidence: 0.9,
+            },
+          },
+          identityStrategy: { kind: "rowPosition", confidence: 0.3 },
+          columnBindings: [
+            {
+              sourceLocator: {
+                kind: "byHeaderName",
+                axis: "row",
+                name: "email",
+              },
+              columnDefinitionId,
+              confidence: 0.9,
+            },
+          ],
+          skipRules: [],
+          drift: {
+            headerShiftRows: 0,
+            addedColumns: "halt",
+            removedColumns: { max: 0, action: "halt" },
+          },
+          confidence: { region: 0.9, aggregate: 0.9 },
+          warnings: [],
+        },
+      ],
+      confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
+    });
+
+    it("refuses binding a column definition the member can't read; the readable stored one passes", async () => {
+      const { connectorInstanceId, planId } = await memberPlan();
+      const patch = (columnDefinitionId: string) =>
+        request(app)
+          .patch(
+            `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}`
+          )
+          .send({ regions: planBinding(columnDefinitionId).regions });
+
+      const refused = await patch(ownerColId);
+      expect([refused.status, refused.body.code]).toEqual([
+        404,
+        ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      ]);
+      const resent = await patch(systemColId);
+      expect([resent.status, JSON.stringify(resent.body)]).toEqual([
+        200,
+        JSON.stringify(resent.body),
+      ]);
+    });
   });
 });
