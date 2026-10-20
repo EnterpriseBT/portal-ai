@@ -37,6 +37,7 @@ import { ObjectCapabilitiesService } from "../services/object-capabilities.servi
 import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+import { ParentAccessService } from "../services/parent-access.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
@@ -246,11 +247,12 @@ connectorEntityRouter.get(
         | ConnectorEntityListWithTagsResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
         // #688: each row with the caller's capabilities.
-        connectorEntities: ObjectCapabilitiesService.attach(
+        connectorEntities: (await ObjectCapabilitiesService.attachChildren(
           set,
+          req.application!.metadata.organizationId,
           "entity",
           data as unknown as Array<{ id: string; createdBy: string }>
-        ) as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
+        )) as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
         total,
         limit,
         offset,
@@ -373,12 +375,15 @@ connectorEntityRouter.get(
 
       return HttpService.success<ConnectorEntityGetResponsePayload>(res, {
         connectorEntity: {
-          ...connectorEntity,
-          capabilities: ObjectCapabilitiesService.for(
-            set,
-            "entity",
-            connectorEntity
-          ),
+          // #829: a child's write/delete also need its parent writable.
+          ...(
+            await ObjectCapabilitiesService.attachChildren(
+              set,
+              req.application!.metadata.organizationId,
+              "entity",
+              [connectorEntity]
+            )
+          )[0],
         } as unknown as ConnectorEntityGetResponsePayload["connectorEntity"],
       });
     } catch (error) {
@@ -530,7 +535,7 @@ connectorEntityRouter.get(
  *                 description: Human-readable label
  *     responses:
  *       403:
- *         description: The caller lacks permission for this change (#685)
+ *         description: The caller lacks permission for this change (#685), or write on the connector instance (#829)
  *       201:
  *         description: Connector entity created
  *         content:
@@ -580,29 +585,15 @@ connectorEntityRouter.post(
 
       // #685: the connector instance must be in the caller's org (it wasn't
       // checked) and readable by them, else 404; creating an entity is an
-      // owned write.
+      // owned write. #829: and the caller needs write on the instance.
       const caller = req.application!.metadata;
       const set = await PermissionService.loadSet(caller);
-      const connectorInstance =
-        await DbService.repository.connectorInstances.findById(
-          parsed.data.connectorInstanceId
-        );
-      if (
-        !ObjectAccessService.readableInOrg(
-          set,
-          caller.organizationId,
-          "connector_instance",
-          connectorInstance
-        )
-      ) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-            "Connector instance not found"
-          )
-        );
-      }
+      await ParentAccessService.loadWritableParent(
+        set,
+        caller.organizationId,
+        "entity",
+        parsed.data.connectorInstanceId
+      );
 
       const { userId, organizationId } = caller;
       set.check("resource.write", { type: "entity", createdBy: userId });
@@ -743,6 +734,8 @@ connectorEntityRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller lacks permission for this entity, or write on its connector instance (#829)
  *       404:
  *         description: Connector entity not found
  *         content:
@@ -786,8 +779,9 @@ connectorEntityRouter.patch(
       // #599: RBAC write gate (in addition to connector capability) — a member
       // may edit only entities they created; owner/admin any.
       // #713: one the caller can't read answers 404, like its GET.
-      ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const entity = ObjectAccessService.loadForVerb(
+        set,
         req.application!.metadata.organizationId,
         "entity",
         await DbService.repository.connectorEntities.findById(id),
@@ -798,6 +792,13 @@ connectorEntityRouter.patch(
             ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
             "Connector entity not found"
           )
+      );
+      // #829: editing an entity needs write on its connector instance.
+      await ParentAccessService.loadWritableParent(
+        set,
+        req.application!.metadata.organizationId,
+        "entity",
+        entity.connectorInstanceId
       );
 
       await assertWriteCapability(id);
@@ -1055,6 +1056,8 @@ connectorEntityRouter.get(
  *                     recordsJobId:
  *                       type: string
  *                       description: The entity_data_delete job removing the records (#802)
+ *       403:
+ *         description: The caller lacks permission for this entity, or write on its connector instance (#829)
  *       404:
  *         description: Connector entity not found
  *       422:
@@ -1077,8 +1080,9 @@ connectorEntityRouter.delete(
       // #685: org-scoped first (an owner/admin of another org passed the
       // check below, which doesn't see orgs).
       // #713: missing or unreadable answers 404, like its GET.
-      ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      const entity = ObjectAccessService.loadForVerb(
+        set,
         organizationId,
         "entity",
         await DbService.repository.connectorEntities.findById(id),
@@ -1089,6 +1093,13 @@ connectorEntityRouter.delete(
             ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
             "Connector entity not found"
           )
+      );
+      // #829: deleting an entity needs write on its connector instance.
+      await ParentAccessService.loadWritableParent(
+        set,
+        organizationId,
+        "entity",
+        entity.connectorInstanceId
       );
 
       await ConnectorEntityValidationService.validateDelete(id);

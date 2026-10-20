@@ -31,6 +31,7 @@ import {
 import type { PermissionSet } from "../services/permission-set.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+import { ParentAccessService } from "../services/parent-access.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
@@ -232,11 +233,12 @@ fieldMappingRouter.get(
         | FieldMappingListWithConnectorEntityResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
         // #688: each row with the caller's capabilities.
-        fieldMappings: ObjectCapabilitiesService.attach(
+        fieldMappings: (await ObjectCapabilitiesService.attachChildren(
           set,
+          req.application!.metadata.organizationId,
           "field_mapping",
           data as unknown as Array<{ id: string; createdBy: string }>
-        ) as unknown as FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"],
+        )) as unknown as FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"],
         total,
         limit,
         offset,
@@ -329,12 +331,15 @@ fieldMappingRouter.get(
 
       return HttpService.success<FieldMappingGetResponsePayload>(res, {
         fieldMapping: {
-          ...fieldMapping,
-          capabilities: ObjectCapabilitiesService.for(
-            set,
-            "field_mapping",
-            fieldMapping
-          ),
+          // #829: a child's write/delete also need its parent writable.
+          ...(
+            await ObjectCapabilitiesService.attachChildren(
+              set,
+              req.application!.metadata.organizationId,
+              "field_mapping",
+              [fieldMapping]
+            )
+          )[0],
         } as unknown as FieldMappingGetResponsePayload["fieldMapping"],
       });
     } catch (error) {
@@ -412,7 +417,7 @@ fieldMappingRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: The caller lacks permission for this field mapping change (#685)
+ *         description: The caller lacks permission for this field mapping change (#685), or write on its connector entity (#829)
  *       404:
  *         description: Connector entity or column definition not found
  *         content:
@@ -445,29 +450,15 @@ fieldMappingRouter.post(
       // #685: the connector entity must be in the caller's org and readable
       // by them (unreadable == absent), and creating a mapping is an owned
       // write. It used to accept any entity id, across orgs.
+      // #829: and the caller needs write on the entity (403 if only read).
       const caller = req.application!.metadata;
       const set = await PermissionService.loadSet(caller);
-      const connectorEntity =
-        await DbService.repository.connectorEntities.findById(
-          parsed.data.connectorEntityId
-        );
-      if (
-        !connectorEntity ||
-        connectorEntity.organizationId !== caller.organizationId ||
-        !set.can("resource.read", {
-          type: "entity",
-          id: connectorEntity.id,
-          createdBy: connectorEntity.createdBy,
-        })
-      ) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-            "Connector entity not found"
-          )
-        );
-      }
+      await ParentAccessService.loadWritableParent(
+        set,
+        caller.organizationId,
+        "field_mapping",
+        parsed.data.connectorEntityId
+      );
 
       set.check("resource.write", {
         type: "field_mapping",
@@ -673,7 +664,7 @@ fieldMappingRouter.post(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: The caller lacks permission for this field mapping change (#685)
+ *         description: The caller lacks permission for this field mapping change (#685), or write on its connector entity (#829)
  *       409:
  *         description: FIELD_MAPPING_KEY_IN_VIEW — the rename changes a normalizedKey a curated view's filter uses (#802)
  *         content:
@@ -714,8 +705,9 @@ fieldMappingRouter.patch(
       // any mapping by id), and changing it needs write on it.
       const caller = req.application!.metadata;
       // #713: one the caller can't read answers 404, like its GET.
+      const set = await PermissionService.loadSet(caller);
       const existing = ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(caller),
+        set,
         caller.organizationId,
         "field_mapping",
         await DbService.repository.fieldMappings.findById(id),
@@ -726,6 +718,13 @@ fieldMappingRouter.patch(
             ApiCode.FIELD_MAPPING_NOT_FOUND,
             "Field mapping not found"
           )
+      );
+      // #829: changing a mapping needs write on its entity.
+      await ParentAccessService.loadWritableParent(
+        set,
+        caller.organizationId,
+        "field_mapping",
+        existing.connectorEntityId
       );
 
       // Assert write capability on the parent connector instance
@@ -1112,7 +1111,7 @@ fieldMappingRouter.get(
  *                           type: integer
  *                           description: Number of entity group members that were cascade-deleted
  *       403:
- *         description: The caller lacks permission for this field mapping change (#685)
+ *         description: The caller lacks permission for this field mapping change (#685), or write on its connector entity (#829)
  *       409:
  *         description: >
  *           FIELD_MAPPING_DELETE_IN_VIEW — a curated view projects this mapping
@@ -1145,8 +1144,9 @@ fieldMappingRouter.delete(
       // #685: resolve the mapping within the caller's org first. This used
       // to find any mapping by id, across orgs, before anything else.
       // #713: one the caller can't read answers 404, like its GET.
+      const set = await PermissionService.loadSet(req.application!.metadata);
       const mappingToDelete = ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
+        set,
         organizationId,
         "field_mapping",
         await DbService.repository.fieldMappings.findById(id),
@@ -1157,6 +1157,13 @@ fieldMappingRouter.delete(
             ApiCode.FIELD_MAPPING_NOT_FOUND,
             "Field mapping not found"
           )
+      );
+      // #829: deleting a mapping needs write on its entity.
+      await ParentAccessService.loadWritableParent(
+        set,
+        organizationId,
+        "field_mapping",
+        mappingToDelete.connectorEntityId
       );
 
       // Assert write capability on the parent connector instance.

@@ -187,9 +187,11 @@ async function instance(db: Db, fx: TenancyFixture, createdBy: string) {
   return id;
 }
 
-/** An entity created by `createdBy`, on a system-created instance. */
+/** An entity created by `createdBy`, on an instance they created too: #829
+ *  makes a child's write and delete need write on its parent, so a row and
+ *  its parent share a creator to keep the matrix about the row. */
 async function entity(db: Db, fx: TenancyFixture, createdBy: string) {
-  const instanceId = await instance(db, fx, SYSTEM);
+  const instanceId = await instance(db, fx, createdBy);
   const id = generateId();
   await db.insert(schema.connectorEntities).values({
     id,
@@ -221,7 +223,7 @@ async function columnDefinition(db: Db, fx: TenancyFixture, createdBy: string) {
 }
 
 async function fieldMapping(db: Db, fx: TenancyFixture, createdBy: string) {
-  const connectorEntityId = await entity(db, fx, SYSTEM);
+  const connectorEntityId = await entity(db, fx, createdBy);
   const columnDefinitionId = await columnDefinition(db, fx, SYSTEM);
   const id = generateId();
   await db.insert(schema.fieldMappings).values({
@@ -241,10 +243,10 @@ async function fieldMapping(db: Db, fx: TenancyFixture, createdBy: string) {
   return id;
 }
 
-/** A record created through the API on a system entity (so the wide table is
- *  written), then attributed to `createdBy`. */
+/** A record created through the API (so the wide table is written) on an
+ *  entity `createdBy` created, then attributed to them. */
 async function record(db: Db, fx: TenancyFixture, createdBy: string) {
-  const parent = await entity(db, fx, SYSTEM);
+  const parent = await entity(db, fx, createdBy);
   const prev = currentSub;
   currentSub = OWNER_SUB;
   const res = await request(app)
@@ -538,11 +540,13 @@ describe("Object capabilities agree with the mutation routes (#688)", () => {
     await connection.end();
   });
 
-  /** The row as the current caller lists it (undefined when not listed, or
-   *  when the list itself is refused, as toolpacks are for members). */
+  /** The row as the current caller lists it (undefined when not listed, when
+   *  the list itself is refused, as toolpacks are for members, or when its
+   *  parent is unreadable, as an owner's entity's records are). */
   const listRow = async (t: TypeCase, s: Seeded) => {
     const res = await request(app).get(t.listPath(s.parent));
-    if (res.status === 403) return undefined;
+    if (res.status === 403 || (s.parent && res.status === 404))
+      return undefined;
     expect(res.status).toBe(200);
     return (res.body.payload[t.listKey] as Array<Record<string, unknown>>).find(
       (r) => r.id === s.id

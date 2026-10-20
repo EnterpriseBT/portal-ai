@@ -543,16 +543,24 @@ curatedViewRouter.post(
       const set = await PermissionService.loadSet(req.application!.metadata);
       set.check("resource.write", { type: "curated_view" });
 
-      // The connector entity must exist in this org.
+      // The connector entity must exist in this org and, #829, be readable by
+      // the caller (a view only reads it); unreadable == absent (404).
       const entity = await DbService.repository.connectorEntities.findById(
         body.connectorEntityId
       );
-      if (!entity || entity.organizationId !== organizationId) {
+      if (
+        !ObjectAccessService.readableInOrg(
+          set,
+          organizationId,
+          "entity",
+          entity
+        )
+      ) {
         return next(
           new ApiError(
-            400,
-            ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
-            "Unknown connector entity"
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
           )
         );
       }

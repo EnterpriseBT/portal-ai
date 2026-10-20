@@ -45,7 +45,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/connector-entities/{connectorEntityId}/records/{recordId}": {
     kind: "authorized",
-    by: "entity in org + record on it + read, else 404 (#713) + per-object resource.write/delete entity_record",
+    by: "entity in org + record on it + read, else 404 (#713) + write on the entity (#829) + per-object resource.write/delete entity_record",
     locks: { target: "record" },
   },
   "DELETE /api/connector-entities/{connectorEntityId}/tags/{assignmentId}": {
@@ -55,7 +55,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/connector-entities/{id}": {
     kind: "authorized",
-    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685) + write on its connector instance (#829)",
     locks: { target: "connectorEntity" },
   },
   "DELETE /api/connector-instances/{id}": {
@@ -95,7 +95,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "DELETE /api/field-mappings/{id}": {
     kind: "authorized",
-    by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685) + write on its entity (#829)",
     locks: { target: "fieldMapping" },
   },
   "DELETE /api/grants/{id}": {
@@ -516,12 +516,12 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/connector-entities/{connectorEntityId}/records/{recordId}": {
     kind: "authorized",
-    by: "entity in org + record on it + read, else 404 (#713) + per-object resource.write/delete entity_record",
+    by: "entity in org + record on it + read, else 404 (#713) + write on the entity (#829) + per-object resource.write/delete entity_record",
     locks: { target: "record" },
   },
   "PATCH /api/connector-entities/{id}": {
     kind: "authorized",
-    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete entity (#599, #685) + write on its connector instance (#829)",
     locks: { target: "connectorEntity" },
   },
   "PATCH /api/connector-instances/{connectorInstanceId}/layout-plan/{planId}": {
@@ -561,7 +561,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/field-mappings/{id}": {
     kind: "authorized",
-    by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685)",
+    by: "org scope + read, else 404 (#713) + per-object resource.write/delete field_mapping (#685) + write on its entity (#829)",
     locks: { target: "fieldMapping" },
   },
   "PATCH /api/organization/{id}": {
@@ -606,12 +606,12 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/connector-entities": {
     kind: "authorized",
-    by: "instance in org + readable, owned create resource.write entity (#685)",
+    by: "instance in org + readable, else 404, + writable (#829), owned create resource.write entity (#685)",
     locks: { target: "connectorInstance" },
   },
   "POST /api/connector-entities/{connectorEntityId}/records": {
     kind: "authorized",
-    by: "entity in org + readable, owned create resource.write entity_record (#685)",
+    by: "entity in org + readable, else 404, + writable (#829), owned create resource.write entity_record (#685)",
     locks: { target: "record" },
   },
   "POST /api/connector-entities/{connectorEntityId}/records/import": {
@@ -708,7 +708,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/curated-views": {
     kind: "authorized",
-    by: "class resource.write curated_view (owner/admin)",
+    by: "class resource.write curated_view (owner/admin) + its entity in org and readable, else 404 (#829)",
     locks: { none: "curated views; no job reads or writes them" },
   },
   "POST /api/curated-views/{id}/attach": {
@@ -723,7 +723,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/entity-groups/{entityGroupId}/members": {
     kind: "authorized",
-    by: "group in org + readable + write entity_group; member on the group (#685)",
+    by: "group in org + readable + write entity_group; member on the group (#685); the member's entity in org and readable, else 404 (#829)",
     locks: { none: "entity groups; no job reads or writes them" },
   },
   "POST /api/entity-tags": {
@@ -733,7 +733,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/field-mappings": {
     kind: "authorized",
-    by: "entity in org + readable, column definition in org, owned create resource.write field_mapping (#685)",
+    by: "entity in org + readable, else 404, + writable (#829), column definition in org, owned create resource.write field_mapping (#685)",
     locks: { target: "fieldMapping" },
   },
   "POST /api/file-uploads/confirm": {

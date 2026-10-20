@@ -10,6 +10,7 @@
 
 import {
   SHAREABLE_RESOURCE_TYPES,
+  type ChildResourceType,
   type PermissionResourceType,
 } from "@portalai/core/models";
 import type {
@@ -17,6 +18,7 @@ import type {
   ShareableObjectCapabilities,
 } from "@portalai/core/contracts";
 
+import { ParentAccessService } from "./parent-access.service.js";
 import type { PermissionSet } from "./permission-set.js";
 
 interface OwnedRow {
@@ -26,6 +28,9 @@ interface OwnedRow {
 
 type Capabilities = ObjectCapabilities | ShareableObjectCapabilities;
 type ShareableType = (typeof SHAREABLE_RESOURCE_TYPES)[number];
+/** #829: a child's write/delete also depend on its parent, so a child type
+ *  goes through `attachChildren`; tsc refuses it here. */
+type NonChildType = Exclude<PermissionResourceType, ChildResourceType>;
 
 const SHAREABLE = new Set<string>(SHAREABLE_RESOURCE_TYPES);
 
@@ -38,10 +43,19 @@ export class ObjectCapabilitiesService {
   ): ShareableObjectCapabilities;
   static for(
     set: PermissionSet,
-    type: PermissionResourceType,
+    type: NonChildType,
     row: OwnedRow
   ): Capabilities;
   static for(
+    set: PermissionSet,
+    type: NonChildType,
+    row: OwnedRow
+  ): Capabilities {
+    return ObjectCapabilitiesService.own(set, type, row);
+  }
+
+  /** The row's own capabilities, ignoring any parent. */
+  private static own(
     set: PermissionSet,
     type: PermissionResourceType,
     row: OwnedRow
@@ -60,13 +74,53 @@ export class ObjectCapabilitiesService {
   /** `rows` with `capabilities` attached, order and fields unchanged. */
   static attach<T extends OwnedRow>(
     set: PermissionSet,
-    type: PermissionResourceType,
+    type: NonChildType,
     rows: T[]
   ): Array<T & { capabilities: Capabilities }> {
     return rows.map((row) => ({
       ...row,
       capabilities: ObjectCapabilitiesService.for(set, type, row),
     }));
+  }
+
+  /**
+   * #829: a child's capabilities. A child write needs write on its parent, so
+   * `write`/`delete` are its own grant AND a writable parent; `read` is the
+   * row's own. One parent query for the whole page.
+   */
+  static async attachChildren<T extends OwnedRow>(
+    set: PermissionSet,
+    organizationId: string,
+    type: ChildResourceType,
+    rows: T[]
+  ): Promise<Array<T & { capabilities: ObjectCapabilities }>> {
+    const parentIds = rows
+      .map((row) =>
+        ParentAccessService.parentIdOf(type, row as Record<string, unknown>)
+      )
+      .filter((id): id is string => id != null);
+    const writable = await ParentAccessService.writableParentIds(
+      set,
+      organizationId,
+      type,
+      parentIds
+    );
+    return rows.map((row) => {
+      const own = ObjectCapabilitiesService.own(set, type, row);
+      const parentId = ParentAccessService.parentIdOf(
+        type,
+        row as Record<string, unknown>
+      );
+      const parentWritable = parentId != null && writable.has(parentId);
+      return {
+        ...row,
+        capabilities: {
+          read: own.read,
+          write: own.write && parentWritable,
+          delete: own.delete && parentWritable,
+        },
+      };
+    });
   }
 
   /**

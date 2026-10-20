@@ -48,6 +48,7 @@ import { ObjectCapabilitiesService } from "../services/object-capabilities.servi
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+import { ParentAccessService } from "../services/parent-access.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
@@ -502,11 +503,12 @@ entityRecordRouter.get(
 
       return HttpService.success<EntityRecordListResponsePayload>(res, {
         // #688: each record with the caller's capabilities.
-        records: ObjectCapabilitiesService.attach(
+        records: (await ObjectCapabilitiesService.attachChildren(
           set,
+          req.application!.metadata.organizationId,
           "entity_record",
           records as unknown as Array<{ id: string; createdBy: string }>
-        ) as unknown as EntityRecordListResponsePayload["records"],
+        )) as unknown as EntityRecordListResponsePayload["records"],
         columns: filteredColumns,
         source: "cache",
         total,
@@ -694,12 +696,15 @@ entityRecordRouter.get(
 
       return HttpService.success<EntityRecordGetResponsePayload>(res, {
         record: {
-          ...record,
-          capabilities: ObjectCapabilitiesService.for(
-            set,
-            "entity_record",
-            record
-          ),
+          // #829: a child's write/delete also need its parent writable.
+          ...(
+            await ObjectCapabilitiesService.attachChildren(
+              set,
+              req.application!.metadata.organizationId,
+              "entity_record",
+              [record]
+            )
+          )[0],
         } as unknown as EntityRecordGetResponsePayload["record"],
         columns,
       });
@@ -767,7 +772,7 @@ entityRecordRouter.get(
  *                 description: Optional source identifier (auto-generated UUID if omitted)
  *     responses:
  *       403:
- *         description: The caller lacks permission for this change (#685)
+ *         description: The caller lacks permission for this change (#685), or write on the connector entity (#829)
  *       201:
  *         description: Record created
  *         content:
@@ -824,20 +829,15 @@ entityRecordRouter.post(
       );
       if (!entity) return;
 
-      // #685: the entity must be readable by the caller (unreadable ==
-      // absent), and creating a record is an owned write.
+      // #685: creating a record is an owned write. #829: it also needs write
+      // on the entity (resolveEntityOrThrow already 404'd an unreadable one).
       const set = await PermissionService.loadSet(req.application!.metadata);
-      if (
-        !set.can("resource.read", ObjectAccessService.object("entity", entity))
-      ) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-            "Connector entity not found"
-          )
-        );
-      }
+      ParentAccessService.assertWritableParent(
+        set,
+        req.application!.metadata.organizationId,
+        "entity_record",
+        entity
+      );
       set.check("resource.write", {
         type: "entity_record",
         createdBy: req.application!.metadata.userId,
@@ -1351,6 +1351,8 @@ entityRecordRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller lacks permission for this record, or write on its connector entity (#829)
  *       404:
  *         description: Entity record not found
  *         content:
@@ -1382,6 +1384,13 @@ entityRecordRouter.patch(
         next
       );
       if (!entity) return;
+      // #829: editing a record needs write on its entity.
+      ParentAccessService.assertWritableParent(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "entity_record",
+        entity
+      );
 
       await assertWriteCapability(connectorEntityId);
 
@@ -1527,6 +1536,8 @@ entityRecordRouter.patch(
  *                   properties:
  *                     id:
  *                       type: string
+ *       403:
+ *         description: The caller lacks permission for this record, or write on its connector entity (#829)
  *       404:
  *         description: Entity record not found
  *         content:
@@ -1558,6 +1569,13 @@ entityRecordRouter.delete(
         next
       );
       if (!entity) return;
+      // #829: deleting a record needs write on its entity.
+      ParentAccessService.assertWritableParent(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        "entity_record",
+        entity
+      );
 
       await assertWriteCapability(connectorEntityId);
 

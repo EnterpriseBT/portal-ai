@@ -289,20 +289,25 @@ entityGroupMemberRouter.post(
       // #685: in the caller's org, readable, and writable by them
       await assertGroupWritable(req, entityGroupId);
 
-      // Verify connector entity exists and belongs to same org
+      // #829: the member's entity is only referenced, so it needs read, not
+      // write: in the caller's org and readable, else absent (404).
       const connectorEntity =
         await DbService.repository.connectorEntities.findById(
           parsed.data.connectorEntityId
         );
       if (
-        !connectorEntity ||
-        connectorEntity.organizationId !== organizationId
+        !ObjectAccessService.readableInOrg(
+          await PermissionService.loadSet(req.application!.metadata),
+          organizationId,
+          "entity",
+          connectorEntity
+        )
       ) {
         return next(
           new ApiError(
-            400,
-            ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED,
-            "Connector entity not found or does not belong to this organization"
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
           )
         );
       }

@@ -1,11 +1,25 @@
-import { describe, it, expect } from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-import { PermissionSet } from "../../services/permission-set.js";
-import { ObjectCapabilitiesService } from "../../services/object-capabilities.service.js";
-import { SEED_SYSTEM_POLICIES } from "../../services/seed.service.js";
-import { SystemUtilities } from "../../utils/system.util.js";
 import type { PermissionContext } from "../../services/permission.service.js";
 import type { PermissionStatementSelect } from "../../db/schema/zod.js";
+
+// #829: a child's capabilities look its parent up.
+type ParentRow = { id: string; organizationId: string; createdBy: string };
+const mockEntityFindMany = jest.fn<(where: unknown) => Promise<ParentRow[]>>();
+jest.unstable_mockModule("../../services/db.service.js", () => ({
+  DbService: {
+    repository: {
+      connectorEntities: { findById: jest.fn(), findMany: mockEntityFindMany },
+      connectorInstances: { findById: jest.fn(), findMany: jest.fn() },
+    },
+  },
+}));
+
+const { PermissionSet } = await import("../../services/permission-set.js");
+const { ObjectCapabilitiesService } =
+  await import("../../services/object-capabilities.service.js");
+const { SEED_SYSTEM_POLICIES } = await import("../../services/seed.service.js");
+const { SystemUtilities } = await import("../../utils/system.util.js");
 
 /**
  * #688: a payload row's capabilities are the same `PermissionSet.can` the
@@ -15,7 +29,7 @@ const SYSTEM = SystemUtilities.id.system;
 const USER = "user-1";
 
 let seq = 0;
-const setFor = (role: "owner" | "member"): PermissionSet => {
+const setFor = (role: "owner" | "member") => {
   const ctx: PermissionContext = {
     userId: USER,
     organizationId: "org-1",
@@ -78,8 +92,8 @@ describe("ObjectCapabilitiesService (#688)", () => {
 
   it("a member can't read, write or delete another member's row", () => {
     expect(
-      ObjectCapabilitiesService.for(setFor("member"), "entity", {
-        id: "e-1",
+      ObjectCapabilitiesService.for(setFor("member"), "portal", {
+        id: "p-2",
         createdBy: "another-member",
       })
     ).toEqual({ read: false, write: false, delete: false });
@@ -96,9 +110,6 @@ describe("ObjectCapabilitiesService (#688)", () => {
     for (const type of [
       "portal",
       "connector_instance",
-      "entity",
-      "entity_record",
-      "field_mapping",
       "tag",
       "entity_group",
       "column_definition",
@@ -157,5 +168,69 @@ describe("ObjectCapabilitiesService (#688)", () => {
         createdBy: "someone",
       })
     ).toEqual({ read: false, write: false, delete: false });
+  });
+});
+
+describe("ObjectCapabilitiesService.attachChildren (#829)", () => {
+  const ORG = "org-1";
+  beforeEach(() => {
+    mockEntityFindMany.mockReset();
+  });
+
+  it("a member's own child under a writable parent gets everything, and no share", async () => {
+    mockEntityFindMany.mockResolvedValue([
+      { id: "e-own", organizationId: ORG, createdBy: USER },
+    ]);
+    const [row] = await ObjectCapabilitiesService.attachChildren(
+      setFor("member"),
+      ORG,
+      "field_mapping",
+      [{ id: "fm-1", createdBy: USER, connectorEntityId: "e-own" }]
+    );
+    expect(row.capabilities).toEqual({
+      read: true,
+      write: true,
+      delete: true,
+    });
+  });
+
+  it("a member's own child under a read-only parent is read-only", async () => {
+    mockEntityFindMany.mockResolvedValue([
+      { id: "e-sys", organizationId: ORG, createdBy: SYSTEM },
+    ]);
+    const [row] = await ObjectCapabilitiesService.attachChildren(
+      setFor("member"),
+      ORG,
+      "entity_record",
+      [{ id: "r-1", createdBy: USER, connectorEntityId: "e-sys" }]
+    );
+    expect(row.capabilities).toEqual({
+      read: true,
+      write: false,
+      delete: false,
+    });
+  });
+
+  it("looks parents up once per page, keeping rows and order", async () => {
+    mockEntityFindMany.mockResolvedValue([
+      { id: "e-own", organizationId: ORG, createdBy: USER },
+      { id: "e-sys", organizationId: ORG, createdBy: SYSTEM },
+    ]);
+    const out = await ObjectCapabilitiesService.attachChildren(
+      setFor("member"),
+      ORG,
+      "field_mapping",
+      [
+        { id: "a", createdBy: USER, connectorEntityId: "e-own" },
+        { id: "b", createdBy: USER, connectorEntityId: "e-sys" },
+        { id: "c", createdBy: USER, connectorEntityId: "e-own" },
+      ]
+    );
+    expect(mockEntityFindMany).toHaveBeenCalledTimes(1);
+    expect(out.map((r) => [r.id, r.capabilities.write])).toEqual([
+      ["a", true],
+      ["b", false],
+      ["c", true],
+    ]);
   });
 });
