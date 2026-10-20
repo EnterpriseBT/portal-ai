@@ -16,9 +16,11 @@ import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { wideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
+import { ToolService } from "../../../services/tools.service.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   allowForUser,
+  attachCuratedView,
   generateId,
   seedTenancyFixture,
   teardownOrg,
@@ -454,6 +456,361 @@ describe("child writes require write on the parent (#829)", () => {
         404,
         ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
       ]);
+    });
+  });
+
+  // ── The agent tools give the same answers (#829) ────────────────────
+
+  describe("agent tools", () => {
+    let stationId: string;
+    const tierCreatedBy = "CHILD_WRITE_PARENT_TEST";
+
+    beforeEach(async () => {
+      const slug = `cwp-${suffix()}`;
+      await db.insert(schema.tiers).values({
+        id: generateId(),
+        ...base(tierCreatedBy),
+        slug,
+        displayName: "Child write parent test",
+        builtinToolpacks: ["entity_management"],
+      } as never);
+      await db
+        .update(schema.organizations)
+        .set({ tier: slug })
+        .where(eq(schema.organizations.id, fx.orgId));
+      stationId = generateId();
+      await db.insert(schema.stations).values({
+        id: stationId,
+        organizationId: fx.orgId,
+        name: "Agent station",
+        description: null,
+        ...base(fx.ownerId),
+      } as never);
+      await db.insert(schema.stationToolpacks).values({
+        id: generateId(),
+        stationId,
+        builtinSlug: "entity_management",
+        organizationToolpackId: null,
+        ...base(fx.ownerId),
+      } as never);
+    });
+
+    afterEach(async () => {
+      await teardownOrg(db);
+      await db
+        .delete(schema.tiers)
+        .where(eq(schema.tiers.createdBy, tierCreatedBy));
+    });
+
+    /** Attach the connector (and a view on each entity) to the station. */
+    const reach = async (instanceId: string, entityIds: string[]) => {
+      await db.insert(schema.stationInstances).values({
+        id: generateId(),
+        stationId,
+        connectorInstanceId: instanceId,
+        ...base(fx.ownerId),
+      } as never);
+      for (const connectorEntityId of entityIds) {
+        await attachCuratedView(db as never, {
+          stationId,
+          organizationId: fx.orgId,
+          connectorEntityId,
+          key: `view_${suffix()}`,
+          label: "View",
+          createdBy: fx.ownerId,
+        });
+      }
+    };
+
+    const memberTool = async (name: string) => {
+      const tools = await ToolService.buildAnalyticsTools(
+        fx.orgId,
+        stationId,
+        fx.memberId,
+        generateId()
+      );
+      const t = tools[name] as
+        | {
+            execute: (
+              input: unknown,
+              opts: unknown
+            ) => Promise<Record<string, unknown>>;
+          }
+        | undefined;
+      expect([name, typeof t?.execute]).toEqual([name, "function"]);
+      return (input: unknown) =>
+        t!.execute(input, {
+          toolCallId: "t",
+          messages: [],
+          abortSignal: new AbortController().signal,
+        });
+    };
+
+    /** A refused state's code; a writable state runs the tool. */
+    const expectTool = (
+      result: Record<string, unknown>,
+      state: ParentState
+    ) => {
+      if (state === "unreadable") {
+        expect(result).toHaveProperty("error.code", "TOOL_TARGET_NOT_FOUND");
+      } else if (state === "readOnly") {
+        expect(result).toHaveProperty("error.code", "TOOL_PERMISSION_DENIED");
+      } else {
+        expect([JSON.stringify(result), result.success]).toEqual([
+          JSON.stringify(result),
+          true,
+        ]);
+      }
+    };
+
+    const instanceOf = async (entityId: string) =>
+      (
+        await db
+          .select()
+          .from(schema.connectorEntities)
+          .where(eq(schema.connectorEntities.id, entityId))
+      )[0].connectorInstanceId;
+
+    describe.each(STATES)("field mapping tools, entity %s", (state) => {
+      it("create, update and delete follow the entity", async () => {
+        const entityId = await entity(parentOwner(state));
+        const existing = await mapping(entityId, fx.memberId);
+        await reach(await instanceOf(entityId), [entityId]);
+        const count = async () =>
+          (
+            await db
+              .select()
+              .from(schema.fieldMappings)
+              .where(
+                and(
+                  eq(schema.fieldMappings.connectorEntityId, entityId),
+                  isNull(schema.fieldMappings.deleted)
+                )
+              )
+          ).length;
+
+        expectTool(
+          await (
+            await memberTool("field_mapping_create")
+          )({
+            items: [
+              {
+                connectorEntityId: entityId,
+                columnDefinitionId: otherColDefId,
+                sourceField: "added",
+                normalizedKey: `added_${suffix()}`,
+              },
+            ],
+          }),
+          state
+        );
+        if (state !== "writable") expect(await count()).toBe(1);
+
+        expectTool(
+          await (
+            await memberTool("field_mapping_update")
+          )({ items: [{ fieldMappingId: existing, sourceField: "changed" }] }),
+          state
+        );
+        expectTool(
+          await (
+            await memberTool("field_mapping_delete")
+          )({ items: [{ fieldMappingId: existing }] }),
+          state
+        );
+        if (state !== "writable") expect(await count()).toBe(1);
+      });
+    });
+
+    describe.each(STATES)("record tools, entity %s", (state) => {
+      it("create, update and delete follow the entity", async () => {
+        const entityId = await entity(parentOwner(state));
+        // The record tools refuse an entity with no mappings.
+        await mapping(entityId, fx.ownerId);
+        wideTableStatementCache.clear();
+        await wideTableReconcilerService.reconcileEntity(
+          entityId,
+          db as unknown as DbClient
+        );
+        const existing = await record(entityId, fx.memberId);
+        await reach(await instanceOf(entityId), [entityId]);
+        const count = async () =>
+          (
+            await db
+              .select()
+              .from(schema.entityRecords)
+              .where(
+                and(
+                  eq(schema.entityRecords.connectorEntityId, entityId),
+                  isNull(schema.entityRecords.deleted)
+                )
+              )
+          ).length;
+
+        expectTool(
+          await (
+            await memberTool("entity_record_create")
+          )({ items: [{ connectorEntityId: entityId, data: {} }] }),
+          state
+        );
+        if (state !== "writable") expect(await count()).toBe(1);
+
+        // The record's entity comes from its stored row: naming it here
+        // changes nothing.
+        expectTool(
+          await (
+            await memberTool("entity_record_update")
+          )({
+            items: [
+              {
+                connectorEntityId: entityId,
+                entityRecordId: existing,
+                data: {},
+              },
+            ],
+          }),
+          state
+        );
+        expectTool(
+          await (
+            await memberTool("entity_record_delete")
+          )({
+            items: [{ connectorEntityId: entityId, entityRecordId: existing }],
+          }),
+          state
+        );
+        if (state !== "writable") expect(await count()).toBe(1);
+      });
+    });
+
+    describe.each(STATES)("entity tools, connector %s", (state) => {
+      it("create, update and delete follow the connector", async () => {
+        const instanceId = await instance(parentOwner(state));
+        const existing = await entity(fx.memberId, instanceId);
+        await reach(instanceId, [existing]);
+        const count = async () =>
+          (
+            await db
+              .select()
+              .from(schema.connectorEntities)
+              .where(
+                and(
+                  eq(schema.connectorEntities.connectorInstanceId, instanceId),
+                  isNull(schema.connectorEntities.deleted)
+                )
+              )
+          ).length;
+
+        expectTool(
+          await (
+            await memberTool("connector_entity_create")
+          )({
+            items: [
+              {
+                connectorInstanceId: instanceId,
+                key: `added_${suffix()}`,
+                label: "Added",
+              },
+            ],
+          }),
+          state
+        );
+        if (state !== "writable") expect(await count()).toBe(1);
+
+        expectTool(
+          await (
+            await memberTool("connector_entity_update")
+          )({ items: [{ connectorEntityId: existing, label: "Changed" }] }),
+          state
+        );
+        expectTool(
+          await (
+            await memberTool("connector_entity_delete")
+          )({ items: [{ connectorEntityId: existing }] }),
+          state
+        );
+        if (state !== "writable") expect(await count()).toBe(1);
+      });
+    });
+
+    describe("transform_entity_records checks every target and its source", () => {
+      const transform = (source: string, targets: string[]) => ({
+        sourceConnectorEntityId: source,
+        keyField: "c_id",
+        expression: {
+          writes: targets.map((targetConnectorEntityId) => ({
+            targetConnectorEntityId,
+          })),
+        },
+      });
+      const jobCount = async () =>
+        (
+          await db
+            .select()
+            .from(schema.jobs)
+            .where(eq(schema.jobs.organizationId, fx.orgId))
+        ).length;
+
+      beforeEach(async () => {
+        // A bulk write needs the unconditional record grant; the parents are
+        // what's under test.
+        await allowForUser(db, {
+          organizationId: fx.orgId,
+          userId: fx.memberId,
+          verb: "write",
+          resourceType: "entity_record",
+        });
+      });
+
+      it("a second target in another org is not found, and nothing is enqueued", async () => {
+        const source = await entity(fx.memberId);
+        const first = await entity(fx.memberId);
+        const otherInstance = generateId();
+        await db.insert(schema.connectorInstances).values({
+          id: otherInstance,
+          connectorDefinitionId: definitionId,
+          organizationId: fx.otherOrgId,
+          name: "Theirs",
+          status: "active",
+          config: null,
+          credentials: null,
+          lastSyncAt: null,
+          lastErrorMessage: null,
+          enabledCapabilityFlags: { read: true, write: true },
+          ...base(fx.otherOwnerId),
+        } as never);
+        const theirs = generateId();
+        await db.insert(schema.connectorEntities).values({
+          id: theirs,
+          organizationId: fx.otherOrgId,
+          connectorInstanceId: otherInstance,
+          key: `theirs_${suffix()}`,
+          label: "Theirs",
+          ...base(fx.otherOwnerId),
+        } as never);
+        await reach(await instanceOf(source), [source]);
+        await reach(await instanceOf(first), [first]);
+
+        const result = await (
+          await memberTool("transform_entity_records")
+        )(transform(source, [first, theirs]));
+        expect(result).toHaveProperty("error.code", "TOOL_TARGET_NOT_FOUND");
+        expect(await jobCount()).toBe(0);
+      });
+
+      it("a read-only second target is denied, and nothing is enqueued", async () => {
+        const source = await entity(fx.memberId);
+        const first = await entity(fx.memberId);
+        const systemTarget = await entity(SYSTEM);
+        for (const e of [source, first, systemTarget])
+          await reach(await instanceOf(e), [e]);
+
+        const result = await (
+          await memberTool("transform_entity_records")
+        )(transform(source, [first, systemTarget]));
+        expect(result).toHaveProperty("error.code", "TOOL_PERMISSION_DENIED");
+        expect(await jobCount()).toBe(0);
+      });
     });
   });
 });

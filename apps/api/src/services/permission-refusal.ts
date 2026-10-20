@@ -50,6 +50,11 @@ const TYPE_LABELS: Record<string, { one: string; many: string }> = {
   toolpack: { one: "toolpack", many: "toolpacks" },
 };
 
+/** What a resource type is called, singular ("entity", "connector"). */
+export function resourceTypeLabel(type: string): string {
+  return TYPE_LABELS[type]?.one ?? type;
+}
+
 function resourcePhrase(
   action: PermissionAction,
   object: PermissionObject | undefined

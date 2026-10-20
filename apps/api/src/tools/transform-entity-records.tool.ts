@@ -303,7 +303,10 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           // target stands in.
           const primaryTargetId = writes[0].targetConnectorEntityId;
 
-          // Step 1 — source + target exist + org-scoped.
+          // Step 1 — source + target exist + org-scoped. #829: the permission
+          // gate has already checked every target (in org, readable,
+          // writable) and the source (readable) before this runs; this
+          // re-check of the source and first target is defence in depth.
           const source = await DbService.repository.connectorEntities.findById(
             parsed.sourceConnectorEntityId
           );

@@ -14,6 +14,11 @@
  * built (#599), so it resolves to `null` (fail-closed).
  */
 
+import {
+  CHILD_RESOURCE_PARENTS,
+  isChildResourceType,
+} from "@portalai/core/models";
+
 import { DbService } from "./db.service.js";
 
 type ResolvableRow = { organizationId: string; createdBy: string } | undefined;
@@ -68,6 +73,24 @@ export class RbacObjectResolver {
     resourceType: string,
     resourceId: string
   ): Promise<string | null> {
+    const row = await RbacObjectResolver.resolveRow(
+      organizationId,
+      resourceType,
+      resourceId
+    );
+    return row?.createdBy ?? null;
+  }
+
+  /**
+   * The object's `createdBy` and, for a child type (#829), its parent's id as
+   * stored on the row, never as claimed by input. `null` when absent,
+   * cross-org or not resolvable; `parentId` is null for a non-child type.
+   */
+  static async resolveRow(
+    organizationId: string,
+    resourceType: string,
+    resourceId: string
+  ): Promise<{ createdBy: string; parentId: string | null } | null> {
     const finder = OBJECT_FINDERS[resourceType];
     if (!finder) return null;
     const row = await finder(resourceId);
@@ -78,6 +101,11 @@ export class RbacObjectResolver {
     ) {
       return null;
     }
-    return row.createdBy;
+    const parentId = isChildResourceType(resourceType)
+      ? (((row as Record<string, unknown>)[
+          CHILD_RESOURCE_PARENTS[resourceType].parentKey
+        ] as string | undefined) ?? null)
+      : null;
+    return { createdBy: row.createdBy, parentId };
   }
 }

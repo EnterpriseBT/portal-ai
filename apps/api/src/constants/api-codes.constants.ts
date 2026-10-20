@@ -834,6 +834,10 @@ export enum ApiCode {
    *  returns this as a typed tool result (never a throw) so the agent relays
    *  it to the user. Fail-closed. */
   TOOL_PERMISSION_DENIED = "TOOL_PERMISSION_DENIED",
+  /** #829: a tool named a parent (an entity, a connector) that is missing,
+   *  in another org or unreadable to the caller. Typed tool result; an
+   *  unreadable object reads as absent, as on REST. */
+  TOOL_TARGET_NOT_FOUND = "TOOL_TARGET_NOT_FOUND",
   /** #769: too many lock-gated agent writes are running in this process. */
   TOOL_WRITE_BUSY = "TOOL_WRITE_BUSY",
   /** A built-in tool's input carrying U+0000 (#805). Typed tool result; the
