@@ -869,11 +869,9 @@ export class PortalSqlServiceImpl {
    *
    * The view set is the station's attached curated views (`station_views`)
    * intersected with the caller's `read curated_view:<id>` grants; each
-   * emitted temp view is named by the view's `key`, projects only the
-   * columns the caller can read (the view's effective projection ∩ the
-   * caller's `read field_mapping` grants), and ANDs the view's stored
-   * `whereClause` after the org + soft-delete guard. A class-level
-   * `deny read entity_record` suppresses all data (deny-wins). The `_meta_*`
+   * emitted temp view is named by the view's `key`, projects the view's
+   * effective projection (#829: reading the view conveys it), and ANDs the
+   * view's stored `whereClause` after the org + soft-delete guard. The `_meta_*`
    * introspection views rebuild **per granted view**, so a member never
    * learns the name of a view/column they cannot query.
    *

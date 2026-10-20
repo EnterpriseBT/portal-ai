@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -28,14 +28,25 @@ describe("member data-type delete seed + 0111 backfill (#630)", () => {
   // The six data types 0111 adds delete for (station/pin excluded — from 0106).
   // `curated_view` is the renamed `view` type (#630, 0112); 0111 inserts the raw
   // `view` value which 0112 then renames, so the backfill test runs both.
-  const NEW_DELETE_TYPES = [
+  const NEW_DELETE_TYPES: string[] = [
     "curated_view",
     "portal",
     "entity",
     "entity_record",
     "field_mapping",
     "connector_instance",
-  ] as const;
+  ];
+  // #829: records and field mappings are no longer permission types, so a
+  // fresh seed carries delete on the other four only (0111 is history: it
+  // still inserts all six, and the #829 retirement migration removes two).
+  const SEEDED_DELETE_TYPES = NEW_DELETE_TYPES.filter(
+    (t) => t !== "entity_record" && t !== "field_mapping"
+  );
+  const typeIn = (types: string[]) =>
+    sql`${schema.permissionStatements.resourceType} IN (${sql.join(
+      types.map((t) => sql`${t}`),
+      sql`, `
+    )})`;
 
   const memberDeletes = () =>
     (db as ReturnType<typeof drizzle>)
@@ -49,7 +60,7 @@ describe("member data-type delete seed + 0111 backfill (#630)", () => {
             `syspol:${orgId}:MemberAccess`
           ),
           eq(schema.permissionStatements.verb, "delete"),
-          inArray(schema.permissionStatements.resourceType, NEW_DELETE_TYPES)
+          typeIn(NEW_DELETE_TYPES)
         )
       );
 
@@ -77,7 +88,7 @@ describe("member data-type delete seed + 0111 backfill (#630)", () => {
   it("a freshly seeded org carries member delete on every non-shareable data type", async () => {
     const rows = await memberDeletes();
     expect(rows.map((r) => r.resourceType).sort()).toEqual(
-      [...NEW_DELETE_TYPES].sort()
+      [...SEEDED_DELETE_TYPES].sort()
     );
   });
 
@@ -92,7 +103,7 @@ describe("member data-type delete seed + 0111 backfill (#630)", () => {
             `syspol:${orgId}:MemberAccess`
           ),
           eq(schema.permissionStatements.verb, "delete"),
-          inArray(schema.permissionStatements.resourceType, NEW_DELETE_TYPES)
+          typeIn(NEW_DELETE_TYPES)
         )
       );
     expect(await memberDeletes()).toHaveLength(0);

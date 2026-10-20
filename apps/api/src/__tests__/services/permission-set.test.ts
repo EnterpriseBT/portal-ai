@@ -578,37 +578,37 @@ describe("PermissionSet — page view + composable surfaces (#630)", () => {
   });
 });
 
-describe("PermissionSet — isDenied + FK-condition fail-closed (#599 slice 2)", () => {
+describe("PermissionSet — isDenied (#599 slice 2)", () => {
   const rec = (id: string) => ({
-    type: "entity_record",
+    type: "entity",
     id,
     createdBy: null,
   });
 
   it("isDenied is true on an explicit unconditional class-level deny", () => {
     const set = new PermissionSet(ctx("member"), [
-      S({ effect: "deny", verb: "read", resourceType: "entity_record" }),
+      S({ effect: "deny", verb: "read", resourceType: "entity" }),
     ]);
-    expect(set.isDenied("read", "entity_record")).toBe(true);
+    expect(set.isDenied("read", "entity")).toBe(true);
   });
 
   it("isDenied is false with no statements (absence-of-allow is NOT a deny)", () => {
     const set = new PermissionSet(ctx("member"), []);
-    expect(set.isDenied("read", "entity_record")).toBe(false);
+    expect(set.isDenied("read", "entity")).toBe(false);
   });
 
   it("isDenied is false when only an allow matches (deny must be explicit)", () => {
     const set = new PermissionSet(ctx("member"), [
-      S({ effect: "allow", verb: "read", resourceType: "entity_record" }),
+      S({ effect: "allow", verb: "read", resourceType: "entity" }),
     ]);
-    expect(set.isDenied("read", "entity_record")).toBe(false);
+    expect(set.isDenied("read", "entity")).toBe(false);
   });
 
   it("isDenied honors the wildcard deny type", () => {
     const set = new PermissionSet(ctx("member"), [
       S({ effect: "deny", verb: "*", resourceType: "*" }),
     ]);
-    expect(set.isDenied("read", "entity_record")).toBe(true);
+    expect(set.isDenied("read", "entity")).toBe(true);
   });
 
   it("a no-object isDenied ignores an instance-scoped deny (v1 = class-level)", () => {
@@ -616,12 +616,12 @@ describe("PermissionSet — isDenied + FK-condition fail-closed (#599 slice 2)",
       S({
         effect: "deny",
         verb: "read",
-        resourceType: "entity_record",
+        resourceType: "entity",
         resourceId: "r-1",
       }),
     ]);
-    expect(set.isDenied("read", "entity_record")).toBe(false);
-    expect(set.isDenied("read", "entity_record", rec("r-1"))).toBe(true);
+    expect(set.isDenied("read", "entity")).toBe(false);
+    expect(set.isDenied("read", "entity", rec("r-1"))).toBe(true);
   });
 });
 

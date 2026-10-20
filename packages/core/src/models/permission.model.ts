@@ -49,8 +49,6 @@ export const PERMISSION_RESOURCE_TYPES = [
   "curated_view",
   "portal",
   "entity",
-  "entity_record",
-  "field_mapping",
   "connector_instance",
   "connector_definition",
   "entity_group",
@@ -119,8 +117,6 @@ export const DATA_RESOURCE_TYPES = [
   "curated_view",
   "portal",
   "entity",
-  "entity_record",
-  "field_mapping",
   "connector_instance",
 ] as const satisfies readonly PermissionResourceType[];
 
@@ -143,17 +139,13 @@ export const SHAREABLE_RESOURCE_TYPES = [
  * `createdBy === ctx.userId`; `created_by_system` ⇒ `=== SystemUtilities.id.system`.
  * Data-attribute slicing is done with views (#599), never a dynamic condition.
  *
- * `in_curated_view` (#599) is the one **FK-shaped** condition: a `read
- * field_mapping in_curated_view` grant/statement carries its target curated
- * view id in `conditionParam`, and is **expanded at load time**
- * (`PermissionService.loadSet` → `expandFkConditions`) into concrete
- * `field_mapping:<id>` statements — so the resolver (`matches`/
- * `visibilityPredicate`) never sees it and an *unexpanded* one fails closed.
+ * #829 retired the FK-shaped `in_curated_view` condition (a share's composed
+ * field grant): a curated view conveys its projection through the view itself.
+ * The DB CHECK still admits the value; no row carries it.
  */
 export const PERMISSION_CONDITIONS = [
   "created_by_caller",
   "created_by_system",
-  "in_curated_view",
 ] as const;
 export const PermissionConditionSchema = z.enum(PERMISSION_CONDITIONS);
 export type PermissionCondition = z.infer<typeof PermissionConditionSchema>;
@@ -177,13 +169,6 @@ export const CALLER_CAPABILITY_ACTIONS = [
    *  check the org PATCH runs (owner/admin), which a member's own-station
    *  write doesn't satisfy. */
   "station.default.set",
-  /** #689: re-validate an entity's records. Derived: the revalidate route's
-   *  class `resource.write {type:"entity_record"}` (owner/admin), which a
-   *  member's write on their own records doesn't satisfy. */
-  "entity_record.revalidate",
-  /** #689: delete all of an entity's records. Derived: the clear route's class
-   *  `resource.delete {type:"entity_record"}` (owner/admin). */
-  "entity_record.clear",
 ] as const;
 export const CallerCapabilityActionSchema = z.enum(CALLER_CAPABILITY_ACTIONS);
 export type CallerCapabilityAction = z.infer<
@@ -360,8 +345,6 @@ export const RESOURCE_CAPABILITIES: Record<
   curated_view: objectCapability("curated_view"),
   portal: objectCapability("portal"),
   entity: objectCapability("entity"),
-  entity_record: objectCapability("entity_record"),
-  field_mapping: objectCapability("field_mapping"),
   connector_instance: objectCapability("connector_instance"),
   connector_definition: objectCapability("connector_definition"),
   entity_group: objectCapability("entity_group"),
@@ -536,8 +519,8 @@ export const PermissionStatementSchema = CoreSchema.extend({
   /** null = class-level (`type:*`); set = a specific instance. */
   resourceId: z.string().nullable(),
   condition: PermissionConditionSchema.nullable(),
-  /** The FK target for `condition = "in_curated_view"` (a curated view id);
-   *  null (defaulted) for every other condition (#599). */
+  /** Retired (#829): the FK target of the former `in_curated_view`
+   *  condition. Always null; the column stays to avoid destructive DDL. */
   conditionParam: z.string().nullable().default(null),
 });
 export type PermissionStatement = z.infer<typeof PermissionStatementSchema>;
@@ -585,8 +568,8 @@ export const PermissionGrantSchema = CoreSchema.extend({
   resourceType: PermissionResourceTypeSchema,
   resourceId: z.string().nullable(),
   condition: PermissionConditionSchema.nullable(),
-  /** The FK target for `condition = "in_curated_view"` (a curated view id);
-   *  null (defaulted) for every other condition (#599). */
+  /** Retired (#829): the FK target of the former `in_curated_view`
+   *  condition. Always null; the column stays to avoid destructive DDL. */
   conditionParam: z.string().nullable().default(null),
 });
 export type PermissionGrant = z.infer<typeof PermissionGrantSchema>;

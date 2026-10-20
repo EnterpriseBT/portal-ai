@@ -4,8 +4,8 @@
  * caller can **see** (`visibilityPredicate` from their resolved set) matching a
  * name/label `ILIKE` — so an author picks objects by name, never a typed id,
  * and only ones they could grant on. Only management-plane types with a
- * human-readable label are searchable; `field_mapping`/`entity_record` and the
- * pseudo-resources return no candidates (instance picking is for management
+ * human-readable label are searchable; the pseudo-resources return no
+ * candidates (instance picking is for management
  * objects). Curated views (#599) and the global connector catalog (#638) are
  * searchable too.
  *

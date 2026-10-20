@@ -5,8 +5,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  * Curated-view ↔ field-mapping projection join (#599).
  *
  * Each row places one field mapping (a column) into a curated view's
- * projection. The join table is also what the `in_curated_view` FK
- * condition (grants) expands against.
+ * projection, which every reader of the view reads (#829).
  *
  * Sync with the Drizzle `curated_view_field_mappings` table is enforced
  * at compile time via `apps/api/src/db/schema/type-checks.ts` and at

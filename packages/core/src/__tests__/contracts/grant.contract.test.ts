@@ -42,7 +42,7 @@ describe("ShareGrantRequestSchema (#621)", () => {
   it("rejects a non-shareable resource type", () => {
     expect(
       ShareGrantRequestSchema.safeParse({
-        resourceType: "entity_record",
+        resourceType: "entity",
         resourceId: "e-1",
         grantee: { type: "team" },
         access: "read",

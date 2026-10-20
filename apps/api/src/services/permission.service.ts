@@ -92,11 +92,6 @@ const DERIVED_CAPABILITIES = {
   // #690: the org PATCH's default-station change.
   "station.default.set": (set) =>
     set.can("resource.write", { type: "station" }),
-  // #689: the entity-record revalidate and clear routes (#599: owner/admin).
-  "entity_record.revalidate": (set) =>
-    set.can("resource.write", { type: "entity_record" }),
-  "entity_record.clear": (set) =>
-    set.can("resource.delete", { type: "entity_record" }),
 } satisfies Partial<
   Record<CallerCapabilityAction, (set: PermissionSet) => boolean>
 >;
@@ -117,9 +112,8 @@ const CREATE_RULES: Record<ResourcePermissionType, CreateRule> = {
   pin: "owned", // POST /api/portal-results
   curated_view: "class", // POST /api/curated-views (#599)
   portal: "owned", // POST /api/portals
-  entity: "owned", // POST /api/connector-entities
-  entity_record: "owned", // POST /api/connector-entities/{id}/records
-  field_mapping: "owned", // POST /api/field-mappings
+  // POST /api/connector-entities (#829: also write on the connector).
+  entity: "owned",
   // POST /api/connector-instances. The Sheets/Excel/file-upload connect flows
   // don't run this check yet (#710).
   connector_instance: "owned",

@@ -36,8 +36,6 @@ const TYPE_LABELS: Record<string, { one: string; many: string }> = {
   curated_view: { one: "view", many: "views" },
   portal: { one: "portal", many: "portals" },
   entity: { one: "entity", many: "entities" },
-  entity_record: { one: "record", many: "records" },
-  field_mapping: { one: "field mapping", many: "field mappings" },
   connector_instance: { one: "connector", many: "connectors" },
   connector_definition: {
     one: "connector definition",

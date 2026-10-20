@@ -39,11 +39,7 @@ describe("permissionRefusalMessage (#711)", () => {
       { type: "connector_instance", id: "c1" },
       "edit this connector",
     ],
-    [
-      "resource.delete",
-      { type: "entity_record", id: "r1" },
-      "delete this record",
-    ],
+    ["resource.delete", { type: "entity", id: "e1" }, "delete this entity"],
     ["resource.delete", { type: "pin" }, "delete pinned results"],
     ["resource.share", { type: "curated_view", id: "v1" }, "share this view"],
     ["resource.share", { type: "station" }, "share stations"],

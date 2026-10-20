@@ -23,8 +23,6 @@ describe("OrganizationGetResponseSchema (#620)", () => {
     "member.invite": true,
     "member.remove": true,
     "station.default.set": true,
-    "entity_record.revalidate": true,
-    "entity_record.clear": true,
   };
   const base = {
     organization,

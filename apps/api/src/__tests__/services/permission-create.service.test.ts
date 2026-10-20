@@ -78,8 +78,6 @@ const OWNED_TYPES = [
   "pin",
   "portal",
   "entity",
-  "entity_record",
-  "field_mapping",
   "connector_instance",
 ] as const;
 const NONE_TYPES = ["connector_definition", "job"] as const;
@@ -179,11 +177,11 @@ describe("PermissionService.canCreate (#708)", () => {
     const caller = custom({
       effect: "allow",
       verb: "write",
-      resourceType: "field_mapping",
+      resourceType: "portal",
       resourceId: null,
       condition: "created_by_caller",
     });
-    expect(create(caller, "field_mapping")).toBe(true);
+    expect(create(caller, "portal")).toBe(true);
   });
 
   // Spec case 9.

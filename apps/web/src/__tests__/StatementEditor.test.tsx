@@ -121,6 +121,21 @@ describe("StatementEditorUI (#622)", () => {
     expect(onChange.mock.calls[0][0]).toEqual(initial);
   });
 
+  // #829: records and field mappings are parts of their entity, governed by
+  // its permission, so a policy can't name them.
+  it("doesn't offer records or field mappings as a resource", () => {
+    render(<StatementEditorUI onChange={jest.fn()} onSearch={noSearch} />);
+    const row = screen.getByTestId("statement-row-0");
+    fireEvent.mouseDown(
+      within(row).getByRole("combobox", { name: "Resource" })
+    );
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    const values = options.map((o) => o.getAttribute("data-value"));
+    expect(values).toContain("entity");
+    expect(values).not.toContain("entity_record");
+    expect(values).not.toContain("field_mapping");
+  });
+
   it("renders a default class row and emits on adding a statement", () => {
     const onChange = jest.fn();
     render(<StatementEditorUI onChange={onChange} onSearch={noSearch} />);

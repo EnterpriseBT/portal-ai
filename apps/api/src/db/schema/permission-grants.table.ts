@@ -37,8 +37,9 @@ export const permissionGrants = pgTable(
     }).notNull(),
     resourceId: text("resource_id"),
     condition: text("condition", { enum: PERMISSION_CONDITIONS }),
-    /** The FK target for `condition = 'in_curated_view'` (a curated view id);
-     *  expanded to concrete `field_mapping:<id>` at load time (#599). */
+    /** Retired (#829): the FK target of the former `in_curated_view`
+     *  condition (#599). Always null; the column and the CHECKs below still
+     *  admit it, to avoid destructive DDL. */
     conditionParam: text("condition_param"),
   },
   (t) => [

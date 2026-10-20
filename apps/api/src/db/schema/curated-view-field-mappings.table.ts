@@ -8,8 +8,8 @@ import { fieldMappings } from "./field-mappings.table.js";
 
 /**
  * Curated-view ↔ field-mapping projection join (#599). Each row places one
- * field mapping (a column) into a curated view's projection, and is what the
- * `in_curated_view` FK grant condition expands against.
+ * field mapping (a column) into a curated view's projection, which every
+ * reader of the view reads (#829).
  */
 export const curatedViewFieldMappings = pgTable(
   "curated_view_field_mappings",

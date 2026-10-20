@@ -316,7 +316,7 @@ describe("GET /api/rbac/objects (#622 slice 5)", () => {
     );
   });
 
-  it("data-plane + pseudo + unknown resource types return no candidates", async () => {
+  it("retired part types + pseudo + unknown resource types return no candidates", async () => {
     const { orgId } = await seedOrg("owner");
     await entitleOrg(orgId);
     for (const rt of ["entity_record", "field_mapping", "billing", "planet"]) {
