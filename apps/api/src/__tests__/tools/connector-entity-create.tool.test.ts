@@ -36,22 +36,12 @@ jest.unstable_mockModule(
   })
 );
 // #827: station reach also counts the connectors behind the station's views.
-const mockStationViews = jest
+const mockStationReach = jest
   .fn<() => Promise<unknown[]>>()
   .mockResolvedValue([]);
-const mockCuratedViewById = jest.fn<(id: unknown) => Promise<unknown>>();
-const mockEntityById = jest.fn<(id: unknown) => Promise<unknown>>();
 jest.unstable_mockModule(
   "../../db/repositories/station-views.repository.js",
-  () => ({ stationViewsRepo: { findByStationId: mockStationViews } })
-);
-jest.unstable_mockModule(
-  "../../db/repositories/curated-views.repository.js",
-  () => ({ curatedViewsRepo: { findById: mockCuratedViewById } })
-);
-jest.unstable_mockModule(
-  "../../db/repositories/connector-entities.repository.js",
-  () => ({ connectorEntitiesRepo: { findById: mockEntityById } })
+  () => ({ stationViewsRepo: { findReachByStationId: mockStationReach } })
 );
 jest.unstable_mockModule(
   "../../db/repositories/connector-definitions.repository.js",
@@ -307,15 +297,9 @@ describe("ConnectorEntityCreateTool", () => {
 
   it("#827: a connector reached only through one of the station's views is in scope", async () => {
     mockFindByStationId.mockResolvedValueOnce([]);
-    mockStationViews.mockResolvedValueOnce([{ curatedViewId: "v-1" }]);
-    mockCuratedViewById.mockResolvedValueOnce({
-      id: "v-1",
-      connectorEntityId: "ce-viewed",
-    });
-    mockEntityById.mockResolvedValueOnce({
-      id: "ce-viewed",
-      connectorInstanceId: "ci-1",
-    });
+    mockStationReach.mockResolvedValueOnce([
+      { connectorEntityId: "ce-viewed", connectorInstanceId: "ci-1" },
+    ]);
 
     const result: any = await exec({
       items: [{ connectorInstanceId: "ci-1", key: "k", label: "L" }],

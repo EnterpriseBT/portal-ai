@@ -49,13 +49,19 @@ jest.unstable_mockModule(
 // curated_view → connector_entity → connector_instance), not station_instances.
 const mockStationViewsFindByStationId =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+// #827: station reach reads the view → entity → connector chain in one query.
+const mockStationViewsFindReach =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const mockCuratedViewFindById =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.unstable_mockModule(
   "../../db/repositories/station-views.repository.js",
   () => ({
-    stationViewsRepo: { findByStationId: mockStationViewsFindByStationId },
+    stationViewsRepo: {
+      findByStationId: mockStationViewsFindByStationId,
+      findReachByStationId: mockStationViewsFindReach,
+    },
   })
 );
 
@@ -76,6 +82,12 @@ function seedViewChain(
 ): void {
   mockStationViewsFindByStationId.mockResolvedValue(
     links.map((l, i) => ({ curatedViewId: `v-${i}` }))
+  );
+  mockStationViewsFindReach.mockResolvedValue(
+    links.map((l) => ({
+      connectorEntityId: l.entityId,
+      connectorInstanceId: l.connectorInstanceId,
+    }))
   );
   const byView = new Map(links.map((l, i) => [`v-${i}`, l.entityId]));
   const byEntity = new Map(
@@ -108,6 +120,7 @@ beforeEach(() => {
   mockFindByStationId.mockResolvedValue([]);
   // #827: nor any views (scope now counts them, so a stale chain would leak).
   mockStationViewsFindByStationId.mockResolvedValue([]);
+  mockStationViewsFindReach.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -446,7 +459,7 @@ describe("assertStationScope — station reach through views (#827)", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("passes for an entity on a connector reached only through a view", async () => {
+  it("refuses a sibling entity on a connector reached only through another entity's view", async () => {
     seedViewChain([{ entityId: "e-view", connectorInstanceId: "ci-1" }]);
     const viewLookup = mockConnEntityFindById.getMockImplementation()!;
     mockConnEntityFindById.mockImplementation(async (id: unknown) =>
@@ -455,7 +468,7 @@ describe("assertStationScope — station reach through views (#827)", () => {
 
     await expect(
       assertStationScope("station-1", "e-sibling")
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ code: "STATION_SCOPE_VIOLATION" });
   });
 
   it("passes for an entity on a directly attached connector, with no views", async () => {

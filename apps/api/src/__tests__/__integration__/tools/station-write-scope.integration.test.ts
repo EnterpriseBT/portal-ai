@@ -312,4 +312,40 @@ describe("station write scope (#824)", () => {
     );
     expect(await recordCount(far)).toBe(0);
   });
+
+  it("#827: a view puts its entity in reach, not that connector's other entities", async () => {
+    const instanceId = await seedInstance(true);
+    const viewed = await seedEntity(instanceId);
+    const sibling = await seedEntity(instanceId);
+    const stationId = await seedBareStation("View-only station");
+    await attachCuratedView(d as never, {
+      stationId,
+      organizationId: orgId,
+      connectorEntityId: viewed,
+      key: `view_${generateId().slice(0, 8)}`,
+      label: "View",
+      createdBy: ownerId,
+    });
+
+    const refused = await run(stationId, "entity_record_create", {
+      items: [{ connectorEntityId: sibling, data: { name: "Probe" } }],
+    });
+    expect(refused.success).toBe(false);
+    expect(await recordCount(sibling)).toBe(0);
+
+    // Creating an entity under the view's connector is in reach (#824 gate).
+    const created = await run(stationId, "connector_entity_create", {
+      items: [
+        {
+          connectorInstanceId: instanceId,
+          key: `new_${generateId().replace(/-/g, "").slice(0, 8)}`,
+          label: "New",
+        },
+      ],
+    });
+    expect([JSON.stringify(created), created.success]).toEqual([
+      JSON.stringify(created),
+      true,
+    ]);
+  });
 });

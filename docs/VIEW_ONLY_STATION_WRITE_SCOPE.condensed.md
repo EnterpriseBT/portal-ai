@@ -6,7 +6,9 @@
 - **The gate** (`resolveStationCapabilities`, since #824) counts the connectors attached directly **and** the connectors behind the station's views.
 - **The per-item checks** count only the directly attached connectors: `assertStationScope` in every entity, mapping and record tool, and the inline check in `connector_entity_create`.
 
-So on a station that reaches an entity only through a view, the agent is offered write tools that every call refuses with `STATION_SCOPE_VIOLATION`. The fix is one definition of station reach, used by both. Also, per #827's comment, `connector_entity_delete` gains the connector write-capability check the other write tools have. API only.
+So on a station that reaches an entity only through a view, the agent is offered write tools that every call refuses with `STATION_SCOPE_VIOLATION`. The fix is one definition of station reach, used by both. API only.
+
+(#827's comment asked for a write-capability check on `connector_entity_delete`. It already has one: the tool calls `ConnectorEntityValidationService.validateDelete`, which runs `assertWriteCapability`. Nothing changes there.)
 
 ## Current shape
 
@@ -16,7 +18,7 @@ So on a station that reaches an entity only through a view, the agent is offered
 | Per-item entity scope | `assertStationScope` (same file) | The entity's instance must be in `station_instances`. Used by entity update/delete, field-mapping create/update/delete, record create/update/delete and bulk geocode (`tools/*.tool.ts`) |
 | Entity-create scope | `tools/connector-entity-create.tool.ts:76` | Inline `station_instances` check on `connectorInstanceId` |
 | View → entity reach | `entityIdsForStation` (same file) | station_views → curated_view → `connectorEntityId` |
-| Delete capability | `tools/connector-entity-delete.tool.ts:48` | `assertStationScope` only. Update, mapping and record tools also call `assertWriteCapability` |
+| Delete capability | `tools/connector-entity-delete.tool.ts` → `ConnectorEntityValidationService.validateDelete` | Already calls `assertWriteCapability` |
 
 ## Decision — one definition of "the station reaches it"
 
@@ -32,18 +34,20 @@ So on a station that reaches an entity only through a view, the agent is offered
 - **Why not B:** a station built purely from views (the #599 model) could never be written to through the agent, though the UI presents its entities as part of the station.
 
 **Shape:**
-- New `stationReach(stationId)` returns `{ instanceIds, entityIds }` from the existing helpers: instances = `station_instances` ∪ `instanceIdsForStation`; entities = `entityIdsForStation`.
-- `resolveStationCapabilities` uses its `instanceIds`.
-- `assertStationScope(stationId, entityId)` passes when the entity's instance is in `instanceIds` **or** the entity is in `entityIds`. The 404 and 403 messages are unchanged.
-- `connector_entity_create` checks `connectorInstanceId` against `instanceIds`.
-- `connector_entity_delete` calls `assertWriteCapability(item.connectorEntityId)` after its scope check.
+- New `stationReach(stationId)` returns `{ directInstanceIds, entityIds, instanceIds }` from two queries:
+  - `directInstanceIds` = `station_instances`;
+  - `entityIds` = the entities behind the station's live views, read with one join (`stationViewsRepo.findReachByStationId`, skipping deleted attachments, views and entities);
+  - `instanceIds` = the direct connectors ∪ the connectors of those entities.
+- `resolveStationCapabilities` uses `instanceIds`.
+- `assertStationScope(stationId, entityId)` passes when the entity's connector is in `directInstanceIds` **or** the entity is in `entityIds`. A view on one entity doesn't put that connector's other entities in reach. The 404 and 403 messages are unchanged.
+- `connector_entity_create` checks `connectorInstanceId` against `instanceIds` (confirmed: creating an entity under a view's connector is in reach, as the write gate has counted since #824; creating one still needs write on the connector, #829).
 
 ## Plan — one slice
 
 **Files**
 - Edit: `apps/api/src/utils/resolve-capabilities.util.ts`: add `stationReach`; `resolveStationCapabilities` and `assertStationScope` use it.
 - Edit: `apps/api/src/tools/connector-entity-create.tool.ts`: scope by `stationReach().instanceIds`.
-- Edit: `apps/api/src/tools/connector-entity-delete.tool.ts`: add `assertWriteCapability`.
+- Edit: `apps/api/src/db/repositories/station-views.repository.ts`: add `findReachByStationId`.
 
 **Tests** (`npm run test:unit` / `npm run test:integration` from `apps/api`)
 - `src/__tests__/utils/resolve-capabilities.util.test.ts`:
@@ -51,7 +55,6 @@ So on a station that reaches an entity only through a view, the agent is offered
   - and for one reached only through a directly attached connector
   - and fails for one reached neither way (`STATION_SCOPE_VIOLATION`)
 - `src/__tests__/tools/connector-entity-create.tool.test.ts`: a connector reached only through a view is in scope.
-- `src/__tests__/tools/connector-entity-delete.tool.test.ts`: a connector with write disabled refuses the delete, and nothing is deleted.
 - Extend `src/__tests__/__integration__/tools/station-write-scope.integration.test.ts`. On a view-only station (no `station_instances`), `entity_record_create` for the view's entity succeeds and stores the record. On a station reaching neither the entity nor its connector, the same call still refuses.
 
 ## Smoke (manual, against your dev stack)
