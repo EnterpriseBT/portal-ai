@@ -271,7 +271,7 @@ export class PortalSqlServiceImpl {
    * (`buildStationContext` roster + the `station_context` tool) so the three
    * never drift. Returns the loaded {@link PermissionSet} (callers reuse it)
    * and, per granted view, the wide columns the caller may actually read —
-   * effective projection ∩ non-hidden ∩ `read field_mapping` (deny-wins).
+   * effective projection minus hidden columns (#829: the view conveys it).
    */
   async resolveGrantedViewColumns(
     stationId: string,
@@ -290,8 +290,7 @@ export class PortalSqlServiceImpl {
       );
     }
 
-    // Resolve the caller's authorization once (roles → policies + grants;
-    // FK conditions expanded to concrete field_mapping reads in loadSet).
+    // Resolve the caller's authorization once (roles → policies + grants).
     const roles = (await userRolesRepo.findEffectiveRoleNames(
       userId,
       organizationId,
@@ -301,13 +300,6 @@ export class PortalSqlServiceImpl {
       { userId, organizationId, roles },
       client
     );
-
-    // deny-wins: an explicit class-level `deny read entity_record` empties
-    // the whole data plane (never the raw passthrough). Absence of an allow
-    // does NOT suppress — a view's read authority is the view grant itself.
-    const entityRecordDenied = set.isDenied("read", "entity_record", {
-      type: "entity_record",
-    });
 
     // Attached views ∩ readable views.
     const attachments = await stationViewsRepo.findByStationId(
@@ -322,15 +314,14 @@ export class PortalSqlServiceImpl {
         attachedViewIds.map((id) => curatedViewsRepo.findById(id, client))
       )
     ).filter((v): v is NonNullable<typeof v> => v != null);
-    const grantedViews = entityRecordDenied
-      ? []
-      : attachedViews.filter((v) =>
-          set.can("resource.read", {
-            type: "curated_view",
-            id: v.id,
-            createdBy: v.createdBy,
-          })
-        );
+    // #829: a view's read authority is the view grant itself.
+    const grantedViews = attachedViews.filter((v) =>
+      set.can("resource.read", {
+        type: "curated_view",
+        id: v.id,
+        createdBy: v.createdBy,
+      })
+    );
 
     const usedKeys = new Set<string>();
     const result: Array<{
@@ -353,7 +344,7 @@ export class PortalSqlServiceImpl {
         continue;
       }
 
-      const columns = await this.resolveOneViewColumns(view, set, client);
+      const columns = await this.resolveOneViewColumns(view, client);
       usedKeys.add(view.key);
       result.push({ view, columns });
     }
@@ -362,17 +353,16 @@ export class PortalSqlServiceImpl {
   }
 
   /**
-   * The columns a caller may read through ONE curated view: its effective
+   * The columns a caller reads through ONE curated view: its effective
    * projection (explicit field-mapping selection, or — when it has none — all
-   * of the entity's live columns), minus hidden metadata, intersected with the
-   * caller's `read field_mapping` grants (deny-wins). The single source for the
-   * session build ({@link resolveGrantedViewColumns}) and the standalone
-   * detail/records endpoints ({@link resolveViewColumnsById}), so the two can
-   * never drift.
+   * of the entity's live columns), minus hidden metadata. #829: the view
+   * conveys its projection; reading the view is reading those columns. The
+   * single source for the session build ({@link resolveGrantedViewColumns})
+   * and the standalone detail/records endpoints ({@link resolveViewColumnsById}),
+   * so the two can never drift.
    */
   private async resolveOneViewColumns(
     view: CuratedViewSelect,
-    set: PermissionSet,
     client: DbClient
   ): Promise<WideTableCachedColumn[]> {
     const stmt = await this.deps.statementCache.get(
@@ -384,25 +374,17 @@ export class PortalSqlServiceImpl {
     const effectiveFmIds = projectionRows.length
       ? new Set(projectionRows.map((p) => p.fieldMappingId))
       : new Set(stmt.columns.map((c) => c.fieldMappingId));
-    // #729: a member's field-mapping read is conditional (created_by_caller /
-    // created_by_system), which only matches with the mapping's creator; the
-    // cached column carries it.
     return stmt.columns.filter(
       (c) =>
         !VIEW_HIDDEN_COLUMNS.has(c.columnName) &&
-        effectiveFmIds.has(c.fieldMappingId) &&
-        set.can("resource.read", {
-          type: "field_mapping",
-          id: c.fieldMappingId,
-          createdBy: c.fieldMappingCreatedBy,
-        })
+        effectiveFmIds.has(c.fieldMappingId)
     );
   }
 
   /**
    * Single-view resolution for the detail/records endpoints — no station
-   * scope. The view must be org-scoped, readable by the caller (`read
-   * curated_view`, not suppressed by an `entity_record` deny). Returns `null`
+   * scope. The view must be org-scoped and readable by the caller (`read
+   * curated_view`). Returns `null`
    * when the caller cannot read it (→ 404: unreadable == absent).
    */
   async resolveViewColumnsById(
@@ -434,13 +416,11 @@ export class PortalSqlServiceImpl {
       { userId, organizationId, roles },
       client
     );
-    const readable =
-      !set.isDenied("read", "entity_record", { type: "entity_record" }) &&
-      set.can("resource.read", {
-        type: "curated_view",
-        id: view.id,
-        createdBy: view.createdBy,
-      });
+    const readable = set.can("resource.read", {
+      type: "curated_view",
+      id: view.id,
+      createdBy: view.createdBy,
+    });
     if (!readable) return null;
     if (!UUID_RE.test(view.connectorEntityId)) {
       throw new ApiError(
@@ -449,7 +429,7 @@ export class PortalSqlServiceImpl {
         `invalid connectorEntityId for curated view: ${view.connectorEntityId}`
       );
     }
-    const columns = await this.resolveOneViewColumns(view, set, client);
+    const columns = await this.resolveOneViewColumns(view, client);
     return { set, view, columns };
   }
 

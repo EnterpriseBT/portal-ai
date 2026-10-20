@@ -585,8 +585,8 @@ describe("curated-view.router integration", () => {
 
   // ── #680: GET / list scoped to the reader ──────────────────────────
 
-  /** The member may read `viewId` and only the email field mapping. */
-  async function grantMemberViewAndEmail(viewId: string) {
+  /** The member may read `viewId` (#829: which conveys its projection). */
+  async function grantMemberView(viewId: string) {
     const base = {
       organizationId: orgId,
       principalType: "user",
@@ -611,12 +611,6 @@ describe("curated-view.router integration", () => {
           resourceType: "curated_view",
           resourceId: viewId,
         },
-        {
-          ...base,
-          id: generateId(),
-          resourceType: "field_mapping",
-          resourceId: emailFmId,
-        },
       ] as never);
   }
 
@@ -625,7 +619,7 @@ describe("curated-view.router integration", () => {
     conditions: [{ field: "age", operator: "gt", value: 30 }],
   };
 
-  it("#680: a reader without write gets no filter and only the projection ids they can read", async () => {
+  it("#680: a reader without write gets no filter, and the whole projection (#829)", async () => {
     const created = await createView({
       connectorEntityId: entityId,
       key: "redacted",
@@ -634,7 +628,7 @@ describe("curated-view.router integration", () => {
       fieldMappingIds: [emailFmId, ageFmId],
     });
     const id = created.body.payload.curatedView.id as string;
-    await grantMemberViewAndEmail(id);
+    await grantMemberView(id);
 
     currentSub = MEMBER_SUB;
     const got = await request(app).get(`/api/curated-views/${id}`);
@@ -643,9 +637,8 @@ describe("curated-view.router integration", () => {
     expect(view.filter).toBeNull();
     expect(view.filtered).toBe(true);
     expect(view.projected).toBe(true);
-    expect(view.fieldMappingIds).toEqual([emailFmId]);
-    // Nothing about the hidden column survives anywhere in the payload.
-    expect(JSON.stringify(got.body)).not.toContain(ageFmId);
+    expect(view.fieldMappingIds).toEqual([emailFmId, ageFmId]);
+    // The filter's contents don't survive anywhere in the payload.
     expect(JSON.stringify(got.body)).not.toContain('"age"');
 
     const list = await request(app).get(`/api/curated-views`);
@@ -663,7 +656,7 @@ describe("curated-view.router integration", () => {
   // created_by_system). The column check passed no createdBy, so no condition
   // could match and the member got zero columns on every view: the view page
   // spun forever and a portal session's views had no columns. The shares
-  // above (in_curated_view / instance grants) never needed createdBy.
+  // above (instance grants) never needed createdBy.
   it("#729: a member reads a system-created view's columns through created_by_system, with no shares", async () => {
     const created = await createView({
       connectorEntityId: entityId,
@@ -961,9 +954,9 @@ describe("curated-view.router integration", () => {
     return rows.map((r) => r.id).sort();
   }
 
-  /** #738: a view the member owns over system-created (member-readable)
-   *  mappings, plus a mapping on the same entity that someone else created,
-   *  which the member can't read. */
+  /** #738: a view the member owns on a system-created (member-readable)
+   *  entity, plus a mapping on it that someone else created (#829: readable
+   *  too, since the member reads the entity). */
   async function memberOwnedView(
     key: string,
     fieldMappingIds: string[],
@@ -1050,19 +1043,35 @@ describe("curated-view.router integration", () => {
     expect(res.status).toBe(200);
   });
 
-  it("#738: widening a list to all columns over an unreadable column is refused, and says why", async () => {
-    const { id } = await memberOwnedView("member_list_to_all", [emailFmId]);
+  // #829: a column is part of its entity, so reading the entity covers every
+  // column of it, whoever created the mapping.
+  it("#829: widening a list to all columns needs only read on the entity", async () => {
+    const { id, secret } = await memberOwnedView("member_list_to_all", [
+      emailFmId,
+    ]);
     const res = await request(app)
       .patch(`/api/curated-views/${id}`)
       .send({ fieldMappingIds: [] });
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_FIELD_NOT_READABLE);
-    expect(res.body.message).toBe(
-      "An all-columns view needs read access to every column of its entity"
+    expect(res.status).toBe(200);
+    expect(secret).toBeDefined();
+  });
+
+  it("#829: a view writer who can't read its entity can't change its columns, but can rename it", async () => {
+    const { id } = await memberOwnedView("member_unreadable_entity", [
+      emailFmId,
+    ]);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update connector_entities set created_by = 'someone-else' where id = ${entityId}`
     );
-    currentSub = OWNER_SUB;
-    const got = await request(app).get(`/api/curated-views/${id}`);
-    expect(got.body.payload.curatedView.fieldMappingIds).toEqual([emailFmId]);
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ fieldMappingIds: [emailFmId, ageFmId] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    const rename = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed" });
+    expect(rename.status).toBe(200);
   });
 
   it("#738: a writer can remove a column while the view keeps one they can't read", async () => {
@@ -1091,18 +1100,14 @@ describe("curated-view.router integration", () => {
     expect(res.status).toBe(200);
   });
 
-  it("#738: a writer still can't add a column they can't read", async () => {
+  it("#829: a writer can add a column someone else mapped", async () => {
     const { id, secret } = await memberOwnedView("member_add_secret", [
       emailFmId,
     ]);
     const res = await request(app)
       .patch(`/api/curated-views/${id}`)
       .send({ fieldMappingIds: [emailFmId, secret] });
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_FIELD_NOT_READABLE);
-    expect(res.body.message).toBe(
-      "You cannot project a field mapping you do not have read access to"
-    );
+    expect(res.status).toBe(200);
   });
 
   it("#738: narrowing an all-columns view exposes nothing new, so it isn't refused", async () => {
@@ -1277,7 +1282,7 @@ describe("curated-view.router integration", () => {
       label: "Plain",
     });
     const id = created.body.payload.curatedView.id as string;
-    await grantMemberViewAndEmail(id);
+    await grantMemberView(id);
     for (const sub of [OWNER_SUB, MEMBER_SUB]) {
       currentSub = sub;
       const got = await request(app).get(`/api/curated-views/${id}`);
@@ -1306,46 +1311,16 @@ describe("curated-view.router integration", () => {
     expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_SORT);
   });
 
-  it("#678: a caller who can't read a projected field mapping gets neither its column nor its values", async () => {
+  // #829: reading a view reads its projection; there's no per-column read.
+  it("#829: a view reader gets every projected column, and nothing outside it", async () => {
     const created = await createView({
       connectorEntityId: entityId,
       key: "partial_read",
       label: "Partial",
-      fieldMappingIds: [emailFmId, ageFmId],
+      fieldMappingIds: [emailFmId],
     });
     const id = created.body.payload.curatedView.id as string;
-    // The member may read the view, but only the email field mapping.
-    const base = {
-      organizationId: orgId,
-      principalType: "user",
-      principalId: memberId,
-      effect: "allow",
-      verb: "read",
-      condition: null,
-      conditionParam: null,
-      created: Date.now(),
-      createdBy: "SYSTEM_TEST",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-    };
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.permissionGrants)
-      .values([
-        {
-          ...base,
-          id: generateId(),
-          resourceType: "curated_view",
-          resourceId: id,
-        },
-        {
-          ...base,
-          id: generateId(),
-          resourceType: "field_mapping",
-          resourceId: emailFmId,
-        },
-      ] as never);
+    await grantMemberView(id);
 
     currentSub = MEMBER_SUB;
     const res = await request(app).get(`/api/curated-views/${id}/records`);
@@ -1430,7 +1405,7 @@ describe("curated-view.router integration", () => {
     expect(res.body.message).toMatch(/Unknown field/);
   });
 
-  it("#678: a filter on a projected column the caller can't read is refused (400)", async () => {
+  it("#829: a view reader filters on any projected column", async () => {
     const created = await createView({
       connectorEntityId: entityId,
       key: "f_partial",
@@ -1438,52 +1413,14 @@ describe("curated-view.router integration", () => {
       fieldMappingIds: [emailFmId, ageFmId],
     });
     const id = created.body.payload.curatedView.id as string;
-    const base = {
-      organizationId: orgId,
-      principalType: "user",
-      principalId: memberId,
-      effect: "allow",
-      verb: "read",
-      condition: null,
-      conditionParam: null,
-      created: Date.now(),
-      createdBy: "SYSTEM_TEST",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-    };
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.permissionGrants)
-      .values([
-        {
-          ...base,
-          id: generateId(),
-          resourceType: "curated_view",
-          resourceId: id,
-        },
-        {
-          ...base,
-          id: generateId(),
-          resourceType: "field_mapping",
-          resourceId: emailFmId,
-        },
-      ] as never);
+    await grantMemberView(id);
 
     currentSub = MEMBER_SUB;
     const res = await request(app)
       .get(`/api/curated-views/${id}/records`)
       .query({ filters: where({ field: "age", operator: "gt", value: 30 }) });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER);
-    // The readable column still filters fine.
-    const ok = await request(app)
-      .get(`/api/curated-views/${id}/records`)
-      .query({
-        filters: where({ field: "email", operator: "eq", value: "a@b.co" }),
-      });
-    expect(ok.status).toBe(200);
-    expect((ok.body.payload.records as unknown[]).length).toBe(1);
+    expect(res.status).toBe(200);
+    expect(ages(res)).toEqual([42]);
   });
 
   it.each([
@@ -1972,7 +1909,9 @@ describe("curated-view.router integration", () => {
     expect(searched.total).toBe(0);
   });
 
-  it("#649: callers with different field grants never share a cached total", async () => {
+  // #829: a view's columns are its projection for every reader, so a search
+  // over them finds the same rows, and the same total, whoever asks.
+  it("#829: every reader of a view searches the same columns and gets the same total", async () => {
     const created = await createView({
       connectorEntityId: entityId,
       key: "grant_scoped_total",
@@ -1980,45 +1919,15 @@ describe("curated-view.router integration", () => {
       fieldMappingIds: [emailFmId, backupFmId],
     });
     const id = created.body.payload.curatedView.id as string;
-    const base = {
-      organizationId: orgId,
-      principalType: "user",
-      principalId: memberId,
-      effect: "allow",
-      verb: "read",
-      condition: null,
-      conditionParam: null,
-      created: Date.now(),
-      createdBy: "SYSTEM_TEST",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-    };
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.permissionGrants)
-      .values([
-        {
-          ...base,
-          id: generateId(),
-          resourceType: "curated_view",
-          resourceId: id,
-        },
-        {
-          ...base,
-          id: generateId(),
-          resourceType: "field_mapping",
-          resourceId: emailFmId,
-        },
-      ] as never);
+    await grantMemberView(id);
 
-    // "x2" is only in backup_email, which the member can't read.
+    // "x2" is only in backup_email.
     const owner = await page(id, { search: "x2" });
     expect(owner.total).toBe(1);
     currentSub = MEMBER_SUB;
     const member = await page(id, { search: "x2" });
-    expect(member.records).toHaveLength(0);
-    expect(member.total).toBe(0);
+    expect(member.records).toHaveLength(1);
+    expect(member.total).toBe(1);
   });
 
   it("#649: a record write's count invalidation refreshes the total", async () => {

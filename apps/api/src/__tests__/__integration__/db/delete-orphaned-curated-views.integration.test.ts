@@ -127,7 +127,7 @@ describe("0121 delete-orphaned-curated-views (#802)", () => {
       deletedBy: null,
       links: 1,
       attachments: 1,
-      grants: 2,
+      grants: 1,
     });
   });
 
@@ -147,7 +147,7 @@ describe("0121 delete-orphaned-curated-views (#802)", () => {
     expect(second.deleted).toBe(first.deleted);
     expect(await liveState(live.curatedViewId)).toMatchObject({
       viewLive: true,
-      grants: 2,
+      grants: 1,
     });
   });
 });

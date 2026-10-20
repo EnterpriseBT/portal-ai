@@ -3,7 +3,7 @@
  * cascade the view route, the entity delete and the connector delete share.
  *
  * Each view is seeded with every dependent (projection row, station
- * attachment, resource grant, `in_curated_view` field grant), so a cascade
+ * attachment, resource grant), so a cascade
  * that misses one table is visible.
  */
 
@@ -17,7 +17,7 @@ import {
 } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { CuratedViewDeleteService } from "../../../services/curated-view-delete.service.js";
 import { DbService } from "../../../services/db.service.js";
@@ -66,15 +66,9 @@ async function liveDependents(db: Db, viewIds: string[]) {
     .select()
     .from(schema.permissionGrants)
     .where(
-      or(
-        and(
-          eq(schema.permissionGrants.resourceType, "curated_view"),
-          inArray(schema.permissionGrants.resourceId, viewIds)
-        ),
-        and(
-          eq(schema.permissionGrants.condition, "in_curated_view"),
-          inArray(schema.permissionGrants.conditionParam, viewIds)
-        )
+      and(
+        eq(schema.permissionGrants.resourceType, "curated_view"),
+        inArray(schema.permissionGrants.resourceId, viewIds)
       )
     );
   return {
@@ -155,7 +149,7 @@ describe("CuratedViewDeleteService integration tests (#802)", () => {
       curatedViews: 2,
       fieldMappings: 2,
       stationViews: 2,
-      grants: 4,
+      grants: 2,
     });
     expect(await liveDependents(db, viewIds)).toEqual({
       views: 0,
@@ -198,7 +192,7 @@ describe("CuratedViewDeleteService integration tests (#802)", () => {
       views: 1,
       links: 1,
       attachments: 1,
-      grants: 2,
+      grants: 1,
     });
   });
 
@@ -216,7 +210,7 @@ describe("CuratedViewDeleteService integration tests (#802)", () => {
       views: 1,
       links: 1,
       attachments: 1,
-      grants: 2,
+      grants: 1,
     });
   });
 
@@ -237,7 +231,7 @@ describe("CuratedViewDeleteService integration tests (#802)", () => {
       views: 1,
       links: 1,
       attachments: 1,
-      grants: 2,
+      grants: 1,
     });
   });
 

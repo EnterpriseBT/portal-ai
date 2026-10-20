@@ -1,4 +1,4 @@
-import { eq, and, ne, inArray, isNull, or } from "drizzle-orm";
+import { eq, and, ne, inArray, isNull } from "drizzle-orm";
 
 import { ApplicationService } from "./application.service.js";
 import { DbService } from "./db.service.js";
@@ -107,9 +107,8 @@ export class ResetService {
 
       // #802: curated views hold FKs to field mappings, stations and
       // entities, all hard-deleted below — clear the view tables first,
-      // children before the view, and drop the views' grants (both the
-      // resource grant and the composed `in_curated_view` field grant) so
-      // none outlives its object.
+      // children before the view, and drop the views' grants so none
+      // outlives its object.
       const deletedViewLinks = await tx
         .delete(curatedViewFieldMappings)
         .where(eq(curatedViewFieldMappings.organizationId, organizationId))
@@ -123,10 +122,7 @@ export class ResetService {
         .where(
           and(
             eq(permissionGrants.organizationId, organizationId),
-            or(
-              eq(permissionGrants.resourceType, "curated_view"),
-              eq(permissionGrants.condition, "in_curated_view")
-            )
+            eq(permissionGrants.resourceType, "curated_view")
           )
         )
         .returning({ id: permissionGrants.id });

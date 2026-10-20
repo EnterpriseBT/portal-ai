@@ -15,11 +15,7 @@ import {
 import { DbService } from "./db.service.js";
 import { db } from "../db/client.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
-import { PermissionSet, type EffectiveStatement } from "./permission-set.js";
-
-/** A loaded grant/statement row before FK-condition expansion — the resolver
- *  fields plus the `conditionParam` that `in_curated_view` carries (#599). */
-type RawStatement = EffectiveStatement & { conditionParam: string | null };
+import { PermissionSet } from "./permission-set.js";
 
 /**
  * The resolved caller context an authorization decision keys off — the
@@ -67,7 +63,7 @@ export type PermissionAction =
  * a check that left it out failed closed for members while owners and admins
  * passed through `* *` (#729). `createdBy: null` is the explicit "creator
  * unknown" (a deleted row, an id from the request that isn't the parent's):
- * only an unconditional, instance or FK-expanded grant can match it. An
+ * only an unconditional or instance grant can match it. An
  * ownerless type (`OWNERSHIPLESS_RESOURCE_TYPES`, e.g. `page`) has no creator.
  */
 export type PermissionObject =
@@ -195,79 +191,7 @@ export class PermissionService {
       ctx.organizationId,
       client
     );
-    // #599: expand FK-shaped `in_curated_view` conditions into concrete
-    // `field_mapping:<id>` statements before the resolver ever sees them.
-    const expanded = await PermissionService.expandFkConditions(
-      [...statements, ...grants],
-      client
-    );
-    return new PermissionSet(ctx, expanded);
-  }
-
-  /**
-   * Expand every FK-shaped `in_curated_view` statement (#599) into concrete
-   * `read field_mapping:<id>` statements — so the resolver stays oblivious to
-   * the condition (an unexpanded one fails closed in `matches`). A view's
-   * effective projection is its `curated_view_field_mappings` rows, or — when it
-   * has none — all of the entity's current field mappings (an unrestricted
-   * view, auto-tracking). Target view ids are deduped so N statements over one
-   * view cost one resolution; a missing/deleted view expands to nothing.
-   */
-  private static async expandFkConditions(
-    raw: RawStatement[],
-    client: DbClient
-  ): Promise<EffectiveStatement[]> {
-    const fk = raw.filter((s) => s.condition === "in_curated_view");
-    const passthrough = raw.filter((s) => s.condition !== "in_curated_view");
-    if (fk.length === 0) return passthrough;
-
-    const repo = DbService.repository;
-    const viewIds = [
-      ...new Set(
-        fk.map((s) => s.conditionParam).filter((v): v is string => v != null)
-      ),
-    ];
-    const fieldIdsByView = new Map<string, string[]>();
-    await Promise.all(
-      viewIds.map(async (viewId) => {
-        const view = await repo.curatedViews.findById(viewId, client);
-        if (!view) {
-          fieldIdsByView.set(viewId, []);
-          return;
-        }
-        const projection =
-          await repo.curatedViewFieldMappings.findByCuratedViewId(
-            viewId,
-            client
-          );
-        const fieldIds = projection.length
-          ? projection.map((p) => p.fieldMappingId)
-          : (
-              await repo.fieldMappings.findByConnectorEntityId(
-                view.connectorEntityId,
-                client
-              )
-            ).map((f) => f.id);
-        fieldIdsByView.set(viewId, fieldIds);
-      })
-    );
-
-    const expanded: EffectiveStatement[] = [...passthrough];
-    for (const s of fk) {
-      const fieldIds = s.conditionParam
-        ? (fieldIdsByView.get(s.conditionParam) ?? [])
-        : [];
-      for (const fieldMappingId of fieldIds) {
-        expanded.push({
-          effect: s.effect,
-          verb: "read",
-          resourceType: "field_mapping",
-          resourceId: fieldMappingId,
-          condition: null,
-        });
-      }
-    }
-    return expanded;
+    return new PermissionSet(ctx, [...statements, ...grants]);
   }
 
   /**

@@ -152,10 +152,7 @@ describe("ResetService integration tests (#295)", () => {
         .where(
           and(
             eq(schema.permissionGrants.organizationId, target.orgId),
-            inArray(schema.permissionGrants.resourceType, [
-              "curated_view",
-              "field_mapping",
-            ])
+            eq(schema.permissionGrants.resourceType, "curated_view")
           )
         );
       expect(viewGrants).toHaveLength(0);
@@ -170,7 +167,7 @@ describe("ResetService integration tests (#295)", () => {
         .select()
         .from(schema.permissionGrants)
         .where(eq(schema.permissionGrants.organizationId, control.orgId));
-      expect(controlGrants).toHaveLength(2);
+      expect(controlGrants).toHaveLength(1);
     });
 
     it("drops the entity's er__ wide table (case 3)", async () => {

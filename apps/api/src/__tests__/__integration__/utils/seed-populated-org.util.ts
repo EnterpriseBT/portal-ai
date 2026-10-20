@@ -333,9 +333,9 @@ export async function seedPopulatedOrg(
 
 /**
  * #802: a curated view over `connectorEntityId` with every dependent the view
- * delete cascade must clear — one projection row, one station attachment, a
- * `curated_view` resource grant and a composed `in_curated_view` field grant,
- * both to `granteeUserId`. Returns the view id.
+ * delete cascade must clear — one projection row, one station attachment and
+ * a `curated_view` resource grant to `granteeUserId` (#829: a share composes
+ * no field grant). Returns the view id.
  */
 export async function seedCuratedViewWithDependents(
   db: Db,
@@ -386,14 +386,6 @@ export async function seedCuratedViewWithDependents(
       resourceId: view.id,
       condition: null,
       conditionParam: null,
-    },
-    {
-      ...base(now),
-      ...grant,
-      resourceType: "field_mapping",
-      resourceId: null,
-      condition: "in_curated_view",
-      conditionParam: view.id,
     },
   ] as never);
   return view.id;

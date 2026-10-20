@@ -6,8 +6,8 @@
  * mapping's `normalizedKey` somewhere in its `FilterGroup` tree. Removing a
  * mapping either view depends on breaks the view, and a cascade can't fix it
  * safely: dropping a view's last projected column turns "these columns" into
- * "every column" (`resolveOneViewColumns`), widening what the view — and every
- * `in_curated_view` field grant built on it — exposes. So a mapping in use is
+ * "every column" (`resolveOneViewColumns`), widening what the view — and so
+ * everyone who reads it — exposes. So a mapping in use is
  * not deletable; the user edits or deletes the view first. Renaming its key
  * breaks a filter the same way (a projection links by id, so it survives).
  *

@@ -623,28 +623,6 @@ describe("PermissionSet — isDenied + FK-condition fail-closed (#599 slice 2)",
     expect(set.isDenied("read", "entity_record")).toBe(false);
     expect(set.isDenied("read", "entity_record", rec("r-1"))).toBe(true);
   });
-
-  it("an unexpanded in_curated_view statement never grants (fails closed)", () => {
-    // The resolver must not honor the FK condition directly — loadSet expands it
-    // into concrete field_mapping grants; an unexpanded one denies.
-    const set = new PermissionSet(ctx("member"), [
-      S({
-        effect: "allow",
-        verb: "read",
-        resourceType: "field_mapping",
-        resourceId: null,
-        condition: "in_curated_view",
-        conditionParam: "view-1",
-      }),
-    ]);
-    expect(
-      set.can("resource.read", {
-        type: "field_mapping",
-        id: "fm-1",
-        createdBy: null,
-      })
-    ).toBe(false);
-  });
 });
 
 // ── By-id objects name their creator (#731) ─────────────────────────

@@ -182,21 +182,15 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     return viewId;
   }
 
-  const fieldGrantsForView = (
-    orgId: string,
-    principalId: string,
-    viewId: string
-  ) =>
+  /** Every grant a principal holds in the org. #829: a view share is one. */
+  const grantsOf = (orgId: string, principalId: string) =>
     db
       .select()
       .from(permissionGrants)
       .where(
         and(
           eq(permissionGrants.organizationId, orgId),
-          eq(permissionGrants.principalId, principalId),
-          eq(permissionGrants.resourceType, "field_mapping"),
-          eq(permissionGrants.condition, "in_curated_view"),
-          eq(permissionGrants.conditionParam, viewId)
+          eq(permissionGrants.principalId, principalId)
         )
       );
 
@@ -448,9 +442,9 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     expect(remaining.every((r) => r.principalId === m2)).toBe(true);
   });
 
-  // #599: sharing a curated view composes the view read grant + the
-  // `in_curated_view` field grant (so the recipient sees the view's columns).
-  it("sharing a curated_view composes a read grant + the in_curated_view field grant", async () => {
+  // #829: sharing a curated view grants read on the view, which conveys its
+  // projection; no field grant is composed.
+  it("sharing a curated_view writes one read grant on the view, nothing more (#829)", async () => {
     const { orgId, callerId } = await seedOrg("owner");
     const member = await addMember(orgId);
     const viewId = await addCuratedView(orgId, callerId);
@@ -468,10 +462,8 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     expect(viewGrants[0].verb).toBe("read");
     expect(viewGrants[0].resourceType).toBe("curated_view");
 
-    const fieldGrants = await fieldGrantsForView(orgId, member, viewId);
-    expect(fieldGrants).toHaveLength(1);
-    expect(fieldGrants[0].conditionParam).toBe(viewId);
-    expect(fieldGrants[0].resourceId).toBeNull();
+    // #829: the view conveys its projection; no field grant is composed.
+    expect(await grantsOf(orgId, member)).toHaveLength(1);
   });
 
   it("sharing a curated_view to the team grants the member role", async () => {
@@ -487,15 +479,10 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     const viewGrants = await liveGrants(orgId, viewId);
     expect(viewGrants[0].principalType).toBe("role");
     expect(viewGrants[0].principalId).toBe(`sysrole:${orgId}:member`);
-    const fieldGrants = await fieldGrantsForView(
-      orgId,
-      `sysrole:${orgId}:member`,
-      viewId
-    );
-    expect(fieldGrants).toHaveLength(1);
+    expect(viewGrants).toHaveLength(1);
   });
 
-  it("revoking a curated_view share drops both the view grant and the field grant", async () => {
+  it("revoking a curated_view share drops the view grant", async () => {
     const { orgId, callerId } = await seedOrg("owner");
     const member = await addMember(orgId);
     const viewId = await addCuratedView(orgId, callerId);
@@ -513,6 +500,6 @@ describe("POST/GET/DELETE /api/grants (#621)", () => {
     expect(del.status).toBe(200);
 
     expect(await liveGrants(orgId, viewId)).toHaveLength(0);
-    expect(await fieldGrantsForView(orgId, member, viewId)).toHaveLength(0);
+    expect(await grantsOf(orgId, member)).toHaveLength(0);
   });
 });
