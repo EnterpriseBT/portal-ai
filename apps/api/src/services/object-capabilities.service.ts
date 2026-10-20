@@ -9,7 +9,10 @@
  */
 
 import {
+  OBJECT_CONTAINERS,
   SHAREABLE_RESOURCE_TYPES,
+  type ContainedType,
+  type PartType,
   type PermissionResourceType,
 } from "@portalai/core/models";
 import type {
@@ -17,6 +20,7 @@ import type {
   ShareableObjectCapabilities,
 } from "@portalai/core/contracts";
 
+import { ParentAccessService } from "./parent-access.service.js";
 import type { PermissionSet } from "./permission-set.js";
 
 interface OwnedRow {
@@ -26,8 +30,13 @@ interface OwnedRow {
 
 type Capabilities = ObjectCapabilities | ShareableObjectCapabilities;
 type ShareableType = (typeof SHAREABLE_RESOURCE_TYPES)[number];
+/** #829: parts take their entity's capabilities (`attachParts`) and a
+ *  contained type's delete folds in its container (`attachContained`), so
+ *  tsc refuses either here. */
+type NonChildType = Exclude<PermissionResourceType, PartType | ContainedType>;
 
 const SHAREABLE = new Set<string>(SHAREABLE_RESOURCE_TYPES);
+const NONE: ObjectCapabilities = { read: false, write: false, delete: false };
 
 export class ObjectCapabilitiesService {
   /** The caller's capabilities on one row; `share` iff the type is shareable. */
@@ -38,10 +47,19 @@ export class ObjectCapabilitiesService {
   ): ShareableObjectCapabilities;
   static for(
     set: PermissionSet,
-    type: PermissionResourceType,
+    type: NonChildType,
     row: OwnedRow
   ): Capabilities;
   static for(
+    set: PermissionSet,
+    type: NonChildType,
+    row: OwnedRow
+  ): Capabilities {
+    return ObjectCapabilitiesService.own(set, type, row);
+  }
+
+  /** The row's own capabilities, ignoring any parent. */
+  private static own(
     set: PermissionSet,
     type: PermissionResourceType,
     row: OwnedRow
@@ -60,13 +78,77 @@ export class ObjectCapabilitiesService {
   /** `rows` with `capabilities` attached, order and fields unchanged. */
   static attach<T extends OwnedRow>(
     set: PermissionSet,
-    type: PermissionResourceType,
+    type: NonChildType,
     rows: T[]
   ): Array<T & { capabilities: Capabilities }> {
     return rows.map((row) => ({
       ...row,
       capabilities: ObjectCapabilitiesService.for(set, type, row),
     }));
+  }
+
+  /**
+   * #829: a part has no permission of its own; its capabilities are its
+   * entity's, with `delete` = `write` (deleting a part changes the entity's
+   * contents). One entity query for the whole page; an unreadable or missing
+   * entity gives NONE.
+   */
+  static async attachParts<T extends OwnedRow>(
+    set: PermissionSet,
+    organizationId: string,
+    partType: PartType,
+    rows: T[]
+  ): Promise<Array<T & { capabilities: ObjectCapabilities }>> {
+    const ownerOf = (row: T) =>
+      ParentAccessService.ownerIdOf(partType, row as Record<string, unknown>);
+    const caps = await ParentAccessService.ownerCapabilities(
+      set,
+      organizationId,
+      rows.map(ownerOf).filter((id): id is string => id != null)
+    );
+    return rows.map((row) => {
+      const owner = ownerOf(row);
+      return {
+        ...row,
+        capabilities: (owner != null && caps.get(owner)) || NONE,
+      };
+    });
+  }
+
+  /**
+   * #829: a contained object (an entity). `read` and `write` are its own;
+   * deleting it also needs write on its container. One container query for
+   * the whole page.
+   */
+  static async attachContained<T extends OwnedRow>(
+    set: PermissionSet,
+    organizationId: string,
+    type: ContainedType,
+    rows: T[]
+  ): Promise<Array<T & { capabilities: ObjectCapabilities }>> {
+    const { containerKey } = OBJECT_CONTAINERS[type];
+    const containerOf = (row: T) => {
+      const v = (row as Record<string, unknown>)[containerKey];
+      return typeof v === "string" ? v : null;
+    };
+    const writable = await ParentAccessService.writableContainerIds(
+      set,
+      organizationId,
+      type,
+      rows.map(containerOf).filter((id): id is string => id != null)
+    );
+    return rows.map((row) => {
+      const own = ObjectCapabilitiesService.own(set, type, row);
+      const container = containerOf(row);
+      return {
+        ...row,
+        capabilities: {
+          read: own.read,
+          write: own.write,
+          delete: own.delete && container != null && writable.has(container),
+        },
+      };
+    });
   }
 
   /**

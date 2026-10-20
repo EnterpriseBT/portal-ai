@@ -27,6 +27,26 @@ describe("CreateFieldMappingDialog", () => {
     jest.clearAllMocks();
   });
 
+  it("#829: says when there is no entity the caller can edit", async () => {
+    const onSearchConnectorEntities = jest
+      .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+      .mockResolvedValue([]);
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        onSearchConnectorEntities={onSearchConnectorEntities}
+      />
+    );
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Connector Entity" }),
+      { target: { value: "x" } }
+    );
+    await waitFor(() => expect(onSearchConnectorEntities).toHaveBeenCalled());
+    expect(
+      await screen.findByText("No entities you can edit")
+    ).toBeInTheDocument();
+  });
+
   it("should render title and form fields when open", () => {
     render(<CreateFieldMappingDialog {...defaultProps} />);
     expect(screen.getByText("New Field Mapping")).toBeInTheDocument();

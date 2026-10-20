@@ -1023,7 +1023,7 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
   }
 
   /** #802: a curated view over the entity, attached to a fresh station, with
-   *  a resource grant and an `in_curated_view` field grant. */
+   *  a resource grant. */
   async function seedViewOnStation(
     organizationId: string,
     connectorEntityId: string,

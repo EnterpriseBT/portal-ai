@@ -9,12 +9,20 @@
  * instance statement on them — fail-closed). Slice 5 extends this map with the
  * searchable-label lookup that powers the instance picker.
  *
- * #629 adds `field_mapping` + `entity_record` (the data-plane write types the
- * per-caller tool-authorization gate resolves per object). `view` is still not
- * built (#599), so it resolves to `null` (fail-closed).
+ * #829: records and field mappings are parts of their entity with no
+ * permission of their own, so they aren't objects here; `resolvePartOwner`
+ * gives the agent permission gate a part's owning entity from its stored row.
  */
 
+import {
+  OBJECT_CONTAINERS,
+  PART_OWNERS,
+  isContainedType,
+  type PartType,
+} from "@portalai/core/models";
+
 import { DbService } from "./db.service.js";
+import { FieldMappingValidationService } from "./field-mapping-validation.service.js";
 
 type ResolvableRow = { organizationId: string; createdBy: string } | undefined;
 
@@ -39,13 +47,6 @@ const OBJECT_FINDERS: Record<string, (id: string) => Promise<ResolvableRow>> = {
   // instance statement / grant on a specific view resolves against its creator.
   curated_view: (id) =>
     DbService.repository.curatedViews.findById(id) as Promise<ResolvableRow>,
-  // #629: the per-caller tool-authorization gate resolves data-plane writes
-  // per object too (the per-object gate needs their `createdBy`), so these are
-  // now instance-resolvable — they were `null` (data-plane, deferred) in #622.
-  field_mapping: (id) =>
-    DbService.repository.fieldMappings.findById(id) as Promise<ResolvableRow>,
-  entity_record: (id) =>
-    DbService.repository.entityRecords.findById(id) as Promise<ResolvableRow>,
   // #630: the connector-definition catalog is a **global** registry (no org
   // column). Its finder resolves the row for the authoring boundary; the org
   // check is skipped via GLOBAL_RESOURCE_TYPES so an author holding
@@ -60,6 +61,21 @@ const OBJECT_FINDERS: Record<string, (id: string) => Promise<ResolvableRow>> = {
  *  rows carry no `organizationId`, so the resolver's org check is skipped. */
 const GLOBAL_RESOURCE_TYPES = new Set<string>(["connector_definition"]);
 
+/** #829: part type → find one part row by id. */
+const PART_FINDERS: Record<
+  PartType,
+  (id: string) => Promise<Record<string, unknown> | undefined>
+> = {
+  entity_record: (id) =>
+    DbService.repository.entityRecords.findById(id) as Promise<
+      Record<string, unknown> | undefined
+    >,
+  field_mapping: (id) =>
+    DbService.repository.fieldMappings.findById(id) as Promise<
+      Record<string, unknown> | undefined
+    >,
+};
+
 export class RbacObjectResolver {
   /** The object's `createdBy` if it exists (and, for org-scoped types, is in the
    *  caller's org), else `null` (absent, cross-org, or a non-resolvable type). */
@@ -68,6 +84,25 @@ export class RbacObjectResolver {
     resourceType: string,
     resourceId: string
   ): Promise<string | null> {
+    const row = await RbacObjectResolver.resolveRow(
+      organizationId,
+      resourceType,
+      resourceId
+    );
+    return row?.createdBy ?? null;
+  }
+
+  /**
+   * The object's `createdBy` and, for a contained type (#829), its
+   * container's id as stored on the row, never as claimed by input. `null`
+   * when absent, cross-org or not resolvable; `containerId` is null for a
+   * type with no container.
+   */
+  static async resolveRow(
+    organizationId: string,
+    resourceType: string,
+    resourceId: string
+  ): Promise<{ createdBy: string; containerId: string | null } | null> {
     const finder = OBJECT_FINDERS[resourceType];
     if (!finder) return null;
     const row = await finder(resourceId);
@@ -78,6 +113,41 @@ export class RbacObjectResolver {
     ) {
       return null;
     }
-    return row.createdBy;
+    const containerId = isContainedType(resourceType)
+      ? (((row as Record<string, unknown>)[
+          OBJECT_CONTAINERS[resourceType].containerKey
+        ] as string | undefined) ?? null)
+      : null;
+    return { createdBy: row.createdBy, containerId };
+  }
+
+  /**
+   * #829: a part's owning entity id, from its stored row (org-scoped).
+   * `null` when the part is absent or in another org.
+   */
+  static async resolvePartOwner(
+    organizationId: string,
+    partType: PartType,
+    partId: string
+  ): Promise<string | null> {
+    const row = await PART_FINDERS[partType](partId);
+    if (!row || row.organizationId !== organizationId) return null;
+    const owner = row[PART_OWNERS[partType].ownerKey];
+    return typeof owner === "string" ? owner : null;
+  }
+
+  /**
+   * #829: the entity of the counterpart mapping a delete of this field
+   * mapping would clear, or null (none, or the mapping is absent / in another
+   * org).
+   */
+  static async resolveMappingCounterpartOwner(
+    organizationId: string,
+    fieldMappingId: string
+  ): Promise<string | null> {
+    const mapping =
+      await DbService.repository.fieldMappings.findById(fieldMappingId);
+    if (!mapping || mapping.organizationId !== organizationId) return null;
+    return FieldMappingValidationService.counterpartEntityId(mapping);
   }
 }

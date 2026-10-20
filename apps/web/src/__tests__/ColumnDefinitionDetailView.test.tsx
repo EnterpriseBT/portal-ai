@@ -11,6 +11,7 @@ type GetQuery = UseQueryResult<ColumnDefinitionGetResponsePayload, ApiError>;
 type ListQuery = UseQueryResult<FieldMappingListResponsePayload, ApiError>;
 
 let currentGetQuery: Partial<GetQuery> = {};
+let currentWritableEntities = 1;
 let currentFieldMappingListQuery: Partial<ListQuery> = {};
 // #769: jobs running on entities that map the column definition.
 let currentRunningJobs: unknown[] = [];
@@ -25,6 +26,9 @@ const noopSearch = () => ({
   getByIdError: null,
   labelMap: {},
 });
+
+// #829: the options each connector-entity picker asks the search hook for.
+const connectorEntitySearchOptions: unknown[] = [];
 
 // #689: the caller's type-level permissions (field-mapping create).
 let currentResourcePermissions: Record<string, Record<string, boolean>> = {};
@@ -48,7 +52,15 @@ jest.unstable_mockModule("../api/sdk", () => ({
       search: noopSearch,
     },
     connectorEntities: {
-      search: noopSearch,
+      // #829: how many entities the caller can write (Create's gate).
+      list: () => ({
+        data: { total: currentWritableEntities },
+        isLoading: false,
+      }),
+      search: (options?: unknown) => {
+        connectorEntitySearchOptions.push(options);
+        return noopSearch();
+      },
     },
     fieldMappings: {
       list: () => currentFieldMappingListQuery,
@@ -571,18 +583,60 @@ describe("ColumnDefinitionDetailView", () => {
       ).not.toBeInTheDocument();
     });
 
-    // #708 (spec case 18): `write` alone (e.g. an instance-only grant) isn't
-    // `create`.
-    it("hides the field mapping Create without field_mapping create (#689)", () => {
-      currentResourcePermissions = {
-        field_mapping: { write: true, create: false },
-      };
+    // #829: Create needs some entity the caller can write; with none it's
+    // disabled with a grant hint rather than opening an empty picker.
+    it("offers the field mapping Create when the caller can write an entity", () => {
+      currentResourcePermissions = {};
+      currentWritableEntities = 1;
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
       expect(
-        screen.queryByRole("button", { name: /^Create$/ })
-      ).not.toBeInTheDocument();
+        screen.getByRole("button", { name: /^Create$/ })
+      ).not.toHaveAttribute("aria-disabled", "true");
     });
+
+    it("disables Create with a grant hint when the caller can write no entity", () => {
+      currentWritableEntities = 0;
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.getByRole("button", { name: /^Create$/ })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
+      currentWritableEntities = 1;
+    });
+  });
+
+  // #829: a mapping is part of its entity, so the create dialog's entity
+  // picker asks the server for writable entities only. The ref-key picker
+  // only references an entity, so it lists every readable one.
+  it("asks the server for writable entities in the mapping dialog's picker", () => {
+    connectorEntitySearchOptions.length = 0;
+    currentGetQuery = {
+      data: { columnDefinition: makeColumnDefinition() },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      error: null,
+    } as unknown as Partial<GetQuery>;
+    currentFieldMappingListQuery = {
+      data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+    render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+    type Opts = {
+      mapItem?: unknown;
+      defaultParams?: Record<string, string>;
+    };
+    const opts = connectorEntitySearchOptions as Array<Opts | undefined>;
+    const picker = opts.find((o) => o?.defaultParams);
+    expect(picker?.defaultParams).toEqual({ capability: "write" });
+    const refKey = opts.find((o) => o?.mapItem);
+    expect(refKey?.defaultParams).toBeUndefined();
   });
 });

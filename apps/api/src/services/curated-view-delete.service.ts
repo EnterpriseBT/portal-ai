@@ -3,10 +3,8 @@
  *
  * A view hangs off its connector entity, and three things hang off the view:
  * its projection rows (`curated_view_field_mappings`), its station attachments
- * (`station_views`), and its grants — the `curated_view` resource grants plus
- * the composed `read field_mapping in_curated_view:<id>` field grants (#599),
- * which `hardDeleteByResource` can't match because they are keyed by
- * `conditionParam`. The view's own DELETE, the entity delete and the connector
+ * (`station_views`), and its `curated_view` resource grants (#829: a share
+ * no longer composes a field grant). The view's own DELETE, the entity delete and the connector
  * delete all run this, so the three paths can't drift apart again — #802 was
  * exactly that drift: the entity-level cascades never learned about views.
  *
@@ -29,7 +27,7 @@ export interface CuratedViewCascadeCounts {
   fieldMappings: number;
   /** `station_views` rows soft-deleted. */
   stationViews: number;
-  /** Resource grants + `in_curated_view` field grants, hard-deleted. */
+  /** `curated_view` resource grants, hard-deleted. */
   grants: number;
 }
 
@@ -88,12 +86,6 @@ export class CuratedViewDeleteService {
       ids,
       tx
     );
-    const fieldGrants =
-      await repo.permissionGrants.hardDeleteFieldGrantsByCuratedViews(
-        organizationId,
-        ids,
-        tx
-      );
     const deletedViews = await repo.curatedViews.updateWhere(
       inArray(curatedViews.id, ids),
       { deleted: Date.now(), deletedBy: userId },
@@ -104,7 +96,7 @@ export class CuratedViewDeleteService {
       curatedViews: deletedViews.length,
       fieldMappings,
       stationViews,
-      grants: resourceGrants + fieldGrants,
+      grants: resourceGrants,
     };
   }
 

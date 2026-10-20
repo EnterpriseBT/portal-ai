@@ -49,7 +49,7 @@ type Tool = {
 const ctx = { organizationId: "org-1" };
 const auth = (lock: ToolAuthorization["lock"]): ToolAuthorization => ({
   verb: "write",
-  resourceType: "entity_record",
+  resourceType: "station",
   mode: "create",
   lock,
 });

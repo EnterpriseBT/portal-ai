@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { and, eq } from "drizzle-orm";
 
 import { EntityGroupMemberModelFactory } from "@portalai/core/models";
 import {
@@ -18,7 +17,6 @@ import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
-import { entityRecords } from "../db/schema/index.js";
 
 const logger = createLogger({ module: "entity-group-member" });
 
@@ -289,20 +287,25 @@ entityGroupMemberRouter.post(
       // #685: in the caller's org, readable, and writable by them
       await assertGroupWritable(req, entityGroupId);
 
-      // Verify connector entity exists and belongs to same org
+      // #829: the member's entity is only referenced, so it needs read, not
+      // write: in the caller's org and readable, else absent (404).
       const connectorEntity =
         await DbService.repository.connectorEntities.findById(
           parsed.data.connectorEntityId
         );
       if (
-        !connectorEntity ||
-        connectorEntity.organizationId !== organizationId
+        !ObjectAccessService.readableInOrg(
+          await PermissionService.loadSet(req.application!.metadata),
+          organizationId,
+          "entity",
+          connectorEntity
+        )
       ) {
         return next(
           new ApiError(
-            400,
-            ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED,
-            "Connector entity not found or does not belong to this organization"
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
           )
         );
       }
@@ -851,22 +854,12 @@ entityGroupMemberRouter.get(
       // exposes the same keys via the field-mapping's normalized_key.
       // #433: unlimited read of a whole entity, and only `normalizedData` is
       // used — the raw `data` blob per row is pure OOM risk here.
-      // #694: counts cover only the records the caller may read.
-      const recordVisibility = set.visibilityPredicate("entity_record", {
-        createdByCol: entityRecords.createdBy,
-        idCol: entityRecords.id,
-      });
-      const readableIn = (connectorEntityId: string) =>
-        recordVisibility
-          ? and(
-              eq(entityRecords.connectorEntityId, connectorEntityId),
-              recordVisibility
-            )
-          : undefined;
+      // #829: records are parts of their entity; the target entity is
+      // readable (checked above), so all its records are.
       const targetValues =
         await DbService.repository.entityRecords.findHydratedMany(
           targetConnectorEntityId,
-          { includeData: false, where: readableIn(targetConnectorEntityId) }
+          { includeData: false }
         );
       const targetFieldKey = targetColDef.key;
       const targetSet = new Set(
@@ -898,10 +891,8 @@ entityGroupMemberRouter.get(
         const records =
           await DbService.repository.entityRecords.findHydratedMany(
             member.connectorEntityId,
-            {
-              includeData: false,
-              where: readableIn(member.connectorEntityId),
-            }
+            // #829: only members whose entity the caller can read.
+            { includeData: false }
           );
         for (const r of records) {
           const val = (r.normalizedData as Record<string, unknown>)[

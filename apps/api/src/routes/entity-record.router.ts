@@ -48,6 +48,7 @@ import { ObjectCapabilitiesService } from "../services/object-capabilities.servi
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+import { ParentAccessService } from "../services/parent-access.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { assertNoRejectedGeometry } from "../utils/wide-table-rejection.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
@@ -321,15 +322,9 @@ entityRecordRouter.get(
         conditions.push(built.where);
       }
 
-      // #599: RBAC-gate raw record reads — members read only records they
-      // created (`entity_record.createdBy` is the syncing actor, so ≈none for
-      // synced data); admins (`*`) see all. Closes the curated-views bypass.
+      // #829: a record is part of its entity, so reading the entity (checked
+      // by resolveEntityOrThrow) reads every record in it.
       const set = await PermissionService.loadSet(req.application!.metadata);
-      const visibility = set.visibilityPredicate("entity_record", {
-        createdByCol: entityRecords.createdBy,
-        idCol: entityRecords.id,
-      });
-      if (visibility) conditions.push(visibility);
 
       const where = and(...conditions)!;
 
@@ -502,11 +497,12 @@ entityRecordRouter.get(
 
       return HttpService.success<EntityRecordListResponsePayload>(res, {
         // #688: each record with the caller's capabilities.
-        records: ObjectCapabilitiesService.attach(
+        records: (await ObjectCapabilitiesService.attachParts(
           set,
+          req.application!.metadata.organizationId,
           "entity_record",
           records as unknown as Array<{ id: string; createdBy: string }>
-        ) as unknown as EntityRecordListResponsePayload["records"],
+        )) as unknown as EntityRecordListResponsePayload["records"],
         columns: filteredColumns,
         source: "cache",
         total,
@@ -572,15 +568,8 @@ entityRecordRouter.get(
       );
       if (!entity) return;
 
-      // #599: the count mirrors the list's RBAC read scope.
-      const visibility = (
-        await PermissionService.loadSet(req.application!.metadata)
-      ).visibilityPredicate("entity_record", {
-        createdByCol: entityRecords.createdBy,
-        idCol: entityRecords.id,
-      });
-      const base = eq(entityRecords.connectorEntityId, connectorEntityId);
-      const where = visibility ? and(base, visibility)! : base;
+      // #829: the count is every record of the (readable) entity.
+      const where = eq(entityRecords.connectorEntityId, connectorEntityId);
       const total = await DbService.repository.entityRecords
         .count(where)
         .catch((error) => {
@@ -672,34 +661,22 @@ entityRecordRouter.get(
           )
         );
       }
-      // #599: an unreadable record is indistinguishable from absent (404).
+      // #829: reading the entity reads its records.
       const set = await PermissionService.loadSet(req.application!.metadata);
-      if (
-        !set.can("resource.read", {
-          type: "entity_record",
-          id: recordId,
-          createdBy: record.createdBy,
-        })
-      ) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.ENTITY_RECORD_NOT_FOUND,
-            "Entity record not found"
-          )
-        );
-      }
 
       const columns = await resolveColumns(connectorEntityId);
 
       return HttpService.success<EntityRecordGetResponsePayload>(res, {
         record: {
-          ...record,
-          capabilities: ObjectCapabilitiesService.for(
-            set,
-            "entity_record",
-            record
-          ),
+          // #829: a record's capabilities are its entity's.
+          ...(
+            await ObjectCapabilitiesService.attachParts(
+              set,
+              req.application!.metadata.organizationId,
+              "entity_record",
+              [record]
+            )
+          )[0],
         } as unknown as EntityRecordGetResponsePayload["record"],
         columns,
       });
@@ -767,7 +744,7 @@ entityRecordRouter.get(
  *                 description: Optional source identifier (auto-generated UUID if omitted)
  *     responses:
  *       403:
- *         description: The caller lacks permission for this change (#685)
+ *         description: "The caller can read the connector entity but not write it (#829, a record is part of its entity)"
  *       201:
  *         description: Record created
  *         content:
@@ -824,24 +801,14 @@ entityRecordRouter.post(
       );
       if (!entity) return;
 
-      // #685: the entity must be readable by the caller (unreadable ==
-      // absent), and creating a record is an owned write.
-      const set = await PermissionService.loadSet(req.application!.metadata);
-      if (
-        !set.can("resource.read", ObjectAccessService.object("entity", entity))
-      ) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-            "Connector entity not found"
-          )
-        );
-      }
-      set.check("resource.write", {
-        type: "entity_record",
-        createdBy: req.application!.metadata.userId,
-      });
+      // #829: a record is part of its entity; creating one needs write on
+      // the entity (resolveEntityOrThrow already 404'd an unreadable one).
+      ParentAccessService.assertOwner(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        entity,
+        "write"
+      );
 
       await assertWriteCapability(connectorEntityId);
 
@@ -1024,15 +991,12 @@ entityRecordRouter.post(
       );
       if (!entity) return;
 
-      // #599: bulk import is a class-level write — owner/admin only (a member's
-      // `write entity_record` is `created_by_caller`-scoped, so it never
-      // satisfies an unconditional class check).
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "entity_record",
-        }
+      // #829: importing records writes the entity's contents.
+      ParentAccessService.assertOwner(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        entity,
+        "write"
       );
 
       // #769: refuse a locked entity before parsing and diffing the batch;
@@ -1234,14 +1198,12 @@ entityRecordRouter.post(
       );
       if (!entity) return;
 
-      // #599: revalidation rewrites record validity — class-level write,
-      // owner/admin only.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.write",
-        {
-          type: "entity_record",
-        }
+      // #829: revalidation rewrites the entity's records.
+      ParentAccessService.assertOwner(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        entity,
+        "write"
       );
 
       const { userId, organizationId } = req.application!.metadata;
@@ -1351,6 +1313,8 @@ entityRecordRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: "The caller can read the connector entity but not write it (#829, a record is part of its entity)"
  *       404:
  *         description: Entity record not found
  *         content:
@@ -1382,6 +1346,13 @@ entityRecordRouter.patch(
         next
       );
       if (!entity) return;
+      // #829: editing a record (anyone's) needs write on its entity.
+      ParentAccessService.assertOwner(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        entity,
+        "write"
+      );
 
       await assertWriteCapability(connectorEntityId);
 
@@ -1406,24 +1377,17 @@ entityRecordRouter.patch(
         );
       }
 
-      // #599: RBAC write gate (in addition to connector capability above) —
-      // a member may edit only records they created; owner/admin any.
-      // #713: a record that isn't this entity's, or that the caller can't
-      // read, answers 404, like its GET.
+      // #713: a record that isn't this entity's answers 404, like its GET.
       const found = await DbService.repository.entityRecords.findById(recordId);
-      ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
-        req.application!.metadata.organizationId,
-        "entity_record",
-        found?.connectorEntityId === connectorEntityId ? found : null,
-        "write",
-        () =>
+      if (found?.connectorEntityId !== connectorEntityId) {
+        return next(
           new ApiError(
             404,
             ApiCode.ENTITY_RECORD_NOT_FOUND,
             "Entity record not found"
           )
-      );
+        );
+      }
 
       const { userId } = req.application!.metadata;
 
@@ -1527,6 +1491,8 @@ entityRecordRouter.patch(
  *                   properties:
  *                     id:
  *                       type: string
+ *       403:
+ *         description: "The caller can read the connector entity but not write it (#829, a record is part of its entity)"
  *       404:
  *         description: Entity record not found
  *         content:
@@ -1558,27 +1524,27 @@ entityRecordRouter.delete(
         next
       );
       if (!entity) return;
+      // #829: deleting a record (anyone's) needs write on its entity.
+      ParentAccessService.assertOwner(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        entity,
+        "write"
+      );
 
       await assertWriteCapability(connectorEntityId);
 
-      // #599: RBAC delete gate — a member may delete only records they
-      // created; owner/admin any.
-      // #713: a record that isn't this entity's, or that the caller can't
-      // read, answers 404, like its GET.
+      // #713: a record that isn't this entity's answers 404, like its GET.
       const found = await DbService.repository.entityRecords.findById(recordId);
-      ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
-        req.application!.metadata.organizationId,
-        "entity_record",
-        found?.connectorEntityId === connectorEntityId ? found : null,
-        "delete",
-        () =>
+      if (found?.connectorEntityId !== connectorEntityId) {
+        return next(
           new ApiError(
             404,
             ApiCode.ENTITY_RECORD_NOT_FOUND,
             "Entity record not found"
           )
-      );
+        );
+      }
 
       const { userId } = req.application!.metadata;
 
@@ -1703,11 +1669,12 @@ entityRecordRouter.delete(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
-      // #599: clearing every record is a class-level delete — owner/admin only.
-      await PermissionService.check(
-        req.application!.metadata,
-        "resource.delete",
-        { type: "entity_record" }
+      // #829: clearing the records writes the entity's contents.
+      ParentAccessService.assertOwner(
+        await PermissionService.loadSet(req.application!.metadata),
+        req.application!.metadata.organizationId,
+        entity,
+        "write"
       );
 
       const { userId, organizationId } = req.application!.metadata;

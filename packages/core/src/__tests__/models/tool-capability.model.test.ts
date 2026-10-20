@@ -2,6 +2,7 @@ import {
   ToolCapabilitySchema,
   deriveToolRole,
   customToolCapabilityError,
+  ToolAuthorizationSchema,
   type ToolCapability,
 } from "../../models/tool-capability.model.js";
 
@@ -355,5 +356,124 @@ describe("customToolCapabilityError", () => {
         { allowedConsumptionModes: ["none", "bounded", "streaming"] }
       )
     ).toBeNull();
+  });
+});
+
+// #829: objects and parts. Record and mapping tools are `parts` descriptors
+// on the owning entity; an entity create names its connector.
+describe("ToolAuthorizationSchema — parts and containers (#829)", () => {
+  const lock = {
+    target: "record",
+    itemsArg: "items",
+    idField: "connectorEntityId",
+  } as const;
+  const parse = (a: Record<string, unknown>) =>
+    ToolAuthorizationSchema.safeParse({ verb: "write", lock, ...a }).success;
+
+  it("accepts parts by objectPaths, or by partType with item ids", () => {
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["items[].connectorEntityId"],
+      })
+    ).toBe(true);
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "parts",
+        partType: "entity_record",
+        itemsArg: "items",
+        idField: "entityRecordId",
+      })
+    ).toBe(true);
+  });
+
+  it("rejects parts with no targets", () => {
+    expect(parse({ resourceType: "entity", mode: "parts" })).toBe(false);
+  });
+
+  it("rejects parts with both target forms", () => {
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["items[].connectorEntityId"],
+        partType: "field_mapping",
+        itemsArg: "items",
+        idField: "fieldMappingId",
+      })
+    ).toBe(false);
+  });
+
+  it("rejects parts on anything but write on an entity", () => {
+    expect(
+      parse({
+        resourceType: "station",
+        mode: "parts",
+        objectPaths: ["stationId"],
+      })
+    ).toBe(false);
+    expect(
+      ToolAuthorizationSchema.safeParse({
+        verb: "delete",
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["connectorEntityId"],
+        lock,
+      }).success
+    ).toBe(false);
+  });
+
+  it("requires containerPaths on an entity create, and allows it nowhere else", () => {
+    expect(parse({ resourceType: "entity", mode: "create" })).toBe(false);
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "create",
+        containerPaths: ["items[].connectorInstanceId"],
+      })
+    ).toBe(true);
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "batch",
+        itemsArg: "items",
+        idField: "connectorEntityId",
+        containerPaths: ["items[].connectorInstanceId"],
+      })
+    ).toBe(false);
+    expect(parse({ resourceType: "station", mode: "create" })).toBe(true);
+  });
+
+  it("allows readPaths only on parts", () => {
+    expect(
+      parse({
+        resourceType: "station",
+        mode: "create",
+        readPaths: ["sourceConnectorEntityId"],
+      })
+    ).toBe(false);
+  });
+
+  it("allows counterparts only on field mappings by id", () => {
+    const byId = {
+      resourceType: "entity",
+      mode: "parts",
+      itemsArg: "items",
+      counterparts: true,
+    };
+    expect(
+      parse({ ...byId, partType: "field_mapping", idField: "fieldMappingId" })
+    ).toBe(true);
+    expect(
+      parse({ ...byId, partType: "entity_record", idField: "entityRecordId" })
+    ).toBe(false);
+  });
+
+  it("has no bulk mode", () => {
+    expect(
+      parse({ resourceType: "entity", mode: "bulk", objectPaths: ["x"] })
+    ).toBe(false);
   });
 });

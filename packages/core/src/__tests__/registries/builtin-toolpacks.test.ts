@@ -3,7 +3,9 @@ import {
   BUILTIN_TOOLPACK_BY_SLUG,
   BuiltinToolpackSlugSchema,
   isBuiltinToolpackSlug,
+  TOOL_AUTHORIZATION,
 } from "../../registries/builtin-toolpacks.js";
+import { PART_OWNERS } from "../../models/permission.model.js";
 import {
   ToolCapabilitySchema,
   deriveToolRole,
@@ -255,6 +257,95 @@ describe("BuiltinToolpackSlugSchema", () => {
   it("rejects unknown slugs", () => {
     expect(BuiltinToolpackSlugSchema.safeParse("future_pack").success).toBe(
       false
+    );
+  });
+});
+
+// #829: records and field mappings are parts of their entity. Their tools
+// authorize as `parts` on the entity, and an entity create names its connector.
+describe("TOOL_AUTHORIZATION parts and containers (#829)", () => {
+  const entries = Object.entries(TOOL_AUTHORIZATION);
+  const PART_TOOLS = [
+    "entity_record_create",
+    "entity_record_update",
+    "entity_record_delete",
+    "field_mapping_create",
+    "field_mapping_update",
+    "field_mapping_delete",
+    "bulk_geocode_records",
+    "transform_entity_records",
+  ];
+
+  it("every record and mapping tool is a parts descriptor on the entity", () => {
+    for (const name of PART_TOOLS) {
+      const a = TOOL_AUTHORIZATION[name];
+      expect([name, a?.mode, a?.resourceType, a?.verb]).toEqual([
+        name,
+        "parts",
+        "entity",
+        "write",
+      ]);
+    }
+    expect(
+      entries
+        .filter(([, a]) => a.mode === "parts")
+        .map(([n]) => n)
+        .sort()
+    ).toEqual([...PART_TOOLS].sort());
+  });
+
+  it("every partType names a part with an owner", () => {
+    for (const [name, a] of entries) {
+      if (a.partType) {
+        expect([name, PART_OWNERS[a.partType].ownerType]).toEqual([
+          name,
+          "entity",
+        ]);
+      }
+    }
+  });
+
+  it("field_mapping_delete also checks each counterpart's entity", () => {
+    expect(TOOL_AUTHORIZATION.field_mapping_delete?.counterparts).toBe(true);
+  });
+
+  it("transform reads its source and writes every target", () => {
+    expect(TOOL_AUTHORIZATION.transform_entity_records?.readPaths).toEqual([
+      "sourceConnectorEntityId",
+    ]);
+    expect(TOOL_AUTHORIZATION.transform_entity_records?.objectPaths).toEqual([
+      "expression.writes[].targetConnectorEntityId",
+    ]);
+    expect(TOOL_AUTHORIZATION.connector_entity_create?.containerPaths).toEqual([
+      "items[].connectorInstanceId",
+    ]);
+  });
+});
+
+// #829: each record and mapping tool tells the agent the entity governs it,
+// and the core mirror says the same as the tool (checked by the tool tests).
+describe("part tool descriptions (#829)", () => {
+  const description = (name: string) =>
+    BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find((t) => t.name === name)
+      ?.description ?? "";
+
+  it.each([
+    "entity_record_update",
+    "entity_record_delete",
+    "field_mapping_update",
+    "field_mapping_delete",
+  ])("%s says the entity decides, whoever created the part", (name) => {
+    expect(description(name)).toMatch(
+      /Needs write permission on the (record|mapping)'s entity, whoever created the (record|mapping)\./
+    );
+  });
+
+  it("entity update needs only the entity's write", () => {
+    expect(description("connector_entity_update")).toContain(
+      "Needs write permission on the entity."
+    );
+    expect(description("connector_entity_update")).not.toContain(
+      "connector instance"
     );
   });
 });

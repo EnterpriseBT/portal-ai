@@ -51,7 +51,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
   slug = "entity_record_create";
   name = "Entity Record Create Tool";
   description =
-    "Creates one or more entity records with auto-normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written.";
+    "Creates one or more entity records with auto-normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written. Needs write permission on the entity; read alone is refused.";
 
   get schema() {
     return InputSchema;

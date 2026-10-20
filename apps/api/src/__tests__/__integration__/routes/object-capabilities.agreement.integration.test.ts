@@ -187,9 +187,11 @@ async function instance(db: Db, fx: TenancyFixture, createdBy: string) {
   return id;
 }
 
-/** An entity created by `createdBy`, on a system-created instance. */
+/** An entity created by `createdBy`, on an instance they created too: #829
+ *  makes a child's write and delete need write on its parent, so a row and
+ *  its parent share a creator to keep the matrix about the row. */
 async function entity(db: Db, fx: TenancyFixture, createdBy: string) {
-  const instanceId = await instance(db, fx, SYSTEM);
+  const instanceId = await instance(db, fx, createdBy);
   const id = generateId();
   await db.insert(schema.connectorEntities).values({
     id,
@@ -218,46 +220,6 @@ async function columnDefinition(db: Db, fx: TenancyFixture, createdBy: string) {
     ...base(createdBy),
   } as never);
   return id;
-}
-
-async function fieldMapping(db: Db, fx: TenancyFixture, createdBy: string) {
-  const connectorEntityId = await entity(db, fx, SYSTEM);
-  const columnDefinitionId = await columnDefinition(db, fx, SYSTEM);
-  const id = generateId();
-  await db.insert(schema.fieldMappings).values({
-    id,
-    organizationId: fx.orgId,
-    connectorEntityId,
-    columnDefinitionId,
-    sourceField: "src",
-    isPrimaryKey: false,
-    normalizedKey: `nk_${suffix()}`,
-    required: false,
-    defaultValue: null,
-    format: null,
-    enumValues: null,
-    ...base(createdBy),
-  } as never);
-  return id;
-}
-
-/** A record created through the API on a system entity (so the wide table is
- *  written), then attributed to `createdBy`. */
-async function record(db: Db, fx: TenancyFixture, createdBy: string) {
-  const parent = await entity(db, fx, SYSTEM);
-  const prev = currentSub;
-  currentSub = OWNER_SUB;
-  const res = await request(app)
-    .post(`/api/connector-entities/${parent}/records`)
-    .send({ normalizedData: {}, sourceId: `src-${suffix()}` });
-  currentSub = prev;
-  expect(res.status).toBe(201);
-  const id = (res.body.payload.record ?? res.body.payload.entityRecord).id;
-  await db
-    .update(schema.entityRecords)
-    .set({ createdBy } as never)
-    .where(eq(schema.entityRecords.id, id));
-  return { id, parent };
 }
 
 async function tag(db: Db, fx: TenancyFixture, createdBy: string) {
@@ -397,25 +359,6 @@ const TYPES: TypeCase[] = [
     rowKey: "connectorEntity",
     table: schema.connectorEntities as never,
   }),
-  simple("field_mapping", {
-    seed: fieldMapping,
-    path: "/api/field-mappings",
-    listKey: "fieldMappings",
-    rowKey: "fieldMapping",
-    table: schema.fieldMappings as never,
-  }),
-  {
-    name: "entity_record",
-    shareable: false,
-    member: "data",
-    seed: record,
-    listPath: (parent) => `/api/connector-entities/${parent}/records?limit=100`,
-    listKey: "records",
-    getPath: (s) => `/api/connector-entities/${s.parent}/records/${s.id}`,
-    getRow: (p) => p.record as Record<string, unknown>,
-    deletePath: (s) => `/api/connector-entities/${s.parent}/records/${s.id}`,
-    alive: isLive(schema.entityRecords as never),
-  },
   simple("tag", {
     member: "none",
     seed: tag,
@@ -491,13 +434,6 @@ const writesFor = (t: TypeCase): WriteRoute[] => {
       ];
     case "entity":
       return [patch({ label: "renamed" }), del];
-    case "field_mapping":
-      return [
-        patch({ sourceField: "renamed", columnDefinitionId: generateId() }),
-        del,
-      ];
-    case "entity_record":
-      return [patch({ data: { a: 1 } }), del];
     case "tag":
     case "entity_group":
       return [patch({ name: "renamed" }), del];
@@ -538,11 +474,13 @@ describe("Object capabilities agree with the mutation routes (#688)", () => {
     await connection.end();
   });
 
-  /** The row as the current caller lists it (undefined when not listed, or
-   *  when the list itself is refused, as toolpacks are for members). */
+  /** The row as the current caller lists it (undefined when not listed, when
+   *  the list itself is refused, as toolpacks are for members, or when its
+   *  parent is unreadable, as an owner's entity's records are). */
   const listRow = async (t: TypeCase, s: Seeded) => {
     const res = await request(app).get(t.listPath(s.parent));
-    if (res.status === 403) return undefined;
+    if (res.status === 403 || (s.parent && res.status === 404))
+      return undefined;
     expect(res.status).toBe(200);
     return (res.body.payload[t.listKey] as Array<Record<string, unknown>>).find(
       (r) => r.id === s.id

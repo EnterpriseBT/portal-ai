@@ -44,6 +44,7 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+import { permissionDenied } from "../services/permission-refusal.js";
 import type { PermissionSet } from "../services/permission-set.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { AuditService } from "../services/audit.service.js";
@@ -146,28 +147,22 @@ function sameIdSet(a: string[], b: string[]): boolean {
  *    projection; a save that resends the stored ids changes nothing (#738).
  * 4. **Never widen by dropping.** An empty projection means "all columns", so
  *    a non-empty request left with nothing is refused, not stored as `[]`.
- * 5. **The self-exposure guard, on what the change newly exposes** (#738).
- *    The caller must independently `read` every column the new projection
- *    shows that the old one didn't: the added ids, or for a widen to all
- *    columns, every live column not already projected. On create, `stored`
- *    is undefined and every column the view will show is new. A column the
- *    view already shows was exposed by someone who could read it, so it isn't
- *    re-checked: removing a column, or adding a readable one, works for a
- *    writer who can't read the others. Throws
- *    `CURATED_VIEW_FIELD_NOT_READABLE` (403).
+ * 5. **The caller reads the entity** (#829). A view conveys its projection
+ *    to everyone who reads the view, and a column is part of its entity, so
+ *    choosing columns needs read on the entity, which covers every column of
+ *    it. Throws `403 PERMISSION_DENIED`. (Create already 404s an unreadable
+ *    entity; this is the PATCH case, a view writer who can't read the entity.)
  *
  * Reads run on `client`, so PATCH can call this inside its transaction.
  */
 async function assertProjection(
   set: PermissionSet,
+  organizationId: string,
   connectorEntityId: string,
   fieldMappingIds: string[],
-  stored?: string[],
   client?: DbClient
 ): Promise<string[]> {
   assertNoDuplicates(fieldMappingIds);
-  // #729: each mapping's creator, so a conditional read (created_by_caller /
-  // created_by_system) can match.
   const createdByFm = await fieldMappingCreators(connectorEntityId, client);
   const live = fieldMappingIds.filter((id) => createdByFm.has(id));
   const rest = fieldMappingIds.filter((id) => !createdByFm.has(id));
@@ -201,31 +196,51 @@ async function assertProjection(
     }
   }
 
-  const allLive = [...createdByFm.keys()];
-  const allColumns = live.length === 0;
-  const shown = new Set(allColumns ? allLive : live);
-  const shownBefore = new Set(
-    stored === undefined ? [] : stored.length === 0 ? allLive : stored
-  );
-  for (const id of shown) {
-    if (shownBefore.has(id)) continue;
-    // Every id here is a live mapping of this entity, so it has a creator.
-    const createdBy = createdByFm.get(id);
-    if (
-      createdBy === undefined ||
-      !set.can("resource.read", { type: "field_mapping", id, createdBy })
-    ) {
-      throw new ApiError(
-        403,
-        ApiCode.CURATED_VIEW_FIELD_NOT_READABLE,
-        // #738: say why when no single field was chosen.
-        allColumns
-          ? "An all-columns view needs read access to every column of its entity"
-          : "You cannot project a field mapping you do not have read access to"
-      );
-    }
-  }
+  await assertEntityReadable(set, organizationId, connectorEntityId);
   return live;
+}
+
+/**
+ * #829: a view conveys its definition (projection and filter) to everyone who
+ * reads it, so changing either needs read on the view's entity, which covers
+ * every column and row of it. Without this, a view writer who can't read the
+ * entity could widen what the view shows, or probe unprojected columns with
+ * a filter. `403 PERMISSION_DENIED`.
+ */
+async function assertEntityReadable(
+  set: PermissionSet,
+  organizationId: string,
+  connectorEntityId: string
+): Promise<void> {
+  const entity = (
+    await DbService.repository.connectorEntities.findAuthRows([
+      connectorEntityId,
+    ])
+  )[0];
+  const createdBy = entity?.createdBy ?? null;
+  if (
+    !ObjectAccessService.readableInOrg(set, organizationId, "entity", entity)
+  ) {
+    throw permissionDenied("resource.read", {
+      type: "entity",
+      id: connectorEntityId,
+      createdBy,
+    });
+  }
+}
+
+/** JSON with object keys sorted, so a filter round-tripped through jsonb
+ *  (which reorders keys) compares equal to the one the editor sends back. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0
+          )
+        )
+      : v
+  );
 }
 
 /**
@@ -456,17 +471,9 @@ curatedViewRouter.get(
         await DbService.repository.curatedViewFieldMappings.findByCuratedViewId(
           view.id
         );
-      // #729: the projection's creators, so a conditional field-mapping read
-      // (created_by_caller / created_by_system) can match. Only needed when
-      // the ids are scoped (a reader without write, on a projected view).
-      const createdByFm =
-        projection.length > 0 &&
-        !CuratedViewPayloadService.canSeeDefinition(set, view)
-          ? await fieldMappingCreators(view.connectorEntityId)
-          : new Map<string, string>();
       // #680: the definition only for a caller with write on the view; any
-      // other reader gets no filter contents and only the projection ids they
-      // can read.
+      // other reader gets no filter contents. #829: every reader gets the
+      // projection ids, which reading the view conveys.
       const scoped = CuratedViewPayloadService.scopeRow(
         set,
         view,
@@ -480,15 +487,7 @@ curatedViewRouter.get(
             "curated_view",
             view
           ),
-          fieldMappingIds: CuratedViewPayloadService.scopeFieldMappingIds(
-            set,
-            view,
-            projection.map((p) => ({
-              id: p.fieldMappingId,
-              // #729: a mapping deleted since the projection was saved.
-              createdBy: createdByFm.get(p.fieldMappingId) ?? null,
-            }))
-          ),
+          fieldMappingIds: projection.map((p) => p.fieldMappingId),
         },
       });
     } catch (error) {
@@ -516,7 +515,7 @@ curatedViewRouter.get(
  *     responses:
  *       201: { description: Created }
  *       400: { description: "Invalid payload or filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the entity (CURATED_VIEW_INVALID_PAYLOAD)" }
- *       403: { description: "Not permitted, or a projected field is not readable" }
+ *       403: { description: "Not permitted" }
  *       409: { description: Duplicate key }
  */
 curatedViewRouter.post(
@@ -543,16 +542,24 @@ curatedViewRouter.post(
       const set = await PermissionService.loadSet(req.application!.metadata);
       set.check("resource.write", { type: "curated_view" });
 
-      // The connector entity must exist in this org.
+      // The connector entity must exist in this org and, #829, be readable by
+      // the caller (a view only reads it); unreadable == absent (404).
       const entity = await DbService.repository.connectorEntities.findById(
         body.connectorEntityId
       );
-      if (!entity || entity.organizationId !== organizationId) {
+      if (
+        !ObjectAccessService.readableInOrg(
+          set,
+          organizationId,
+          "entity",
+          entity
+        )
+      ) {
         return next(
           new ApiError(
-            400,
-            ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
-            "Unknown connector entity"
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
           )
         );
       }
@@ -595,9 +602,9 @@ curatedViewRouter.post(
         // Omitted = unrestricted (all columns), the same as `[]`.
         const projection = await assertProjection(
           set,
+          organizationId,
           body.connectorEntityId,
           body.fieldMappingIds ?? [],
-          undefined,
           tx
         );
         const view = await DbService.repository.curatedViews.create(
@@ -657,7 +664,7 @@ curatedViewRouter.post(
  *     responses:
  *       200: { description: Updated }
  *       400: { description: "Invalid filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the view's entity (CURATED_VIEW_INVALID_PAYLOAD)" }
- *       403: { description: "Not permitted, or the change exposes a field the caller can't read: an added field, or for a widen to all columns, any column not already shown (CURATED_VIEW_FIELD_NOT_READABLE). Resending the stored fieldMappingIds, in any order, is no change and isn't checked." }
+ *       403: { description: "Not permitted, or the projection or filter changes and the caller can't read the view's entity (#829, PERMISSION_DENIED). Resending the stored fieldMappingIds (in any order) or filter is no change and isn't checked." }
  *       404: { description: Not found }
  */
 curatedViewRouter.patch(
@@ -704,6 +711,20 @@ curatedViewRouter.patch(
         if (body.filter) {
           await validateFilter(body.filter, existing.connectorEntityId);
         }
+        // #829: a filter change needs read on the entity, like a column
+        // change. The editor sends the stored filter back on every save, so
+        // an unchanged one isn't checked (a rename still works).
+        if (
+          body.filter !== undefined &&
+          canonicalJson(body.filter ?? null) !==
+            canonicalJson(existing.filter ?? null)
+        ) {
+          await assertEntityReadable(
+            set,
+            organizationId,
+            existing.connectorEntityId
+          );
+        }
         const patch: Record<string, unknown> = {
           updated: Date.now(),
           updatedBy: userId,
@@ -733,9 +754,9 @@ curatedViewRouter.patch(
           body.fieldMappingIds && !sameIdSet(body.fieldMappingIds, stored)
             ? await assertProjection(
                 set,
+                existing.organizationId,
                 existing.connectorEntityId,
                 body.fieldMappingIds,
-                stored,
                 tx
               )
             : undefined;

@@ -237,6 +237,20 @@ describe("buildSystemPrompt — entity management notes", () => {
     expect(prompt).toContain("_connector_entity_id");
   });
 
+  // #829: records and mappings are parts of their entity; the gate answers
+  // with one of two codes, and the agent relays each as what it is.
+  it("explains that parts follow their entity, and the two refusals", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["entity_management"] })
+    );
+    expect(prompt).toContain("TOOL_TARGET_NOT_FOUND");
+    expect(prompt).toContain("TOOL_PERMISSION_DENIED");
+    expect(prompt).toContain(
+      "whoever created it, needs write permission on the entity"
+    );
+    expect(prompt).toContain("renaming it needs only the entity's");
+  });
+
   it("documents normalizedKey concept", () => {
     const prompt = buildSystemPrompt(
       makeContext({ effectiveToolPacks: ["entity_management"] })

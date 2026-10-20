@@ -2761,7 +2761,9 @@ describe("Field Mapping Router", () => {
       expect(validate.status).not.toBe(404);
     });
 
-    it("a mapping in a curated view shared with the member becomes readable (in_curated_view, #692)", async () => {
+    // #829: a mapping is part of its entity. A shared view conveys its
+    // projection through the view, not read on the entity's mappings.
+    it("a mapping in a curated view shared with the member stays unreadable through the mapping routes (#829)", async () => {
       const { ownersEntity, ownersMapping, memberId } =
         await ownerAndMemberMappings();
       const view = await request(app)
@@ -2789,13 +2791,13 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .get(`/api/field-mappings/${ownersMapping.id}`)
         .set("Authorization", "Bearer test-token");
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(404);
       const list = await request(app)
         .get("/api/field-mappings?limit=100")
         .set("Authorization", "Bearer test-token");
       expect(
         list.body.payload.fieldMappings.map((m: { id: string }) => m.id)
-      ).toContain(ownersMapping.id);
+      ).not.toContain(ownersMapping.id);
     });
   });
 });

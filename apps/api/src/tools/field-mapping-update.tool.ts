@@ -80,7 +80,7 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_update";
   name = "Field Mapping Update Tool";
   description =
-    "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items.";
+    "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items. Needs write permission on the mapping's entity, whoever created the mapping.";
 
   get schema() {
     return InputSchema;

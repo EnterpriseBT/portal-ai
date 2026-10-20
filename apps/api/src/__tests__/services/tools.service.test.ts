@@ -1311,7 +1311,7 @@ describe("buildAnalyticsTools()", () => {
         | "view-handle"
         | "view-helper"
         | "metadata"
-        | "admin-bulk";
+        | "entity-parts";
       reason: string;
     }
   > = {
@@ -1364,14 +1364,14 @@ describe("buildAnalyticsTools()", () => {
       reason: "org metadata only — never reads the user's records",
     },
     transform_entity_records: {
-      scoping: "admin-bulk",
+      scoping: "entity-parts",
       reason:
-        "TOOL_AUTHORIZATION mode bulk: unconditional class write (admin-only)",
+        "TOOL_AUTHORIZATION mode parts: read and write on every entity it scans (#829)",
     },
     bulk_geocode_records: {
-      scoping: "admin-bulk",
+      scoping: "entity-parts",
       reason:
-        "TOOL_AUTHORIZATION mode bulk: unconditional class write (admin-only)",
+        "TOOL_AUTHORIZATION mode parts: read and write on every entity it scans (#829)",
     },
   };
 
@@ -1385,15 +1385,18 @@ describe("buildAnalyticsTools()", () => {
     expect(unclassified).toEqual([]);
   });
 
-  it("#658: the read-scoping table has no stale entries, and admin-bulk rows really are bulk-gated", async () => {
+  it("#658: the read-scoping table has no stale entries, and entity-parts rows really are gated on their entities", async () => {
     const { ALL_TOOL_CAPABILITIES, TOOL_AUTHORIZATION } =
       await import("@portalai/core/registries");
     for (const [name, { scoping }] of Object.entries(READ_SCOPING)) {
       expect(
         ALL_TOOL_CAPABILITIES[name]?.reads.includes("entity_records") ?? false
       ).toBe(true);
-      if (scoping === "admin-bulk") {
-        expect(TOOL_AUTHORIZATION[name]?.mode).toBe("bulk");
+      if (scoping === "entity-parts") {
+        expect(TOOL_AUTHORIZATION[name]?.mode).toBe("parts");
+        expect(TOOL_AUTHORIZATION[name]?.objectPaths?.length).toBeGreaterThan(
+          0
+        );
       }
     }
   });

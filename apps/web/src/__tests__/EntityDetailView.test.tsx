@@ -132,8 +132,6 @@ const stubEntity = {
 
 // ── Tests ───────────────────────────────────────────────────────────
 
-const ALL_RECORD_PERMISSIONS = { create: true, revalidate: true, clear: true };
-
 describe("EntityDetailViewUI", () => {
   beforeEach(() => {
     mockRecordsList.mockReturnValue(emptyRecordsList);
@@ -407,7 +405,6 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
-        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
@@ -424,7 +421,6 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={false}
-        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
@@ -439,10 +435,13 @@ describe("EntityDetailViewUI — New Record button", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides New Record without record create (#689)", async () => {
+  it("hides New Record without write on the entity (#829)", async () => {
     render(
       <EntityDetailViewUI
-        entity={stubEntity}
+        entity={{
+          ...stubEntity,
+          capabilities: { read: true, write: false, delete: false },
+        }}
         isWriteEnabled={true}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={false}
@@ -463,7 +462,6 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
-        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
@@ -481,7 +479,6 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
-        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={onOpen}
         createRecordDialogOpen={false}
         onCloseCreateRecordDialog={jest.fn()}
@@ -499,7 +496,6 @@ describe("EntityDetailViewUI — New Record button", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         isWriteEnabled={true}
-        recordPermissions={ALL_RECORD_PERMISSIONS}
         onOpenCreateRecordDialog={jest.fn()}
         createRecordDialogOpen={true}
         onCloseCreateRecordDialog={jest.fn()}
@@ -542,7 +538,6 @@ describe("EntityDetailViewUI — Delete records (#453)", () => {
 
   const clearProps = {
     isWriteEnabled: true,
-    recordPermissions: ALL_RECORD_PERMISSIONS,
     recordCount: 42,
     runningJobs: [] as Array<{
       id: string;

@@ -79,17 +79,18 @@ describe("connectorInstanceActionGates", () => {
     expect(g.delete).toEqual({ kind: "hide" });
   });
 
-  it("gates Create Entity on the class create, not on instance write", () => {
+  it("gates Create Entity on the create rule and write on the instance (#829)", () => {
     expect(
       connectorInstanceActionGates({ ...base, canCreateEntity: false })
         .createEntity
     ).toEqual({ kind: "hide" });
+    // A new entity is a child of the instance: read alone isn't enough.
     expect(
       connectorInstanceActionGates({
         ...base,
         capabilities: caps(false, false),
       }).createEntity
-    ).toEqual({ kind: "allow" });
+    ).toEqual({ kind: "hide" });
   });
 
   it("disables Create Entity when the connector's write flag is off", () => {

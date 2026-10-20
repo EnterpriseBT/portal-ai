@@ -146,8 +146,6 @@ type CreatableType =
   | "curated_view"
   | "portal"
   | "entity"
-  | "entity_record"
-  | "field_mapping"
   | "connector_instance"
   | "entity_group"
   | "tag"
@@ -166,8 +164,6 @@ const OWNED_TYPES: CreatableType[] = [
   "pin",
   "portal",
   "entity",
-  "entity_record",
-  "field_mapping",
   "connector_instance",
 ];
 
@@ -281,23 +277,6 @@ describe("create capability agrees with the create routes (#708)", () => {
     return id;
   }
 
-  async function columnDefinition(createdBy: string) {
-    const id = generateId();
-    await db.insert(schema.columnDefinitions).values({
-      id,
-      organizationId: fx.orgId,
-      key: `col_${suffix()}`,
-      label: "Col",
-      type: "string",
-      description: null,
-      validationPattern: null,
-      validationMessage: null,
-      canonicalFormat: null,
-      ...base(createdBy),
-    } as never);
-    return id;
-  }
-
   // ── One minimal valid create per type ───────────────────────────────
 
   const attempt: Record<
@@ -340,19 +319,6 @@ describe("create capability agrees with the create routes (#708)", () => {
       if (createdId) wideTables.push(createdId);
       return res;
     },
-    entity_record: async (createdBy) =>
-      request(app)
-        .post(`/api/connector-entities/${await entity(createdBy)}/records`)
-        .send({ normalizedData: { name: "Alice" } }),
-    field_mapping: async (createdBy) =>
-      request(app)
-        .post("/api/field-mappings")
-        .send({
-          connectorEntityId: await entity(createdBy),
-          columnDefinitionId: await columnDefinition(createdBy),
-          sourceField: "account_name",
-          normalizedKey: `account_${suffix()}`,
-        }),
     connector_instance: () =>
       request(app).post("/api/connector-instances").send({
         connectorDefinitionId: definitionId,

@@ -62,6 +62,7 @@ describe("agent create on an existing key (#825)", () => {
   let entityId: string;
   let mappingId: string;
   let colDefId: string;
+  let defId: string;
 
   beforeEach(async () => {
     connection = postgres(process.env.DATABASE_URL as string, { max: 2 });
@@ -96,7 +97,7 @@ describe("agent create on an existing key (#825)", () => {
         createOrganizationUser(orgId, memberId, { role: "member" }),
       ] as never);
 
-    const defId = generateId();
+    defId = generateId();
     await d.insert(schema.connectorDefinitions).values({
       id: defId,
       slug: `cd-${defId.slice(0, 8)}`,
@@ -246,9 +247,31 @@ describe("agent create on an existing key (#825)", () => {
       ],
     });
 
+    // #829: the member can't see the owner's connector, so the gate refuses
+    // before the tool looks the key up.
+    expect(result).toHaveProperty("error.code", "TOOL_TARGET_NOT_FOUND");
+    expect(JSON.stringify(result)).not.toContain(entityId);
+    expect(await entityRow()).toEqual(before);
+  });
+
+  it("the owner's create on an existing key is refused as already existing", async () => {
+    const before = await entityRow();
+    const tools = await ToolService.buildAnalyticsTools(
+      orgId,
+      stationId,
+      ownerId,
+      generateId()
+    );
+    const result = await call(
+      tools,
+      "connector_entity_create"
+    )({
+      items: [
+        { connectorInstanceId: instanceId, key: "widgets", label: "Again" },
+      ],
+    });
     expect(result.success).toBe(false);
     expect(JSON.stringify(result)).toMatch(/already exists/i);
-    expect(JSON.stringify(result)).not.toContain(entityId);
     expect(await entityRow()).toEqual(before);
   });
 
@@ -275,14 +298,41 @@ describe("agent create on an existing key (#825)", () => {
     expect(await mappingRow()).toEqual(before);
   });
 
-  it("a new key still creates, owned by the member", async () => {
+  it("a new key on the member's own connector creates, owned by the member", async () => {
+    // #829: an entity needs write on its connector, so the member creates
+    // under a connector they own, reached by the station.
+    const memberInstanceId = generateId();
+    await d.insert(schema.connectorInstances).values({
+      id: memberInstanceId,
+      connectorDefinitionId: defId,
+      organizationId: orgId,
+      name: "Member sandbox",
+      status: "active",
+      config: {},
+      credentials: null,
+      lastSyncAt: null,
+      lastErrorMessage: null,
+      enabledCapabilityFlags: { read: true, write: true, sync: false },
+      ...base(memberId),
+    } as never);
+    await d.insert(schema.stationInstances).values({
+      id: generateId(),
+      stationId,
+      connectorInstanceId: memberInstanceId,
+      ...base(ownerId),
+    } as never);
+
     const tools = await memberTools();
     const result = await call(
       tools,
       "connector_entity_create"
     )({
       items: [
-        { connectorInstanceId: instanceId, key: "gadgets", label: "Gadgets" },
+        {
+          connectorInstanceId: memberInstanceId,
+          key: "gadgets",
+          label: "Gadgets",
+        },
       ],
     });
     expect(result.success).toBe(true);

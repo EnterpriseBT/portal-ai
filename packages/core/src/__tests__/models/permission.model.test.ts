@@ -31,6 +31,11 @@ import {
   isVerbValidForResource,
   validateStatement,
   validateStatements,
+  PART_OWNERS,
+  PART_TYPES,
+  PERMISSION_CONDITIONS,
+  OBJECT_CONTAINERS,
+  isContainedType,
 } from "../../models/permission.model.js";
 import { highestRole } from "../../models/organization-user.model.js";
 
@@ -531,12 +536,6 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
       "member.remove": { verb: "delete", resourceType: "member" },
       // #690: derived; granted by class `write station` (the org PATCH's rule).
       "station.default.set": { verb: "write", resourceType: "station" },
-      // #689: derived; the record revalidate / clear routes' class checks.
-      "entity_record.revalidate": {
-        verb: "write",
-        resourceType: "entity_record",
-      },
-      "entity_record.clear": { verb: "delete", resourceType: "entity_record" },
     };
     for (const action of CALLER_CAPABILITY_ACTIONS) {
       const { verb, resourceType } = CAPABILITY_PAIRS[action];
@@ -643,5 +642,46 @@ describe("validateStatement — shared statement validity (#630)", () => {
       expect(r.index).toBe(1);
       expect(r.reason).toMatch(/not valid/);
     }
+  });
+});
+
+describe("objects and parts (#829)", () => {
+  it("records and field mappings aren't permission types, and in_curated_view is retired", () => {
+    const types: readonly string[] = PERMISSION_RESOURCE_TYPES;
+    for (const t of ["entity_record", "field_mapping"]) {
+      expect(types).not.toContain(t);
+      expect(Object.keys(RESOURCE_CAPABILITIES)).not.toContain(t);
+    }
+    expect(PERMISSION_CONDITIONS).toEqual([
+      "created_by_caller",
+      "created_by_system",
+    ]);
+    expect(CALLER_CAPABILITY_ACTIONS).not.toContain("entity_record.revalidate");
+    expect(CALLER_CAPABILITY_ACTIONS).not.toContain("entity_record.clear");
+  });
+
+  it("records and field mappings are parts owned by their entity", () => {
+    expect(PART_TYPES).toEqual(["entity_record", "field_mapping"]);
+    for (const t of PART_TYPES) {
+      expect(PART_OWNERS[t]).toEqual({
+        ownerType: "entity",
+        ownerKey: "connectorEntityId",
+      });
+    }
+  });
+
+  it("an entity is contained in its connector instance", () => {
+    expect(OBJECT_CONTAINERS).toEqual({
+      entity: {
+        containerType: "connector_instance",
+        containerKey: "connectorInstanceId",
+      },
+    });
+  });
+
+  it("isContainedType matches own keys only", () => {
+    expect(isContainedType("entity")).toBe(true);
+    expect(isContainedType("entity_record")).toBe(false);
+    expect(isContainedType("toString")).toBe(false);
   });
 });

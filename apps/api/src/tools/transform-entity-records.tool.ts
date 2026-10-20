@@ -268,7 +268,7 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
     "      [tool call with acknowledgeCost: true] ← WRONG. Question wasn't answered yet.\n\n" +
     "The user MUST respond between the rejection and the retry. The two tool calls live in " +
     "different turns. If you find yourself about to make the second call in the same turn, stop " +
-    "and end the turn instead.";
+    "and end the turn instead. Needs write permission on every target entity and read permission on the source.";
 
   get schema() {
     return InputSchema;
@@ -303,7 +303,10 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           // target stands in.
           const primaryTargetId = writes[0].targetConnectorEntityId;
 
-          // Step 1 — source + target exist + org-scoped.
+          // Step 1 — source + target exist + org-scoped. #829: the permission
+          // gate has already checked every target (in org, readable,
+          // writable) and the source (readable) before this runs; this
+          // re-check of the source and first target is defence in depth.
           const source = await DbService.repository.connectorEntities.findById(
             parsed.sourceConnectorEntityId
           );
