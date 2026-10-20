@@ -426,6 +426,102 @@ describe("objects and parts (#829)", () => {
     }
   );
 
+  // #832: members read the system-seeded column-definition catalog, and a
+  // field mapping's column definition is a reference that needs read.
+  describe("column definitions (#832)", () => {
+    async function ownerColumnDefinition() {
+      const id = generateId();
+      await db.insert(schema.columnDefinitions).values({
+        id,
+        organizationId: fx.orgId,
+        key: `owner_col_${suffix()}`,
+        label: "Owner col",
+        type: "string",
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        ...base(fx.ownerId),
+      } as never);
+      return id;
+    }
+
+    it("a member lists and reads system definitions, not an admin-created one", async () => {
+      const ownerCol = await ownerColumnDefinition();
+      const list = await request(app).get("/api/column-definitions?limit=100");
+      expect(list.status).toBe(200);
+      const ids = (list.body.payload.columnDefinitions as { id: string }[]).map(
+        (d) => d.id
+      );
+      expect(ids).toContain(colDefId);
+      expect(ids).not.toContain(ownerCol);
+      expect(
+        (await request(app).get(`/api/column-definitions/${colDefId}`)).status
+      ).toBe(200);
+      const hidden = await request(app).get(
+        `/api/column-definitions/${ownerCol}`
+      );
+      expect([hidden.status, hidden.body.code]).toEqual([
+        404,
+        ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      ]);
+    });
+
+    it("creating a mapping needs read on its column definition", async () => {
+      const entityId = await entity(fx.memberId);
+      const ownerCol = await ownerColumnDefinition();
+      const body = (columnDefinitionId: string) => ({
+        connectorEntityId: entityId,
+        columnDefinitionId,
+        sourceField: "added",
+        normalizedKey: `added_${suffix()}`,
+      });
+      const refused = await request(app)
+        .post("/api/field-mappings")
+        .send(body(ownerCol));
+      expect([refused.status, refused.body.code]).toEqual([
+        404,
+        ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      ]);
+      const created = await request(app)
+        .post("/api/field-mappings")
+        .send(body(otherColDefId));
+      expect(created.status).toBe(201);
+    });
+
+    it("switching a mapping's column definition needs read on the new one; resending it doesn't", async () => {
+      const entityId = await entity(fx.memberId);
+      const existing = await mapping(entityId, fx.memberId);
+      const ownerCol = await ownerColumnDefinition();
+      const switched = await request(app)
+        .patch(`/api/field-mappings/${existing}`)
+        .send({ sourceField: "name", columnDefinitionId: ownerCol });
+      expect([switched.status, switched.body.code]).toEqual([
+        404,
+        ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      ]);
+      const resent = await request(app)
+        .patch(`/api/field-mappings/${existing}`)
+        .send({ sourceField: "renamed", columnDefinitionId: colDefId });
+      expect(resent.status).toBe(200);
+    });
+
+    it("an owner-created stored column definition doesn't block a member's edit that resends it", async () => {
+      // The definition was readable when it was set; resending it is no change.
+      const entityId = await entity(fx.memberId);
+      const existing = await mapping(entityId, fx.memberId);
+      const ownerCol = await ownerColumnDefinition();
+      await db
+        .update(schema.fieldMappings)
+        .set({ columnDefinitionId: ownerCol } as never)
+        .where(eq(schema.fieldMappings.id, existing));
+      const resent = await request(app)
+        .patch(`/api/field-mappings/${existing}`)
+        .send({ sourceField: "renamed", columnDefinitionId: ownerCol });
+      expect(resent.status).toBe(200);
+    });
+  });
+
   describe.each(["unreadable", "readOnly"] as const)(
     "entity-wide record writes, entity %s",
     (state) => {
@@ -837,6 +933,47 @@ describe("objects and parts (#829)", () => {
         );
         if (state !== "writable") expect(await count()).toBe(1);
       });
+    });
+
+    it("#832: field_mapping_create needs read on each item's column definition", async () => {
+      const entityId = await entity(fx.memberId);
+      await reach(await instanceOf(entityId), [entityId]);
+      const ownerCol = generateId();
+      await db.insert(schema.columnDefinitions).values({
+        id: ownerCol,
+        organizationId: fx.orgId,
+        key: `owner_col_${suffix()}`,
+        label: "Owner col",
+        type: "string",
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        ...base(fx.ownerId),
+      } as never);
+      const result = await (
+        await memberTool("field_mapping_create")
+      )({
+        items: [
+          {
+            connectorEntityId: entityId,
+            columnDefinitionId: ownerCol,
+            sourceField: "added",
+            normalizedKey: `added_${suffix()}`,
+          },
+        ],
+      });
+      expect(result).toHaveProperty("error.code", "TOOL_TARGET_NOT_FOUND");
+      const mappings = await db
+        .select()
+        .from(schema.fieldMappings)
+        .where(
+          and(
+            eq(schema.fieldMappings.connectorEntityId, entityId),
+            eq(schema.fieldMappings.columnDefinitionId, ownerCol)
+          )
+        );
+      expect(mappings).toHaveLength(0);
     });
 
     it("field_mapping_delete needs write on the counterpart's entity too", async () => {

@@ -30,6 +30,7 @@ import {
 } from "../services/permission.service.js";
 import type { PermissionSet } from "../services/permission-set.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
+import { ObjectAccessService } from "../services/object-access.service.js";
 import { ParentAccessService } from "../services/parent-access.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
@@ -464,14 +465,20 @@ fieldMappingRouter.post(
       // Assert write capability on the parent connector instance
       await assertWriteCapability(parsed.data.connectorEntityId);
 
-      // Verify column definition exists, in the caller's org (#685)
+      // Verify column definition exists, in the caller's org (#685), and
+      // #832: is readable. A mapping references its column definition, and a
+      // reference needs read (unreadable == absent).
       const columnDefinition =
         await DbService.repository.columnDefinitions.findById(
           parsed.data.columnDefinitionId
         );
       if (
-        !columnDefinition ||
-        columnDefinition.organizationId !== caller.organizationId
+        !ObjectAccessService.readableInOrg(
+          await PermissionService.loadSet(caller),
+          caller.organizationId,
+          "column_definition",
+          columnDefinition
+        )
       ) {
         return next(
           new ApiError(
@@ -732,7 +739,22 @@ fieldMappingRouter.patch(
         const colDef = await DbService.repository.columnDefinitions.findById(
           parsed.data.columnDefinitionId
         );
-        if (!colDef || colDef.organizationId !== caller.organizationId) {
+        // #832: switching to another column definition needs read on it;
+        // the editor resends the stored id on every save, which isn't a
+        // change and isn't re-checked.
+        const switching =
+          parsed.data.columnDefinitionId !== existing.columnDefinitionId;
+        if (
+          !colDef ||
+          colDef.organizationId !== caller.organizationId ||
+          (switching &&
+            !ObjectAccessService.readableInOrg(
+              set,
+              caller.organizationId,
+              "column_definition",
+              colDef
+            ))
+        ) {
           return next(
             new ApiError(
               404,

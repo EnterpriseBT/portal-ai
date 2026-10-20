@@ -80,9 +80,10 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
     // FullAccess(1) + AdminAccess(3)
     // + MemberAccess(6 data types × {read,write,delete,read-system} = 24
     //   + station/pin/curated_view × share = 3 + read job (1) + view page × 4
-    //   = 32) = 36
-    //   (#621, #630, #599; #829 retired records and field mappings as types)
-    expect(statements).toHaveLength(36);
+    //   + read column_definition created_by_system (1) = 33) = 37
+    //   (#621, #630, #599; #829 retired records and field mappings as types;
+    //   #832 added the column-definition read)
+    expect(statements).toHaveLength(37);
     expect(policies.every((p) => p.kind === "system")).toBe(true);
 
     // Second call: no duplication (idempotent via the owner-role early return).
@@ -96,7 +97,7 @@ describe("RBAC system-policy seed + backfill (#598 slice 2)", () => {
       .from(schema.permissionStatements)
       .where(eq(schema.permissionStatements.organizationId, orgId));
     expect(rolesAfter).toHaveLength(3);
-    expect(stmtsAfter).toHaveLength(36);
+    expect(stmtsAfter).toHaveLength(37);
   });
 
   // ── #630: the member nav-view + job-read grants ─────────────────────

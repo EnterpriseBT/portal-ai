@@ -180,11 +180,26 @@ export function wrapWithPermissionGate(
               }
             }
             const readIds = fromPaths(auth.readPaths);
+            /** #832: every referenced object (a mapping's column
+             *  definition) must be readable. */
+            const referencesPass = async () => {
+              for (const ref of auth.references ?? []) {
+                const ids = fromPaths(ref.paths);
+                if (
+                  ids.length > 0 &&
+                  !(await allPass(ref.resourceType, ids, "read"))
+                ) {
+                  return false;
+                }
+              }
+              return true;
+            };
             allowed =
               owners != null &&
               owners.length > 0 &&
               (readIds.length === 0 ||
                 (await allPass("entity", readIds, "read"))) &&
+              (await referencesPass()) &&
               (await allPass("entity", owners, "write"));
           } else if (auth.mode === "create") {
             // A contained type names its containers; none at all denies.

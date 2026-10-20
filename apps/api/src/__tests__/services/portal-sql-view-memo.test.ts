@@ -14,7 +14,7 @@ function mockResolution() {
   return jest
     .spyOn(PortalSqlService, "resolveGrantedViewColumns")
     .mockResolvedValue({
-      set: { canPerformAny: () => false } as never,
+      set: { canPerformAny: () => false, can: () => false } as never,
       views: [],
     } as never);
 }

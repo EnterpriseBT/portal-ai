@@ -305,6 +305,15 @@ describe("TOOL_AUTHORIZATION parts and containers (#829)", () => {
     }
   });
 
+  it("#832: field_mapping_create read-checks each item's column definition", () => {
+    expect(TOOL_AUTHORIZATION.field_mapping_create?.references).toEqual([
+      {
+        resourceType: "column_definition",
+        paths: ["items[].columnDefinitionId"],
+      },
+    ]);
+  });
+
   it("field_mapping_delete also checks each counterpart's entity", () => {
     expect(TOOL_AUTHORIZATION.field_mapping_delete?.counterparts).toBe(true);
   });

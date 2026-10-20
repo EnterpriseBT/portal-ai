@@ -333,8 +333,8 @@ describe("PortalSqlService integration tests", () => {
     });
     // Grant the test user class-wide `read column_definition` so the per-user
     // session includes the admin-facing `_meta_column_catalog` view (it is
-    // gated on `canPerformAny("read","column_definition")` in
-    // buildViewsForSession). This keeps the catalog coverage below on the live
+    // gated on a class-level `read column_definition` in buildViewsForSession,
+    // #832). This keeps the catalog coverage below on the live
     // per-user path; a member without this grant simply omits the view.
     await dbTyped.insert(schema.permissionGrants).values({
       id: generateId(),
@@ -1230,6 +1230,45 @@ describe("PortalSqlService integration tests", () => {
         db
       );
       expect(views).toEqual([]);
+    });
+
+    it("#832: a conditional column-definition read doesn't emit the admin catalog", async () => {
+      // A member's seeded `read column_definition created_by_system` lets the
+      // agent see the system catalog; the SQL `_meta_column_catalog` stays
+      // admin-only (class-wide read), so it isn't emitted for them.
+      const member = createUser(`auth0|${generateId()}`);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(member as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.permissionGrants)
+        .values({
+          id: generateId(),
+          organizationId: orgId,
+          principalType: "user",
+          principalId: member.id,
+          effect: "allow",
+          verb: "read",
+          resourceType: "column_definition",
+          resourceId: null,
+          condition: "created_by_system",
+          conditionParam: null,
+          created: Date.now(),
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      const build = await portalSql.resolveViewsForSession(
+        stationId,
+        orgId,
+        member.id,
+        db
+      );
+      expect(
+        build.views.some((v) => v.includes('"_meta_column_catalog"'))
+      ).toBe(false);
     });
 
     it("a curated view's FilterGroup restricts the rows in its session view", async () => {

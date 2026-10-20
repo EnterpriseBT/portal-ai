@@ -519,7 +519,14 @@ describe("Object capabilities agree with the mutation routes (#688)", () => {
       } else {
         // Owner/admin-only: a member sees no row, not even one they made.
         expect(await listRow(t, members)).toBeUndefined();
-        expect(await listRow(t, systems)).toBeUndefined();
+        if (t.name === "column_definition") {
+          // #832: except the system-seeded catalog, which members read.
+          expect((await listRow(t, systems))?.capabilities).toEqual(
+            READ_ONLY(t.shareable)
+          );
+        } else {
+          expect(await listRow(t, systems)).toBeUndefined();
+        }
       }
     });
 
