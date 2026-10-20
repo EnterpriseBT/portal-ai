@@ -333,17 +333,25 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           sections.has("columnDefinitions") &&
           viewResolution?.set.canPerformAny("read", "column_definition")
         ) {
-          // The org's curated column-definition catalog — the source of
-          // `columnDefinitionId`s for `field_mapping_create`. Admin-facing
-          // (via `*`); a member session omits it so the catalog never leaks.
-          // The agent maps
+          // The org's column-definition catalog — the source of
+          // `columnDefinitionId`s for `field_mapping_create`. The agent maps
           // to these (it can't create definitions), so surfacing them here
           // lets it set up an entity's columns instead of writing unmapped
-          // records that no read path can see.
-          const defs =
+          // records that no read path can see. #832: only the definitions the
+          // caller may read (a member reads the system-seeded ones), so a
+          // conditional grant never exposes the rest of the catalog.
+          const set = viewResolution.set;
+          const defs = (
             await DbService.repository.columnDefinitions.findByOrganizationId(
               organizationId
-            );
+            )
+          ).filter((d) =>
+            set.can("resource.read", {
+              type: "column_definition",
+              id: d.id,
+              createdBy: d.createdBy,
+            })
+          );
           response.columnDefinitions = defs.map((d) => ({
             columnDefinitionId: d.id,
             key: d.key,

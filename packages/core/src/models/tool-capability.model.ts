@@ -388,6 +388,17 @@ export const ToolAuthorizationSchema = z
     /** #829, `parts`: input paths naming entities the tool only reads (each
      *  must be readable). */
     readPaths: z.array(z.string()).min(1).optional(),
+    /** #832, `parts`: other objects the tool's input references (a field
+     *  mapping's column definition); each must be readable. */
+    references: z
+      .array(
+        z.object({
+          resourceType: PermissionResourceTypeSchema,
+          paths: z.array(z.string()).min(1),
+        })
+      )
+      .min(1)
+      .optional(),
     /** #769: what the job lock checks for this tool. */
     lock: ToolLockSchema,
   })
@@ -432,8 +443,14 @@ export const ToolAuthorizationSchema = z
   .refine(
     (a) =>
       a.mode === "parts" ||
-      (a.objectPaths == null && a.partType == null && a.readPaths == null),
-    { message: "objectPaths, partType and readPaths are allowed only on parts" }
+      (a.objectPaths == null &&
+        a.partType == null &&
+        a.readPaths == null &&
+        a.references == null),
+    {
+      message:
+        "objectPaths, partType, readPaths and references are allowed only on parts",
+    }
   )
   .refine((a) => a.counterparts == null || a.partType === "field_mapping", {
     message: "counterparts applies only to field mappings by id",

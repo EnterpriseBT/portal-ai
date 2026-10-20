@@ -37,8 +37,9 @@ export interface OwnedParentRow {
   createdBy: string;
 }
 
-/** The types this service can load: part owners and object containers. */
-export type ParentType = "entity" | "connector_instance";
+/** The types this service can load: part owners and object containers, and
+ *  (#832) the column definitions a mapping references. */
+export type ParentType = "entity" | "connector_instance" | "column_definition";
 
 export interface ParentRefusal {
   id: string;
@@ -60,6 +61,12 @@ const NOT_FOUND: Record<ParentType, () => ApiError> = {
       ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
       "Connector instance not found"
     ),
+  column_definition: () =>
+    new ApiError(
+      404,
+      ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      "Column definition not found"
+    ),
 };
 
 const FINDERS: Record<
@@ -69,6 +76,8 @@ const FINDERS: Record<
   entity: (ids) => DbService.repository.connectorEntities.findAuthRows(ids),
   connector_instance: (ids) =>
     DbService.repository.connectorInstances.findAuthRows(ids),
+  column_definition: (ids) =>
+    DbService.repository.columnDefinitions.findAuthRows(ids),
 };
 
 const isParentType = (t: PermissionResourceType): t is ParentType =>

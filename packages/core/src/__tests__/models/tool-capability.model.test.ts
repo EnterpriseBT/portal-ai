@@ -471,6 +471,26 @@ describe("ToolAuthorizationSchema — parts and containers (#829)", () => {
     ).toBe(false);
   });
 
+  it("#832: allows references on parts only", () => {
+    const references = [
+      {
+        resourceType: "column_definition",
+        paths: ["items[].columnDefinitionId"],
+      },
+    ];
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["items[].connectorEntityId"],
+        references,
+      })
+    ).toBe(true);
+    expect(parse({ resourceType: "station", mode: "create", references })).toBe(
+      false
+    );
+  });
+
   it("has no bulk mode", () => {
     expect(
       parse({ resourceType: "entity", mode: "bulk", objectPaths: ["x"] })

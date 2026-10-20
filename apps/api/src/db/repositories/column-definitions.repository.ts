@@ -5,7 +5,7 @@
  * and key-based upserts.
  */
 
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { columnDefinitions } from "../schema/index.js";
@@ -23,6 +23,30 @@ export class ColumnDefinitionsRepository extends Repository<
 > {
   constructor() {
     super(columnDefinitions);
+  }
+
+  /**
+   * #832: the authorization columns of live column definitions, in one query
+   * (the agent permission gate's reference check).
+   */
+  async findAuthRows(
+    ids: string[],
+    client: DbClient = db
+  ): Promise<Array<{ id: string; organizationId: string; createdBy: string }>> {
+    if (ids.length === 0) return [];
+    return client
+      .select({
+        id: columnDefinitions.id,
+        organizationId: columnDefinitions.organizationId,
+        createdBy: columnDefinitions.createdBy,
+      })
+      .from(columnDefinitions)
+      .where(
+        and(
+          inArray(columnDefinitions.id, ids),
+          isNull(columnDefinitions.deleted)
+        )
+      );
   }
 
   /** Find all column definitions for an organization. */

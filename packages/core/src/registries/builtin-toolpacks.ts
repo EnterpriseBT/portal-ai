@@ -1813,6 +1813,13 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     resourceType: "entity",
     mode: "parts",
     objectPaths: ["items[].connectorEntityId"],
+    // #832: each item's column definition is a reference; it needs read.
+    references: [
+      {
+        resourceType: "column_definition",
+        paths: ["items[].columnDefinitionId"],
+      },
+    ],
     lock: {
       target: "fieldMapping",
       itemsArg: "items",

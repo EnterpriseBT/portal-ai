@@ -1053,8 +1053,10 @@ export class PortalSqlServiceImpl {
     // `_meta_column_catalog` — the org's full column-definition catalog. It
     // is admin-facing (used when creating entities), so it is emitted only
     // for callers who can read column definitions class-wide (owner/admin via
-    // `*`); a member session omits it so the catalog never leaks.
-    if (set.canPerformAny("read", "column_definition")) {
+    // `*`); a member session omits it so the catalog never leaks. #832: a
+    // class-level check, so a member's conditional `created_by_system` read
+    // doesn't widen it to the whole catalog.
+    if (set.can("resource.read", { type: "column_definition" })) {
       pushTempView(
         views,
         `"_meta_column_catalog"`,

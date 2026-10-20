@@ -798,6 +798,16 @@ export const SEED_SYSTEM_POLICIES: {
       // edited) — unconditional class-level read so a member's Jobs list shows
       // every job, not just their own.
       { effect: "allow", verb: "read", resourceType: "job", condition: null },
+      // #832: members read the platform-seeded column-definition catalog, as
+      // they read other system-provisioned objects, so the agent can map an
+      // entity they write. Admin-created definitions still need a grant.
+      // Existing orgs get it via the 0129 backfill.
+      {
+        effect: "allow",
+        verb: "read",
+        resourceType: "column_definition",
+        condition: "created_by_system",
+      },
       // #630: nav page visibility (Decision A) — members see Stations / Pinned /
       // Jobs (Dashboard is un-gated). The admin pages carry no member grant.
       // Existing orgs get these four via the 0110 backfill.

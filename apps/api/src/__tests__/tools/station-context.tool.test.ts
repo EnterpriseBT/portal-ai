@@ -200,7 +200,7 @@ describe("StationContextTool", () => {
     // #599: each entity is a granted passthrough view with all columns
     // readable — an admin (canPerformAny → true) sees the full catalog.
     mockResolveGrantedViewColumns.mockResolvedValue({
-      set: { canPerformAny: () => true },
+      set: { canPerformAny: () => true, can: () => true },
       views: STATION_DATA.entities.map((e) => ({
         view: {
           id: `view-${e.id}`,
@@ -291,7 +291,7 @@ describe("StationContextTool", () => {
     // group's sole member is `parcels` (ent-parcels), which they cannot query,
     // so the group's structure metadata must not appear.
     mockResolveGrantedViewColumns.mockResolvedValueOnce({
-      set: { canPerformAny: () => false },
+      set: { canPerformAny: () => false, can: () => false },
       views: [
         {
           view: {
@@ -317,7 +317,7 @@ describe("StationContextTool", () => {
     // projection excludes the join column `id` — the group, and with it the
     // column's key/label/normalizedKey, must not appear.
     mockResolveGrantedViewColumns.mockResolvedValueOnce({
-      set: { canPerformAny: () => false },
+      set: { canPerformAny: () => false, can: () => false },
       views: [
         {
           view: {
@@ -476,7 +476,7 @@ describe("StationContextTool", () => {
     // Only `parcels` is granted, and only two of its three columns are
     // readable — `contacts` and the `boundary` column must not leak.
     mockResolveGrantedViewColumns.mockResolvedValueOnce({
-      set: { canPerformAny: () => true },
+      set: { canPerformAny: () => true, can: () => true },
       views: [
         {
           view: {
@@ -505,9 +505,29 @@ describe("StationContextTool", () => {
     ]);
   });
 
+  // #832: a member reads the system-seeded definitions; the catalog lists
+  // only what the caller may read, never the whole org's.
+  it("lists only the column definitions the caller may read", async () => {
+    mockResolveGrantedViewColumns.mockResolvedValueOnce({
+      set: {
+        canPerformAny: () => true,
+        can: (_action: string, o: { id: string }) => o.id === "cd-id",
+      },
+      views: [],
+    });
+
+    const result = (await exec({ include: ["columnDefinitions"] })) as {
+      columnDefinitions: Array<{ columnDefinitionId: string }>;
+    };
+
+    expect(result.columnDefinitions.map((d) => d.columnDefinitionId)).toEqual([
+      "cd-id",
+    ]);
+  });
+
   it("omits the columnDefinitions catalog for a non-admin caller", async () => {
     mockResolveGrantedViewColumns.mockResolvedValueOnce({
-      set: { canPerformAny: () => false },
+      set: { canPerformAny: () => false, can: () => false },
       views: [],
     });
 

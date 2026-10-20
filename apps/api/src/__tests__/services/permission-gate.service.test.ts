@@ -358,6 +358,44 @@ describe("wrapWithPermissionGate (#629)", () => {
     expect(inner).not.toHaveBeenCalled();
   });
 
+  it("#832: an unreadable referenced column definition answers TOOL_TARGET_NOT_FOUND and never runs", async () => {
+    firstRefusal.mockImplementation(async (_s, _o, type) =>
+      type === "column_definition" ? { id: "cd-x", reason: "not_found" } : null
+    );
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["items[].connectorEntityId"],
+        references: [
+          {
+            resourceType: "column_definition",
+            paths: ["items[].columnDefinitionId"],
+          },
+        ],
+      })
+    );
+    const r = await tools.fm_create.execute!(
+      { items: [{ connectorEntityId: "e-1", columnDefinitionId: "cd-x" }] },
+      {}
+    );
+    expect(r).toEqual(targetNotFound("Column definition cd-x was not found."));
+    expect(firstRefusal).toHaveBeenCalledWith(
+      set,
+      "org-1",
+      "column_definition",
+      ["cd-x"],
+      "read"
+    );
+    expect(inner).not.toHaveBeenCalled();
+  });
+
   it("parts by id: the entity comes from the stored part, never from the input", async () => {
     const owner = jest
       .spyOn(RbacObjectResolver, "resolvePartOwner")
