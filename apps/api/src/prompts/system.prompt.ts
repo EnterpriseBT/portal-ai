@@ -403,10 +403,12 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("");
       lines.push(
         "**Changing data needs write permission on what it belongs to.** " +
-          "Creating, changing or deleting a record or field mapping needs " +
-          "write permission on the entity, and an entity needs write " +
-          "permission on its connector; being able to read them isn't " +
-          "enough. `TOOL_TARGET_NOT_FOUND` means the entity or connector " +
+          "Records and field mappings belong to their entity: creating, " +
+          "changing or deleting any of them, whoever created it, needs " +
+          "write permission on the entity. Creating or deleting an entity " +
+          "also needs write permission on its connector; renaming it needs " +
+          "only the entity's. Being able to read them isn't enough. " +
+          "`TOOL_TARGET_NOT_FOUND` means the entity or connector " +
           "doesn't exist for the user: say it wasn't found. " +
           "`TOOL_PERMISSION_DENIED` means they can see it but not change it: " +
           "say which permission is missing. Don't retry either, and don't " +

@@ -875,7 +875,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "entity_record_update",
       description:
-        "Updates one or more entity records' data and normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written. Needs write permission on the record and on its entity.",
+        "Updates one or more entity records' data and normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written. Needs write permission on the record's entity, whoever created the record.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -896,7 +896,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "entity_record_delete",
       description:
-        "Soft-deletes one or more entity records. Accepts 1–100 items. Needs delete permission on the record and write permission on its entity.",
+        "Soft-deletes one or more entity records. Accepts 1–100 items. Needs write permission on the record's entity, whoever created the record.",
       parameterSchema: objectSchema({ ids: stringArrayField("Record ids") }, [
         "ids",
       ]),
@@ -926,7 +926,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "connector_entity_update",
       description:
-        "Updates one or more connector entities' labels. Accepts 1–100 items. Needs write permission on the entity and on its connector instance.",
+        "Updates one or more connector entities' labels. Accepts 1–100 items. Needs write permission on the entity.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -983,7 +983,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_update",
       description:
-        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items. Needs write permission on the mapping and on its entity.",
+        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items. Needs write permission on the mapping's entity, whoever created the mapping.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -1005,7 +1005,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_delete",
       description:
-        "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items. Needs delete permission on the mapping and write permission on its entity.",
+        "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items. Needs write permission on the mapping's entity, whoever created the mapping.",
       parameterSchema: objectSchema(
         { ids: stringArrayField("Field mapping ids") },
         ["ids"]

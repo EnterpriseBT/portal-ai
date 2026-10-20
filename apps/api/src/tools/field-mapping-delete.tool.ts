@@ -30,7 +30,7 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_delete";
   name = "Field Mapping Delete Tool";
   description =
-    "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items. Needs delete permission on the mapping and write permission on its entity.";
+    "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items. Needs write permission on the mapping's entity, whoever created the mapping.";
 
   get schema() {
     return InputSchema;

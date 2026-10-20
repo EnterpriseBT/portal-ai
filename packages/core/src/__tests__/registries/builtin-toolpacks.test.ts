@@ -317,3 +317,31 @@ describe("TOOL_AUTHORIZATION parts and containers (#829)", () => {
     ]);
   });
 });
+
+// #829: each record and mapping tool tells the agent the entity governs it,
+// and the core mirror says the same as the tool (checked by the tool tests).
+describe("part tool descriptions (#829)", () => {
+  const description = (name: string) =>
+    BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find((t) => t.name === name)
+      ?.description ?? "";
+
+  it.each([
+    "entity_record_update",
+    "entity_record_delete",
+    "field_mapping_update",
+    "field_mapping_delete",
+  ])("%s says the entity decides, whoever created the part", (name) => {
+    expect(description(name)).toMatch(
+      /Needs write permission on the (record|mapping)'s entity, whoever created the (record|mapping)\./
+    );
+  });
+
+  it("entity update needs only the entity's write", () => {
+    expect(description("connector_entity_update")).toContain(
+      "Needs write permission on the entity."
+    );
+    expect(description("connector_entity_update")).not.toContain(
+      "connector instance"
+    );
+  });
+});

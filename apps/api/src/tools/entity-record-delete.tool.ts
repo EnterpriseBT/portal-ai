@@ -29,7 +29,7 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
   slug = "entity_record_delete";
   name = "Entity Record Delete Tool";
   description =
-    "Soft-deletes one or more entity records. Accepts 1–100 items. Needs delete permission on the record and write permission on its entity.";
+    "Soft-deletes one or more entity records. Accepts 1–100 items. Needs write permission on the record's entity, whoever created the record.";
 
   get schema() {
     return InputSchema;
