@@ -1,328 +1,460 @@
-# Child writes require write on the parent — Spec
+# Objects and parts — Spec
 
-This spec pins the contract for [#829](https://github.com/EnterpriseBT/portal-ai/issues/829): every create, update or delete of a child requires explicit `write` on its parent. The rule holds on REST routes and agent tools, and it shows in the `capabilities` the UI renders from. Discovery: `docs/AGENT_CHILD_CREATE_AUTHZ.discovery.md`.
+This spec pins the contract for [#829](https://github.com/EnterpriseBT/portal-ai/issues/829) as amended on 2026-10-20.
+- Entity records and field mappings are **parts** of their entity, and the entity's permission governs them.
+- Entities are **contained** in a connector instance; creating or deleting one needs write on the instance.
+- `entity_record` and `field_mapping` leave the permission vocabulary.
 
-## Key decisions (flag for review)
+Discovery: `docs/AGENT_CHILD_CREATE_AUTHZ.discovery.md` (confirmed 2026-10-20).
 
-1. **Read means read only.** A child write needs `resource.write` on its parent, granted explicitly; there are no heuristics or carve-outs. The seeded `MemberAccess` policy is **unchanged**, so a default member can no longer write children under system-owned parents (the Sandbox connector, demo entities).
-2. **The 404/403 split** is the one `ObjectAccessService.loadForVerb` already implements:
-   - unreadable, absent or other-org parent → 404 with the parent's not-found code;
-   - readable but not writable → 403 `PERMISSION_DENIED`.
+## Key decisions (confirmed)
 
-   The agent gets the same split as `TOOL_TARGET_NOT_FOUND` / `TOOL_PERMISSION_DENIED`.
-3. **One table, `CHILD_RESOURCE_PARENTS` in core**, is read by the routes, the permission gate, the capability computation and a guard test. The child's parent id always comes from the **stored row** for an existing child. Only creates take it from input.
-4. **Referenced objects need read, not write:** a group member's entity, a curated view's entity, a transform's source entity.
-5. **Fail closed** everywhere: any error resolving a parent denies.
-6. **Capabilities fold the parent in:** a child row's `write`/`delete` is false unless its parent is writable. The UI's "add" buttons gate on the parent row's `capabilities.write`.
+1. **Parts have no permission of their own.**
+   - Read on the entity reads every record and mapping in it, every column.
+   - Write on the entity lets you create, edit and delete any part, and covers import, revalidate, clear, bulk geocode and bulk transform.
+   - There is no create rule for parts. A part's `createdBy` / `sourcePortalId` are provenance only.
+2. **Directory rule for entities.**
+   - Create: `write` on the instance, plus the entity create rule (owned).
+   - Delete: `delete` on the entity, plus `write` on the instance.
+   - Update: `write` on the entity only.
+3. **404/403 split**, as `ObjectAccessService.loadForVerb` already does it:
+   - a missing, other-org or unreadable entity or instance → 404 with that object's not-found code;
+   - a readable one without the verb → 403 `PERMISSION_DENIED`.
+   - The agent gets `TOOL_TARGET_NOT_FOUND` / `TOOL_PERMISSION_DENIED`.
+4. **A curated view conveys its projection.**
+   - Reading a view reads its effective projection (minus hidden columns) and its rows.
+   - A share writes only `read curated_view:V`.
+   - Defining a view needs read on its entity, which covers every column.
+5. **Stored rows retire.**
+   - A data migration deletes every `permission_statements` / `permission_grants` row whose `resource_type` is `entity_record` or `field_mapping`, or whose `condition` is `in_curated_view`.
+   - Retiring a type needs no DDL: `resource_type` is unconstrained `text`. The `condition` CHECK keeps admitting `in_curated_view`, and the `condition_param` column stays (always null).
+6. **The owning object always comes from the stored row** for an existing part or entity. Only creates and bulk tools take ids from input, and those ids are checked.
+7. **Fail closed** everywhere.
 
 ## Scope
 
 ### In scope
-- Child pairs:
 
-  | Child | Parent |
-  |---|---|
-  | `field_mapping`, `entity_record` | `entity` |
-  | `entity` | `connector_instance` |
-
-  This covers every REST route and agent tool that creates, updates or deletes them, including bulk geocode and bulk transform.
-- Group members and tag assignments, which already require parent write, move onto the shared helper. Group-member POST and curated-view create gain a read check on the entity they reference.
-- `ObjectCapabilitiesService` for the three child types, and the six routes that attach it.
-- The web gates for Add record, New entity, Create field mapping, and the mapping dialog's entity picker.
-- CLAUDE.md and copilot mirror; the tool descriptions, their `builtin-toolpacks.ts` mirrors, and `system.prompt.ts`.
+- **Core:** the vocabulary, `PART_OWNERS` / `OBJECT_CONTAINERS`, the tool descriptor schema and `TOOL_AUTHORIZATION`, and the contracts (the entity list `capability` query).
+- **Data:** the migration and the seed.
+- **API — records and mappings:**
+  - every record and mapping route;
+  - the routes that read records through another object (entity-group identity resolution, group members, mapping bidirectional validation and impact).
+- **API — entities:** entity PATCH.
+- **API — plumbing:**
+  - `ParentAccessService`, `ObjectCapabilitiesService`, the permission gate and `RbacObjectResolver`;
+  - `CREATE_RULES` / `DERIVED_CAPABILITIES`;
+  - `permission-refusal.ts`.
+- **Curated views:**
+  - grant composition and its cleanup;
+  - the `loadSet` expansion;
+  - portal SQL and the view payload's column scoping;
+  - the view create/update column check.
+- **Web:**
+  - entity detail, record detail and column-definition gates;
+  - the writable-entity picker.
+  - The policy editor follows core.
+- **Code-review findings:**
+  - 1 is resolved by key decision 1;
+  - 2 by the server-side `capability=write` filter;
+  - 3 by lean parent queries.
+- **Docs:**
+  - CLAUDE.md and the copilot mirror;
+  - tool descriptions, their core mirrors and `system.prompt.ts`;
+  - OpenAPI;
+  - `route-authorization.map.ts` notes.
 
 ### Out of scope
-- Seed or policy changes (Key decision 1).
-- #827 station reach.
-- Read-side listing scope.
-- Record import, revalidate and clear. They keep their class-level checks, which already require an unconditional `entity_record` grant. That isn't parent write, and is recorded in Risks.
+
+- #827 station reach, and read-side scoping of agent listings.
+- Field-mapping delete clearing a counterpart mapping's back-reference in another entity (the low note from the security review). The deleted mapping's own entity is write-checked.
+- Dropping `condition_param`, or narrowing the `condition` CHECK. Both are destructive DDL that buys nothing.
 
 ## Surface
 
 ### Core: `packages/core/src/models/permission.model.ts`
 
+- `PERMISSION_RESOURCE_TYPES` and `DATA_RESOURCE_TYPES` lose `entity_record` and `field_mapping`. `PermissionResourceTypeSchema`, `RESOURCE_PERMISSION_TYPES`, `ResourcePermissionMapSchema` and the policy-authoring contract follow automatically.
+- `RESOURCE_CAPABILITIES` loses both entries.
+- `CALLER_CAPABILITY_ACTIONS` loses `entity_record.revalidate` and `entity_record.clear`.
+- `PERMISSION_CONDITIONS` loses `in_curated_view`. The statement and grant models keep `conditionParam` (always `null`, documented as retired).
+- `CHILD_RESOURCE_PARENTS`, `ChildResourceType` and `isChildResourceType` are replaced by:
+
 ```ts
-/** #829: a child write requires write on its parent. The key on the child row
- *  (and on a create's input item) that holds the parent's id. */
-export const CHILD_RESOURCE_PARENTS = {
-  entity:        { parentType: "connector_instance", parentKey: "connectorInstanceId" },
-  field_mapping: { parentType: "entity",             parentKey: "connectorEntityId" },
-  entity_record: { parentType: "entity",             parentKey: "connectorEntityId" },
-} as const satisfies Record<string, { parentType: PermissionResourceType; parentKey: string }>;
-export type ChildResourceType = keyof typeof CHILD_RESOURCE_PARENTS;
-export const isChildResourceType = (t: string): t is ChildResourceType => t in CHILD_RESOURCE_PARENTS;
+/** #829: parts have no permission of their own; their owner's governs them. */
+export const PART_OWNERS = {
+  entity_record: { ownerType: "entity", ownerKey: "connectorEntityId" },
+  field_mapping: { ownerType: "entity", ownerKey: "connectorEntityId" },
+} as const satisfies Record<string, { ownerType: PermissionResourceType; ownerKey: string }>;
+export type PartType = keyof typeof PART_OWNERS;
+export const PART_TYPES = Object.keys(PART_OWNERS) as PartType[];
+
+/** #829: creating or deleting a contained object needs write on its container. */
+export const OBJECT_CONTAINERS = {
+  entity: { containerType: "connector_instance", containerKey: "connectorInstanceId" },
+} as const satisfies Partial<Record<PermissionResourceType, { containerType: PermissionResourceType; containerKey: string }>>;
+export type ContainedType = keyof typeof OBJECT_CONTAINERS;
+export const isContainedType = (t: string): t is ContainedType =>
+  Object.prototype.hasOwnProperty.call(OBJECT_CONTAINERS, t);
 ```
 
-### Core: `ToolAuthorizationSchema` (`packages/core/src/models/tool-capability.model.ts:354`)
+### Core: `ToolAuthorizationSchema` (`tool-capability.model.ts`)
 
-Add two fields. Paths use the lock gate's dotted syntax, where `[]` fans out over an array (`valuesAtPath`, `apps/api/src/services/lock-gate.service.ts:98`).
+- `mode` becomes `"create" | "single" | "batch" | "parts"`. `bulk` is removed; only geocode and transform used it.
+- Fields:
 
 ```ts
-/** #829: input paths naming the parent ids, for `create` and `bulk` on a child type.
- *  `batch`/`single` never declare it: the parent comes from the stored row. */
-parentPaths: z.array(z.string()).min(1).optional(),
-/** #829: input paths naming entities the tool only reads (each must be readable). */
+/** create on a contained type: input paths naming the container ids. */
+containerPaths: z.array(z.string()).min(1).optional(),
+/** parts: input paths naming owner (entity) ids. */
+objectPaths: z.array(z.string()).min(1).optional(),
+/** parts: the part type whose ids targetIdArg / itemsArg+idField name. */
+partType: z.enum(PART_TYPES).optional(),
+/** parts: input paths naming entities the tool only reads. */
 readPaths: z.array(z.string()).min(1).optional(),
 ```
 
-The refine is extended so that:
-- `parentPaths` is required iff `mode ∈ {create, bulk}` and `isChildResourceType(resourceType)`;
-- `parentPaths` is forbidden on `single`/`batch`;
-- `readPaths` is allowed only on `bulk`.
+- `parentPaths` is removed.
+- Refines:
+  - `parts` ⇒ `resourceType === "entity"`, `verb === "write"`, and either `objectPaths` or `partType` with `targetIdArg` or `itemsArg`+`idField`, not both;
+  - `containerPaths` iff `mode === "create" && isContainedType(resourceType)`;
+  - `objectPaths` / `partType` / `readPaths` only on `parts`.
+- `WRITE_KIND_TO_RESOURCE_TYPE` (unreferenced outside its own file) is removed.
 
-`TOOL_AUTHORIZATION` (`builtin-toolpacks.ts:1746`) gains:
+`TOOL_AUTHORIZATION` (`builtin-toolpacks.ts`):
 
-| Tool | `parentPaths` | `readPaths` |
-|---|---|---|
-| `entity_record_create`, `field_mapping_create` | `["items[].connectorEntityId"]` | — |
-| `connector_entity_create` | `["items[].connectorInstanceId"]` | — |
-| `bulk_geocode_records` | `["connectorEntityId"]` | — |
-| `transform_entity_records` | `["expression.writes[].targetConnectorEntityId"]` | `["sourceConnectorEntityId"]` |
+| Tool | Descriptor |
+|---|---|
+| `entity_record_create`, `field_mapping_create` | `parts`, `objectPaths: ["items[].connectorEntityId"]` |
+| `entity_record_update` / `_delete` | `parts`, `partType: "entity_record"`, today's `itemsArg` / `idField` |
+| `field_mapping_update` / `_delete` | `parts`, `partType: "field_mapping"`, today's `itemsArg` / `idField` |
+| `bulk_geocode_records` | `parts`, `objectPaths: ["connectorEntityId"]` |
+| `transform_entity_records` | `parts`, `objectPaths: ["expression.writes[].targetConnectorEntityId"]`, `readPaths: ["sourceConnectorEntityId"]` |
+| `connector_entity_create` | `create`, `resourceType: "entity"`, `containerPaths: ["items[].connectorInstanceId"]` |
+| `connector_entity_update` | `batch` entity `write` (unchanged) |
+| `connector_entity_delete` | `batch` entity `delete` (unchanged; the gate adds the container check) |
 
-The comment at `:1840–1841` ("the gate does not pre-flight them") is replaced. Bulk is pre-flighted for class-level write **and** parent write.
+All `parts` descriptors carry `resourceType: "entity"` and `verb: "write"`. Locks are unchanged.
 
-### API: `apps/api/src/services/parent-access.service.ts` (new)
+### Core: contracts
 
-```ts
-export class ParentAccessService {
-  /** Load the parent of a child type org-scoped; 404 (the parent's not-found code)
-   *  unless readable, 403 PERMISSION_DENIED unless writable. Returns the row. */
-  static async loadWritableParent(set: PermissionSet, organizationId: string,
-    childType: ChildResourceType, parentId: string): Promise<OwnedParentRow>;
-  /** The same check, for an already loaded parent row (routes that hold it). */
-  static assertWritableParent(set, organizationId, childType, parent: OwnedParentRow | null | undefined): OwnedParentRow;
-  /** Ids among `parentIds` the caller may write: in org, readable, writable.
-   *  One `findMany(id IN …)` for the batch. Used by capabilities and the gate. */
-  static async writableParentIds(set, organizationId, childType, parentIds: string[]): Promise<Set<string>>;
-  /** For the gate: the first id that is not readable (→ not found), else the first
-   *  not writable (→ denied), else null. Distinct ids, one query. */
-  static async firstRefusal(set, organizationId, parentType: PermissionResourceType,
-    ids: string[], verb: "read" | "write"): Promise<{ id: string; reason: "not_found" | "denied" } | null>;
-}
+`ConnectorEntityListRequestQuerySchema` gains `capability: z.enum(["write"]).optional()`. When given, the list holds only entities the caller may write.
+
+### Migration: `npm run db:generate -- --custom --name retire-part-permissions`
+
+```sql
+-- #829: records and field mappings are parts of their entity; their permission
+-- rows (seeded MemberAccess, custom policies, grants and the curated-view
+-- composed field grants) no longer mean anything.
+DELETE FROM "permission_grants"
+  WHERE "resource_type" IN ('entity_record', 'field_mapping') OR "condition" = 'in_curated_view';
+DELETE FROM "permission_statements"
+  WHERE "resource_type" IN ('entity_record', 'field_mapping') OR "condition" = 'in_curated_view';
 ```
 
-- **Not-found codes by parent type:** `entity` → `CONNECTOR_ENTITY_NOT_FOUND` "Connector entity not found"; `connector_instance` → `CONNECTOR_INSTANCE_NOT_FOUND` "Connector instance not found".
-- **Implementation:** `assertWritableParent` is `ObjectAccessService.loadForVerb(set, org, parentType, row, "write", notFound)`.
-- **Helpers that fold in:**
-  - `assertEntityWritable` (`entity-tag-assignment.router.ts:59`) calls `ParentAccessService`.
-  - `assertGroupWritable` (`entity-group-member.router.ts:63`) keeps its own `entity_group` type, which isn't in the table. It's left as is: it already uses `readableInOrg` + `check(write)`, the same split.
+- The `.sql`, `meta/_journal.json` and the snapshot are committed together.
+- It's DML only, so `lint:migrations` doesn't flag it.
+- It must run before the new code reads these tables: drizzle-zod's narrowed enum would otherwise reject the rows. `db:upgrade` runs migrations first.
 
-### API: REST routes (order: org load → parent write → child rule → feature flag)
+### Seed
 
-| Route | Change |
+`SeedService`'s MemberAccess spreads `DATA_RESOURCE_TYPES`, so it loses its 8 part statements automatically. Nothing else in the seed names the types.
+
+### API: `ParentAccessService` (`services/parent-access.service.ts`)
+
+Keyed by the two core tables. Lookups select only `id`, `organizationId`, `createdBy` (and the container key for an entity) with `deleted IS NULL`, through `db.select`, never a repository read that decrypts connector credentials.
+
+```ts
+/** 404 (owner's code) unless the entity is in org + readable; 403 unless `verb`. */
+static assertOwner(set, org, entity: OwnerRow | null | undefined, verb: "read" | "write"): OwnerRow;
+static loadOwner(set, org, entityId: string, verb: "read" | "write"): Promise<OwnerRow>;
+/** The same for a contained type's container (entity → instance), verb write. */
+static assertWritableContainer(set, org, type: ContainedType, container: OwnerRow | null | undefined): OwnerRow;
+static loadWritableContainer(set, org, type: ContainedType, containerId: string): Promise<OwnerRow>;
+/** A part's owner id from its stored row. */
+static ownerIdOf(partType: PartType, row: Record<string, unknown>): string | null;
+/** Capabilities of each owner id, from one query: {read, write, delete}. Absent ids are NONE. */
+static ownerCapabilities(set, org, ownerType: "entity", ids: string[]): Promise<Map<string, ObjectCapabilities>>;
+/** Container ids among `ids` the caller may write (one query). */
+static writableContainerIds(set, org, type: ContainedType, ids: string[]): Promise<Set<string>>;
+/** For the gate: unchanged from slice 2 (not_found outranks denied). */
+static firstRefusal(set, org, type, ids, verb): Promise<ParentRefusal | null>;
+```
+
+Not-found codes: `entity` → `CONNECTOR_ENTITY_NOT_FOUND`; `connector_instance` → `CONNECTOR_INSTANCE_NOT_FOUND`.
+
+### API: `PermissionSet.visibilityPredicate`
+
+It gains an optional third argument, `verb: "read" | "write" = "read"`, with identical semantics per verb. The entity list's `capability=write` ANDs the read and write predicates.
+
+### API: routes
+
+**Records** (`entity-record.router.ts`, mounted at `/api/connector-entities/:connectorEntityId/records`). `resolveEntityOrThrow` already 404s an unreadable entity.
+
+| Route | Check after the entity load |
 |---|---|
-| `POST /api/field-mappings` (`field-mapping.router.ts:429`) | the entity's `can(read)` at `:452–468` becomes `assertWritableParent(…"field_mapping", entity)` |
-| `PATCH` / `DELETE /api/field-mappings/:id` (`:696`, `:1137`) | after `loadForVerb` on the mapping, `loadWritableParent(…"field_mapping", mapping.connectorEntityId)` |
-| `POST /api/connector-entities/:entityId/records` (`entity-record.router.ts:814`) | after `resolveEntityOrThrow`, `assertWritableParent(…"entity_record", entity)`; the duplicate read at `:831` is removed |
-| `PATCH` / `DELETE …/records/:recordId` (`:1373`, `:1549`) | the same, before `loadForVerb` on the record |
-| `POST /api/connector-entities` (`connector-entity.router.ts:565`) | the instance's `readableInOrg` at `:591` becomes `assertWritableParent(…"entity", instance)` |
-| `PATCH` / `DELETE /api/connector-entities/:id` (`:765`, `:1067`) | after `loadForVerb` on the entity, `loadWritableParent(…"entity", entity.connectorInstanceId)` |
-| `POST /api/entity-groups/:id/members` (`entity-group-member.router.ts:290`) | the member's entity must be readable (`readableInOrg`, else 404 `CONNECTOR_ENTITY_NOT_FOUND`), not just org-checked (`:291–306`) |
-| `POST /api/curated-views` (`curated-view.router.ts:544`) | the projected entity must be readable (else 404 `CONNECTOR_ENTITY_NOT_FOUND`) |
+| `GET /`, `GET /count`, `GET /:recordId` | none further. The `visibilityPredicate("entity_record")` at `:329` / `:580` and the `can(read entity_record)` at `:681` are removed, and a record not of this entity stays 404 |
+| `POST /` | `assertOwner(…, "write")`. The owned `entity_record` check at `:842` is removed |
+| `PATCH` / `DELETE /:recordId` | `assertOwner(…, "write")`; the record must belong to the entity (404 `ENTITY_RECORD_NOT_FOUND`). The record `loadForVerb` at `:1426` / `:1590` is removed |
+| `POST /import`, `POST /revalidate`, `DELETE /` (clear) | `assertOwner(…, "write")`, replacing the class checks at `:1034` / `:1243` / `:1728` |
 
-- **`route-authorization.map.ts`** entries are unchanged in shape. Their notes cite parent write.
-- **OpenAPI:** each changed route's `403` description gains "or no write permission on the parent entity / connector".
+**Field mappings** (`field-mapping.router.ts`):
 
-### API: capabilities (`apps/api/src/services/object-capabilities.service.ts`)
+| Route | Check |
+|---|---|
+| `GET /` | visibility from the entity: `connectorEntityId IN (SELECT id FROM connector_entities WHERE org AND <entity read predicate>)`, replacing `visibilityPredicate("field_mapping")` at `:186` |
+| `GET /:id`, `GET /:id/impact`, `GET /:id/validate-bidirectional` | `loadReadableMapping` loads the mapping org-scoped, then `assertOwner(…, "read")` on its entity (404 `FIELD_MAPPING_NOT_FOUND` when either is unreadable). The impact counterpart (`:1030`) and the bidirectional record read (`:1354`) check their entity's read the same way |
+| `POST /` | `loadOwner(…, connectorEntityId, "write")`. The owned `field_mapping` check at `:464` is removed |
+| `PATCH` / `DELETE /:id` | load the mapping org-scoped (404 unless its entity is readable), then `loadOwner(…, mapping.connectorEntityId, "write")`, replacing `loadForVerb` on the mapping |
 
-- `for` and `attach` narrow their `type` to `Exclude<PermissionResourceType, ChildResourceType>`, so tsc refuses a child type.
-- New method:
+**Entities** (`connector-entity.router.ts`):
 
-  ```ts
-  /** #829: a child's capabilities; write/delete also require the parent writable. */
-  static async attachChildren<T extends OwnedRow & Record<string, unknown>>(
-    set: PermissionSet, organizationId: string, type: ChildResourceType, rows: T[]
-  ): Promise<Array<T & { capabilities: ObjectCapabilities }>>;
-  ```
+| Route | Check |
+|---|---|
+| `GET /` | `capability=write` → `and(visibility(read), visibility(write))` |
+| `PATCH /:id` | `loadForVerb(entity, "write")` only. The instance check at `:797` is removed |
+| `POST /`, `DELETE /:id` | unchanged: instance write, plus owned create or entity delete |
 
-  It does one `writableParentIds` call over the distinct `row[parentKey]`. `read` is unchanged; `write = can(write, row) && parentWritable`, and likewise `delete`.
-- Call sites become `await attachChildren(...)`, with a by-id route wrapping one row: `field-mapping.router.ts:235,333`, `entity-record.router.ts:505,698`, `connector-entity.router.ts:249,377`.
+**Records read through other objects:**
+- `entity-group.router.ts:1053` and `entity-group-member.router.ts:860`: the record visibility predicate is replaced by restricting to member entities the caller can read (`visibilityPredicate("entity")` on the joined entity).
+- `curated-view.router.ts`: see Curated views.
 
-### API: permission gate (`apps/api/src/services/permission-gate.service.ts`)
+OpenAPI `403`/`404` descriptions for these routes name write (or read) on the entity. `route-authorization.map.ts` notes follow.
 
-- New ApiCode `TOOL_TARGET_NOT_FOUND = "TOOL_TARGET_NOT_FOUND"` (`constants/api-codes.constants.ts`, beside `TOOL_PERMISSION_DENIED` at `:836`) and `targetNotFound(message)`, with the `permissionDenied` shape.
-- Order inside the existing `try` (still fail-closed):
+### API: permission service
 
-  | Mode | Check |
-  |---|---|
-  | `create` | Collect `parentPaths` values. Empty → denied. `firstRefusal(parentType, ids, "write")`, then the type-level `can(write,{type,createdBy:caller})` |
-  | `bulk` | `readPaths` → `firstRefusal(entity, ids, "read")`; `parentPaths` → `firstRefusal(parentType, ids, "write")`; then the class-level check |
-  | `batch` / `single` on a child type | Resolve each child row once (`RbacObjectResolver.resolveRow`, new: returns `{ createdBy, parentId? }` with `parentId = row[parentKey]` for child types, `null` when absent or another org). An unresolvable child → denied, unchanged. Then `firstRefusal(parentType, distinct parentIds, "write")`, then the per-child `can` as today |
+- `CREATE_RULES` loses `entity_record` and `field_mapping`; it's a `Record` over the narrowed type.
+- `DERIVED_CAPABILITIES` loses both entries.
+- `loadSet` loses the `in_curated_view` expansion (`:192–270`).
+- `permission-refusal.ts` `TYPE_LABELS` loses both.
+- `RbacObjectResolver` loses its part finders and gains `resolvePartOwner(org, partType, id): Promise<string | null>`, which loads the part org-scoped and returns its owner id.
 
-- **Results:**
-  - `not_found` → `targetNotFound("<Parent label> <id> was not found.")`, using `TYPE_LABELS` from `permission-refusal.ts` ("Entity …", "Connector …");
-  - `denied` → `permissionDenied("You don't have permission to edit <parent label> <id>.")`.
+### API: capabilities (`object-capabilities.service.ts`)
 
-  The whole call is refused and nothing runs.
-- `RbacObjectResolver.resolveCreatedBy` stays as a thin wrapper over `resolveRow`.
+- `for` / `attach` take `Exclude<PermissionResourceType, ContainedType>`.
+- `attachContained(set, org, "entity", rows)`:
+  - `read` and `write` are the row's own;
+  - `delete` is the row's own delete ∧ container writable (one `writableContainerIds` per page).
+- `attachParts(set, org, partType, rows)`:
+  - each row's capabilities are `{ read, write, delete: write }` of its owner, from one `ownerCapabilities` per page;
+  - absent or unreadable owners give `NONE`.
+- Call sites:
+  - entities: `connector-entity.router.ts:250, 380` (`attachContained`);
+  - mappings: `field-mapping.router.ts:239, 339` (`attachParts`);
+  - records: `entity-record.router.ts:509, 704` (`attachParts`).
 
-### API: `transform_entity_records`
+### API: permission gate (`permission-gate.service.ts`)
 
-Nothing changes in the tool itself. The gate's `parentPaths` / `readPaths` now org-check, read-check or write-check every target and the source before the tool runs. The `writes[0]`-only org check at `transform-entity-records.tool.ts:307–329` stays as defence in depth, with a comment pointing at the gate.
+All checks sit inside the existing `try`; it stays fail-closed.
+
+| Mode | Check |
+|---|---|
+| `parts` | 1. Owner ids are `objectPaths` values plus `resolvePartOwner` of each part id; any unresolvable part → denied. 2. No ids at all → denied. 3. `readPaths` → `firstRefusal(entity, ids, "read")`. 4. Owners → `firstRefusal(entity, ids, "write")` |
+| `create` | `containerPaths` (required for a contained type; empty → denied) → `firstRefusal(container, ids, "write")`, then the owned create check |
+| `single` / `batch` | the per-object check as today. When `verb === "delete"` on a contained type, the stored rows' container ids → `firstRefusal(container, ids, "write")` |
+
+- Results are as slice 4 had them: `not_found` → `TOOL_TARGET_NOT_FOUND` "Entity e-1 was not found."; `denied` → `TOOL_PERMISSION_DENIED` "You don't have permission to edit entity e-1."
+- The fallback message reads "…to write this entity".
+
+### Curated views
+
+- **`grant.service.ts:162–180`:** a curated-view share composes nothing extra. The re-share and revoke paths stop deleting the composed grant (`:197`, `:313`).
+- **Repository:** `permission-grants.repository.ts` loses `hardDeleteInCuratedViewFieldGrant` and `hardDeleteFieldGrantsByCuratedViews`. `curated-view-delete.service.ts:92` drops the call.
+- **Portal SQL:**
+  - `resolveOneViewColumns` returns the effective projection minus `VIEW_HIDDEN_COLUMNS`, with no `can`;
+  - both `isDenied("read", "entity_record")` kill switches (`:305–310`, `:438`) are removed;
+  - a view is readable iff `can(read curated_view)`.
+- **Payload:** `CuratedViewPayloadService.scopeFieldMappingIds` is removed; payloads carry the full projection.
+- **View create/update (`curated-view.router.ts:216`):** the per-column read check is removed (entity read is already required). `ApiCode.CURATED_VIEW_FIELD_NOT_READABLE` is removed.
+- `wideTableStatementCache` columns stop needing `fieldMappingCreatedBy` for authorization. The field stays if anything else reads it.
 
 ### Web (`apps/web/src`)
 
-- **`entityDetailActionGates`** (`utils/entity-actions.util.ts:76`): `createRecord.allowed = recordPermissions.create && capabilities.write`. Here `capabilities` is the entity's own, which now also folds in its connector.
-- **`connectorInstanceActionGates`** (`utils/connector-instance-actions.util.ts:57`): `createEntity.allowed = canCreateEntity && capabilities.write`.
-- **`ColumnDefinitionDetail.view.tsx:160`:** `sdk.connectorEntities.search()` gains a `filterItem` option on `SearchHookOptions` (`api/connector-entities.api.ts:134`). The mapping dialog's picker passes `filterItem: (e) => e.capabilities.write`. The ref-key picker (`:162`) is a reference, so it stays unfiltered.
-- Row Edit/Delete for records and mappings are unchanged; they read the now-narrower child `capabilities`.
+- **`entity-actions.util.ts`:** `RecordPermissions` is removed. `createRecord`, `clearRecords` and `revalidate` gate on the entity's `capabilities.write`. `entityRecordActionGates` and `fieldMappingRowGates` are unchanged: they read the part's capabilities, which are now the entity's.
+- **`EntityDetail.view.tsx:674–677`:** the `canOnResource("entity_record", "create")` and the two derived caps are removed.
+- **`EntityRecordDetail.view.tsx:548`:** `canRevalidate={record.capabilities.write}`.
+- **`ColumnDefinitionDetail.view.tsx`:**
+  - Create field mapping no longer reads `canOnResource("field_mapping", "create")`; it's allowed for page readers;
+  - the dialog's entity picker searches with `defaultParams: { capability: "write" }`, with no-options text "No entities you can edit";
+  - `SearchHookOptions.filterItem` and `ConnectorEntityRow` from slice 5 are removed.
+- **Policy editor:** follows core with no change. A test pins that the two types are absent.
 
 ### Docs
 
-- **CLAUDE.md Authorization bullets.** "A create checks read on its parent plus the type's create rule" becomes "…**write** on its parent…". "A child row … the parent must be in the org and readable" becomes "…readable, and a write to the child requires write on the parent". The section also names `CHILD_RESOURCE_PARENTS` + `ParentAccessService`. Same change in `.github/copilot-instructions.md`.
-- **Tool descriptions** (the `.tool.ts` + `builtin-toolpacks.ts` mirrors) for the six create/update/delete child tools, geocode and transform: "Requires write permission on the parent entity (connector, for entities)."
-- **`system.prompt.ts`:** relay `TOOL_TARGET_NOT_FOUND` as "not found" and `TOOL_PERMISSION_DENIED` as missing access; never retry.
-
-## Migration
-
-None. No schema change.
-
-## Seed
-
-None (Key decision 1).
+- **CLAUDE.md:**
+  - "12 per-object types" becomes 10 objects, plus records and mappings carrying their entity's capabilities;
+  - the derived-capability bullet drops the two record caps;
+  - the Authorization bullets state objects and parts, the directory rule and `PART_OWNERS` / `OBJECT_CONTAINERS`, replacing the #829 "child write needs parent write" bullet;
+  - the curated-view sharing note says a share conveys the projection.
+- **Copilot mirror:** the same changes.
+- **Tool descriptions:**
+  - record and mapping tools: "Needs write permission on the entity.";
+  - entity update: "Needs write permission on the entity." (no connector);
+  - entity create/delete: "…and write permission on its connector.";
+  - both sides of each mirror are updated.
+- **`system.prompt.ts`:** the paragraph is reworded accordingly.
 
 ## TDD test plan
 
-Run from each package: `npm run test:unit`, `npm run test:integration` (api). Never raw jest.
+Run per package with `npm run test:unit`, and `npm run test:integration` for api. Never raw jest.
 
-### core (`packages/core`)
+### core
 
-`src/__tests__/models/tool-capability.model.test.ts`:
-- `create` on a child type without `parentPaths` is rejected;
-- `parentPaths` on `batch` is rejected;
-- `readPaths` off `bulk` is rejected;
-- `create` on a non-child type is accepted without `parentPaths`.
-
-(4)
-
-`src/__tests__/registries/builtin-toolpacks.test.ts`, guard:
-- every `create`/`bulk` descriptor on a child type has `parentPaths`;
-- every `batch` descriptor's `resourceType` that is a child type resolves through `CHILD_RESOURCE_PARENTS`;
-- transform declares the source in `readPaths`.
-
-(3)
+- `__tests__/models/permission.model.test.ts`:
+  - the two types and `in_curated_view` are absent;
+  - `PART_OWNERS` / `OBJECT_CONTAINERS` shape;
+  - `isContainedType`.
+  (3)
+- `__tests__/models/tool-capability.model.test.ts`, replacing slice 1's cases:
+  - `parts` without targets → reject;
+  - `parts` with both target forms → reject;
+  - `parts` on a non-entity type → reject;
+  - `containerPaths` missing on an entity create → reject;
+  - `containerPaths` off create → reject;
+  - `readPaths` off parts → reject;
+  - `bulk` → reject.
+  (7)
+- `__tests__/registries/builtin-toolpacks.test.ts`:
+  - every record/mapping tool is `parts`;
+  - every `partType` is in `PART_OWNERS`;
+  - transform reads its source.
+  (3)
+- `__tests__/contracts/organization.contract.test.ts` / `grant.contract.test.ts`: fixtures updated.
 
 ### api unit
 
-**`src/__tests__/services/parent-access.service.test.ts`** (new):
-- writable → row;
-- other org → 404 with the parent code;
-- unreadable → 404;
-- read-only → 403 `PERMISSION_DENIED`;
-- `writableParentIds` filters a mixed set;
-- `firstRefusal` prefers not_found over denied;
-- `firstRefusal` dedupes ids.
-
-(7)
-
-**`src/__tests__/services/permission-gate.service.test.ts`**:
-- create:
-  - parent unreadable → `TOOL_TARGET_NOT_FOUND` and `execute` not called;
-  - parent read-only → `TOOL_PERMISSION_DENIED`;
-  - writable parent + owned create → runs;
-  - an empty items list → denied;
-  - two items, one bad parent → whole call refused;
-- batch:
-  - child readable/writable but parent read-only → denied;
-  - parent from the row, not the input (input names a writable entity, row's parent isn't) → denied;
-- bulk:
-  - target read-only → denied;
-  - source unreadable → not found;
-  - all good → runs;
-- the existing create-shape case (`:40`) is updated;
-- a resolution throw → denied (fail-closed).
-
-(12)
-
-**`src/__tests__/services/object-capabilities.service.test.ts`** (new or extended):
-- child owned, parent writable → `ALL`;
-- child owned, parent read-only → `{read:true, write:false, delete:false}`;
-- one parent query per page.
-
-(3)
+- `parent-access.service.test.ts`, reworked:
+  - `assertOwner` read/write splits;
+  - other org → 404;
+  - the container check;
+  - `ownerCapabilities` for a mixed set in one query;
+  - lean select (never `connectorInstances.findById`);
+  - `firstRefusal` ordering.
+  (8)
+- `permission-gate.service.test.ts`:
+  - parts by `objectPaths`: unreadable / read-only / writable / empty;
+  - parts by part id: owner taken from the row, not the input; unresolvable part → denied;
+  - `readPaths` unreadable → not found;
+  - entity create container read-only → denied;
+  - entity delete container read-only → denied;
+  - entity update ignores the container;
+  - throw → denied.
+  (12)
+- `object-capabilities.service.test.ts`:
+  - `attachParts` mirrors the owner, with delete = write;
+  - an unreadable owner → `NONE`;
+  - `attachContained` delete folds the container while write doesn't;
+  - one query per page.
+  (4)
+- `permission-set.test.ts`: `visibilityPredicate` with `verb: "write"`. (2)
+- `permission-create.service.test.ts`, `permission-refusal.test.ts`: the retired entries are removed.
 
 ### api integration
 
-**`src/__tests__/__integration__/authorization/child-write-parent.agreement.integration.test.ts`** (new). A member and an owner; for each child type (mapping, record, entity) × parent {unreadable, read-only (system-owned), writable (member-owned)}:
-- **REST create** status: 404 / 403 / 201|200;
-- **REST update + delete** of a member-owned child under that parent: 404 / 403 / 200;
-- **the agent tool** (built via `ToolService.buildAnalyticsTools`): `TOOL_TARGET_NOT_FOUND` / `TOOL_PERMISSION_DENIED` / success, with the row count unchanged in the refused cases;
-- **GET `capabilities`** on the child agree with the REST outcome.
+- **`routes/child-write-parent.agreement.integration.test.ts`**, renamed `parts-and-containers.agreement.integration.test.ts`:
+  - **Records and mappings** × entity {unreadable, read-only, writable}:
+    - REST list/GET, create, update and delete of a part **someone else created**: 404 / 403 / success;
+    - the agent tool;
+    - `capabilities` equal to the entity's.
+  - **Import, revalidate and clear** on a read-only entity → 403.
+  - **Entities** × instance {unreadable, read-only, writable}:
+    - create: 404 / 403 / 201;
+    - delete: 404 / 403 / 200;
+    - update succeeds with entity write under a read-only instance;
+    - the agent tools agree.
+  - **Transform:** another-org target → not found; read-only target → denied; nothing enqueued.
+  (≈12 `it`s)
+- **`object-capabilities.agreement.integration.test.ts`:** record and mapping rows mirror their entity; entity delete folds the instance. (2)
+- **`retire-part-permissions.migration.integration.test.ts`** (new):
+  - insert statements and grants on both types, plus an `in_curated_view` grant and unrelated rows;
+  - apply the migration SQL;
+  - the part rows are gone and the unrelated rows remain.
+  (2)
+- **Curated views:**
+  - **`grant.router`:** a share writes one grant.
+  - **`portal-sql.service`:** a shared view's columns are its projection for a reader who can't read the entity.
+  - **`curated-view.router`:** a view create with entity read succeeds for any column; the `FIELD_NOT_READABLE` cases are removed.
+  - **Deletions:** `rbac-fk-expansion` is deleted; the field-grant cases in `curated-view-delete.service` are removed.
+  (4)
+- **Fixture and expectation updates:**
+  - `permission-loadset`, `member-data-delete-backfill`, `reset.service`: MemberAccess has no part statements;
+  - `field-mapping.router`, `connector-entity.router` (PATCH under a read-only instance now 200), `creates-and-children`, `same-org-access`, `create-capability.agreement`, `rbac-object-search`, `entity-group.router`, `organization.router`: expectations updated for the removed types and caps;
+  - `agent-create-existing-key`: unchanged.
 
-(3 types × 3 states × 4 surfaces ≈ 36 assertions in 9 `it`s)
+### web
 
-**Transform:**
-- a second write target in another org → `TOOL_TARGET_NOT_FOUND`, nothing enqueued;
-- a second target read-only → denied.
+- **`entity-actions.util.test.ts`:** createRecord, clear and revalidate follow the entity's `write`. (3)
+- **`ColumnDefinitionDetailView.test.tsx`:** the picker requests `capability=write` and shows "No entities you can edit". (2)
+- **`AccessAuthoring.test.tsx`:** the resource-type list omits the two types. (1)
+- **Retired:** slice 5's `filterItem` test.
 
-(2)
-
-**Group member and curated view:**
-- POST with an unreadable entity → 404 for each.
-
-(2)
-
-**Updated:**
-- `object-capabilities.agreement.integration.test.ts`: member children under system parents expect read-only; a member-parent fixture expects `ALL`. (2)
-- `agent-create-existing-key.integration.test.ts:278`: the new-key create targets the member's own instance; plus a case for the owner's instance → `TOOL_PERMISSION_DENIED`. (2)
-
-### web (`apps/web`)
-
-- `src/__tests__/entity-actions.util.test.ts`: createRecord hidden when the entity isn't writable even with type create. (1)
-- `src/__tests__/connector-instance-actions.util.test.ts`: the createEntity equivalent. (1)
-- `src/__tests__/ColumnDefinitionDetailView.test.tsx`: the picker omits an entity with `capabilities.write: false`. (1)
-
-**Totals ≈ 50 cases.**
+**Totals ≈ 75 cases** (new or changed).
 
 ## Acceptance criteria
 
-- [ ] A member with only read on an entity gets `403 PERMISSION_DENIED` from REST when creating, updating or deleting a mapping or record under it, and `TOOL_PERMISSION_DENIED` from the agent. Nothing is written, and no wide-table column is added.
-- [ ] A member who can't read the entity gets `404 CONNECTOR_ENTITY_NOT_FOUND` from REST and `TOOL_TARGET_NOT_FOUND` from the agent, with no existence leak.
-- [ ] The same holds for entities under a connector instance (`CONNECTOR_INSTANCE_NOT_FOUND`).
-- [ ] With write on the parent (owned, or granted by a policy), every one of those operations succeeds as before.
-- [ ] `transform_entity_records` refuses when **any** write target is unwritable or out of org, or the source unreadable, before a job is enqueued.
-- [ ] Bulk geocode refuses on a read-only entity.
-- [ ] Child rows' `capabilities.write`/`delete` are false under a read-only parent. Add record, New entity and Create field mapping don't offer themselves without parent write. The mapping picker lists only writable entities.
-- [ ] Group-member add and curated-view create return 404 for an entity the caller can't read.
-- [ ] As a default member, the Sandbox connector and demo entities are read-only: no Add record, no New entity, and REST and agent writes refuse.
-- [ ] Guards fail CI on a child-type create/bulk descriptor without `parentPaths`, and tsc fails on `ObjectCapabilitiesService.for` with a child type.
+- [ ] **Reads.** A user who can read an entity sees every record and mapping in it, including other users'. A user who can't gets 404 on REST, and the agent's tools refuse with `TOOL_TARGET_NOT_FOUND`.
+- [ ] **Writes.** A user who can write an entity can create, edit and delete any record or mapping in it, import, revalidate and clear, and run geocode and transform on it, over REST and through the agent. With read only, each is `403 PERMISSION_DENIED` / `TOOL_PERMISSION_DENIED` and nothing is written.
+- [ ] **Entities.**
+  - Creating an entity needs write on its connector. Deleting it needs delete on the entity plus write on the connector.
+  - Renaming or tagging it needs only write on the entity.
+  - An unreadable connector → 404 `CONNECTOR_INSTANCE_NOT_FOUND`.
+- [ ] **Capabilities.**
+  - A record's or mapping's `capabilities` equal its entity's, with delete = write.
+  - An entity's `delete` folds in the connector's write; its `write` doesn't.
+  - Add record, import, revalidate and clear show exactly when the entity is writable.
+- [ ] **Policy vocabulary.**
+  - The policy editor no longer offers records or field mappings.
+  - After `db:upgrade`, no `permission_statements` / `permission_grants` row names them, or `in_curated_view`.
+  - MemberAccess has no part statements.
+- [ ] **Curated views.**
+  - Sharing a view lets the recipient read its projected columns and rows without entity read.
+  - A view's columns are its projection.
+  - Creating a view needs entity read.
+- [ ] **Mapping picker.** It lists only entities the caller can write, across pages, with the empty state "No entities you can edit".
+- [ ] **No decryption.** Parent and owner lookups never decrypt connector credentials.
+- [ ] **Default members** can't write under the Sandbox connector or demo entities, and can write under their own.
 
 ## Risks & rollback
 
-- **Behaviour change for members** (Key decision 1): the Sandbox and demo data become read-only for default members. This is intended, and called out in the PR. An org restores it by granting write in a policy. Rollback is a revert; there's no schema change.
-- **Missed write path:** a child write that doesn't go through these routes or tools. Mitigated by the guards and the agreement matrix. The known remaining paths are system flows (layout-plan commit, sync, reconcile, demo seed), authorized by their own job/route checks. Import/revalidate/clear need class-level grants; an unconditional `entity_record` grant without entity write still passes them (an owner/admin in practice).
-- **Fail-closed cost:** a transient DB error resolving a parent refuses the write. That's safe, and the caller retries.
-- **Capabilities query cost:** one extra `IN` query per list page.
+- **Widened reads and writes by design.**
+  - A member with read on a shared entity now sees every row in it.
+  - A member with write can change anyone's rows.
+  - Row-level restriction is a curated view's job.
+  - Called out in the PR.
+- **Deleted custom statements.** A custom **deny** on records or mappings disappears with the migration, which widens access in an org that authored one. The PR lists the app-dev count; prod has no release before the mock install.
+- **Rollback.** Reverting the code doesn't restore the deleted policy rows; the seed or backfill would have to recreate MemberAccess's part statements. Accepted: the rows are meaningless under the new model, and a revert is unlikely after merge.
+- **Missed path.** A route or tool still naming a retired type fails tsc: the core enum narrows `PermissionResourceType`, and `set.can`/`check` are typed on it. The agreement matrix covers behaviour.
+- **Fail closed.** A transient error refuses the write. That's safe.
 
 ## Files touched
 
 - **core:**
-  - `packages/core/src/models/permission.model.ts`
-  - `models/tool-capability.model.ts`
-  - `registries/builtin-toolpacks.ts`
-  - tests `__tests__/models/tool-capability.model.test.ts`, `__tests__/registries/builtin-toolpacks.test.ts`
+  - `models/permission.model.ts`, `models/tool-capability.model.ts`, `registries/builtin-toolpacks.ts`;
+  - `contracts/connector-entity.contract.ts` (list query);
+  - tests as above.
 - **api:**
-  - new `services/parent-access.service.ts`
-  - `services/permission-gate.service.ts`, `services/rbac-object-resolver.ts`, `services/object-capabilities.service.ts`
-  - `constants/api-codes.constants.ts`
-  - routes `field-mapping.router.ts`, `entity-record.router.ts`, `connector-entity.router.ts`, `entity-tag-assignment.router.ts`, `entity-group-member.router.ts`, `curated-view.router.ts`
-  - `tools/transform-entity-records.tool.ts` (comment), the eight child-tool `.tool.ts` descriptions
-  - `prompts/system.prompt.ts`
-  - `__tests__/config/route-authorization.map.ts` (notes)
-  - tests listed above
+  - **migration:** `drizzle/01xx_retire-part-permissions.sql` + meta;
+  - **services:** `parent-access.service.ts`, `object-capabilities.service.ts`, `permission-gate.service.ts`, `rbac-object-resolver.ts`, `permission.service.ts`, `permission-set.ts`, `permission-refusal.ts`, `grant.service.ts`, `curated-view-delete.service.ts`, `curated-view-payload.service.ts`, `portal-sql.service.ts`;
+  - **repository:** `permission-grants.repository.ts`;
+  - **routes:** `entity-record.router.ts`, `field-mapping.router.ts`, `connector-entity.router.ts`, `entity-group.router.ts`, `entity-group-member.router.ts`, `curated-view.router.ts`;
+  - **constants:** `api-codes.constants.ts`;
+  - **tools:** the eleven `.tool.ts` descriptions;
+  - **prompts:** `system.prompt.ts`;
+  - **config:** `route-authorization.map.ts`;
+  - tests as above.
 - **web:**
-  - `utils/entity-actions.util.ts`, `utils/connector-instance-actions.util.ts`
-  - `views/EntityDetail.view.tsx`, `views/ConnectorInstance.view.tsx`, `views/ColumnDefinitionDetail.view.tsx`
-  - `api/connector-entities.api.ts`
-  - tests listed above
+  - `utils/entity-actions.util.ts`;
+  - `views/EntityDetail.view.tsx`, `views/EntityRecordDetail.view.tsx`, `views/ColumnDefinitionDetail.view.tsx`;
+  - `api/connector-entities.api.ts`, `api/types.ts`;
+  - tests as above.
 - **docs:** `CLAUDE.md`, `.github/copilot-instructions.md`.
 
 ## Next step
 
-`docs/AGENT_CHILD_CREATE_AUTHZ.plan.md` slices this into about six TDD commits on `fix/829-agent-child-create-authz`:
-1. core table + descriptor schema + guard
-2. `ParentAccessService` + REST routes + group-member/curated-view read checks
-3. child capabilities
-4. permission gate + resolver + `TOOL_TARGET_NOT_FOUND` + the #825 test (transform covered here)
-5. web gates + picker
-6. docs, tool descriptions and prompt
+`docs/AGENT_CHILD_CREATE_AUTHZ.plan.md` reworks the branch in six TDD commits on top of the existing ones. Behaviour moves first, while the old types still compile; the vocabulary retires last, once nothing reads it:
+1. Core tables and `ParentAccessService` (lean lookups, owner/container API), plus `visibilityPredicate` by verb.
+2. Routes, capabilities and web gates.
+3. Curated views.
+4. Permission gate and descriptors.
+5. Retire the vocabulary: core types, create rules, derived caps, migration and seed.
+6. Docs.

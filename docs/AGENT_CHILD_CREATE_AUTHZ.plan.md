@@ -1,299 +1,255 @@
-# Child writes require write on the parent — Plan
+# Objects and parts — Plan
 
-**TDD-sequenced implementation of the parent-write rule: the core `CHILD_RESOURCE_PARENTS` table and descriptor fields, `ParentAccessService`, the REST routes with their capabilities, the agent permission gate, the web gates, and the doc surfaces.**
+**This plan moves the branch from "child writes need parent write" (two layers) to objects and parts. Records and mappings are governed by their entity, entities by their connector for create and delete, and `entity_record` / `field_mapping` leave the vocabulary. It is TDD-sequenced.**
 
-Spec: `docs/AGENT_CHILD_CREATE_AUTHZ.spec.md`. Discovery: `docs/AGENT_CHILD_CREATE_AUTHZ.discovery.md`. Issue: #829. Builds on shipped #825 (create tools never touch an existing row) and #713 (`ObjectAccessService.loadForVerb`).
+- Spec: `docs/AGENT_CHILD_CREATE_AUTHZ.spec.md`.
+- Discovery: `docs/AGENT_CHILD_CREATE_AUTHZ.discovery.md`.
+- Issue: #829.
 
-Six slices, each behind a green test suite and each leaving the repo compilable. They land as **commits on `fix/829-agent-child-create-authz`** (PR #830): one ticket, one PR (per `CLAUDE.md` → "Phase = commit, not PR").
+It builds on the branch's slices `2035d853`…`f90c2569`. `TOOL_TARGET_NOT_FOUND`, `firstRefusal`, `valuesAtPath`-driven descriptor paths and the agreement-test scaffolding are kept and reshaped, not reverted.
 
-Run tests from each package (never invoke jest directly):
+There are six slices. Each sits behind a green test suite, leaves the repo compilable and lands as one commit on `fix/829-agent-child-create-authz`.
 
 ```bash
 cd packages/core && npm run test:unit
-cd apps/api && npm run test:unit
-cd apps/api && npm run test:integration
+cd apps/api && npm run test:unit && npm run test:integration
 cd apps/web && npm run test:unit
 ```
 
 Each slice:
-1. Write the failing tests.
-2. Make the smallest change that turns them green.
-3. Run the focused tests.
-4. Run `npm run lint && npm run type-check` at the boundary.
-5. Move to the next slice.
+1. write failing tests;
+2. make the smallest change that turns them green;
+3. run the focused tests;
+4. at the boundary, run `npm run lint && npm run type-check` from the root, and `npm run build` when core changed;
+5. move to the next slice.
 
-Core changes ripple into web and site fixtures, so run the root `npm run build` before pushing slice 1.
-
-Sequencing rationale:
-- **Slice 1:** core only: the table, the descriptor fields and the guard. The descriptors gain `parentPaths` now, but nothing reads them yet.
-- **Slice 2:** `ParentAccessService`, unit-tested in isolation. No route calls it yet.
-- **Slice 3:** the REST routes and child capabilities land **together**. `object-capabilities.agreement` holds capabilities equal to the REST outcome, so splitting them would leave one boundary red. This is the slice where default members lose writes under system-owned parents.
-- **Slice 4:** the permission gate. It consumes slice 1's `parentPaths` and slice 2's `firstRefusal`, and adds the tool column to slice 3's agreement matrix. Transform and the #825 test are fixed here.
-- **Slice 5:** the web gates read the capabilities that are now correct from slice 3.
-- **Slice 6:** docs: tool descriptions and mirrors, the system prompt, CLAUDE.md and the copilot mirror.
-
-No migration and no seed change.
+**Sequencing rationale.** Behaviour moves while the old types still exist, so every slice compiles. The vocabulary retires in slice 5, once nothing reads it; tsc then proves nothing does.
+- **1** adds the tables and helpers everything else calls.
+- **2** switches REST, capabilities and the web gates together, so the UI never disagrees with the server.
+- **3** detaches curated views from `field_mapping` grants. It is the blocker for retiring that type.
+- **4** moves the agent onto the same model.
+- **5** deletes the dead vocabulary and data.
+- **6** is prose.
 
 ---
 
-## Slice 1 — Core: `CHILD_RESOURCE_PARENTS`, descriptor fields, guard
+## Slice 1 — Core tables and owner/container helpers
 
-This slice delivers the single table and the descriptor contract that the gate reads in slice 4.
+Adds `PART_OWNERS` and `OBJECT_CONTAINERS` beside `CHILD_RESOURCE_PARENTS`, which slice 4 removes. Gives `ParentAccessService` its owner/container API on lean queries (code-review finding 3) and `visibilityPredicate` a verb.
 
 **Files**
 
-- Edit: `packages/core/src/models/permission.model.ts`: add `CHILD_RESOURCE_PARENTS`, `ChildResourceType` and `isChildResourceType`.
+- Edit: `packages/core/src/models/permission.model.ts`: add `PART_OWNERS`, `PartType`, `PART_TYPES`, `OBJECT_CONTAINERS`, `ContainedType` and `isContainedType`.
+- Edit: `apps/api/src/services/parent-access.service.ts`:
+  - finders become `db.select({id, organizationId, createdBy[, connectorInstanceId]})` with `deleted IS NULL`;
+  - add `assertOwner`, `loadOwner`, `assertWritableContainer`, `loadWritableContainer`, `ownerIdOf`, `ownerCapabilities` and `writableContainerIds`;
+  - the slice-2 methods stay, as thin wrappers, until slice 4.
+- Edit: `apps/api/src/services/permission-set.ts`: `visibilityPredicate(type, cols, verb = "read")`.
+
+**Steps**
+
+1. **Write the failing tests:**
+   - core `permission.model.test.ts`: the table shapes and `isContainedType` (spec core 1–2);
+   - `parent-access.service.test.ts`: `assertOwner` read/write split, other org, container, `ownerCapabilities` with one query, lean select (spec api unit 1–5);
+   - `permission-set.test.ts`: the write predicate.
+
+   Run them; they fail.
+2. Implement until green.
+3. Lint, type-check and build.
+
+**Done when:** the new helpers pass and nothing calls them yet. Existing suites are green.
+
+**Risk:** the lean select must keep the soft-delete guard the repository read applied, so a test covers a deleted entity → 404.
+
+---
+
+## Slice 2 — Routes, capabilities and web gates
+
+Records and mappings are authorized by their entity alone, on every REST route. Entity PATCH drops the instance check, part capabilities mirror the entity, and the web gates follow. This resolves code-review findings 1 and 2.
+
+**Files**
+
+- Edit: `routes/entity-record.router.ts`:
+  - remove the record visibility predicate and the `can(read)`;
+  - POST/PATCH/DELETE/import/revalidate/clear → `assertOwner(…, "write")`;
+  - record-of-entity check kept.
+- Edit: `routes/field-mapping.router.ts`:
+  - list visibility via the entity subquery;
+  - `loadReadableMapping` reads through the entity;
+  - impact / bidirectional reads use the counterpart's entity;
+  - POST/PATCH/DELETE → `loadOwner(…, "write")`.
+- Edit: `routes/connector-entity.router.ts`:
+  - PATCH drops `loadWritableParent`;
+  - list honours `capability=write`.
+- Edit: `routes/entity-group.router.ts:1053`, `routes/entity-group-member.router.ts:860`: records are restricted to readable member entities.
+- Edit: `packages/core/src/contracts/…` (entity list query): add `capability`.
+- Edit: `services/object-capabilities.service.ts`: `attachParts` and `attachContained` replace `attachChildren`; the six call sites move over.
+- Edit: `__tests__/config/route-authorization.map.ts` notes, and the OpenAPI blocks.
+- Edit (web):
+  - `utils/entity-actions.util.ts`, `views/EntityDetail.view.tsx`, `views/EntityRecordDetail.view.tsx`: gates on the entity's `capabilities.write`; stop reading `entity_record.*` derived caps and `canOnResource("entity_record", …)`;
+  - `views/ColumnDefinitionDetail.view.tsx`, `api/connector-entities.api.ts`, `api/types.ts`: the picker uses `capability=write`, `filterItem` / `ConnectorEntityRow` are removed, and Create mapping no longer reads `canOnResource("field_mapping", …)`.
+
+**Steps**
+
+1. **Write the failing tests:**
+   - unit: `object-capabilities.service.test.ts` (spec api unit cases);
+   - integration: rework `child-write-parent.agreement` into `parts-and-containers.agreement`. Cover the REST and capabilities columns: records/mappings × entity state with a part someone else created, import/revalidate/clear, entity create/delete/update × instance state;
+   - `object-capabilities.agreement` expectations;
+   - route-test expectation updates: `connector-entity.router` PATCH under a read-only instance → 200, `field-mapping.router`, `creates-and-children`, `same-org-access`, `entity-group.router`;
+   - web: `entity-actions.util.test.ts`, `ColumnDefinitionDetailView.test.tsx`.
+
+   Run them; they fail.
+2. Implement until green, then run the full api integration suite once at the boundary.
+3. Lint and type-check.
+
+**Done when:** REST and capabilities agree under the new model, and the web reads only entity capabilities for part actions. The agent-tool column of the agreement test still reflects the old gate and moves in slice 4. Its cases are written there, not here, so no test crosses a boundary red.
+
+**Risk:**
+- The mapping list subquery must keep `(scope, created, id)` ordering and the org filter.
+- The group identity-resolution read is a join, so its integration test is the check.
+
+---
+
+## Slice 3 — Curated views convey their projection
+
+A view's columns are its projection. A share writes one grant, and nothing reads `field_mapping` grants or `entity_record` denies any more.
+
+**Files**
+
+- Edit: `services/portal-sql.service.ts`:
+  - `resolveOneViewColumns` returns the projection minus hidden columns;
+  - both kill switches go.
+- Edit: `services/curated-view-payload.service.ts`: remove `scopeFieldMappingIds`; callers use the projection.
+- Edit: `routes/curated-view.router.ts`: remove the per-column read check and the use of `CURATED_VIEW_FIELD_NOT_READABLE`.
+- Edit: `constants/api-codes.constants.ts`: remove that code (and anything in web that references it).
+- Edit: `services/grant.service.ts`: no composed field grant, and no explicit cleanup of it.
+- Edit: `services/permission.service.ts`: `loadSet` loses the `in_curated_view` expansion.
+- Edit: `db/repositories/permission-grants.repository.ts`, `services/curated-view-delete.service.ts`: remove the field-grant helpers and their call.
+
+**Steps**
+
+1. **Write the failing tests:**
+   - `grant.router` integration: a share writes exactly one row;
+   - `portal-sql.service` integration: a shared view's reader without entity read sees every projected column;
+   - `curated-view.router` integration: create with entity read projects any column; delete the `FIELD_NOT_READABLE` cases;
+   - delete `rbac-fk-expansion.integration.test.ts` and the field-grant cases in `curated-view-delete.service.integration.test.ts`, plus `permission-loadset` expansion cases.
+
+   Run them; they fail.
+2. Implement until green.
+3. Lint and type-check.
+
+**Done when:** no source outside core's model reads `field_mapping` grants or `in_curated_view`.
+
+**Risk:** existing composed grants in the DB still exist until slice 5's migration. They're harmless: nothing expands them any more.
+
+---
+
+## Slice 4 — Permission gate and descriptors
+
+The agent authorizes parts on their entity and entities on their container, through `parts` mode and `containerPaths`. `bulk` mode, `parentPaths` and `CHILD_RESOURCE_PARENTS` are removed.
+
+**Files**
+
 - Edit: `packages/core/src/models/tool-capability.model.ts`:
-  - add `ToolAuthorizationSchema` fields `parentPaths` and `readPaths`;
-  - extend the refine.
-- Edit: `packages/core/src/registries/builtin-toolpacks.ts`:
-  - add the five `TOOL_AUTHORIZATION` additions from the spec table;
-  - replace the stale `:1840–1841` comment.
-- Edit: `packages/core/src/__tests__/models/tool-capability.model.test.ts`.
-- Edit: `packages/core/src/__tests__/registries/builtin-toolpacks.test.ts`.
+  - modes and fields as in the spec;
+  - the refines;
+  - `WRITE_KIND_TO_RESOURCE_TYPE` is removed.
+- Edit: `packages/core/src/registries/builtin-toolpacks.ts`: `TOOL_AUTHORIZATION` per the spec table.
+- Edit: `packages/core/src/models/permission.model.ts`: remove `CHILD_RESOURCE_PARENTS`, `ChildResourceType` and `isChildResourceType`.
+- Edit: `apps/api/src/services/permission-gate.service.ts`: `parts`, `create` with container, and `delete` with container on a contained type.
+- Edit: `apps/api/src/services/rbac-object-resolver.ts`: add `resolvePartOwner`; `resolveRow` drops `parentId` for parts.
+- Edit: `apps/api/src/services/parent-access.service.ts`: remove the slice-2-era wrappers.
 
 **Steps**
 
-1. **Tests (spec core: 4 + 3).**
-   - Schema:
-     - create on a child type without `parentPaths` → reject;
-     - `parentPaths` on batch → reject;
-     - `readPaths` off bulk → reject;
-     - create on a non-child type → accept.
-   - Guard:
-     - every child-type create/bulk descriptor has `parentPaths`;
-     - every batch child type resolves through the table;
-     - transform's `readPaths` names the source.
+1. **Write the failing tests:**
+   - core `tool-capability.model.test.ts` (7 cases) and `builtin-toolpacks.test.ts` guards (3);
+   - api `permission-gate.service.test.ts` (12);
+   - the agent-tool column of `parts-and-containers.agreement`: records/mappings × entity state with a part someone else created; entity create/update/delete × instance state; transform another-org and read-only targets with nothing enqueued.
 
    Run them; they fail.
-2. **Implement** the table, the fields with the refine, and the descriptor entries. They turn green.
-3. Lint and type-check, then the root `npm run build`.
+2. Implement until green.
+3. Lint, type-check and build.
 
-**Done when:** the 7 core cases pass and the existing `TOOL_AUTHORIZATION` parse still succeeds. The api still compiles because nothing reads the new fields yet.
+**Done when:** REST, tools and capabilities agree in every agreement row, and no source references `CHILD_RESOURCE_PARENTS` or `bulk` mode.
 
-**Risk:** the refine rejects an existing descriptor I missed. The guard enumerates every descriptor, so it shows up here rather than at runtime.
+**Risk:** the `agent-create-existing-key` (#825) cases must still hold. They use the member's own instance (slice 4 of the old plan), so they should.
 
 ---
 
-## Slice 2 — `ParentAccessService`
+## Slice 5 — Retire the vocabulary
 
-This slice delivers the one helper that routes, capabilities and the gate share.
-
-**Files**
-
-- New: `apps/api/src/services/parent-access.service.ts`, with:
-  - `loadWritableParent`
-  - `assertWritableParent` (over `ObjectAccessService.loadForVerb`)
-  - `writableParentIds`
-  - `firstRefusal`
-  - the per-parent-type not-found codes
-- New: `apps/api/src/__tests__/services/parent-access.service.test.ts`.
-
-**Steps**
-
-1. **Tests (spec api unit, parent-access: 7).**
-   - writable → returns the row;
-   - other org → 404 with the parent's code;
-   - unreadable → 404;
-   - read-only → 403 `PERMISSION_DENIED`;
-   - `writableParentIds` filters a mixed set;
-   - `firstRefusal` prefers not_found over denied;
-   - `firstRefusal` dedupes ids into one query.
-
-   Run them; they fail.
-2. **Implement** the service. Each batch method does a single `findMany(id IN …)`. It turns green.
-3. Lint and type-check.
-
-**Done when:** the 7 cases pass. No caller exists yet.
-
-**Risk:** none. It's pure composition over existing loaders.
-
----
-
-## Slice 3 — REST routes and child capabilities
-
-This slice enforces parent write on every REST child write and folds the parent into the child rows' `capabilities`. The behaviour change for default members (Sandbox and demo become read-only) lands here.
+`entity_record` and `field_mapping` leave core. Their create rules, derived capabilities and labels go, the migration deletes their rows, and MemberAccess loses its part statements.
 
 **Files**
 
-- Edit: `apps/api/src/routes/field-mapping.router.ts`: POST (`:429`), PATCH (`:696`), DELETE (`:1137`), and the `attachChildren` call sites (`:235`, `:333`).
-- Edit: `apps/api/src/routes/entity-record.router.ts`: POST (`:814`, removing the duplicate read at `:831`), PATCH (`:1373`), DELETE (`:1549`), and the call sites (`:505`, `:698`).
-- Edit: `apps/api/src/routes/connector-entity.router.ts`: POST (`:565`), PATCH (`:765`), DELETE (`:1067`), and the call sites (`:249`, `:377`).
-- Edit: `apps/api/src/routes/entity-tag-assignment.router.ts`: `assertEntityWritable` delegates to `ParentAccessService`.
-- Edit: `apps/api/src/routes/entity-group-member.router.ts`: the POST read-checks the member's entity.
-- Edit: `apps/api/src/routes/curated-view.router.ts`: create read-checks its entity.
-- Edit: `apps/api/src/services/object-capabilities.service.ts`:
-  - narrow `for`/`attach` to non-child types;
-  - add `attachChildren`.
-- Edit: the OpenAPI `403` descriptions on the changed routes, and the `route-authorization.map.ts` notes.
-- New: `apps/api/src/__tests__/__integration__/authorization/child-write-parent.agreement.integration.test.ts`, with the REST create, REST update/delete and GET capabilities columns.
-- Edit:
-  - `apps/api/src/__tests__/services/object-capabilities.service.test.ts`;
-  - `__integration__/…/object-capabilities.agreement.integration.test.ts`;
-  - group-member and curated-view integration tests (one case each).
+- Edit: `packages/core/src/models/permission.model.ts`:
+  - `PERMISSION_RESOURCE_TYPES`, `DATA_RESOURCE_TYPES`, `RESOURCE_CAPABILITIES`, `CALLER_CAPABILITY_ACTIONS` and `PERMISSION_CONDITIONS` lose the retired entries;
+  - `conditionParam` is documented as retired.
+- Edit: `apps/api/src/services/permission.service.ts`: `CREATE_RULES`, `DERIVED_CAPABILITIES`.
+- Edit: `apps/api/src/services/permission-refusal.ts`: `TYPE_LABELS`.
+- Edit: anything tsc flags after the narrowing (expected: comments only).
+- New: `apps/api/drizzle/01xx_retire-part-permissions.sql` + `meta/_journal.json` + snapshot, generated with `npm run db:generate -- --custom --name retire-part-permissions`.
+- Seed: no code change. MemberAccess spreads the narrowed `DATA_RESOURCE_TYPES`.
 
 **Steps**
 
-1. **Tests.**
-   - Capabilities unit (3).
-   - The agreement matrix: 3 types × {unreadable, read-only system-owned, writable member-owned} × {create, update + delete, capabilities} = 9 `it`s.
-   - Group-member and curated-view 404 (2).
-   - The updated object-capabilities agreement (2):
-     - member children under system parents → read-only;
-     - a member-parent fixture → `ALL`.
+1. **Write the failing tests:**
+   - core `permission.model.test.ts`: the retired entries are absent;
+   - new `retire-part-permissions.migration.integration.test.ts`: the rows are deleted and unrelated rows kept;
+   - `reset.service` / `member-data-delete-backfill` / `permission-loadset`: MemberAccess has no part statements;
+   - `create-capability.agreement`, `organization.router`, `rbac-object-search`: the retired types are absent from `resourcePermissions` and `capabilities`;
+   - web `AccessAuthoring.test.tsx`: the type list omits both;
+   - `organization.contract` / `grant.contract` fixtures.
 
    Run them; they fail.
-2. **Implement.**
-   - The routes, in the order org load → parent write → child rule → feature flag.
-   - `attachChildren`.
-   - The type narrowing, which makes tsc point at every call site.
+2. Implement until green. Apply the migration locally with `npm run db:migrate` (a dev stack seeds but doesn't migrate).
+3. Run the full root `npm run build`, lint, type-check and the full api integration suite once.
 
-   It turns green.
-3. Run the **full** api integration suite. Other suites may hold fixtures where a member writes under a system-owned parent; fix each fixture to give the member a writable parent, and never loosen the rule.
-4. Lint and type-check.
-
-**Done when:**
-- REST and capabilities agree across the matrix;
-- tsc refuses `ObjectCapabilitiesService.for` with a child type;
-- the full api integration suite is green.
+**Done when:** a repo-wide search for the two type literals finds only the migration, its test and history comments, and a fresh DB has no part permission rows.
 
 **Risk:**
-- This is the largest slice and the one most likely to turn unrelated fixtures red.
-- Splitting it would break the agreement test at the boundary, so it stays one commit.
-- The full-suite run in step 3 is the guard.
+- The migration must be journaled (memory: commit the drizzle journal with the migration).
+- Before deploy, count the app-dev rows a custom policy holds and list them in the PR.
 
 ---
 
-## Slice 4 — Permission gate: parent checks for agent tools
-
-This slice makes the agent tools refuse exactly where REST does, which closes the original #829 bypass and the transform multi-target gap.
+## Slice 6 — Docs, tool descriptions and prompt
 
 **Files**
 
-- Edit: `apps/api/src/constants/api-codes.constants.ts`: add `TOOL_TARGET_NOT_FOUND`.
-- Edit: `apps/api/src/services/permission-gate.service.ts`:
-  - add `targetNotFound()`;
-  - add the create, bulk and batch/single checks from the spec table, inside the existing fail-closed `try`.
-- Edit: `apps/api/src/services/rbac-object-resolver.ts`:
-  - add `resolveRow` → `{ createdBy, parentId }`;
-  - `resolveCreatedBy` wraps it.
-- Edit: `apps/api/src/tools/transform-entity-records.tool.ts`: change only the comment at `:307–329`, pointing at the gate.
-- Edit:
-  - `apps/api/src/__tests__/services/permission-gate.service.test.ts`, including the existing create-shape case at `:40`;
-  - `child-write-parent.agreement.integration.test.ts`, adding the tool column;
-  - `__integration__/tools/agent-create-existing-key.integration.test.ts`:
-    - at `:278`, the new-key create uses a member-owned instance;
-    - add a case for the owner's instance → `TOOL_PERMISSION_DENIED`.
-- New: transform cases, in the existing transform integration suite or a new file beside the agreement test.
+- Edit: `CLAUDE.md` and `.github/copilot-instructions.md`, per the spec's Docs section.
+- Edit: the eleven `.tool.ts` descriptions and their `builtin-toolpacks.ts` mirrors.
+- Edit: `prompts/system.prompt.ts`.
 
 **Steps**
 
-1. **Tests.**
-   - Gate unit (12):
-     - create: not found, denied, runs, empty items, one bad item of two;
-     - batch: parent read-only, and the parent taken from the row rather than the input;
-     - bulk: target read-only, source unreadable, all good;
-     - the updated `:40` case;
-     - a resolution throw → denied.
-   - Agreement tool column: `TOOL_TARGET_NOT_FOUND` / `TOOL_PERMISSION_DENIED` / success, with the row counts unchanged on refusal.
-   - Transform (2): an other-org second target → not found with nothing enqueued; a read-only second target → denied.
-   - #825 (2).
+1. **Write the failing tests:** `system.prompt.test.ts` and `builtin-toolpacks.test.ts` description pins. Run them; they fail.
+2. Edit the prose until green.
+3. Lint.
 
-   Run them; they fail.
-2. **Implement** the code, the resolver and the gate branches. It turns green.
-3. Run the full api integration suite again, since tool fixtures may hit the same system-parent pattern as slice 3. Then lint and type-check.
-
-**Done when:**
-- the agreement matrix holds on all four surfaces;
-- transform refuses on any bad target before enqueue;
-- the #825 suite is green.
-
-**Risk:**
-- `system.prompt.test.ts` might pin the gate's codes. If so, the test update rides here and the prose moves in slice 6.
-
----
-
-## Slice 5 — Web gates and mapping picker
-
-This slice stops Add record, New entity and Create field mapping from offering themselves without parent write.
-
-**Files**
-
-- Edit: `apps/web/src/utils/entity-actions.util.ts` (`:76`): `createRecord.allowed &&= capabilities.write`.
-- Edit: `apps/web/src/utils/connector-instance-actions.util.ts` (`:57`): `createEntity.allowed &&= capabilities.write`.
-- Edit: `apps/web/src/api/connector-entities.api.ts` (`:134`): add a `filterItem` option to `SearchHookOptions`.
-- Edit: `apps/web/src/views/ColumnDefinitionDetail.view.tsx` (`:160`): the mapping picker passes `filterItem: e => e.capabilities.write`. The ref-key picker at `:162` stays as is.
-- Edit: `EntityDetail.view.tsx` and `ConnectorInstance.view.tsx`, only if the gate inputs need threading.
-- Edit:
-  - `apps/web/src/__tests__/entity-actions.util.test.ts`;
-  - `connector-instance-actions.util.test.ts`;
-  - `ColumnDefinitionDetailView.test.tsx`.
-
-**Steps**
-
-1. **Tests (spec web: 3).**
-   - createRecord hidden on a non-writable entity even with the type create rule;
-   - createEntity likewise;
-   - the picker omits a `capabilities.write: false` entity.
-
-   Run them; they fail.
-2. **Implement.** It turns green. `action-gate.guard.test.ts` must stay green: the gate goes through `decideActionGate`, never `disabled={…}`.
-3. Lint and type-check.
-
-**Done when:** the 3 cases pass and the web guards are green.
-
-**Risk:** a client-side `filterItem` can make a search page look short. That's accepted per the spec; the server still refuses.
-
----
-
-## Slice 6 — Docs, tool descriptions, prompt
-
-The documented contract now matches the enforced rule.
-
-**Files**
-
-- Edit the eight child-tool `.tool.ts` descriptions and their mirrors in `packages/core/src/registries/builtin-toolpacks.ts`:
-  - `connector_entity_create` / `_update` / `_delete`
-  - `field_mapping_create` / `_update` / `_delete`
-  - `entity_record_create` / `_update` / `_delete`
-  - `bulk_geocode_records`
-  - `transform_entity_records`
-- Edit: `apps/api/src/prompts/system.prompt.ts`: relay `TOOL_TARGET_NOT_FOUND` as "not found" and `TOOL_PERMISSION_DENIED` as missing access, with no retry.
-- Edit: `CLAUDE.md` Authorization bullets (read → write on the parent; name `CHILD_RESOURCE_PARENTS` + `ParentAccessService`), and `.github/copilot-instructions.md`.
-
-**Steps**
-
-1. **Tests.**
-   - `builtin-toolpacks.test.ts` keeps each mirror equal to its tool description, and `system.prompt.test.ts` pins the new guidance line.
-   - Both fail after the tool-side edit.
-2. **Implement** the mirrors and the prompt. They turn green. `permission-copy.guard.test.ts` must stay green: the copy names permissions, never roles.
-3. Lint and type-check.
-
-**Done when:** the description, mirror and prompt pins are green, and CLAUDE.md and copilot say "write on the parent".
-
-**Risk:** none.
+**Done when:** no doc surface describes per-record or per-mapping permission, or the old two-layer rule.
 
 ---
 
 ## Sequence summary
 
-| # | Lands | Gate |
+| Slice | Lands | Gate |
 |---|---|---|
-| 1 | Core table, descriptor fields, guard | core unit (7), root build |
-| 2 | `ParentAccessService` | api unit (7) |
-| 3 | REST routes + child capabilities + referenced-entity reads | agreement REST/capabilities columns, full api integration |
-| 4 | Permission gate, `TOOL_TARGET_NOT_FOUND`, transform, #825 | gate unit (12), agreement tool column, full api integration |
-| 5 | Web gates + picker | web unit (3), web guards |
-| 6 | Tool descriptions, prompt, CLAUDE.md | mirror/prompt pins, copy guard |
+| 1 | tables, lean owner/container helpers, predicate by verb | core + api unit |
+| 2 | REST + capabilities + web gates | api integration (full once), web unit |
+| 3 | curated views by projection | api integration |
+| 4 | gate + descriptors | core + api unit, agreement integration |
+| 5 | vocabulary retired, migration | root build, full api integration |
+| 6 | docs | unit pins |
 
 ## Cross-slice notes
 
-- **The behaviour change is in slice 3** (REST) and **slice 4** (agent). From slice 3 on, a local smoke as the default member sees Sandbox as read-only. That's the intent, and the PR body says so.
-- **Fixtures:** slices 3 and 4 run the full api integration suite, not just the touched files. Here the change is a rule, so its blast radius is any test fixture where a member writes under a system-owned parent. This is an exception to "run only touched files".
-- **`CHILD_RESOURCE_PARENTS`** is the only place the child→parent mapping lives. Routes, `attachChildren`, `resolveRow` and the guard all read it. Nothing re-spells `connectorEntityId`/`connectorInstanceId` as a parent key.
-- **Doc sync:** OpenAPI 403 text and route-map notes ride with slice 3 (the routes they describe); everything prose-facing is slice 6.
-- **Local leftovers** from the #829 repro (mapping `10ac0f86…`, record `0d5e4503…`, and the probe entities) are cleaned before the smoke walk, not in a slice.
+- **The old agreement file** (`child-write-parent.agreement`) is renamed in slice 2 and grows its tool column in slice 4.
+- **The local repro leftovers** (mapping `10ac0f86…`, record `0d5e4503…`, the `member_added` column on `er__727e1eeb…`) are cleaned up before the walks.
+- **The review chain reruns in full afterwards:** code review, security, a refreshed smoke and adversarial doc, and the walks.
+- **The PR body is rewritten:** summary, the behaviour changes (widened reads/writes on shared entities, Sandbox read-only for members, deleted custom statements) and `Closes #829`.
 
 ## Next step
 
-Implementation starts on `fix/829-agent-child-create-authz` with slice 1, tests first, one commit per slice, once this plan is confirmed.
+Implementation starts with slice 1 once this plan is confirmed.
