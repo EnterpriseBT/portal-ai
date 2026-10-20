@@ -128,6 +128,8 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveStationCapabilities: mockResolveStationCapabilities,
   assertStationScope: jest.fn(),
   assertWriteCapability: jest.fn(),
+  // #827: the entity-create tool scopes by the station's reach.
+  stationReach: jest.fn(async () => ({ instanceIds: [], entityIds: [] })),
   resolveCapabilities: jest.fn(),
   // station_context / portal.service call this; the tools.service test never
   // reaches that code path, so an empty resolution is fine.

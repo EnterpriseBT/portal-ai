@@ -35,6 +35,24 @@ jest.unstable_mockModule(
     stationInstancesRepo: { findByStationId: mockFindByStationId },
   })
 );
+// #827: station reach also counts the connectors behind the station's views.
+const mockStationViews = jest
+  .fn<() => Promise<unknown[]>>()
+  .mockResolvedValue([]);
+const mockCuratedViewById = jest.fn<(id: unknown) => Promise<unknown>>();
+const mockEntityById = jest.fn<(id: unknown) => Promise<unknown>>();
+jest.unstable_mockModule(
+  "../../db/repositories/station-views.repository.js",
+  () => ({ stationViewsRepo: { findByStationId: mockStationViews } })
+);
+jest.unstable_mockModule(
+  "../../db/repositories/curated-views.repository.js",
+  () => ({ curatedViewsRepo: { findById: mockCuratedViewById } })
+);
+jest.unstable_mockModule(
+  "../../db/repositories/connector-entities.repository.js",
+  () => ({ connectorEntitiesRepo: { findById: mockEntityById } })
+);
 jest.unstable_mockModule(
   "../../db/repositories/connector-definitions.repository.js",
   () => ({
@@ -285,6 +303,26 @@ describe("ConnectorEntityCreateTool", () => {
     expect(result.success).toBe(false);
     expect(result.failures[0].error).toContain("not attached");
     expect(mockCreateEntity).not.toHaveBeenCalled();
+  });
+
+  it("#827: a connector reached only through one of the station's views is in scope", async () => {
+    mockFindByStationId.mockResolvedValueOnce([]);
+    mockStationViews.mockResolvedValueOnce([{ curatedViewId: "v-1" }]);
+    mockCuratedViewById.mockResolvedValueOnce({
+      id: "v-1",
+      connectorEntityId: "ce-viewed",
+    });
+    mockEntityById.mockResolvedValueOnce({
+      id: "ce-viewed",
+      connectorInstanceId: "ci-1",
+    });
+
+    const result: any = await exec({
+      items: [{ connectorInstanceId: "ci-1", key: "k", label: "L" }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockCreateEntity).toHaveBeenCalledTimes(1);
   });
 
   it("validation failure — write capability disabled", async () => {

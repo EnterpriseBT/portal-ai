@@ -22,8 +22,10 @@ jest.unstable_mockModule(
   })
 );
 
+const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
+  assertWriteCapability: mockAssertWriteCapability,
 }));
 const mockFindEntityById = jest.fn<any>().mockResolvedValue({
   id: "ce-1",
@@ -147,6 +149,23 @@ describe("ConnectorEntityDeleteTool", () => {
     const result: any = await exec({ items: [{ connectorEntityId: "ce-1" }] });
 
     expect(result.success).toBe(false);
+    expect(mockExecuteDelete).not.toHaveBeenCalled();
+  });
+
+  // #827: like the other write tools, a connector with writes disabled
+  // refuses the delete.
+  it("a connector with writes disabled refuses the delete, and nothing is deleted", async () => {
+    mockAssertWriteCapability.mockRejectedValueOnce(
+      new Error(
+        "Cannot perform write operation — the connector instance does not have write capability enabled."
+      )
+    );
+
+    const result: any = await exec({ items: [{ connectorEntityId: "ce-1" }] });
+
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result)).toContain("write capability");
+    expect(mockAssertWriteCapability).toHaveBeenCalledWith("ce-1");
     expect(mockExecuteDelete).not.toHaveBeenCalled();
   });
 });

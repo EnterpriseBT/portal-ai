@@ -106,6 +106,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   // #824: no directly attached connectors unless a case seeds them.
   mockFindByStationId.mockResolvedValue([]);
+  // #827: nor any views (scope now counts them, so a stale chain would leak).
+  mockStationViewsFindByStationId.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -430,6 +432,55 @@ describe("assertStationScope", () => {
     ).rejects.toMatchObject({
       code: "STATION_SCOPE_VIOLATION",
     });
+  });
+});
+
+// #827: the per-item scope check uses the same reach as the write gate:
+// connectors attached directly, plus everything behind the station's views.
+describe("assertStationScope — station reach through views (#827)", () => {
+  it("passes for an entity reached only through a view", async () => {
+    seedViewChain([{ entityId: "e-view", connectorInstanceId: "ci-1" }]);
+
+    await expect(
+      assertStationScope("station-1", "e-view")
+    ).resolves.toBeUndefined();
+  });
+
+  it("passes for an entity on a connector reached only through a view", async () => {
+    seedViewChain([{ entityId: "e-view", connectorInstanceId: "ci-1" }]);
+    const viewLookup = mockConnEntityFindById.getMockImplementation()!;
+    mockConnEntityFindById.mockImplementation(async (id: unknown) =>
+      id === "e-sibling" ? { id, connectorInstanceId: "ci-1" } : viewLookup(id)
+    );
+
+    await expect(
+      assertStationScope("station-1", "e-sibling")
+    ).resolves.toBeUndefined();
+  });
+
+  it("passes for an entity on a directly attached connector, with no views", async () => {
+    seedViewChain([]);
+    mockFindByStationId.mockResolvedValue([{ connectorInstanceId: "ci-1" }]);
+    mockConnEntityFindById.mockResolvedValue({
+      id: "e-1",
+      connectorInstanceId: "ci-1",
+    });
+
+    await expect(
+      assertStationScope("station-1", "e-1")
+    ).resolves.toBeUndefined();
+  });
+
+  it("refuses an entity the station reaches neither way", async () => {
+    seedViewChain([{ entityId: "e-view", connectorInstanceId: "ci-1" }]);
+    const viewLookup = mockConnEntityFindById.getMockImplementation()!;
+    mockConnEntityFindById.mockImplementation(async (id: unknown) =>
+      id === "e-far" ? { id, connectorInstanceId: "ci-far" } : viewLookup(id)
+    );
+
+    await expect(
+      assertStationScope("station-1", "e-far")
+    ).rejects.toMatchObject({ code: "STATION_SCOPE_VIOLATION" });
   });
 });
 

@@ -4,7 +4,10 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { assertStationScope } from "../utils/resolve-capabilities.util.js";
+import {
+  assertStationScope,
+  assertWriteCapability,
+} from "../utils/resolve-capabilities.util.js";
 import { EntityDataDeleteService } from "../services/entity-data-delete.service.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 
@@ -46,6 +49,9 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
             const item = items[i];
             try {
               await assertStationScope(stationId, item.connectorEntityId);
+              // #827: like the other write tools, a connector with writes
+              // disabled refuses the delete.
+              await assertWriteCapability(item.connectorEntityId);
             } catch (err: any) {
               failures.push({
                 index: i,

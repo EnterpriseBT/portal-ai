@@ -5,9 +5,11 @@ import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
 import { keyField, nameField } from "@portalai/core/contracts";
-import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
-import { resolveCapabilities } from "../utils/resolve-capabilities.util.js";
+import {
+  resolveCapabilities,
+  stationReach,
+} from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
@@ -71,11 +73,10 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
           // ── Phase 1: Validate ──────────────────────────────────────
           const failures: { index: number; error: string }[] = [];
 
-          // Load station links once
-          const stationLinks =
-            await stationInstancesRepo.findByStationId(stationId);
+          // #827: the station's reach (direct connectors and those behind
+          // its views), the same set the write gate offers this tool for.
           const attachedIds = new Set(
-            stationLinks.map((l) => l.connectorInstanceId)
+            (await stationReach(stationId)).instanceIds
           );
 
           // Group by connectorInstanceId — validate once per instance
