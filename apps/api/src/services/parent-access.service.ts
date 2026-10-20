@@ -16,10 +16,8 @@
 import { and, eq, isNull, sql, type AnyColumn, type SQL } from "drizzle-orm";
 
 import {
-  CHILD_RESOURCE_PARENTS,
   OBJECT_CONTAINERS,
   PART_OWNERS,
-  type ChildResourceType,
   type ContainedType,
   type PartType,
   type PermissionResourceType,
@@ -297,83 +295,6 @@ export class ParentAccessService {
       }
     }
     return null;
-  }
-
-  // ── Two-layer API, retired by slices 2 and 4 ──────────────────────
-
-  static parentTypeOf(childType: ChildResourceType): ParentType {
-    return CHILD_RESOURCE_PARENTS[childType].parentType;
-  }
-
-  static parentIdOf(
-    childType: ChildResourceType,
-    row: Record<string, unknown>
-  ): string | null {
-    const value = row[CHILD_RESOURCE_PARENTS[childType].parentKey];
-    return typeof value === "string" ? value : null;
-  }
-
-  static notFound(parentType: ParentType): ApiError {
-    return NOT_FOUND[parentType]();
-  }
-
-  static assertWritableParent<T extends OwnedParentRow>(
-    set: PermissionSet,
-    organizationId: string,
-    childType: ChildResourceType,
-    parent: T | null | undefined
-  ): T {
-    const parentType = ParentAccessService.parentTypeOf(childType);
-    return ObjectAccessService.loadForVerb(
-      set,
-      organizationId,
-      parentType,
-      parent,
-      "write",
-      NOT_FOUND[parentType]
-    );
-  }
-
-  static async loadWritableParent(
-    set: PermissionSet,
-    organizationId: string,
-    childType: ChildResourceType,
-    parentId: string
-  ): Promise<OwnedParentRow> {
-    const [parent] = await FINDERS[ParentAccessService.parentTypeOf(childType)](
-      [parentId]
-    );
-    return ParentAccessService.assertWritableParent(
-      set,
-      organizationId,
-      childType,
-      parent
-    );
-  }
-
-  static async writableParentIds(
-    set: PermissionSet,
-    organizationId: string,
-    childType: ChildResourceType,
-    parentIds: string[]
-  ): Promise<Set<string>> {
-    const parentType = ParentAccessService.parentTypeOf(childType);
-    const rows = await ParentAccessService.loadDistinct(parentType, parentIds);
-    const writable = new Set<string>();
-    for (const row of rows.values()) {
-      if (
-        ObjectAccessService.readableInOrg(
-          set,
-          organizationId,
-          parentType,
-          row
-        ) &&
-        set.can("resource.write", ObjectAccessService.object(parentType, row))
-      ) {
-        writable.add(row.id);
-      }
-    }
-    return writable;
   }
 
   private static async loadDistinct(

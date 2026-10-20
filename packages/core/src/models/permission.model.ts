@@ -71,27 +71,6 @@ export type PermissionResourceType = z.infer<
 >;
 
 /**
- * #829: a child write (create, update or delete) requires `write` on its
- * parent. `parentKey` is the key on the child row, and on a create's input
- * item, that holds the parent's id. The one place the pairing lives: routes,
- * object capabilities and the agent permission gate all read it.
- */
-export const CHILD_RESOURCE_PARENTS = {
-  entity: {
-    parentType: "connector_instance",
-    parentKey: "connectorInstanceId",
-  },
-  field_mapping: { parentType: "entity", parentKey: "connectorEntityId" },
-  entity_record: { parentType: "entity", parentKey: "connectorEntityId" },
-} as const satisfies Record<
-  string,
-  { parentType: PermissionResourceType; parentKey: string }
->;
-export type ChildResourceType = keyof typeof CHILD_RESOURCE_PARENTS;
-export const isChildResourceType = (t: string): t is ChildResourceType =>
-  Object.prototype.hasOwnProperty.call(CHILD_RESOURCE_PARENTS, t);
-
-/**
  * #829: parts have no permission of their own. A record or field mapping is
  * part of its entity, and the entity's permission governs it: read the entity
  * to read its parts, write the entity to create, edit or delete them.

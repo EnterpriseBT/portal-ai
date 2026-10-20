@@ -627,9 +627,9 @@ describe("objects and parts (#829)", () => {
       )[0].connectorInstanceId;
 
     describe.each(STATES)("field mapping tools, entity %s", (state) => {
-      it("create, update and delete follow the entity", async () => {
+      it("create, update and delete of anyone's mapping follow the entity", async () => {
         const entityId = await entity(parentOwner(state));
-        const existing = await mapping(entityId, fx.memberId);
+        const existing = await mapping(entityId, fx.ownerId);
         await reach(await instanceOf(entityId), [entityId]);
         const count = async () =>
           (
@@ -678,7 +678,7 @@ describe("objects and parts (#829)", () => {
     });
 
     describe.each(STATES)("record tools, entity %s", (state) => {
-      it("create, update and delete follow the entity", async () => {
+      it("create, update and delete of anyone's record follow the entity", async () => {
         const entityId = await entity(parentOwner(state));
         // The record tools refuse an entity with no mappings.
         await mapping(entityId, fx.ownerId);
@@ -687,7 +687,7 @@ describe("objects and parts (#829)", () => {
           entityId,
           db as unknown as DbClient
         );
-        const existing = await record(entityId, fx.memberId);
+        const existing = await record(entityId, fx.ownerId);
         await reach(await instanceOf(entityId), [entityId]);
         const count = async () =>
           (
@@ -739,7 +739,7 @@ describe("objects and parts (#829)", () => {
     });
 
     describe.each(STATES)("entity tools, connector %s", (state) => {
-      it("create, update and delete follow the connector", async () => {
+      it("create and delete follow the connector; update needs only the entity", async () => {
         const instanceId = await instance(parentOwner(state));
         const existing = await entity(fx.memberId, instanceId);
         await reach(instanceId, [existing]);
@@ -772,11 +772,12 @@ describe("objects and parts (#829)", () => {
         );
         if (state !== "writable") expect(await count()).toBe(1);
 
+        // The member's own entity: editing it needs only its own write.
         expectTool(
           await (
             await memberTool("connector_entity_update")
           )({ items: [{ connectorEntityId: existing, label: "Changed" }] }),
-          state
+          "writable"
         );
         expectTool(
           await (
@@ -805,17 +806,6 @@ describe("objects and parts (#829)", () => {
             .from(schema.jobs)
             .where(eq(schema.jobs.organizationId, fx.orgId))
         ).length;
-
-      beforeEach(async () => {
-        // A bulk write needs the unconditional record grant; the parents are
-        // what's under test.
-        await allowForUser(db, {
-          organizationId: fx.orgId,
-          userId: fx.memberId,
-          verb: "write",
-          resourceType: "entity_record",
-        });
-      });
 
       it("a second target in another org is not found, and nothing is enqueued", async () => {
         const source = await entity(fx.memberId);

@@ -5,11 +5,7 @@ import {
   isBuiltinToolpackSlug,
   TOOL_AUTHORIZATION,
 } from "../../registries/builtin-toolpacks.js";
-import {
-  CHILD_RESOURCE_PARENTS,
-  isChildResourceType,
-  type ChildResourceType,
-} from "../../models/permission.model.js";
+import { PART_OWNERS } from "../../models/permission.model.js";
 import {
   ToolCapabilitySchema,
   deriveToolRole,
@@ -265,42 +261,59 @@ describe("BuiltinToolpackSlugSchema", () => {
   });
 });
 
-// #829: the gate checks write on a child's parent. A create or bulk descriptor
-// on a child type must say where the parent ids are, or the gate can't.
-describe("TOOL_AUTHORIZATION parent paths (#829)", () => {
+// #829: records and field mappings are parts of their entity. Their tools
+// authorize as `parts` on the entity, and an entity create names its connector.
+describe("TOOL_AUTHORIZATION parts and containers (#829)", () => {
   const entries = Object.entries(TOOL_AUTHORIZATION);
+  const PART_TOOLS = [
+    "entity_record_create",
+    "entity_record_update",
+    "entity_record_delete",
+    "field_mapping_create",
+    "field_mapping_update",
+    "field_mapping_delete",
+    "bulk_geocode_records",
+    "transform_entity_records",
+  ];
 
-  it("every create/bulk descriptor on a child type declares parentPaths", () => {
-    const missing = entries
-      .filter(
-        ([, a]) =>
-          (a.mode === "create" || a.mode === "bulk") &&
-          isChildResourceType(a.resourceType)
-      )
-      .filter(([, a]) => !a.parentPaths?.length)
-      .map(([name]) => name);
-    expect(missing).toEqual([]);
+  it("every record and mapping tool is a parts descriptor on the entity", () => {
+    for (const name of PART_TOOLS) {
+      const a = TOOL_AUTHORIZATION[name];
+      expect([name, a?.mode, a?.resourceType, a?.verb]).toEqual([
+        name,
+        "parts",
+        "entity",
+        "write",
+      ]);
+    }
+    expect(
+      entries
+        .filter(([, a]) => a.mode === "parts")
+        .map(([n]) => n)
+        .sort()
+    ).toEqual([...PART_TOOLS].sort());
   });
 
-  it("every batch descriptor on a child type resolves its parent through the table", () => {
-    const batches = entries.filter(
-      ([, a]) => a.mode === "batch" && isChildResourceType(a.resourceType)
-    );
-    expect(batches.length).toBeGreaterThan(0);
-    for (const [name, a] of batches) {
-      expect([name, a.parentPaths]).toEqual([name, undefined]);
-      expect(
-        CHILD_RESOURCE_PARENTS[a.resourceType as ChildResourceType]
-      ).toBeDefined();
+  it("every partType names a part with an owner", () => {
+    for (const [name, a] of entries) {
+      if (a.partType) {
+        expect([name, PART_OWNERS[a.partType].ownerType]).toEqual([
+          name,
+          "entity",
+        ]);
+      }
     }
   });
 
-  it("transform reads its source and writes its targets' parents", () => {
+  it("transform reads its source and writes every target", () => {
     expect(TOOL_AUTHORIZATION.transform_entity_records?.readPaths).toEqual([
       "sourceConnectorEntityId",
     ]);
-    expect(TOOL_AUTHORIZATION.transform_entity_records?.parentPaths).toEqual([
+    expect(TOOL_AUTHORIZATION.transform_entity_records?.objectPaths).toEqual([
       "expression.writes[].targetConnectorEntityId",
+    ]);
+    expect(TOOL_AUTHORIZATION.connector_entity_create?.containerPaths).toEqual([
+      "items[].connectorInstanceId",
     ]);
   });
 });

@@ -359,61 +359,106 @@ describe("customToolCapabilityError", () => {
   });
 });
 
-// #829: a child write needs write on its parent, so a create/bulk descriptor on
-// a child type names where the parent ids are.
-describe("ToolAuthorizationSchema — parent paths (#829)", () => {
+// #829: objects and parts. Record and mapping tools are `parts` descriptors
+// on the owning entity; an entity create names its connector.
+describe("ToolAuthorizationSchema — parts and containers (#829)", () => {
   const lock = {
     target: "record",
     itemsArg: "items",
     idField: "connectorEntityId",
   } as const;
+  const parse = (a: Record<string, unknown>) =>
+    ToolAuthorizationSchema.safeParse({ verb: "write", lock, ...a }).success;
 
-  it("rejects a create on a child type without parentPaths", () => {
+  it("accepts parts by objectPaths, or by partType with item ids", () => {
     expect(
-      ToolAuthorizationSchema.safeParse({
-        verb: "write",
-        resourceType: "field_mapping",
-        mode: "create",
-        lock,
-      }).success
-    ).toBe(false);
-  });
-
-  it("rejects parentPaths on a batch descriptor", () => {
+      parse({
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["items[].connectorEntityId"],
+      })
+    ).toBe(true);
     expect(
-      ToolAuthorizationSchema.safeParse({
-        verb: "write",
-        resourceType: "entity_record",
-        mode: "batch",
+      parse({
+        resourceType: "entity",
+        mode: "parts",
+        partType: "entity_record",
         itemsArg: "items",
         idField: "entityRecordId",
-        parentPaths: ["items[].connectorEntityId"],
+      })
+    ).toBe(true);
+  });
+
+  it("rejects parts with no targets", () => {
+    expect(parse({ resourceType: "entity", mode: "parts" })).toBe(false);
+  });
+
+  it("rejects parts with both target forms", () => {
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["items[].connectorEntityId"],
+        partType: "field_mapping",
+        itemsArg: "items",
+        idField: "fieldMappingId",
+      })
+    ).toBe(false);
+  });
+
+  it("rejects parts on anything but write on an entity", () => {
+    expect(
+      parse({
+        resourceType: "station",
+        mode: "parts",
+        objectPaths: ["stationId"],
+      })
+    ).toBe(false);
+    expect(
+      ToolAuthorizationSchema.safeParse({
+        verb: "delete",
+        resourceType: "entity",
+        mode: "parts",
+        objectPaths: ["connectorEntityId"],
         lock,
       }).success
     ).toBe(false);
   });
 
-  it("rejects readPaths off bulk", () => {
+  it("requires containerPaths on an entity create, and allows it nowhere else", () => {
+    expect(parse({ resourceType: "entity", mode: "create" })).toBe(false);
     expect(
-      ToolAuthorizationSchema.safeParse({
-        verb: "write",
-        resourceType: "entity_record",
+      parse({
+        resourceType: "entity",
         mode: "create",
-        parentPaths: ["items[].connectorEntityId"],
-        readPaths: ["sourceConnectorEntityId"],
-        lock,
-      }).success
+        containerPaths: ["items[].connectorInstanceId"],
+      })
+    ).toBe(true);
+    expect(
+      parse({
+        resourceType: "entity",
+        mode: "batch",
+        itemsArg: "items",
+        idField: "connectorEntityId",
+        containerPaths: ["items[].connectorInstanceId"],
+      })
     ).toBe(false);
+    expect(parse({ resourceType: "station", mode: "create" })).toBe(true);
   });
 
-  it("accepts a create on a non-child type without parentPaths", () => {
+  it("allows readPaths only on parts", () => {
     expect(
-      ToolAuthorizationSchema.safeParse({
-        verb: "write",
+      parse({
         resourceType: "station",
         mode: "create",
-        lock,
-      }).success
-    ).toBe(true);
+        readPaths: ["sourceConnectorEntityId"],
+      })
+    ).toBe(false);
+  });
+
+  it("has no bulk mode", () => {
+    expect(
+      parse({ resourceType: "entity", mode: "bulk", objectPaths: ["x"] })
+    ).toBe(false);
   });
 });

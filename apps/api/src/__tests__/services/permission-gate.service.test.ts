@@ -14,10 +14,10 @@ import type { GateableTool } from "../../services/cost-gate.service.js";
 import type { ToolAuthorization } from "@portalai/core/models";
 
 const ctx = { organizationId: "org-1", userId: "u-1" };
-/** A resolved child row; its parent is entity e-1 unless a test says so. */
-const row = (createdBy: string, parentId: string | null = "e-1") => ({
+/** A resolved object row; `containerId` is set for a contained type. */
+const row = (createdBy: string, containerId: string | null = null) => ({
   createdBy,
-  parentId,
+  containerId,
 });
 
 const tool = (execute: GateableTool["execute"]): GateableTool => ({ execute });
@@ -43,7 +43,7 @@ describe("wrapWithPermissionGate (#629)", () => {
     jest.restoreAllMocks();
     can = jest.fn();
     set = { can } as unknown as PermissionSet;
-    // #829: parents are writable unless a test says otherwise.
+    // #829: owners and containers are writable unless a test says otherwise.
     firstRefusal = jest
       .spyOn(ParentAccessService, "firstRefusal")
       .mockResolvedValue(null);
@@ -59,9 +59,8 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "create",
-        parentPaths: ["items[].connectorEntityId"],
       })
     );
     const r = await tools.fm_create.execute!(
@@ -72,7 +71,7 @@ describe("wrapWithPermissionGate (#629)", () => {
     // The new rows are caller-owned, so a member's created_by_caller write
     // must permit their own creates — the check carries createdBy = caller.
     expect(can).toHaveBeenCalledWith("resource.write", {
-      type: "field_mapping",
+      type: "station",
       createdBy: "u-1",
     });
   });
@@ -87,9 +86,8 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "create",
-        parentPaths: ["items[].connectorEntityId"],
       })
     );
     const r = await tools.fm_create.execute!(
@@ -111,7 +109,7 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "single",
         targetIdArg: "id",
       })
@@ -120,11 +118,11 @@ describe("wrapWithPermissionGate (#629)", () => {
     expect(r).toBe("edited");
     expect(RbacObjectResolver.resolveRow).toHaveBeenCalledWith(
       "org-1",
-      "field_mapping",
+      "station",
       "fm-9"
     );
     expect(can).toHaveBeenCalledWith("resource.write", {
-      type: "field_mapping",
+      type: "station",
       id: "fm-9",
       createdBy: "u-1",
     });
@@ -143,7 +141,7 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "single",
         targetIdArg: "id",
       })
@@ -163,7 +161,7 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "single",
         targetIdArg: "id",
       })
@@ -185,7 +183,7 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "batch",
         itemsArg: "items",
         idField: "fieldMappingId",
@@ -210,7 +208,7 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "batch",
         itemsArg: "items",
         idField: "fieldMappingId",
@@ -224,7 +222,7 @@ describe("wrapWithPermissionGate (#629)", () => {
     // #711 (spec case 7): the same wording as the API's refusals.
     expect(r).toHaveProperty(
       "error.message",
-      "You don't have permission to write this field_mapping."
+      "You don't have permission to write this station."
     );
     expect(inner).not.toHaveBeenCalled();
   });
@@ -255,80 +253,6 @@ describe("wrapWithPermissionGate (#629)", () => {
     await expect(tools.t.execute!({}, {})).rejects.toBe(boom);
   });
 
-  it("bulk: a class-level (no-createdBy) write check gates the whole-entity scan", async () => {
-    // An admin's unconditional write satisfies a class-level check → allowed.
-    can.mockReturnValue(true);
-    const inner = jest.fn(async () => "bulk-ok");
-    const tools: Record<string, GateableTool> = { rec_bulk: tool(inner) };
-    wrapWithPermissionGate(
-      tools,
-      set,
-      ctx,
-      authIs({
-        verb: "write",
-        resourceType: "entity_record",
-        mode: "bulk",
-        parentPaths: ["connectorEntityId"],
-      })
-    );
-    const r = await tools.rec_bulk.execute!({ connectorEntityId: "e-1" }, {});
-    expect(r).toBe("bulk-ok");
-    // No object id, no createdBy — only an unconditional grant passes. This is
-    // one check with zero per-row work (the O(1) invariant for scanners).
-    expect(can).toHaveBeenCalledTimes(1);
-    expect(can).toHaveBeenCalledWith("resource.write", {
-      type: "entity_record",
-    });
-  });
-
-  it("bulk: a member's conditional write fails the class-level check (admin-only)", async () => {
-    // A member's created_by_caller write does NOT satisfy a class-level check
-    // (no createdBy to match), so the resolver returns false → denied.
-    can.mockReturnValue(false);
-    const inner = jest.fn();
-    const tools: Record<string, GateableTool> = { rec_bulk: tool(inner) };
-    wrapWithPermissionGate(
-      tools,
-      set,
-      ctx,
-      authIs({
-        verb: "write",
-        resourceType: "entity_record",
-        mode: "bulk",
-        parentPaths: ["connectorEntityId"],
-      })
-    );
-    const r = await tools.rec_bulk.execute!({ connectorEntityId: "e-1" }, {});
-    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
-    expect(inner).not.toHaveBeenCalled();
-  });
-
-  it("O(1) invariant: a bulk scan resolves zero objects regardless of table size", async () => {
-    // The gate must not scale its permission work with the scanned set — a
-    // whole-entity bulk does exactly one in-memory `can` and never resolves a
-    // per-row `createdBy`, so cost is independent of how many rows the job
-    // ultimately touches (the user's performance concern for portal sessions).
-    const resolveSpy = jest.spyOn(RbacObjectResolver, "resolveRow");
-    can.mockReturnValue(true);
-    const tools: Record<string, GateableTool> = {
-      rec_bulk: tool(async () => "ok"),
-    };
-    wrapWithPermissionGate(
-      tools,
-      set,
-      ctx,
-      authIs({
-        verb: "write",
-        resourceType: "entity_record",
-        mode: "bulk",
-        parentPaths: ["connectorEntityId"],
-      })
-    );
-    await tools.rec_bulk.execute!({ connectorEntityId: "e-1" }, {});
-    expect(resolveSpy).not.toHaveBeenCalled();
-    expect(can).toHaveBeenCalledTimes(1);
-  });
-
   it("fail-closed: a resolver error denies", async () => {
     jest
       .spyOn(RbacObjectResolver, "resolveRow")
@@ -341,7 +265,7 @@ describe("wrapWithPermissionGate (#629)", () => {
       ctx,
       authIs({
         verb: "write",
-        resourceType: "field_mapping",
+        resourceType: "station",
         mode: "single",
         targetIdArg: "id",
       })
@@ -357,64 +281,63 @@ describe("wrapWithPermissionGate (#629)", () => {
     });
   });
 
-  // ── #829: a child write needs write on its parent ───────────────────
+  // ── #829: objects and parts ─────────────────────────────────────────
 
-  const createAuth = authIs({
+  const partsByPath = authIs({
     verb: "write",
-    resourceType: "field_mapping",
-    mode: "create",
-    parentPaths: ["items[].connectorEntityId"],
+    resourceType: "entity",
+    mode: "parts",
+    objectPaths: ["items[].connectorEntityId"],
+  });
+  const partsById = authIs({
+    verb: "write",
+    resourceType: "entity",
+    mode: "parts",
+    partType: "field_mapping",
+    itemsArg: "items",
+    idField: "fieldMappingId",
   });
 
-  it("create: an unreadable parent answers TOOL_TARGET_NOT_FOUND and never runs", async () => {
-    can.mockReturnValue(true);
+  it("parts: an unreadable entity answers TOOL_TARGET_NOT_FOUND and never runs", async () => {
     firstRefusal.mockResolvedValue({ id: "e-x", reason: "not_found" });
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, createAuth);
+    wrapWithPermissionGate(tools, set, ctx, partsByPath);
     const r = await tools.fm_create.execute!(
       { items: [{ connectorEntityId: "e-x" }] },
       {}
     );
-    expect(r).toEqual({
-      error: {
-        code: ApiCode.TOOL_TARGET_NOT_FOUND,
-        message: "Entity e-x was not found.",
-      },
-    });
+    expect(r).toEqual(targetNotFound("Entity e-x was not found."));
     expect(inner).not.toHaveBeenCalled();
   });
 
-  it("create: a read-only parent answers TOOL_PERMISSION_DENIED naming it", async () => {
-    can.mockReturnValue(true);
+  it("parts: a read-only entity answers TOOL_PERMISSION_DENIED naming it", async () => {
     firstRefusal.mockResolvedValue({ id: "e-sys", reason: "denied" });
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, createAuth);
+    wrapWithPermissionGate(tools, set, ctx, partsByPath);
     const r = await tools.fm_create.execute!(
       { items: [{ connectorEntityId: "e-sys" }] },
       {}
     );
-    expect(r).toEqual({
-      error: {
-        code: ApiCode.TOOL_PERMISSION_DENIED,
-        message: "You don't have permission to edit entity e-sys.",
-      },
-    });
+    expect(r).toEqual(
+      permissionDenied("You don't have permission to edit entity e-sys.")
+    );
     expect(inner).not.toHaveBeenCalled();
   });
 
-  it("create: checks write on every item's parent in one call, then the owned create", async () => {
-    can.mockReturnValue(true);
+  it("parts: writable entities run, with no per-part or create-rule check", async () => {
     const inner = jest.fn(async () => "ok");
     const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, createAuth);
-    const r = await tools.fm_create.execute!(
-      { items: [{ connectorEntityId: "e-1" }, { connectorEntityId: "e-2" }] },
-      {}
-    );
-    expect(r).toBe("ok");
-    expect(firstRefusal).toHaveBeenCalledTimes(1);
+    wrapWithPermissionGate(tools, set, ctx, partsByPath);
+    expect(
+      await tools.fm_create.execute!(
+        {
+          items: [{ connectorEntityId: "e-1" }, { connectorEntityId: "e-2" }],
+        },
+        {}
+      )
+    ).toBe("ok");
     expect(firstRefusal).toHaveBeenCalledWith(
       set,
       "org-1",
@@ -422,73 +345,36 @@ describe("wrapWithPermissionGate (#629)", () => {
       ["e-1", "e-2"],
       "write"
     );
+    expect(can).not.toHaveBeenCalled();
   });
 
-  it("create: one bad parent among two refuses the whole call", async () => {
-    can.mockReturnValue(true);
-    firstRefusal.mockResolvedValue({ id: "e-2", reason: "denied" });
+  it("parts: no entity ids in the input is denied without a lookup", async () => {
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, createAuth);
-    const r = await tools.fm_create.execute!(
-      { items: [{ connectorEntityId: "e-1" }, { connectorEntityId: "e-2" }] },
-      {}
-    );
-    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
-    expect(inner).not.toHaveBeenCalled();
-  });
-
-  it("create: no parent ids in the input is denied without a lookup", async () => {
-    can.mockReturnValue(true);
-    const inner = jest.fn();
-    const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, createAuth);
+    wrapWithPermissionGate(tools, set, ctx, partsByPath);
     const r = await tools.fm_create.execute!({ items: [] }, {});
     expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
     expect(firstRefusal).not.toHaveBeenCalled();
     expect(inner).not.toHaveBeenCalled();
   });
 
-  const batchAuth = authIs({
-    verb: "write",
-    resourceType: "field_mapping",
-    mode: "batch",
-    itemsArg: "items",
-    idField: "fieldMappingId",
-  });
-
-  it("batch: a child the caller may write under a read-only parent is denied", async () => {
-    jest
-      .spyOn(RbacObjectResolver, "resolveRow")
-      .mockResolvedValue(row("u-1", "e-sys"));
-    can.mockReturnValue(true);
-    firstRefusal.mockResolvedValue({ id: "e-sys", reason: "denied" });
-    const inner = jest.fn();
-    const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, batchAuth);
-    const r = await tools.fm_update.execute!(
-      { items: [{ fieldMappingId: "fm-1" }] },
-      {}
-    );
-    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
-    expect(inner).not.toHaveBeenCalled();
-  });
-
-  it("batch: the parent comes from the stored row, never from the input", async () => {
-    jest
-      .spyOn(RbacObjectResolver, "resolveRow")
-      .mockResolvedValue(row("u-1", "e-stored"));
-    can.mockReturnValue(true);
+  it("parts by id: the entity comes from the stored part, never from the input", async () => {
+    const owner = jest
+      .spyOn(RbacObjectResolver, "resolvePartOwner")
+      .mockResolvedValue("e-stored");
     const tools: Record<string, GateableTool> = {
       fm_update: tool(async () => "ok"),
     };
-    wrapWithPermissionGate(tools, set, ctx, batchAuth);
-    await tools.fm_update.execute!(
-      {
-        items: [{ fieldMappingId: "fm-1", connectorEntityId: "e-claimed" }],
-      },
-      {}
-    );
+    wrapWithPermissionGate(tools, set, ctx, partsById);
+    expect(
+      await tools.fm_update.execute!(
+        {
+          items: [{ fieldMappingId: "fm-1", connectorEntityId: "e-claimed" }],
+        },
+        {}
+      )
+    ).toBe("ok");
+    expect(owner).toHaveBeenCalledWith("org-1", "field_mapping", "fm-1");
     expect(firstRefusal).toHaveBeenCalledWith(
       set,
       "org-1",
@@ -498,11 +384,28 @@ describe("wrapWithPermissionGate (#629)", () => {
     );
   });
 
-  const bulkAuth = authIs({
+  it("parts by id: an unresolvable part denies the whole call", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolvePartOwner")
+      .mockResolvedValueOnce("e-1")
+      .mockResolvedValueOnce(null);
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
+    wrapWithPermissionGate(tools, set, ctx, partsById);
+    const r = await tools.fm_update.execute!(
+      { items: [{ fieldMappingId: "fm-1" }, { fieldMappingId: "gone" }] },
+      {}
+    );
+    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    expect(firstRefusal).not.toHaveBeenCalled();
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  const transformAuth = authIs({
     verb: "write",
-    resourceType: "entity_record",
-    mode: "bulk",
-    parentPaths: ["expression.writes[].targetConnectorEntityId"],
+    resourceType: "entity",
+    mode: "parts",
+    objectPaths: ["expression.writes[].targetConnectorEntityId"],
     readPaths: ["sourceConnectorEntityId"],
   });
   const transformInput = {
@@ -515,38 +418,23 @@ describe("wrapWithPermissionGate (#629)", () => {
     },
   };
 
-  it("bulk: a read-only write target is denied", async () => {
-    can.mockReturnValue(true);
-    firstRefusal.mockImplementation(async (_s, _o, _t, _ids, verb) =>
-      verb === "write" ? { id: "e-2", reason: "denied" } : null
-    );
-    const inner = jest.fn();
-    const tools: Record<string, GateableTool> = { transform: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, bulkAuth);
-    const r = await tools.transform.execute!(transformInput, {});
-    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
-    expect(inner).not.toHaveBeenCalled();
-  });
-
-  it("bulk: an unreadable source answers not found before any write check", async () => {
-    can.mockReturnValue(true);
+  it("parts: an unreadable source answers not found before any write check", async () => {
     firstRefusal.mockImplementation(async (_s, _o, _t, _ids, verb) =>
       verb === "read" ? { id: "e-src", reason: "not_found" } : null
     );
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { transform: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, bulkAuth);
+    wrapWithPermissionGate(tools, set, ctx, transformAuth);
     const r = await tools.transform.execute!(transformInput, {});
     expect(r).toHaveProperty("error.code", ApiCode.TOOL_TARGET_NOT_FOUND);
     expect(firstRefusal).toHaveBeenCalledTimes(1);
     expect(inner).not.toHaveBeenCalled();
   });
 
-  it("bulk: readable source and writable targets run, after the class-level check", async () => {
-    can.mockReturnValue(true);
+  it("parts: a readable source and writable targets run", async () => {
     const inner = jest.fn(async () => "queued");
     const tools: Record<string, GateableTool> = { transform: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, bulkAuth);
+    wrapWithPermissionGate(tools, set, ctx, transformAuth);
     expect(await tools.transform.execute!(transformInput, {})).toBe("queued");
     expect(firstRefusal).toHaveBeenNthCalledWith(
       1,
@@ -564,17 +452,102 @@ describe("wrapWithPermissionGate (#629)", () => {
       ["e-1", "e-2"],
       "write"
     );
-    expect(can).toHaveBeenCalledWith("resource.write", {
-      type: "entity_record",
-    });
   });
 
-  it("fail-closed: a parent lookup error denies", async () => {
+  it("entity create: a read-only connector is denied before the create rule", async () => {
     can.mockReturnValue(true);
+    firstRefusal.mockResolvedValue({ id: "ci-sys", reason: "denied" });
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { ce_create: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "entity",
+        mode: "create",
+        containerPaths: ["items[].connectorInstanceId"],
+      })
+    );
+    const r = await tools.ce_create.execute!(
+      { items: [{ connectorInstanceId: "ci-sys" }] },
+      {}
+    );
+    expect(r).toEqual(
+      permissionDenied("You don't have permission to edit connector ci-sys.")
+    );
+    expect(firstRefusal).toHaveBeenCalledWith(
+      set,
+      "org-1",
+      "connector_instance",
+      ["ci-sys"],
+      "write"
+    );
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  const entityBatch = (verb: "write" | "delete") =>
+    authIs({
+      verb,
+      resourceType: "entity",
+      mode: "batch",
+      itemsArg: "items",
+      idField: "connectorEntityId",
+    });
+
+  it("entity delete: needs write on the stored connector", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolveRow")
+      .mockResolvedValue(row("u-1", "ci-stored"));
+    can.mockReturnValue(true);
+    firstRefusal.mockResolvedValue({ id: "ci-stored", reason: "denied" });
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { ce_delete: tool(inner) };
+    wrapWithPermissionGate(tools, set, ctx, entityBatch("delete"));
+    const r = await tools.ce_delete.execute!(
+      {
+        items: [
+          { connectorEntityId: "e-1", connectorInstanceId: "ci-claimed" },
+        ],
+      },
+      {}
+    );
+    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    expect(firstRefusal).toHaveBeenCalledWith(
+      set,
+      "org-1",
+      "connector_instance",
+      ["ci-stored"],
+      "write"
+    );
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("entity update: needs only the entity's own write, not the connector's", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolveRow")
+      .mockResolvedValue(row("u-1", "ci-sys"));
+    can.mockReturnValue(true);
+    firstRefusal.mockResolvedValue({ id: "ci-sys", reason: "denied" });
+    const tools: Record<string, GateableTool> = {
+      ce_update: tool(async () => "ok"),
+    };
+    wrapWithPermissionGate(tools, set, ctx, entityBatch("write"));
+    expect(
+      await tools.ce_update.execute!(
+        { items: [{ connectorEntityId: "e-1" }] },
+        {}
+      )
+    ).toBe("ok");
+    expect(firstRefusal).not.toHaveBeenCalled();
+  });
+
+  it("fail-closed: an owner lookup error denies", async () => {
     firstRefusal.mockRejectedValue(new Error("db down"));
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { fm_create: tool(inner) };
-    wrapWithPermissionGate(tools, set, ctx, createAuth);
+    wrapWithPermissionGate(tools, set, ctx, partsByPath);
     const r = await tools.fm_create.execute!(
       { items: [{ connectorEntityId: "e-1" }] },
       {}

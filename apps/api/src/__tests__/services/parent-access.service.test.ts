@@ -4,9 +4,9 @@ import type { PermissionStatementSelect } from "../../db/schema/zod.js";
 import type { PermissionContext } from "../../services/permission.service.js";
 
 /**
- * #829: a child write requires write on its parent. ParentAccessService is the
- * one helper the routes, object capabilities and the agent permission gate use
- * to check it, with the 404-before-403 split of `loadForVerb`.
+ * #829: objects and parts. ParentAccessService checks a part's owning entity
+ * and a contained object's container, for the routes, object capabilities and
+ * the agent permission gate, with the 404-before-403 split of `loadForVerb`.
  */
 type Row = { id: string; organizationId: string; createdBy: string };
 const mockEntityAuthRows = jest.fn<(ids: string[]) => Promise<Row[]>>();
@@ -95,76 +95,7 @@ beforeEach(() => {
   mockInstanceFindMany.mockReset();
 });
 
-describe("ParentAccessService.assertWritableParent (#829)", () => {
-  it("returns a writable parent", () => {
-    expect(
-      ParentAccessService.assertWritableParent(
-        memberSet(),
-        ORG,
-        "field_mapping",
-        writable
-      )
-    ).toBe(writable);
-  });
-
-  it("answers a parent in another org with the parent's 404", () => {
-    expect(
-      status(() =>
-        ParentAccessService.assertWritableParent(
-          memberSet(),
-          ORG,
-          "entity_record",
-          otherOrg
-        )
-      )
-    ).toEqual({ status: 404, code: ApiCode.CONNECTOR_ENTITY_NOT_FOUND });
-  });
-
-  it("answers an unreadable parent with 404, the connector's code for an entity", () => {
-    expect(
-      status(() =>
-        ParentAccessService.assertWritableParent(
-          memberSet(),
-          ORG,
-          "entity",
-          unreadable
-        )
-      )
-    ).toEqual({ status: 404, code: ApiCode.CONNECTOR_INSTANCE_NOT_FOUND });
-  });
-
-  it("answers a read-only parent with 403 PERMISSION_DENIED", () => {
-    expect(
-      status(() =>
-        ParentAccessService.assertWritableParent(
-          memberSet(),
-          ORG,
-          "field_mapping",
-          readOnly
-        )
-      )
-    ).toEqual({ status: 403, code: ApiCode.PERMISSION_DENIED });
-  });
-});
-
-describe("ParentAccessService batch checks (#829)", () => {
-  it("writableParentIds keeps only in-org, readable, writable parents", async () => {
-    mockEntityAuthRows.mockResolvedValue([
-      writable,
-      readOnly,
-      unreadable,
-      otherOrg,
-    ]);
-    const ids = await ParentAccessService.writableParentIds(
-      memberSet(),
-      ORG,
-      "entity_record",
-      [writable.id, readOnly.id, unreadable.id, otherOrg.id, "missing"]
-    );
-    expect([...ids]).toEqual([writable.id]);
-    expect(mockEntityAuthRows).toHaveBeenCalledTimes(1);
-  });
-
+describe("ParentAccessService.firstRefusal (#829)", () => {
   it("firstRefusal reports a missing parent as not_found ahead of a denied one", async () => {
     mockEntityAuthRows.mockResolvedValue([writable, readOnly]);
     expect(

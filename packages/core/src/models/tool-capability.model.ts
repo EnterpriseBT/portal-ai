@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 import {
+  PART_TYPES,
   PermissionResourceTypeSchema,
-  isChildResourceType,
-  type PermissionResourceType,
+  isContainedType,
 } from "./permission.model.js";
 import { JobTypeEnum, LockTargetKindSchema } from "./job.model.js";
 
@@ -356,57 +356,79 @@ export const ToolAuthorizationSchema = z
   .object({
     verb: z.enum(["write", "delete"]),
     resourceType: PermissionResourceTypeSchema,
-    mode: z.enum(["create", "single", "batch", "bulk"]),
-    /** `single`: the validated-input key holding the target id. */
-    targetIdArg: z.string().optional(),
-    /** `batch`: the input key holding the items array. */
-    itemsArg: z.string().optional(),
-    /** `batch`: the id key within each item. */
-    idField: z.string().optional(),
     /**
-     * #829: input paths naming the parent ids, for `create` and `bulk` on a
-     * child type (`CHILD_RESOURCE_PARENTS`); the caller needs write on each.
-     * `single`/`batch` never declare it: their parent comes from the stored
-     * row, never from input. Dotted keys; `[]` fans out over an array.
+     * - `create` — a new object the caller will own (owned create rule); a
+     *   contained type also names its containers in `containerPaths`.
+     * - `single` / `batch` — existing objects, checked per object; a delete
+     *   on a contained type also needs write on each stored container.
+     * - `parts` (#829) — records or field mappings, which have no permission
+     *   of their own: the tool needs write on each owning entity, named by
+     *   `objectPaths` (creates, bulk tools) or resolved from the stored part
+     *   rows `partType` ids name (updates, deletes).
      */
-    parentPaths: z.array(z.string()).min(1).optional(),
-    /** #829, `bulk` only: input paths naming entities the tool only reads
-     *  (each must be readable). */
+    mode: z.enum(["create", "single", "batch", "parts"]),
+    /** `single` (or `parts` by part id): the input key holding the target id. */
+    targetIdArg: z.string().optional(),
+    /** `batch` (or `parts` by part id): the input key holding the items array. */
+    itemsArg: z.string().optional(),
+    /** `batch` (or `parts` by part id): the id key within each item. */
+    idField: z.string().optional(),
+    /** #829, `create` on a contained type: input paths naming the container
+     *  ids; the caller needs write on each. Dotted keys; `[]` fans out. */
+    containerPaths: z.array(z.string()).min(1).optional(),
+    /** #829, `parts`: input paths naming the owning entity ids. */
+    objectPaths: z.array(z.string()).min(1).optional(),
+    /** #829, `parts`: the part type the target ids name; its owner comes
+     *  from the stored row, never from input. */
+    partType: z.enum(PART_TYPES).optional(),
+    /** #829, `parts`: input paths naming entities the tool only reads (each
+     *  must be readable). */
     readPaths: z.array(z.string()).min(1).optional(),
     /** #769: what the job lock checks for this tool. */
     lock: ToolLockSchema,
   })
   .refine(
-    (a) =>
-      (a.mode === "single") === (a.targetIdArg != null) &&
-      (a.mode === "batch") === (a.itemsArg != null && a.idField != null),
-    { message: "single needs targetIdArg; batch needs itemsArg + idField" }
+    (a) => {
+      const single = a.targetIdArg != null;
+      const batch = a.itemsArg != null && a.idField != null;
+      const partial = (a.itemsArg != null) !== (a.idField != null);
+      if (partial) return false;
+      switch (a.mode) {
+        case "single":
+          return single && !batch;
+        case "batch":
+          return batch && !single;
+        case "create":
+          return !single && !batch;
+        case "parts":
+          return a.objectPaths != null
+            ? !single && !batch && a.partType == null
+            : a.partType != null && single !== batch;
+      }
+    },
+    {
+      message:
+        "single needs targetIdArg; batch needs itemsArg + idField; parts needs objectPaths, or partType with one of those",
+    }
   )
   .refine(
     (a) =>
-      (a.parentPaths != null) ===
-      ((a.mode === "create" || a.mode === "bulk") &&
-        isChildResourceType(a.resourceType)),
+      a.mode !== "parts" || (a.resourceType === "entity" && a.verb === "write"),
+    { message: "parts authorizes write on the owning entity" }
+  )
+  .refine(
+    (a) =>
+      (a.containerPaths != null) ===
+      (a.mode === "create" && isContainedType(a.resourceType)),
     {
       message:
-        "parentPaths is required on a create/bulk child descriptor and allowed nowhere else",
+        "containerPaths is required on a contained type's create and allowed nowhere else",
     }
   )
-  .refine((a) => a.readPaths == null || a.mode === "bulk", {
-    message: "readPaths is allowed only on bulk",
-  });
+  .refine(
+    (a) =>
+      a.mode === "parts" ||
+      (a.objectPaths == null && a.partType == null && a.readPaths == null),
+    { message: "objectPaths, partType and readPaths are allowed only on parts" }
+  );
 export type ToolAuthorization = z.infer<typeof ToolAuthorizationSchema>;
-
-/**
- * `writes[]`/`reads[]` carry plural table/entity kinds; the gate needs the
- * singular `PermissionResourceType`. This maps the data-plane write kinds.
- */
-export const WRITE_KIND_TO_RESOURCE_TYPE: Record<
-  string,
-  PermissionResourceType
-> = {
-  field_mappings: "field_mapping",
-  entity_records: "entity_record",
-  connector_entities: "entity",
-  connector_instances: "connector_instance",
-};

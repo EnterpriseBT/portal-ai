@@ -1737,10 +1737,12 @@ const CAPABILITIES: Record<string, ToolCapability> = {
 /**
  * Per-tool authorization descriptors for the per-caller tool-authorization gate
  * (#629). One entry per data-plane **write** tool; the gate reads it to check
- * each write per object (create → type-level; batch → every bounded item; bulk
- * → class-level). On a child type each also needs write on the parent (#829):
- * create/bulk name the parent ids in `parentPaths`, batch reads them off the
- * stored rows. Tools absent here are
+ * each write per object (create → the owned create rule; batch → every
+ * bounded item). #829: records and field mappings are parts of their entity,
+ * so their tools are `parts` descriptors that need write on each owning
+ * entity (named by `objectPaths`, or read off the stored part rows). An
+ * entity's create names its connector in `containerPaths`, and its delete
+ * also needs write on the stored connector. Tools absent here are
  * not data-plane writes the gate pre-flights — read/pure tools, and the
  * `rbac_management` tools (authorized by their own service, surfaced by the
  * gate's catch-403). A guard test asserts every `writes[]` tool is covered.
@@ -1748,23 +1750,25 @@ const CAPABILITIES: Record<string, ToolCapability> = {
 export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
   entity_record_create: {
     verb: "write",
-    resourceType: "entity_record",
-    mode: "create",
-    parentPaths: ["items[].connectorEntityId"],
+    resourceType: "entity",
+    mode: "parts",
+    objectPaths: ["items[].connectorEntityId"],
     lock: { target: "record", itemsArg: "items", idField: "connectorEntityId" },
   },
   entity_record_update: {
     verb: "write",
-    resourceType: "entity_record",
-    mode: "batch",
+    resourceType: "entity",
+    mode: "parts",
+    partType: "entity_record",
     itemsArg: "items",
     idField: "entityRecordId",
     lock: { target: "record", itemsArg: "items", idField: "connectorEntityId" },
   },
   entity_record_delete: {
-    verb: "delete",
-    resourceType: "entity_record",
-    mode: "batch",
+    verb: "write",
+    resourceType: "entity",
+    mode: "parts",
+    partType: "entity_record",
     itemsArg: "items",
     idField: "entityRecordId",
     lock: { target: "record", itemsArg: "items", idField: "connectorEntityId" },
@@ -1773,7 +1777,7 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     verb: "write",
     resourceType: "entity",
     mode: "create",
-    parentPaths: ["items[].connectorInstanceId"],
+    containerPaths: ["items[].connectorInstanceId"],
     lock: {
       target: "connectorInstance",
       itemsArg: "items",
@@ -1806,9 +1810,9 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
   },
   field_mapping_create: {
     verb: "write",
-    resourceType: "field_mapping",
-    mode: "create",
-    parentPaths: ["items[].connectorEntityId"],
+    resourceType: "entity",
+    mode: "parts",
+    objectPaths: ["items[].connectorEntityId"],
     lock: {
       target: "fieldMapping",
       itemsArg: "items",
@@ -1817,8 +1821,9 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
   },
   field_mapping_update: {
     verb: "write",
-    resourceType: "field_mapping",
-    mode: "batch",
+    resourceType: "entity",
+    mode: "parts",
+    partType: "field_mapping",
     itemsArg: "items",
     idField: "fieldMappingId",
     lock: {
@@ -1829,9 +1834,10 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     },
   },
   field_mapping_delete: {
-    verb: "delete",
-    resourceType: "field_mapping",
-    mode: "batch",
+    verb: "write",
+    resourceType: "entity",
+    mode: "parts",
+    partType: "field_mapping",
     itemsArg: "items",
     idField: "fieldMappingId",
     lock: {
@@ -1841,21 +1847,20 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
       resolve: "fieldMappingEntity",
     },
   },
-  // Unbounded scans over an entity. The gate pre-flights the class-level write
-  // and, through parentPaths/readPaths, write on every target entity and read
-  // on a transform's source (#829).
+  // Whole-entity scans. #829: they write the entity's records, so they need
+  // write on every target entity, and read on a transform's source.
   bulk_geocode_records: {
     verb: "write",
-    resourceType: "entity_record",
-    mode: "bulk",
-    parentPaths: ["connectorEntityId"],
+    resourceType: "entity",
+    mode: "parts",
+    objectPaths: ["connectorEntityId"],
     lock: { enqueues: "bulk_geocode", entityIdArgs: ["connectorEntityId"] },
   },
   transform_entity_records: {
     verb: "write",
-    resourceType: "entity_record",
-    mode: "bulk",
-    parentPaths: ["expression.writes[].targetConnectorEntityId"],
+    resourceType: "entity",
+    mode: "parts",
+    objectPaths: ["expression.writes[].targetConnectorEntityId"],
     readPaths: ["sourceConnectorEntityId"],
     lock: {
       enqueues: "bulk_transform",

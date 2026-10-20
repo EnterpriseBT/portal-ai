@@ -1,6 +1,6 @@
 import {
-  CHILD_RESOURCE_PARENTS,
-  isChildResourceType,
+  OBJECT_CONTAINERS,
+  isContainedType,
   type PermissionResourceType,
   type ToolAuthorization,
 } from "@portalai/core/models";
@@ -35,21 +35,22 @@ import type { GateableTool } from "./cost-gate.service.js";
  *      - `single` / `batch` — resolves each target's `createdBy` (via
  *        {@link RbacObjectResolver}) and checks per object (batches are bounded
  *        ≤ 100 by the tool schema, so this is O(items), not O(table)).
- *      - `bulk` — an unbounded whole-entity scan checks *class-level* write
- *        (no `createdBy`), which only an **unconditional** grant satisfies;
- *        a conditional (own-rows) write cannot, so bulk scanners need the
- *        unconditional grant. One check, zero per-row work.
  *  - **catch** — any `ApiError(403)` thrown inside `execute` (e.g. an
  *    `rbac_management` tool's own service gate) is converted to the same
  *    refusal.
  *
- * #829: on a child type (`CHILD_RESOURCE_PARENTS`) every mode also needs
- * write on the parent, which read never implies. `create` and `bulk` read the
- * parent ids from the descriptor's `parentPaths` (and a bulk tool's
- * `readPaths` must be readable); `single` and `batch` take each parent from
- * the stored child row, never from input. An unreadable parent answers
- * `TOOL_TARGET_NOT_FOUND`, a read-only one `TOOL_PERMISSION_DENIED`, and the
- * whole call is refused before anything runs.
+ * #829, objects and parts:
+ *  - `parts` — records and field mappings have no permission of their own,
+ *    so the tool needs write on every owning entity: the ids its
+ *    `objectPaths` name (creates, whole-entity scans), or the stored owner of
+ *    every part id it names (updates, deletes; never taken from input). A
+ *    transform's source (`readPaths`) must be readable.
+ *  - a `create` on a contained type (an entity) also needs write on every
+ *    container its `containerPaths` name, and a `delete` on one needs write
+ *    on each stored container (the directory rule; editing needs neither).
+ * An unreadable entity or connector answers `TOOL_TARGET_NOT_FOUND`, a
+ * read-only one `TOOL_PERMISSION_DENIED`, and the whole call is refused
+ * before anything runs.
  *
  * Fail-**closed**: a resolution error (unlike the cost gate's fail-open) denies.
  * The check is O(1) in permission queries per invocation — the caller's
@@ -72,8 +73,8 @@ export function targetNotFound(message: string): {
   return { error: { code: ApiCode.TOOL_TARGET_NOT_FOUND, message } };
 }
 
-/** The tool result for a parent refusal, naming the parent. */
-function parentRefusalResult(
+/** The tool result for a refusal on an owning entity or a container. */
+function refusalResult(
   parentType: PermissionResourceType,
   refusal: ParentRefusal
 ) {
@@ -116,14 +117,13 @@ export function wrapWithPermissionGate(
       // whose service self-gates — the catch below surfaces that 403).
       if (auth) {
         const action = `resource.${auth.verb}` as PermissionAction;
-        const child = isChildResourceType(auth.resourceType)
-          ? auth.resourceType
+        const container = isContainedType(auth.resourceType)
+          ? OBJECT_CONTAINERS[auth.resourceType].containerType
           : null;
-        const parentType = child && CHILD_RESOURCE_PARENTS[child].parentType;
         let allowed = false;
-        let refused: ReturnType<typeof parentRefusalResult> | null = null;
+        let refused: ReturnType<typeof refusalResult> | null = null;
         /** #829: refuse unless every id passes `verb`; true when it did. */
-        const parentsPass = async (
+        const allPass = async (
           type: PermissionResourceType,
           ids: string[],
           verb: "read" | "write"
@@ -135,49 +135,68 @@ export function wrapWithPermissionGate(
             ids,
             verb
           );
-          if (refusal) refused = parentRefusalResult(type, refusal);
+          if (refusal) refused = refusalResult(type, refusal);
           return !refusal;
         };
         const fromPaths = (paths: string[] | undefined) =>
           (paths ?? []).flatMap((p) => valuesAtPath(input, p));
+        /** The target ids a `single`/`batch` (or part-id `parts`) names;
+         *  undefined marks a missing id, which denies. */
+        const targetIds = (): (string | undefined)[] =>
+          auth.targetIdArg != null
+            ? [extractId(input, auth.targetIdArg)]
+            : extractItems(input, auth.itemsArg).map((item) =>
+                extractId(item, auth.idField)
+              );
         try {
-          if (auth.mode === "create" || auth.mode === "bulk") {
-            // Bulk reads first (a transform's source must be readable), then
-            // write on every parent the input names. No parent ids at all
-            // on a child type is denied: nothing to authorize against.
+          if (auth.mode === "parts") {
+            // Owners from input paths, or from each stored part; any part
+            // that doesn't resolve (missing, another org) denies.
+            let owners: string[] | null = fromPaths(auth.objectPaths);
+            if (auth.partType) {
+              owners = [];
+              for (const id of targetIds()) {
+                const owner = id
+                  ? await RbacObjectResolver.resolvePartOwner(
+                      ctx.organizationId,
+                      auth.partType,
+                      id
+                    )
+                  : null;
+                if (!owner) {
+                  owners = null;
+                  break;
+                }
+                owners.push(owner);
+              }
+            }
             const readIds = fromPaths(auth.readPaths);
-            const parentIds = fromPaths(auth.parentPaths);
-            const parentsOk =
-              (readIds.length === 0 ||
-                (await parentsPass("entity", readIds, "read"))) &&
-              (!parentType ||
-                (parentIds.length > 0 &&
-                  (await parentsPass(parentType, parentIds, "write"))));
             allowed =
-              parentsOk &&
-              (auth.mode === "create"
-                ? // The new rows are owned by the caller, so check with
-                  // createdBy = the caller: a member's `created_by_caller`
-                  // write permits it.
-                  permissionSet.can(action, {
-                    type: auth.resourceType,
-                    createdBy: ctx.userId,
-                  })
-                : // An unbounded whole-entity scan requires *unconditional*
-                  // (class-level) write on the type. One check, zero per-row
-                  // work (O(1)).
-                  permissionSet.can(action, { type: auth.resourceType }));
+              owners != null &&
+              owners.length > 0 &&
+              (readIds.length === 0 ||
+                (await allPass("entity", readIds, "read"))) &&
+              (await allPass("entity", owners, "write"));
+          } else if (auth.mode === "create") {
+            // A contained type names its containers; none at all denies.
+            const containerIds = fromPaths(auth.containerPaths);
+            allowed =
+              (!container ||
+                (containerIds.length > 0 &&
+                  (await allPass(container, containerIds, "write")))) &&
+              // The new rows are owned by the caller, so check with
+              // createdBy = the caller: a member's `created_by_caller`
+              // write permits it.
+              permissionSet.can(action, {
+                type: auth.resourceType,
+                createdBy: ctx.userId,
+              });
           } else {
             // single, or batch (bounded ≤ 100 by tool schema): resolve every
             // target once; any unresolvable one denies the call.
-            const ids =
-              auth.mode === "single"
-                ? [extractId(input, auth.targetIdArg)]
-                : extractItems(input, auth.itemsArg).map((item) =>
-                    extractId(item, auth.idField)
-                  );
+            const ids = targetIds();
             const rows: Array<{ id: string; createdBy: string }> = [];
-            const parentIds: string[] = [];
+            const containerIds: string[] = [];
             for (const id of ids) {
               const row = id
                 ? await RbacObjectResolver.resolveRow(
@@ -186,18 +205,21 @@ export function wrapWithPermissionGate(
                     id
                   )
                 : null;
-              if (!id || !row || (parentType && !row.parentId)) {
+              if (!id || !row) {
                 rows.length = 0;
                 break;
               }
               rows.push({ id, createdBy: row.createdBy });
-              if (row.parentId) parentIds.push(row.parentId);
+              if (row.containerId) containerIds.push(row.containerId);
             }
+            // #829: deleting a contained object changes its container.
+            const needsContainer = container != null && auth.verb === "delete";
             allowed =
               rows.length > 0 &&
               rows.length === ids.length &&
-              (!parentType ||
-                (await parentsPass(parentType, parentIds, "write"))) &&
+              (!needsContainer ||
+                (containerIds.length === rows.length &&
+                  (await allPass(container, containerIds, "write")))) &&
               rows.every((r) =>
                 permissionSet.can(action, {
                   type: auth.resourceType,
