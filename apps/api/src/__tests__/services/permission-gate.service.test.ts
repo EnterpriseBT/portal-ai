@@ -132,7 +132,8 @@ describe("wrapWithPermissionGate (#629)", () => {
     jest
       .spyOn(RbacObjectResolver, "resolveRow")
       .mockResolvedValue(row("u-other"));
-    can.mockReturnValue(false);
+    // Readable, not writable.
+    can.mockImplementation((action: unknown) => action === "resource.read");
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
     wrapWithPermissionGate(
@@ -147,7 +148,96 @@ describe("wrapWithPermissionGate (#629)", () => {
       })
     );
     const r = await tools.fm_update.execute!({ id: "fm-9" }, {});
-    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    expect(r).toEqual(
+      permissionDenied("You don't have permission to write station fm-9.")
+    );
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("#835 single: a target the caller can't read answers not found, like an absent one", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolveRow")
+      .mockResolvedValue(row("u-other"));
+    can.mockReturnValue(false);
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "station",
+        mode: "single",
+        targetIdArg: "id",
+      })
+    );
+    const r = await tools.fm_update.execute!({ id: "s-hidden" }, {});
+    expect(r).toEqual(targetNotFound("Station s-hidden was not found."));
+    expect(can).toHaveBeenCalledWith("resource.read", {
+      type: "station",
+      id: "s-hidden",
+      createdBy: "u-other",
+    });
+    expect(can).not.toHaveBeenCalledWith("resource.write", expect.anything());
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("#835 batch: a missing target outranks a readable-but-unwritable one", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolveRow")
+      .mockResolvedValueOnce(row("u-other"))
+      .mockResolvedValueOnce(null);
+    can.mockImplementation((action: unknown) => action === "resource.read");
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { e_update: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "entity",
+        mode: "batch",
+        itemsArg: "items",
+        idField: "connectorEntityId",
+      })
+    );
+    const r = await tools.e_update.execute!(
+      {
+        items: [{ connectorEntityId: "e-ro" }, { connectorEntityId: "e-gone" }],
+      },
+      {}
+    );
+    expect(r).toEqual(targetNotFound("Entity e-gone was not found."));
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("#835: a resolver that throws stays the generic denial (fail-closed)", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolveRow")
+      .mockRejectedValue(new Error("db down"));
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { e_update: tool(inner) };
+    wrapWithPermissionGate(
+      tools,
+      set,
+      ctx,
+      authIs({
+        verb: "write",
+        resourceType: "entity",
+        mode: "batch",
+        itemsArg: "items",
+        idField: "connectorEntityId",
+      })
+    );
+    const r = await tools.e_update.execute!(
+      { items: [{ connectorEntityId: "e-1" }] },
+      {}
+    );
+    expect(r).toEqual(
+      permissionDenied("You don't have permission to write this entity.")
+    );
     expect(inner).not.toHaveBeenCalled();
   });
 
@@ -167,7 +257,8 @@ describe("wrapWithPermissionGate (#629)", () => {
       })
     );
     const r = await tools.fm_update.execute!({ id: "gone" }, {});
-    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    // #835: absent (or another org's) is not found, named as sent.
+    expect(r).toEqual(targetNotFound("Station gone was not found."));
     expect(can).not.toHaveBeenCalled();
     expect(inner).not.toHaveBeenCalled();
   });
@@ -199,7 +290,11 @@ describe("wrapWithPermissionGate (#629)", () => {
 
   it("batch: denies the whole call if any item fails", async () => {
     jest.spyOn(RbacObjectResolver, "resolveRow").mockResolvedValue(row("u-x"));
-    can.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    // Both are readable; only "a" is writable.
+    can.mockImplementation(
+      (action: unknown, object: unknown) =>
+        action === "resource.read" || (object as { id: string }).id === "a"
+    );
     const inner = jest.fn();
     const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
     wrapWithPermissionGate(
@@ -219,10 +314,10 @@ describe("wrapWithPermissionGate (#629)", () => {
       {}
     );
     expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
-    // #711 (spec case 7): the same wording as the API's refusals.
+    // #835: names the permission and the target that failed it.
     expect(r).toHaveProperty(
       "error.message",
-      "You don't have permission to write this station."
+      "You don't have permission to write station b."
     );
     expect(inner).not.toHaveBeenCalled();
   });
@@ -468,8 +563,44 @@ describe("wrapWithPermissionGate (#629)", () => {
       { items: [{ fieldMappingId: "fm-1" }, { fieldMappingId: "gone" }] },
       {}
     );
-    expect(r).toHaveProperty("error.code", ApiCode.TOOL_PERMISSION_DENIED);
+    // #835: absent (or another org's) is not found, named as sent.
+    expect(r).toEqual(targetNotFound("Field mapping gone was not found."));
     expect(firstRefusal).not.toHaveBeenCalled();
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("#835 parts by id: an unreadable owning entity is refused as the part, not naming the entity", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolvePartOwner")
+      .mockResolvedValue("e-hidden");
+    firstRefusal.mockResolvedValue({ id: "e-hidden", reason: "not_found" });
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
+    wrapWithPermissionGate(tools, set, ctx, partsById);
+    const r = await tools.fm_update.execute!(
+      { items: [{ fieldMappingId: "fm-7" }] },
+      {}
+    );
+    expect(r).toEqual(targetNotFound("Field mapping fm-7 was not found."));
+    expect(JSON.stringify(r)).not.toContain("e-hidden");
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("#835 parts by id: a readable, unwritable owning entity is denied naming the entity", async () => {
+    jest
+      .spyOn(RbacObjectResolver, "resolvePartOwner")
+      .mockResolvedValue("e-ro");
+    firstRefusal.mockResolvedValue({ id: "e-ro", reason: "denied" });
+    const inner = jest.fn();
+    const tools: Record<string, GateableTool> = { fm_update: tool(inner) };
+    wrapWithPermissionGate(tools, set, ctx, partsById);
+    const r = await tools.fm_update.execute!(
+      { items: [{ fieldMappingId: "fm-7" }] },
+      {}
+    );
+    expect(r).toEqual(
+      permissionDenied("You don't have permission to edit entity e-ro.")
+    );
     expect(inner).not.toHaveBeenCalled();
   });
 

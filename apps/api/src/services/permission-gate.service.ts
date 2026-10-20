@@ -1,6 +1,7 @@
 import {
   OBJECT_CONTAINERS,
   isContainedType,
+  type PartType,
   type PermissionResourceType,
   type ToolAuthorization,
 } from "@portalai/core/models";
@@ -88,6 +89,20 @@ function refusalResult(
       );
 }
 
+/** #835: a part type's label; parts aren't permission types (#829), so
+ *  `resourceTypeLabel` doesn't know them. */
+const PART_LABELS: Record<PartType, string> = {
+  entity_record: "record",
+  field_mapping: "field mapping",
+};
+
+/** #835: "<Label> <id> was not found." for a target the caller can't see. */
+function notFoundResult(label: string, id: string) {
+  return targetNotFound(
+    `${label[0].toUpperCase()}${label.slice(1)} ${id} was not found.`
+  );
+}
+
 function extractId(input: unknown, key?: string): string | undefined {
   if (!key || typeof input !== "object" || input === null) return undefined;
   const v = (input as Record<string, unknown>)[key];
@@ -153,7 +168,11 @@ export function wrapWithPermissionGate(
             // Owners from input paths, or from each stored part; any part
             // that doesn't resolve (missing, another org) denies.
             let owners: string[] | null = fromPaths(auth.objectPaths);
+            /** #835: the part id each owning entity was reached through, so
+             *  a refusal names what the caller sent, not the entity. */
+            const partOf = new Map<string, string>();
             if (auth.partType) {
+              const partLabel = PART_LABELS[auth.partType];
               owners = [];
               for (const id of targetIds()) {
                 const owner = id
@@ -164,10 +183,14 @@ export function wrapWithPermissionGate(
                     )
                   : null;
                 if (!owner) {
+                  // #835: absent or another org's: not found, unless the
+                  // input named no id at all (the generic denial).
+                  if (id) refused = notFoundResult(partLabel, id);
                   owners = null;
                   break;
                 }
                 owners.push(owner);
+                if (!partOf.has(owner)) partOf.set(owner, id!);
                 // A field-mapping delete also writes its counterpart's entity.
                 if (auth.counterparts) {
                   const counterpart =
@@ -175,10 +198,32 @@ export function wrapWithPermissionGate(
                       ctx.organizationId,
                       id!
                     );
-                  if (counterpart) owners.push(counterpart);
+                  if (counterpart) {
+                    owners.push(counterpart);
+                    if (!partOf.has(counterpart)) partOf.set(counterpart, id!);
+                  }
                 }
               }
             }
+            /** #835: write on every owning entity; an unreadable one is
+             *  refused as its part, so the refusal doesn't disclose the
+             *  entity's id. */
+            const ownersWritable = async (ids: string[]) => {
+              const refusal = await ParentAccessService.firstRefusal(
+                permissionSet,
+                ctx.organizationId,
+                "entity",
+                ids,
+                "write"
+              );
+              if (!refusal) return true;
+              const part = partOf.get(refusal.id);
+              refused =
+                part && auth.partType && refusal.reason === "not_found"
+                  ? notFoundResult(PART_LABELS[auth.partType], part)
+                  : refusalResult("entity", refusal);
+              return false;
+            };
             const readIds = fromPaths(auth.readPaths);
             /** #832: every referenced object (a mapping's column
              *  definition) must be readable. */
@@ -200,7 +245,7 @@ export function wrapWithPermissionGate(
               (readIds.length === 0 ||
                 (await allPass("entity", readIds, "read"))) &&
               (await referencesPass()) &&
-              (await allPass("entity", owners, "write"));
+              (await ownersWritable(owners));
           } else if (auth.mode === "create") {
             // A contained type names its containers; none at all denies.
             const containerIds = fromPaths(auth.containerPaths);
@@ -229,7 +274,24 @@ export function wrapWithPermissionGate(
                     id
                   )
                 : null;
-              if (!id || !row) {
+              // #835: unreadable == absent. Absent, another org's or
+              // unreadable answer the same not-found, and before any verb
+              // check, so no answer tells an existing id from a missing one.
+              if (
+                id &&
+                (!row ||
+                  !permissionSet.can("resource.read", {
+                    type: auth.resourceType,
+                    id,
+                    createdBy: row.createdBy,
+                  }))
+              ) {
+                refused = notFoundResult(
+                  resourceTypeLabel(auth.resourceType),
+                  id
+                );
+              }
+              if (!id || !row || refused) {
                 rows.length = 0;
                 break;
               }
@@ -244,13 +306,19 @@ export function wrapWithPermissionGate(
               (!needsContainer ||
                 (containerIds.length === rows.length &&
                   (await allPass(container, containerIds, "write")))) &&
-              rows.every((r) =>
-                permissionSet.can(action, {
+              rows.every((r) => {
+                const ok = permissionSet.can(action, {
                   type: auth.resourceType,
                   id: r.id,
                   createdBy: r.createdBy,
-                })
-              );
+                });
+                if (!ok) {
+                  refused ??= permissionDenied(
+                    `You don't have permission to ${auth.verb} ${resourceTypeLabel(auth.resourceType)} ${r.id}.`
+                  );
+                }
+                return ok;
+              });
           }
         } catch {
           allowed = false; // fail-closed
