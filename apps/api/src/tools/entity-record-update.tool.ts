@@ -36,7 +36,7 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
   slug = "entity_record_update";
   name = "Entity Record Update Tool";
   description =
-    "Updates one or more entity records' data and normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written.";
+    "Updates one or more entity records' data and normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written. Needs write permission on the record and on its entity.";
 
   get schema() {
     return InputSchema;

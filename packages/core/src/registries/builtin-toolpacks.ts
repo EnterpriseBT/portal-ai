@@ -342,7 +342,7 @@ const GIS_PACK: BuiltinToolpackSpec = {
     {
       name: "bulk_geocode_records",
       description:
-        "Geocode every address in an entity column into GeoJSON Point geometry, as an asynchronous job. Use for high-cardinality columns (≥100 rows) instead of calling geocode in a loop. Returns immediately with a jobId + a live progress widget; the target entity is locked from edits until it completes. Metered per uncached address — the first call is rejected with an estimate; surface the cost, then retry with acknowledgeCost: true after the user replies.",
+        "Geocode every address in an entity column into GeoJSON Point geometry, as an asynchronous job. Use for high-cardinality columns (≥100 rows) instead of calling geocode in a loop. Returns immediately with a jobId + a live progress widget; the target entity is locked from edits until it completes. Metered per uncached address — the first call is rejected with an estimate; surface the cost, then retry with acknowledgeCost: true after the user replies. Needs write permission on the entity.",
       parameterSchema: objectSchema(
         {
           connectorEntityId: stringField(
@@ -837,7 +837,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "entity_record_create",
       description:
-        "Creates one or more entity records with auto-normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written.",
+        "Creates one or more entity records with auto-normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written. Needs write permission on the entity; read alone is refused.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -875,7 +875,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "entity_record_update",
       description:
-        "Updates one or more entity records' data and normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written.",
+        "Updates one or more entity records' data and normalized data. Accepts 1–100 items. A geometry field takes a GeoJSON geometry object or null; any other value fails the whole call and nothing is written. Needs write permission on the record and on its entity.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -896,7 +896,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "entity_record_delete",
       description:
-        "Soft-deletes one or more entity records. Accepts 1–100 items.",
+        "Soft-deletes one or more entity records. Accepts 1–100 items. Needs delete permission on the record and write permission on its entity.",
       parameterSchema: objectSchema({ ids: stringArrayField("Record ids") }, [
         "ids",
       ]),
@@ -904,7 +904,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "connector_entity_create",
       description:
-        "Creates one or more connector entities under attached connector instances. Accepts 1–100 items. An existing key is refused; use `connector_entity_update` to change an entity.",
+        "Creates one or more connector entities under attached connector instances. Accepts 1–100 items. An existing key is refused; use `connector_entity_update` to change an entity. Needs write permission on the connector instance; read alone is refused.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -926,7 +926,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "connector_entity_update",
       description:
-        "Updates one or more connector entities' labels. Accepts 1–100 items.",
+        "Updates one or more connector entities' labels. Accepts 1–100 items. Needs write permission on the entity and on its connector instance.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -947,7 +947,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "connector_entity_delete",
       description:
-        "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items.",
+        "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items. Needs delete permission on the entity and write permission on its connector instance.",
       parameterSchema: objectSchema(
         { ids: stringArrayField("Connector entity ids") },
         ["ids"]
@@ -956,7 +956,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_create",
       description:
-        "Creates one or more field mappings between source fields and column definitions. Accepts 1–100 items. An existing mapping key is refused; use `field_mapping_update` to change it. Get valid `columnDefinitionId`s from `station_context` (the `columnDefinitions` catalog) — map an entity's columns here before creating records, or those records won't be queryable.",
+        "Creates one or more field mappings between source fields and column definitions. Accepts 1–100 items. An existing mapping key is refused; use `field_mapping_update` to change it. Get valid `columnDefinitionId`s from `station_context` (the `columnDefinitions` catalog) — map an entity's columns here before creating records, or those records won't be queryable. Needs write permission on the entity; read alone is refused.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -983,7 +983,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_update",
       description:
-        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items.",
+        "Updates one or more field mappings' source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues. A normalizedKey a curated view's filter uses can't be renamed — the call fails with the reason; edit the view's filter first. Accepts 1–100 items. Needs write permission on the mapping and on its entity.",
       parameterSchema: objectSchema(
         {
           items: {
@@ -1005,7 +1005,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "field_mapping_delete",
       description:
-        "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items.",
+        "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items. Needs delete permission on the mapping and write permission on its entity.",
       parameterSchema: objectSchema(
         { ids: stringArrayField("Field mapping ids") },
         ["ids"]
@@ -1014,7 +1014,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "transform_entity_records",
       description:
-        "Run a per-record transform across a source entity and upsert the results into one or more target entities, asynchronously. Use for high-cardinality writes (≥100 records) where calling `entity_record_create` in a loop would exhaust the agent's context. Returns a jobId and ETA; the run is tracked as a job and the entity is locked until it completes. Expensive tool dispatches require `acknowledgeCost: true`.",
+        "Run a per-record transform across a source entity and upsert the results into one or more target entities, asynchronously. Use for high-cardinality writes (≥100 records) where calling `entity_record_create` in a loop would exhaust the agent's context. Returns a jobId and ETA; the run is tracked as a job and the entity is locked until it completes. Expensive tool dispatches require `acknowledgeCost: true`. Needs write permission on every target entity and read permission on the source.",
       parameterSchema: objectSchema(
         {
           sourceConnectorEntityId: stringField(

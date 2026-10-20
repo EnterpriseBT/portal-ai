@@ -29,7 +29,7 @@ export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_update";
   name = "Connector Entity Update Tool";
   description =
-    "Updates one or more connector entities' labels. Accepts 1–100 items.";
+    "Updates one or more connector entities' labels. Accepts 1–100 items. Needs write permission on the entity and on its connector instance.";
 
   get schema() {
     return InputSchema;

@@ -237,6 +237,17 @@ describe("buildSystemPrompt — entity management notes", () => {
     expect(prompt).toContain("_connector_entity_id");
   });
 
+  // #829: a child write needs write on its parent; the gate answers with one
+  // of two codes, and the agent relays each as what it is.
+  it("explains the two parent refusals and not to retry them", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["entity_management"] })
+    );
+    expect(prompt).toContain("TOOL_TARGET_NOT_FOUND");
+    expect(prompt).toContain("TOOL_PERMISSION_DENIED");
+    expect(prompt).toContain("write permission on the entity");
+  });
+
   it("documents normalizedKey concept", () => {
     const prompt = buildSystemPrompt(
       makeContext({ effectiveToolPacks: ["entity_management"] })

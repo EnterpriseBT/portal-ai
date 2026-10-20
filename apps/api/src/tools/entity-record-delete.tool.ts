@@ -28,7 +28,8 @@ const InputSchema = z.object({
 export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
   slug = "entity_record_delete";
   name = "Entity Record Delete Tool";
-  description = "Soft-deletes one or more entity records. Accepts 1–100 items.";
+  description =
+    "Soft-deletes one or more entity records. Accepts 1–100 items. Needs delete permission on the record and write permission on its entity.";
 
   get schema() {
     return InputSchema;

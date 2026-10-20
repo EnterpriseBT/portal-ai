@@ -268,7 +268,7 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
     "      [tool call with acknowledgeCost: true] ← WRONG. Question wasn't answered yet.\n\n" +
     "The user MUST respond between the rejection and the retry. The two tool calls live in " +
     "different turns. If you find yourself about to make the second call in the same turn, stop " +
-    "and end the turn instead.";
+    "and end the turn instead. Needs write permission on every target entity and read permission on the source.";
 
   get schema() {
     return InputSchema;

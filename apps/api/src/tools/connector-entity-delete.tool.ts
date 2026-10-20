@@ -24,7 +24,7 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_delete";
   name = "Connector Entity Delete Tool";
   description =
-    "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items.";
+    "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items. Needs delete permission on the entity and write permission on its connector instance.";
 
   get schema() {
     return InputSchema;

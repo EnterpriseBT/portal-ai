@@ -100,7 +100,7 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
     "target entity is locked from edits until it completes.\n\n" +
     "**Metered-cost confirmation gate.** Geocoding bills per uncached address. The first call is rejected " +
     "with an estimate; surface the cost to the user, and only after they reply retry with " +
-    "`acknowledgeCost: true`. Cached addresses are free.";
+    "`acknowledgeCost: true`. Cached addresses are free. Needs write permission on the entity.";
 
   get schema() {
     return InputSchema;

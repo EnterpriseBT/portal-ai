@@ -50,7 +50,7 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_create";
   name = "Connector Entity Create Tool";
   description =
-    "Creates one or more connector entities under attached connector instances. Accepts 1–100 items. An existing key is refused; use `connector_entity_update` to change an entity.";
+    "Creates one or more connector entities under attached connector instances. Accepts 1–100 items. An existing key is refused; use `connector_entity_update` to change an entity. Needs write permission on the connector instance; read alone is refused.";
 
   get schema() {
     return InputSchema;
