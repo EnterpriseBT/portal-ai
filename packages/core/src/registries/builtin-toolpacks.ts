@@ -1738,7 +1738,9 @@ const CAPABILITIES: Record<string, ToolCapability> = {
  * Per-tool authorization descriptors for the per-caller tool-authorization gate
  * (#629). One entry per data-plane **write** tool; the gate reads it to check
  * each write per object (create → type-level; batch → every bounded item; bulk
- * → the scan tool self-scopes via `visibilityPredicate`). Tools absent here are
+ * → class-level). On a child type each also needs write on the parent (#829):
+ * create/bulk name the parent ids in `parentPaths`, batch reads them off the
+ * stored rows. Tools absent here are
  * not data-plane writes the gate pre-flights — read/pure tools, and the
  * `rbac_management` tools (authorized by their own service, surfaced by the
  * gate's catch-403). A guard test asserts every `writes[]` tool is covered.
@@ -1748,6 +1750,7 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     verb: "write",
     resourceType: "entity_record",
     mode: "create",
+    parentPaths: ["items[].connectorEntityId"],
     lock: { target: "record", itemsArg: "items", idField: "connectorEntityId" },
   },
   entity_record_update: {
@@ -1770,6 +1773,7 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     verb: "write",
     resourceType: "entity",
     mode: "create",
+    parentPaths: ["items[].connectorInstanceId"],
     lock: {
       target: "connectorInstance",
       itemsArg: "items",
@@ -1804,6 +1808,7 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
     verb: "write",
     resourceType: "field_mapping",
     mode: "create",
+    parentPaths: ["items[].connectorEntityId"],
     lock: {
       target: "fieldMapping",
       itemsArg: "items",
@@ -1836,18 +1841,22 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
       resolve: "fieldMappingEntity",
     },
   },
-  // Unbounded scans over an entity — self-scope via visibilityPredicate (slice
-  // 2b); the gate does not pre-flight them.
+  // Unbounded scans over an entity. The gate pre-flights the class-level write
+  // and, through parentPaths/readPaths, write on every target entity and read
+  // on a transform's source (#829).
   bulk_geocode_records: {
     verb: "write",
     resourceType: "entity_record",
     mode: "bulk",
+    parentPaths: ["connectorEntityId"],
     lock: { enqueues: "bulk_geocode", entityIdArgs: ["connectorEntityId"] },
   },
   transform_entity_records: {
     verb: "write",
     resourceType: "entity_record",
     mode: "bulk",
+    parentPaths: ["expression.writes[].targetConnectorEntityId"],
+    readPaths: ["sourceConnectorEntityId"],
     lock: {
       enqueues: "bulk_transform",
       entityIdArgs: [

@@ -2,6 +2,7 @@ import {
   ToolCapabilitySchema,
   deriveToolRole,
   customToolCapabilityError,
+  ToolAuthorizationSchema,
   type ToolCapability,
 } from "../../models/tool-capability.model.js";
 
@@ -355,5 +356,64 @@ describe("customToolCapabilityError", () => {
         { allowedConsumptionModes: ["none", "bounded", "streaming"] }
       )
     ).toBeNull();
+  });
+});
+
+// #829: a child write needs write on its parent, so a create/bulk descriptor on
+// a child type names where the parent ids are.
+describe("ToolAuthorizationSchema — parent paths (#829)", () => {
+  const lock = {
+    target: "record",
+    itemsArg: "items",
+    idField: "connectorEntityId",
+  } as const;
+
+  it("rejects a create on a child type without parentPaths", () => {
+    expect(
+      ToolAuthorizationSchema.safeParse({
+        verb: "write",
+        resourceType: "field_mapping",
+        mode: "create",
+        lock,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects parentPaths on a batch descriptor", () => {
+    expect(
+      ToolAuthorizationSchema.safeParse({
+        verb: "write",
+        resourceType: "entity_record",
+        mode: "batch",
+        itemsArg: "items",
+        idField: "entityRecordId",
+        parentPaths: ["items[].connectorEntityId"],
+        lock,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects readPaths off bulk", () => {
+    expect(
+      ToolAuthorizationSchema.safeParse({
+        verb: "write",
+        resourceType: "entity_record",
+        mode: "create",
+        parentPaths: ["items[].connectorEntityId"],
+        readPaths: ["sourceConnectorEntityId"],
+        lock,
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts a create on a non-child type without parentPaths", () => {
+    expect(
+      ToolAuthorizationSchema.safeParse({
+        verb: "write",
+        resourceType: "station",
+        mode: "create",
+        lock,
+      }).success
+    ).toBe(true);
   });
 });

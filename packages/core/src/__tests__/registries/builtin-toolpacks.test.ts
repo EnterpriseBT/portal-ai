@@ -3,7 +3,13 @@ import {
   BUILTIN_TOOLPACK_BY_SLUG,
   BuiltinToolpackSlugSchema,
   isBuiltinToolpackSlug,
+  TOOL_AUTHORIZATION,
 } from "../../registries/builtin-toolpacks.js";
+import {
+  CHILD_RESOURCE_PARENTS,
+  isChildResourceType,
+  type ChildResourceType,
+} from "../../models/permission.model.js";
 import {
   ToolCapabilitySchema,
   deriveToolRole,
@@ -256,5 +262,45 @@ describe("BuiltinToolpackSlugSchema", () => {
     expect(BuiltinToolpackSlugSchema.safeParse("future_pack").success).toBe(
       false
     );
+  });
+});
+
+// #829: the gate checks write on a child's parent. A create or bulk descriptor
+// on a child type must say where the parent ids are, or the gate can't.
+describe("TOOL_AUTHORIZATION parent paths (#829)", () => {
+  const entries = Object.entries(TOOL_AUTHORIZATION);
+
+  it("every create/bulk descriptor on a child type declares parentPaths", () => {
+    const missing = entries
+      .filter(
+        ([, a]) =>
+          (a.mode === "create" || a.mode === "bulk") &&
+          isChildResourceType(a.resourceType)
+      )
+      .filter(([, a]) => !a.parentPaths?.length)
+      .map(([name]) => name);
+    expect(missing).toEqual([]);
+  });
+
+  it("every batch descriptor on a child type resolves its parent through the table", () => {
+    const batches = entries.filter(
+      ([, a]) => a.mode === "batch" && isChildResourceType(a.resourceType)
+    );
+    expect(batches.length).toBeGreaterThan(0);
+    for (const [name, a] of batches) {
+      expect([name, a.parentPaths]).toEqual([name, undefined]);
+      expect(
+        CHILD_RESOURCE_PARENTS[a.resourceType as ChildResourceType]
+      ).toBeDefined();
+    }
+  });
+
+  it("transform reads its source and writes its targets' parents", () => {
+    expect(TOOL_AUTHORIZATION.transform_entity_records?.readPaths).toEqual([
+      "sourceConnectorEntityId",
+    ]);
+    expect(TOOL_AUTHORIZATION.transform_entity_records?.parentPaths).toEqual([
+      "expression.writes[].targetConnectorEntityId",
+    ]);
   });
 });

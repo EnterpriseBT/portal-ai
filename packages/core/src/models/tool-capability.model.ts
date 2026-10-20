@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   PermissionResourceTypeSchema,
+  isChildResourceType,
   type PermissionResourceType,
 } from "./permission.model.js";
 import { JobTypeEnum, LockTargetKindSchema } from "./job.model.js";
@@ -362,6 +363,16 @@ export const ToolAuthorizationSchema = z
     itemsArg: z.string().optional(),
     /** `batch`: the id key within each item. */
     idField: z.string().optional(),
+    /**
+     * #829: input paths naming the parent ids, for `create` and `bulk` on a
+     * child type (`CHILD_RESOURCE_PARENTS`); the caller needs write on each.
+     * `single`/`batch` never declare it: their parent comes from the stored
+     * row, never from input. Dotted keys; `[]` fans out over an array.
+     */
+    parentPaths: z.array(z.string()).min(1).optional(),
+    /** #829, `bulk` only: input paths naming entities the tool only reads
+     *  (each must be readable). */
+    readPaths: z.array(z.string()).min(1).optional(),
     /** #769: what the job lock checks for this tool. */
     lock: ToolLockSchema,
   })
@@ -370,7 +381,20 @@ export const ToolAuthorizationSchema = z
       (a.mode === "single") === (a.targetIdArg != null) &&
       (a.mode === "batch") === (a.itemsArg != null && a.idField != null),
     { message: "single needs targetIdArg; batch needs itemsArg + idField" }
-  );
+  )
+  .refine(
+    (a) =>
+      (a.parentPaths != null) ===
+      ((a.mode === "create" || a.mode === "bulk") &&
+        isChildResourceType(a.resourceType)),
+    {
+      message:
+        "parentPaths is required on a create/bulk child descriptor and allowed nowhere else",
+    }
+  )
+  .refine((a) => a.readPaths == null || a.mode === "bulk", {
+    message: "readPaths is allowed only on bulk",
+  });
 export type ToolAuthorization = z.infer<typeof ToolAuthorizationSchema>;
 
 /**
