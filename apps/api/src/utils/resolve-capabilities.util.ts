@@ -92,22 +92,10 @@ export interface StationInstanceCapability {
 export async function resolveStationCapabilities(
   stationId: string
 ): Promise<StationInstanceCapability[]> {
-  // #599: a station's data attachment is its curated views (`station_views`):
-  // station_views → curated_view → connector_entity → connector_instance.
-  // #824: writes also go through the connectors attached to the station
-  // directly (`station_instances`), which is what the write tools check
-  // (`assertStationScope`, the entity-create tool). Counting only the views
-  // made a station with none lose every write tool its connectors allow.
-  const [viewInstanceIds, links] = await Promise.all([
-    instanceIdsForStation(stationId),
-    stationInstancesRepo.findByStationId(stationId),
-  ]);
-  const instanceIds = [
-    ...new Set([
-      ...links.map((l) => l.connectorInstanceId),
-      ...viewInstanceIds,
-    ]),
-  ];
+  // #599 / #824 / #827: the station's reach — its direct connectors and the
+  // connectors behind its views — is the one definition the write gate and
+  // the write tools' per-item scope checks share.
+  const { instanceIds } = await stationReach(stationId);
   if (instanceIds.length === 0) return [];
 
   // Load definitions for all instances
@@ -147,6 +135,45 @@ export async function resolveStationCapabilities(
 }
 
 /**
+ * #827: what a station reaches.
+ * - `directInstanceIds`: connectors attached to the station directly
+ *   (`station_instances`).
+ * - `entityIds`: entities behind the station's live curated views (#599).
+ * - `instanceIds`: both kinds of connector, the direct ones and those behind
+ *   a view. This is what the write gate (`resolveStationCapabilities`) offers
+ *   tools for, and where the agent may create an entity.
+ *
+ * An existing entity is in reach when its connector is attached directly or
+ * it is itself behind a view (`assertStationScope`). A view on one entity
+ * doesn't put that connector's other entities in reach. Reach isn't
+ * permission: every write is still authorized per call by the permission
+ * gate (#829).
+ */
+export async function stationReach(stationId: string): Promise<{
+  instanceIds: string[];
+  directInstanceIds: string[];
+  entityIds: string[];
+}> {
+  const [viewed, links] = await Promise.all([
+    stationViewsRepo.findReachByStationId(stationId),
+    stationInstancesRepo.findByStationId(stationId),
+  ]);
+  const directInstanceIds = [
+    ...new Set(links.map((l) => l.connectorInstanceId)),
+  ];
+  return {
+    directInstanceIds,
+    entityIds: [...new Set(viewed.map((v) => v.connectorEntityId))],
+    instanceIds: [
+      ...new Set([
+        ...directInstanceIds,
+        ...viewed.map((v) => v.connectorInstanceId),
+      ]),
+    ],
+  };
+}
+
+/**
  * The connector-entity ids in scope for a station — the entities behind the
  * station's attached curated views (#599). Dedup'd. The single source both
  * capability resolvers derive from, replacing the `station_instances` fan-out.
@@ -161,22 +188,12 @@ async function entityIdsForStation(stationId: string): Promise<string[]> {
   return [...new Set(views.filter(Boolean).map((v) => v!.connectorEntityId))];
 }
 
-/** The connector-instance ids behind a station's attached views (#599). */
-async function instanceIdsForStation(stationId: string): Promise<string[]> {
-  const entityIds = await entityIdsForStation(stationId);
-  if (entityIds.length === 0) return [];
-  const entities = await Promise.all(
-    entityIds.map((id) => connectorEntitiesRepo.findById(id))
-  );
-  return [
-    ...new Set(entities.filter(Boolean).map((e) => e!.connectorInstanceId)),
-  ];
-}
-
 /**
- * Assert that a connector entity belongs to a connector instance that is
- * attached to the given station. Throws if the entity does not exist or
- * its instance is not linked to the station.
+ * Assert that a connector entity is within the station's reach
+ * ({@link stationReach}): its connector is attached directly, or the entity
+ * itself is behind one of the station's views. Throws if the entity does not
+ * exist or the station doesn't reach it. Two queries, whatever the station's
+ * size.
  */
 export async function assertStationScope(
   stationId: string,
@@ -191,12 +208,11 @@ export async function assertStationScope(
     );
   }
 
-  const stationLinks = await stationInstancesRepo.findByStationId(stationId);
-  const attachedInstanceIds = new Set(
-    stationLinks.map((l) => l.connectorInstanceId)
-  );
-
-  if (!attachedInstanceIds.has(entity.connectorInstanceId)) {
+  const reach = await stationReach(stationId);
+  if (
+    !reach.directInstanceIds.includes(entity.connectorInstanceId) &&
+    !reach.entityIds.includes(entity.id)
+  ) {
     throw new ApiError(
       403,
       ApiCode.STATION_SCOPE_VIOLATION,

@@ -49,13 +49,19 @@ jest.unstable_mockModule(
 // curated_view → connector_entity → connector_instance), not station_instances.
 const mockStationViewsFindByStationId =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+// #827: station reach reads the view → entity → connector chain in one query.
+const mockStationViewsFindReach =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const mockCuratedViewFindById =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.unstable_mockModule(
   "../../db/repositories/station-views.repository.js",
   () => ({
-    stationViewsRepo: { findByStationId: mockStationViewsFindByStationId },
+    stationViewsRepo: {
+      findByStationId: mockStationViewsFindByStationId,
+      findReachByStationId: mockStationViewsFindReach,
+    },
   })
 );
 
@@ -76,6 +82,12 @@ function seedViewChain(
 ): void {
   mockStationViewsFindByStationId.mockResolvedValue(
     links.map((l, i) => ({ curatedViewId: `v-${i}` }))
+  );
+  mockStationViewsFindReach.mockResolvedValue(
+    links.map((l) => ({
+      connectorEntityId: l.entityId,
+      connectorInstanceId: l.connectorInstanceId,
+    }))
   );
   const byView = new Map(links.map((l, i) => [`v-${i}`, l.entityId]));
   const byEntity = new Map(
@@ -106,6 +118,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   // #824: no directly attached connectors unless a case seeds them.
   mockFindByStationId.mockResolvedValue([]);
+  // #827: nor any views (scope now counts them, so a stale chain would leak).
+  mockStationViewsFindByStationId.mockResolvedValue([]);
+  mockStationViewsFindReach.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -430,6 +445,55 @@ describe("assertStationScope", () => {
     ).rejects.toMatchObject({
       code: "STATION_SCOPE_VIOLATION",
     });
+  });
+});
+
+// #827: the per-item scope check uses the same reach as the write gate:
+// connectors attached directly, plus everything behind the station's views.
+describe("assertStationScope — station reach through views (#827)", () => {
+  it("passes for an entity reached only through a view", async () => {
+    seedViewChain([{ entityId: "e-view", connectorInstanceId: "ci-1" }]);
+
+    await expect(
+      assertStationScope("station-1", "e-view")
+    ).resolves.toBeUndefined();
+  });
+
+  it("refuses a sibling entity on a connector reached only through another entity's view", async () => {
+    seedViewChain([{ entityId: "e-view", connectorInstanceId: "ci-1" }]);
+    const viewLookup = mockConnEntityFindById.getMockImplementation()!;
+    mockConnEntityFindById.mockImplementation(async (id: unknown) =>
+      id === "e-sibling" ? { id, connectorInstanceId: "ci-1" } : viewLookup(id)
+    );
+
+    await expect(
+      assertStationScope("station-1", "e-sibling")
+    ).rejects.toMatchObject({ code: "STATION_SCOPE_VIOLATION" });
+  });
+
+  it("passes for an entity on a directly attached connector, with no views", async () => {
+    seedViewChain([]);
+    mockFindByStationId.mockResolvedValue([{ connectorInstanceId: "ci-1" }]);
+    mockConnEntityFindById.mockResolvedValue({
+      id: "e-1",
+      connectorInstanceId: "ci-1",
+    });
+
+    await expect(
+      assertStationScope("station-1", "e-1")
+    ).resolves.toBeUndefined();
+  });
+
+  it("refuses an entity the station reaches neither way", async () => {
+    seedViewChain([{ entityId: "e-view", connectorInstanceId: "ci-1" }]);
+    const viewLookup = mockConnEntityFindById.getMockImplementation()!;
+    mockConnEntityFindById.mockImplementation(async (id: unknown) =>
+      id === "e-far" ? { id, connectorInstanceId: "ci-far" } : viewLookup(id)
+    );
+
+    await expect(
+      assertStationScope("station-1", "e-far")
+    ).rejects.toMatchObject({ code: "STATION_SCOPE_VIOLATION" });
   });
 });
 

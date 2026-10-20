@@ -3,9 +3,13 @@
  * attachment (curated views), replacing `station_instances`.
  */
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
-import { stationViews } from "../schema/index.js";
+import {
+  connectorEntities,
+  curatedViews,
+  stationViews,
+} from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
 import type { StationViewSelect, StationViewInsert } from "../schema/zod.js";
@@ -25,6 +29,37 @@ export class StationViewsRepository extends Repository<
     client: DbClient = db
   ): Promise<StationViewSelect[]> {
     return this.findMany(eq(stationViews.stationId, stationId), {}, client);
+  }
+
+  /**
+   * #827: the entities behind a station's live views, and their connectors,
+   * in one query. Deleted attachments, views and entities don't count.
+   */
+  async findReachByStationId(
+    stationId: string,
+    client: DbClient = db
+  ): Promise<
+    Array<{ connectorEntityId: string; connectorInstanceId: string }>
+  > {
+    return (client as typeof db)
+      .selectDistinct({
+        connectorEntityId: connectorEntities.id,
+        connectorInstanceId: connectorEntities.connectorInstanceId,
+      })
+      .from(stationViews)
+      .innerJoin(curatedViews, eq(curatedViews.id, stationViews.curatedViewId))
+      .innerJoin(
+        connectorEntities,
+        eq(connectorEntities.id, curatedViews.connectorEntityId)
+      )
+      .where(
+        and(
+          eq(stationViews.stationId, stationId),
+          isNull(stationViews.deleted),
+          isNull(curatedViews.deleted),
+          isNull(connectorEntities.deleted)
+        )
+      );
   }
 
   /**
