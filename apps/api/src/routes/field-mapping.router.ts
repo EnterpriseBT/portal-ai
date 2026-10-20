@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, sql, type SQL, type Column } from "drizzle-orm";
+import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { FieldMappingModelFactory } from "@portalai/core/models";
 import {
@@ -21,7 +21,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
-import { entityRecords, fieldMappings } from "../db/schema/index.js";
+import { fieldMappings } from "../db/schema/index.js";
 import type { FieldMappingSelect } from "../db/schema/zod.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import {
@@ -30,7 +30,6 @@ import {
 } from "../services/permission.service.js";
 import type { PermissionSet } from "../services/permission-set.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
-import { ObjectAccessService } from "../services/object-access.service.js";
 import { ParentAccessService } from "../services/parent-access.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
@@ -44,9 +43,11 @@ const logger = createLogger({ module: "field-mapping" });
 export const fieldMappingRouter = Router();
 
 /**
- * #692: load a field mapping the caller may read. Another org's mapping, a
- * missing one and one the caller can't read are the same 404 (unreadable ==
- * absent), so an id reveals nothing. Shared by every by-id read route.
+ * #692: load a field mapping the caller may read. #829: a mapping is part of
+ * its entity, so it's readable iff the entity is. Another org's mapping, a
+ * missing one and one whose entity the caller can't read are the same 404
+ * (unreadable == absent), so an id reveals nothing. Shared by every by-id
+ * route; writes then check the entity for write.
  */
 async function loadReadableMapping(
   ctx: PermissionContext,
@@ -54,23 +55,24 @@ async function loadReadableMapping(
   preloadedSet?: PermissionSet
 ): Promise<FieldMappingSelect> {
   const mapping = await DbService.repository.fieldMappings.findById(id);
-  if (
-    !mapping ||
-    mapping.organizationId !== ctx.organizationId ||
-    !(preloadedSet ?? (await PermissionService.loadSet(ctx))).can(
-      "resource.read",
-      {
-        type: "field_mapping",
-        id: mapping.id,
-        createdBy: mapping.createdBy,
-      }
-    )
-  ) {
-    throw new ApiError(
+  const notFound = () =>
+    new ApiError(
       404,
       ApiCode.FIELD_MAPPING_NOT_FOUND,
       "Field mapping not found"
     );
+  if (!mapping || mapping.organizationId !== ctx.organizationId) {
+    throw notFound();
+  }
+  try {
+    await ParentAccessService.loadOwner(
+      preloadedSet ?? (await PermissionService.loadSet(ctx)),
+      ctx.organizationId,
+      mapping.connectorEntityId,
+      "read"
+    );
+  } catch {
+    throw notFound();
   }
   return mapping;
 }
@@ -180,14 +182,15 @@ fieldMappingRouter.get(
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(fieldMappings.organizationId, organizationId)];
-      // #692: only the mappings the caller may read (own, system-created, or
-      // in a curated view shared with them).
+      // #829: a mapping is readable iff its entity is.
       const set = await PermissionService.loadSet(req.application!.metadata);
-      const visibility = set.visibilityPredicate("field_mapping", {
-        createdByCol: fieldMappings.createdBy,
-        idCol: fieldMappings.id,
-      });
-      if (visibility) filters.push(visibility);
+      filters.push(
+        ParentAccessService.readableOwnerPredicate(
+          set,
+          organizationId,
+          fieldMappings.connectorEntityId
+        )
+      );
 
       if (search) {
         filters.push(ilike(fieldMappings.sourceField, `%${search}%`));
@@ -233,7 +236,7 @@ fieldMappingRouter.get(
         | FieldMappingListWithConnectorEntityResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
         // #688: each row with the caller's capabilities.
-        fieldMappings: (await ObjectCapabilitiesService.attachChildren(
+        fieldMappings: (await ObjectCapabilitiesService.attachParts(
           set,
           req.application!.metadata.organizationId,
           "field_mapping",
@@ -333,7 +336,7 @@ fieldMappingRouter.get(
         fieldMapping: {
           // #829: a child's write/delete also need its parent writable.
           ...(
-            await ObjectCapabilitiesService.attachChildren(
+            await ObjectCapabilitiesService.attachParts(
               set,
               req.application!.metadata.organizationId,
               "field_mapping",
@@ -417,7 +420,7 @@ fieldMappingRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: The caller lacks permission for this field mapping change (#685), or write on its connector entity (#829)
+ *         description: "The caller can read the connector entity but not write it (#829, a mapping is part of its entity)"
  *       404:
  *         description: Connector entity or column definition not found
  *         content:
@@ -448,22 +451,15 @@ fieldMappingRouter.post(
       }
 
       // #685: the connector entity must be in the caller's org and readable
-      // by them (unreadable == absent), and creating a mapping is an owned
-      // write. It used to accept any entity id, across orgs.
-      // #829: and the caller needs write on the entity (403 if only read).
+      // by them (unreadable == absent). #829: a mapping is part of its
+      // entity, so creating one needs write on the entity (403 if only read).
       const caller = req.application!.metadata;
-      const set = await PermissionService.loadSet(caller);
-      await ParentAccessService.loadWritableParent(
-        set,
+      await ParentAccessService.loadOwner(
+        await PermissionService.loadSet(caller),
         caller.organizationId,
-        "field_mapping",
-        parsed.data.connectorEntityId
+        parsed.data.connectorEntityId,
+        "write"
       );
-
-      set.check("resource.write", {
-        type: "field_mapping",
-        createdBy: caller.userId,
-      });
 
       // Assert write capability on the parent connector instance
       await assertWriteCapability(parsed.data.connectorEntityId);
@@ -664,7 +660,7 @@ fieldMappingRouter.post(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: The caller lacks permission for this field mapping change (#685), or write on its connector entity (#829)
+ *         description: "The caller can read the connector entity but not write it (#829, a mapping is part of its entity)"
  *       409:
  *         description: FIELD_MAPPING_KEY_IN_VIEW — the rename changes a normalizedKey a curated view's filter uses (#802)
  *         content:
@@ -701,30 +697,17 @@ fieldMappingRouter.patch(
         );
       }
 
-      // #685: the mapping must be in the caller's org (it used to resolve
-      // any mapping by id), and changing it needs write on it.
+      // #685: the mapping must be in the caller's org; #713: one the caller
+      // can't read answers 404, like its GET. #829: changing anyone's mapping
+      // needs write on its entity.
       const caller = req.application!.metadata;
-      // #713: one the caller can't read answers 404, like its GET.
       const set = await PermissionService.loadSet(caller);
-      const existing = ObjectAccessService.loadForVerb(
+      const existing = await loadReadableMapping(caller, id, set);
+      await ParentAccessService.loadOwner(
         set,
         caller.organizationId,
-        "field_mapping",
-        await DbService.repository.fieldMappings.findById(id),
-        "write",
-        () =>
-          new ApiError(
-            404,
-            ApiCode.FIELD_MAPPING_NOT_FOUND,
-            "Field mapping not found"
-          )
-      );
-      // #829: changing a mapping needs write on its entity.
-      await ParentAccessService.loadWritableParent(
-        set,
-        caller.organizationId,
-        "field_mapping",
-        existing.connectorEntityId
+        existing.connectorEntityId,
+        "write"
       );
 
       // Assert write capability on the parent connector instance
@@ -1023,15 +1006,17 @@ fieldMappingRouter.get(
               existing.refEntityKey,
               existing.refNormalizedKey
             );
-          // #692: only a counterpart the caller may read.
-          if (
-            counterpart &&
-            permissions.can("resource.read", {
-              type: "field_mapping",
-              id: counterpart.id,
-              createdBy: counterpart.createdBy,
-            })
-          ) {
+          // #692: only a counterpart the caller may read (#829: its entity).
+          const counterpartReadable =
+            counterpart != null &&
+            (
+              await ParentAccessService.ownerCapabilities(
+                permissions,
+                existing.organizationId,
+                [counterpart.connectorEntityId]
+              )
+            ).get(counterpart.connectorEntityId)?.read === true;
+          if (counterpart && counterpartReadable) {
             counterpartResult = {
               id: counterpart.id,
               sourceField: counterpart.sourceField,
@@ -1111,7 +1096,7 @@ fieldMappingRouter.get(
  *                           type: integer
  *                           description: Number of entity group members that were cascade-deleted
  *       403:
- *         description: The caller lacks permission for this field mapping change (#685), or write on its connector entity (#829)
+ *         description: "The caller can read the connector entity but not write it (#829, a mapping is part of its entity)"
  *       409:
  *         description: >
  *           FIELD_MAPPING_DELETE_IN_VIEW — a curated view projects this mapping
@@ -1141,29 +1126,20 @@ fieldMappingRouter.delete(
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
 
-      // #685: resolve the mapping within the caller's org first. This used
-      // to find any mapping by id, across orgs, before anything else.
-      // #713: one the caller can't read answers 404, like its GET.
+      // #685: resolve the mapping within the caller's org first; #713: one
+      // the caller can't read answers 404, like its GET. #829: deleting
+      // anyone's mapping needs write on its entity.
       const set = await PermissionService.loadSet(req.application!.metadata);
-      const mappingToDelete = ObjectAccessService.loadForVerb(
-        set,
-        organizationId,
-        "field_mapping",
-        await DbService.repository.fieldMappings.findById(id),
-        "delete",
-        () =>
-          new ApiError(
-            404,
-            ApiCode.FIELD_MAPPING_NOT_FOUND,
-            "Field mapping not found"
-          )
+      const mappingToDelete = await loadReadableMapping(
+        req.application!.metadata,
+        id,
+        set
       );
-      // #829: deleting a mapping needs write on its entity.
-      await ParentAccessService.loadWritableParent(
+      await ParentAccessService.loadOwner(
         set,
         organizationId,
-        "field_mapping",
-        mappingToDelete.connectorEntityId
+        mappingToDelete.connectorEntityId,
+        "write"
       );
 
       // Assert write capability on the parent connector instance.
@@ -1346,52 +1322,29 @@ fieldMappingRouter.get(
       // neither is limited — an entity of any size is loaded whole. Fetching
       // the raw `data` blob per row on top of that is the #423/#425 OOM
       // shape; drop it from the projection.
-      // #694: reading the mapping is not reading its records. Side A is the
-      // caller's readable records only, so the ids and counts returned never
-      // describe a record they can't read. Side B is loaded whole, because a
-      // counterpart the caller can't read still exists: an A record pointing
-      // at one is not checkable, which is not the same as broken.
-      const recordVisibility = set.visibilityPredicate("entity_record", {
-        createdByCol: entityRecords.createdBy,
-        idCol: entityRecords.id,
-      });
-      const [recordsA, recordsB, readableBSourceIds] = await Promise.all([
+      // #829: records are parts of their entity. Side A's entity is readable
+      // (the mapping is), so every A record is. Side B is loaded whole, because
+      // a counterpart the caller can't read still exists: an A record pointing
+      // at one is not checkable, which is not the same as broken. Undefined =
+      // the caller reads every B record; an empty set = none.
+      const bReadable =
+        (
+          await ParentAccessService.ownerCapabilities(
+            set,
+            mapping.organizationId,
+            [counterpart.connectorEntityId]
+          )
+        ).get(counterpart.connectorEntityId)?.read === true;
+      const readableBSourceIds = bReadable ? undefined : new Set<string>();
+      const [recordsA, recordsB] = await Promise.all([
         DbService.repository.entityRecords.findHydratedMany(
           mapping.connectorEntityId,
-          {
-            includeData: false,
-            where: recordVisibility
-              ? and(
-                  eq(
-                    entityRecords.connectorEntityId,
-                    mapping.connectorEntityId
-                  ),
-                  recordVisibility
-                )
-              : undefined,
-          }
+          { includeData: false }
         ),
         DbService.repository.entityRecords.findHydratedMany(
           counterpart.connectorEntityId,
           { includeData: false }
         ),
-        // Undefined = the caller reads every B record.
-        recordVisibility
-          ? DbService.repository.entityRecords
-              .findHydratedMany(counterpart.connectorEntityId, {
-                includeData: false,
-                // Only the source ids are needed; skip the rehydration.
-                normalizedDataProjection: sql`'{}'::jsonb`,
-                where: and(
-                  eq(
-                    entityRecords.connectorEntityId,
-                    counterpart.connectorEntityId
-                  ),
-                  recordVisibility
-                ),
-              })
-              .then((rows) => new Set(rows.map((r) => r.sourceId)))
-          : Promise.resolve(undefined),
       ]);
 
       // 7. Build a lookup: entity B sourceId → set of IDs in its reference-array field

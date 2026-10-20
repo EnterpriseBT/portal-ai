@@ -28,14 +28,16 @@ import {
 } from "../utils/application.util.js";
 
 /**
- * #829: a child write needs write on its parent. Read means read only. For
- * each child type (field mapping and record under an entity, entity under a
- * connector instance) and each state of the parent, as a plain member:
- * - unreadable (another member's): 404 with the parent's code, nothing written;
+ * #829: objects and parts. Records and field mappings are parts of their
+ * entity, with no permission of their own: the entity's governs them. An
+ * entity is contained in its connector instance, so creating or deleting one
+ * needs write on the instance; editing it needs only its own write. For each
+ * state of the entity (or instance), as a plain member:
+ * - unreadable (another member's): 404 (the object's code), nothing written;
  * - read-only (system-owned, which members read): 403 PERMISSION_DENIED;
  * - writable (the member's own): the write succeeds.
- * A create, an update and a delete of the member's own child all follow the
- * parent, and the child's GET `capabilities` agree with what the routes do.
+ * Parts are created by **someone else** (the owner), so only the entity
+ * decides; GET `capabilities` agree with what the routes do.
  */
 
 const OWNER_SUB = "auth0|cwp-owner";
@@ -74,7 +76,7 @@ const suffix = () => generateId().replace(/-/g, "").slice(0, 8);
 type ParentState = "unreadable" | "readOnly" | "writable";
 const STATES: ParentState[] = ["unreadable", "readOnly", "writable"];
 
-describe("child writes require write on the parent (#829)", () => {
+describe("objects and parts (#829)", () => {
   let connection: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle>;
   let fx: TenancyFixture;
@@ -187,12 +189,17 @@ describe("child writes require write on the parent (#829)", () => {
     }
   };
 
-  /** A child's GET capabilities agree with the routes: write/delete only
-   *  under a writable parent; a GET that 404s offers nothing. */
+  /** A GET's capabilities agree with the routes; a GET that 404s offers
+   *  nothing. `expected` is what a readable object's capabilities are. */
   const expectCapabilities = (
     res: request.Response,
     state: ParentState,
-    pick: (body: Record<string, unknown>) => unknown
+    pick: (body: Record<string, unknown>) => unknown,
+    expected: { read: boolean; write: boolean; delete: boolean } = {
+      read: true,
+      write: state === "writable",
+      delete: state === "writable",
+    }
   ) => {
     if (res.status === 404) {
       expect(state).toBe("unreadable");
@@ -201,8 +208,7 @@ describe("child writes require write on the parent (#829)", () => {
     expect(res.status).toBe(200);
     const caps = (pick(res.body.payload) as { capabilities: unknown })
       .capabilities;
-    const writable = state === "writable";
-    expect(caps).toEqual({ read: true, write: writable, delete: writable });
+    expect(caps).toEqual(expected);
   };
 
   beforeEach(async () => {
@@ -262,9 +268,9 @@ describe("child writes require write on the parent (#829)", () => {
   });
 
   describe.each(STATES)("field mapping, entity %s", (state) => {
-    it("create, update, delete and capabilities follow the entity", async () => {
+    it("read, create, update, delete and capabilities follow the entity", async () => {
       const entityId = await entity(parentOwner(state));
-      const existing = await mapping(entityId, fx.memberId);
+      const existing = await mapping(entityId, fx.ownerId);
       const live = () =>
         db
           .select()
@@ -278,6 +284,15 @@ describe("child writes require write on the parent (#829)", () => {
 
       const caps = await request(app).get(`/api/field-mappings/${existing}`);
       expectCapabilities(caps, state, (p) => p.fieldMapping);
+      if (state === "unreadable") {
+        expect(caps.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+      }
+      const list = await request(app).get(
+        `/api/field-mappings?connectorEntityId=${entityId}`
+      );
+      expect(
+        (list.body.payload.fieldMappings as { id: string }[]).map((m) => m.id)
+      ).toEqual(state === "unreadable" ? [] : [existing]);
 
       const create = await request(app)
         .post("/api/field-mappings")
@@ -292,7 +307,7 @@ describe("child writes require write on the parent (#829)", () => {
       const update = await request(app)
         .patch(`/api/field-mappings/${existing}`)
         .send({ sourceField: "changed", columnDefinitionId: colDefId });
-      expectOutcome(update, state, ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+      expectOutcome(update, state, ApiCode.FIELD_MAPPING_NOT_FOUND);
 
       if (state !== "writable") {
         expect(await live()).toHaveLength(1);
@@ -302,7 +317,7 @@ describe("child writes require write on the parent (#829)", () => {
       const remove = await request(app).delete(
         `/api/field-mappings/${existing}`
       );
-      expectOutcome(remove, state, ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+      expectOutcome(remove, state, ApiCode.FIELD_MAPPING_NOT_FOUND);
       expect((await live()).some((m) => m.id === existing)).toBe(
         state !== "writable"
       );
@@ -310,9 +325,9 @@ describe("child writes require write on the parent (#829)", () => {
   });
 
   describe.each(STATES)("record, entity %s", (state) => {
-    it("create, update, delete and capabilities follow the entity", async () => {
+    it("read, create, update, delete and capabilities follow the entity", async () => {
       const entityId = await entity(parentOwner(state));
-      const existing = await record(entityId, fx.memberId);
+      const existing = await record(entityId, fx.ownerId);
       const live = () =>
         db
           .select()
@@ -327,6 +342,16 @@ describe("child writes require write on the parent (#829)", () => {
 
       const caps = await request(app).get(`${records}/${existing}`);
       expectCapabilities(caps, state, (p) => p.record);
+      const list = await request(app).get(records);
+      if (state === "unreadable") {
+        expect(list.status).toBe(404);
+      } else {
+        expect(
+          (list.body.payload.records as { id: string }[]).map((r) => r.id)
+        ).toEqual([existing]);
+        const count = await request(app).get(`${records}/count`);
+        expect(count.body.payload.total).toBe(1);
+      }
 
       const create = await request(app)
         .post(records)
@@ -351,8 +376,34 @@ describe("child writes require write on the parent (#829)", () => {
     });
   });
 
+  describe.each(["unreadable", "readOnly"] as const)(
+    "entity-wide record writes, entity %s",
+    (state) => {
+      it("import, revalidate and clear need write on the entity", async () => {
+        const entityId = await entity(parentOwner(state));
+        await record(entityId, fx.ownerId);
+        const records = `/api/connector-entities/${entityId}/records`;
+        expectOutcome(
+          await request(app).post(`${records}/import`).send({ records: [] }),
+          state,
+          ApiCode.CONNECTOR_ENTITY_NOT_FOUND
+        );
+        expectOutcome(
+          await request(app).post(`${records}/revalidate`),
+          state,
+          ApiCode.CONNECTOR_ENTITY_NOT_FOUND
+        );
+        expectOutcome(
+          await request(app).delete(records),
+          state,
+          ApiCode.CONNECTOR_ENTITY_NOT_FOUND
+        );
+      });
+    }
+  );
+
   describe.each(STATES)("entity, connector %s", (state) => {
-    it("create, update, delete and capabilities follow the connector", async () => {
+    it("create and delete follow the connector; update and write don't", async () => {
       const instanceId = await instance(parentOwner(state));
       const existing = await entity(fx.memberId, instanceId);
       const live = () =>
@@ -369,7 +420,11 @@ describe("child writes require write on the parent (#829)", () => {
       const caps = await request(app).get(
         `/api/connector-entities/${existing}`
       );
-      expectCapabilities(caps, state, (p) => p.connectorEntity);
+      expectCapabilities(caps, state, (p) => p.connectorEntity, {
+        read: true,
+        write: true,
+        delete: state === "writable",
+      });
 
       const create = await request(app)
         .post("/api/connector-entities")
@@ -380,14 +435,14 @@ describe("child writes require write on the parent (#829)", () => {
         });
       expectOutcome(create, state, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
 
+      // Editing the member's own entity needs only its own write.
       const update = await request(app)
         .patch(`/api/connector-entities/${existing}`)
         .send({ label: "Changed" });
-      expectOutcome(update, state, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+      expect(update.status).toBe(200);
 
       if (state !== "writable") {
         expect(await live()).toHaveLength(1);
-        expect((await live())[0].label).toBe("Entity");
       }
 
       const remove = await request(app).delete(

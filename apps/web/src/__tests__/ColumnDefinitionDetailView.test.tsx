@@ -577,25 +577,23 @@ describe("ColumnDefinitionDetailView", () => {
       ).not.toBeInTheDocument();
     });
 
-    // #708 (spec case 18): `write` alone (e.g. an instance-only grant) isn't
-    // `create`.
-    it("hides the field mapping Create without field_mapping create (#689)", () => {
-      currentResourcePermissions = {
-        field_mapping: { write: true, create: false },
-      };
+    // #829: a mapping create needs write on its entity, which the picker
+    // decides; there's no field_mapping create rule any more.
+    it("offers the field mapping Create to anyone on the page", () => {
+      currentResourcePermissions = {};
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
       expect(
-        screen.queryByRole("button", { name: /^Create$/ })
-      ).not.toBeInTheDocument();
+        screen.getByRole("button", { name: /^Create$/ })
+      ).toBeInTheDocument();
     });
   });
 
-  // #829: a mapping is a child of its entity, so the create dialog's entity
-  // picker offers only entities the caller can write. The ref-key picker only
-  // references an entity, so it lists every readable one.
-  it("filters the mapping dialog's entity picker to writable entities", () => {
+  // #829: a mapping is part of its entity, so the create dialog's entity
+  // picker asks the server for writable entities only. The ref-key picker
+  // only references an entity, so it lists every readable one.
+  it("asks the server for writable entities in the mapping dialog's picker", () => {
     connectorEntitySearchOptions.length = 0;
     currentGetQuery = {
       data: { columnDefinition: makeColumnDefinition() },
@@ -614,15 +612,12 @@ describe("ColumnDefinitionDetailView", () => {
 
     type Opts = {
       mapItem?: unknown;
-      filterItem?: (e: { capabilities: { write: boolean } }) => boolean;
+      defaultParams?: Record<string, string>;
     };
     const opts = connectorEntitySearchOptions as Array<Opts | undefined>;
-    const picker = opts.find((o) => o?.filterItem);
-    expect(picker?.filterItem?.({ capabilities: { write: true } })).toBe(true);
-    expect(picker?.filterItem?.({ capabilities: { write: false } })).toBe(
-      false
-    );
+    const picker = opts.find((o) => o?.defaultParams);
+    expect(picker?.defaultParams).toEqual({ capability: "write" });
     const refKey = opts.find((o) => o?.mapItem);
-    expect(refKey?.filterItem).toBeUndefined();
+    expect(refKey?.defaultParams).toBeUndefined();
   });
 });

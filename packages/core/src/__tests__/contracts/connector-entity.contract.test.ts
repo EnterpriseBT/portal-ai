@@ -28,6 +28,17 @@ const validConnectorEntity = {
 // ── List request query ───────────────────────────────────────────────
 
 describe("ConnectorEntityListRequestQuerySchema", () => {
+  it("#829: accepts capability=write and nothing else", () => {
+    expect(
+      ConnectorEntityListRequestQuerySchema.parse({ capability: "write" })
+        .capability
+    ).toBe("write");
+    expect(
+      ConnectorEntityListRequestQuerySchema.safeParse({ capability: "delete" })
+        .success
+    ).toBe(false);
+  });
+
   it("should accept a valid query with connectorInstanceId", () => {
     const result = ConnectorEntityListRequestQuerySchema.safeParse({
       connectorInstanceId: "ci-1",

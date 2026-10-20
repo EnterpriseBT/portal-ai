@@ -916,8 +916,8 @@ describe("Entity Group Router", () => {
     }
 
     /** A member caller (AUTH0_ID) in an org owned by someone else, holding a
-     *  class-level `read entity_group` grant (the route's gate) but only
-     *  MemberAccess' conditional `entity_record` read (own + system). */
+     *  class-level `read entity_group` grant (the route's gate) and
+     *  MemberAccess' read on system-created entities. */
     async function seedMemberCaller() {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
@@ -995,30 +995,12 @@ describe("Entity Group Router", () => {
     // env, and system-created records are readable by members by design.)
     const OTHER_USER = "user-someone-else";
 
-    it("#658: a caller who can read the group but not the records gets no records", async () => {
+    // #829: records are parts of their entity. A caller who can read a
+    // member entity reads every record in it, whoever created the record.
+    it("#829: every record of a readable member entity resolves, whoever created it", async () => {
       const { organizationId } = await seedMemberCaller();
-      const { group } = await seedPeopleGroup(organizationId, {
+      const { group, r1, r3 } = await seedPeopleGroup(organizationId, {
         employee: OTHER_USER,
-        contact: OTHER_USER,
-      });
-
-      const res = await request(app)
-        .get(
-          `/api/entity-groups/${group.id}/resolve?linkValue=test@example.com`
-        )
-        .set("Authorization", "Bearer test-token");
-
-      expect(res.status).toBe(200);
-      expect(res.body.payload.results).toHaveLength(2);
-      for (const result of res.body.payload.results) {
-        expect(result.records).toEqual([]);
-      }
-    });
-
-    it("#658: a created_by_caller entity_record read sees only the caller's own records", async () => {
-      const { organizationId, callerId } = await seedMemberCaller();
-      const { group, r1 } = await seedPeopleGroup(organizationId, {
-        employee: callerId, // the caller created the Employees match
         contact: OTHER_USER,
       });
 
@@ -1038,7 +1020,7 @@ describe("Entity Group Router", () => {
         )
       );
       expect(byLabel.Employees).toEqual([r1.id]);
-      expect(byLabel.Contacts).toEqual([]);
+      expect(byLabel.Contacts).toEqual([r3.id]);
     });
 
     it("should return empty results array when no records match", async () => {

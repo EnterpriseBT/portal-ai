@@ -3,14 +3,15 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { PermissionContext } from "../../services/permission.service.js";
 import type { PermissionStatementSelect } from "../../db/schema/zod.js";
 
-// #829: a child's capabilities look its parent up.
+// #829: part and entity capabilities look the owning entity / container up.
 type ParentRow = { id: string; organizationId: string; createdBy: string };
+const mockInstanceFindMany = jest.fn<(ids: string[]) => Promise<ParentRow[]>>();
 const mockEntityFindMany = jest.fn<(where: unknown) => Promise<ParentRow[]>>();
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       connectorEntities: { findAuthRows: mockEntityFindMany },
-      connectorInstances: { findAuthRows: jest.fn() },
+      connectorInstances: { findAuthRows: mockInstanceFindMany },
     },
   },
 }));
@@ -171,52 +172,52 @@ describe("ObjectCapabilitiesService (#688)", () => {
   });
 });
 
-describe("ObjectCapabilitiesService.attachChildren (#829)", () => {
+describe("ObjectCapabilitiesService parts and contained objects (#829)", () => {
   const ORG = "org-1";
   beforeEach(() => {
     mockEntityFindMany.mockReset();
+    mockInstanceFindMany.mockReset();
   });
 
-  it("a member's own child under a writable parent gets everything, and no share", async () => {
+  it("a part mirrors its entity, delete = write, whoever created it", async () => {
     mockEntityFindMany.mockResolvedValue([
       { id: "e-own", organizationId: ORG, createdBy: USER },
     ]);
-    const [row] = await ObjectCapabilitiesService.attachChildren(
+    const [row] = await ObjectCapabilitiesService.attachParts(
       setFor("member"),
       ORG,
       "field_mapping",
-      [{ id: "fm-1", createdBy: USER, connectorEntityId: "e-own" }]
+      [{ id: "fm-1", createdBy: "someone-else", connectorEntityId: "e-own" }]
     );
-    expect(row.capabilities).toEqual({
-      read: true,
-      write: true,
-      delete: true,
-    });
+    expect(row.capabilities).toEqual({ read: true, write: true, delete: true });
   });
 
-  it("a member's own child under a read-only parent is read-only", async () => {
+  it("a part of a read-only entity is read-only; of an unreadable one, nothing", async () => {
     mockEntityFindMany.mockResolvedValue([
       { id: "e-sys", organizationId: ORG, createdBy: SYSTEM },
+      { id: "e-other", organizationId: ORG, createdBy: "u2" },
     ]);
-    const [row] = await ObjectCapabilitiesService.attachChildren(
+    const out = await ObjectCapabilitiesService.attachParts(
       setFor("member"),
       ORG,
       "entity_record",
-      [{ id: "r-1", createdBy: USER, connectorEntityId: "e-sys" }]
+      [
+        { id: "r-1", createdBy: USER, connectorEntityId: "e-sys" },
+        { id: "r-2", createdBy: USER, connectorEntityId: "e-other" },
+      ]
     );
-    expect(row.capabilities).toEqual({
-      read: true,
-      write: false,
-      delete: false,
-    });
+    expect(out.map((r) => r.capabilities)).toEqual([
+      { read: true, write: false, delete: false },
+      { read: false, write: false, delete: false },
+    ]);
   });
 
-  it("looks parents up once per page, keeping rows and order", async () => {
+  it("looks entities up once per page, keeping rows and order", async () => {
     mockEntityFindMany.mockResolvedValue([
       { id: "e-own", organizationId: ORG, createdBy: USER },
       { id: "e-sys", organizationId: ORG, createdBy: SYSTEM },
     ]);
-    const out = await ObjectCapabilitiesService.attachChildren(
+    const out = await ObjectCapabilitiesService.attachParts(
       setFor("member"),
       ORG,
       "field_mapping",
@@ -232,5 +233,22 @@ describe("ObjectCapabilitiesService.attachChildren (#829)", () => {
       ["b", false],
       ["c", true],
     ]);
+  });
+
+  it("an entity's delete folds in its connector's write; its write doesn't", async () => {
+    mockInstanceFindMany.mockResolvedValue([
+      { id: "ci-sys", organizationId: ORG, createdBy: SYSTEM },
+    ]);
+    const [row] = await ObjectCapabilitiesService.attachContained(
+      setFor("member"),
+      ORG,
+      "entity",
+      [{ id: "e-own", createdBy: USER, connectorInstanceId: "ci-sys" }]
+    );
+    expect(row.capabilities).toEqual({
+      read: true,
+      write: true,
+      delete: false,
+    });
   });
 });

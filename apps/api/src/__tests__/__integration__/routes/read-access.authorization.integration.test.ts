@@ -796,7 +796,7 @@ describe("Read access (#692)", () => {
     return id;
   }
 
-  it("validate-bidirectional checks only the records the caller can read", async () => {
+  it("validate-bidirectional checks every record of a readable entity, and no unreadable counterpart (#829)", async () => {
     // A member's entity A whose reference-array mapping points at the owner's
     // entity B, and B's counterpart pointing back.
     const a = await entityChain(fx.orgId, fx.memberId);
@@ -852,7 +852,8 @@ describe("Read access (#692)", () => {
     await wideTableReconcilerService.reconcileEntity(b.entityId, db as never);
 
     // Both of A's records reference a B record that doesn't exist, so both
-    // are inconsistent; only one is the member's.
+    // are inconsistent. #829: A is the member's entity, so both are theirs to
+    // check, whoever created them.
     const membersRecord = await recordOn(a.entityId, fx.memberId, "a1", {
       [nkA]: ["missing-1"],
     });
@@ -868,10 +869,10 @@ describe("Read access (#692)", () => {
     as(MEMBER_SUB);
     const asMember = await get(path);
     expect(asMember.status).toBe(200);
-    expect(asMember.body.payload.totalChecked).toBe(2);
-    expect(asMember.body.payload.inconsistentRecordIds).toEqual([
-      membersRecord,
-    ]);
+    expect(asMember.body.payload.totalChecked).toBe(3);
+    expect([...asMember.body.payload.inconsistentRecordIds].sort()).toEqual(
+      [membersRecord, ownersRecord].sort()
+    );
 
     as(OWNER_SUB);
     const asOwner = await get(path);
@@ -957,7 +958,7 @@ describe("Read access (#692)", () => {
     );
   });
 
-  it("overlap counts only records the caller can read, over member entities they can read", async () => {
+  it("overlap counts every record of the member entities the caller can read (#829)", async () => {
     const g = await mixedGroup();
     // The member's entity holds one record of theirs and one of the owner's;
     // the owner's entity holds two of the owner's.
@@ -970,8 +971,9 @@ describe("Read access (#692)", () => {
     as(MEMBER_SUB);
     const asMember = await get(path);
     expect(asMember.status).toBe(200);
-    expect(asMember.body.payload.targetRecordCount).toBe(1);
-    expect(asMember.body.payload.sourceRecordCount).toBe(1);
+    // The member reads their own entity whole, and not the owner's.
+    expect(asMember.body.payload.targetRecordCount).toBe(2);
+    expect(asMember.body.payload.sourceRecordCount).toBe(2);
 
     as(OWNER_SUB);
     const asOwner = await get(path);

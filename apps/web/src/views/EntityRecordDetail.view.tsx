@@ -49,7 +49,6 @@ import { entityRecordActionGates } from "../utils/entity-actions.util";
 import { jobLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
-import { useCapabilities } from "../utils/use-capabilities.util";
 
 // ── Related Records panel (per group) ────────────────────────────────
 
@@ -233,8 +232,8 @@ export interface EntityRecordDetailViewUIProps {
   columns: ResolvedColumn[];
   groups?: EntityGroup[];
   isWriteEnabled?: boolean;
-  /** #689: `can("entity_record.revalidate")` (re-validate covers the whole
-   *  entity). Omitted = no. */
+  /** #689: re-validate covers the whole entity, so it needs the entity's
+   *  write (#829: the record's capabilities mirror it). Omitted = no. */
   canRevalidate?: boolean;
   /** Jobs holding the connector (#689): an alert names them, and the record
    *  writes they block are disabled with the same reason. */
@@ -452,7 +451,6 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { can } = useCapabilities();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -545,7 +543,7 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
           columns={recordPayload.columns}
           groups={groupsResult.data?.entityGroups ?? []}
           isWriteEnabled={isWriteEnabled}
-          canRevalidate={can("entity_record.revalidate")}
+          canRevalidate={recordPayload.record.capabilities.write}
           runningJobs={runningJobs}
           onDelete={handleDelete}
           isDeleting={deleteMutation.isPending}

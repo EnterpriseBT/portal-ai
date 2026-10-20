@@ -51,10 +51,7 @@ import DataResult from "../components/DataResult.component";
 import { ClearEntityRecordsDialog } from "../components/ClearEntityRecordsDialog.component";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { jobLockReason } from "../utils/running-job-label.util";
-import {
-  entityDetailActionGates,
-  type RecordPermissions,
-} from "../utils/entity-actions.util";
+import { entityDetailActionGates } from "../utils/entity-actions.util";
 import { useToast } from "../utils/toast.context";
 import { sse } from "../api/sse.api";
 import { awaitJobCompletion } from "../utils/job-stream.util";
@@ -128,12 +125,6 @@ const TagAssignSelect: React.FC<TagAssignSelectProps> = ({
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
-const NO_RECORD_PERMISSIONS: RecordPermissions = {
-  create: false,
-  revalidate: false,
-  clear: false,
-};
-
 export interface BidirectionalFieldMappingRef {
   id: string;
   sourceField: string;
@@ -161,8 +152,6 @@ export interface EntityDetailViewUIProps {
   canReadTags?: boolean;
   /** Whether the connector instance has write capability. */
   isWriteEnabled?: boolean;
-  /** #689: the caller's entity-wide record permissions. Omitted = none. */
-  recordPermissions?: RecordPermissions;
   /** Called when user confirms entity deletion. */
   onDelete?: () => void;
   /** Whether the delete mutation is in progress. */
@@ -224,7 +213,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   onSearchTags,
   canReadTags,
   isWriteEnabled,
-  recordPermissions = NO_RECORD_PERMISSIONS,
   onDelete,
   isDeleting,
   deleteServerError,
@@ -260,7 +248,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   const isLockedByJob = (runningJobs?.length ?? 0) > 0;
   const gates = entityDetailActionGates({
     capabilities: entity.capabilities,
-    recordPermissions,
     isWriteEnabled: isWriteEnabled === true,
     lockedReason: jobLockReason(runningJobs ?? [], {
       kind: "connectorEntity",
@@ -665,17 +652,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const { onSearch: handleSearchTags } = sdk.entityTags.search();
-  const { can, canOnResource, capabilitiesKnown } = useCapabilities();
+  const { canOnResource, capabilitiesKnown } = useCapabilities();
   // #630: optimistic while the current-org query loads.
   const canReadTags = !capabilitiesKnown || canOnResource("tag", "read");
-  // #689: actions fail closed. Create is an owned create; re-validate and
-  // clear are entity-wide, so they take the derived capabilities that mirror
-  // their routes' unconditional class checks.
-  const recordPermissions = {
-    create: canOnResource("entity_record", "create"),
-    revalidate: can("entity_record.revalidate"),
-    clear: can("entity_record.clear"),
-  };
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -935,7 +914,6 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             onSearchTags={handleSearchTags}
             canReadTags={canReadTags}
             isWriteEnabled={isWriteEnabled}
-            recordPermissions={recordPermissions}
             onDelete={handleDelete}
             isDeleting={deleteMutation.isPending}
             deleteServerError={toServerError(deleteMutation.error)}

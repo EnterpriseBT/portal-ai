@@ -11,6 +11,7 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
+  Button,
   DataTable,
   GatedButton,
   GatedIconButton,
@@ -35,12 +36,10 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
-import { decideActionGate } from "../utils/action-gate.util";
 import { fieldMappingRowGates } from "../utils/entity-actions.util";
 import { columnDefinitionActionGates } from "../utils/column-definition-actions.util";
 import { jobLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
-import { useCapabilities } from "../utils/use-capabilities.util";
 import { TYPE_COLOR } from "../utils/column-definition-form.util";
 import { useStorage } from "../utils/storage.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
@@ -67,12 +66,6 @@ export const ColumnDefinitionDetailView: React.FC<
 > = ({ columnDefinitionId }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { canOnResource } = useCapabilities();
-  // #689: a field mapping create is an owned create; a section action, so
-  // without it Create is hidden rather than explained.
-  const createFieldMappingGate = decideActionGate({
-    allowed: canOnResource("field_mapping", "create"),
-  });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -156,12 +149,13 @@ export const ColumnDefinitionDetailView: React.FC<
     [updateMutation, queryClient, columnDefinitionId]
   );
 
-  // #829: a new mapping is a child of its entity, so the picker offers only
-  // entities the caller can write. The ref-key picker below only references
-  // an entity, so it lists every readable one.
+  // #829: a mapping is part of its entity, so creating one needs write on
+  // it, and the server lists only those entities (filtered there, so pages
+  // stay full). The ref-key picker below only references an entity, so it
+  // lists every readable one.
   const { onSearch: handleSearchConnectorEntities } =
     sdk.connectorEntities.search({
-      filterItem: (ce) => ce.capabilities.write,
+      defaultParams: { capability: "write" },
     });
   const { onSearch: handleSearchConnectorEntitiesForRefKey } =
     sdk.connectorEntities.search({
@@ -346,17 +340,19 @@ export const ColumnDefinitionDetailView: React.FC<
                     title="Field Mappings"
                     icon={<Icon name={IconName.Link} />}
                     primaryAction={
-                      createFieldMappingGate.kind === "hide" ? undefined : (
-                        <GatedButton
-                          variant="outlined"
-                          size="small"
-                          startIcon={<AddIcon />}
-                          onClick={() => setCreateFieldMappingOpen(true)}
-                          gate={createFieldMappingGate}
-                        >
-                          Create
-                        </GatedButton>
-                      )
+                      // #829: a mapping create needs write on the entity it's
+                      // created in, which the dialog's picker decides (it
+                      // offers only writable entities); the action itself is
+                      // open to anyone on the page.
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => setCreateFieldMappingOpen(true)}
+                      >
+                        Create
+                      </Button>
                     }
                   >
                     <PaginationToolbar {...mappingsPagination.toolbarProps} />

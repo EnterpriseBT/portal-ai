@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { and, eq } from "drizzle-orm";
 
 import { EntityGroupMemberModelFactory } from "@portalai/core/models";
 import {
@@ -18,7 +17,6 @@ import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
-import { entityRecords } from "../db/schema/index.js";
 
 const logger = createLogger({ module: "entity-group-member" });
 
@@ -856,22 +854,12 @@ entityGroupMemberRouter.get(
       // exposes the same keys via the field-mapping's normalized_key.
       // #433: unlimited read of a whole entity, and only `normalizedData` is
       // used — the raw `data` blob per row is pure OOM risk here.
-      // #694: counts cover only the records the caller may read.
-      const recordVisibility = set.visibilityPredicate("entity_record", {
-        createdByCol: entityRecords.createdBy,
-        idCol: entityRecords.id,
-      });
-      const readableIn = (connectorEntityId: string) =>
-        recordVisibility
-          ? and(
-              eq(entityRecords.connectorEntityId, connectorEntityId),
-              recordVisibility
-            )
-          : undefined;
+      // #829: records are parts of their entity; the target entity is
+      // readable (checked above), so all its records are.
       const targetValues =
         await DbService.repository.entityRecords.findHydratedMany(
           targetConnectorEntityId,
-          { includeData: false, where: readableIn(targetConnectorEntityId) }
+          { includeData: false }
         );
       const targetFieldKey = targetColDef.key;
       const targetSet = new Set(
@@ -903,10 +891,8 @@ entityGroupMemberRouter.get(
         const records =
           await DbService.repository.entityRecords.findHydratedMany(
             member.connectorEntityId,
-            {
-              includeData: false,
-              where: readableIn(member.connectorEntityId),
-            }
+            // #829: only members whose entity the caller can read.
+            { includeData: false }
           );
         for (const r of records) {
           const val = (r.normalizedData as Record<string, unknown>)[

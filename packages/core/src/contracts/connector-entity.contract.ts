@@ -52,6 +52,8 @@ export const ConnectorEntityListRequestQuerySchema =
     connectorInstanceIds: z.string().optional(),
     include: z.string().optional(),
     tagIds: z.string().optional(),
+    /** #829: `write` keeps only entities the caller may write. */
+    capability: z.enum(["write"]).optional(),
   });
 
 export type ConnectorEntityListRequestQuery = z.infer<

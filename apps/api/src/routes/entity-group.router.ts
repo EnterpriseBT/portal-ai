@@ -1033,7 +1033,7 @@ entityGroupRouter.get(
       }
 
       // #694: a member whose entity the caller can't read is left out, label
-      // and all; the records below are filtered on top of that.
+      // and all; #829: every record of a readable member entity is readable.
       const enrichedMembers = ObjectAccessService.readableGroupMembers(
         permissionSet,
         ctx.organizationId,
@@ -1047,14 +1047,9 @@ entityGroupRouter.get(
       const { wideTableStatementCache } =
         await import("../services/wide-table-statement.cache.js");
       const { entityRecords } = await import("../db/schema/index.js");
-      // #658: reading the group is not reading its records. Apply the same
-      // raw-record RBAC predicate as the sibling entity-record routes (#599):
-      // an admin (`*`) sees everything, a member only records they may read
-      // (e.g. `created_by_caller`), a caller with no entity_record read none.
-      const recordVisibility = permissionSet.visibilityPredicate(
-        "entity_record",
-        { createdByCol: entityRecords.createdBy, idCol: entityRecords.id }
-      );
+      // #829: records are parts of their entity, and `enrichedMembers` holds
+      // only members whose entity the caller can read, so every record of
+      // each is readable.
 
       for (const member of enrichedMembers) {
         const normalizedKey = member.fieldMapping?.normalizedKey;
@@ -1086,8 +1081,7 @@ entityGroupRouter.get(
         }
         const where = and(
           eq(entityRecords.connectorEntityId, member.connectorEntityId),
-          sql`${sql.raw(colRefBuilder("w"))} = ${linkValue}`,
-          recordVisibility ?? undefined
+          sql`${sql.raw(colRefBuilder("w"))} = ${linkValue}`
         );
 
         const records =

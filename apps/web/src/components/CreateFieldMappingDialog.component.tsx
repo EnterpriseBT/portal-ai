@@ -238,6 +238,8 @@ export const CreateFieldMappingDialog: React.FC<
           value={form.connectorEntityId || null}
           onChange={(val) => handleChange("connectorEntityId", val ?? "")}
           onSearch={onSearchConnectorEntities}
+          // #829: the picker lists only entities the caller can write.
+          noOptionsText="No entities you can edit"
           error={touched.connectorEntityId && !!errors.connectorEntityId}
           helperText={
             touched.connectorEntityId ? errors.connectorEntityId : undefined

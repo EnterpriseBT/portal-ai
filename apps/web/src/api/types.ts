@@ -13,9 +13,6 @@ export interface SearchHookOptions<
   TOption extends SelectOption = SelectOption,
 > {
   mapItem?: (item: TItem) => TOption;
-  /** Drop items the picker mustn't offer (e.g. #829: entities the caller
-   *  can't write, for a picker that creates a child under one). */
-  filterItem?: (item: TItem) => boolean;
   defaultParams?: Record<string, string>;
 }
 

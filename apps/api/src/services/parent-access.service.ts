@@ -13,6 +13,8 @@
  * `findAuthRows`, so a check never decrypts connector credentials.
  */
 
+import { and, eq, isNull, sql, type AnyColumn, type SQL } from "drizzle-orm";
+
 import {
   CHILD_RESOURCE_PARENTS,
   OBJECT_CONTAINERS,
@@ -25,6 +27,7 @@ import {
 import type { ObjectCapabilities } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { connectorEntities } from "../db/schema/index.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ObjectAccessService } from "./object-access.service.js";
@@ -128,6 +131,28 @@ export class ParentAccessService {
   ): Promise<OwnedParentRow> {
     const [entity] = await FINDERS.entity([entityId]);
     return ParentAccessService.assertOwner(set, organizationId, entity, verb);
+  }
+
+  /**
+   * A predicate on a part table's owner column: the part's entity is live, in
+   * the org and readable by the caller. For lists of parts that span entities
+   * (mappings on a column definition, records across a group's entities).
+   */
+  static readableOwnerPredicate(
+    set: PermissionSet,
+    organizationId: string,
+    ownerCol: AnyColumn
+  ): SQL {
+    const visibility = set.visibilityPredicate("entity", {
+      createdByCol: connectorEntities.createdBy,
+      idCol: connectorEntities.id,
+    });
+    const where = and(
+      eq(connectorEntities.organizationId, organizationId),
+      isNull(connectorEntities.deleted),
+      visibility
+    );
+    return sql`${ownerCol} IN (SELECT ${connectorEntities.id} FROM ${connectorEntities} WHERE ${where})`;
   }
 
   /**
