@@ -7,6 +7,7 @@ import { interpret } from "@portalai/spreadsheet-parsing";
 import type { Workbook, WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { DbService } from "./db.service.js";
+import type { PermissionSet } from "./permission-set.js";
 import {
   createInterpretDeps,
   type CreateInterpretDepsOptions,
@@ -28,12 +29,16 @@ export class LayoutPlanInterpretService {
     hints: RegionHint[],
     orgId: string,
     userId: string,
+    permissions: PermissionSet,
     depsOverrides?: Omit<
       CreateInterpretDepsOptions,
       "columnDefinitionCatalog" | "defaultColumnDefinitionId"
     >
   ): Promise<LayoutPlan> {
-    const catalog = await LayoutPlanInterpretService.loadCatalog(orgId);
+    const catalog = await LayoutPlanInterpretService.loadCatalog(
+      orgId,
+      permissions
+    );
     // Resolve the org's seeded `text` system ColumnDefinition; the parser
     // uses it as the landing spot for any candidate the classifier can't
     // confidently match, so the review step never shows an unbound field.
@@ -57,16 +62,26 @@ export class LayoutPlanInterpretService {
   }
 
   /**
-   * Load the org's `ColumnDefinition` catalog in the shape the parser's
-   * classifier expects. Exposed separately so tests can override it via
-   * module mocks without stubbing the whole `analyze` pipeline.
+   * Load the `ColumnDefinition` catalog in the shape the parser's classifier
+   * expects. Exposed separately so tests can override it via module mocks
+   * without stubbing the whole `analyze` pipeline. #834: only the definitions
+   * the caller can read, since a classified binding becomes a mapping's
+   * reference.
    */
   static async loadCatalog(
-    orgId: string
+    orgId: string,
+    permissions: PermissionSet
   ): Promise<ColumnDefinitionCatalogEntry[]> {
     const rows =
       await DbService.repository.columnDefinitions.findByOrganizationId(orgId);
-    return rows.map((row) => ({
+    const readable = rows.filter((row) =>
+      permissions.can("resource.read", {
+        type: "column_definition",
+        id: row.id,
+        createdBy: row.createdBy,
+      })
+    );
+    return readable.map((row) => ({
       id: row.id,
       label: row.label,
       normalizedKey: row.key,

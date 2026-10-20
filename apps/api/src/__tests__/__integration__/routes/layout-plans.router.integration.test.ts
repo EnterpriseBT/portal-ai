@@ -530,6 +530,49 @@ describe("Layout Plans Draft Router", () => {
   }
 
   describe("POST /api/layout-plans/commit", () => {
+    it("#834: a plan mapping another org's column definition → 404 COLUMN_DEFINITION_NOT_FOUND, and no instance is created", async () => {
+      const other = await seedUserAndOrg(
+        db as Db,
+        `auth0|lp-834-other-${generateId()}`
+      );
+      const foreignId = await seedColumnDefinition(
+        db as Db,
+        other.organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        userId
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "Foreign reference",
+          plan: makePlan(foreignId, nameId),
+          uploadSessionId,
+        });
+
+      expect([res.status, res.body.code]).toEqual([
+        404,
+        ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      ]);
+      const stray = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.name, "Foreign reference"));
+      expect(stray).toHaveLength(0);
+    });
+
     it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {
       const emailId = await seedColumnDefinition(
         db as Db,

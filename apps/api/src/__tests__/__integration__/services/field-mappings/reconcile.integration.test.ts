@@ -325,6 +325,51 @@ describe("reconcileFieldMappings — integration", () => {
 
   // ── Baseline + override happy paths ────────────────────────────────
 
+  describe("column definitions outside the org catalog (#834)", () => {
+    it("refuses a binding whose column definition isn't in the org catalog, writing nothing", async () => {
+      await expect(
+        reconcileFieldMappings(
+          {
+            connectorEntityId: subjectEntityId,
+            organizationId: orgId,
+            userId,
+            bindings: [
+              { columnDefinitionId: colStringId, sourceField: "Email" },
+              { columnDefinitionId: generateId(), sourceField: "Foreign" },
+            ],
+            catalogById,
+          },
+          db
+        )
+      ).rejects.toMatchObject({
+        status: 404,
+        code: ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      });
+      expect(await readMappings()).toHaveLength(0);
+    });
+
+    it("ignores an excluded binding's column definition", async () => {
+      await reconcileFieldMappings(
+        {
+          connectorEntityId: subjectEntityId,
+          organizationId: orgId,
+          userId,
+          bindings: [
+            { columnDefinitionId: colStringId, sourceField: "Email" },
+            {
+              columnDefinitionId: generateId(),
+              sourceField: "Foreign",
+              excluded: true,
+            },
+          ],
+          catalogById,
+        },
+        db
+      );
+      expect(await readMappings()).toHaveLength(1);
+    });
+  });
+
   describe("overrides", () => {
     it("writes source-derived defaults when no overrides are set", async () => {
       await reconcileFieldMappings(

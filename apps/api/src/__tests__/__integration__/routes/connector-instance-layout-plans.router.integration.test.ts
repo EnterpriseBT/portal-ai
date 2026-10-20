@@ -663,6 +663,85 @@ describe("Connector Instance Layout Plans Router", () => {
       });
     });
 
+    // #834: a column definition the patch adds is a reference, so it must
+    // be in the org and readable; the ones already stored aren't re-checked.
+    describe("column-definition references (#834)", () => {
+      const foreignColumnDefinition = async () => {
+        const other = await seedUserAndOrg(
+          db as Db,
+          `auth0|cilp-834-other-${generateId()}`
+        );
+        return seedColumnDefinition(db as Db, other.organizationId, "name");
+      };
+      const patchRegions = (planId: string, regions: LayoutPlan["regions"]) =>
+        request(app)
+          .patch(
+            `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}`
+          )
+          .set("Authorization", "Bearer test-token")
+          .send({ regions });
+
+      it("refuses a patch that adds another org's column definition, leaving the plan unchanged", async () => {
+        const emailId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "email"
+        );
+        const nameId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "name"
+        );
+        const planId = await insertPlanRow(
+          db as Db,
+          makeLayoutPlan({
+            regions: [simpleRegion("r1", "contacts", emailId, nameId)],
+          })
+        );
+
+        const res = await patchRegions(planId, [
+          simpleRegion(
+            "r1",
+            "contacts",
+            emailId,
+            await foreignColumnDefinition()
+          ),
+        ]);
+
+        expect([res.status, res.body.code]).toEqual([
+          404,
+          ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+        ]);
+        const [row] = await (db as Db)
+          .select()
+          .from(connectorInstanceLayoutPlans)
+          .where(eq(connectorInstanceLayoutPlans.id, planId));
+        expect(
+          (row.plan as LayoutPlan).regions[0].columnBindings.map(
+            (b) => b.columnDefinitionId
+          )
+        ).toEqual([emailId, nameId]);
+      });
+
+      it("doesn't re-check a column definition the stored plan already maps", async () => {
+        const emailId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "email"
+        );
+        const stored = await foreignColumnDefinition();
+        const regions = [simpleRegion("r1", "contacts", emailId, stored)];
+        const planId = await insertPlanRow(
+          db as Db,
+          makeLayoutPlan({ regions })
+        );
+
+        const res = await patchRegions(planId, regions);
+
+        expect(res.status).toBe(200);
+      });
+    });
+
     it("returns 404 when the planId does not belong to the connector instance", async () => {
       const res = await request(app)
         .patch(

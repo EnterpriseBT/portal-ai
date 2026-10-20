@@ -526,7 +526,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/connector-instances/{connectorInstanceId}/layout-plan/{planId}": {
     kind: "authorized",
-    by: "ConnectorInstanceAccessService.load write (#685)",
+    by: "ConnectorInstanceAccessService.load write (#685); a column definition the patch adds must be readable (#834)",
     locks: { target: "connectorInstance" },
   },
   "PATCH /api/connector-instances/{id}": {
@@ -677,7 +677,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/connector-instances/{instanceId}/api-endpoints": {
     kind: "authorized",
-    by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685)",
+    by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685); adopted column definitions readable, a fresh one needs the column_definition create rule, all before any write (#834)",
     locks: { target: "connectorInstance" },
   },
   "POST /api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns":
@@ -768,7 +768,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/layout-plans/commit": {
     kind: "authorized",
-    by: "source writable: own upload session (FileUploadAccessService) or ConnectorInstanceAccessService (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710)",
+    by: "source writable: own upload session (FileUploadAccessService) or ConnectorInstanceAccessService (#685); a new connection needs the owned connector_instance create (assertCanCreate, #710); the plan's column definitions readable (#834)",
     locks: { enqueues: "layout_plan_commit" },
   },
   "POST /api/layout-plans/interpret": {

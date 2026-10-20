@@ -51,6 +51,7 @@ import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
+import type { PermissionSet } from "./permission-set.js";
 import {
   FileUploadSessionService,
   uploadSessionCachePrefix,
@@ -91,7 +92,8 @@ export class LayoutPlanDraftService {
   static async interpretDraft(
     organizationId: string,
     userId: string,
-    body: LayoutPlanInterpretDraftRequestBody
+    body: LayoutPlanInterpretDraftRequestBody,
+    permissions: PermissionSet
   ): Promise<LayoutPlanInterpretDraftResponsePayload> {
     const workbook = await resolveWorkbookFromBody(body, organizationId);
     try {
@@ -99,7 +101,8 @@ export class LayoutPlanDraftService {
         workbook,
         body.regionHints ?? [],
         organizationId,
-        userId
+        userId,
+        permissions
       );
       return { plan };
     } catch (err) {
