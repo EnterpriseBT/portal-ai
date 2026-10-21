@@ -26,15 +26,19 @@ API only.
 
 The same rule as `POST /api/field-mappings`: a referenced definition must be in the org **and** readable, or `404 COLUMN_DEFINITION_NOT_FOUND`. Resending a stored reference isn't re-checked.
 
+- **Interpret is checked on the way in (review).** A region hint naming an unreadable definition → 404 before interpreting. An id the classifier returns outside the readable catalog falls back to the `text` definition, or is unbound if there's none. The stored plan is replayed unchecked by recommit, so it can't carry an unchecked reference.
 - **Suggestions offer only readable definitions.** `loadCatalog` and the probe catalog take the caller's `PermissionSet` and keep the rows `set.can("resource.read", {type, id, createdBy})` allows (the #832 `station_context` filter). The AI then can't put an unreadable id into a plan or draft.
 - **Draft commit** checks every column-definition id in the body's plan (`firstRefusal`) before any write.
 - **Plan patch** checks only the ids the patched plan adds over the stored plan. The editor resends the whole plan, and an owner-authored plan must stay editable.
 - **Recommit and sync** replay the stored plan, which was checked on the way in, so they aren't re-checked. That's the same as a stored mapping.
+- **Commit checks up front (review).** Every definition a reconciled target binds must still be in the org catalog, checked before the first target writes. A since-deleted or foreign id refuses cleanly (404) instead of committing part of the plan.
 - **Reconcile fails closed on a foreign id.** A binding whose id isn't in the org catalog → `404 COLUMN_DEFINITION_NOT_FOUND`, with no upsert. This guards every caller, sync included, against a plan that predates the checks.
 - **REST endpoint save resolves every column before writing anything.** Resolution moves ahead of the entity transaction:
   - an adopted id must pass `firstRefusal`;
   - a key match uses readable definitions only;
   - a column with no readable match is a new definition, and creating one needs the class rule (`PermissionService.check(…, "resource.write", {type: "column_definition"})`), as on `POST /api/column-definitions`. A refusal is `403 PERMISSION_DENIED` and nothing is written.
+  - A fresh column whose key belongs to a definition the caller can't read → `409 COLUMN_DEFINITION_KEY_CONFLICT`, before any write. This only applies to callers who passed the create rule.
+  - The wizard doesn't gate Save on the create rule yet, so a caller without it sees the 403 in the dialog. Default members can't open the Connectors pages, so only a custom policy reaches this. The gate is follow-up #838.
   - **Why not never create:** the wizard's normal flow mints definitions for new columns, and the class rule is the existing gate for doing so.
 
 ## Plan — one slice
