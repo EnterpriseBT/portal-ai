@@ -70,6 +70,8 @@ const viewRow = {
   label: "V",
   description: null,
   filter: null,
+  filterSql: null,
+  filterSqlKeys: [],
   created: 1,
   createdBy: "u1",
   updated: null,

@@ -159,6 +159,16 @@ describe("TIER_CATALOG (#218)", () => {
 
 // ── #311 — the public marketing-site fields ───────────────────────────
 
+describe("TIER_CATALOG advanced view filters (#644)", () => {
+  it("pro and enterprise include SQL view filters; standard and plus don't", () => {
+    expect(
+      Object.fromEntries(
+        TIER_CATALOG.map((t) => [t.slug, t.advancedViewFilters])
+      )
+    ).toEqual({ standard: false, plus: false, pro: true, enterprise: true });
+  });
+});
+
 describe("TIER_CATALOG public/displayOrder (#311)", () => {
   it("every entry carries `public` and an integer `displayOrder`", () => {
     for (const entry of TIER_CATALOG) {

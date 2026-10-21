@@ -66,6 +66,7 @@ describe("OrganizationUsageGetResponseSchema", () => {
           builtinToolpacks: ["data_query", "web_search"],
           customToolpacks: true,
           customRbac: false,
+          advancedViewFilters: false,
         },
         maxSeats: null,
       },

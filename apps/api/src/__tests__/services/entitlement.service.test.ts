@@ -52,6 +52,7 @@ function makePolicy(
     builtinToolpacks: ["data_query", "web_search"],
     customToolpacks: false,
     customRbac: false,
+    advancedViewFilters: false,
   },
   tier = "standard"
 ) {
@@ -100,6 +101,7 @@ describe("EntitlementService.splitBuiltinPacks (#284)", () => {
         builtinToolpacks: ["data_query", "not_a_real_pack"],
         customToolpacks: false,
         customRbac: false,
+        advancedViewFilters: false,
       })
     );
 
@@ -145,7 +147,12 @@ describe("EntitlementService.customPacksEntitled (#284)", () => {
 
     mockResolveTier.mockResolvedValue(
       makePolicy(
-        { builtinToolpacks: [], customToolpacks: true, customRbac: false },
+        {
+          builtinToolpacks: [],
+          customToolpacks: true,
+          customRbac: false,
+          advancedViewFilters: false,
+        },
         "pro"
       )
     );
@@ -161,11 +168,41 @@ describe("EntitlementService.customRbacEntitled (#622)", () => {
 
     mockResolveTier.mockResolvedValue(
       makePolicy(
-        { builtinToolpacks: [], customToolpacks: false, customRbac: true },
+        {
+          builtinToolpacks: [],
+          customToolpacks: false,
+          customRbac: true,
+          advancedViewFilters: false,
+        },
         "enterprise"
       )
     );
     expect(await EntitlementService.customRbacEntitled(ORG_ID)).toBe(true);
+  });
+});
+
+// ── advancedViewFiltersEntitled (#644) ──────────────────────────────────
+
+describe("EntitlementService.advancedViewFiltersEntitled (#644)", () => {
+  it("reflects the tier's advancedViewFilters boolean (fail-closed default false)", async () => {
+    expect(await EntitlementService.advancedViewFiltersEntitled(ORG_ID)).toBe(
+      false
+    );
+
+    mockResolveTier.mockResolvedValue(
+      makePolicy(
+        {
+          builtinToolpacks: [],
+          customToolpacks: true,
+          customRbac: false,
+          advancedViewFilters: true,
+        },
+        "pro"
+      )
+    );
+    expect(await EntitlementService.advancedViewFiltersEntitled(ORG_ID)).toBe(
+      true
+    );
   });
 });
 
@@ -228,6 +265,7 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
         builtinToolpacks: ["data_query"],
         customToolpacks: true,
         customRbac: false,
+        advancedViewFilters: false,
       })
     );
     mockFindByStationId_packs.mockResolvedValue([
@@ -264,6 +302,7 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
         builtinToolpacks: ["data_query"],
         customToolpacks: true,
         customRbac: false,
+        advancedViewFilters: false,
       })
     );
     mockFindByStationId_packs.mockResolvedValue([
@@ -291,6 +330,7 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
         builtinToolpacks: ["data_query"],
         customToolpacks: false,
         customRbac: false,
+        advancedViewFilters: false,
       })
     );
     mockFindByStationId_packs.mockResolvedValue([
@@ -314,6 +354,7 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
         builtinToolpacks: ["data_query"],
         customToolpacks: true,
         customRbac: false,
+        advancedViewFilters: false,
       })
     );
     mockFindByStationId_packs.mockResolvedValue([customRow("otp-1", 1)]);

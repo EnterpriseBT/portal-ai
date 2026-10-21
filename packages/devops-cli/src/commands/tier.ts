@@ -80,6 +80,8 @@ export const CONVERGED_POLICY_FIELDS = [
   // #701: added to the catalog by #622 / #584 but never converged, so every
   // env kept whatever its migration (or nothing) wrote.
   "customRbac",
+  // #644: advanced (SQL) curated-view filters entitlement.
+  "advancedViewFilters",
   "maxSeats",
   // #241: the card CTA is catalog-owned policy. `description` and
   // `visibleToOrganizationId` are NOT here — they are operator/per-client

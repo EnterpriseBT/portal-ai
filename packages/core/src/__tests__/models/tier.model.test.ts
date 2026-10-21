@@ -27,6 +27,7 @@ const validPolicy = {
     builtinToolpacks: ["data_query", "web_search"],
     customToolpacks: true,
     customRbac: false,
+    advancedViewFilters: false,
   },
   maxSeats: null,
 };
@@ -51,6 +52,7 @@ const validRowFields = {
   builtinToolpacks: ["data_query", "web_search"],
   customToolpacks: true,
   customRbac: false,
+  advancedViewFilters: false,
   cta: "none",
   // #311: marketing-site fields.
   public: false,
@@ -252,6 +254,7 @@ describe("TierEntitlementsSchema (#214)", () => {
         builtinToolpacks: [],
         customToolpacks: false,
         customRbac: false,
+        advancedViewFilters: false,
       }).success
     ).toBe(true);
     expect(
@@ -259,6 +262,7 @@ describe("TierEntitlementsSchema (#214)", () => {
         builtinToolpacks: ["data_query", "statistics", "web_search"],
         customToolpacks: true,
         customRbac: true,
+        advancedViewFilters: false,
       }).success
     ).toBe(true);
   });
@@ -328,6 +332,7 @@ describe("TierEntitlementsSchema (#622 customRbac)", () => {
         builtinToolpacks: [],
         customToolpacks: false,
         customRbac: true,
+        advancedViewFilters: false,
       }).success
     ).toBe(true);
     // Missing customRbac is rejected (fail-closed contract, no implicit default).

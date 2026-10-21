@@ -587,6 +587,9 @@ curatedViewRouter.post(
         label: body.label,
         description: body.description ?? null,
         filter: body.filter ?? null,
+        // #644: SQL filters arrive with the write path; none on create yet.
+        filterSql: null,
+        filterSqlKeys: [],
       });
       const row = model.parse();
 

@@ -12,7 +12,9 @@ import { FilterExpressionSchema } from "../contracts/filter.contract.js";
  * in the `curated_view_field_mappings` join table (no rows = all of the
  * entity's current columns — an unrestricted view). There is no
  * `isPassthrough` flag: an unrestricted view is simply one with no
- * projection rows and a null `filter`.
+ * projection rows and a null `filter`. The advanced alternative to `filter`
+ * is `filterSql` (#644), a validated SQL boolean fragment; at most one of the
+ * two is set.
  *
  * Sync with the Drizzle `curated_views` table is enforced at compile time
  * via `apps/api/src/db/schema/type-checks.ts` and at runtime via drizzle-zod
@@ -26,8 +28,13 @@ export const CuratedViewSchema = CoreSchema.extend({
   label: z.string().min(1),
   description: z.string().nullable(),
   /** Structured row filter (a `FilterGroup`, #599); null = no filter (all rows).
-   *  Injection-free (validated + escaped); arbitrary secure SQL is #644. */
+   *  Injection-free (validated + escaped). */
   filter: FilterExpressionSchema.nullable(),
+  /** #644: advanced row filter — a validated SQL boolean fragment over the
+   *  entity's column keys, as typed; null = none. Exclusive with `filter`. */
+  filterSql: z.string().nullable(),
+  /** #644: the column keys `filterSql` references (derived at write). */
+  filterSqlKeys: z.array(z.string()),
 });
 
 export type CuratedView = z.infer<typeof CuratedViewSchema>;
