@@ -677,7 +677,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "POST /api/connector-instances/{instanceId}/api-endpoints": {
     kind: "authorized",
-    by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685); adopted column definitions readable, a fresh one needs the column_definition create rule, all before any write (#834)",
+    by: "ConnectorInstanceAccessService.load (read for GET, write for changes) + entity on the instance (#685); every column names an existing readable column definition, checked before any write (#834); it never creates one (#838)",
     locks: { target: "connectorInstance" },
   },
   "POST /api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns":

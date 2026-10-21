@@ -1,4 +1,5 @@
 import {
+  CreateApiEndpointColumnDraftSchema,
   SuggestTransformRequestBodySchema,
   SuggestTransformResponseSchema,
 } from "../../contracts/api-connector.contract.js";
@@ -131,6 +132,48 @@ describe("SuggestTransformResponseSchema", () => {
   it("rejects a response missing the expression field", () => {
     const result = SuggestTransformResponseSchema.safeParse({
       warning: null,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── Create-endpoint column draft (#838) ──────────────────────────────
+
+describe("CreateApiEndpointColumnDraftSchema", () => {
+  const column = {
+    sourceField: "email",
+    normalizedKey: "email",
+    columnDefinitionId: "cd-1",
+  };
+
+  it("accepts a column naming its column definition", () => {
+    const result = CreateApiEndpointColumnDraftSchema.safeParse(column);
+    expect(result.success).toBe(true);
+  });
+
+  it("requires a column definition: an endpoint never creates one", () => {
+    const { columnDefinitionId: _omit, ...rest } = column;
+    expect(CreateApiEndpointColumnDraftSchema.safeParse(rest).success).toBe(
+      false
+    );
+    expect(
+      CreateApiEndpointColumnDraftSchema.safeParse({
+        ...column,
+        columnDefinitionId: null,
+      }).success
+    ).toBe(false);
+    expect(
+      CreateApiEndpointColumnDraftSchema.safeParse({
+        ...column,
+        columnDefinitionId: "",
+      }).success
+    ).toBe(false);
+  });
+
+  it("refuses the retired type field", () => {
+    const result = CreateApiEndpointColumnDraftSchema.safeParse({
+      ...column,
+      type: "string",
     });
     expect(result.success).toBe(false);
   });

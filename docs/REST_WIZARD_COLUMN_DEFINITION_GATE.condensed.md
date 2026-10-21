@@ -50,9 +50,9 @@
   - an owner's save with ids creates mappings and **no** column definition (the count is unchanged);
   - the unreadable / other-org / deleted → 404 cases stay.
 - api `api-endpoints.router.integration.test.ts`: the #314 fresh-geometry case maps onto the seeded `geometry` definition.
-- web `__tests__/rest-api-validation.util.test.ts`: a null id errs, an id passes, and a key error outranks it.
+- web `__tests__/rest-api-validation.util.test.ts`: a null id errs, an id passes, and a key error is reported alongside it (they're separate cells).
 - web `__tests__/InferredColumnsTable.test.tsx`: the picker error renders with `aria-invalid="true"`.
-- web `__tests__/ProbeReviewStep.test.tsx` (or the workflow test): Next is disabled until every row has a definition.
+- Next and Enter are blocked through the existing `canAdvance`, which reads these errors, so the validator tests cover it.
 
 ## Smoke (manual, against your dev stack)
 

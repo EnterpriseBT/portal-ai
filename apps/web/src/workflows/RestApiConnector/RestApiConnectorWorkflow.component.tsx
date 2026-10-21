@@ -559,7 +559,6 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       [endpointKey]: columns.map((c) => ({
         sourceField: c.sourceField,
         normalizedKey: c.suggestion?.suggestedNormalizedKey ?? c.key,
-        type: c.suggestion?.suggestedSemanticType ?? c.type,
         required: c.required,
         samples: c.samples,
         columnDefinitionId: c.suggestion?.columnDefinitionId ?? null,
@@ -657,8 +656,8 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
               })(),
             } as never,
             // Materialize the workflow's per-endpoint column drafts as
-            // column_definitions + field_mappings server-side, in the
-            // same route handler that creates the endpoint. Drops the
+            // field_mappings on their existing column definitions (#838),
+            // in the same route handler that creates the endpoint. Drops the
             // sourceField default to normalizedKey when the user added
             // a manual row that didn't carry a sourceField.
             ...(rows.length > 0
@@ -666,9 +665,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
                   columns: rows.map((row) => ({
                     sourceField: row.sourceField.trim() || row.normalizedKey,
                     normalizedKey: row.normalizedKey,
-                    type: row.type,
                     required: row.required,
-                    columnDefinitionId: row.columnDefinitionId ?? null,
+                    // Validation keeps step 2 closed until every row has one.
+                    columnDefinitionId: row.columnDefinitionId ?? "",
                   })),
                 }
               : {}),
@@ -777,7 +776,6 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
           ? {
               ...r,
               normalizedKey: r.suggestion!.suggestedNormalizedKey,
-              type: r.suggestion!.suggestedSemanticType,
               columnDefinitionId: r.suggestion!.columnDefinitionId,
             }
           : r
@@ -794,7 +792,6 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
         {
           sourceField: "",
           normalizedKey: "",
-          type: "string",
           required: false,
           samples: [],
         },
