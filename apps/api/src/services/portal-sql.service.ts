@@ -167,6 +167,90 @@ export interface GuardedSessionView {
   sourceGrant: { relation: string; columns: ReadonlyArray<string> };
 }
 
+/** #644: the ids spliced into session DDL must be UUIDs. */
+function assertSessionIds(
+  viewId: string,
+  organizationId: string,
+  connectorEntityId: string
+): void {
+  if (!UUID_RE.test(organizationId) || !UUID_RE.test(connectorEntityId)) {
+    throw new ApiError(
+      500,
+      ApiCode.PORTAL_SQL_FORBIDDEN,
+      `invalid id for curated view ${viewId}`
+    );
+  }
+}
+
+/** #644: what a session view of a curated view projects. `fromSource`: the
+ *  `_created` / `_er_id` columns come from a source view rather than a join. */
+function viewProjections(
+  connectorEntityId: string,
+  projectedColumns: ReadonlyArray<string>,
+  exposeCreated: boolean,
+  fromSource: boolean
+): string {
+  return [
+    `w."entity_record_id" AS "_record_id"`,
+    `${quoteLiteral(connectorEntityId)}::text AS "_connector_entity_id"`,
+    `w."source_id" AS "source_id"`,
+    ...projectedColumns.map((c) => `w.${quoteIdent(c)} AS ${quoteIdent(c)}`),
+    ...(exposeCreated
+      ? fromSource
+        ? [`w."_created"`, `w."_er_id"`]
+        : [`r."created" AS "_created"`, `r."id" AS "_er_id"`]
+      : []),
+  ].join(", ");
+}
+
+/** #644: the `entity_records` join behind `_created` / `_er_id`. Its
+ *  `r.deleted IS NULL` lets the planner use the partial `(connector_entity_id,
+ *  created, id) WHERE deleted IS NULL` index for the keyset sort on creation
+ *  time. */
+function createdJoinSql(connectorEntityId: string): string {
+  return (
+    `\n  JOIN "entity_records" r ON r."id" = w."entity_record_id"` +
+    ` AND r."connector_entity_id" = ${quoteLiteral(connectorEntityId)}` +
+    ` AND r."deleted" IS NULL`
+  );
+}
+
+/**
+ * #644: DROP + CREATE for a session view read straight off the wide table
+ * (owner's privileges) with the given WHERE. `where` must be server-built:
+ * the org + soft-delete guard and a rendered FilterGroup, or `FALSE`. A SQL
+ * fragment never goes here; it goes through {@link buildGuardedViewStatements}.
+ */
+export function buildTableViewStatements(args: {
+  viewId: string;
+  viewKey: string;
+  connectorEntityId: string;
+  organizationId: string;
+  projectedColumns: ReadonlyArray<string>;
+  exposeCreated?: boolean;
+  where: string;
+}): string[] {
+  assertSessionIds(args.viewId, args.organizationId, args.connectorEntityId);
+  const view = quoteIdent(args.viewKey);
+  const exposeCreated = args.exposeCreated ?? false;
+  return [
+    `DROP VIEW IF EXISTS ${view}`,
+    `CREATE TEMP VIEW ${view} AS\n` +
+      `  SELECT ${viewProjections(args.connectorEntityId, args.projectedColumns, exposeCreated, false)}\n` +
+      `  FROM ${quoteIdent(`er__${args.connectorEntityId}`)} w` +
+      (exposeCreated ? createdJoinSql(args.connectorEntityId) : "") +
+      `\n  WHERE ${args.where}`,
+  ];
+}
+
+/** #644: the org + soft-delete guard every curated session view starts from. */
+function orgGuardSql(organizationId: string): string {
+  return (
+    `w."organization_id" = ${quoteLiteral(organizationId)}` +
+    ` AND w."deleted" IS NULL`
+  );
+}
+
 /**
  * #644: the statements for one {@link GuardedSessionView}. Pure: identifiers
  * are quoted here and ids are checked, so `renderedWhere` (the output of
@@ -184,37 +268,19 @@ export function buildGuardedViewStatements(args: {
   /** Physical columns the filter reads (need not be projected). */
   filterColumns: ReadonlyArray<string>;
   renderedWhere: string;
+  /** Also expose the record's `_created` and `_er_id` (the keyset sort on
+   *  creation time), joined from `entity_records` in the source view. */
+  exposeCreated?: boolean;
 }): GuardedSessionView {
-  if (
-    !UUID_RE.test(args.organizationId) ||
-    !UUID_RE.test(args.connectorEntityId)
-  ) {
-    throw new ApiError(
-      500,
-      ApiCode.PORTAL_SQL_FORBIDDEN,
-      `invalid id for curated view ${args.viewId}`
-    );
-  }
+  assertSessionIds(args.viewId, args.organizationId, args.connectorEntityId);
+  const exposeCreated = args.exposeCreated ?? false;
   const view = quoteIdent(args.viewKey);
   const source = quoteIdent(args.sourceName);
-  const table = quoteIdent(`er__${args.connectorEntityId}`);
-  const sourceColumns = [
+  const dataColumns = [
     "entity_record_id",
     "source_id",
     ...new Set([...args.projectedColumns, ...args.filterColumns]),
   ];
-  const projections = (alias: string) =>
-    [
-      `${alias}."entity_record_id" AS "_record_id"`,
-      `${quoteLiteral(args.connectorEntityId)}::text AS "_connector_entity_id"`,
-      `${alias}."source_id" AS "source_id"`,
-      ...args.projectedColumns.map(
-        (c) => `${alias}.${quoteIdent(c)} AS ${quoteIdent(c)}`
-      ),
-    ].join(", ");
-  const guard =
-    `w."organization_id" = ${quoteLiteral(args.organizationId)}\n` +
-    `    AND w."deleted" IS NULL`;
   return {
     viewId: args.viewId,
     viewKey: args.viewKey,
@@ -222,22 +288,27 @@ export function buildGuardedViewStatements(args: {
       `DROP VIEW IF EXISTS ${view}`,
       `DROP VIEW IF EXISTS ${source}`,
       `CREATE TEMP VIEW ${source} AS\n` +
-        `  SELECT ${sourceColumns.map((c) => `w.${quoteIdent(c)}`).join(", ")}\n` +
-        `  FROM ${table} w\n` +
-        `  WHERE ${guard}`,
+        `  SELECT ${[
+          ...dataColumns.map((c) => `w.${quoteIdent(c)}`),
+          ...(exposeCreated
+            ? [`r."created" AS "_created"`, `r."id" AS "_er_id"`]
+            : []),
+        ].join(", ")}\n` +
+        `  FROM ${quoteIdent(`er__${args.connectorEntityId}`)} w` +
+        (exposeCreated ? createdJoinSql(args.connectorEntityId) : "") +
+        `\n  WHERE ${orgGuardSql(args.organizationId)}`,
       `CREATE TEMP VIEW ${view} WITH (security_invoker = true) AS\n` +
-        `  SELECT ${projections("w")}\n` +
+        `  SELECT ${viewProjections(args.connectorEntityId, args.projectedColumns, exposeCreated, true)}\n` +
         `  FROM ${source} w\n` +
         `  WHERE (\n${args.renderedWhere}\n)`,
     ],
-    fallback: [
-      `DROP VIEW IF EXISTS ${view}`,
-      `CREATE TEMP VIEW ${view} AS\n` +
-        `  SELECT ${projections("w")}\n` +
-        `  FROM ${table} w\n` +
-        `  WHERE FALSE`,
-    ],
-    sourceGrant: { relation: args.sourceName, columns: sourceColumns },
+    fallback: buildTableViewStatements({ ...args, where: "FALSE" }),
+    sourceGrant: {
+      relation: args.sourceName,
+      columns: exposeCreated
+        ? [...dataColumns, "_created", "_er_id"]
+        : dataColumns,
+    },
   };
 }
 
@@ -374,6 +445,14 @@ async function createGuardedViews(
 
 /** Postgres `query_canceled` (statement timeout, client cancel). */
 const QUERY_CANCELED = "57014";
+
+/** #644: the name of the one view a single-view session reads. */
+const SINGLE_VIEW = "__view";
+
+/** Carries a view session's result out of its rolled-back transaction. */
+class ViewSessionResult {
+  constructor(readonly value: unknown) {}
+}
 
 export interface PortalSqlParams {
   sql: string;
@@ -679,39 +758,36 @@ export class PortalSqlServiceImpl {
       );
     }
 
+    // #644: read as the reader role from the caller's session view of this
+    // curated view, which carries the guard, the row filter and the projection.
     const selectList = [
-      `w."entity_record_id" AS "_record_id"`,
+      `w."_record_id" AS "_record_id"`,
       `w."source_id" AS "source_id"`,
       ...columns.map(
         (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.columnName)}`
       ),
     ].join(", ");
-    const whereParts = [
-      `w."organization_id" = ${quoteLiteral(organizationId)}`,
-      `w."deleted" IS NULL`,
-      `w.${quoteIdent(matchCol.columnName)} = ${quoteLiteral(match.value)}`,
-    ];
-    const filterWhere = await this.renderViewFilterWhere(
-      view,
-      client,
-      (message) =>
-        new ApiError(
-          500,
-          ApiCode.PORTAL_SQL_FORBIDDEN,
-          `curated view ${view.id} filter failed to render: ${message}`
-        )
-    );
-    if (filterWhere) whereParts.push(`(${filterWhere})`);
-
     const limit = Math.max(0, Math.floor(opts.limit));
     const query =
-      `SELECT ${selectList} FROM ${quoteIdent(`er__${view.connectorEntityId}`)} w ` +
-      `WHERE ${whereParts.join(" AND ")} ` +
-      `ORDER BY w."entity_record_id" LIMIT ${limit + 1}`;
-    const rows = (await client.execute(sql.raw(query))) as unknown as Record<
-      string,
-      unknown
-    >[];
+      `SELECT ${selectList} FROM ${quoteIdent(SINGLE_VIEW)} w ` +
+      `WHERE w.${quoteIdent(matchCol.columnName)} = ${quoteLiteral(match.value)} ` +
+      `ORDER BY w."_record_id" LIMIT ${limit + 1}`;
+    const build = await this.buildSingleViewSession(
+      view,
+      columns,
+      organizationId,
+      { exposeCreated: false },
+      client
+    );
+    const rows = await this.runInViewSession(
+      build,
+      client,
+      async (tx) =>
+        (await tx.execute(sql.raw(query))) as unknown as Record<
+          string,
+          unknown
+        >[]
+    );
     return {
       records: rows.slice(0, limit),
       truncated: rows.length > limit,
@@ -782,32 +858,24 @@ export class PortalSqlServiceImpl {
       return columnName ? [{ ...c, columnName }] : [];
     });
 
-    const tableName = `er__${view.connectorEntityId}`;
+    // #644: the rows are read as the reader role from the caller's own session
+    // view of this curated view (`__view`), which carries the org +
+    // soft-delete guard, the view's row filter and its projection. Everything
+    // below only narrows or orders what that view returns.
     // #678: rows are keyed by normalizedKey (the table's header). The framing
     // keys start with `_`, which a normalizedKey (^[a-z][a-z0-9_]*$) can't, so
     // they never collide with a column.
     const selectList = [
-      `w."entity_record_id" AS "_record_id"`,
+      `w."_record_id" AS "_record_id"`,
       `w."source_id" AS "_source_id"`,
       ...readable.map(
         (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.normalizedKey)}`
       ),
     ].join(", ");
 
-    const whereParts = [
-      `w."organization_id" = ${quoteLiteral(organizationId)}`,
-      `w."deleted" IS NULL`,
-    ];
-    const filterWhere = await this.renderViewFilterWhere(
-      view,
-      client,
-      (message) =>
-        new ApiError(500, ApiCode.CURATED_VIEW_INVALID_FILTER, message),
-      Object.fromEntries(resolvedCols.map((c) => [c.normalizedKey, c.type]))
-    );
-    if (filterWhere) whereParts.push(`(${filterWhere})`);
-    // #678: the reader's ad-hoc filter, ANDed after the view's own filter so it
-    // can only narrow. It's validated against ONLY the readable projected
+    const whereParts: string[] = [];
+    // #678: the reader's ad-hoc filter, applied over the view's rows so it can
+    // only narrow. It's validated against ONLY the readable projected
     // columns: `buildFilterSqlForEntity` resolves any column of the entity, so
     // this validation set is what keeps a filter off hidden columns (no value
     // oracle, the same rule as queryViewRowsByColumn). Fail-closed: anything
@@ -853,16 +921,16 @@ export class PortalSqlServiceImpl {
         clauses.length > 0 ? `(${clauses.join(" OR ")})` : "FALSE"
       );
     }
-    const whereSql = whereParts.join(" AND ");
+    const whereSql = whereParts.length > 0 ? whereParts.join(" AND ") : "TRUE";
     const limit = Math.max(1, Math.min(opts.limit, 500));
     const offset = Math.max(0, opts.offset);
 
     // ORDER BY `created` or the requested projected column (by normalizedKey,
     // #678), always ending in a unique tiebreaker (#433: a paginated order
     // must be total). `created` is the record's creation time; it lives on
-    // `entity_records`, not the wide table, so that sort joins it (scoped to
-    // the entity, so the (connector_entity_id, created, id) index applies, and
-    // its tiebreaker is `r.id` for the same reason). As on the entity records
+    // `entity_records`, not the wide table, so for that sort the session view
+    // joins it (scoped to the entity, so the (connector_entity_id, created,
+    // id) index applies) and exposes `_created` and `_er_id`, the tiebreaker. As on the entity records
     // endpoint, the system field wins over a column that happens to share the
     // name. A `sortBy` that names neither falls back to record-id order; one
     // naming an unsortable type is refused.
@@ -883,7 +951,7 @@ export class PortalSqlServiceImpl {
     // `exprSql` is a safe identifier reference (quoteIdent).
     const sortSpec: { key: string; exprSql: string; nullable: boolean } =
       byCreated
-        ? { key: "created", exprSql: `r."created"`, nullable: false }
+        ? { key: "created", exprSql: `w."_created"`, nullable: false }
         : sortCol
           ? {
               key: sortCol.normalizedKey,
@@ -893,7 +961,7 @@ export class PortalSqlServiceImpl {
             }
           : {
               key: "_record_id",
-              exprSql: `w."entity_record_id"`,
+              exprSql: `w."_record_id"`,
               nullable: false,
             };
     const sortExpr = sql.raw(sortSpec.exprSql);
@@ -902,7 +970,7 @@ export class PortalSqlServiceImpl {
     const tiebreaker =
       sortSpec.key === "_record_id"
         ? sortExpr
-        : sql.raw(byCreated ? `r."id"` : `w."entity_record_id"`);
+        : sql.raw(byCreated ? `w."_er_id"` : `w."_record_id"`);
     const sort = { ...sortSpec, expr: sortExpr, tiebreaker };
 
     // #649: keyset paging, as on the entity records endpoint. A cursor counts
@@ -937,15 +1005,11 @@ export class PortalSqlServiceImpl {
       tiebreaker: sort.tiebreaker,
       ...ordering,
     });
-    // `r.deleted IS NULL` is what lets the planner use the partial
-    // `(connector_entity_id, created, id) WHERE deleted IS NULL` index: without
-    // it every `created` page seq-scanned both tables (measured on 400K rows:
-    // 155ms vs 0.08ms for page one, the deep seek and the last page alike).
-    const createdJoin = byCreated
-      ? `  JOIN "entity_records" r ON r."id" = w."entity_record_id"` +
-        ` AND r."connector_entity_id" = ${quoteLiteral(view.connectorEntityId)}` +
-        ` AND r."deleted" IS NULL\n`
-      : "";
+    // The session view's `entity_records` join carries `r.deleted IS NULL`:
+    // it is what lets the planner use the partial `(connector_entity_id,
+    // created, id) WHERE deleted IS NULL` index. Without it every `created`
+    // page seq-scanned both tables (measured on 400K rows: 155ms vs 0.08ms for
+    // page one, the deep seek and the last page alike).
 
     // One row past the page tells "a full page" from "a full page with more
     // behind it". `_sort_value` is what the next cursor is minted from; the
@@ -953,14 +1017,13 @@ export class PortalSqlServiceImpl {
     const rowsQueryFor = (anchor: typeof decodedAnchor) =>
       sql`${sql.raw(
         `SELECT ${selectList}, ${sort.exprSql} AS "_sort_value"\n` +
-          `  FROM ${quoteIdent(tableName)} w\n` +
-          createdJoin +
+          `  FROM ${quoteIdent(SINGLE_VIEW)} w\n` +
           `  WHERE ${whereSql}`
       )}${seekFor(anchor)}${orderBy}${sql.raw(
         ` LIMIT ${limit + 1}` + (anchor ? "" : ` OFFSET ${offset}`)
       )}`;
     const countSql =
-      `SELECT COUNT(*)::int AS n FROM ${quoteIdent(tableName)} w ` +
+      `SELECT COUNT(*)::int AS n FROM ${quoteIdent(SINGLE_VIEW)} w ` +
       `WHERE ${whereSql}`;
 
     // #649: the total comes through the entity's count cache. The scope holds
@@ -985,33 +1048,53 @@ export class PortalSqlServiceImpl {
       countFingerprint
     );
 
-    const [rowsRes, total] = await Promise.all([
-      // A cursor is client-supplied: a forged one can carry a value the sort
-      // column's type rejects (`"abc"` for a number). That cursor doesn't fit
-      // this ordering, so it serves the first page like any other misfit
-      // rather than failing the request.
-      client.execute(rowsQueryFor(decodedAnchor)).catch((error: unknown) => {
-        if (!decodedAnchor || !isPgDataException(error)) throw error;
-        logger.warn(
-          { viewId, sortBy: sort.key, ...unwrapPgError(error) },
-          "Curated view cursor value rejected by its sort column; serving the first page"
-        );
-        return client.execute(rowsQueryFor(null));
-      }),
-      cachedTotal !== null
-        ? Promise.resolve(cachedTotal)
-        : client.execute(sql.raw(countSql)).then(async (res) => {
-            const n = Number(
-              (res as unknown as Array<{ n: number }>)[0]?.n ?? 0
+    const build = await this.buildSingleViewSession(
+      view,
+      columns,
+      organizationId,
+      { exposeCreated: byCreated },
+      client
+    );
+    const { rowsRes, total } = await this.runInViewSession(
+      build,
+      client,
+      async (tx) => {
+        // A cursor is client-supplied: a forged one can carry a value the
+        // sort column's type rejects (`"abc"` for a number). That cursor
+        // doesn't fit this ordering, so it serves the first page like any
+        // other misfit rather than failing the request. The savepoint keeps
+        // the session usable after the refused statement.
+        let rows: unknown;
+        if (decodedAnchor) {
+          await tx.execute(sql.raw("SAVEPOINT view_cursor"));
+          try {
+            rows = await tx.execute(rowsQueryFor(decodedAnchor));
+            await tx.execute(sql.raw("RELEASE SAVEPOINT view_cursor"));
+          } catch (error) {
+            if (!isPgDataException(error)) throw error;
+            await tx.execute(sql.raw("ROLLBACK TO SAVEPOINT view_cursor"));
+            logger.warn(
+              { viewId, sortBy: sort.key, ...unwrapPgError(error) },
+              "Curated view cursor value rejected by its sort column; serving the first page"
             );
-            await EntityRecordCountCache.set(
-              view.connectorEntityId,
-              countFingerprint,
-              n
-            );
-            return n;
-          }),
-    ]);
+            rows = await tx.execute(rowsQueryFor(null));
+          }
+        } else {
+          rows = await tx.execute(rowsQueryFor(null));
+        }
+        let n = cachedTotal;
+        if (n === null) {
+          const res = await tx.execute(sql.raw(countSql));
+          n = Number((res as unknown as Array<{ n: number }>)[0]?.n ?? 0);
+          await EntityRecordCountCache.set(
+            view.connectorEntityId,
+            countFingerprint,
+            n
+          );
+        }
+        return { rowsRes: rows, total: n };
+      }
+    );
     const probed = rowsRes as unknown as Record<string, unknown>[];
     const hasMore = probed.length > limit;
     const pageRows = hasMore ? probed.slice(0, limit) : probed;
@@ -1280,6 +1363,88 @@ export class PortalSqlServiceImpl {
   }
 
   /**
+   * #644: a one-view session for reading ONE curated view as the caller (the
+   * records table, the identity lookup, the filter preview). The view is
+   * named {@link SINGLE_VIEW} and projects the caller's readable `columns`;
+   * a SQL-filtered view is the security_invoker pair, a FilterGroup view a
+   * plain temp view with its rendered filter. `exposeCreated` adds the
+   * record's `_created` / `_er_id` for the keyset sort on creation time.
+   */
+  private async buildSingleViewSession(
+    view: CuratedViewSelect,
+    columns: WideTableCachedColumn[],
+    organizationId: string,
+    opts: { exposeCreated: boolean },
+    client: DbClient
+  ): Promise<SessionViewBuild> {
+    const viewMap = new Map([[SINGLE_VIEW, SINGLE_VIEW]]);
+    if (view.filterSql) {
+      const guarded = await this.buildGuardedView(
+        { ...view, key: SINGLE_VIEW },
+        columns,
+        organizationId,
+        `__src${SINGLE_VIEW}`,
+        client,
+        opts.exposeCreated
+      );
+      return { views: [], viewMap, guardedViews: [guarded] };
+    }
+    // A FilterGroup is rendered from validated, escaped parts (#599), so it
+    // can sit in an ordinary view body next to the guard.
+    const filterWhere = await this.renderViewFilterWhere(
+      view,
+      client,
+      (message) =>
+        new ApiError(500, ApiCode.CURATED_VIEW_INVALID_FILTER, message)
+    );
+    const views = buildTableViewStatements({
+      viewId: view.id,
+      viewKey: SINGLE_VIEW,
+      connectorEntityId: view.connectorEntityId,
+      organizationId,
+      projectedColumns: columns.map((c) => c.columnName),
+      exposeCreated: opts.exposeCreated,
+      where:
+        orgGuardSql(organizationId) +
+        (filterWhere ? ` AND (${filterWhere})` : ""),
+    });
+    return { views, viewMap };
+  }
+
+  /**
+   * #644: run `fn` in a reader-role session over `build`, then roll the
+   * transaction back (temp views and grants never outlive the read). A
+   * {@link SINGLE_VIEW} that failed to create is `409
+   * CURATED_VIEW_FILTER_SQL_BROKEN`, never an empty page passed off as data.
+   */
+  private async runInViewSession<T>(
+    build: SessionViewBuild,
+    client: DbClient,
+    fn: (tx: SessionTx) => Promise<T>
+  ): Promise<T> {
+    await PortalSqlReaderRoleService.assertUsable();
+    try {
+      await (client as typeof db).transaction(async (tx) => {
+        const opened = await openSqlSession(tx, build, {
+          statementTimeoutMs: STATEMENT_TIMEOUT_MS,
+        });
+        if (opened.degradedViewKeys.has(SINGLE_VIEW)) {
+          throw new ApiError(
+            409,
+            ApiCode.CURATED_VIEW_FILTER_SQL_BROKEN,
+            "This view's filter no longer runs against its columns. Edit the filter to repair the view."
+          );
+        }
+        throw new ViewSessionResult(await fn(tx));
+      });
+    } catch (err) {
+      if (err instanceof ViewSessionResult) return err.value as T;
+      throw err;
+    }
+    throw new Error("view session returned without a result");
+  }
+
+  /**
    * #644: the session pair for a SQL-filtered view. The stored fragment is
    * re-validated and spliced onto the entity's current columns here; if it no
    * longer renders, the view is created empty (fail closed) rather than
@@ -1290,7 +1455,8 @@ export class PortalSqlServiceImpl {
     columns: WideTableCachedColumn[],
     organizationId: string,
     sourceName: string,
-    client: DbClient
+    client: DbClient,
+    exposeCreated = false
   ): Promise<GuardedSessionView> {
     const stmt = await this.deps.statementCache.get(
       view.connectorEntityId,
@@ -1306,6 +1472,7 @@ export class PortalSqlServiceImpl {
       connectorEntityId: view.connectorEntityId,
       organizationId,
       projectedColumns: columns.map((c) => c.columnName),
+      exposeCreated,
     };
     try {
       const { keys } = validateViewFilterSql(

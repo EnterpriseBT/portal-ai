@@ -11,7 +11,14 @@
  * another relation, another org's rows or a privileged function. These pin
  * that boundary end to end, and that one broken view never breaks a session.
  */
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq, sql } from "drizzle-orm";
@@ -460,6 +467,95 @@ describe("curated views with a SQL filter in the reader session (#644)", () => {
       await portalSql.resolveViewsForSession(stationId, orgId, userId, db)
     );
     expect(after).not.toBe(before);
+  });
+
+  describe("the records table and the identity lookup read the session view", () => {
+    const records = (opts: Record<string, unknown> = {}) =>
+      portalSql.queryCuratedViewRecords(parcelsViewId, orgId, userId, {
+        limit: 10,
+        offset: 0,
+        ...opts,
+      });
+
+    it("pages a SQL-filtered view's rows with only its projected columns", async () => {
+      await project(["name"]);
+      await setFilterSql("amount > cost", ["amount", "cost"]);
+      const result = await records({ sortBy: "name", sortOrder: "asc" });
+      expect(result!.total).toBe(2);
+      expect(result!.columns.map((c) => c.normalizedKey)).toEqual(["name"]);
+      expect(result!.records.map((r) => r.name)).toEqual(["far", "near"]);
+      expect(Object.keys(result!.records[0]!).sort()).toEqual(
+        ["_record_id", "_source_id", "name"].sort()
+      );
+    });
+
+    it("keyset-pages by creation time through the session view", async () => {
+      await setFilterSql("amount > 0", ["amount"]);
+      const first = await records({ limit: 2, sortBy: "created" });
+      expect(first!.records).toHaveLength(2);
+      expect(first!.nextCursor).not.toBeNull();
+      const second = await records({
+        limit: 2,
+        sortBy: "created",
+        cursor: first!.nextCursor!,
+      });
+      const seen = [...first!.records, ...second!.records].map((r) => r.name);
+      expect(new Set(seen)).toEqual(new Set(["near", "far", "loss"]));
+      expect(second!.nextCursor).toBeNull();
+    });
+
+    it("narrows with the reader's search inside the view's rows", async () => {
+      await setFilterSql("amount > cost", ["amount", "cost"]);
+      const result = await records({ search: "ea" });
+      expect(result!.records.map((r) => r.name)).toEqual(["near"]);
+    });
+
+    it("answers 409 for a view whose filter no longer runs", async () => {
+      await setFilterSql("name > 5", ["name"]);
+      await expect(records()).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.CURATED_VIEW_FILTER_SQL_BROKEN,
+      });
+    });
+
+    it("answers 503 when the reader role is unavailable", async () => {
+      const spy = jest
+        .spyOn(PortalSqlReaderRoleService, "assertUsable")
+        .mockRejectedValue(
+          Object.assign(new Error("unavailable"), {
+            status: 503,
+            code: ApiCode.PORTAL_SQL_UNAVAILABLE,
+          })
+        );
+      try {
+        await expect(records()).rejects.toMatchObject({ status: 503 });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("looks up identity rows only within the view's filter", async () => {
+      await setFilterSql("amount > cost", ["amount", "cost"]);
+      const { views } = await portalSql.resolveGrantedViewColumns(
+        stationId,
+        orgId,
+        userId,
+        db
+      );
+      const granted = views.find((v) => v.view.id === parcelsViewId)!;
+      const lookup = (value: string) =>
+        portalSql.queryViewRowsByColumn(
+          granted,
+          orgId,
+          { normalizedKey: "name", value },
+          { limit: 5 }
+        );
+      expect((await lookup("near"))!.records.map((r) => r.c_name)).toEqual([
+        "near",
+      ]);
+      // `loss` exists but the view's filter excludes it.
+      expect((await lookup("loss"))!.records).toEqual([]);
+    });
   });
 
   describe("the reader role is the boundary, validator or not", () => {
