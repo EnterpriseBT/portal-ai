@@ -262,6 +262,34 @@ export class ParentAccessService {
   // ── The gate ──────────────────────────────────────────────────────
 
   /**
+   * #835: the ids among `ids` the caller can't see (absent, another org's,
+   * or unreadable), in one query, for a caller that must refuse them in
+   * input order.
+   */
+  static async unreadableIds(
+    set: PermissionSet,
+    organizationId: string,
+    type: PermissionResourceType,
+    ids: string[]
+  ): Promise<Set<string>> {
+    const distinct = [...new Set(ids)];
+    // Fail closed: a type with no finder can't be checked.
+    if (!isParentType(type)) return new Set(distinct);
+    const rows = await ParentAccessService.loadDistinct(type, distinct);
+    return new Set(
+      distinct.filter(
+        (id) =>
+          !ObjectAccessService.readableInOrg(
+            set,
+            organizationId,
+            type,
+            rows.get(id)
+          )
+      )
+    );
+  }
+
+  /**
    * For the agent permission gate: the first id (input order) that is
    * missing, in another org or unreadable (`not_found`); failing that, the
    * first the caller can't `verb` (`denied`); else null. Distinct ids, one

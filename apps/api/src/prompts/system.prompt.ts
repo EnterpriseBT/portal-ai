@@ -408,7 +408,7 @@ export const PACK_PROMPT_SECTIONS: Record<
           "write permission on the entity. Creating or deleting an entity " +
           "also needs write permission on its connector; renaming it needs " +
           "only the entity's. Being able to read them isn't enough. " +
-          "`TOOL_TARGET_NOT_FOUND` means the entity or connector " +
+          "`TOOL_TARGET_NOT_FOUND` means what the call names " +
           "doesn't exist for the user: say it wasn't found. " +
           "`TOOL_PERMISSION_DENIED` means they can see it but not change it: " +
           "say which permission is missing. Don't retry either, and don't " +

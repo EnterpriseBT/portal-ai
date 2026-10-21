@@ -935,6 +935,70 @@ describe("objects and parts (#829)", () => {
       });
     });
 
+    it("#835: a target that doesn't exist for the member answers not found, named as sent", async () => {
+      const own = await entity(fx.memberId);
+      await mapping(own, fx.ownerId);
+      wideTableStatementCache.clear();
+      await wideTableReconcilerService.reconcileEntity(
+        own,
+        db as unknown as DbClient
+      );
+      const hidden = await entity(fx.ownerId);
+      await reach(await instanceOf(own), [own]);
+
+      const missingRecord = generateId();
+      expect(
+        await (
+          await memberTool("entity_record_delete")
+        )({
+          items: [{ connectorEntityId: own, entityRecordId: missingRecord }],
+        })
+      ).toEqual({
+        error: {
+          code: ApiCode.TOOL_TARGET_NOT_FOUND,
+          message: `Record ${missingRecord} was not found.`,
+        },
+      });
+
+      // A record under an entity the member can't read is refused at the
+      // same point as an absent one, so batch order names the first either
+      // way and tells nothing about which exists.
+      const hiddenRecord = await record(hidden, fx.ownerId);
+      const del = await memberTool("entity_record_delete");
+      for (const ids of [
+        [hiddenRecord, missingRecord],
+        [missingRecord, hiddenRecord],
+      ]) {
+        expect(
+          await del({
+            items: ids.map((entityRecordId) => ({
+              connectorEntityId: own,
+              entityRecordId,
+            })),
+          })
+        ).toEqual({
+          error: {
+            code: ApiCode.TOOL_TARGET_NOT_FOUND,
+            message: `Record ${ids[0]} was not found.`,
+          },
+        });
+      }
+
+      // Absent and unreadable read the same, so neither confirms an id.
+      const update = await memberTool("connector_entity_update");
+      const missingEntity = generateId();
+      for (const id of [missingEntity, hidden]) {
+        expect(
+          await update({ items: [{ connectorEntityId: id, label: "X" }] })
+        ).toEqual({
+          error: {
+            code: ApiCode.TOOL_TARGET_NOT_FOUND,
+            message: `Entity ${id} was not found.`,
+          },
+        });
+      }
+    });
+
     it("#832: field_mapping_create needs read on each item's column definition", async () => {
       const entityId = await entity(fx.memberId);
       await reach(await instanceOf(entityId), [entityId]);
