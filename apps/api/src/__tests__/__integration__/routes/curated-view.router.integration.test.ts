@@ -49,6 +49,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { __setFilterSqlSuggesterForTesting, FilterSqlSuggestError } =
+  await import("../../../services/curated-view-filter-suggest.haiku.js");
 const { SystemUtilities } = await import("../../../utils/system.util.js");
 
 describe("curated-view.router integration", () => {
@@ -249,6 +251,7 @@ describe("curated-view.router integration", () => {
   });
 
   afterEach(async () => {
+    __setFilterSqlSuggesterForTesting(null);
     try {
       await reconciler.dropTable(entityId, db);
     } catch {
@@ -1972,6 +1975,344 @@ describe("curated-view.router integration", () => {
     // that bump.
     await EntityRecordCountCache.invalidate(entityId);
     expect((await page(id, {})).total).toBe(25);
+  });
+
+  // ── #644: advanced (SQL) row filter ───────────────────────────────────
+
+  /** Put the org on a tier with (or without) advanced view filters. */
+  async function entitleSqlFilters(entitled: boolean) {
+    const dbT = db as ReturnType<typeof drizzle>;
+    const slug = `sql-filter-tier-${generateId()}`;
+    await dbT.insert(schema.tiers).values({
+      id: generateId(),
+      created: Date.now(),
+      createdBy: "SQL_FILTER_TEST",
+      slug,
+      displayName: "SQL Filter Test Tier",
+      advancedViewFilters: entitled,
+    } as never);
+    await dbT.execute(
+      sql`update organizations set tier = ${slug} where id = ${orgId}`
+    );
+  }
+
+  const sqlView = (key: string, filterSql: string) =>
+    createView({
+      connectorEntityId: entityId,
+      key,
+      label: key,
+      filterSql,
+    });
+
+  it("#644: an entitled writer saves a SQL filter; the view serves only its rows", async () => {
+    await entitleSqlFilters(true);
+    const created = await sqlView("over_thirty", "age > 30");
+    expect(created.status).toBe(201);
+    const view = created.body.payload.curatedView;
+    expect(view.filterSql).toBe("age > 30");
+    expect(view.filterSqlKeys).toEqual(["age"]);
+    expect(view.filter).toBeNull();
+
+    const records = await request(app).get(
+      `/api/curated-views/${view.id}/records`
+    );
+    expect(records.status).toBe(200);
+    expect(
+      (records.body.payload.records as Array<Record<string, unknown>>).map(
+        (r) => r.email
+      )
+    ).toEqual(["x@y.co"]);
+  });
+
+  it("#644: a tier without advanced view filters can't save one (403)", async () => {
+    const res = await sqlView("not_entitled", "age > 30");
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_FILTER_SQL_NOT_ENTITLED);
+  });
+
+  it("#644: a refused construct is a 400 with its position in the filter", async () => {
+    await entitleSqlFilters(true);
+    const res = await sqlView("bad_column", "age > 30 AND salary > 1");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER_SQL);
+    expect(res.body.message).toMatch(/unknown column: salary/);
+    expect(res.body.details).toEqual({ position: 13 });
+  });
+
+  it.each([
+    ["a non-boolean expression", "age + 1", /must be type boolean/],
+    ["a type mismatch", "email > 5", /operator does not exist/],
+  ])(
+    "#644: the dry-run refuses %s with Postgres's reason (400)",
+    async (_label, filterSql, reason) => {
+      await entitleSqlFilters(true);
+      const res = await sqlView(`dry_${generateId().slice(0, 8)}`, filterSql);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER_SQL);
+      expect(res.body.message).toMatch(reason);
+    }
+  );
+
+  it("#644: a body carrying both filter modes is refused (400)", async () => {
+    await entitleSqlFilters(true);
+    const res = await createView({
+      connectorEntityId: entityId,
+      key: "both_modes",
+      label: "Both",
+      filter: AGE_FILTER,
+      filterSql: "age > 30",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_PAYLOAD);
+  });
+
+  it("#644: setting one filter mode clears the other", async () => {
+    await entitleSqlFilters(true);
+    const id = (await sqlView("switching", "age > 30")).body.payload.curatedView
+      .id as string;
+
+    const toBuilder = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ filter: AGE_FILTER });
+    expect(toBuilder.status).toBe(200);
+    expect(toBuilder.body.payload.curatedView).toMatchObject({
+      filter: AGE_FILTER,
+      filterSql: null,
+      filterSqlKeys: [],
+    });
+
+    const toSql = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ filterSql: "age < 30" });
+    expect(toSql.status).toBe(200);
+    expect(toSql.body.payload.curatedView).toMatchObject({
+      filter: null,
+      filterSql: "age < 30",
+      filterSqlKeys: ["age"],
+    });
+  });
+
+  it("#644: after a downgrade a SQL view still renames, but its filter can't change", async () => {
+    await entitleSqlFilters(true);
+    const id = (await sqlView("downgraded", "age > 30")).body.payload
+      .curatedView.id as string;
+    await entitleSqlFilters(false);
+
+    const rename = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ label: "Renamed", filter: null, filterSql: "age > 30" });
+    expect(rename.status).toBe(200);
+    const change = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ filterSql: "age > 40" });
+    expect(change.status).toBe(403);
+    expect(change.body.code).toBe(ApiCode.CURATED_VIEW_FILTER_SQL_NOT_ENTITLED);
+    // Back to the builder needs no entitlement.
+    const cleared = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ filterSql: null, filter: AGE_FILTER });
+    expect(cleared.status).toBe(200);
+  });
+
+  it("#644: a view writer who can't read its entity can't change its SQL filter", async () => {
+    await entitleSqlFilters(true);
+    const { id } = await memberOwnedView("member_sql_filter", [emailFmId]);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update connector_entities set created_by = 'someone-else' where id = ${entityId}`
+    );
+    const res = await request(app)
+      .patch(`/api/curated-views/${id}`)
+      .send({ filterSql: "age > 30" });
+    expect(res.status).toBe(403);
+    // Permission before tier: the refusal is about access, not the plan.
+    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+  });
+
+  it("#644: a reader without write gets no SQL filter text", async () => {
+    await entitleSqlFilters(true);
+    const id = (await sqlView("redacted_sql", "age > 30")).body.payload
+      .curatedView.id as string;
+    await grantMemberView(id);
+
+    currentSub = MEMBER_SUB;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.status).toBe(200);
+    expect(got.body.payload.curatedView).toMatchObject({
+      filter: null,
+      filterSql: null,
+      filterSqlKeys: [],
+      filtered: true,
+    });
+    expect(JSON.stringify(got.body)).not.toContain("age > 30");
+  });
+
+  it("#644: a column a SQL filter reads can't be deleted or renamed (409)", async () => {
+    await entitleSqlFilters(true);
+    expect((await sqlView("pins_age", "age > 30")).status).toBe(201);
+    // A mapping with live records can't be deleted anyway; clear them so the
+    // view's pin is the only thing that can refuse.
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update entity_records set deleted = ${Date.now()} where connector_entity_id = ${entityId}`
+    );
+
+    const del = await request(app).delete(`/api/field-mappings/${ageFmId}`);
+    expect(del.status).toBe(409);
+    expect(del.body.code).toBe(ApiCode.FIELD_MAPPING_DELETE_IN_VIEW);
+
+    const [mapping] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(schema.fieldMappings)
+      .where(sql`id = ${ageFmId}`);
+    const rename = await request(app)
+      .patch(`/api/field-mappings/${ageFmId}`)
+      .send({
+        sourceField: mapping!.sourceField,
+        columnDefinitionId: mapping!.columnDefinitionId,
+        normalizedKey: "years",
+      });
+    expect(rename.status).toBe(409);
+    expect(rename.body.code).toBe(ApiCode.FIELD_MAPPING_KEY_IN_VIEW);
+  });
+
+  // ── #644: SQL filter preview + suggest ────────────────────────────────
+
+  const preview = (body: Record<string, unknown>) =>
+    request(app)
+      .post("/api/curated-views/filter-sql/preview")
+      .send({ connectorEntityId: entityId, ...body });
+  const suggest = (body: Record<string, unknown>) =>
+    request(app)
+      .post("/api/curated-views/filter-sql/suggest")
+      .send({ connectorEntityId: entityId, ...body });
+
+  /** Stub the model: each call returns the next of `answers`. */
+  function stubSuggester(answers: Array<string | Error>) {
+    const calls: Array<Record<string, unknown>> = [];
+    __setFilterSqlSuggesterForTesting({
+      async suggest(input) {
+        calls.push(input as never);
+        const next = answers.shift();
+        if (next instanceof Error) throw next;
+        return { filterSql: next ?? "" };
+      },
+    });
+    return calls;
+  }
+
+  it("#644: preview returns the rows a draft filter selects, with no total", async () => {
+    await entitleSqlFilters(true);
+    const res = await preview({ filterSql: "age > 30" });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.hasMore).toBe(false);
+    expect(res.body.payload.total).toBeUndefined();
+    expect(
+      (res.body.payload.records as Array<Record<string, unknown>>).map(
+        (r) => r.email
+      )
+    ).toEqual(["x@y.co"]);
+    expect(
+      (res.body.payload.columns as Array<{ normalizedKey: string }>).map(
+        (c) => c.normalizedKey
+      )
+    ).toEqual(expect.arrayContaining(["email", "age"]));
+  });
+
+  it("#644: preview narrows to the projection and reports an empty match", async () => {
+    await entitleSqlFilters(true);
+    const res = await preview({
+      filterSql: "age > 1000",
+      fieldMappingIds: [emailFmId],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.records).toEqual([]);
+    expect(
+      (res.body.payload.columns as Array<{ normalizedKey: string }>).map(
+        (c) => c.normalizedKey
+      )
+    ).toEqual(["email"]);
+  });
+
+  it("#644: preview refuses an invalid filter (400) and an unentitled org (403)", async () => {
+    const unentitled = await preview({ filterSql: "age > 30" });
+    expect(unentitled.status).toBe(403);
+    expect(unentitled.body.code).toBe(
+      ApiCode.CURATED_VIEW_FILTER_SQL_NOT_ENTITLED
+    );
+
+    await entitleSqlFilters(true);
+    const bad = await preview({ filterSql: "age + 1" });
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER_SQL);
+  });
+
+  it("#644: preview of an entity that isn't readable here is 404", async () => {
+    await entitleSqlFilters(true);
+    const res = await request(app)
+      .post("/api/curated-views/filter-sql/preview")
+      .send({ connectorEntityId: generateId(), filterSql: "age > 30" });
+    expect(res.status).toBe(404);
+  });
+
+  it("#644: a member drafts against their own view, but can't draft a new one", async () => {
+    await entitleSqlFilters(true);
+    const { id } = await memberOwnedView("member_preview", [emailFmId]);
+    const own = await preview({ filterSql: "age > 30", curatedViewId: id });
+    expect(own.status).toBe(200);
+    const fresh = await preview({ filterSql: "age > 30" });
+    expect(fresh.status).toBe(403);
+    expect(fresh.body.code).toBe(ApiCode.PERMISSION_DENIED);
+  });
+
+  it("#644: suggest returns a filter that passed validation, given keys, types and JSON key names only", async () => {
+    await entitleSqlFilters(true);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update ${sql.raw(`"er__${entityId}"`)} set c_tags = '{"color": "red", "size": 3}'::jsonb`
+    );
+    const calls = stubSuggester(["age > 30"]);
+    const res = await suggest({ prompt: "people over thirty" });
+    expect(res.status).toBe(200);
+    expect(res.body.payload).toEqual({ filterSql: "age > 30", warning: null });
+
+    const columns = calls[0]!.columns as Array<Record<string, unknown>>;
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        { key: "age", type: "number" },
+        { key: "tags", type: "json", jsonKeys: ["color", "size"] },
+      ])
+    );
+    // No record value reaches the model.
+    const sent = JSON.stringify(calls[0]);
+    for (const value of ["red", "a@b.co", "x@y.co", "42"]) {
+      expect(sent).not.toContain(value);
+    }
+  });
+
+  it("#644: a refused suggestion is revised once, told why", async () => {
+    await entitleSqlFilters(true);
+    const calls = stubSuggester(["salary > 1", "age > 30"]);
+    const res = await suggest({ prompt: "people over thirty" });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.filterSql).toBe("age > 30");
+    expect(res.body.payload.warning).toMatch(/unknown column: salary/);
+    expect(calls[1]!.previousAttempt).toEqual({
+      filterSql: "salary > 1",
+      error: "unknown column: salary",
+    });
+  });
+
+  it("#644: suggest answers 502 when the revision fails too, or the model does", async () => {
+    await entitleSqlFilters(true);
+    stubSuggester(["salary > 1", "wage > 1"]);
+    const twice = await suggest({ prompt: "people over thirty" });
+    expect(twice.status).toBe(502);
+    expect(twice.body.code).toBe(ApiCode.CURATED_VIEW_FILTER_SUGGEST_FAILED);
+
+    stubSuggester([
+      new FilterSqlSuggestError("network-error", "upstream 529 secret-ish"),
+    ]);
+    const down = await suggest({ prompt: "people over thirty" });
+    expect(down.status).toBe(502);
+    expect(down.body.message).not.toContain("upstream 529");
   });
 });
 

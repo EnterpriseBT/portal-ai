@@ -911,6 +911,13 @@
       "when": 1792534685847,
       "tag": "0129_backfill-member-column-definition-read",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1792615523334,
+      "tag": "0130_add-curated-view-filter-sql-and-tier-entitlement",
+      "breakpoints": true
     }
   ]
 }

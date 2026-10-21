@@ -49,6 +49,9 @@ export const TierCatalogEntrySchema = z.object({
   /** Whether orgs on this tier may author custom RBAC (roles/policies/groups)
    *  (#622) — an enterprise-tailoring entitlement. */
   customRbac: z.boolean(),
+  /** Whether orgs on this tier may author advanced (SQL) curated-view row
+   *  filters (#644). */
+  advancedViewFilters: z.boolean(),
   /** Card call-to-action (#241) — converged from the catalog. `subscribe`
    *  requires a resolvable `stripeLookupKey`; `none` is the free default. */
   cta: TierCtaSchema,
@@ -133,6 +136,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       ],
       customToolpacks: false,
       customRbac: false,
+      advancedViewFilters: false,
       cta: "none",
       public: true,
       displayOrder: 1,
@@ -170,6 +174,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       ],
       customToolpacks: false,
       customRbac: false,
+      advancedViewFilters: false,
       cta: "subscribe",
       public: true,
       displayOrder: 2,
@@ -200,6 +205,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
       customRbac: false,
+      advancedViewFilters: true,
       cta: "subscribe",
       public: true,
       displayOrder: 3,
@@ -228,6 +234,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
       customRbac: true,
+      advancedViewFilters: true,
       cta: "contact",
       public: true,
       displayOrder: 4,

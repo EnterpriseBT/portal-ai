@@ -18,7 +18,7 @@
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { collectFilterFields } from "@portalai/core/contracts";
+import { collectViewFilterFields } from "@portalai/core/contracts";
 
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
@@ -115,10 +115,10 @@ export class CuratedViewDependencyService {
     return views
       .filter((view) => {
         if (projected.has(view.id)) return true;
-        if (!view.filter) return false;
         const keys = keysByEntity.get(view.connectorEntityId);
         if (!keys) return false;
-        for (const field of collectFilterFields(view.filter)) {
+        // #644: a FilterGroup's fields or a SQL filter's referenced keys.
+        for (const field of collectViewFilterFields(view)) {
           if (keys.has(field)) return true;
         }
         return false;

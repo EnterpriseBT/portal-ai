@@ -36,6 +36,7 @@ const policy = {
     builtinToolpacks: ["data_query"],
     customToolpacks: true,
     customRbac: false,
+    advancedViewFilters: false,
   },
   maxSeats: null,
 };

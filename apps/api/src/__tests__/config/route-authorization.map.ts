@@ -711,6 +711,18 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     by: "class resource.write curated_view (owner/admin) + its entity in org and readable, else 404 (#829)",
     locks: { none: "curated views; no job reads or writes them" },
   },
+  "POST /api/curated-views/filter-sql/preview": {
+    kind: "authorized",
+    by: "entity in org and readable, else 404; write on curatedViewId (loadForVerb) or class resource.write curated_view; advancedViewFilters entitlement (#644)",
+    locks: {
+      none: "read-only: runs the draft filter in a read-only reader-role session",
+    },
+  },
+  "POST /api/curated-views/filter-sql/suggest": {
+    kind: "authorized",
+    by: "entity in org and readable, else 404; write on curatedViewId (loadForVerb) or class resource.write curated_view; advancedViewFilters entitlement (#644)",
+    locks: { none: "a model suggestion, dry-run read-only; writes nothing" },
+  },
   "POST /api/curated-views/{id}/attach": {
     kind: "authorized",
     by: "loadWritableStation (org + read + write station) + view readable (StationAttachmentService)",

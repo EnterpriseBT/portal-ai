@@ -165,6 +165,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     category: FAQCategory.Data,
     relatedGlossaryTerms: ["Sync", "Connector Entity", "Job"],
   },
+  {
+    question: "When should I use a SQL filter instead of the filter builder?",
+    answer:
+      "Use the builder whenever it can say what you mean: it covers comparisons, lists and text matching on any column. Switch a view's row filter to SQL when it can't, for example rows within a distance of a point, a value inside a JSON column, or one column compared with another (amount > cost). A SQL filter is one condition over the entity's own columns. It's checked when you save, so a mistake is caught then, and Preview shows the rows it selects first. Describe the rows you want and Suggest writes one for you to review. SQL filters need a plan that includes advanced filters.",
+    category: FAQCategory.Data,
+    relatedGlossaryTerms: ["Advanced Filter", "Curated View"],
+  },
 
   // Organization & Grouping
   {

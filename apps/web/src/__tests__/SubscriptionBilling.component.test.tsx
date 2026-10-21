@@ -52,6 +52,7 @@ const policy = (tier: string) => ({
     builtinToolpacks: ["data_query"],
     customToolpacks: true,
     customRbac: false,
+    advancedViewFilters: false,
   },
   maxSeats: null,
 });

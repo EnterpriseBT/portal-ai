@@ -111,6 +111,34 @@ export const CuratedViewKeySchema = z
       "Reserved key — must not be a _meta_* name, _record_id, _connector_entity_id, or source_id",
   });
 
+/** #644: an advanced (SQL) row filter is at most this many characters. */
+export const FILTER_SQL_MAX_LENGTH = 4000;
+
+/** #644: an advanced (SQL) row filter, as the author typed it. */
+export const filterSqlField = () =>
+  z
+    .string()
+    .trim()
+    .min(1, "Filter is required")
+    .max(
+      FILTER_SQL_MAX_LENGTH,
+      `Filter must be at most ${FILTER_SQL_MAX_LENGTH} characters`
+    );
+
+/** #644: a row filter is a FilterGroup or SQL, never both. */
+const oneFilterMode = (
+  body: { filter?: unknown; filterSql?: string | null },
+  ctx: z.RefinementCtx
+) => {
+  if (body.filter != null && body.filterSql != null) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["filterSql"],
+      message: "Use either the builder filter or a SQL filter, not both",
+    });
+  }
+};
+
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const CuratedViewCreateRequestBodySchema = z
   .object({
@@ -120,10 +148,14 @@ export const CuratedViewCreateRequestBodySchema = z
     description: descriptionField().nullable().optional(),
     /** A structured `FilterGroup` (filter.contract.ts); omit for no row filter. */
     filter: FilterExpressionSchema.nullable().optional(),
+    /** #644: an advanced (SQL) row filter instead of `filter`. Needs a tier
+     *  with advanced view filters. */
+    filterSql: filterSqlField().nullable().optional(),
     /** The projection's field-mapping ids; omit/empty = unrestricted (all columns). */
     fieldMappingIds: z.array(z.string()).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(oneFilterMode);
 
 export type CuratedViewCreateRequestBody = z.infer<
   typeof CuratedViewCreateRequestBodySchema
@@ -145,12 +177,75 @@ export const CuratedViewUpdateRequestBodySchema = z
     label: nameField("Label").optional(),
     description: descriptionField().nullable().optional(),
     filter: FilterExpressionSchema.nullable().optional(),
+    /** #644: setting one filter mode clears the other. */
+    filterSql: filterSqlField().nullable().optional(),
+    fieldMappingIds: z.array(z.string()).optional(),
+  })
+  .strict()
+  .superRefine(oneFilterMode);
+
+export type CuratedViewUpdateRequestBody = z.infer<
+  typeof CuratedViewUpdateRequestBodySchema
+>;
+
+// ── SQL filter preview + suggest (#644) ──────────────────────────────
+
+/** #644: the most rows a SQL filter preview returns. */
+export const CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS = 25;
+
+export const CuratedViewFilterSqlPreviewRequestBodySchema = z
+  .object({
+    connectorEntityId: z.string().min(1),
+    filterSql: filterSqlField(),
+    /** Editing an existing view: authorized by write on it, not create. */
+    curatedViewId: z.string().min(1).optional(),
+    /** The projection to preview; omit/empty = all of the entity's columns. */
     fieldMappingIds: z.array(z.string()).optional(),
   })
   .strict();
 
-export type CuratedViewUpdateRequestBody = z.infer<
-  typeof CuratedViewUpdateRequestBodySchema
+export type CuratedViewFilterSqlPreviewRequestBody = z.infer<
+  typeof CuratedViewFilterSqlPreviewRequestBodySchema
+>;
+
+export const CuratedViewFilterSqlPreviewResponsePayloadSchema = z.object({
+  columns: z.array(ResolvedColumnSchema),
+  /** Keyed by column normalizedKey, plus `_record_id`. At most
+   *  {@link CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS}; no total is counted. */
+  records: z.array(z.record(z.string(), z.unknown())),
+  hasMore: z.boolean(),
+});
+
+export type CuratedViewFilterSqlPreviewResponsePayload = z.infer<
+  typeof CuratedViewFilterSqlPreviewResponsePayloadSchema
+>;
+
+export const CuratedViewFilterSqlSuggestRequestBodySchema = z
+  .object({
+    connectorEntityId: z.string().min(1),
+    /** What rows the author wants, in their words. */
+    prompt: descriptionField("Prompt")
+      .trim()
+      .min(1, "Describe the rows you want"),
+    /** The filter being edited, for the model to revise. */
+    currentSql: z.string().max(FILTER_SQL_MAX_LENGTH).optional(),
+    curatedViewId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type CuratedViewFilterSqlSuggestRequestBody = z.infer<
+  typeof CuratedViewFilterSqlSuggestRequestBodySchema
+>;
+
+export const CuratedViewFilterSqlSuggestResponsePayloadSchema = z.object({
+  /** A filter that passed validation and the dry-run. */
+  filterSql: z.string(),
+  /** Set when the first suggestion failed validation and was revised. */
+  warning: z.string().nullable(),
+});
+
+export type CuratedViewFilterSqlSuggestResponsePayload = z.infer<
+  typeof CuratedViewFilterSqlSuggestResponsePayloadSchema
 >;
 
 export const CuratedViewUpdateResponsePayloadSchema = z.object({

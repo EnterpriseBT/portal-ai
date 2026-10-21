@@ -13,12 +13,14 @@ describe("curatedViewUpdateBody", () => {
     label: "V".repeat(500),
     description: "Northeast accounts",
     filter: null,
+    filterSql: null,
     fieldMappingIds: ["fm-1"],
   };
 
   it("leaves out an unchanged label and description", () => {
     expect(curatedViewUpdateBody(view, form)).toEqual({
       filter: null,
+      filterSql: null,
       fieldMappingIds: ["fm-1"],
     });
   });
@@ -42,5 +44,11 @@ describe("curatedViewUpdateBody", () => {
         { ...form, description: "" }
       )
     ).not.toHaveProperty("description");
+  });
+
+  it("always sends the SQL filter (#644)", () => {
+    expect(
+      curatedViewUpdateBody(view, { ...form, filterSql: "amount > cost" })
+    ).toMatchObject({ filter: null, filterSql: "amount > cost" });
   });
 });

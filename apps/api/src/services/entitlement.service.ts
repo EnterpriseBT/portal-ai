@@ -166,6 +166,14 @@ export class EntitlementService {
     return policy.entitlements.customRbac;
   }
 
+  /** Whether the org's tier includes advanced (SQL) view filters (#644). */
+  static async advancedViewFiltersEntitled(
+    organizationId: string
+  ): Promise<boolean> {
+    const policy = await EntitlementService.resolvePolicy(organizationId);
+    return policy.entitlements.advancedViewFilters;
+  }
+
   /**
    * Resolve the org's tier policy. A missing org row resolves the default
    * tier (`resolveTier` handles the empty slug), which keeps the behavior

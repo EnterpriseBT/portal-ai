@@ -29,6 +29,8 @@ const view = {
   label: "NE Accounts",
   description: "North-east accounts",
   filter: null,
+  filterSql: null,
+  filterSqlKeys: [],
   fieldMappingIds: ["fm-1"],
   filtered: false,
   capabilities: { read: true, write: true, delete: true, share: true },

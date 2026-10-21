@@ -28,6 +28,7 @@ const policy = (tier: string): BillingTier["policy"] => ({
     builtinToolpacks: ["data_query"],
     customToolpacks: true,
     customRbac: false,
+    advancedViewFilters: false,
   },
   maxSeats: 5,
 });

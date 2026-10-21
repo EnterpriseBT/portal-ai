@@ -26,6 +26,8 @@ const validFields = {
   label: "NE Accounts",
   description: null,
   filter: null,
+  filterSql: null,
+  filterSqlKeys: [],
 };
 
 describe("CuratedViewSchema", () => {

@@ -5,7 +5,7 @@
  * Sent to every reader, it leaks the rows the filter hides: the value oracle
  * `queryViewRowsByColumn` refuses. So only a caller with `write` on the view
  * (who edits the definition) gets it. Every other reader gets `filter: null`
- * and the two booleans the UI shows ("Filtered", "N selected" / "All
+ * (and, #644, `filterSql: null` with no referenced keys) and the two booleans the UI shows ("Filtered", "N selected" / "All
  * columns"). #829: the projection itself is what reading the view conveys,
  * so every reader gets its ids.
  */
@@ -32,9 +32,16 @@ export class CuratedViewPayloadService {
     view: T,
     projected: boolean
   ): T & { filtered: boolean; projected: boolean } {
-    const filtered = view.filter != null;
+    const filtered = view.filter != null || view.filterSql != null;
     return CuratedViewPayloadService.canSeeDefinition(set, view)
       ? { ...view, filtered, projected }
-      : { ...view, filter: null, filtered, projected };
+      : {
+          ...view,
+          filter: null,
+          filterSql: null,
+          filterSqlKeys: [],
+          filtered,
+          projected,
+        };
   }
 }

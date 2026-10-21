@@ -88,6 +88,7 @@ const standardRow = (over: Record<string, unknown> = {}) => ({
   customToolpacks: CATALOG_STANDARD.customToolpacks,
   // #701: the seat cap and custom-RBAC entitlement are catalog-owned too.
   customRbac: CATALOG_STANDARD.customRbac,
+  advancedViewFilters: CATALOG_STANDARD.advancedViewFilters,
   maxSeats: CATALOG_STANDARD.maxSeats,
   cta: CATALOG_STANDARD.cta,
   // #311: marketing-site fields (catalog-owned).
@@ -382,6 +383,42 @@ describe("tierApply converges seats and custom RBAC (#701)", () => {
     expect(change.fields.customRbac).toEqual({
       from: !CATALOG_STANDARD.customRbac,
       to: CATALOG_STANDARD.customRbac,
+    });
+  });
+});
+
+describe("tierApply converges advanced view filters (#644)", () => {
+  it("an insert carries the catalog's advancedViewFilters", async () => {
+    const { factory } = fakeStore([]);
+    const result = await tierApply(
+      local as never,
+      { dryRun: true },
+      {
+        store: factory as never,
+        catalog: [{ ...CATALOG_STANDARD, advancedViewFilters: true }] as never,
+      }
+    );
+    const change = result.changes.find((c) => c.slug === "standard")!;
+    expect(change.action).toBe("insert");
+    expect(change.fields.advancedViewFilters).toEqual({ from: null, to: true });
+  });
+
+  it("a drifted row is updated back to the catalog", async () => {
+    const { factory } = fakeStore([
+      standardRow({
+        advancedViewFilters: !CATALOG_STANDARD.advancedViewFilters,
+      }),
+    ]);
+    const result = await tierApply(
+      local as never,
+      { dryRun: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+    const change = result.changes.find((c) => c.slug === "standard")!;
+    expect(change.action).toBe("update");
+    expect(change.fields.advancedViewFilters).toEqual({
+      from: !CATALOG_STANDARD.advancedViewFilters,
+      to: CATALOG_STANDARD.advancedViewFilters,
     });
   });
 });

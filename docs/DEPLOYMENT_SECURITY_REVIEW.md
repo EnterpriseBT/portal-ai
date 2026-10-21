@@ -16,7 +16,7 @@ Every third-party network call a deployment makes. Each is opt-in via an env var
 
 | Vector | Control | Provider (default) | Decision |
 |---|---|---|---|
-| LLM (agent) | `ANTHROPIC_BASE_URL` (`apps/api/src/environment.ts`) — empty = Anthropic direct; set = self-hosted/proxied model (#567) | Anthropic | `on / self-host / drop` |
+| LLM (agent, and the curated-view SQL filter suggester) | `ANTHROPIC_BASE_URL` (`apps/api/src/environment.ts`) — empty = Anthropic direct; set = self-hosted/proxied model (#567). The filter suggester (#644, `apps/api/src/services/curated-view-filter-suggest.haiku.ts`) sends an entity's column keys and types, the top-level key names of its JSON columns (from up to 20 rows) and the author's description, never a record value; it is only reachable on a tier with `advancedViewFilters` | Anthropic | `on / self-host / drop` |
 | Web search (`web_search`) | `TAVILY_API_KEY` + `apps/api/src/tools/web-search.tool.ts` — absent = tool unavailable | Tavily | `on / drop` |
 | Geocoding (`geocode`, `reverse_geocode`, `bulk_geocode_records`) | `GEOCODING_API_KEY` + `apps/api/src/tools/*geocode*.tool.ts` — absent = tools unavailable | (geocoding provider) | `on / self-hosted geocoder / drop` |
 
@@ -70,7 +70,7 @@ Our own SaaS deployment run through the same review — the "client" is us. Doub
 
 | Vector | Decision | Basis |
 |---|---|---|
-| LLM | **On — Anthropic direct** (`ANTHROPIC_BASE_URL` unset in prod — `confirm` via `portalops vars get ANTHROPIC_BASE_URL --env prod`) | Core agent loop |
+| LLM | **On — Anthropic direct** (`ANTHROPIC_BASE_URL` unset in prod — `confirm` via `portalops vars get ANTHROPIC_BASE_URL --env prod`) | Core agent loop; the view-filter suggester (#644: column keys, types and JSON key names, no values) |
 | Web search | **On — Tavily** (`TAVILY_API_KEY` set — `confirm`) | `web_search` toolpack shipped |
 | Geocoding | **On** (`GEOCODING_API_KEY` set — `confirm`) | GIS toolpack shipped |
 
@@ -87,6 +87,6 @@ Our own SaaS deployment run through the same review — the "client" is us. Doub
 | Network egress | Anthropic + Tavily + geocoding endpoints; no telemetry egress. VPC/security-group egress allow-list — `confirm` against the prod VPC. |
 | Least-privilege | ECS `TaskRole` (app perms) + `TaskExecutionRole` (pull/secrets), separate roles (`infra/cloudformation/backend.yml`). Container non-root is tracked in **#578/#571** (not yet on the SaaS image) — `in progress`. |
 | Data residency | Single region (our AWS) — `confirm` region. |
-| Agent SQL boundary | **App-level AST gate on every agent SQL path** (#660 PR 1 — `apps/api/src/services/portal-sql-parse.util.ts`, `portal-sql-validation.util.ts`): caller's session views only, function allowlist, `DISCARD TEMP` per session, pinned map pipelines re-validated each run, transform fragments limited to the source row. **DB-level enforcement (#660 PR 2):** agent SQL, map tiles and dissolve run under the NOLOGIN reader role, granted SELECT on the session's temp views only (`portal-sql-reader-role.service.ts`); the SQL tools refuse (`PORTAL_SQL_UNAVAILABLE`) if the role is missing or over-privileged. Confirm `portal-sql.reader-role-ok` in the app-dev and prod API logs after deploy. Before #660 a member could read other orgs' physical tables through agent SQL; the post-deploy pin scan (discovery OQ5) is the open incident item. |
+| Agent SQL boundary | **App-level AST gate on every agent SQL path** (#660 PR 1 — `apps/api/src/services/portal-sql-parse.util.ts`, `portal-sql-validation.util.ts`): caller's session views only, function allowlist, `DISCARD TEMP` per session, pinned map pipelines re-validated each run, transform fragments limited to the source row. **DB-level enforcement (#660 PR 2):** agent SQL, map tiles and dissolve run under the NOLOGIN reader role, granted SELECT on the session's temp views only (`portal-sql-reader-role.service.ts`); the SQL tools refuse (`PORTAL_SQL_UNAVAILABLE`) if the role is missing or over-privileged. Stored curated-view SQL filters (#644) go through the same AST gate on save and on every render, and run as the reader role on every read (agent session, records list, identity lookup, preview): the view is `security_invoker` over a server-built source view, and the reader holds column-level SELECT on that source only, so a fragment can't reach another relation even past the gate. Confirm `portal-sql.reader-role-ok` in the app-dev and prod API logs after deploy. Before #660 a member could read other orgs' physical tables through agent SQL; the post-deploy pin scan (discovery OQ5) is the open incident item. |
 
 **Sign-off (SaaS baseline):** reviewed by `<our security owner>` · Date `<date>` — the `confirm`/`in progress` items above are the open action list.

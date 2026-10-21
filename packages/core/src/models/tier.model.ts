@@ -72,6 +72,8 @@ export const TierEntitlementsSchema = z.object({
   customToolpacks: z.boolean(),
   /** #622: custom RBAC authoring (roles/policies/groups). Fail-closed. */
   customRbac: z.boolean(),
+  /** #644: advanced (SQL) curated-view row filters. Fail-closed. */
+  advancedViewFilters: z.boolean(),
 });
 export type TierEntitlements = z.infer<typeof TierEntitlementsSchema>;
 
@@ -145,6 +147,8 @@ export const TierSchema = CoreSchema.extend({
   /** Whether orgs on this tier may author custom RBAC (roles/policies/groups)
    *  (#622). Fail-closed default false. DB column `custom_rbac`. */
   customRbac: z.boolean(),
+  /** #644: advanced (SQL) curated-view row filters entitlement. */
+  advancedViewFilters: z.boolean(),
   /** Card call-to-action (#241). `text` column, CHECK-constrained to the
    *  {@link TierCtaSchema} set; narrowed to the enum on the billing contract
    *  (kept `string` here so the dual-schema `IsAssignable` guard holds — the

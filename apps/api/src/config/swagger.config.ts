@@ -107,6 +107,10 @@ import {
   ToolpackGetResponsePayloadSchema,
   StationInstanceWithConnectorInstanceSchema,
   StationViewWithCuratedViewSchema,
+  CuratedViewFilterSqlPreviewRequestBodySchema,
+  CuratedViewFilterSqlPreviewResponsePayloadSchema,
+  CuratedViewFilterSqlSuggestRequestBodySchema,
+  CuratedViewFilterSqlSuggestResponsePayloadSchema,
   ResolvedColumnSchema,
 } from "@portalai/core/contracts";
 import {
@@ -582,6 +586,23 @@ const stationSchemas: Record<string, unknown> = {
   ),
   // #678: the curated-view records' column shape (the entity list's too).
   ResolvedColumn: z.toJSONSchema(ResolvedColumnSchema, JSON_SCHEMA_OPTS),
+  // #644: authoring a SQL row filter.
+  CuratedViewFilterSqlPreviewRequestBody: z.toJSONSchema(
+    CuratedViewFilterSqlPreviewRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  CuratedViewFilterSqlPreviewResponsePayload: z.toJSONSchema(
+    CuratedViewFilterSqlPreviewResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  CuratedViewFilterSqlSuggestRequestBody: z.toJSONSchema(
+    CuratedViewFilterSqlSuggestRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  CuratedViewFilterSqlSuggestResponsePayload: z.toJSONSchema(
+    CuratedViewFilterSqlSuggestResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
 };
 
 /**
@@ -1615,6 +1636,17 @@ const options: swaggerJsdoc.Options = {
               type: ["object", "null"],
               description:
                 "A structured FilterGroup (row filter); null = all rows. On GET and list, null for a caller without write on the view (#680): read `filtered` instead",
+            },
+            filterSql: {
+              type: ["string", "null"],
+              description:
+                "#644: an advanced (SQL) row filter over the entity's column keys, instead of `filter` (at most one is set). Null for a caller without write on the view, like `filter`",
+            },
+            filterSqlKeys: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "#644: the column keys `filterSql` references (pinned against delete and rename). Empty for a caller without write on the view",
             },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
