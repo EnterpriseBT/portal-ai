@@ -188,6 +188,66 @@ export type CuratedViewUpdateRequestBody = z.infer<
   typeof CuratedViewUpdateRequestBodySchema
 >;
 
+// ── SQL filter preview + suggest (#644) ──────────────────────────────
+
+/** #644: the most rows a SQL filter preview returns. */
+export const CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS = 25;
+
+export const CuratedViewFilterSqlPreviewRequestBodySchema = z
+  .object({
+    connectorEntityId: z.string().min(1),
+    filterSql: filterSqlField(),
+    /** Editing an existing view: authorized by write on it, not create. */
+    curatedViewId: z.string().min(1).optional(),
+    /** The projection to preview; omit/empty = all of the entity's columns. */
+    fieldMappingIds: z.array(z.string()).optional(),
+  })
+  .strict();
+
+export type CuratedViewFilterSqlPreviewRequestBody = z.infer<
+  typeof CuratedViewFilterSqlPreviewRequestBodySchema
+>;
+
+export const CuratedViewFilterSqlPreviewResponsePayloadSchema = z.object({
+  columns: z.array(ResolvedColumnSchema),
+  /** Keyed by column normalizedKey, plus `_record_id`. At most
+   *  {@link CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS}; no total is counted. */
+  records: z.array(z.record(z.string(), z.unknown())),
+  hasMore: z.boolean(),
+});
+
+export type CuratedViewFilterSqlPreviewResponsePayload = z.infer<
+  typeof CuratedViewFilterSqlPreviewResponsePayloadSchema
+>;
+
+export const CuratedViewFilterSqlSuggestRequestBodySchema = z
+  .object({
+    connectorEntityId: z.string().min(1),
+    /** What rows the author wants, in their words. */
+    prompt: descriptionField("Prompt")
+      .trim()
+      .min(1, "Describe the rows you want"),
+    /** The filter being edited, for the model to revise. */
+    currentSql: z.string().max(FILTER_SQL_MAX_LENGTH).optional(),
+    curatedViewId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type CuratedViewFilterSqlSuggestRequestBody = z.infer<
+  typeof CuratedViewFilterSqlSuggestRequestBodySchema
+>;
+
+export const CuratedViewFilterSqlSuggestResponsePayloadSchema = z.object({
+  /** A filter that passed validation and the dry-run. */
+  filterSql: z.string(),
+  /** Set when the first suggestion failed validation and was revised. */
+  warning: z.string().nullable(),
+});
+
+export type CuratedViewFilterSqlSuggestResponsePayload = z.infer<
+  typeof CuratedViewFilterSqlSuggestResponsePayloadSchema
+>;
+
 export const CuratedViewUpdateResponsePayloadSchema = z.object({
   curatedView: CuratedViewSchema,
 });

@@ -21,6 +21,10 @@ import {
   CuratedViewCreateRequestBodySchema,
   type CuratedViewCreateResponsePayload,
   CuratedViewUpdateRequestBodySchema,
+  CuratedViewFilterSqlPreviewRequestBodySchema,
+  type CuratedViewFilterSqlPreviewResponsePayload,
+  CuratedViewFilterSqlSuggestRequestBodySchema,
+  type CuratedViewFilterSqlSuggestResponsePayload,
   type CuratedViewUpdateResponsePayload,
   type CuratedViewDeleteResponsePayload,
   CuratedViewAttachRequestBodySchema,
@@ -976,6 +980,186 @@ async function auditViewAttachment(
     },
   });
 }
+
+/**
+ * #644: who may author a SQL filter for `connectorEntityId`, in the order a
+ * refusal is decided (permission before tier, #688). The entity must be in
+ * the org and readable (else 404). Editing an existing view (`curatedViewId`)
+ * needs write on it, and it must be a view of that entity; drafting a new one
+ * needs the curated-view create rule. Then the tier's entitlement.
+ */
+async function authorizeFilterSqlAuthoring(
+  req: Request,
+  body: { connectorEntityId: string; curatedViewId?: string }
+): Promise<void> {
+  const { organizationId } = req.application!.metadata;
+  const set = await PermissionService.loadSet(req.application!.metadata);
+  const entity = await DbService.repository.connectorEntities.findById(
+    body.connectorEntityId
+  );
+  if (
+    !ObjectAccessService.readableInOrg(set, organizationId, "entity", entity)
+  ) {
+    throw new ApiError(
+      404,
+      ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+      "Connector entity not found"
+    );
+  }
+  if (body.curatedViewId) {
+    const view = ObjectAccessService.loadForVerb(
+      set,
+      organizationId,
+      "curated_view",
+      await DbService.repository.curatedViews.findById(body.curatedViewId),
+      "write",
+      () =>
+        new ApiError(
+          404,
+          ApiCode.CURATED_VIEW_NOT_FOUND,
+          "Curated view not found"
+        )
+    );
+    if (view.connectorEntityId !== body.connectorEntityId) {
+      throw new ApiError(
+        400,
+        ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+        "The view belongs to a different entity"
+      );
+    }
+  } else {
+    // The same class-level rule as creating a view (#708).
+    set.check("resource.write", { type: "curated_view" });
+  }
+  await CuratedViewFilterSqlService.assertEntitled(organizationId);
+}
+
+/**
+ * @openapi
+ * /api/curated-views/filter-sql/preview:
+ *   post:
+ *     tags: [Curated Views]
+ *     summary: Preview the rows a draft SQL filter selects
+ *     description: "#644. Validates the filter like a save would, then returns up to 25 of the rows it selects (no total), read as the restricted SQL role under the statement timeout. Needs read on the entity, write on `curatedViewId` when given (else the curated-view create rule), and a plan with advanced view filters. Writes nothing."
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/CuratedViewFilterSqlPreviewRequestBody' }
+ *     responses:
+ *       200:
+ *         description: The first rows
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 payload: { $ref: '#/components/schemas/CuratedViewFilterSqlPreviewResponsePayload' }
+ *       400: { description: "Invalid payload (CURATED_VIEW_INVALID_PAYLOAD), or a filter refused by validation or by Postgres (CURATED_VIEW_INVALID_FILTER_SQL)" }
+ *       403: { description: "Not permitted (PERMISSION_DENIED), or the plan excludes advanced view filters (CURATED_VIEW_FILTER_SQL_NOT_ENTITLED)" }
+ *       404: { description: "The entity or the view isn't readable here" }
+ *       503: { description: "The restricted SQL role is unavailable (PORTAL_SQL_UNAVAILABLE)" }
+ */
+curatedViewRouter.post(
+  "/filter-sql/preview",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = CuratedViewFilterSqlPreviewRequestBodySchema.safeParse(
+        req.body
+      );
+      if (!parsed.success) {
+        return next(
+          invalidPayload(
+            ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+            "Invalid filter preview payload",
+            parsed.error
+          )
+        );
+      }
+      const body = parsed.data;
+      await authorizeFilterSqlAuthoring(req, body);
+      const payload = await CuratedViewFilterSqlService.preview({
+        organizationId: req.application!.metadata.organizationId,
+        connectorEntityId: body.connectorEntityId,
+        filterSql: body.filterSql,
+        fieldMappingIds: body.fieldMappingIds,
+      });
+      return HttpService.success<CuratedViewFilterSqlPreviewResponsePayload>(
+        res,
+        payload
+      );
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/curated-views/filter-sql/suggest:
+ *   post:
+ *     tags: [Curated Views]
+ *     summary: Suggest a SQL filter from a description
+ *     description: "#644. Asks a model for a filter matching `prompt`, given the entity's column keys and types and its JSON columns' top-level key names (no record values). The suggestion passes the same validation and dry-run as a hand-written filter; a refused one is revised once. Same authorization as the preview. Not metered. Writes nothing."
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/CuratedViewFilterSqlSuggestRequestBody' }
+ *     responses:
+ *       200:
+ *         description: A validated filter
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 payload: { $ref: '#/components/schemas/CuratedViewFilterSqlSuggestResponsePayload' }
+ *       400: { description: "Invalid payload (CURATED_VIEW_INVALID_PAYLOAD)" }
+ *       403: { description: "Not permitted (PERMISSION_DENIED), or the plan excludes advanced view filters (CURATED_VIEW_FILTER_SQL_NOT_ENTITLED)" }
+ *       404: { description: "The entity or the view isn't readable here" }
+ *       502: { description: "The model failed, or its revised suggestion still didn't validate (CURATED_VIEW_FILTER_SUGGEST_FAILED)" }
+ *       503: { description: "The restricted SQL role is unavailable (PORTAL_SQL_UNAVAILABLE)" }
+ */
+curatedViewRouter.post(
+  "/filter-sql/suggest",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = CuratedViewFilterSqlSuggestRequestBodySchema.safeParse(
+        req.body
+      );
+      if (!parsed.success) {
+        return next(
+          invalidPayload(
+            ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+            "Invalid filter suggestion payload",
+            parsed.error
+          )
+        );
+      }
+      const body = parsed.data;
+      await authorizeFilterSqlAuthoring(req, body);
+      const payload = await CuratedViewFilterSqlService.suggest({
+        organizationId: req.application!.metadata.organizationId,
+        connectorEntityId: body.connectorEntityId,
+        prompt: body.prompt,
+        currentSql: body.currentSql,
+      });
+      return HttpService.success<CuratedViewFilterSqlSuggestResponsePayload>(
+        res,
+        payload
+      );
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
 
 /**
  * @openapi

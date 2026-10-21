@@ -49,6 +49,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { __setFilterSqlSuggesterForTesting, FilterSqlSuggestError } =
+  await import("../../../services/curated-view-filter-suggest.haiku.js");
 const { SystemUtilities } = await import("../../../utils/system.util.js");
 
 describe("curated-view.router integration", () => {
@@ -249,6 +251,7 @@ describe("curated-view.router integration", () => {
   });
 
   afterEach(async () => {
+    __setFilterSqlSuggesterForTesting(null);
     try {
       await reconciler.dropTable(entityId, db);
     } catch {
@@ -2169,6 +2172,147 @@ describe("curated-view.router integration", () => {
       });
     expect(rename.status).toBe(409);
     expect(rename.body.code).toBe(ApiCode.FIELD_MAPPING_KEY_IN_VIEW);
+  });
+
+  // ── #644: SQL filter preview + suggest ────────────────────────────────
+
+  const preview = (body: Record<string, unknown>) =>
+    request(app)
+      .post("/api/curated-views/filter-sql/preview")
+      .send({ connectorEntityId: entityId, ...body });
+  const suggest = (body: Record<string, unknown>) =>
+    request(app)
+      .post("/api/curated-views/filter-sql/suggest")
+      .send({ connectorEntityId: entityId, ...body });
+
+  /** Stub the model: each call returns the next of `answers`. */
+  function stubSuggester(answers: Array<string | Error>) {
+    const calls: Array<Record<string, unknown>> = [];
+    __setFilterSqlSuggesterForTesting({
+      async suggest(input) {
+        calls.push(input as never);
+        const next = answers.shift();
+        if (next instanceof Error) throw next;
+        return { filterSql: next ?? "" };
+      },
+    });
+    return calls;
+  }
+
+  it("#644: preview returns the rows a draft filter selects, with no total", async () => {
+    await entitleSqlFilters(true);
+    const res = await preview({ filterSql: "age > 30" });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.hasMore).toBe(false);
+    expect(res.body.payload.total).toBeUndefined();
+    expect(
+      (res.body.payload.records as Array<Record<string, unknown>>).map(
+        (r) => r.email
+      )
+    ).toEqual(["x@y.co"]);
+    expect(
+      (res.body.payload.columns as Array<{ normalizedKey: string }>).map(
+        (c) => c.normalizedKey
+      )
+    ).toEqual(expect.arrayContaining(["email", "age"]));
+  });
+
+  it("#644: preview narrows to the projection and reports an empty match", async () => {
+    await entitleSqlFilters(true);
+    const res = await preview({
+      filterSql: "age > 1000",
+      fieldMappingIds: [emailFmId],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.records).toEqual([]);
+    expect(
+      (res.body.payload.columns as Array<{ normalizedKey: string }>).map(
+        (c) => c.normalizedKey
+      )
+    ).toEqual(["email"]);
+  });
+
+  it("#644: preview refuses an invalid filter (400) and an unentitled org (403)", async () => {
+    const unentitled = await preview({ filterSql: "age > 30" });
+    expect(unentitled.status).toBe(403);
+    expect(unentitled.body.code).toBe(
+      ApiCode.CURATED_VIEW_FILTER_SQL_NOT_ENTITLED
+    );
+
+    await entitleSqlFilters(true);
+    const bad = await preview({ filterSql: "age + 1" });
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe(ApiCode.CURATED_VIEW_INVALID_FILTER_SQL);
+  });
+
+  it("#644: preview of an entity that isn't readable here is 404", async () => {
+    await entitleSqlFilters(true);
+    const res = await request(app)
+      .post("/api/curated-views/filter-sql/preview")
+      .send({ connectorEntityId: generateId(), filterSql: "age > 30" });
+    expect(res.status).toBe(404);
+  });
+
+  it("#644: a member drafts against their own view, but can't draft a new one", async () => {
+    await entitleSqlFilters(true);
+    const { id } = await memberOwnedView("member_preview", [emailFmId]);
+    const own = await preview({ filterSql: "age > 30", curatedViewId: id });
+    expect(own.status).toBe(200);
+    const fresh = await preview({ filterSql: "age > 30" });
+    expect(fresh.status).toBe(403);
+    expect(fresh.body.code).toBe(ApiCode.PERMISSION_DENIED);
+  });
+
+  it("#644: suggest returns a filter that passed validation, given keys, types and JSON key names only", async () => {
+    await entitleSqlFilters(true);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update ${sql.raw(`"er__${entityId}"`)} set c_tags = '{"color": "red", "size": 3}'::jsonb`
+    );
+    const calls = stubSuggester(["age > 30"]);
+    const res = await suggest({ prompt: "people over thirty" });
+    expect(res.status).toBe(200);
+    expect(res.body.payload).toEqual({ filterSql: "age > 30", warning: null });
+
+    const columns = calls[0]!.columns as Array<Record<string, unknown>>;
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        { key: "age", type: "number" },
+        { key: "tags", type: "json", jsonKeys: ["color", "size"] },
+      ])
+    );
+    // No record value reaches the model.
+    const sent = JSON.stringify(calls[0]);
+    for (const value of ["red", "a@b.co", "x@y.co", "42"]) {
+      expect(sent).not.toContain(value);
+    }
+  });
+
+  it("#644: a refused suggestion is revised once, told why", async () => {
+    await entitleSqlFilters(true);
+    const calls = stubSuggester(["salary > 1", "age > 30"]);
+    const res = await suggest({ prompt: "people over thirty" });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.filterSql).toBe("age > 30");
+    expect(res.body.payload.warning).toMatch(/unknown column: salary/);
+    expect(calls[1]!.previousAttempt).toEqual({
+      filterSql: "salary > 1",
+      error: "unknown column: salary",
+    });
+  });
+
+  it("#644: suggest answers 502 when the revision fails too, or the model does", async () => {
+    await entitleSqlFilters(true);
+    stubSuggester(["salary > 1", "wage > 1"]);
+    const twice = await suggest({ prompt: "people over thirty" });
+    expect(twice.status).toBe(502);
+    expect(twice.body.code).toBe(ApiCode.CURATED_VIEW_FILTER_SUGGEST_FAILED);
+
+    stubSuggester([
+      new FilterSqlSuggestError("network-error", "upstream 529 secret-ish"),
+    ]);
+    const down = await suggest({ prompt: "people over thirty" });
+    expect(down.status).toBe(502);
+    expect(down.body.message).not.toContain("upstream 529");
   });
 });
 

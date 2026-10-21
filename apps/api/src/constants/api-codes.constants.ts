@@ -589,6 +589,8 @@ export enum ApiCode {
   CURATED_VIEW_FILTER_SQL_BROKEN = "CURATED_VIEW_FILTER_SQL_BROKEN",
   /** #644: the org's tier doesn't include advanced (SQL) view filters. */
   CURATED_VIEW_FILTER_SQL_NOT_ENTITLED = "CURATED_VIEW_FILTER_SQL_NOT_ENTITLED",
+  /** #644: the filter suggester failed, or its suggestion didn't validate. */
+  CURATED_VIEW_FILTER_SUGGEST_FAILED = "CURATED_VIEW_FILTER_SUGGEST_FAILED",
   /** #678: a records `sortBy` names a projected column whose type can't be
    *  sorted (json, arrays). */
   CURATED_VIEW_INVALID_SORT = "CURATED_VIEW_INVALID_SORT",

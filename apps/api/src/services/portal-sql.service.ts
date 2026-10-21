@@ -27,7 +27,12 @@
 import { createHash } from "node:crypto";
 
 import { sql } from "drizzle-orm";
-import { decodeCursor, encodeCursor } from "@portalai/core/contracts";
+import {
+  CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS,
+  decodeCursor,
+  encodeCursor,
+} from "@portalai/core/contracts";
+import type { CuratedViewFilterSqlPreviewResponsePayload } from "@portalai/core/contracts";
 
 import { db } from "../db/client.js";
 import {
@@ -450,6 +455,41 @@ async function createGuardedViews(
 
 /** Postgres `query_canceled` (statement timeout, client cancel). */
 const QUERY_CANCELED = "57014";
+
+/**
+ * #644: a draft filter's Postgres error as the author's to fix: a syntax /
+ * semantic (42xxx) or data (22xxx) error is `400
+ * CURATED_VIEW_INVALID_FILTER_SQL` with Postgres's reason. Anything else (an
+ * outage, a cancel, an ApiError already) is not a verdict on the SQL and
+ * passes through.
+ */
+function filterSqlVerdict(err: unknown): unknown {
+  if (err instanceof ApiError) return err;
+  const { code, message } = unwrapPgError(err);
+  if (code && /^(42|22)/.test(code)) {
+    return new ApiError(
+      400,
+      ApiCode.CURATED_VIEW_INVALID_FILTER_SQL,
+      message ?? "The filter doesn't run against this entity's columns"
+    );
+  }
+  return err;
+}
+
+/** #644: an unsaved view over an entity, for the authoring reads (dry-run,
+ *  preview, JSON-key sample). Only the fields the session build reads. */
+function draftView(
+  connectorEntityId: string,
+  filterSql: string | null
+): CuratedViewSelect {
+  return {
+    id: "00000000-0000-0000-0000-000000000000",
+    connectorEntityId,
+    key: SINGLE_VIEW,
+    filter: null,
+    filterSql,
+  } as CuratedViewSelect;
+}
 
 /** #644: the name of the one view a single-view session reads. */
 const SINGLE_VIEW = "__view";
@@ -1390,15 +1430,8 @@ export class PortalSqlServiceImpl {
       draft.filterSql,
       new Set(stmt.columns.map((c) => c.normalizedKey))
     );
-    const view = {
-      id: "00000000-0000-0000-0000-000000000000",
-      connectorEntityId: draft.connectorEntityId,
-      key: SINGLE_VIEW,
-      filter: null,
-      filterSql: draft.filterSql,
-    } as CuratedViewSelect;
     const build = await this.buildSingleViewSession(
-      view,
+      draftView(draft.connectorEntityId, draft.filterSql),
       [],
       organizationId,
       { exposeCreated: false },
@@ -1415,19 +1448,137 @@ export class PortalSqlServiceImpl {
         { failOnGuardedError: true }
       );
     } catch (err) {
-      const { code, message } = unwrapPgError(err);
-      // Syntax / semantic (42xxx) and data (22xxx) errors are the author's to
-      // fix; anything else (an outage, a cancel) is not a verdict on the SQL.
-      if (code && /^(42|22)/.test(code)) {
-        throw new ApiError(
-          400,
-          ApiCode.CURATED_VIEW_INVALID_FILTER_SQL,
-          message ?? "The filter doesn't run against this entity's columns"
-        );
-      }
-      throw err;
+      throw filterSqlVerdict(err);
     }
     return { keys };
+  }
+
+  /**
+   * #644: the first rows a draft SQL filter selects, for the author to check
+   * before saving: up to {@link CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS} rows
+   * (keyed by normalizedKey, plus `_record_id`) and whether more match. No
+   * total is counted: an unbounded count behind a typing author is a pool
+   * hazard (#698). Read as the reader role, under the statement timeout,
+   * like the saved view would be. `fieldMappingIds` narrows the columns.
+   */
+  async previewViewFilterSql(
+    draft: {
+      connectorEntityId: string;
+      filterSql: string;
+      fieldMappingIds?: string[];
+    },
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<CuratedViewFilterSqlPreviewResponsePayload> {
+    const stmt = await this.deps.statementCache.get(
+      draft.connectorEntityId,
+      client
+    );
+    validateViewFilterSql(
+      draft.filterSql,
+      new Set(stmt.columns.map((c) => c.normalizedKey))
+    );
+    const projection = draft.fieldMappingIds?.length
+      ? stmt.columns.filter((c) =>
+          draft.fieldMappingIds!.includes(c.fieldMappingId)
+        )
+      : [...stmt.columns];
+    const build = await this.buildSingleViewSession(
+      draftView(draft.connectorEntityId, draft.filterSql),
+      projection,
+      organizationId,
+      { exposeCreated: false },
+      client
+    );
+    const selectList = [
+      `w."_record_id" AS "_record_id"`,
+      ...projection.map(
+        (c) => `w.${quoteIdent(c.columnName)} AS ${quoteIdent(c.normalizedKey)}`
+      ),
+    ].join(", ");
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await this.runInViewSession(
+        build,
+        client,
+        async (tx) =>
+          (await tx.execute(
+            sql.raw(
+              `SELECT ${selectList} FROM ${quoteIdent(SINGLE_VIEW)} w ` +
+                `ORDER BY w."_record_id" LIMIT ${CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS + 1}`
+            )
+          )) as unknown as Record<string, unknown>[],
+        { failOnGuardedError: true }
+      );
+    } catch (err) {
+      throw filterSqlVerdict(err);
+    }
+    const keys = new Set(projection.map((c) => c.normalizedKey));
+    const columns = (await resolveColumns(draft.connectorEntityId)).filter(
+      (c) => keys.has(c.normalizedKey)
+    );
+    return {
+      columns,
+      records: rows.slice(0, CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS),
+      hasMore: rows.length > CURATED_VIEW_FILTER_SQL_PREVIEW_ROWS,
+    };
+  }
+
+  /**
+   * #644: the top-level key names of an entity's JSON columns, from up to
+   * `sampleRows` rows, for the filter suggester to name JSON paths with.
+   * Structure only: no value leaves this method. Read as the reader role.
+   */
+  async sampleJsonKeys(
+    connectorEntityId: string,
+    organizationId: string,
+    normalizedKeys: string[],
+    opts: { sampleRows?: number; keysPerColumn?: number } = {},
+    client: DbClient = db
+  ): Promise<Map<string, string[]>> {
+    const sampleRows = Math.trunc(opts.sampleRows ?? 20);
+    const keysPerColumn = opts.keysPerColumn ?? 50;
+    const stmt = await this.deps.statementCache.get(connectorEntityId, client);
+    const columns = stmt.columns.filter((c) =>
+      normalizedKeys.includes(c.normalizedKey)
+    );
+    const out = new Map<string, string[]>();
+    if (columns.length === 0) return out;
+    const build = await this.buildSingleViewSession(
+      draftView(connectorEntityId, null),
+      columns,
+      organizationId,
+      { exposeCreated: false },
+      client
+    );
+    const pairs = columns
+      .map(
+        (c) =>
+          `(${quoteLiteral(c.normalizedKey)}, w.${quoteIdent(c.columnName)}::jsonb)`
+      )
+      .join(", ");
+    const rows = await this.runInViewSession(
+      build,
+      client,
+      async (tx) =>
+        (await tx.execute(
+          sql.raw(
+            `SELECT DISTINCT s.k AS column_key, j AS json_key\n` +
+              `  FROM (SELECT * FROM ${quoteIdent(SINGLE_VIEW)} LIMIT ${sampleRows}) w\n` +
+              `  CROSS JOIN LATERAL (VALUES ${pairs}) s(k, v)\n` +
+              `  CROSS JOIN LATERAL jsonb_object_keys(\n` +
+              `    CASE WHEN jsonb_typeof(s.v) = 'object' THEN s.v ELSE '{}'::jsonb END\n` +
+              `  ) j\n` +
+              `  ORDER BY 1, 2`
+          )
+        )) as unknown as Array<{ column_key: string; json_key: string }>
+    );
+    for (const { column_key, json_key } of rows) {
+      const keys = out.get(column_key) ?? [];
+      if (keys.length < keysPerColumn) keys.push(json_key);
+      out.set(column_key, keys);
+    }
+    return out;
   }
 
   /**

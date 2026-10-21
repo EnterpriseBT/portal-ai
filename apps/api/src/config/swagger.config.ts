@@ -107,6 +107,10 @@ import {
   ToolpackGetResponsePayloadSchema,
   StationInstanceWithConnectorInstanceSchema,
   StationViewWithCuratedViewSchema,
+  CuratedViewFilterSqlPreviewRequestBodySchema,
+  CuratedViewFilterSqlPreviewResponsePayloadSchema,
+  CuratedViewFilterSqlSuggestRequestBodySchema,
+  CuratedViewFilterSqlSuggestResponsePayloadSchema,
   ResolvedColumnSchema,
 } from "@portalai/core/contracts";
 import {
@@ -582,6 +586,23 @@ const stationSchemas: Record<string, unknown> = {
   ),
   // #678: the curated-view records' column shape (the entity list's too).
   ResolvedColumn: z.toJSONSchema(ResolvedColumnSchema, JSON_SCHEMA_OPTS),
+  // #644: authoring a SQL row filter.
+  CuratedViewFilterSqlPreviewRequestBody: z.toJSONSchema(
+    CuratedViewFilterSqlPreviewRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  CuratedViewFilterSqlPreviewResponsePayload: z.toJSONSchema(
+    CuratedViewFilterSqlPreviewResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  CuratedViewFilterSqlSuggestRequestBody: z.toJSONSchema(
+    CuratedViewFilterSqlSuggestRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  CuratedViewFilterSqlSuggestResponsePayload: z.toJSONSchema(
+    CuratedViewFilterSqlSuggestResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
 };
 
 /**
