@@ -60,6 +60,35 @@ As **member** in a portal on a station with a writable connector and its entity 
 3. As **owner**, create an entity the member can't read, then as **member** "Rename entity `<that id>` to X" → the same `TOOL_TARGET_NOT_FOUND` as step 2. Nothing changes.
 4. Grant the member **read** (not write) on that entity. The same prompt → `TOOL_PERMISSION_DENIED` naming the permission. Remove the grant.
 
+## Adversarial
+
+All probes are `— backend`: agent tools run in-process through `ToolService.buildAnalyticsTools` as **member**, with DB checks before and after. Fixtures: the member's writable connector and entity with a record and a mapping, an owner-only entity with a record and a mapping, and an entity in another org. §2 (concurrency) is N/A: the gate makes a read-only decision before the tool runs.
+
+**§1 Malformed input**
+- [ ] `connector_entity_update` with ids `not-a-uuid`, `x' or '1'='1` and a 5,000-character string → a typed `TOOL_TARGET_NOT_FOUND` naming the id. No throw, no DB error text, nothing written. — backend
+
+**§4 Permission boundaries**
+- [ ] A batch `[my entity, owner-only entity]` → the whole call is refused `TOOL_TARGET_NOT_FOUND` naming the owner-only id. My entity's label is unchanged. — backend
+- [ ] `entity_record_delete` with an owner-only record id and **my** `connectorEntityId` → `TOOL_TARGET_NOT_FOUND` naming the record. The record isn't deleted. — backend
+- [ ] `field_mapping_update` and `field_mapping_delete` on an owner-only mapping → `TOOL_TARGET_NOT_FOUND` naming the mapping. It isn't changed. — backend
+
+**§5 Tenant isolation**
+- [ ] `connector_entity_update` and `field_mapping_delete` on the other org's entity and mapping → the same message shape as a random uuid. The other org's rows are untouched. — backend
+
+**§6 Lifecycle**
+- [ ] My own soft-deleted entity and a record under it → `TOOL_TARGET_NOT_FOUND`. — backend
+
+**§7 Misuse: telling hidden from missing**
+- [ ] The batches `[missing, hidden]` and `[hidden, missing]` each name their **first** item with identical wording, so the order of refusals doesn't separate a hidden id from a missing one. — backend
+- [ ] The batch `[read-only (granted read), hidden]` names the read-only item as denied. The hidden item isn't mentioned. — backend
+
+### Findings
+
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §1 a 5,000-character id | the refusal echoes the whole id | low (reflection only; the input is already in the agent's context) | waived: the id is already in the agent's context, so echoing it reveals nothing new |
+| §7 `[read-only, hidden]` | names the hidden id as not found, not the read-only id as denied: not found outranks denied in a batch (`firstRefusal`, #829), and `[read-only, missing]` reads the same | none (the probe's expectation was wrong) | no change needed |
+
 ## Out of scope
 
 - REST routes: they already answer 404 / 403 through `loadForVerb`.
