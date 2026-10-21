@@ -50,7 +50,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, type `Bug`, linking
 
 ### Reset between runs
 
-- [ ] Delete the views this walk creates: `near_seattle`, `cash_positive`, `active_assets`, `builder_regression`, `pinned_lat`.
+- [ ] Delete the views this walk creates: `near_seattle`, `cash_positive`, `texas_sites`, `active_assets`, `builder_regression`, `pinned_addr`.
 - [ ] Put the org back: `npx portalai org set-tier <id> standard --env local --yes` (or leave it on pro).
 
 ---
@@ -79,7 +79,8 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, type `Bug`, linking
 - [ ] **Spatial.** Create View → Sites, label "Near Seattle", key `near_seattle`, SQL mode. Filter:
   `ST_DWithin(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), ST_SetSRID(ST_MakePoint(-122.33, 47.61), 4326), 3)`
   Save. The view's records table lists **only the Seattle and Portland sites**: Portland is about 2.1° away, San Francisco about 10°.
-- [ ] **Column-vs-column.** Create View → Cash Flows, key `cash_positive`, SQL filter `inflow > outflow`. Save. Every row in the records table has `inflow > outflow`, and the total is below the entity's total.
+- [ ] **Column-vs-column.** Create View → Cash Flows, key `cash_positive`, SQL filter `inflow > outflow`. Save. Every row in the records table has `inflow > outflow`. (Every demo row qualifies, so the total equals the entity's 30.)
+- [ ] **Column-vs-column narrows.** In the editor, Run preview on `inflow > outflow * 1.3`. The row count matches `select count(*) from "er__<cash_flows id>" where deleted is null and c_inflow > c_outflow * 1.3` (7 on the demo data), below 30.
 - [ ] **JSON path — manual (needs the Assets fixture).** Create View → Assets, key `active_assets`, SQL filter `meta->>'status' = 'active'`. Save. The records show **a1 and a3** only.
 - [ ] Re-open `near_seattle` (Edit). It opens in **SQL** mode with the stored filter text. Change only the label and Save: the view is renamed and its rows are unchanged.
 - [ ] **Stored state — backend.** `psql`: `select key, filter, filter_sql, filter_sql_keys from curated_views where key in ('near_seattle','cash_positive');` Expect:
@@ -137,10 +138,12 @@ For each filter below, open Create View → Sites → SQL, type the filter and c
 
 ## §8 — Columns a SQL filter reads are pinned
 
-- [ ] Create View → Sites, key `pinned_lat`, SQL `latitude > 0`, Save.
-- [ ] Open the Sites entity's fields and try to **rename** the `latitude` key. Refused with **409 `FIELD_MAPPING_KEY_IN_VIEW`**, and the key is unchanged.
-- [ ] Try to **delete** the `latitude` mapping. It's refused. With records present the first refusal is `FIELD_MAPPING_DELETE_HAS_RECORDS`. **Backend:** `curl -X DELETE` on the mapping after soft-deleting the entity's records in psql (inside a transaction you roll back) returns **409 `FIELD_MAPPING_DELETE_IN_VIEW`**.
-- [ ] Delete the `pinned_lat` view. The rename now succeeds; rename it back.
+Use `street_address`, which no other view in this walk references (`near_seattle` and the Texas view both pin `latitude`, so a pin on it never releases here).
+
+- [ ] Create View → Sites, key `pinned_addr`, SQL `street_address IS NOT NULL`, Save.
+- [ ] Open the Sites entity's fields and try to **rename** the `street_address` key. Refused with **409 `FIELD_MAPPING_KEY_IN_VIEW`**, and the key is unchanged.
+- [ ] Try to **delete** the `street_address` mapping. It's refused. With records present the first refusal is `FIELD_MAPPING_DELETE_HAS_RECORDS`. **Backend:** `curl -X DELETE` on the mapping after soft-deleting the entity's records in psql (inside a transaction you roll back) returns **409 `FIELD_MAPPING_DELETE_IN_VIEW`**.
+- [ ] Delete the `pinned_addr` view. The rename now succeeds; rename it back.
 
 ## §9 — Downgrade
 
@@ -162,7 +165,7 @@ These write `filter_sql` straight to the DB, **past the validator**, to prove th
   - GET `/api/curated-views/<id>/records` returns **409 `CURATED_VIEW_FILTER_SQL_BROKEN`**;
   - in a portal, `SELECT count(*) FROM cash_positive` returns **0**, never the unfiltered count;
   - the API log has `curated view filter_sql failed to render; serving it empty`.
-- [ ] Set `filter_sql = 'net::int > 5 AND month::int > 0'`, a filter that fails on the rows. Records return **409** with the message "This view's filter fails on some of its rows…". The response names no cell value.
+- [ ] On a **Sites** view (e.g. `texas_sites`; set `filter = null` too), set `filter_sql = 'name::int > 5'`, `filter_sql_keys = '{name}'`. It creates fine but fails on the rows ("Seattle warehouse" isn't an integer). Records return **409** with the message "This view's filter fails on some of its rows…", and the response names no cell value. (A cast that is invalid for the column's type, like `month::int` on a date, fails at create time instead: that's the previous step's 409.) Restore the view's filter afterwards.
 - [ ] Set `filter_sql = 'EXISTS (SELECT 1 FROM organizations)'`. Records return 409, and the API log shows the render refusal. The validator re-runs on every render, so the fragment never reaches Postgres.
 - [ ] Restore it: `update curated_views set filter_sql = 'inflow > outflow', filter_sql_keys = '{inflow,outflow}' where key = 'cash_positive';`. Records come back.
 
