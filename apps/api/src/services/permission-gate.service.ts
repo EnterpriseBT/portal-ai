@@ -1,6 +1,7 @@
 import {
   OBJECT_CONTAINERS,
   isContainedType,
+  type PartType,
   type PermissionResourceType,
   type ToolAuthorization,
 } from "@portalai/core/models";
@@ -88,6 +89,20 @@ function refusalResult(
       );
 }
 
+/** #835: a part type's label; parts aren't permission types (#829), so
+ *  `resourceTypeLabel` doesn't know them. */
+const PART_LABELS: Record<PartType, string> = {
+  entity_record: "record",
+  field_mapping: "field mapping",
+};
+
+/** #835: "<Label> <id> was not found." for a target the caller can't see. */
+function notFoundResult(label: string, id: string) {
+  return targetNotFound(
+    `${label[0].toUpperCase()}${label.slice(1)} ${id} was not found.`
+  );
+}
+
 function extractId(input: unknown, key?: string): string | undefined {
   if (!key || typeof input !== "object" || input === null) return undefined;
   const v = (input as Record<string, unknown>)[key];
@@ -148,37 +163,77 @@ export function wrapWithPermissionGate(
             : extractItems(input, auth.itemsArg).map((item) =>
                 extractId(item, auth.idField)
               );
+        /**
+         * #835: each part's owning entity (and, for a mapping delete, its
+         * counterpart's), or null to refuse. Every part is resolved before
+         * any is refused, and then refused in input order whether it's
+         * absent, another org's, or under an entity the caller can't read,
+         * so the id a refusal names never tells those apart. A missing input
+         * id is the generic denial.
+         */
+        const partOwners = async (
+          partType: PartType,
+          counterparts: boolean | undefined
+        ): Promise<string[] | null> => {
+          const label = PART_LABELS[partType];
+          const parts: Array<{
+            id: string;
+            owner: string | null;
+            counterpart: string | null;
+          }> = [];
+          for (const id of targetIds()) {
+            if (!id) return null;
+            const owner = await RbacObjectResolver.resolvePartOwner(
+              ctx.organizationId,
+              partType,
+              id
+            );
+            const counterpart =
+              owner && counterparts
+                ? await RbacObjectResolver.resolveMappingCounterpartOwner(
+                    ctx.organizationId,
+                    id
+                  )
+                : null;
+            parts.push({ id, owner, counterpart });
+          }
+          const unreadable = await ParentAccessService.unreadableIds(
+            permissionSet,
+            ctx.organizationId,
+            "entity",
+            parts.flatMap((p) =>
+              [p.owner, p.counterpart].filter((e): e is string => !!e)
+            )
+          );
+          for (const p of parts) {
+            if (!p.owner || unreadable.has(p.owner)) {
+              refused = notFoundResult(label, p.id);
+              return null;
+            }
+            if (p.counterpart && unreadable.has(p.counterpart)) {
+              // The mapping is visible; what it links to isn't.
+              refused = targetNotFound(
+                `The entity ${label} ${p.id} links to was not found.`
+              );
+              return null;
+            }
+          }
+          return parts.flatMap((p) =>
+            p.counterpart ? [p.owner!, p.counterpart] : [p.owner!]
+          );
+        };
         try {
           if (auth.mode === "parts") {
             // Owners from input paths, or from each stored part; any part
             // that doesn't resolve (missing, another org) denies.
             let owners: string[] | null = fromPaths(auth.objectPaths);
             if (auth.partType) {
-              owners = [];
-              for (const id of targetIds()) {
-                const owner = id
-                  ? await RbacObjectResolver.resolvePartOwner(
-                      ctx.organizationId,
-                      auth.partType,
-                      id
-                    )
-                  : null;
-                if (!owner) {
-                  owners = null;
-                  break;
-                }
-                owners.push(owner);
-                // A field-mapping delete also writes its counterpart's entity.
-                if (auth.counterparts) {
-                  const counterpart =
-                    await RbacObjectResolver.resolveMappingCounterpartOwner(
-                      ctx.organizationId,
-                      id!
-                    );
-                  if (counterpart) owners.push(counterpart);
-                }
-              }
+              owners = await partOwners(auth.partType, auth.counterparts);
             }
+            /** Write on every owning entity. By here each one is readable
+             *  (#835), so a refusal can name it. */
+            const ownersWritable = (ids: string[]) =>
+              allPass("entity", ids, "write");
             const readIds = fromPaths(auth.readPaths);
             /** #832: every referenced object (a mapping's column
              *  definition) must be readable. */
@@ -200,7 +255,7 @@ export function wrapWithPermissionGate(
               (readIds.length === 0 ||
                 (await allPass("entity", readIds, "read"))) &&
               (await referencesPass()) &&
-              (await allPass("entity", owners, "write"));
+              (await ownersWritable(owners));
           } else if (auth.mode === "create") {
             // A contained type names its containers; none at all denies.
             const containerIds = fromPaths(auth.containerPaths);
@@ -229,7 +284,24 @@ export function wrapWithPermissionGate(
                     id
                   )
                 : null;
-              if (!id || !row) {
+              // #835: unreadable == absent. Absent, another org's or
+              // unreadable answer the same not-found, and before any verb
+              // check, so no answer tells an existing id from a missing one.
+              if (
+                id &&
+                (!row ||
+                  !permissionSet.can("resource.read", {
+                    type: auth.resourceType,
+                    id,
+                    createdBy: row.createdBy,
+                  }))
+              ) {
+                refused = notFoundResult(
+                  resourceTypeLabel(auth.resourceType),
+                  id
+                );
+              }
+              if (!id || !row || refused) {
                 rows.length = 0;
                 break;
               }
@@ -244,13 +316,19 @@ export function wrapWithPermissionGate(
               (!needsContainer ||
                 (containerIds.length === rows.length &&
                   (await allPass(container, containerIds, "write")))) &&
-              rows.every((r) =>
-                permissionSet.can(action, {
+              rows.every((r) => {
+                const ok = permissionSet.can(action, {
                   type: auth.resourceType,
                   id: r.id,
                   createdBy: r.createdBy,
-                })
-              );
+                });
+                if (!ok) {
+                  refused ??= permissionDenied(
+                    `You don't have permission to ${auth.verb} ${resourceTypeLabel(auth.resourceType)} ${r.id}.`
+                  );
+                }
+                return ok;
+              });
           }
         } catch {
           allowed = false; // fail-closed
