@@ -33,6 +33,26 @@ const meta = {
     onSelectedFieldMappingIdsChange: fn(),
     filter: { combinator: "and", conditions: [] },
     onFilterChange: fn(),
+    filterMode: "builder",
+    onFilterModeChange: fn(),
+    sqlModeGate: { kind: "allow" },
+    filterSqlEditor: {
+      value: "amount > cost",
+      onChange: fn(),
+      onBlur: fn(),
+      touched: false,
+      columnKeys: ["name", "region", "amount", "cost"],
+      readOnly: false,
+      suggest: {
+        prompt: "",
+        onPromptChange: fn(),
+        onSuggest: fn(),
+        pending: false,
+        serverError: null,
+        warning: null,
+      },
+      preview: { onRun: fn(), pending: false, serverError: null, result: null },
+    },
     errors: {},
     touched: {},
     onLabelBlur: fn(),
@@ -55,5 +75,17 @@ export const WithValidationError: Story = {
     label: "",
     errors: { label: "Label is required" },
     touched: { label: true },
+  },
+};
+/** #644: the advanced (SQL) row filter. */
+export const SqlMode: Story = { args: { filterMode: "sql" } };
+/** #644: a plan without SQL filters sees an upsell on the SQL mode. */
+export const SqlModeUpsell: Story = {
+  args: {
+    sqlModeGate: {
+      kind: "upsell",
+      reason: "SQL filters are available on a higher plan.",
+      onUpgrade: fn(),
+    },
   },
 };

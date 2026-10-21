@@ -1,15 +1,51 @@
-import { jest } from "@jest/globals";
+import { jest, beforeEach } from "@jest/globals";
 
 // The container imports the SDK; stub it so the import graph stays light. The
 // pure UI (CuratedViewEditorUI) is props-driven and does no fetching.
+const mockCreateMutate = jest.fn();
+const mockUpdateMutate = jest.fn();
+const mockPreviewMutateAsync = jest.fn<(vars: unknown) => Promise<unknown>>();
+const mockSuggestMutateAsync = jest.fn<(vars: unknown) => Promise<unknown>>();
+const mutation = (extra: Record<string, unknown>) => ({
+  isPending: false,
+  error: null,
+  reset: jest.fn(),
+  ...extra,
+});
+let mockSqlEntitled = true;
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    curatedViews: { create: jest.fn(), update: jest.fn() },
-    fieldMappings: { list: jest.fn() },
-    entityRecords: { list: jest.fn() },
-    connectorEntities: { list: jest.fn() },
+    curatedViews: {
+      create: () => mutation({ mutate: mockCreateMutate }),
+      update: () => mutation({ mutate: mockUpdateMutate }),
+      previewFilterSql: () => mutation({ mutateAsync: mockPreviewMutateAsync }),
+      suggestFilterSql: () => mutation({ mutateAsync: mockSuggestMutateAsync }),
+    },
+    fieldMappings: { list: () => ({ data: { fieldMappings: [] } }) },
+    entityRecords: {
+      list: () => ({
+        data: {
+          columns: [
+            { key: "age", normalizedKey: "age", label: "Age", type: "number" },
+          ],
+        },
+        isLoading: false,
+      }),
+    },
+    connectorEntities: { list: () => ({ data: { connectorEntities: [] } }) },
   },
   queryKeys: { curatedViews: { root: ["curatedViews"] } },
+}));
+// #644: the SQL mode's entitlement, without the router the real hook needs.
+jest.unstable_mockModule("../utils/use-action-gate.util", () => ({
+  useActionGate: () => ({
+    entitled: () => mockSqlEntitled,
+    gate: (input: { entitled?: boolean; upgradeReason?: string }) =>
+      input.entitled === false
+        ? { kind: "upsell", reason: input.upgradeReason, onUpgrade: jest.fn() }
+        : { kind: "allow" },
+  }),
 }));
 
 const { render, screen, pressEnter } = await import("./test-utils");
@@ -36,6 +72,31 @@ const baseProps = {
   onSelectedFieldMappingIdsChange: jest.fn(),
   filter: { combinator: "and" as const, conditions: [] },
   onFilterChange: jest.fn(),
+  filterMode: "builder" as const,
+  onFilterModeChange: jest.fn(),
+  sqlModeGate: { kind: "allow" as const },
+  filterSqlEditor: {
+    value: "",
+    onChange: jest.fn(),
+    onBlur: jest.fn(),
+    touched: false,
+    columnKeys: ["age"],
+    readOnly: false,
+    suggest: {
+      prompt: "",
+      onPromptChange: jest.fn(),
+      onSuggest: jest.fn(),
+      pending: false,
+      serverError: null,
+      warning: null,
+    },
+    preview: {
+      onRun: jest.fn(),
+      pending: false,
+      serverError: null,
+      result: null,
+    },
+  },
   errors: {},
   touched: {},
   onLabelBlur: jest.fn(),
@@ -129,5 +190,177 @@ describe("CuratedViewEditorDialog (container gating)", () => {
     );
     await pressEnter(screen.getByRole("textbox", { name: /^label/i }));
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("CuratedViewEditorUI SQL mode (#644)", () => {
+  it("switches between the builder and SQL", async () => {
+    const onFilterModeChange = jest.fn();
+    render(
+      <CuratedViewEditorUI
+        {...baseProps}
+        onFilterModeChange={onFilterModeChange}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Builder" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "SQL" }));
+    expect(onFilterModeChange).toHaveBeenCalledWith("sql");
+  });
+
+  it("renders the SQL editor, not the builder, in SQL mode", () => {
+    render(<CuratedViewEditorUI {...baseProps} filterMode="sql" />);
+    expect(screen.getByRole("textbox", { name: /sql filter/i })).toBeRequired();
+  });
+
+  it("sends a plan without SQL filters to the upgrade, not into SQL mode", async () => {
+    const onUpgrade = jest.fn();
+    const onFilterModeChange = jest.fn();
+    render(
+      <CuratedViewEditorUI
+        {...baseProps}
+        onFilterModeChange={onFilterModeChange}
+        sqlModeGate={{ kind: "upsell", reason: "Upgrade", onUpgrade }}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /sql/i }));
+    expect(onUpgrade).toHaveBeenCalled();
+    expect(onFilterModeChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("CuratedViewEditorDialog SQL mode (#644)", () => {
+  const sqlView = {
+    id: "view-1",
+    organizationId: "org-1",
+    connectorEntityId: "ent-1",
+    key: "over_thirty",
+    label: "Over thirty",
+    description: null,
+    filter: null,
+    filterSql: "age > 30",
+    filterSqlKeys: ["age"],
+    fieldMappingIds: [],
+  } as never;
+
+  beforeEach(() => {
+    mockSqlEntitled = true;
+    mockCreateMutate.mockReset();
+    mockUpdateMutate.mockReset();
+    mockPreviewMutateAsync.mockReset();
+    mockSuggestMutateAsync.mockReset();
+  });
+
+  const open = (props: Record<string, unknown>) =>
+    render(
+      <CuratedViewEditorDialog
+        open
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        mode="edit"
+        {...props}
+      />
+    );
+
+  it("saves a SQL view's filter, and only the SQL mode's", async () => {
+    open({ view: sqlView });
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: null, filterSql: "age > 30" }),
+      expect.anything()
+    );
+  });
+
+  it("saves the builder's filter and clears SQL after switching modes", async () => {
+    open({ view: sqlView });
+    await userEvent.click(screen.getByRole("button", { name: "Builder" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: null, filterSql: null }),
+      expect.anything()
+    );
+  });
+
+  it("creates in builder mode without a SQL filter", async () => {
+    open({ mode: "create", connectorEntityId: "ent-1" });
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /^label/i }),
+      "Adults"
+    );
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /^key/i }),
+      "adults"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const body = mockCreateMutate.mock.calls[0]![0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("filterSql");
+  });
+
+  it("refuses to save an empty SQL filter, marking the field", async () => {
+    open({ view: sqlView });
+    const field = screen.getByRole("textbox", { name: /sql filter/i });
+    await userEvent.clear(field);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mockUpdateMutate).not.toHaveBeenCalled();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Filter is required")).toBeInTheDocument();
+  });
+
+  it("shows a stored filter read-only once the plan no longer includes SQL filters", () => {
+    mockSqlEntitled = false;
+    open({ view: sqlView });
+    expect(
+      screen.getByRole("textbox", { name: /sql filter/i })
+    ).toHaveAttribute("readonly");
+    expect(
+      screen.getByText(/no longer includes SQL filters/)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Suggest" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("previews the draft against the view being edited", async () => {
+    mockPreviewMutateAsync.mockResolvedValue({
+      columns: [
+        { key: "age", normalizedKey: "age", label: "Age", type: "number" },
+      ],
+      records: [{ _record_id: "r1", age: 42 }],
+      hasMore: false,
+    });
+    open({ view: sqlView });
+    await userEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    expect(mockPreviewMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectorEntityId: "ent-1",
+        filterSql: "age > 30",
+        curatedViewId: "view-1",
+      })
+    );
+    expect(await screen.findByText("42")).toBeInTheDocument();
+  });
+
+  it("puts a suggestion in the editor and previews it", async () => {
+    mockSuggestMutateAsync.mockResolvedValue({
+      filterSql: "age > 40",
+      warning: null,
+    });
+    mockPreviewMutateAsync.mockResolvedValue({
+      columns: [],
+      records: [],
+      hasMore: false,
+    });
+    open({ view: sqlView });
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /describe the rows/i }),
+      "over forty"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Suggest" }));
+    expect(await screen.findByDisplayValue("age > 40")).toBeInTheDocument();
+    expect(mockPreviewMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ filterSql: "age > 40" })
+    );
   });
 });

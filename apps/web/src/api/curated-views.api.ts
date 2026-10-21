@@ -10,8 +10,16 @@ import type {
   CuratedViewAttachResponsePayload,
   CuratedViewRecordsRequestQuery,
   CuratedViewRecordsResponsePayload,
+  CuratedViewFilterSqlPreviewRequestBody,
+  CuratedViewFilterSqlPreviewResponsePayload,
+  CuratedViewFilterSqlSuggestRequestBody,
+  CuratedViewFilterSqlSuggestResponsePayload,
 } from "@portalai/core/contracts";
-import { useAuthMutation, useAuthQuery } from "../utils/api.util";
+import {
+  LONG_WRITE_TIMEOUT_MS,
+  useAuthMutation,
+  useAuthQuery,
+} from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -93,6 +101,38 @@ export const curatedViews = {
       method: "PATCH",
       // #688: a 403 means the caller's capabilities changed; refetch so the
       // affordances re-render from them.
+      onPermissionDenied: { invalidate: () => [queryKeys.curatedViews.root] },
+    }),
+
+  /**
+   * #644: the first rows a draft SQL filter selects (no total). Imperative:
+   * the editor runs it on demand. Long timeout: it's a query, bounded by the
+   * server's statement timeout.
+   */
+  previewFilterSql: () =>
+    useAuthMutation<
+      CuratedViewFilterSqlPreviewResponsePayload,
+      CuratedViewFilterSqlPreviewRequestBody
+    >({
+      url: `${CURATED_VIEWS_URL}/filter-sql/preview`,
+      method: "POST",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
+      // A 403/404 means the caller's access to the view or its entity
+      // changed; refetch so the editor's affordances follow it.
+      onPermissionDenied: { invalidate: () => [queryKeys.curatedViews.root] },
+    }),
+
+  /** #644: a model-suggested SQL filter that already passed validation. */
+  suggestFilterSql: () =>
+    useAuthMutation<
+      CuratedViewFilterSqlSuggestResponsePayload,
+      CuratedViewFilterSqlSuggestRequestBody
+    >({
+      url: `${CURATED_VIEWS_URL}/filter-sql/suggest`,
+      method: "POST",
+      timeoutMs: LONG_WRITE_TIMEOUT_MS,
+      // A 403/404 means the caller's access to the view or its entity
+      // changed; refetch so the editor's affordances follow it.
       onPermissionDenied: { invalidate: () => [queryKeys.curatedViews.root] },
     }),
 

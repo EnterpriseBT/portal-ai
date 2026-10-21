@@ -4,6 +4,7 @@ import {
   CuratedViewCreateRequestBodySchema,
   CuratedViewUpdateRequestBodySchema,
   type CuratedViewCreateRequestBody,
+  type CuratedViewFilterSqlPreviewResponsePayload,
   type CuratedViewUpdateRequestBody,
   type CuratedViewWithProjection,
   type FilterExpression,
@@ -12,10 +13,20 @@ import {
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Typography from "@mui/material/Typography";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import {
+  Button,
+  GatedButton,
+  Modal,
+  Stack,
+  type ActionGate,
+} from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
 import { AdvancedFilterBuilder } from "./AdvancedFilterBuilder.component";
+import {
+  FilterSqlEditorUI,
+  type FilterSqlEditorUIProps,
+} from "./FilterSqlEditor.component";
 import { createEmptyGroup } from "../utils/advanced-filter-builder.util";
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
@@ -29,6 +40,7 @@ import {
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 import { curatedViewUpdateBody } from "../utils/curated-view-update-body.util";
+import { useActionGate } from "../utils/use-action-gate.util";
 
 /** A FilterExpression carries a real predicate only when it has conditions. */
 function filterOrNull(f: FilterExpression): FilterExpression | null {
@@ -39,6 +51,9 @@ interface FieldMappingOption {
   id: string;
   label: string;
 }
+
+/** #644: a view filters rows with the builder or with SQL, never both. */
+export type FilterMode = "builder" | "sql";
 
 // ── Pure form UI ─────────────────────────────────────────────────────
 
@@ -65,6 +80,13 @@ export interface CuratedViewEditorUIProps {
   onSelectedFieldMappingIdsChange: (ids: string[]) => void;
   filter: FilterExpression;
   onFilterChange: (f: FilterExpression) => void;
+  /** #644: which row filter the view uses. */
+  filterMode: FilterMode;
+  onFilterModeChange: (mode: FilterMode) => void;
+  /** #644: the SQL mode's gate (an upsell when the plan excludes it). */
+  sqlModeGate: ActionGate;
+  /** #644: the SQL mode's editor. */
+  filterSqlEditor: FilterSqlEditorUIProps;
   errors: FormErrors;
   touched: Record<string, boolean>;
   onLabelBlur: () => void;
@@ -95,6 +117,10 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
   onSelectedFieldMappingIdsChange,
   filter,
   onFilterChange,
+  filterMode,
+  onFilterModeChange,
+  sqlModeGate,
+  filterSqlEditor,
   errors,
   touched,
   onLabelBlur,
@@ -217,12 +243,39 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
         />
 
         <Stack spacing={1}>
-          <Typography variant="subtitle2">Row filter</Typography>
-          <AdvancedFilterBuilder
-            expression={filter}
-            onChange={onFilterChange}
-            columnDefinitions={columnDefinitions}
-          />
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+              Row filter
+            </Typography>
+            <Button
+              type="button"
+              size="small"
+              variant={filterMode === "builder" ? "contained" : "outlined"}
+              aria-pressed={filterMode === "builder"}
+              onClick={() => onFilterModeChange("builder")}
+            >
+              Builder
+            </Button>
+            <GatedButton
+              type="button"
+              size="small"
+              gate={sqlModeGate}
+              variant={filterMode === "sql" ? "contained" : "outlined"}
+              aria-pressed={filterMode === "sql"}
+              onClick={() => onFilterModeChange("sql")}
+            >
+              SQL
+            </GatedButton>
+          </Stack>
+          {filterMode === "builder" ? (
+            <AdvancedFilterBuilder
+              expression={filter}
+              onChange={onFilterChange}
+              columnDefinitions={columnDefinitions}
+            />
+          ) : (
+            <FilterSqlEditorUI {...filterSqlEditor} />
+          )}
         </Stack>
 
         <FormAlert serverError={serverError ?? null} />
@@ -277,6 +330,16 @@ const EditorContainer: React.FC<{
   const [filter, setFilter] = useState<FilterExpression>(
     (view?.filter as FilterExpression | null) ?? createEmptyGroup()
   );
+  // #644: the view's row filter mode and the SQL mode's state. Both modes
+  // keep their draft while the author switches; save sends the active one.
+  const [filterMode, setFilterMode] = useState<FilterMode>(
+    view?.filterSql ? "sql" : "builder"
+  );
+  const [filterSql, setFilterSql] = useState(view?.filterSql ?? "");
+  const [suggestPrompt, setSuggestPrompt] = useState("");
+  const [suggestWarning, setSuggestWarning] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] =
+    useState<CuratedViewFilterSqlPreviewResponsePayload | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [selectedEntityId, setSelectedEntityId] = useState(
@@ -328,6 +391,62 @@ const EditorContainer: React.FC<{
   const columnDefinitions: ResolvedColumn[] = columnsResult.data?.columns ?? [];
   const columnsReady = !!entityId && !columnsResult.isLoading;
 
+  // #644: the SQL mode needs a plan with advanced view filters. A stored SQL
+  // filter on a plan that lost it still shows, read-only.
+  const { gate, entitled } = useActionGate();
+  const sqlEntitled = entitled("advancedViewFilters");
+  const sqlModeGate = gate({
+    allowed: true,
+    entitled: sqlEntitled,
+    upgradeReason: "SQL filters are available on a higher plan.",
+  });
+  const sqlReadOnly = filterMode === "sql" && !sqlEntitled;
+  const previewMut = sdk.curatedViews.previewFilterSql();
+  const suggestMut = sdk.curatedViews.suggestFilterSql();
+
+  const handleFilterSqlChange = (next: string) => {
+    setFilterSql(next);
+    // A preview of other text would mislead.
+    setPreviewResult(null);
+    previewMut.reset();
+  };
+
+  const runPreview = async (text: string) => {
+    previewMut.reset();
+    try {
+      setPreviewResult(
+        await previewMut.mutateAsync({
+          connectorEntityId: entityId,
+          filterSql: text.trim(),
+          ...(view ? { curatedViewId: view.id } : {}),
+          ...(selectedFieldMappingIds.length > 0
+            ? { fieldMappingIds: selectedFieldMappingIds }
+            : {}),
+        })
+      );
+    } catch {
+      // The refusal renders from the mutation's error.
+    }
+  };
+
+  const runSuggest = async () => {
+    setSuggestWarning(null);
+    suggestMut.reset();
+    try {
+      const suggestion = await suggestMut.mutateAsync({
+        connectorEntityId: entityId,
+        prompt: suggestPrompt.trim(),
+        ...(filterSql.trim() ? { currentSql: filterSql.trim() } : {}),
+        ...(view ? { curatedViewId: view.id } : {}),
+      });
+      handleFilterSqlChange(suggestion.filterSql);
+      setSuggestWarning(suggestion.warning);
+      await runPreview(suggestion.filterSql);
+    } catch {
+      // The failure renders from the mutation's error; hand-editing goes on.
+    }
+  };
+
   const createMut = sdk.curatedViews.create();
   const updateMut = view ? sdk.curatedViews.update(view.id) : undefined;
   const isPending = createMut.isPending || (updateMut?.isPending ?? false);
@@ -336,8 +455,9 @@ const EditorContainer: React.FC<{
   );
 
   const handleSubmit = () => {
-    setTouched({ label: true, key: true });
-    const nextFilter = filterOrNull(filter);
+    setTouched({ label: true, key: true, filterSql: true });
+    const sqlMode = filterMode === "sql";
+    const nextFilter = sqlMode ? null : filterOrNull(filter);
 
     if (mode === "create") {
       const body: CuratedViewCreateRequestBody = {
@@ -346,6 +466,7 @@ const EditorContainer: React.FC<{
         label: label.trim(),
         description: description.trim() || undefined,
         filter: nextFilter,
+        ...(sqlMode ? { filterSql } : {}),
         fieldMappingIds: selectedFieldMappingIds,
       };
       const result = validateWithSchema(
@@ -375,6 +496,7 @@ const EditorContainer: React.FC<{
         label,
         description,
         filter: nextFilter,
+        filterSql: sqlMode ? filterSql : null,
         fieldMappingIds: selectedFieldMappingIds,
       }
     );
@@ -414,6 +536,32 @@ const EditorContainer: React.FC<{
       onSelectedFieldMappingIdsChange={setSelectedFieldMappingIds}
       filter={filter}
       onFilterChange={setFilter}
+      filterMode={filterMode}
+      onFilterModeChange={setFilterMode}
+      sqlModeGate={sqlModeGate}
+      filterSqlEditor={{
+        value: filterSql,
+        onChange: handleFilterSqlChange,
+        onBlur: () => setTouched((p) => ({ ...p, filterSql: true })),
+        error: errors.filterSql,
+        touched: !!touched.filterSql,
+        columnKeys: columnDefinitions.map((c) => c.normalizedKey),
+        readOnly: sqlReadOnly,
+        suggest: {
+          prompt: suggestPrompt,
+          onPromptChange: setSuggestPrompt,
+          onSuggest: () => void runSuggest(),
+          pending: suggestMut.isPending,
+          serverError: toServerError(suggestMut.error as never),
+          warning: suggestWarning,
+        },
+        preview: {
+          onRun: () => void runPreview(filterSql),
+          pending: previewMut.isPending,
+          serverError: toServerError(previewMut.error as never),
+          result: previewResult,
+        },
+      }}
       errors={errors}
       touched={touched}
       onLabelBlur={() => setTouched((p) => ({ ...p, label: true }))}
