@@ -75,6 +75,10 @@ import {
 import { applyImplicitLimit } from "./portal-sql-limit.util.js";
 import { PortalSqlReaderRoleService } from "./portal-sql-reader-role.service.js";
 import {
+  renderViewFilterSql,
+  validateViewFilterSql,
+} from "./curated-view-filter-sql.util.js";
+import {
   PORTAL_SQL_DEFAULTS,
   applyRowCap,
   applyCellCap,
@@ -137,6 +141,104 @@ export interface SessionViewBuild {
    * a prefix without rewriting callers.
    */
   viewMap: ReadonlyMap<string, string>;
+  /** #644: the curated views with a SQL filter, each created under its own
+   *  savepoint by {@link openSqlSession}. */
+  guardedViews?: ReadonlyArray<GuardedSessionView>;
+}
+
+/**
+ * #644: a curated view with a SQL row filter, as the session creates it. A
+ * server-built source view (`__src_<n>`: the wide table under the org and
+ * soft-delete guard, with no user text) and the curated view over it,
+ * declared `security_invoker` so its body — the author's fragment included —
+ * runs with the reader role's privileges. The reader gets column-level SELECT
+ * on the source view's columns (`sourceGrant`) and nothing else, so even a
+ * fragment the validator missed can't read another relation or call a
+ * privileged function.
+ */
+export interface GuardedSessionView {
+  viewId: string;
+  viewKey: string;
+  /** DROP + CREATE for both views, run under one savepoint. */
+  statements: ReadonlyArray<string>;
+  /** Run instead when `statements` fail: the curated view with no rows, so a
+   *  broken filter fails closed (never widened) and alone. */
+  fallback: ReadonlyArray<string>;
+  sourceGrant: { relation: string; columns: ReadonlyArray<string> };
+}
+
+/**
+ * #644: the statements for one {@link GuardedSessionView}. Pure: identifiers
+ * are quoted here and ids are checked, so `renderedWhere` (the output of
+ * `renderViewFilterSql`, every column a `w."c_…"` on the source view) is the
+ * only spliced text.
+ */
+export function buildGuardedViewStatements(args: {
+  viewId: string;
+  viewKey: string;
+  sourceName: string;
+  connectorEntityId: string;
+  organizationId: string;
+  /** Physical columns the curated view projects. */
+  projectedColumns: ReadonlyArray<string>;
+  /** Physical columns the filter reads (need not be projected). */
+  filterColumns: ReadonlyArray<string>;
+  renderedWhere: string;
+}): GuardedSessionView {
+  if (
+    !UUID_RE.test(args.organizationId) ||
+    !UUID_RE.test(args.connectorEntityId)
+  ) {
+    throw new ApiError(
+      500,
+      ApiCode.PORTAL_SQL_FORBIDDEN,
+      `invalid id for curated view ${args.viewId}`
+    );
+  }
+  const view = quoteIdent(args.viewKey);
+  const source = quoteIdent(args.sourceName);
+  const table = quoteIdent(`er__${args.connectorEntityId}`);
+  const sourceColumns = [
+    "entity_record_id",
+    "source_id",
+    ...new Set([...args.projectedColumns, ...args.filterColumns]),
+  ];
+  const projections = (alias: string) =>
+    [
+      `${alias}."entity_record_id" AS "_record_id"`,
+      `${quoteLiteral(args.connectorEntityId)}::text AS "_connector_entity_id"`,
+      `${alias}."source_id" AS "source_id"`,
+      ...args.projectedColumns.map(
+        (c) => `${alias}.${quoteIdent(c)} AS ${quoteIdent(c)}`
+      ),
+    ].join(", ");
+  const guard =
+    `w."organization_id" = ${quoteLiteral(args.organizationId)}\n` +
+    `    AND w."deleted" IS NULL`;
+  return {
+    viewId: args.viewId,
+    viewKey: args.viewKey,
+    statements: [
+      `DROP VIEW IF EXISTS ${view}`,
+      `DROP VIEW IF EXISTS ${source}`,
+      `CREATE TEMP VIEW ${source} AS\n` +
+        `  SELECT ${sourceColumns.map((c) => `w.${quoteIdent(c)}`).join(", ")}\n` +
+        `  FROM ${table} w\n` +
+        `  WHERE ${guard}`,
+      `CREATE TEMP VIEW ${view} WITH (security_invoker = true) AS\n` +
+        `  SELECT ${projections("w")}\n` +
+        `  FROM ${source} w\n` +
+        `  WHERE (\n${args.renderedWhere}\n)`,
+    ],
+    fallback: [
+      `DROP VIEW IF EXISTS ${view}`,
+      `CREATE TEMP VIEW ${view} AS\n` +
+        `  SELECT ${projections("w")}\n` +
+        `  FROM ${table} w\n` +
+        `  WHERE FALSE`,
+    ],
+    sourceGrant: { relation: args.sourceName, columns: sourceColumns },
+  };
 }
 
 /**
@@ -155,8 +257,12 @@ export interface SessionViewBuild {
  * each `CREATE TEMP VIEW` is independent, so their creation order is irrelevant.
  */
 export function resolveScopeHash(build: SessionViewBuild): string {
+  const ddl = [
+    ...build.views,
+    ...(build.guardedViews ?? []).flatMap((g) => g.statements),
+  ];
   return createHash("sha256")
-    .update([...build.views].sort().join("\n"))
+    .update(ddl.sort().join("\n"))
     .digest("hex")
     .slice(0, 32);
 }
@@ -193,7 +299,7 @@ export async function openSqlSession(
   tx: SessionTx,
   build: SessionViewBuild,
   opts: OpenSqlSessionOptions
-): Promise<void> {
+): Promise<OpenedSqlSession> {
   await tx.execute(sql.raw("DISCARD TEMP"));
   await tx.execute(
     sql.raw(
@@ -203,12 +309,71 @@ export async function openSqlSession(
   for (const ddl of build.views) {
     await tx.execute(sql.raw(ddl));
   }
+  const { degradedViewKeys, sourceGrants } = await createGuardedViews(
+    tx,
+    build.guardedViews ?? []
+  );
   if (opts.beforeRole) await opts.beforeRole(tx);
-  await PortalSqlReaderRoleService.enter(tx, build.viewMap.values());
+  await PortalSqlReaderRoleService.enter(
+    tx,
+    build.viewMap.values(),
+    sourceGrants
+  );
   if (opts.readOnly !== false) {
     await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
   }
+  return { degradedViewKeys };
 }
+
+export interface OpenedSqlSession {
+  /** #644: SQL-filtered views that failed to create and serve no rows. */
+  degradedViewKeys: ReadonlySet<string>;
+}
+
+/**
+ * #644: create each SQL-filtered view under its own savepoint. One that fails
+ * (a stored fragment whose column types no longer fit, say) rolls back to the
+ * savepoint and is created empty instead, so it fails closed and alone: the
+ * session's other views are untouched. A cancellation is not a broken view and
+ * propagates.
+ */
+async function createGuardedViews(
+  tx: SessionTx,
+  guarded: ReadonlyArray<GuardedSessionView>
+): Promise<{
+  degradedViewKeys: Set<string>;
+  sourceGrants: GuardedSessionView["sourceGrant"][];
+}> {
+  const degradedViewKeys = new Set<string>();
+  const sourceGrants: GuardedSessionView["sourceGrant"][] = [];
+  for (const [i, view] of guarded.entries()) {
+    const savepoint = `guarded_view_${i}`;
+    await tx.execute(sql.raw(`SAVEPOINT ${savepoint}`));
+    try {
+      for (const statement of view.statements) {
+        await tx.execute(sql.raw(statement));
+      }
+      await tx.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
+      sourceGrants.push(view.sourceGrant);
+    } catch (err) {
+      const { code, message } = unwrapPgError(err);
+      if (code === QUERY_CANCELED) throw err;
+      await tx.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
+      for (const statement of view.fallback) {
+        await tx.execute(sql.raw(statement));
+      }
+      degradedViewKeys.add(view.viewKey);
+      logger.warn(
+        { viewId: view.viewId, code, reason: message },
+        "curated view filter_sql failed to apply; serving it empty"
+      );
+    }
+  }
+  return { degradedViewKeys, sourceGrants };
+}
+
+/** Postgres `query_canceled` (statement timeout, client cancel). */
+const QUERY_CANCELED = "57014";
 
 export interface PortalSqlParams {
   sql: string;
@@ -450,6 +615,13 @@ export class PortalSqlServiceImpl {
     onError: (message: string) => ApiError,
     columnTypes?: Parameters<typeof renderFilterGroupToSql>[2]
   ): Promise<string | null> {
+    // #644: a SQL filter runs only inside the reader-role session, never on
+    // the API role, and must never read as "no filter" (that would widen it).
+    if (view.filterSql) {
+      throw onError(
+        "a SQL-filtered view is served only through the reader session"
+      );
+    }
     if (!view.filter) return null;
     const stmt = await this.deps.statementCache.get(
       view.connectorEntityId,
@@ -921,12 +1093,43 @@ export class PortalSqlServiceImpl {
       );
 
     const views: string[] = [];
+    const guardedViews: GuardedSessionView[] = [];
     const viewMap = new Map<string, string>();
     const grantedViewIds: string[] = [];
     // (viewKey, fieldMappingId) pairs feeding `_meta_columns`.
     const metaPairs: { viewKey: string; fieldMappingId: string }[] = [];
+    // #644: a source view's name must not be any curated view's key in this
+    // session, or it would replace that view (with unfiltered rows).
+    const takenNames = new Set(grantedViewColumns.map(({ view }) => view.key));
+    let sourceIndex = 0;
+    const nextSourceName = () => {
+      while (takenNames.has(`__src_${sourceIndex}`)) sourceIndex += 1;
+      const name = `__src_${sourceIndex}`;
+      takenNames.add(name);
+      return name;
+    };
 
     for (const { view, columns } of grantedViewColumns) {
+      if (view.filterSql) {
+        guardedViews.push(
+          await this.buildGuardedView(
+            view,
+            columns,
+            organizationId,
+            nextSourceName(),
+            client
+          )
+        );
+        for (const c of columns) {
+          metaPairs.push({
+            viewKey: view.key,
+            fieldMappingId: c.fieldMappingId,
+          });
+        }
+        viewMap.set(view.key, view.key);
+        grantedViewIds.push(view.id);
+        continue;
+      }
       const projections: string[] = [
         `w."entity_record_id" AS "_record_id"`,
         `'${view.connectorEntityId}'::text AS "_connector_entity_id"`,
@@ -1073,7 +1276,59 @@ export class PortalSqlServiceImpl {
       viewMap.set("_meta_column_catalog", "_meta_column_catalog");
     }
 
-    return { views, viewMap };
+    return { views, viewMap, guardedViews };
+  }
+
+  /**
+   * #644: the session pair for a SQL-filtered view. The stored fragment is
+   * re-validated and spliced onto the entity's current columns here; if it no
+   * longer renders, the view is created empty (fail closed) rather than
+   * failing the whole session.
+   */
+  private async buildGuardedView(
+    view: CuratedViewSelect,
+    columns: WideTableCachedColumn[],
+    organizationId: string,
+    sourceName: string,
+    client: DbClient
+  ): Promise<GuardedSessionView> {
+    const stmt = await this.deps.statementCache.get(
+      view.connectorEntityId,
+      client
+    );
+    const columnNameByKey = new Map(
+      stmt.columns.map((c) => [c.normalizedKey, c.columnName])
+    );
+    const args = {
+      viewId: view.id,
+      viewKey: view.key,
+      sourceName,
+      connectorEntityId: view.connectorEntityId,
+      organizationId,
+      projectedColumns: columns.map((c) => c.columnName),
+    };
+    try {
+      const { keys } = validateViewFilterSql(
+        view.filterSql!,
+        new Set(columnNameByKey.keys())
+      );
+      return buildGuardedViewStatements({
+        ...args,
+        filterColumns: keys.map((k) => columnNameByKey.get(k)!),
+        renderedWhere: renderViewFilterSql(view.filterSql!, columnNameByKey),
+      });
+    } catch (err) {
+      logger.warn(
+        { viewId: view.id, reason: err instanceof Error ? err.message : err },
+        "curated view filter_sql failed to render; serving it empty"
+      );
+      // FALSE is a valid fragment; the source view carries nothing extra.
+      return buildGuardedViewStatements({
+        ...args,
+        filterColumns: [],
+        renderedWhere: "FALSE",
+      });
+    }
   }
 
   /**

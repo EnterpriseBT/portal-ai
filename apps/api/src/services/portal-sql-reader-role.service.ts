@@ -43,6 +43,12 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+/** #644: column-level SELECT the reader gets on one relation. */
+export interface ReaderColumnGrant {
+  relation: string;
+  columns: ReadonlyArray<string>;
+}
+
 /** Sentinel that carries the probe result out of a rolled-back transaction. */
 class ProbeTxResult {
   constructor(readonly value: ReaderRoleProbe) {}
@@ -68,12 +74,22 @@ export class PortalSqlReaderRoleService {
    * read-only transaction). Kept out of `build.views` so the scope hash
    * (#643) doesn't change.
    */
-  static enterStatements(viewNames: Iterable<string>): string[] {
+  static enterStatements(
+    viewNames: Iterable<string>,
+    columnGrants: ReadonlyArray<ReaderColumnGrant> = []
+  ): string[] {
     const role = quoteIdent(this.roleName());
     const grants = [...new Set(viewNames)].map(
       (v) => `GRANT SELECT ON ${quoteIdent(v)} TO ${role}`
     );
-    return [...grants, `SET LOCAL ROLE ${role}`];
+    // #644: a SQL-filtered view's source view is read through its
+    // security_invoker curated view, so the reader needs exactly the columns
+    // that view uses, not the whole relation.
+    const columnLevel = columnGrants.map(
+      (g) =>
+        `GRANT SELECT (${g.columns.map(quoteIdent).join(", ")}) ON ${quoteIdent(g.relation)} TO ${role}`
+    );
+    return [...grants, ...columnLevel, `SET LOCAL ROLE ${role}`];
   }
 
   /**
@@ -83,9 +99,13 @@ export class PortalSqlReaderRoleService {
    * PORTAL_SQL_UNAVAILABLE. The next call re-probes. The failing transaction
    * aborts, so the caller's SQL never runs.
    */
-  static async enter(tx: Tx, viewNames: Iterable<string>): Promise<void> {
+  static async enter(
+    tx: Tx,
+    viewNames: Iterable<string>,
+    columnGrants: ReadonlyArray<ReaderColumnGrant> = []
+  ): Promise<void> {
     try {
-      for (const stmt of this.enterStatements(viewNames)) {
+      for (const stmt of this.enterStatements(viewNames, columnGrants)) {
         await tx.execute(sql.raw(stmt));
       }
     } catch (err) {
