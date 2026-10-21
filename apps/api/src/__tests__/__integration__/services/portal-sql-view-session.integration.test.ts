@@ -518,6 +518,28 @@ describe("curated views with a SQL filter in the reader session (#644)", () => {
       });
     });
 
+    it("answers 409 for a stored filter that no longer renders", async () => {
+      // Past the validator (written straight to the DB): it can't render.
+      await setFilterSql("salary > 1", ["salary"]);
+      await expect(records()).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.CURATED_VIEW_FILTER_SQL_BROKEN,
+      });
+      // The agent session still serves it empty, never unfiltered.
+      expect(await query(`SELECT * FROM parcels_view`)).toEqual([]);
+    });
+
+    it("answers 409, naming no value, for a filter that fails on the rows", async () => {
+      // Valid and well-typed, but `near` isn't an integer: it fails on read.
+      await setFilterSql("name::int > 5", ["name"]);
+      const err = await records().catch((e: unknown) => e);
+      expect(err).toMatchObject({
+        status: 409,
+        code: ApiCode.CURATED_VIEW_FILTER_SQL_BROKEN,
+      });
+      expect((err as Error).message).not.toMatch(/near|far|loss/);
+    });
+
     it("answers 503 when the reader role is unavailable", async () => {
       const spy = jest
         .spyOn(PortalSqlReaderRoleService, "assertUsable")

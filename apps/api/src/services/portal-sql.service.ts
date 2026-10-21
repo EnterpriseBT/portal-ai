@@ -170,6 +170,9 @@ export interface GuardedSessionView {
    *  broken filter fails closed (never widened) and alone. */
   fallback: ReadonlyArray<string>;
   sourceGrant: { relation: string; columns: ReadonlyArray<string> };
+  /** Why the stored filter couldn't be rendered at all, if it couldn't: the
+   *  view is then created from `fallback` and reported degraded. */
+  broken?: string;
 }
 
 /** #644: the ids spliced into session DDL must be UUIDs. */
@@ -428,6 +431,25 @@ async function createGuardedViews(
   const degradedViewKeys = new Set<string>();
   const sourceGrants: GuardedSessionView["sourceGrant"][] = [];
   for (const [i, view] of guarded.entries()) {
+    if (view.broken) {
+      // A filter that can't render is as broken as one that can't create.
+      if (failOnError) {
+        throw new ApiError(
+          400,
+          ApiCode.CURATED_VIEW_INVALID_FILTER_SQL,
+          view.broken
+        );
+      }
+      for (const statement of view.fallback) {
+        await tx.execute(sql.raw(statement));
+      }
+      degradedViewKeys.add(view.viewKey);
+      logger.warn(
+        { viewId: view.viewId, reason: view.broken },
+        "curated view filter_sql failed to render; serving it empty"
+      );
+      continue;
+    }
     const savepoint = `guarded_view_${i}`;
     await tx.execute(sql.raw(`SAVEPOINT ${savepoint}`));
     try {
@@ -1656,7 +1678,29 @@ export class PortalSqlServiceImpl {
             "This view's filter no longer runs against its columns. Edit the filter to repair the view."
           );
         }
-        throw new ViewSessionResult(await fn(tx));
+        let result: T;
+        try {
+          result = await fn(tx);
+        } catch (err) {
+          // A saved SQL filter can fail on the rows themselves (a cast a
+          // value doesn't fit). That's the view's fault, not the reader's:
+          // a 409 naming no value, since Postgres's text can quote a cell
+          // the reader can't see. Authoring reads keep the reason (400).
+          const { code } = unwrapPgError(err);
+          if (
+            !opts.failOnGuardedError &&
+            (build.guardedViews?.length ?? 0) > 0 &&
+            code?.startsWith("22")
+          ) {
+            throw new ApiError(
+              409,
+              ApiCode.CURATED_VIEW_FILTER_SQL_BROKEN,
+              "This view's filter fails on some of its rows. Edit the filter to repair the view."
+            );
+          }
+          throw err;
+        }
+        throw new ViewSessionResult(result);
       });
     } catch (err) {
       if (err instanceof ViewSessionResult) return err.value as T;
@@ -1706,16 +1750,16 @@ export class PortalSqlServiceImpl {
         renderedWhere: renderViewFilterSql(view.filterSql!, columnNameByKey),
       });
     } catch (err) {
-      logger.warn(
-        { viewId: view.id, reason: err instanceof Error ? err.message : err },
-        "curated view filter_sql failed to render; serving it empty"
-      );
-      // FALSE is a valid fragment; the source view carries nothing extra.
-      return buildGuardedViewStatements({
-        ...args,
-        filterColumns: [],
-        renderedWhere: "FALSE",
-      });
+      // Created empty (fail closed, never widened) and reported degraded by
+      // openSqlSession, which also refuses it outright for a dry-run.
+      return {
+        ...buildGuardedViewStatements({
+          ...args,
+          filterColumns: [],
+          renderedWhere: "FALSE",
+        }),
+        broken: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 

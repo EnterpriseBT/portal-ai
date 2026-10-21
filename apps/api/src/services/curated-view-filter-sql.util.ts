@@ -181,6 +181,9 @@ function quoteIdent(name: string): string {
 interface WalkContext {
   fragment: Buffer;
   nodes: number;
+  /** Bound the node count: the author's text only, never the rendered text
+   *  (rendering adds a node per column reference). */
+  limits: boolean;
   refuse(message: string, location?: number): never;
   onColumn(fields: unknown[], location: number): void;
 }
@@ -207,7 +210,7 @@ function visitNode(kind: string, node: Node, ctx: WalkContext): void {
   const location =
     typeof node.location === "number" ? node.location : undefined;
   ctx.nodes += 1;
-  if (ctx.nodes > FILTER_SQL_MAX_NODES) {
+  if (ctx.limits && ctx.nodes > FILTER_SQL_MAX_NODES) {
     ctx.refuse(
       `the filter is too complex: at most ${FILTER_SQL_MAX_NODES} nodes`
     );
@@ -402,10 +405,13 @@ function checkFragment(
     fields: unknown[],
     location: number,
     ctx: WalkContext
-  ) => string | null
+  ) => string | null,
+  opts: { limits: boolean } = { limits: true }
 ): ValidatedFilterSql {
   if (!sql.trim()) throw invalid("the filter is empty");
-  if (sql.length > FILTER_SQL_MAX_LENGTH) {
+  // The size limits bound what an author writes. The rendered text is longer
+  // (each key becomes `w."c_…"`), so it is held to the shape rules only.
+  if (opts.limits && sql.length > FILTER_SQL_MAX_LENGTH) {
     throw invalid(
       `the filter must be at most ${FILTER_SQL_MAX_LENGTH} characters`
     );
@@ -417,6 +423,7 @@ function checkFragment(
   const ctx: WalkContext = {
     fragment,
     nodes: 0,
+    limits: opts.limits,
     refuse(message, location) {
       throw invalid(message, fragmentPosition(fragment, location));
     },
@@ -487,20 +494,24 @@ export function renderViewFilterSql(
     // reference must now be exactly `w.<one of this view's columns>`.
     const physical = new Set(columnNameByKey.values());
     asFilterError(() =>
-      checkFragment(rendered, (fields, location, ctx) => {
-        const names = fields.map(str);
-        if (
-          names.length !== 2 ||
-          names[0] !== "w" ||
-          !physical.has(names[1]!)
-        ) {
-          ctx.refuse(
-            `column reference not allowed: ${names.join(".")}`,
-            location
-          );
-        }
-        return null;
-      })
+      checkFragment(
+        rendered,
+        (fields, location, ctx) => {
+          const names = fields.map(str);
+          if (
+            names.length !== 2 ||
+            names[0] !== "w" ||
+            !physical.has(names[1]!)
+          ) {
+            ctx.refuse(
+              `column reference not allowed: ${names.join(".")}`,
+              location
+            );
+          }
+          return null;
+        },
+        { limits: false }
+      )
     );
   } catch (err) {
     throw new ApiError(

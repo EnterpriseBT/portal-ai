@@ -277,6 +277,35 @@ describe("renderViewFilterSql — splice (#644)", () => {
     expect(renderViewFilterSql(sql, COLUMNS)).toBe(rendered);
   });
 
+  it("renders a filter at the length limit (the limit is the author's text)", () => {
+    const prefix = "amount > cost AND cost > amount AND name = '";
+    const sql = prefix + "x".repeat(4000 - prefix.length - 1) + "'";
+    expect(sql).toHaveLength(4000);
+    expect(validateViewFilterSql(sql, KEYS).keys).toEqual([
+      "amount",
+      "cost",
+      "name",
+    ]);
+    expect(renderViewFilterSql(sql, COLUMNS)).toContain(`w."c_amount"`);
+  });
+
+  it("renders a filter at the node limit (rendering adds a node per reference)", () => {
+    let n = 60;
+    const chain = (k: number) =>
+      Array.from({ length: k }, () => "amount = cost").join(" OR ");
+    const fits = (k: number) => {
+      try {
+        validateViewFilterSql(chain(k), KEYS);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    while (!fits(n)) n -= 1;
+    expect(n).toBeGreaterThan(10);
+    expect(() => renderViewFilterSql(chain(n), COLUMNS)).not.toThrow();
+  });
+
   it("quotes a physical column name carrying a double quote", () => {
     const columns = new Map([["amount", `c_we"ird`]]);
     expect(renderViewFilterSql("amount > 1", columns)).toBe(
