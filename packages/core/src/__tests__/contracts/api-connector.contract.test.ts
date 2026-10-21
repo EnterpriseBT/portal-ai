@@ -1,5 +1,6 @@
 import {
   CreateApiEndpointColumnDraftSchema,
+  CreateApiEndpointRequestBodySchema,
   SuggestTransformRequestBodySchema,
   SuggestTransformResponseSchema,
 } from "../../contracts/api-connector.contract.js";
@@ -176,5 +177,54 @@ describe("CreateApiEndpointColumnDraftSchema", () => {
       type: "string",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("CreateApiEndpointRequestBodySchema columns (#838)", () => {
+  const body = (columns: unknown[]) => ({
+    key: "users",
+    label: "Users",
+    config: {
+      path: "/users",
+      method: "GET",
+      recordsPath: "",
+      pagination: { strategy: "none" },
+    },
+    columns,
+  });
+  const column = (normalizedKey: string) => ({
+    sourceField: normalizedKey,
+    normalizedKey,
+    columnDefinitionId: "cd-1",
+  });
+
+  it("names a missing column definition", () => {
+    const result = CreateApiEndpointRequestBodySchema.safeParse(
+      body([{ sourceField: "email", normalizedKey: "email" }])
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ["columns", 0, "columnDefinitionId"],
+      message: "Column definition is required",
+    });
+  });
+
+  it("refuses a repeated normalized key", () => {
+    const result = CreateApiEndpointRequestBodySchema.safeParse(
+      body([column("id"), column("name"), column("id")])
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ["columns", 2, "normalizedKey"],
+      message: 'Duplicate normalized key "id"',
+    });
+  });
+
+  it("accepts two columns mapping one definition under different keys", () => {
+    expect(
+      CreateApiEndpointRequestBodySchema.safeParse(
+        body([column("id"), column("alt_id")])
+      ).success
+    ).toBe(true);
   });
 });

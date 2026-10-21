@@ -1676,6 +1676,52 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
     expect(byKey.name.suggestion?.suggestedNormalizedKey).toBe("user_name");
   });
 
+  it("drops a suggested column definition outside the caller's catalog (#838)", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a", email: "x@y" }]));
+    findColumnDefinitionsMock.mockResolvedValue([
+      {
+        id: "cd-email",
+        label: "Email",
+        key: "email",
+        description: null,
+        type: "string",
+      },
+    ]);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: createStubClassifier([
+        {
+          sourceField: "id",
+          columnDefinitionId: "cd-made-up",
+          suggestedNormalizedKey: "id",
+          suggestedSemanticType: "string",
+          confidence: 0.8,
+          rationale: "not in the catalog",
+        },
+        {
+          sourceField: "email",
+          columnDefinitionId: "cd-email",
+          suggestedNormalizedKey: "email",
+          suggestedSemanticType: "string",
+          confidence: 0.9,
+          rationale: "in the catalog",
+        },
+      ]),
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users",
+      { permissions: ALL_PERMISSIONS }
+    );
+
+    const byKey = Object.fromEntries(result.columns.map((c) => [c.key, c]));
+    expect(byKey.id.suggestion?.columnDefinitionId).toBeNull();
+    expect(byKey.id.suggestion?.suggestedNormalizedKey).toBe("id");
+    expect(byKey.email.suggestion?.columnDefinitionId).toBe("cd-email");
+  });
+
   it("marks degradation: 'llm-disabled' when no classifier is wired", async () => {
     withEndpoint();
     fetchMock.mockResolvedValueOnce(okResponse([{ id: "a" }, { id: "b" }]));

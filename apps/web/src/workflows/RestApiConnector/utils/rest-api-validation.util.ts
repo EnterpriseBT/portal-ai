@@ -464,6 +464,21 @@ export interface ColumnRowDraft {
 }
 
 /**
+ * Apply a row's AI-assist suggestion: its normalized key, and its column
+ * definition when it found one. A suggestion with no catalog match
+ * (`columnDefinitionId: null`) keeps the definition the user picked (#838).
+ */
+export function adoptSuggestion(row: ColumnRowDraft): ColumnRowDraft {
+  if (!row.suggestion) return row;
+  return {
+    ...row,
+    normalizedKey: row.suggestion.suggestedNormalizedKey,
+    columnDefinitionId:
+      row.suggestion.columnDefinitionId ?? row.columnDefinitionId,
+  };
+}
+
+/**
  * Per-endpoint column-row validator used by the ProbeReviewStep
  * before allowing the user to advance:
  *   - every row's `normalizedKey` is non-empty and snake_case-ish;

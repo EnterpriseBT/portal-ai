@@ -1428,9 +1428,16 @@ async function runProbePipeline(
         candidates,
         catalog
       );
+      // #838: a suggested id is pre-filled as the column's mapping, so one
+      // the model made up, or one outside the caller's catalog, is dropped
+      // rather than carried to a commit that would 404 on it.
+      const catalogIds = new Set(catalog.map((c) => c.id));
       for (const c of classifications) {
         suggestionsByField.set(c.sourceField, {
-          columnDefinitionId: c.columnDefinitionId,
+          columnDefinitionId:
+            c.columnDefinitionId && catalogIds.has(c.columnDefinitionId)
+              ? c.columnDefinitionId
+              : null,
           suggestedNormalizedKey: c.suggestedNormalizedKey,
           suggestedSemanticType: c.suggestedSemanticType,
           confidence: c.confidence,

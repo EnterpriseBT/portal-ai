@@ -42,6 +42,7 @@ import {
   paginationDraftToConfig,
   queryParamsConfig,
   totalCountDraftToConfig,
+  adoptSuggestion,
   validateBasics,
   validateColumnRows,
   validateEndpointsList,
@@ -772,13 +773,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       const row = current[index];
       if (!row?.suggestion) return m;
       const next = current.map((r, i) =>
-        i === index
-          ? {
-              ...r,
-              normalizedKey: r.suggestion!.suggestedNormalizedKey,
-              columnDefinitionId: r.suggestion!.columnDefinitionId,
-            }
-          : r
+        i === index ? adoptSuggestion(r) : r
       );
       return { ...m, [endpointKey]: next };
     });

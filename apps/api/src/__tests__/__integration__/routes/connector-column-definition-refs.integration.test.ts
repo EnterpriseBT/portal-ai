@@ -265,6 +265,20 @@ describe("REST-API endpoint save: column-definition references (#834)", () => {
     expect(await entityExists(key)).toBe(false);
   });
 
+  it("a repeated normalized key → 400 before anything is written", async () => {
+    const key = `ep_${suffix()}`;
+    const res = await save(key, [
+      { normalizedKey: "email", columnDefinitionId: systemColId },
+      { normalizedKey: "email", columnDefinitionId: systemColId },
+    ]);
+    expect([res.status, res.body.code]).toEqual([
+      400,
+      ApiCode.REST_API_INVALID_CONFIG,
+    ]);
+    expect(res.body.message).toContain("columns.1.normalizedKey");
+    expect(await entityExists(key)).toBe(false);
+  });
+
   it("one unreadable column definition among readable ones → 404, nothing written", async () => {
     const key = `ep_${suffix()}`;
     const res = await save(key, [

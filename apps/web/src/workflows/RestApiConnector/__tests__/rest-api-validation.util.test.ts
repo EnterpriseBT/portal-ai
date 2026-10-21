@@ -298,7 +298,10 @@ describe("validateEndpointsList", () => {
   });
 });
 
-import { validateColumnRows } from "../utils/rest-api-validation.util";
+import {
+  adoptSuggestion,
+  validateColumnRows,
+} from "../utils/rest-api-validation.util";
 import type { ColumnRowDraft } from "../utils/rest-api-validation.util";
 
 function row(overrides: Partial<ColumnRowDraft> = {}): ColumnRowDraft {
@@ -362,6 +365,38 @@ describe("validateColumnRows", () => {
     ]);
     expect(errors["row-0-normalizedKey"]).toMatch(/required/i);
     expect(errors["row-0-columnDefinitionId"]).toBe("Pick a column definition");
+  });
+});
+
+describe("adoptSuggestion (#838)", () => {
+  const suggestion = (columnDefinitionId: string | null) => ({
+    columnDefinitionId,
+    suggestedNormalizedKey: "user_email",
+    suggestedSemanticType: "string" as const,
+    confidence: 0.9,
+    rationale: "looks like an email",
+  });
+
+  it("takes the suggested key and definition", () => {
+    expect(
+      adoptSuggestion(
+        row({ columnDefinitionId: null, suggestion: suggestion("cd-email") })
+      )
+    ).toMatchObject({
+      normalizedKey: "user_email",
+      columnDefinitionId: "cd-email",
+    });
+  });
+
+  it("keeps the picked definition when the suggestion matched none", () => {
+    expect(
+      adoptSuggestion(
+        row({ columnDefinitionId: "cd-picked", suggestion: suggestion(null) })
+      )
+    ).toMatchObject({
+      normalizedKey: "user_email",
+      columnDefinitionId: "cd-picked",
+    });
   });
 });
 

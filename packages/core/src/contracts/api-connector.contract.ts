@@ -252,7 +252,9 @@ export const CreateApiEndpointColumnDraftSchema = z
     sourceField: z.string().min(1),
     normalizedKey: keyField("Normalized key").regex(/^[a-z][a-z0-9_]*$/),
     required: z.boolean().default(false),
-    columnDefinitionId: z.string().min(1, "Column definition is required"),
+    columnDefinitionId: z
+      .string({ error: "Column definition is required" })
+      .min(1, "Column definition is required"),
   })
   .strict();
 export type CreateApiEndpointColumnDraft = z.infer<
@@ -273,7 +275,24 @@ export const CreateApiEndpointRequestBodySchema = z
      * Omit (or send `[]`) to skip — the user can configure mappings
      * later from the connector detail page.
      */
-    columns: z.array(CreateApiEndpointColumnDraftSchema).optional(),
+    columns: z
+      .array(CreateApiEndpointColumnDraftSchema)
+      .superRefine((columns, ctx) => {
+        // A field mapping's normalizedKey is unique per entity; refuse a
+        // repeat here rather than half-write the endpoint (#838).
+        const seen = new Set<string>();
+        columns.forEach((c, index) => {
+          if (seen.has(c.normalizedKey)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [index, "normalizedKey"],
+              message: `Duplicate normalized key "${c.normalizedKey}"`,
+            });
+          }
+          seen.add(c.normalizedKey);
+        });
+      })
+      .optional(),
   })
   .strict();
 export type CreateApiEndpointRequestBody = z.infer<
