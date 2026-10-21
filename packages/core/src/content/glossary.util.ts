@@ -262,7 +262,17 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "Connector Instance",
       "Connector Entity",
       "Policy",
+      "Advanced Filter",
     ],
+  },
+  {
+    term: "Advanced Filter",
+    category: GlossaryCategory.Analytics,
+    definition:
+      "A view's row filter written as a SQL condition instead of with the builder, for what the builder can't express: distances between places, values inside JSON, or one column compared with another. It's a single condition over the entity's own columns, checked when you save it: it can't read other tables or call functions outside an allowed set, and it runs with the same access limits as the view itself. Describe the rows you want to get a suggested filter, and preview the rows it selects before saving. The columns it uses can't be deleted or renamed while the view uses them. Needs write on the view and a plan that includes advanced filters; if a plan stops including them, existing filters keep working but can't be edited until it does.",
+    example:
+      "ST_DWithin(location, ST_SetSRID(ST_MakePoint(-71.06, 42.36), 4326), 0.02) AND payload->>'status' = 'active' keeps active parcels near downtown Boston.",
+    relatedTerms: ["Curated View", "Connector Entity", "Plan Entitlement"],
   },
   {
     term: "Tool",

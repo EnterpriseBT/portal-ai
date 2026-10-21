@@ -191,6 +191,8 @@ describe("filterGlossary", () => {
     const terms = result.map((e) => e.term).sort();
     expect(terms).toEqual(
       [
+        // #644: a view's SQL row filter.
+        "Advanced Filter",
         // #674: views are what a station's session queries.
         "Curated View",
         "Custom Toolpack",
