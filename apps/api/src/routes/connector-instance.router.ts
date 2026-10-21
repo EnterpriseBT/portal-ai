@@ -1020,7 +1020,8 @@ connectorInstanceRouter.post(
 
       const result = await restApiAdapter.probeEndpointDraft(
         organizationId,
-        parsed.data
+        parsed.data,
+        await PermissionService.loadSet(req.application!.metadata)
       );
       return HttpService.success(res, result, 200);
     } catch (error) {

@@ -19,6 +19,8 @@ import type {
   ConnectorInstance,
   PaginationConfig,
 } from "@portalai/core/models";
+import { createHash } from "node:crypto";
+
 import { probeInputHash } from "@portalai/core/utils";
 import type {
   DiscoverColumnsResult,
@@ -42,6 +44,7 @@ import {
 } from "../adapter.interface.js";
 import { ApiError } from "../../services/http.service.js";
 import { DbService } from "../../services/db.service.js";
+import type { PermissionSet } from "../../services/permission-set.js";
 import { importModeQueryRows } from "../../utils/adapter.util.js";
 import { createLogger } from "../../utils/logger.util.js";
 import type {
@@ -862,6 +865,7 @@ export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
         isValid: true,
         validationErrors: null,
         created: prior?.created ?? Date.now(),
+        // #731: the record's audit stamp (kept on update), not a permission object.
         createdBy: prior?.createdBy ?? ctx.userId,
         updated: Date.now(),
         updatedBy: ctx.userId,
@@ -1214,20 +1218,35 @@ export function __resetRestApiAdapterDepsForTests(): void {
   columnClassifier = null;
 }
 
+/**
+ * #834: the column definitions the caller can read, the only ones the
+ * classifier may suggest (a suggestion becomes a mapping's reference).
+ * `null` is no catalog, for a caller that drops the suggestions.
+ */
 async function loadColumnDefinitionCatalog(
-  organizationId: string
+  organizationId: string,
+  permissions: PermissionSet | null
 ): Promise<ColumnDefinitionCatalogEntry[]> {
+  if (!permissions) return [];
   const rows =
     await DbService.repository.columnDefinitions.findByOrganizationId(
       organizationId
     );
-  return rows.map((row) => ({
-    id: row.id,
-    label: row.label,
-    normalizedKey: row.key,
-    description: row.description ?? undefined,
-    type: row.type,
-  }));
+  return rows
+    .filter((row) =>
+      permissions.can("resource.read", {
+        type: "column_definition",
+        id: row.id,
+        createdBy: row.createdBy,
+      })
+    )
+    .map((row) => ({
+      id: row.id,
+      label: row.label,
+      normalizedKey: row.key,
+      description: row.description ?? undefined,
+      type: row.type,
+    }));
 }
 
 /**
@@ -1253,6 +1272,8 @@ async function loadColumnDefinitionCatalog(
  */
 interface ProbeContext {
   organizationId: string;
+  /** #834: the caller's permissions, which scope the suggestion catalog. */
+  permissions: PermissionSet | null;
   endpointKey: string;
   /** Persisted instance id when known (post-commit path); used for logging only. */
   connectorInstanceId?: string;
@@ -1265,7 +1286,8 @@ interface ProbeContext {
 
 async function buildProbeContextFromInstance(
   instance: ConnectorInstance,
-  endpointKey: string
+  endpointKey: string,
+  permissions: PermissionSet | null
 ): Promise<ProbeContext> {
   const endpoints = await DbService.repository.apiEndpoints.findByInstance(
     instance.id
@@ -1281,6 +1303,7 @@ async function buildProbeContextFromInstance(
 
   return {
     organizationId: instance.organizationId,
+    permissions,
     endpointKey,
     connectorInstanceId: instance.id,
     baseUrl: readBaseUrl(instance),
@@ -1307,10 +1330,26 @@ async function runProbePipeline(
     );
   }
 
+  // #834: suggestions name column definitions, so a cached result is only
+  // reusable by a caller who reads the same catalog; the key carries it.
+  const catalog = await loadColumnDefinitionCatalog(
+    ctx.organizationId,
+    ctx.permissions
+  );
+  const cacheKey = `${opts.cacheKey}:cd:${createHash("sha256")
+    .update(
+      catalog
+        .map((c) => c.id)
+        .sort()
+        .join(",")
+    )
+    .digest("hex")
+    .slice(0, 16)}`;
+
   if (opts.forceRefresh) {
-    probeCache.invalidate(opts.cacheKey);
+    probeCache.invalidate(cacheKey);
   } else {
-    const cached = probeCache.get(opts.cacheKey);
+    const cached = probeCache.get(cacheKey);
     if (cached) {
       return { ...cached, source: "cache" };
     }
@@ -1345,7 +1384,7 @@ async function runProbePipeline(
           message: (err.details?.message as string) ?? err.message,
         },
       };
-      probeCache.set(opts.cacheKey, result);
+      probeCache.set(cacheKey, result);
       return result;
     }
     throw err;
@@ -1385,7 +1424,6 @@ async function runProbePipeline(
           ),
         })
       );
-      const catalog = await loadColumnDefinitionCatalog(ctx.organizationId);
       const classifications = await columnClassifier.classify(
         candidates,
         catalog
@@ -1435,16 +1473,20 @@ async function runProbePipeline(
     degradation,
   };
 
-  probeCache.set(opts.cacheKey, result);
+  probeCache.set(cacheKey, result);
   return result;
 }
 
 async function discoverColumnsWithSamples(
   instance: ConnectorInstance,
   entityKey: string,
-  options: { forceRefresh?: boolean } = {}
+  options: { forceRefresh?: boolean; permissions: PermissionSet | null }
 ): Promise<DiscoverColumnsResult> {
-  const ctx = await buildProbeContextFromInstance(instance, entityKey);
+  const ctx = await buildProbeContextFromInstance(
+    instance,
+    entityKey,
+    options.permissions
+  );
   return runProbePipeline(ctx, {
     forceRefresh: options.forceRefresh,
     cacheKey: ctx.endpoint.entity.id,
@@ -1461,7 +1503,8 @@ async function discoverColumnsWithSamples(
  */
 async function probeEndpointDraft(
   organizationId: string,
-  body: ProbeEndpointDraftRequestBody
+  body: ProbeEndpointDraftRequestBody,
+  permissions: PermissionSet
 ): Promise<DiscoverColumnsResult> {
   const cacheKey = await probeInputHash({
     organizationId,
@@ -1472,6 +1515,7 @@ async function probeEndpointDraft(
   });
   const ctx: ProbeContext = {
     organizationId,
+    permissions,
     endpointKey: "<draft>",
     baseUrl: body.baseUrl,
     auth: body.auth,
@@ -1611,7 +1655,10 @@ async function discoverColumns(
   instance: ConnectorInstance,
   entityKey: string
 ): Promise<DiscoveredColumn[]> {
-  const result = await discoverColumnsWithSamples(instance, entityKey);
+  // Suggestions are dropped below, so no catalog is needed.
+  const result = await discoverColumnsWithSamples(instance, entityKey, {
+    permissions: null,
+  });
   return result.columns.map((c) => ({
     key: c.key,
     label: c.label,

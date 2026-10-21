@@ -9,6 +9,10 @@ import {
 
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { SyncProgressUpdate } from "../../../adapters/adapter.interface.js";
+import type { PermissionSet } from "../../../services/permission-set.js";
+
+/** A caller who reads every column definition. */
+const ALL_PERMISSIONS = { can: () => true } as unknown as PermissionSet;
 
 // ── DbService mock ───────────────────────────────────────────────────
 
@@ -82,6 +86,7 @@ const findColumnDefinitionsMock = jest.fn<
       key: string;
       description: string | null;
       type: string;
+      createdBy?: string;
     }>
   >
 >();
@@ -1658,7 +1663,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
 
     expect(result.source).toBe("live");
@@ -1680,7 +1686,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
 
     expect(result.degradation).toBe("llm-disabled");
@@ -1697,7 +1704,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
 
     expect(result.degradation).toBe("llm-failed");
@@ -1733,7 +1741,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
 
     expect(
@@ -1766,11 +1775,13 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const first = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
     const second = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
 
     expect(first.source).toBe("live");
@@ -1790,9 +1801,12 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
       classifier: { classify: stub as never },
     });
 
-    await restApiAdapter.discoverColumnsWithSamples(INSTANCE, "users");
+    await restApiAdapter.discoverColumnsWithSamples(INSTANCE, "users", {
+      permissions: ALL_PERMISSIONS,
+    });
     await restApiAdapter.discoverColumnsWithSamples(INSTANCE, "users", {
       forceRefresh: true,
+      permissions: ALL_PERMISSIONS,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -1810,7 +1824,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
 
     expect(result.columns).toEqual([]);
@@ -1843,7 +1858,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
           },
           credentials: { mode: "bearer", token: "tok" } as never,
         },
-        "users"
+        "users",
+        { permissions: ALL_PERMISSIONS }
       )
     ).rejects.toMatchObject({ code: ApiCode.REST_API_AUTH_FAILED });
 
@@ -1864,7 +1880,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
 
     expect(result.recordsScanned).toBe(25);
@@ -1878,7 +1895,9 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
     });
 
     await expect(
-      restApiAdapter.discoverColumnsWithSamples(INSTANCE, "missing")
+      restApiAdapter.discoverColumnsWithSamples(INSTANCE, "missing", {
+        permissions: ALL_PERMISSIONS,
+      })
     ).rejects.toMatchObject({ code: ApiCode.REST_API_ENDPOINT_NOT_FOUND });
   });
 
@@ -1924,7 +1943,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
     expect(result.degradation).toBe("llm-disabled");
     expect(result.recordsScanned).toBe(2);
@@ -1953,7 +1973,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
     expect(result.recordsScanned).toBe(2);
     expect(result.columns.map((c) => c.key).sort()).toEqual([
@@ -1983,7 +2004,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
     expect(result.degradation).toBe("transform-failed");
     expect(result.recordsScanned).toBe(0);
@@ -2002,7 +2024,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
     expect(result.degradation).toBe("transform-failed");
     expect(result.recordsScanned).toBe(0);
@@ -2021,7 +2044,8 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
     const result = await restApiAdapter.discoverColumnsWithSamples(
       INSTANCE,
-      "users"
+      "users",
+      { permissions: ALL_PERMISSIONS }
     );
     expect(result.recordsScanned).toBe(0);
     expect(result.columns).toEqual([]);
@@ -2079,7 +2103,11 @@ describe("restApiAdapter.probeEndpointDraft", () => {
       classifier: null,
     });
 
-    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    const result = await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      baseBody,
+      ALL_PERMISSIONS
+    );
 
     expect(result.source).toBe("live");
     expect(result.recordsScanned).toBe(2);
@@ -2101,7 +2129,11 @@ describe("restApiAdapter.probeEndpointDraft", () => {
     );
     configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
 
-    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    const result = await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      baseBody,
+      ALL_PERMISSIONS
+    );
 
     const byKey = new Map(result.columns.map((c) => [c.key, c]));
     expect(byKey.get("name")?.samples).toEqual(["Alice", "Bob"]);
@@ -2115,7 +2147,11 @@ describe("restApiAdapter.probeEndpointDraft", () => {
     );
     configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
 
-    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    const result = await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      baseBody,
+      ALL_PERMISSIONS
+    );
 
     const name = result.columns.find((c) => c.key === "name");
     expect(name).toMatchObject({ key: "name", sourceField: "name" });
@@ -2130,7 +2166,11 @@ describe("restApiAdapter.probeEndpointDraft", () => {
     );
     configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
 
-    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    const result = await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      baseBody,
+      ALL_PERMISSIONS
+    );
 
     expect(result.columns.map((c) => c.key).sort()).toEqual(["id", "name"]);
     expect(result.columns.find((c) => c.key === "name")?.samples).toEqual([
@@ -2148,7 +2188,7 @@ describe("restApiAdapter.probeEndpointDraft", () => {
       classifier: { classify: classify as never },
     });
 
-    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody, ALL_PERMISSIONS);
 
     expect(classify).toHaveBeenCalledTimes(1);
     const [candidates] = classify.mock.calls[0] as unknown as [unknown[]];
@@ -2167,10 +2207,14 @@ describe("restApiAdapter.probeEndpointDraft", () => {
       classifier: null,
     });
 
-    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, {
-      ...baseBody,
-      endpoint: { ...baseBody.endpoint, transform: "data.{ unclosed" },
-    });
+    const result = await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      {
+        ...baseBody,
+        endpoint: { ...baseBody.endpoint, transform: "data.{ unclosed" },
+      },
+      ALL_PERMISSIONS
+    );
 
     expect(result.degradation).toBe("transform-failed");
     expect(result.recordsScanned).toBe(0);
@@ -2182,12 +2226,98 @@ describe("restApiAdapter.probeEndpointDraft", () => {
     const cache = new ProbeCache<never>();
     configureRestApiAdapterDeps({ cache: cache as never, classifier: null });
 
-    const first = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
-    const second = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    const first = await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      baseBody,
+      ALL_PERMISSIONS
+    );
+    const second = await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      baseBody,
+      ALL_PERMISSIONS
+    );
 
     expect(first.source).toBe("live");
     expect(second.source).toBe("cache");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe("column-definition catalog (#834)", () => {
+    const CATALOG = [
+      {
+        id: "cd-sys",
+        label: "Email",
+        key: "email",
+        description: null,
+        type: "string",
+        createdBy: "SYS",
+      },
+      {
+        id: "cd-own",
+        label: "Secret",
+        key: "secret",
+        description: null,
+        type: "string",
+        createdBy: "OWNER",
+      },
+    ];
+    /** Reads only the system-created column definition. */
+    const SYSTEM_ONLY = {
+      can: (_action: string, object?: { createdBy?: string }) =>
+        object?.createdBy === "SYS",
+    } as unknown as PermissionSet;
+
+    it("offers the classifier only the column definitions the caller can read", async () => {
+      findColumnDefinitionsMock.mockResolvedValue(CATALOG);
+      fetchMock.mockResolvedValueOnce(okResponse([{ id: "a", email: "x" }]));
+      const classify = jest.fn(async () => []);
+      configureRestApiAdapterDeps({
+        cache: new ProbeCache(),
+        classifier: { classify: classify as never },
+      });
+
+      await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody, SYSTEM_ONLY);
+
+      const [, catalog] = classify.mock.calls[0] as unknown as [
+        unknown,
+        Array<{ id: string }>,
+      ];
+      expect(catalog.map((c) => c.id)).toEqual(["cd-sys"]);
+    });
+
+    it("doesn't serve a result cached for one catalog to a caller who reads a different one", async () => {
+      findColumnDefinitionsMock.mockResolvedValue(CATALOG);
+      fetchMock
+        .mockResolvedValueOnce(okResponse([{ id: "a" }]))
+        .mockResolvedValueOnce(okResponse([{ id: "a" }]));
+      configureRestApiAdapterDeps({
+        cache: new ProbeCache(),
+        classifier: null,
+      });
+
+      const owner = await restApiAdapter.probeEndpointDraft(
+        ORG_ID,
+        baseBody,
+        ALL_PERMISSIONS
+      );
+      const member = await restApiAdapter.probeEndpointDraft(
+        ORG_ID,
+        baseBody,
+        SYSTEM_ONLY
+      );
+      const memberAgain = await restApiAdapter.probeEndpointDraft(
+        ORG_ID,
+        baseBody,
+        SYSTEM_ONLY
+      );
+
+      expect([owner.source, member.source, memberAgain.source]).toEqual([
+        "live",
+        "live",
+        "cache",
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("misses the cache when a probe-relevant field changes", async () => {
@@ -2196,11 +2326,15 @@ describe("restApiAdapter.probeEndpointDraft", () => {
       .mockResolvedValueOnce(okResponse([{ id: "b" }]));
     configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
 
-    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
-    await restApiAdapter.probeEndpointDraft(ORG_ID, {
-      ...baseBody,
-      endpoint: { ...baseBody.endpoint, path: "/admins" },
-    });
+    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody, ALL_PERMISSIONS);
+    await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      {
+        ...baseBody,
+        endpoint: { ...baseBody.endpoint, path: "/admins" },
+      },
+      ALL_PERMISSIONS
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -2211,11 +2345,15 @@ describe("restApiAdapter.probeEndpointDraft", () => {
       .mockResolvedValueOnce(okResponse([{ id: "a" }]));
     configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
 
-    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
-    await restApiAdapter.probeEndpointDraft(ORG_ID, {
-      ...baseBody,
-      forceRefresh: true,
-    });
+    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody, ALL_PERMISSIONS);
+    await restApiAdapter.probeEndpointDraft(
+      ORG_ID,
+      {
+        ...baseBody,
+        forceRefresh: true,
+      },
+      ALL_PERMISSIONS
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -2226,8 +2364,8 @@ describe("restApiAdapter.probeEndpointDraft", () => {
       .mockResolvedValueOnce(okResponse([{ id: "b" }]));
     configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
 
-    await restApiAdapter.probeEndpointDraft("org-1", baseBody);
-    await restApiAdapter.probeEndpointDraft("org-2", baseBody);
+    await restApiAdapter.probeEndpointDraft("org-1", baseBody, ALL_PERMISSIONS);
+    await restApiAdapter.probeEndpointDraft("org-2", baseBody, ALL_PERMISSIONS);
 
     // Two different orgs with identical bodies — both fire.
     expect(fetchMock).toHaveBeenCalledTimes(2);

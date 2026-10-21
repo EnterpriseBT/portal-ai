@@ -16,6 +16,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ConnectorInstanceAccessService } from "../services/connector-instance-access.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { ConnectorInstanceLayoutPlansService } from "../services/connector-instance-layout-plans.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
@@ -127,7 +128,8 @@ connectorInstanceLayoutPlansRouter.post(
         connectorInstanceId,
         organizationId,
         userId,
-        parsed.data
+        parsed.data,
+        await PermissionService.loadSet(req.application!.metadata)
       );
 
       logger.info(
@@ -464,7 +466,8 @@ connectorInstanceLayoutPlansRouter.patch(
         planId,
         organizationId,
         userId,
-        parsed.data
+        parsed.data,
+        await PermissionService.loadSet(req.application!.metadata)
       );
       return HttpService.success<LayoutPlanResponsePayload>(res, payload);
     } catch (error) {

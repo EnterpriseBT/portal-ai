@@ -28,6 +28,8 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { CuratedViewDependencyService } from "./curated-view-dependency.service.js";
+import { ParentAccessService } from "./parent-access.service.js";
+import type { PermissionSet } from "./permission-set.js";
 import {
   reconcileFieldMappings,
   resolveNormalizedKey,
@@ -230,6 +232,23 @@ export class LayoutPlanCommitService {
     }
 
     const bindingsByTarget = LayoutPlanCommitService.bindingsByTarget(plan);
+
+    // #834: every column definition a reconciled target binds must still be
+    // in the org catalog (not another org's, not since deleted). Refused here,
+    // before the first target writes, so a commit is never left part-done;
+    // reconcile re-checks per target.
+    for (const targetId of recordsByTarget.keys()) {
+      const missing = (bindingsByTarget.get(targetId) ?? []).find(
+        (b) => !b.excluded && !catalogById.has(b.columnDefinitionId)
+      );
+      if (missing) {
+        throw new ApiError(
+          404,
+          ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+          `Column definition ${missing.columnDefinitionId} not found. Bind that column to another column definition in the plan.`
+        );
+      }
+    }
 
     // #802: committing soft-deletes each reconciled entity's mappings the
     // plan no longer binds — refuse before any write if a curated view uses
@@ -510,6 +529,46 @@ export class LayoutPlanCommitService {
       }
     }
     return bindingsByTarget;
+  }
+
+  /**
+   * #834: the column definitions committing `plan` would map. An excluded
+   * binding maps nothing, so it references nothing.
+   */
+  static referencedColumnDefinitionIds(plan: LayoutPlan): string[] {
+    const ids = new Set<string>();
+    for (const bindings of LayoutPlanCommitService.bindingsByTarget(
+      plan
+    ).values()) {
+      for (const b of bindings) if (!b.excluded) ids.add(b.columnDefinitionId);
+    }
+    return [...ids];
+  }
+
+  /**
+   * #834: a mapping's column definition is a reference, so the caller must
+   * read it (#832). `404 COLUMN_DEFINITION_NOT_FOUND` unless every id is in
+   * the org and readable, checked before anything is written.
+   */
+  static async assertColumnDefinitionsReadable(
+    permissions: PermissionSet,
+    organizationId: string,
+    ids: string[]
+  ): Promise<void> {
+    const refusal = await ParentAccessService.firstRefusal(
+      permissions,
+      organizationId,
+      "column_definition",
+      ids,
+      "read"
+    );
+    if (refusal) {
+      throw new ApiError(
+        404,
+        ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+        `Column definition ${refusal.id} not found`
+      );
+    }
   }
 
   /**
@@ -891,6 +950,7 @@ export class LayoutPlanCommitService {
         validationErrors: null,
         isValid: true,
         created: prev?.created ?? now,
+        // #731: the record's audit stamp (kept on update), not a permission object.
         createdBy: prev?.createdBy ?? userId,
         updated: prev ? now : null,
         updatedBy: prev ? userId : null,

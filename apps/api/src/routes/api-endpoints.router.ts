@@ -20,6 +20,8 @@ import { ApiError, HttpService } from "../services/http.service.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+import { ParentAccessService } from "../services/parent-access.service.js";
+import type { PermissionSet } from "../services/permission-set.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import {
@@ -149,80 +151,140 @@ async function requireRestApiInstance(
 
 // ── Column materialization (used by POST when `columns` is sent) ─────
 
-/**
- * Materialize the workflow's per-endpoint `columns` draft as
- * column_definition + field_mapping rows so the user lands on a
- * connector that's ready to sync without a second pass through the
- * field-mapping UI.
- *
- * Per-column flow:
- *   1. Resolve the columnDefinitionId:
- *      - if the draft adopted an AI-assist suggestion (`columnDefinitionId`
- *        already set), use it verbatim;
- *      - else look up an existing org column_definition by `key ===
- *        normalizedKey` and reuse it (avoids duplicate-key conflicts
- *        when two endpoints share a column name);
- *      - else create a fresh column_definition with key/label/type
- *        derived from the draft.
- *   2. Create the field_mapping pointing at that column_definition.
- *   3. After all rows in the batch are inserted, reconcile the wide
- *      table once so the `c_<key>` columns appear in `er__<entityId>`.
- *
- * Bails on the first error so the workflow can surface the failure
- * without leaving the connector half-configured.
- */
-async function materializeColumns(
-  organizationId: string,
-  connectorEntityId: string,
-  columns: CreateApiEndpointColumnDraft[],
-  userId: string
-): Promise<void> {
-  if (columns.length === 0) return;
+/** A draft column with its column definition decided: an existing one, or a
+ *  fresh one `materializeColumns` creates under `normalizedKey`. */
+interface ResolvedColumn {
+  col: CreateApiEndpointColumnDraft;
+  columnDefinitionId: string | null;
+}
 
-  // Build a key→id map of existing org column_definitions so we don't
-  // race-create duplicates across endpoints (or across columns within
-  // one endpoint that share a normalizedKey).
+/**
+ * Decide each draft column's column definition, before anything is written
+ * (#834), so a refusal leaves no half-configured connector:
+ *   - an adopted AI-assist suggestion (`columnDefinitionId` set) is a
+ *     reference, so it must be in the org and readable (#832), else
+ *     `404 COLUMN_DEFINITION_NOT_FOUND`;
+ *   - else a readable org column_definition with `key === normalizedKey` is
+ *     reused (avoids duplicate-key conflicts when two endpoints share a
+ *     column name);
+ *   - else a fresh one is needed, and creating a column definition needs its
+ *     class create rule, as on `POST /api/column-definitions`
+ *     (`403 PERMISSION_DENIED`).
+ */
+async function resolveColumns(
+  permissions: PermissionSet,
+  organizationId: string,
+  columns: CreateApiEndpointColumnDraft[]
+): Promise<ResolvedColumn[]> {
+  if (columns.length === 0) return [];
+
+  const adopted = columns
+    .map((c) => c.columnDefinitionId)
+    .filter((id): id is string => !!id);
+  const refusal = await ParentAccessService.firstRefusal(
+    permissions,
+    organizationId,
+    "column_definition",
+    adopted,
+    "read"
+  );
+  if (refusal) {
+    throw new ApiError(
+      404,
+      ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      `Column definition ${refusal.id} not found`
+    );
+  }
+
   const existing =
     await DbService.repository.columnDefinitions.findByOrganizationId(
       organizationId
     );
   const byKey = new Map<string, string>();
-  for (const cd of existing) byKey.set(cd.key, cd.id);
+  const unreadableKeys = new Set<string>();
+  for (const cd of existing) {
+    if (
+      permissions.can("resource.read", {
+        type: "column_definition",
+        id: cd.id,
+        createdBy: cd.createdBy,
+      })
+    ) {
+      byKey.set(cd.key, cd.id);
+    } else {
+      unreadableKeys.add(cd.key);
+    }
+  }
 
-  for (const col of columns) {
-    let columnDefinitionId = col.columnDefinitionId ?? null;
+  const resolved = columns.map((col) => ({
+    col,
+    columnDefinitionId:
+      col.columnDefinitionId ?? byKey.get(col.normalizedKey) ?? null,
+  }));
+  const fresh = resolved.filter((r) => r.columnDefinitionId === null);
+  if (fresh.length > 0) {
+    permissions.check("resource.write", { type: "column_definition" });
+    // Only a caller who may create one gets here, so a member's answer is the
+    // same 403 whether or not the key is taken. Keys are unique per org, so
+    // creating one held by a definition the caller can't read would fail
+    // after the entity is written; refuse it first.
+    const taken = fresh.find((r) => unreadableKeys.has(r.col.normalizedKey));
+    if (taken) {
+      throw new ApiError(
+        409,
+        ApiCode.COLUMN_DEFINITION_KEY_CONFLICT,
+        `A column definition with key "${taken.col.normalizedKey}" already exists`
+      );
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Materialize the resolved column drafts as column_definition +
+ * field_mapping rows so the user lands on a connector that's ready to sync
+ * without a second pass through the field-mapping UI. Creates each fresh
+ * column definition once per normalizedKey, then reconciles the wide table
+ * once so the `c_<key>` columns appear in `er__<entityId>`.
+ */
+async function materializeColumns(
+  organizationId: string,
+  connectorEntityId: string,
+  columns: ResolvedColumn[],
+  userId: string
+): Promise<void> {
+  if (columns.length === 0) return;
+
+  const created = new Map<string, string>();
+  for (const { col, columnDefinitionId: resolvedId } of columns) {
+    let columnDefinitionId = resolvedId ?? created.get(col.normalizedKey);
 
     if (!columnDefinitionId) {
-      const cached = byKey.get(col.normalizedKey);
-      if (cached) {
-        columnDefinitionId = cached;
-      } else {
-        // Create a fresh column_definition for this normalizedKey.
-        const cdFactory = new ColumnDefinitionModelFactory();
-        const cdModel = cdFactory.create(userId);
-        cdModel.update({
-          organizationId,
-          key: col.normalizedKey,
-          label: col.normalizedKey,
-          type: col.type,
-          description: null,
-          validationPattern: null,
-          validationMessage: null,
-          canonicalFormat: null,
-          // `geoRole` is nullable-but-required on ColumnDefinition (a lat/lng
-          // pair carries a role; geometry is a type, not a role). The bulk
-          // draft doesn't carry a role, so a fresh def is null — omitting it
-          // left `undefined`, which fails the schema and crashed every
-          // fresh-column create through this path (#314).
-          geoRole: null,
-          system: false,
-        });
-        const created = await DbService.repository.columnDefinitions.create(
-          cdModel.parse()
-        );
-        columnDefinitionId = created.id;
-        byKey.set(col.normalizedKey, columnDefinitionId);
-      }
+      // Create a fresh column_definition for this normalizedKey.
+      const cdFactory = new ColumnDefinitionModelFactory();
+      const cdModel = cdFactory.create(userId);
+      cdModel.update({
+        organizationId,
+        key: col.normalizedKey,
+        label: col.normalizedKey,
+        type: col.type,
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        // `geoRole` is nullable-but-required on ColumnDefinition (a lat/lng
+        // pair carries a role; geometry is a type, not a role). The bulk
+        // draft doesn't carry a role, so a fresh def is null — omitting it
+        // left `undefined`, which fails the schema and crashed every
+        // fresh-column create through this path (#314).
+        geoRole: null,
+        system: false,
+      });
+      const row = await DbService.repository.columnDefinitions.create(
+        cdModel.parse()
+      );
+      columnDefinitionId = row.id;
+      created.set(col.normalizedKey, columnDefinitionId);
     }
 
     const fmFactory = new FieldMappingModelFactory();
@@ -531,6 +593,14 @@ apiEndpointsRouter.post(
       }
       const body = parsedBody.data;
 
+      // #834: decide every column's definition before the entity is written,
+      // so a refused reference or create leaves nothing behind.
+      const columns = await resolveColumns(
+        await PermissionService.loadSet(req.application!.metadata),
+        instance.organizationId,
+        body.columns ?? []
+      );
+
       const flattened = flattenPaginationForTable(body.config.pagination);
       // #769: refused while a running job holds the connector or any of its
       // entities.
@@ -621,12 +691,12 @@ apiEndpointsRouter.post(
       // column_definitions + field_mappings + a reconcile pass.
       // No-op when `columns` is absent (legacy callers / unconfigured
       // endpoints).
-      if (body.columns && body.columns.length > 0) {
+      if (columns.length > 0) {
         try {
           await materializeColumns(
             instance.organizationId,
             result.entity.id,
-            body.columns,
+            columns,
             userId
           );
         } catch (error) {
@@ -1153,11 +1223,14 @@ apiEndpointsRouter.post(
       // #782: the sample is the entity's live data, so the caller must be
       // able to read the entity itself. Unreadable answers like absent, and
       // nothing is fetched upstream.
+      const permissions = await PermissionService.loadSet(
+        req.application!.metadata
+      );
       if (
         !endpoint ||
         endpoint.entity.connectorInstanceId !== instanceId ||
         !ObjectAccessService.readableInOrg(
-          await PermissionService.loadSet(req.application!.metadata),
+          permissions,
           req.application!.metadata.organizationId,
           "entity",
           endpoint.entity
@@ -1173,7 +1246,7 @@ apiEndpointsRouter.post(
       const result = await restApiAdapter.discoverColumnsWithSamples(
         fullInstance as never,
         endpoint.entity.key,
-        { forceRefresh: body.forceRefresh ?? false }
+        { forceRefresh: body.forceRefresh ?? false, permissions }
       );
 
       return HttpService.success(res, result, 200);

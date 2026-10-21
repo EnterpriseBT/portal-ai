@@ -3,6 +3,7 @@ import { NextFunction, Request, Response, Router } from "express";
 import {
   LayoutPlanCommitDraftRequestBodySchema,
   LayoutPlanInterpretDraftRequestBodySchema,
+  LayoutPlanSchema,
 } from "@portalai/core/contracts";
 import type {
   LayoutPlan,
@@ -19,6 +20,7 @@ import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { LayoutPlanCommitService } from "../services/layout-plan-commit.service.js";
+import { PermissionService } from "../services/permission.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { interpretFailure } from "../utils/interpret-error.util.js";
@@ -122,7 +124,8 @@ layoutPlansRouter.post(
       const payload = await LayoutPlanDraftService.interpretDraft(
         organizationId,
         userId,
-        parsed.data
+        parsed.data,
+        await PermissionService.loadSet(req.application!.metadata)
       );
       logger.info(
         {
@@ -225,6 +228,19 @@ layoutPlansRouter.post(
             organizationId,
             existingInstanceId,
             tx
+          )
+        );
+      }
+      // #834: every column definition the plan maps must be readable, checked
+      // before preparing writes the instance and plan. A plan that doesn't
+      // parse is preparing's 400.
+      const planForRefs = LayoutPlanSchema.safeParse(parsed.data.plan);
+      if (planForRefs.success) {
+        await LayoutPlanCommitService.assertColumnDefinitionsReadable(
+          await PermissionService.loadSet(req.application!.metadata),
+          organizationId,
+          LayoutPlanCommitService.referencedColumnDefinitionIds(
+            planForRefs.data
           )
         );
       }

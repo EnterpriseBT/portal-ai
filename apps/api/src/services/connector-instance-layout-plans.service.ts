@@ -30,7 +30,9 @@ import { DbService } from "./db.service.js";
 import { JobLockService } from "./job-lock.service.js";
 import { FileUploadSessionService } from "./file-upload-session.service.js";
 import { GoogleSheetsConnectorService } from "./google-sheets-connector.service.js";
+import { LayoutPlanCommitService } from "./layout-plan-commit.service.js";
 import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
+import type { PermissionSet } from "./permission-set.js";
 import { MicrosoftExcelConnectorService } from "./microsoft-excel-connector.service.js";
 import { WorkbookCacheService } from "./workbook-cache.service.js";
 import { ApiError } from "./http.service.js";
@@ -76,7 +78,8 @@ export class ConnectorInstanceLayoutPlansService {
     connectorInstanceId: string,
     organizationId: string,
     userId: string,
-    body: InterpretRequestBody
+    body: InterpretRequestBody,
+    permissions: PermissionSet
   ): Promise<InterpretResponsePayload> {
     await ConnectorInstanceLayoutPlansService.ensureInstanceInOrg(
       connectorInstanceId,
@@ -96,7 +99,8 @@ export class ConnectorInstanceLayoutPlansService {
         body.workbook,
         body.regionHints ?? [],
         organizationId,
-        userId
+        userId,
+        permissions
       );
     } catch (err) {
       throw interpretFailure(err);
@@ -198,7 +202,8 @@ export class ConnectorInstanceLayoutPlansService {
     planId: string,
     organizationId: string,
     userId: string,
-    body: PatchLayoutPlanBody
+    body: PatchLayoutPlanBody,
+    permissions: PermissionSet
   ): Promise<LayoutPlanResponsePayload> {
     await ConnectorInstanceLayoutPlansService.ensureInstanceInOrg(
       connectorInstanceId,
@@ -245,6 +250,21 @@ export class ConnectorInstanceLayoutPlansService {
         );
       }
     }
+
+    // #834: a column definition the patch adds must be readable. The editor
+    // resends the whole plan, so the ones already stored aren't re-checked.
+    const stored = new Set(
+      LayoutPlanCommitService.referencedColumnDefinitionIds(
+        existing.plan as LayoutPlan
+      )
+    );
+    await LayoutPlanCommitService.assertColumnDefinitionsReadable(
+      permissions,
+      organizationId,
+      LayoutPlanCommitService.referencedColumnDefinitionIds(
+        validated.data
+      ).filter((id) => !stored.has(id))
+    );
 
     // #769: refused while a job holds the connector (a sync or import reads
     // the plan).

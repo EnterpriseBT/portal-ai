@@ -129,6 +129,18 @@ export async function reconcileFieldMappings(
   // stale-detection path below).
   const active = bindings.filter((b) => b.excluded !== true);
 
+  // #834: a binding's column definition must be in the org catalog. The
+  // reference checks run where a plan enters (commit, patch); this backstops
+  // every commit, sync included, against a plan naming another org's id.
+  const foreign = active.find((b) => !catalogById.has(b.columnDefinitionId));
+  if (foreign) {
+    throw new ApiError(
+      404,
+      ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+      `Column definition ${foreign.columnDefinitionId} not found`
+    );
+  }
+
   // Resolve normalized keys + enforce regex on explicit overrides.
   // Multiple bindings may share a columnDefinitionId (e.g. text-fallback)
   // and each gets its own FieldMapping row keyed by its source-derived
