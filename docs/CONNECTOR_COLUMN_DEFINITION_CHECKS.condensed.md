@@ -72,6 +72,35 @@ Set up in `e2e-fixture`: as **owner**, create column definition `zz_secret`, and
 5. As **member**, `POST /api/layout-plans/commit` with a plan whose binding names `zz_secret` → 404, and no connector instance is created.
 6. As **member**, `POST …/discover-columns` on their endpoint: no suggestion names `zz_secret`.
 
+## Adversarial
+
+All probes are `— backend` (curl as member or owner, with DB checks). Fixtures: owner-created `zz_secret` and `username`, a soft-deleted owner definition, another org's definition, a member REST connector (jsonplaceholder) and a member file-upload connector with a stored plan.
+
+**§1 Malformed input**
+- [ ] An endpoint save, and a plan patch, binding `columnDefinitionId: "not-a-uuid"` → a 4xx, never a 500. No entity or binding is written. — backend
+
+**§3 Concurrency**
+- [ ] As **owner**, two parallel endpoint saves (different keys) each with the fresh column `adv_race_col` → no 500 and no entity without its mappings. At most one `adv_race_col` definition. — backend
+
+**§4 Permission boundaries**
+- [ ] A **member** given an unconditional `create column_definition` grant saves a fresh column keyed `zz_secret` → 409 `COLUMN_DEFINITION_KEY_CONFLICT`. No entity, and `zz_secret` is unchanged. — backend
+- [ ] As **member**, a save adopting system `email` **and** `zz_secret` → 404, and nothing is written (no entity, no mapping). — backend
+
+**§5 Tenant isolation**
+- [ ] Another org's definition id in an endpoint save, a plan patch and a draft commit → 404 `COLUMN_DEFINITION_NOT_FOUND`, the same as a random uuid. Nothing is written. — backend
+
+**§6 Lifecycle**
+- [ ] A soft-deleted definition's id in an endpoint save and a plan patch → 404. — backend
+
+**§7 Misuse: a shared probe cache**
+- [ ] As **owner**, discover-columns on the member's endpoint (the owner's catalog holds `username`). Then as **member**, discover-columns without `forceRefresh` → the member's suggestions name no owner-created definition. — backend
+
+### Findings
+
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §3 parallel owner saves with one fresh key | the loser answers 500 `FIELD_MAPPING_CREATE_FAILED` and leaves its entity with no mappings; the same check-then-create runs on `main` | med (correctness; already exists) | filed as #839: not a permission issue, and `main` has the same race |
+
 ## Out of scope
 
 - Re-checking stored plans on recommit or sync. They were checked on the way in; reconcile's org check is the backstop.
