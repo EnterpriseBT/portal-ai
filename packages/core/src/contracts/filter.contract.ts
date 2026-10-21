@@ -176,6 +176,20 @@ export function collectFilterFields(expression: FilterGroup): Set<string> {
 }
 
 /**
+ * #644: every column key a view's row filter names, whichever mode it is in:
+ * a `FilterGroup`'s fields, or the keys its SQL filter references (extracted
+ * by the validator when the filter was written).
+ */
+export function collectViewFilterFields(view: {
+  filter: FilterGroup | null;
+  filterSqlKeys?: readonly string[] | null;
+}): Set<string> {
+  return view.filter
+    ? collectFilterFields(view.filter)
+    : new Set(view.filterSqlKeys ?? []);
+}
+
+/**
  * Returns the maximum nesting depth of a filter expression.
  * A flat group has depth 1.
  */

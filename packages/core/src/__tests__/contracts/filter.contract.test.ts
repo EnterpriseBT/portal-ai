@@ -8,6 +8,7 @@ import {
   MAX_FILTER_DEPTH,
   MAX_CONDITIONS,
   collectFilterFields,
+  collectViewFilterFields,
   countConditions,
   measureDepth,
   validateFilterLimits,
@@ -504,5 +505,35 @@ describe("collectFilterFields", () => {
     expect(collectFilterFields({ combinator: "and", conditions: [] })).toEqual(
       new Set()
     );
+  });
+});
+
+// ── collectViewFilterFields (#644) ─────────────────────────────────────
+
+describe("collectViewFilterFields", () => {
+  const group: FilterGroup = {
+    combinator: "and",
+    conditions: [{ field: "name", operator: "eq", value: "x" }],
+  };
+
+  it("names a FilterGroup's fields", () => {
+    expect(
+      collectViewFilterFields({ filter: group, filterSqlKeys: [] })
+    ).toEqual(new Set(["name"]));
+  });
+
+  it("names a SQL filter's referenced keys", () => {
+    expect(
+      collectViewFilterFields({
+        filter: null,
+        filterSqlKeys: ["amount", "cost"],
+      })
+    ).toEqual(new Set(["amount", "cost"]));
+  });
+
+  it("is empty for an unfiltered view", () => {
+    expect(
+      collectViewFilterFields({ filter: null, filterSqlKeys: [] }).size
+    ).toBe(0);
   });
 });

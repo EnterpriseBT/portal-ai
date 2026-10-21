@@ -21,10 +21,11 @@ import {
   isAggregateFunction,
   WHERE_FRAGMENT_PREFIX,
 } from "./portal-sql-parse.util.js";
+import { FILTER_SQL_MAX_LENGTH } from "@portalai/core/contracts";
+
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
-export const FILTER_SQL_MAX_LENGTH = 4000;
 export const FILTER_SQL_MAX_NODES = 200;
 
 /** Parse-tree node kinds a filter may contain. Anything else — a sub-select

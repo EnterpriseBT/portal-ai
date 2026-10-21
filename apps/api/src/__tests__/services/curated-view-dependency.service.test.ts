@@ -99,6 +99,20 @@ describe("CuratedViewDependencyService.findViewsUsingMappings", () => {
     expect(hits.map((h) => h.id)).toEqual(["cv-2"]);
   });
 
+  it("finds a view whose SQL filter references the mapping's key (#644)", async () => {
+    mockFindViews.mockResolvedValue([
+      { ...view("cv-sql", "ce-1"), filterSqlKeys: ["email", "status"] },
+      { ...view("cv-sql-other", "ce-1"), filterSqlKeys: ["status"] },
+    ]);
+
+    const hits = await CuratedViewDependencyService.findViewsUsingMappings(
+      "org-1",
+      [EMAIL]
+    );
+
+    expect(hits.map((h) => h.id)).toEqual(["cv-sql"]);
+  });
+
   it("ignores a view over another entity that filters on the same key", async () => {
     mockFindViews.mockResolvedValue([
       view("cv-3", "ce-other", {

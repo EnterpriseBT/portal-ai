@@ -1616,6 +1616,17 @@ const options: swaggerJsdoc.Options = {
               description:
                 "A structured FilterGroup (row filter); null = all rows. On GET and list, null for a caller without write on the view (#680): read `filtered` instead",
             },
+            filterSql: {
+              type: ["string", "null"],
+              description:
+                "#644: an advanced (SQL) row filter over the entity's column keys, instead of `filter` (at most one is set). Null for a caller without write on the view, like `filter`",
+            },
+            filterSqlKeys: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "#644: the column keys `filterSql` references (pinned against delete and rename). Empty for a caller without write on the view",
+            },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
             updated: { type: ["number", "null"] },

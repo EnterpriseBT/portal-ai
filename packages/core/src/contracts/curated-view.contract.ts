@@ -111,6 +111,34 @@ export const CuratedViewKeySchema = z
       "Reserved key — must not be a _meta_* name, _record_id, _connector_entity_id, or source_id",
   });
 
+/** #644: an advanced (SQL) row filter is at most this many characters. */
+export const FILTER_SQL_MAX_LENGTH = 4000;
+
+/** #644: an advanced (SQL) row filter, as the author typed it. */
+export const filterSqlField = () =>
+  z
+    .string()
+    .trim()
+    .min(1, "Filter is required")
+    .max(
+      FILTER_SQL_MAX_LENGTH,
+      `Filter must be at most ${FILTER_SQL_MAX_LENGTH} characters`
+    );
+
+/** #644: a row filter is a FilterGroup or SQL, never both. */
+const oneFilterMode = (
+  body: { filter?: unknown; filterSql?: string | null },
+  ctx: z.RefinementCtx
+) => {
+  if (body.filter != null && body.filterSql != null) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["filterSql"],
+      message: "Use either the builder filter or a SQL filter, not both",
+    });
+  }
+};
+
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const CuratedViewCreateRequestBodySchema = z
   .object({
@@ -120,10 +148,14 @@ export const CuratedViewCreateRequestBodySchema = z
     description: descriptionField().nullable().optional(),
     /** A structured `FilterGroup` (filter.contract.ts); omit for no row filter. */
     filter: FilterExpressionSchema.nullable().optional(),
+    /** #644: an advanced (SQL) row filter instead of `filter`. Needs a tier
+     *  with advanced view filters. */
+    filterSql: filterSqlField().nullable().optional(),
     /** The projection's field-mapping ids; omit/empty = unrestricted (all columns). */
     fieldMappingIds: z.array(z.string()).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(oneFilterMode);
 
 export type CuratedViewCreateRequestBody = z.infer<
   typeof CuratedViewCreateRequestBodySchema
@@ -145,9 +177,12 @@ export const CuratedViewUpdateRequestBodySchema = z
     label: nameField("Label").optional(),
     description: descriptionField().nullable().optional(),
     filter: FilterExpressionSchema.nullable().optional(),
+    /** #644: setting one filter mode clears the other. */
+    filterSql: filterSqlField().nullable().optional(),
     fieldMappingIds: z.array(z.string()).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(oneFilterMode);
 
 export type CuratedViewUpdateRequestBody = z.infer<
   typeof CuratedViewUpdateRequestBodySchema

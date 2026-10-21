@@ -53,6 +53,7 @@ import { PortalSqlService } from "../services/portal-sql.service.js";
 import { CuratedViewPayloadService } from "../services/curated-view-payload.service.js";
 import { CuratedViewDeleteService } from "../services/curated-view-delete.service.js";
 import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
+import { CuratedViewFilterSqlService } from "../services/curated-view-filter-sql.service.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 
 const logger = createLogger({ module: "curated-view" });
@@ -514,9 +515,10 @@ curatedViewRouter.get(
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       201: { description: Created }
- *       400: { description: "Invalid payload or filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the entity (CURATED_VIEW_INVALID_PAYLOAD)" }
- *       403: { description: "Not permitted" }
+ *       400: { description: "Invalid payload or filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the entity (CURATED_VIEW_INVALID_PAYLOAD). A `filterSql` that fails validation or its dry-run against the entity's columns is CURATED_VIEW_INVALID_FILTER_SQL (details.position for a refused construct, #644)" }
+ *       403: { description: "Not permitted, or a `filterSql` on a plan without advanced view filters (CURATED_VIEW_FILTER_SQL_NOT_ENTITLED, #644)" }
  *       409: { description: Duplicate key }
+ *       503: { description: "A `filterSql` can't be checked: the SQL reader role is unavailable (PORTAL_SQL_UNAVAILABLE)" }
  */
 curatedViewRouter.post(
   "/",
@@ -587,11 +589,15 @@ curatedViewRouter.post(
         label: body.label,
         description: body.description ?? null,
         filter: body.filter ?? null,
-        // #644: SQL filters arrive with the write path; none on create yet.
-        filterSql: null,
+        filterSql: body.filterSql ?? null,
+        // #644: filled from the validator's result under the lock below.
         filterSqlKeys: [],
       });
       const row = model.parse();
+      // #644: a SQL filter needs the tier's entitlement and the reader role.
+      if (body.filterSql) {
+        await CuratedViewFilterSqlService.beforeWrite(organizationId);
+      }
 
       const created = await DbService.transaction(async (tx) => {
         // #802: the filter's keys and the projection's mappings are checked
@@ -602,6 +608,17 @@ curatedViewRouter.post(
         ]);
         if (body.filter)
           await validateFilter(body.filter, body.connectorEntityId);
+        // #644: validated and dry-run against the entity's columns under the
+        // same lock, so its keys are pinned before a mapping can change.
+        if (body.filterSql) {
+          const { keys } = await CuratedViewFilterSqlService.validateAndDryRun(
+            body.connectorEntityId,
+            organizationId,
+            body.filterSql,
+            tx
+          );
+          row.filterSqlKeys = keys;
+        }
         // Omitted = unrestricted (all columns), the same as `[]`.
         const projection = await assertProjection(
           set,
@@ -666,8 +683,8 @@ curatedViewRouter.post(
  *       - { in: path, name: id, required: true, schema: { type: string } }
  *     responses:
  *       200: { description: Updated }
- *       400: { description: "Invalid filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the view's entity (CURATED_VIEW_INVALID_PAYLOAD)" }
- *       403: { description: "Not permitted, or the projection or filter changes and the caller can't read the view's entity (#829, PERMISSION_DENIED). Resending the stored fieldMappingIds (in any order) or filter is no change and isn't checked." }
+ *       400: { description: "Invalid filter, or a projection (fieldMappingIds) with a duplicate or an id that is not a column of the view's entity (CURATED_VIEW_INVALID_PAYLOAD). A new `filterSql` that fails validation or its dry-run is CURATED_VIEW_INVALID_FILTER_SQL (#644). Setting `filter` clears `filterSql` and vice versa; both at once is a 400" }
+ *       403: { description: "Not permitted, or the projection or filter changes and the caller can't read the view's entity (#829, PERMISSION_DENIED). Resending the stored fieldMappingIds (in any order) or filter is no change and isn't checked. A new `filterSql` on a plan without advanced view filters is CURATED_VIEW_FILTER_SQL_NOT_ENTITLED (#644); resending the stored one, or clearing it, needs no entitlement." }
  *       404: { description: Not found }
  */
 curatedViewRouter.patch(
@@ -706,6 +723,25 @@ curatedViewRouter.patch(
 
       if (body.fieldMappingIds) assertNoDuplicates(body.fieldMappingIds);
 
+      // #644: a SQL filter set to new text needs the entitlement; clearing it
+      // or resending the stored text (the editor does on every save) doesn't,
+      // so a downgraded org can still rename its views.
+      const filterSqlChanged =
+        body.filterSql !== undefined &&
+        (body.filterSql ?? null) !== (existing.filterSql ?? null);
+      // Permission before tier (#688): a change needs read on the entity
+      // (#829, like a FilterGroup change), then the entitlement.
+      if (filterSqlChanged) {
+        await assertEntityReadable(
+          set,
+          organizationId,
+          existing.connectorEntityId
+        );
+        if (body.filterSql) {
+          await CuratedViewFilterSqlService.beforeWrite(organizationId);
+        }
+      }
+
       const updated = await DbService.transaction(async (tx) => {
         // #802: checked under the entity's view-dependency lock, like create.
         await CuratedViewDependencyService.lockEntities(tx, [
@@ -728,6 +764,16 @@ curatedViewRouter.patch(
             existing.connectorEntityId
           );
         }
+        let filterSqlKeys: string[] = [];
+        if (filterSqlChanged && body.filterSql) {
+          ({ keys: filterSqlKeys } =
+            await CuratedViewFilterSqlService.validateAndDryRun(
+              existing.connectorEntityId,
+              organizationId,
+              body.filterSql,
+              tx
+            ));
+        }
         const patch: Record<string, unknown> = {
           updated: Date.now(),
           updatedBy: userId,
@@ -736,6 +782,16 @@ curatedViewRouter.patch(
         if (body.description !== undefined)
           patch.description = body.description;
         if (body.filter !== undefined) patch.filter = body.filter;
+        // #644: a view filters by one mode; setting either clears the other.
+        if (filterSqlChanged) {
+          patch.filterSql = body.filterSql;
+          patch.filterSqlKeys = filterSqlKeys;
+        }
+        if (body.filterSql) patch.filter = null;
+        if (body.filter) {
+          patch.filterSql = null;
+          patch.filterSqlKeys = [];
+        }
         const view = await DbService.repository.curatedViews.update(
           existing.id,
           patch as never,

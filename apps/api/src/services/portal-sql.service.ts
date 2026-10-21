@@ -347,6 +347,9 @@ export interface OpenSqlSessionOptions {
   /** Server-issued statements to run as the API's role after the view DDL
    *  and before the switch to the reader role (dissolve's staging table). */
   beforeRole?: (tx: SessionTx) => Promise<void>;
+  /** #644: let a SQL-filtered view's creation error propagate instead of
+   *  serving that view empty. The authoring dry-run needs Postgres's reason. */
+  failOnGuardedError?: boolean;
 }
 
 /**
@@ -382,7 +385,8 @@ export async function openSqlSession(
   }
   const { degradedViewKeys, sourceGrants } = await createGuardedViews(
     tx,
-    build.guardedViews ?? []
+    build.guardedViews ?? [],
+    opts.failOnGuardedError ?? false
   );
   if (opts.beforeRole) await opts.beforeRole(tx);
   await PortalSqlReaderRoleService.enter(
@@ -410,7 +414,8 @@ export interface OpenedSqlSession {
  */
 async function createGuardedViews(
   tx: SessionTx,
-  guarded: ReadonlyArray<GuardedSessionView>
+  guarded: ReadonlyArray<GuardedSessionView>,
+  failOnError: boolean
 ): Promise<{
   degradedViewKeys: Set<string>;
   sourceGrants: GuardedSessionView["sourceGrant"][];
@@ -428,7 +433,7 @@ async function createGuardedViews(
       sourceGrants.push(view.sourceGrant);
     } catch (err) {
       const { code, message } = unwrapPgError(err);
-      if (code === QUERY_CANCELED) throw err;
+      if (failOnError || code === QUERY_CANCELED) throw err;
       await tx.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
       for (const statement of view.fallback) {
         await tx.execute(sql.raw(statement));
@@ -1363,6 +1368,69 @@ export class PortalSqlServiceImpl {
   }
 
   /**
+   * #644: check a SQL filter an author is about to save, against the entity's
+   * current columns. It is validated (`400 CURATED_VIEW_INVALID_FILTER_SQL`,
+   * with the refused construct's position), then created as a session view
+   * and read (LIMIT 0) as the reader role, so a type error, a non-boolean
+   * result or a wrong function signature is refused now with Postgres's own
+   * reason rather than breaking the view later. Returns the referenced keys.
+   * Runs on `client` (a savepoint when it is a transaction), so a write that
+   * holds the view-dependency lock checks under it.
+   */
+  async dryRunViewFilterSql(
+    draft: { connectorEntityId: string; filterSql: string },
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<{ keys: string[] }> {
+    const stmt = await this.deps.statementCache.get(
+      draft.connectorEntityId,
+      client
+    );
+    const { keys } = validateViewFilterSql(
+      draft.filterSql,
+      new Set(stmt.columns.map((c) => c.normalizedKey))
+    );
+    const view = {
+      id: "00000000-0000-0000-0000-000000000000",
+      connectorEntityId: draft.connectorEntityId,
+      key: SINGLE_VIEW,
+      filter: null,
+      filterSql: draft.filterSql,
+    } as CuratedViewSelect;
+    const build = await this.buildSingleViewSession(
+      view,
+      [],
+      organizationId,
+      { exposeCreated: false },
+      client
+    );
+    try {
+      await this.runInViewSession(
+        build,
+        client,
+        (tx) =>
+          tx.execute(
+            sql.raw(`SELECT * FROM ${quoteIdent(SINGLE_VIEW)} LIMIT 0`)
+          ),
+        { failOnGuardedError: true }
+      );
+    } catch (err) {
+      const { code, message } = unwrapPgError(err);
+      // Syntax / semantic (42xxx) and data (22xxx) errors are the author's to
+      // fix; anything else (an outage, a cancel) is not a verdict on the SQL.
+      if (code && /^(42|22)/.test(code)) {
+        throw new ApiError(
+          400,
+          ApiCode.CURATED_VIEW_INVALID_FILTER_SQL,
+          message ?? "The filter doesn't run against this entity's columns"
+        );
+      }
+      throw err;
+    }
+    return { keys };
+  }
+
+  /**
    * #644: a one-view session for reading ONE curated view as the caller (the
    * records table, the identity lookup, the filter preview). The view is
    * named {@link SINGLE_VIEW} and projects the caller's readable `columns`;
@@ -1420,13 +1488,15 @@ export class PortalSqlServiceImpl {
   private async runInViewSession<T>(
     build: SessionViewBuild,
     client: DbClient,
-    fn: (tx: SessionTx) => Promise<T>
+    fn: (tx: SessionTx) => Promise<T>,
+    opts: { failOnGuardedError?: boolean } = {}
   ): Promise<T> {
     await PortalSqlReaderRoleService.assertUsable();
     try {
       await (client as typeof db).transaction(async (tx) => {
         const opened = await openSqlSession(tx, build, {
           statementTimeoutMs: STATEMENT_TIMEOUT_MS,
+          failOnGuardedError: opts.failOnGuardedError,
         });
         if (opened.degradedViewKeys.has(SINGLE_VIEW)) {
           throw new ApiError(
