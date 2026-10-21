@@ -583,6 +583,10 @@ export enum ApiCode {
   // Curated views (#599)
   /** A curated view's `filter` failed `FilterGroup` validation. */
   CURATED_VIEW_INVALID_FILTER = "CURATED_VIEW_INVALID_FILTER",
+  /** #644: a curated view's SQL filter failed validation (or its dry-run). */
+  CURATED_VIEW_INVALID_FILTER_SQL = "CURATED_VIEW_INVALID_FILTER_SQL",
+  /** #644: a stored SQL filter no longer renders or runs; the view fails closed. */
+  CURATED_VIEW_FILTER_SQL_BROKEN = "CURATED_VIEW_FILTER_SQL_BROKEN",
   /** #678: a records `sortBy` names a projected column whose type can't be
    *  sorted (json, arrays). */
   CURATED_VIEW_INVALID_SORT = "CURATED_VIEW_INVALID_SORT",

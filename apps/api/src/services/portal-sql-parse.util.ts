@@ -57,6 +57,9 @@ const AGGREGATE_FUNCTIONS = new Set([
 const isAggregate = (name: string) =>
   AGGREGATE_FUNCTIONS.has(name) || name.startsWith("regr_");
 
+/** #644: whether a (lower-cased, unqualified) function name is an aggregate. */
+export const isAggregateFunction = isAggregate;
+
 type Node = Record<string, unknown>;
 
 /** Functions Postgres 17's grammar emits as `pg_catalog.<fn>` for SQL-standard
@@ -644,6 +647,14 @@ export function fenceSql(cleaned: string): string {
 const FRAGMENT_SOURCE = "__source";
 
 /**
+ * #644: the text `parsePortalSqlExpression(…, "where")` puts before the
+ * fenced fragment. AST `location`s are UTF-8 byte offsets into the wrapped
+ * statement, so a caller mapping them back onto the fragment subtracts this
+ * prefix's byte length plus the fence's leading newline.
+ */
+export const WHERE_FRAGMENT_PREFIX = `SELECT 1 FROM ${FRAGMENT_SOURCE} WHERE TRUE AND (`;
+
+/**
  * #660: parse an agent-supplied SQL *fragment* — a `transform_entity_records`
  * projection (`target`: `c_a * 2 AS x, upper(c_b) AS y`) or its source filter
  * (`where`) — as a scalar expression over the source row. It may reference no
@@ -660,7 +671,7 @@ export function parsePortalSqlExpression(
     kind === "target"
       ? `SELECT ${fenceSql(fragment)} FROM ${FRAGMENT_SOURCE}`
       : // #669: a TRUE sentinel conjunct, so the fragment's shape is checkable.
-        `SELECT 1 FROM ${FRAGMENT_SOURCE} WHERE TRUE AND (${fenceSql(fragment)})`;
+        `${WHERE_FRAGMENT_PREFIX}${fenceSql(fragment)})`;
   const parsed = parsePortalSql(wrapped);
   assertScalarOver(parsed, FRAGMENT_SOURCE);
   assertFunctionsAllowed(parsed.functions);
