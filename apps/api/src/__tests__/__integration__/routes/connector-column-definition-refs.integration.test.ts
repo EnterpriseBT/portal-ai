@@ -16,7 +16,6 @@ import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { SystemUtilities } from "../../../utils/system.util.js";
 import {
-  allowForUser,
   generateId,
   seedTenancyFixture,
   teardownOrg,
@@ -24,13 +23,12 @@ import {
 } from "../utils/application.util.js";
 
 /**
- * #834: the REST-API connector's endpoint save maps each draft column to a
- * column definition. An adopted one is a reference, so the caller must read
- * it (#832); a key match reuses only one the caller reads; a fresh one needs
- * the column-definition create rule. Every column is decided before the
- * entity is written, so a refusal leaves nothing behind. A plain member,
- * on their own REST-API connector, reads system definitions but not one
- * the owner created, and can't create one.
+ * #834/#838: the REST-API connector's endpoint save maps each draft column
+ * onto the existing column definition it names, and never creates one. The
+ * definition is a reference, so the caller must read it (#832). Every column
+ * is checked before the entity is written, so a refusal leaves nothing
+ * behind. A plain member, on their own REST-API connector, reads system
+ * definitions but not one the owner created.
  */
 
 const OWNER_SUB = "auth0|ccdr-owner";
@@ -168,7 +166,6 @@ describe("REST-API endpoint save: column-definition references (#834)", () => {
         columns: columns.map((c) => ({
           sourceField: c.normalizedKey,
           normalizedKey: c.normalizedKey,
-          type: "string",
           required: false,
           ...(c.columnDefinitionId
             ? { columnDefinitionId: c.columnDefinitionId }
@@ -189,18 +186,6 @@ describe("REST-API endpoint save: column-definition references (#834)", () => {
           )
         )
     ).length > 0;
-
-  const definitionsWithKey = async (key: string) =>
-    db
-      .select()
-      .from(schema.columnDefinitions)
-      .where(
-        and(
-          eq(schema.columnDefinitions.organizationId, fx.orgId),
-          eq(schema.columnDefinitions.key, key),
-          isNull(schema.columnDefinitions.deleted)
-        )
-      );
 
   const mappedDefinitions = async (key: string) => {
     const [entity] = await db
@@ -269,67 +254,72 @@ describe("REST-API endpoint save: column-definition references (#834)", () => {
     expect(await mappedDefinitions(key)).toEqual([systemColId]);
   });
 
-  it("a key match reuses a readable column definition", async () => {
+  it("a column without a column definition → 400 naming it, nothing written", async () => {
     const key = `ep_${suffix()}`;
     const res = await save(key, [{ normalizedKey: systemColKey }]);
-    expect(res.status).toBe(201);
-    expect(await mappedDefinitions(key)).toEqual([systemColId]);
-  });
-
-  it("a key match on an unreadable column definition isn't reused: creating one needs the create rule → 403", async () => {
-    const key = `ep_${suffix()}`;
-    const res = await save(key, [{ normalizedKey: ownerColKey }]);
     expect([res.status, res.body.code]).toEqual([
-      403,
-      ApiCode.PERMISSION_DENIED,
+      400,
+      ApiCode.REST_API_INVALID_CONFIG,
     ]);
+    expect(res.body.message).toContain("columns.0.columnDefinitionId");
     expect(await entityExists(key)).toBe(false);
-    expect(await definitionsWithKey(ownerColKey)).toHaveLength(1);
   });
 
-  it("a new column without the column-definition create rule → 403, no entity and no definition", async () => {
+  it("a repeated normalized key → 400 before anything is written", async () => {
     const key = `ep_${suffix()}`;
-    const fresh = `fresh_${suffix()}`;
     const res = await save(key, [
-      { normalizedKey: systemColKey },
-      { normalizedKey: fresh },
+      { normalizedKey: "email", columnDefinitionId: systemColId },
+      { normalizedKey: "email", columnDefinitionId: systemColId },
     ]);
     expect([res.status, res.body.code]).toEqual([
-      403,
-      ApiCode.PERMISSION_DENIED,
+      400,
+      ApiCode.REST_API_INVALID_CONFIG,
     ]);
+    expect(res.body.message).toContain("columns.1.normalizedKey");
     expect(await entityExists(key)).toBe(false);
-    expect(await definitionsWithKey(fresh)).toHaveLength(0);
   });
 
-  it("a caller who may create column definitions but can't read the one holding the key → 409 before anything is written", async () => {
-    await allowForUser(db, {
-      organizationId: fx.orgId,
-      userId: fx.memberId,
-      verb: "write",
-      resourceType: "column_definition",
-    });
+  it("one unreadable column definition among readable ones → 404, nothing written", async () => {
     const key = `ep_${suffix()}`;
-    const res = await save(key, [{ normalizedKey: ownerColKey }]);
+    const res = await save(key, [
+      { normalizedKey: "email", columnDefinitionId: systemColId },
+      { normalizedKey: "secret", columnDefinitionId: ownerColId },
+    ]);
     expect([res.status, res.body.code]).toEqual([
-      409,
-      ApiCode.COLUMN_DEFINITION_KEY_CONFLICT,
+      404,
+      ApiCode.COLUMN_DEFINITION_NOT_FOUND,
     ]);
     expect(await entityExists(key)).toBe(false);
   });
 
-  it("the owner, who holds the create rule, gets the new column definition created and mapped", async () => {
+  it("the owner's save maps the named definitions and creates no column definition", async () => {
     currentSub = OWNER_SUB;
+    const orgDefinitions = async () =>
+      (
+        await db
+          .select()
+          .from(schema.columnDefinitions)
+          .where(
+            and(
+              eq(schema.columnDefinitions.organizationId, fx.orgId),
+              isNull(schema.columnDefinitions.deleted)
+            )
+          )
+      ).length;
+    const before = await orgDefinitions();
     const key = `ep_${suffix()}`;
-    const fresh = `fresh_${suffix()}`;
-    const res = await save(key, [{ normalizedKey: fresh }]);
+    const res = await save(key, [
+      { normalizedKey: `renamed_${suffix()}`, columnDefinitionId: systemColId },
+      { normalizedKey: "secret", columnDefinitionId: ownerColId },
+    ]);
     expect([res.status, JSON.stringify(res.body)]).toEqual([
       201,
       JSON.stringify(res.body),
     ]);
-    const created = await definitionsWithKey(fresh);
-    expect(created).toHaveLength(1);
-    expect(await mappedDefinitions(key)).toEqual([created[0].id]);
+    expect((await mappedDefinitions(key)).sort()).toEqual(
+      [systemColId, ownerColId].sort()
+    );
+    expect(await orgDefinitions()).toBe(before);
   });
 
   describe("layout plan patch, as a member", () => {

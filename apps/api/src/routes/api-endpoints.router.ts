@@ -30,7 +30,6 @@ import {
 } from "../services/connector-instance-access.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
-  ColumnDefinitionModelFactory,
   FieldMappingModelFactory,
   type ApiEndpointConfig,
   type PaginationConfig,
@@ -151,41 +150,23 @@ async function requireRestApiInstance(
 
 // ── Column materialization (used by POST when `columns` is sent) ─────
 
-/** A draft column with its column definition decided: an existing one, or a
- *  fresh one `materializeColumns` creates under `normalizedKey`. */
-interface ResolvedColumn {
-  col: CreateApiEndpointColumnDraft;
-  columnDefinitionId: string | null;
-}
-
 /**
- * Decide each draft column's column definition, before anything is written
- * (#834), so a refusal leaves no half-configured connector:
- *   - an adopted AI-assist suggestion (`columnDefinitionId` set) is a
- *     reference, so it must be in the org and readable (#832), else
- *     `404 COLUMN_DEFINITION_NOT_FOUND`;
- *   - else a readable org column_definition with `key === normalizedKey` is
- *     reused (avoids duplicate-key conflicts when two endpoints share a
- *     column name);
- *   - else a fresh one is needed, and creating a column definition needs its
- *     class create rule, as on `POST /api/column-definitions`
- *     (`403 PERMISSION_DENIED`).
+ * #838: every draft column names the existing column definition it maps
+ * (an endpoint never creates one). Each is a reference, so it must be in the
+ * org and readable (#832), else `404 COLUMN_DEFINITION_NOT_FOUND`. Checked
+ * before anything is written (#834), so a refusal leaves no half-configured
+ * connector.
  */
-async function resolveColumns(
+async function assertColumnDefinitionsReadable(
   permissions: PermissionSet,
   organizationId: string,
   columns: CreateApiEndpointColumnDraft[]
-): Promise<ResolvedColumn[]> {
-  if (columns.length === 0) return [];
-
-  const adopted = columns
-    .map((c) => c.columnDefinitionId)
-    .filter((id): id is string => !!id);
+): Promise<void> {
   const refusal = await ParentAccessService.firstRefusal(
     permissions,
     organizationId,
     "column_definition",
-    adopted,
+    columns.map((c) => c.columnDefinitionId),
     "read"
   );
   if (refusal) {
@@ -195,104 +176,29 @@ async function resolveColumns(
       `Column definition ${refusal.id} not found`
     );
   }
-
-  const existing =
-    await DbService.repository.columnDefinitions.findByOrganizationId(
-      organizationId
-    );
-  const byKey = new Map<string, string>();
-  const unreadableKeys = new Set<string>();
-  for (const cd of existing) {
-    if (
-      permissions.can("resource.read", {
-        type: "column_definition",
-        id: cd.id,
-        createdBy: cd.createdBy,
-      })
-    ) {
-      byKey.set(cd.key, cd.id);
-    } else {
-      unreadableKeys.add(cd.key);
-    }
-  }
-
-  const resolved = columns.map((col) => ({
-    col,
-    columnDefinitionId:
-      col.columnDefinitionId ?? byKey.get(col.normalizedKey) ?? null,
-  }));
-  const fresh = resolved.filter((r) => r.columnDefinitionId === null);
-  if (fresh.length > 0) {
-    permissions.check("resource.write", { type: "column_definition" });
-    // Only a caller who may create one gets here, so a member's answer is the
-    // same 403 whether or not the key is taken. Keys are unique per org, so
-    // creating one held by a definition the caller can't read would fail
-    // after the entity is written; refuse it first.
-    const taken = fresh.find((r) => unreadableKeys.has(r.col.normalizedKey));
-    if (taken) {
-      throw new ApiError(
-        409,
-        ApiCode.COLUMN_DEFINITION_KEY_CONFLICT,
-        `A column definition with key "${taken.col.normalizedKey}" already exists`
-      );
-    }
-  }
-  return resolved;
 }
 
 /**
- * Materialize the resolved column drafts as column_definition +
- * field_mapping rows so the user lands on a connector that's ready to sync
- * without a second pass through the field-mapping UI. Creates each fresh
- * column definition once per normalizedKey, then reconciles the wide table
- * once so the `c_<key>` columns appear in `er__<entityId>`.
+ * Materialize the column drafts as field_mapping rows on their existing
+ * column definitions, so the user lands on a connector that's ready to sync
+ * without a second pass through the field-mapping UI. Then reconciles the
+ * wide table once so the `c_<key>` columns appear in `er__<entityId>`.
  */
 async function materializeColumns(
   organizationId: string,
   connectorEntityId: string,
-  columns: ResolvedColumn[],
+  columns: CreateApiEndpointColumnDraft[],
   userId: string
 ): Promise<void> {
   if (columns.length === 0) return;
 
-  const created = new Map<string, string>();
-  for (const { col, columnDefinitionId: resolvedId } of columns) {
-    let columnDefinitionId = resolvedId ?? created.get(col.normalizedKey);
-
-    if (!columnDefinitionId) {
-      // Create a fresh column_definition for this normalizedKey.
-      const cdFactory = new ColumnDefinitionModelFactory();
-      const cdModel = cdFactory.create(userId);
-      cdModel.update({
-        organizationId,
-        key: col.normalizedKey,
-        label: col.normalizedKey,
-        type: col.type,
-        description: null,
-        validationPattern: null,
-        validationMessage: null,
-        canonicalFormat: null,
-        // `geoRole` is nullable-but-required on ColumnDefinition (a lat/lng
-        // pair carries a role; geometry is a type, not a role). The bulk
-        // draft doesn't carry a role, so a fresh def is null — omitting it
-        // left `undefined`, which fails the schema and crashed every
-        // fresh-column create through this path (#314).
-        geoRole: null,
-        system: false,
-      });
-      const row = await DbService.repository.columnDefinitions.create(
-        cdModel.parse()
-      );
-      columnDefinitionId = row.id;
-      created.set(col.normalizedKey, columnDefinitionId);
-    }
-
+  for (const col of columns) {
     const fmFactory = new FieldMappingModelFactory();
     const fmModel = fmFactory.create(userId);
     fmModel.update({
       organizationId,
       connectorEntityId,
-      columnDefinitionId,
+      columnDefinitionId: col.columnDefinitionId,
       sourceField: col.sourceField,
       isPrimaryKey: false,
       normalizedKey: col.normalizedKey,
@@ -516,7 +422,9 @@ apiEndpointsRouter.get(
  *       pair in one transaction. The `config.pagination` discriminated
  *       union is flattened into the table's `pagination` (string) +
  *       `pagination_config` (jsonb) columns. Org-wide entity-key
- *       uniqueness is enforced — 409 on conflict.
+ *       uniqueness is enforced — 409 on conflict. Optional `columns`
+ *       become field mappings on the existing column definitions they
+ *       name; the route never creates a column definition (#838).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -554,7 +462,10 @@ apiEndpointsRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: Instance not found or is not a REST API connector
+ *         description: >
+ *           Instance not found or is not a REST API connector, or
+ *           `COLUMN_DEFINITION_NOT_FOUND` (a column names a definition
+ *           outside the org or one the caller can't read)
  *         content:
  *           application/json:
  *             schema:
@@ -593,12 +504,13 @@ apiEndpointsRouter.post(
       }
       const body = parsedBody.data;
 
-      // #834: decide every column's definition before the entity is written,
-      // so a refused reference or create leaves nothing behind.
-      const columns = await resolveColumns(
+      // #834/#838: check every column's definition before the entity is
+      // written, so a refused reference leaves nothing behind.
+      const columns = body.columns ?? [];
+      await assertColumnDefinitionsReadable(
         await PermissionService.loadSet(req.application!.metadata),
         instance.organizationId,
-        body.columns ?? []
+        columns
       );
 
       const flattened = flattenPaginationForTable(body.config.pagination);
@@ -688,7 +600,7 @@ apiEndpointsRouter.post(
       }
 
       // Materialize the workflow's per-endpoint column drafts as
-      // column_definitions + field_mappings + a reconcile pass.
+      // field_mappings + a reconcile pass.
       // No-op when `columns` is absent (legacy callers / unconfigured
       // endpoints).
       if (columns.length > 0) {

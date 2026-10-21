@@ -143,11 +143,37 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
     expect(res.body.payload.config.idField).toBe("id");
   });
 
-  it("materializes fresh columns — including a geometry column — without crashing (#314 geoRole regression)", async () => {
-    // A brand-new column (no columnDefinitionId) is created fresh by
-    // materializeColumns. That path omitted the nullable-but-required
-    // `geoRole`, so every fresh-column create used to fail with
-    // FIELD_MAPPING_CREATE_FAILED. A geometry column is the canonical case.
+  it("maps columns, including a geometry one, onto existing column definitions and creates none (#838)", async () => {
+    const definition = async (key: string, type: "geometry" | "string") => {
+      const id = generateId();
+      await db.insert(schema.columnDefinitions).values({
+        id,
+        organizationId: orgId,
+        key,
+        label: key,
+        type,
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        geoRole: null,
+        system: false,
+        created: Date.now(),
+        createdBy: userId,
+      } as never);
+      return id;
+    };
+    const geometryId = await definition("geometry", "geometry");
+    const nameId = await definition("name", "string");
+    const definitionCount = async () =>
+      (
+        await db
+          .select()
+          .from(schema.columnDefinitions)
+          .where(eq(schema.columnDefinitions.organizationId, orgId))
+      ).length;
+    const before = await definitionCount();
+
     const res = await request(app)
       .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
       .send({
@@ -164,14 +190,14 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
           {
             sourceField: "geometry",
             normalizedKey: "geometry",
-            type: "geometry",
             required: true,
+            columnDefinitionId: geometryId,
           },
           {
             sourceField: "name",
             normalizedKey: "name",
-            type: "string",
             required: false,
+            columnDefinitionId: nameId,
           },
         ],
       });
@@ -179,6 +205,16 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.payload.entity.key).toBe("places");
+    const mappings = await db
+      .select()
+      .from(schema.fieldMappings)
+      .where(
+        eq(schema.fieldMappings.connectorEntityId, res.body.payload.entity.id)
+      );
+    expect(mappings.map((m) => m.columnDefinitionId).sort()).toEqual(
+      [geometryId, nameId].sort()
+    );
+    expect(await definitionCount()).toBe(before);
   });
 
   it("returns 400 REST_API_INVALID_CONFIG on invalid payload", async () => {

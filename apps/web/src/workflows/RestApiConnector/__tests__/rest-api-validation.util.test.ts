@@ -298,16 +298,19 @@ describe("validateEndpointsList", () => {
   });
 });
 
-import { validateColumnRows } from "../utils/rest-api-validation.util";
+import {
+  adoptSuggestion,
+  validateColumnRows,
+} from "../utils/rest-api-validation.util";
 import type { ColumnRowDraft } from "../utils/rest-api-validation.util";
 
 function row(overrides: Partial<ColumnRowDraft> = {}): ColumnRowDraft {
   return {
     sourceField: "id",
     normalizedKey: "id",
-    type: "string",
     required: true,
     samples: [],
+    columnDefinitionId: "cd-1",
     ...overrides,
   };
 }
@@ -341,6 +344,59 @@ describe("validateColumnRows", () => {
     expect(errors["row-0-normalizedKey"]).toMatch(/duplicate/i);
     expect(errors["row-2-normalizedKey"]).toMatch(/duplicate/i);
     expect(errors["row-1-normalizedKey"]).toBeUndefined();
+  });
+
+  // #838: an endpoint maps existing column definitions; it never creates one.
+  it("flags a row without a column definition, and only that row", () => {
+    const errors = validateColumnRows([
+      row({ normalizedKey: "id" }),
+      row({ normalizedKey: "email", columnDefinitionId: null }),
+      row({ normalizedKey: "name", columnDefinitionId: undefined }),
+    ]);
+    expect(errors).toEqual({
+      "row-1-columnDefinitionId": "Pick a column definition",
+      "row-2-columnDefinitionId": "Pick a column definition",
+    });
+  });
+
+  it("flags a missing column definition alongside a key error", () => {
+    const errors = validateColumnRows([
+      row({ normalizedKey: "", columnDefinitionId: null }),
+    ]);
+    expect(errors["row-0-normalizedKey"]).toMatch(/required/i);
+    expect(errors["row-0-columnDefinitionId"]).toBe("Pick a column definition");
+  });
+});
+
+describe("adoptSuggestion (#838)", () => {
+  const suggestion = (columnDefinitionId: string | null) => ({
+    columnDefinitionId,
+    suggestedNormalizedKey: "user_email",
+    suggestedSemanticType: "string" as const,
+    confidence: 0.9,
+    rationale: "looks like an email",
+  });
+
+  it("takes the suggested key and definition", () => {
+    expect(
+      adoptSuggestion(
+        row({ columnDefinitionId: null, suggestion: suggestion("cd-email") })
+      )
+    ).toMatchObject({
+      normalizedKey: "user_email",
+      columnDefinitionId: "cd-email",
+    });
+  });
+
+  it("keeps the picked definition when the suggestion matched none", () => {
+    expect(
+      adoptSuggestion(
+        row({ columnDefinitionId: "cd-picked", suggestion: suggestion(null) })
+      )
+    ).toMatchObject({
+      normalizedKey: "user_email",
+      columnDefinitionId: "cd-picked",
+    });
   });
 });
 

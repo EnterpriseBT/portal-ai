@@ -10,7 +10,6 @@
 
 import {
   ApiEndpointConfigSchema,
-  type ColumnDataType,
   type PaginationConfig,
 } from "@portalai/core/models";
 import {
@@ -451,13 +450,13 @@ export function validateEndpointsList(endpoints: unknown[]): FormErrors {
 /**
  * One reviewed column row held in the workflow's ProbeReviewStep
  * state. Mirrors the per-column shape persisted as a `field_mapping`
- * on commit; `suggestion` + `columnDefinitionId` carry through when
- * the user adopted an AI-assist suggestion.
+ * on commit. `columnDefinitionId` is the existing column definition the
+ * row maps (#838: an endpoint never creates one), set by adopting an
+ * AI-assist suggestion or picking one.
  */
 export interface ColumnRowDraft {
   sourceField: string;
   normalizedKey: string;
-  type: ColumnDataType;
   required: boolean;
   samples: unknown[];
   columnDefinitionId?: string | null;
@@ -465,18 +464,38 @@ export interface ColumnRowDraft {
 }
 
 /**
+ * Apply a row's AI-assist suggestion: its normalized key, and its column
+ * definition when it found one. A suggestion with no catalog match
+ * (`columnDefinitionId: null`) keeps the definition the user picked (#838).
+ */
+export function adoptSuggestion(row: ColumnRowDraft): ColumnRowDraft {
+  if (!row.suggestion) return row;
+  return {
+    ...row,
+    normalizedKey: row.suggestion.suggestedNormalizedKey,
+    columnDefinitionId:
+      row.suggestion.columnDefinitionId ?? row.columnDefinitionId,
+  };
+}
+
+/**
  * Per-endpoint column-row validator used by the ProbeReviewStep
  * before allowing the user to advance:
  *   - every row's `normalizedKey` is non-empty and snake_case-ish;
- *   - `normalizedKey` is unique within the endpoint.
+ *   - `normalizedKey` is unique within the endpoint;
+ *   - every row names a column definition (#838).
  *
- * Returns row-indexed error keys (`row-<i>-normalizedKey`) so the
- * table can highlight the offending cell.
+ * Returns row-indexed error keys (`row-<i>-normalizedKey`,
+ * `row-<i>-columnDefinitionId`) so the table can highlight the offending
+ * cell.
  */
 export function validateColumnRows(rows: ColumnRowDraft[]): FormErrors {
   const errors: FormErrors = {};
   const seen = new Map<string, number>();
   rows.forEach((row, index) => {
+    if (!row.columnDefinitionId) {
+      errors[`row-${index}-columnDefinitionId`] = "Pick a column definition";
+    }
     const key = row.normalizedKey.trim();
     if (!key) {
       errors[`row-${index}-normalizedKey`] = "Normalized key is required";

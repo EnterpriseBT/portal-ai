@@ -241,20 +241,22 @@ export type ApiEndpointListResponsePayload = z.infer<
 
 /**
  * Per-column draft the workflow's ProbeReviewStep collects. When
- * `columns` is present on the create body, the route materializes
- * each draft as a column_definition (find-or-create by
- * `normalizedKey`) + a field_mapping in one transaction, then
- * reconciles the wide table. `columnDefinitionId` is set when the
- * user adopted an AI-assist suggestion; otherwise the route looks
- * up by key or creates fresh.
+ * `columns` is present on the create body, the route maps each draft
+ * onto the existing column definition it names (#838: an endpoint never
+ * creates one), as a field_mapping, then reconciles the wide table. The
+ * definition must be in the org and readable to the caller (#832).
  */
-export const CreateApiEndpointColumnDraftSchema = z.object({
-  sourceField: z.string().min(1),
-  normalizedKey: keyField("Normalized key").regex(/^[a-z][a-z0-9_]*$/),
-  type: ColumnDataTypeEnum,
-  required: z.boolean().default(false),
-  columnDefinitionId: z.string().nullable().optional(),
-});
+// #745: strict, so a retired field (`type`, #838) is a 400 naming it.
+export const CreateApiEndpointColumnDraftSchema = z
+  .object({
+    sourceField: z.string().min(1),
+    normalizedKey: keyField("Normalized key").regex(/^[a-z][a-z0-9_]*$/),
+    required: z.boolean().default(false),
+    columnDefinitionId: z
+      .string({ error: "Column definition is required" })
+      .min(1, "Column definition is required"),
+  })
+  .strict();
 export type CreateApiEndpointColumnDraft = z.infer<
   typeof CreateApiEndpointColumnDraftSchema
 >;
@@ -267,13 +269,30 @@ export const CreateApiEndpointRequestBodySchema = z
     label: nameField("Label"),
     config: ApiEndpointConfigSchema,
     /**
-     * Optional bulk column-mapping setup. Each entry materializes as a
-     * column_definition (find-or-create by `normalizedKey`) +
-     * field_mapping + wide-table reconcile in the same route handler.
+     * Optional bulk column-mapping setup. Each entry maps an existing
+     * column_definition as a field_mapping, then the wide table is
+     * reconciled, in the same route handler.
      * Omit (or send `[]`) to skip — the user can configure mappings
      * later from the connector detail page.
      */
-    columns: z.array(CreateApiEndpointColumnDraftSchema).optional(),
+    columns: z
+      .array(CreateApiEndpointColumnDraftSchema)
+      .superRefine((columns, ctx) => {
+        // A field mapping's normalizedKey is unique per entity; refuse a
+        // repeat here rather than half-write the endpoint (#838).
+        const seen = new Set<string>();
+        columns.forEach((c, index) => {
+          if (seen.has(c.normalizedKey)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [index, "normalizedKey"],
+              message: `Duplicate normalized key "${c.normalizedKey}"`,
+            });
+          }
+          seen.add(c.normalizedKey);
+        });
+      })
+      .optional(),
   })
   .strict();
 export type CreateApiEndpointRequestBody = z.infer<

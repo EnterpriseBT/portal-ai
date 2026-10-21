@@ -41,9 +41,9 @@ export interface CreateApiEndpointBody {
   label: string;
   config: ApiEndpointConfig;
   /**
-   * Optional bulk column-mapping setup. Each entry materializes as a
-   * column_definition (find-or-create by `normalizedKey`) +
-   * field_mapping + wide-table reconcile in the server-side route.
+   * Optional bulk column-mapping setup. Each entry becomes a
+   * field_mapping on the existing column_definition it names (#838: the
+   * route never creates one), then the wide table is reconciled.
    * Omit to skip — the user can configure mappings later.
    */
   columns?: CreateApiEndpointColumnDraft[];

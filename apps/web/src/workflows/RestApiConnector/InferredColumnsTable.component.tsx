@@ -69,6 +69,7 @@ interface TableRow extends Record<string, unknown> {
   __index: number;
   __row: ColumnRowDraft;
   __error: string | undefined;
+  __definitionError: string | undefined;
 }
 
 export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
@@ -86,9 +87,9 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
         __index: index,
         __row: row,
         __error: errors[`row-${index}-normalizedKey`],
+        __definitionError: errors[`row-${index}-columnDefinitionId`],
         sourceField: row.sourceField,
         normalizedKey: row.normalizedKey,
-        type: row.type,
         required: row.required,
         sample: row.samples,
       })),
@@ -158,6 +159,9 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
               onSearch={columnDefinitionSearch.onSearch}
               loadSelectedOption={columnDefinitionSearch.getById}
               placeholder="Pick a column definition"
+              error={!!r.__definitionError}
+              helperText={r.__definitionError}
+              required
               size="small"
               fullWidth
               aria-label={`Column definition for ${

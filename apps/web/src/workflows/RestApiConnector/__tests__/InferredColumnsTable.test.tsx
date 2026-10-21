@@ -13,7 +13,6 @@ function row(overrides: Partial<ColumnRowDraft> = {}): ColumnRowDraft {
   return {
     sourceField: "id",
     normalizedKey: "id",
-    type: "string",
     required: true,
     samples: ["abc", "def"],
     ...overrides,
@@ -159,5 +158,21 @@ describe("InferredColumnsTableUI", () => {
       "aria-invalid",
       "true"
     );
+  });
+
+  it("renders a missing column definition on the row's picker (#838)", () => {
+    render(
+      <InferredColumnsTableUI
+        {...makeProps({
+          errors: { "row-0-columnDefinitionId": "Pick a column definition" },
+        })}
+      />
+    );
+    const picker = screen.getByRole("combobox");
+    expect(picker).toHaveAttribute("aria-invalid", "true");
+    expect(picker).toBeRequired();
+    expect(
+      screen.getByText("Pick a column definition", { selector: "p" })
+    ).toBeInTheDocument();
   });
 });
