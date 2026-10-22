@@ -47,6 +47,17 @@ import { resolveColumns } from "../utils/resolve-columns.util.js";
 
 const logger = createLogger({ module: "curated-view-service" });
 
+/** #645: create input. `columnKeys` (tool-only) names the projection by
+ *  field-mapping key instead of id; exclusive with `fieldMappingIds`. */
+export type CuratedViewCreateInput = CuratedViewCreateRequestBody & {
+  columnKeys?: string[];
+};
+
+/** #645: update input, with the same tool-only `columnKeys`. */
+export type CuratedViewUpdateInput = CuratedViewUpdateRequestBody & {
+  columnKeys?: string[];
+};
+
 /**
  * #645: the curated-view create/read/update/delete logic, shared by the REST
  * routes (`curated-view.router.ts`) and the `view_management` agent tools, so
@@ -242,6 +253,60 @@ function canonicalJson(value: unknown): string {
   );
 }
 
+/**
+ * #645: the projection named by key, as field-mapping ids in the given order.
+ * Each key is a live mapping's `normalizedKey` on the entity. Called only
+ * after the caller is known to read the entity (create) or write the view
+ * (update), so an unknown-key answer says nothing about an entity they can't
+ * see. A repeated or unknown key is a 400 naming it.
+ */
+async function resolveColumnKeys(
+  connectorEntityId: string,
+  keys: string[],
+  client?: DbClient
+): Promise<string[]> {
+  if (new Set(keys).size !== keys.length) {
+    throw new ApiError(
+      400,
+      ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+      "Duplicate column in projection"
+    );
+  }
+  const idByKey = new Map(
+    (
+      await DbService.repository.fieldMappings.findByConnectorEntityId(
+        connectorEntityId,
+        client
+      )
+    ).map((m) => [m.normalizedKey, m.id])
+  );
+  return keys.map((key) => {
+    const id = idByKey.get(key);
+    if (!id) {
+      throw new ApiError(
+        400,
+        ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+        `Unknown column "${key}" on this entity`
+      );
+    }
+    return id;
+  });
+}
+
+/** #645: `columnKeys` and `fieldMappingIds` name the same thing; one only. */
+function assertOneProjectionForm(input: {
+  columnKeys?: string[];
+  fieldMappingIds?: string[];
+}): void {
+  if (input.columnKeys !== undefined && input.fieldMappingIds !== undefined) {
+    throw new ApiError(
+      400,
+      ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+      "Give the projection as columnKeys or fieldMappingIds, not both"
+    );
+  }
+}
+
 /** Insert a view's projection rows (`fieldMappingIds` non-empty). */
 async function insertProjection(
   organizationId: string,
@@ -417,9 +482,11 @@ export class CuratedViewService {
    */
   static async create(
     ctx: PermissionContext,
-    body: CuratedViewCreateRequestBody
+    input: CuratedViewCreateInput
   ): Promise<CuratedViewSelect> {
     const { organizationId, userId } = ctx;
+    const { columnKeys, ...body } = input;
+    assertOneProjectionForm(input);
 
     // Creation is reserved to holders of an unconditional `write curated_view`
     // (owner/admin) — a class-level check (no ownership) excludes a member's
@@ -439,6 +506,12 @@ export class CuratedViewService {
         404,
         ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
         "Connector entity not found"
+      );
+    }
+    if (columnKeys) {
+      body.fieldMappingIds = await resolveColumnKeys(
+        body.connectorEntityId,
+        columnKeys
       );
     }
 
@@ -528,9 +601,11 @@ export class CuratedViewService {
   static async update(
     ctx: PermissionContext,
     id: string,
-    body: CuratedViewUpdateRequestBody
+    input: CuratedViewUpdateInput
   ): Promise<CuratedViewSelect> {
     const { organizationId, userId } = ctx;
+    const { columnKeys, ...body } = input;
+    assertOneProjectionForm(input);
 
     // #713: one the caller can't read answers 404, like its GET.
     const set = await PermissionService.loadSet(ctx);
@@ -542,6 +617,12 @@ export class CuratedViewService {
       "write",
       notFound
     );
+    if (columnKeys) {
+      body.fieldMappingIds = await resolveColumnKeys(
+        existing.connectorEntityId,
+        columnKeys
+      );
+    }
 
     if (body.fieldMappingIds) assertNoDuplicates(body.fieldMappingIds);
 
