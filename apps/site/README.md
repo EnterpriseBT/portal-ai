@@ -30,19 +30,25 @@ SITE_CONFIG_URL=http://localhost:3001/api/public/site-config \
 | `SITE_URL` | `https://site-dev.portalsai.io` | Canonical origin for canonicals, OG tags, sitemap. |
 | `SITE_APP_URL` | `localhost:3000` in `astro dev`, else `https://app-dev.portalsai.io` | Where sign-in/sign-up/pricing CTAs point — the web app matching this site's env. Every deploy sets it explicitly. |
 | `GITHUB_SHA` | `local` | Stamped into `<meta name="portal:build">`. |
+| `SUPPORT_EMAIL` / `SALES_EMAIL` / `ADMIN_EMAIL` | `qa@portalsai.io` | Contact addresses baked into the footer, contact, privacy and terms pages (#369). |
+| `SECURITY_EMAIL` | `qa@portalsai.io` | The vulnerability-report address: `/.well-known/security.txt`'s `Contact:` and `/security/#disclosure` (#613). |
+
+The four contact addresses are written once, in SSM (`portalops vars set …`), and the deploy passes them to the build. Locally they're unset, so every address is the QA inbox. Set one on the command line to preview it, e.g. `SECURITY_EMAIL=security@portalsai.io npm run build -w @portalai/site`.
 
 ## Where the content comes from
 
 | Content | Source | Changing it |
 |---|---|---|
 | Prices, credit allocations, plan names | `GET /api/public/site-config` at build time | `portalops tier apply`, or a Stripe price edit |
-| Support / sales addresses | the same snapshot (SSM behind the API) | `portalops vars set SUPPORT_EMAIL …` |
+| Support / sales / admin / security addresses | SSM, passed to the build by the deploy | `portalops vars set SUPPORT_EMAIL …` (or `SALES_EMAIL`, `ADMIN_EMAIL`, `SECURITY_EMAIL`) |
 | Glossary + FAQ | `@portalai/core/content` | edit the shared module (also changes in-app Help) |
 | Colours, fonts, spacing | `@portalai/core` theme JSONs → `scripts/generate-tokens.mjs` | edit the theme JSON |
 | Page copy, personas | this package (`src/pages`, `src/lib/use-cases.ts`) | edit here |
 
 **None of the top two rows is a code change.** That is the point of the
 endpoint: publishing a price is an operator action.
+
+The `/security/` page's claims and its subprocessor list *are* code: `src/lib/security-controls.ts` and `SUBPROCESSORS` in `@portalai/core/content`. Tests hold both to the code they describe (#613).
 
 ### Fixture mode is never publishable
 
