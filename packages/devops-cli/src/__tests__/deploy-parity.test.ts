@@ -134,6 +134,7 @@ describe("every secret backend.yml consumes is in the portalops catalog (#382)",
       "SUPPORT_EMAIL",
       "SALES_EMAIL",
       "ADMIN_EMAIL",
+      "SECURITY_EMAIL",
       "AUTH0_CLI_CLIENT_ID",
     ]) {
       expect(cataloged.has(key)).toBe(true);

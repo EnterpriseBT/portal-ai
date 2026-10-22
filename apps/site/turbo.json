@@ -29,7 +29,8 @@
         "BUILD_SHA",
         "SUPPORT_EMAIL",
         "SALES_EMAIL",
-        "ADMIN_EMAIL"
+        "ADMIN_EMAIL",
+        "SECURITY_EMAIL"
       ]
     }
   }

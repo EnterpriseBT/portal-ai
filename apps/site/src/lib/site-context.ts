@@ -62,4 +62,9 @@ export const siteUrl = process.env.SITE_URL || "https://site-dev.portalsai.io";
  * The resolution itself lives in `contact.ts`, which stays free of
  * `import.meta` and the top-level await above so it can be unit-tested.
  */
-export { supportEmail, salesEmail, adminEmail } from "./contact.js";
+export {
+  supportEmail,
+  salesEmail,
+  adminEmail,
+  securityEmail,
+} from "./contact.js";

@@ -19,7 +19,7 @@
  * empty `mailto:` is a dead link. `scripts/verify-pages.mjs` remains the
  * build-time backstop.
  *
- * Outside prod all three roles resolve here, so no non-prod surface can
+ * Outside prod every role resolves here, so no non-prod surface can
  * advertise a customer-facing inbox.
  */
 export const QA_EMAIL = "qa@portalsai.io";
@@ -31,3 +31,5 @@ export const supportEmail = email(process.env.SUPPORT_EMAIL);
 export const salesEmail = email(process.env.SALES_EMAIL);
 /** Legal / data-controller contact — terms, privacy, and the DMARC `rua=`. */
 export const adminEmail = email(process.env.ADMIN_EMAIL);
+/** Security-disclosure contact (#613) — `security.txt` and `/security/`. */
+export const securityEmail = email(process.env.SECURITY_EMAIL);

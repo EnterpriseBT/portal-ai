@@ -156,6 +156,7 @@ jobs:
           echo "support=$(get "$prefix/support-email")" >> "$GITHUB_OUTPUT"
           echo "sales=$(get "$prefix/sales-email")" >> "$GITHUB_OUTPUT"
           echo "admin=$(get "$prefix/admin-email")" >> "$GITHUB_OUTPUT"
+          echo "security=$(get "$prefix/security-email")" >> "$GITHUB_OUTPUT"
 
       # Turborepo remote cache (#454). apps/site#build is deliberately UNCACHED
       # (apps/site/turbo.json — its output depends on a live site-config fetch),
@@ -171,6 +172,7 @@ jobs:
           SUPPORT_EMAIL: ${{ steps.contact.outputs.support }}
           SALES_EMAIL: ${{ steps.contact.outputs.sales }}
           ADMIN_EMAIL: ${{ steps.contact.outputs.admin }}
+          SECURITY_EMAIL: ${{ steps.contact.outputs.security }}
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           TURBO_TEAM: ${{ vars.TURBO_TEAM }}
           TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}

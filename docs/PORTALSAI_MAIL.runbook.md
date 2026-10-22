@@ -17,7 +17,8 @@ The half of #369 that cannot be code. Creating a Google Workspace tenant needs a
 | `admin@portalsai.io` | The paid seat — the real mailbox. Legal / data-controller contact, DMARC report destination, vendor account contact | prod |
 | `support@portalsai.io` | Alias → admin | prod |
 | `sales@portalsai.io` | Alias → admin | prod |
-| `qa@portalsai.io` | Alias → admin | **local + app-dev, all three roles** |
+| `security@portalsai.io` | Alias → admin. Vulnerability reports: published in `/.well-known/security.txt` and on the site's `/security/` page (#613) | prod |
+| `qa@portalsai.io` | Alias → admin | **local + app-dev, every role** |
 
 `qa@` exists so no non-prod surface can advertise a customer-facing inbox. Aliases are free; only the seat is paid.
 
@@ -64,6 +65,7 @@ With the domain verified, add these as **aliases on the `admin@` user** (Workspa
 
 - [ ] `support@portalsai.io`
 - [ ] `sales@portalsai.io`
+- [ ] `security@portalsai.io`
 - [ ] `qa@portalsai.io`
 
 ## 5 — Turn on DKIM and get the key
@@ -125,7 +127,7 @@ aws cloudformation deploy \
 
 ## 7 — Correct the app-dev addresses
 
-The deploy pipeline seeds SSM **create-if-absent** and never overwrites, so the two parameters seeded before this ticket still hold customer-facing addresses. Staging showing `support@` is exactly the leak #369 exists to prevent.
+The deploy pipeline seeds SSM **create-if-absent** and never overwrites, so the two parameters seeded before #369 still hold customer-facing addresses. Staging showing `support@` is exactly the leak #369 exists to prevent.
 
 - [ ] Check what is actually set:
 
@@ -133,6 +135,7 @@ The deploy pipeline seeds SSM **create-if-absent** and never overwrites, so the 
 portalops vars get SUPPORT_EMAIL --env app-dev
 portalops vars get SALES_EMAIL --env app-dev
 portalops vars get ADMIN_EMAIL --env app-dev
+portalops vars get SECURITY_EMAIL --env app-dev
 ```
 
 - [ ] Set any that are not `qa@portalsai.io`:
@@ -141,13 +144,14 @@ portalops vars get ADMIN_EMAIL --env app-dev
 portalops vars set SUPPORT_EMAIL qa@portalsai.io --env app-dev --yes
 portalops vars set SALES_EMAIL   qa@portalsai.io --env app-dev --yes
 portalops vars set ADMIN_EMAIL   qa@portalsai.io --env app-dev --yes
+portalops vars set SECURITY_EMAIL qa@portalsai.io --env app-dev --yes
 ```
 
 Each write fires the site-rebuild dispatch, so the published site picks the value up. **The web app does not** — it bakes addresses at build time and takes the change on its next deploy. That asymmetry is deliberate (#369): the deploy is the dispatch.
 
 ## 8 — Verify deliverability
 
-- [ ] Send mail from an outside account to each of `admin@`, `support@`, `sales@`, `qa@portalsai.io`. All four arrive in the `admin@` mailbox.
+- [ ] Send mail from an outside account to each of `admin@`, `support@`, `sales@`, `security@`, `qa@portalsai.io`. All five arrive in the `admin@` mailbox.
 - [ ] Check the published records resolve:
 
 ```bash
@@ -175,4 +179,5 @@ dig +short TXT google._domainkey.portalsai.io
 | Rotate the DKIM key | Regenerate in the console, re-run step 6 with the new value, update `PORTALSAI_DKIM_VALUE` — store it exactly as Route53 holds it (quotes and chunk split, no shell escaping), per step 6's note |
 | Tighten DMARC | Re-deploy with `DmarcPolicy=quarantine` (then `reject`), reading reports between steps |
 | Add another alias | Workspace console only — no DNS change; aliases need no records |
+| Keep `security.txt` valid | Its `Expires:` is the site build time + 180 days (#613, RFC 9116). Any site build renews it: a deploy, or the rebuild dispatch any `siteConfig` `vars set` fires. If the site goes 180 days without one, scanners report the file expired until the next build |
 | A support *team* rather than one inbox | Aliases deliver to a single mailbox. A Google Group is the migration path, and it is a Workspace change, not a DNS one |

@@ -38,6 +38,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "MICROSOFT_OAUTH_CLIENT_ID",
       "MICROSOFT_OAUTH_TENANT",
       "SALES_EMAIL", // #311 public site-config contact
+      "SECURITY_EMAIL", // #613 security.txt + /security/ disclosure contact
       "SUPPORT_EMAIL", // #311 public site-config contact
       "SYSTEM_ID",
     ]);
@@ -93,6 +94,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "SUPPORT_EMAIL",
       "SALES_EMAIL",
       "ADMIN_EMAIL",
+      "SECURITY_EMAIL",
     ]);
   });
 
@@ -109,6 +111,20 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
     });
     expect(pathFor(appDev, lookupKey("ADMIN_EMAIL"))).toBe(
       "/portalai/dev/admin-email"
+    );
+  });
+
+  // #613: the security-disclosure contact, published in security.txt and on
+  // the site's /security/ page — business config like the other three.
+  it("SECURITY_EMAIL is a siteConfig-marked SSM entry (#613)", () => {
+    expect(lookupKey("SECURITY_EMAIL")).toMatchObject({
+      kind: "ssm",
+      name: "security-email",
+      ssmType: "String",
+      siteConfig: true,
+    });
+    expect(pathFor(appDev, lookupKey("SECURITY_EMAIL"))).toBe(
+      "/portalai/dev/security-email"
     );
   });
 

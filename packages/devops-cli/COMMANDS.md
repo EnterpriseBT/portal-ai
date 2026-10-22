@@ -60,11 +60,11 @@ Read (writes a **local** file). Default `./cloud-vars.<env>.env`; refuses overwr
 
 ### Marketing-site business config (#311)
 
-`SUPPORT_EMAIL`, `SALES_EMAIL` and `ADMIN_EMAIL` are SSM catalog entries (`support-email` / `sales-email` / `admin-email` under the env's parameter prefix). They are the **single place a business email is written**; every consumer reads it as an environment variable injected at deploy time — the API serves no contact address, the marketing site bakes them at build, and the web app bakes them into its bundle.
+`SUPPORT_EMAIL`, `SALES_EMAIL`, `ADMIN_EMAIL` and `SECURITY_EMAIL` are SSM catalog entries (`support-email` / `sales-email` / `admin-email` / `security-email` under the env's parameter prefix). They are the **single place a business email is written**; every consumer reads it as an environment variable injected at deploy time — the API serves no contact address, the marketing site bakes them at build, and the web app bakes the first three into its bundle. `SECURITY_EMAIL` (#613) is site-only: the `security.txt` contact and the `/security/` reporting address.
 
 They are marked `siteConfig` in the catalog: a successful `vars set` (or a `vars apply` batch carrying one) fires the marketing-site rebuild dispatch, so the published site picks the value up without waiting for a code deploy. **The web app has no equivalent dispatch** — it takes the new value on its next deploy. That asymmetry is deliberate: an address changes about never, and the deploy is the mechanism.
 
-**Same key set in every environment, differing only in value.** `qa@portalsai.io` serves all three roles in local and app-dev, so no non-prod surface can advertise a customer-facing inbox; only prod points at the role-split addresses (#369).
+**Same key set in every environment, differing only in value.** `qa@portalsai.io` serves every role in local and app-dev, so no non-prod surface can advertise a customer-facing inbox; only prod points at the role-split addresses (#369).
 
 **The rebuild dispatch.** Three independent triggers refresh the published site, so no single one is load-bearing:
 
