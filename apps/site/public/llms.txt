@@ -34,6 +34,9 @@ metered. Current amounts are on the pricing page.
 - Use cases: https://site-dev.portalsai.io/use-cases/
 - Pricing: https://site-dev.portalsai.io/pricing/
 - Contact: https://site-dev.portalsai.io/contact/
+- Security: https://site-dev.portalsai.io/security/
+- Privacy: https://site-dev.portalsai.io/privacy/
+- Terms: https://site-dev.portalsai.io/terms/
 
 ## Notes for summarisers
 

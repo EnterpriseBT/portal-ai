@@ -92,13 +92,16 @@ export const CATALOG: CatalogEntry[] = [
   // the next deploy (or the site-rebuild dispatch) is what publishes it.
   //
   // Same key set in every environment, differing only in value: qa@ serves all
-  // three roles outside prod so no non-prod surface can advertise a
+  // roles outside prod so no non-prod surface can advertise a
   // customer-facing inbox.
   { ...ssm("SUPPORT_EMAIL", "support-email"), siteConfig: true },
   { ...ssm("SALES_EMAIL", "sales-email"), siteConfig: true },
   // #369: legal / data-controller contact — the site's terms and privacy
   // pages, and the DMARC `rua=` reporting destination.
   { ...ssm("ADMIN_EMAIL", "admin-email"), siteConfig: true },
+  // #613: security-disclosure contact — the site's security.txt `Contact:`
+  // and the /security/ page's reporting section.
+  { ...ssm("SECURITY_EMAIL", "security-email"), siteConfig: true },
 ];
 
 /** Resolve a catalog key or throw (typed) pointing at `vars describe`. */

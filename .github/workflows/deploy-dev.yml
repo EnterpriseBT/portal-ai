@@ -596,6 +596,7 @@ jobs:
           seed /portalai/dev/support-email qa@portalsai.io
           seed /portalai/dev/sales-email qa@portalsai.io
           seed /portalai/dev/admin-email qa@portalsai.io
+          seed /portalai/dev/security-email qa@portalsai.io
 
       - name: Update backend stack and deploy
         run: |

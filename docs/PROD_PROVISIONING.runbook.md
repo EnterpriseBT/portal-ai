@@ -275,14 +275,15 @@ node -e "console.log(require('crypto').randomUUID())" | portalops vars set SYSTE
 
 ## 8 — Contact addresses
 
-These render on the public marketing site and in the app's Help view. Outside prod all three are `qa@portalsai.io`, so no non-prod surface can advertise a customer-facing inbox.
+These render on the public marketing site, and the first three also in the app's Help view. `SECURITY_EMAIL` is the `Contact:` in `/.well-known/security.txt` and the reporting address on `/security/` (#613); **set it before the first prod site build**, which otherwise publishes the `qa@` fallback as the disclosure contact. Outside prod all four are `qa@portalsai.io`, so no non-prod surface can advertise a customer-facing inbox.
 
-- [ ] **Confirm all three inboxes deliver before writing them.** A wrong address here is published, not errored.
+- [ ] **Confirm all four inboxes deliver before writing them.** A wrong address here is published, not errored.
 
 ```bash
 printf '%s' 'support@portalsai.io' | portalops vars set SUPPORT_EMAIL - --env $ENV $GUARD
 printf '%s' 'sales@portalsai.io'   | portalops vars set SALES_EMAIL - --env $ENV $GUARD
 printf '%s' 'admin@portalsai.io'   | portalops vars set ADMIN_EMAIL - --env $ENV $GUARD
+printf '%s' 'security@portalsai.io' | portalops vars set SECURITY_EMAIL - --env $ENV $GUARD
 ```
 
 Each of these fires a site-rebuild dispatch. Against prod that runs `deploy-site-prod`, which exits early until `PROD_SITE_CONFIG_URL` is set (#386) — expected and harmless.
@@ -391,6 +392,7 @@ done
 | `SUPPORT_EMAIL` | ssm | real inbox | 8 |
 | `SALES_EMAIL` | ssm | real inbox | 8 |
 | `ADMIN_EMAIL` | ssm | real inbox | 8 |
+| `SECURITY_EMAIL` | ssm | real inbox | 8 |
 
 The catalog is `packages/devops-cli/src/catalog.ts`. A key belongs in it **iff** it is an operator-settable per-environment value stored in Secrets Manager or SSM — template-computed values (`REDIS_URL`, the `UPLOAD_S3_*` trio, the OAuth redirect URIs) are correctly absent, and a guard test asserts every secret the task definition consumes has an entry.
 

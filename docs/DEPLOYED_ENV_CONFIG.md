@@ -27,7 +27,7 @@ The four defects:
 
 ## Decision 1 — two guards, both one-directional
 
-Equality between any two of these sets is wrong: `catalog.ts` legitimately holds four keys `backend.yml` never consumes (`SUPPORT_EMAIL` / `SALES_EMAIL` / `ADMIN_EMAIL` are build-time; `AUTH0_CLI_CLIENT_ID` is read only by `portalai login`), and `.env.example` legitimately holds keys our code never reads (`AWS_ACCESS_KEY_ID`, `NGROK_AUTHTOKEN` — read by the AWS SDK and ngrok themselves).
+Equality between any two of these sets is wrong: `catalog.ts` legitimately holds five keys `backend.yml` never consumes (`SUPPORT_EMAIL` / `SALES_EMAIL` / `ADMIN_EMAIL` / `SECURITY_EMAIL` are build-time; `AUTH0_CLI_CLIENT_ID` is read only by `portalai login`), and `.env.example` legitimately holds keys our code never reads (`AWS_ACCESS_KEY_ID`, `NGROK_AUTHTOKEN` — read by the AWS SDK and ngrok themselves).
 
 **Decision: subset assertions with an explicit allow-list**, following `tables-parity.test.ts`.
 

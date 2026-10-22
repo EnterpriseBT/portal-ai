@@ -134,6 +134,7 @@ describe("every secret backend.yml consumes is in the portalops catalog (#382)",
       "SUPPORT_EMAIL",
       "SALES_EMAIL",
       "ADMIN_EMAIL",
+      "SECURITY_EMAIL",
       "AUTH0_CLI_CLIENT_ID",
     ]) {
       expect(cataloged.has(key)).toBe(true);
@@ -560,6 +561,63 @@ describe("static-site sync passes are symmetric (#386)", () => {
 
   it("short-caches .json — the identity-association file lives there", () => {
     expect(globbed("include", passes().revalidate)).toContain(".json");
+  });
+});
+
+// #613: security.txt is published, not just built. Three deploy-side
+// invariants the build itself can't hold.
+describe("static-site deploy publishes a valid security.txt (#613)", () => {
+  const read = (file: string): string =>
+    fs.readFileSync(path.join(ROOT, ".github/workflows", file), "utf8");
+
+  it("re-uploads security.txt with the RFC 9116 charset", () => {
+    // Astro's static build keeps only the body, and `s3 sync` guesses a bare
+    // `text/plain`. RFC 9116 §3 requires `charset=utf-8`.
+    const body = read("deploy-static-site.yml");
+    const cp = body.indexOf(
+      "aws s3 cp apps/site/dist/.well-known/security.txt"
+    );
+    expect(cp).toBeGreaterThan(-1);
+    const command = body.slice(cp, body.indexOf("\n\n", cp));
+    expect(command).toContain('--content-type "text/plain; charset=utf-8"');
+    expect(command).toContain("max-age=0");
+    // After the revalidate pass, whose --delete would otherwise race it.
+    expect(cp).toBeGreaterThan(body.lastIndexOf("aws s3 sync"));
+  });
+
+  it("strips line breaks from every SSM contact value before $GITHUB_OUTPUT", () => {
+    // Adversarial §2.3: a newline inside a value would add, or override, an
+    // output line. Flattened, it can only make the address invalid, which
+    // the build's security.txt check then fails.
+    const body = read("deploy-static-site.yml");
+    const step = body.slice(
+      body.indexOf("name: Resolve contact addresses"),
+      body.indexOf("name: Build site")
+    );
+    expect(step).toMatch(/get\(\) \{[^}]*\|\| true; \} \| tr -d '\\r\\n'/);
+    for (const role of ["support", "sales", "admin", "security"]) {
+      expect(step).toContain(`echo "${role}=$(get "$prefix/${role}-email")"`);
+    }
+  });
+
+  it("refuses to publish the QA fallback as prod's security contact", () => {
+    // Prod is never seeded: an unset SECURITY_EMAIL falls back to qa@ and
+    // still builds a valid file, so only the deploy can tell it's wrong.
+    const body = read("deploy-static-site.yml");
+    const step = body.slice(
+      body.indexOf("Refuse to publish a QA security contact")
+    );
+    expect(step).toContain("inputs.environment == 'prod'");
+    expect(step).toContain("qa@portalsai.io");
+    expect(step).toContain(".well-known/security.txt");
+    expect(step).toContain("exit 1");
+  });
+
+  it("rebuilds prod on a schedule well inside security.txt's 180-day expiry", () => {
+    // Dev rebuilds daily; prod otherwise only on a release or a config write,
+    // and a quiet half-year would publish an expired security.txt.
+    const body = read("deploy-site-prod.yml");
+    expect(body).toMatch(/schedule:\s*\n\s*#[^\n]*\n\s*- cron: "0 9 1 \* \*"/);
   });
 });
 

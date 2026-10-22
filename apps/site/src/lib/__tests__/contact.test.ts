@@ -20,7 +20,12 @@ const read = (relative: string): string =>
 const load = async (env: Record<string, string | undefined>) => {
   jest.resetModules();
   const saved = { ...process.env };
-  for (const key of ["SUPPORT_EMAIL", "SALES_EMAIL", "ADMIN_EMAIL"]) {
+  for (const key of [
+    "SUPPORT_EMAIL",
+    "SALES_EMAIL",
+    "ADMIN_EMAIL",
+    "SECURITY_EMAIL",
+  ]) {
     delete process.env[key];
   }
   Object.assign(process.env, env);
@@ -32,16 +37,18 @@ const load = async (env: Record<string, string | undefined>) => {
 };
 
 describe("contact addresses (#369)", () => {
-  it("reads all three addresses from the build environment", async () => {
+  it("reads every address from the build environment", async () => {
     const c = await load({
       SUPPORT_EMAIL: "support@portalsai.io",
       SALES_EMAIL: "sales@portalsai.io",
       ADMIN_EMAIL: "admin@portalsai.io",
+      SECURITY_EMAIL: "security@portalsai.io",
     });
 
     expect(c.supportEmail).toBe("support@portalsai.io");
     expect(c.salesEmail).toBe("sales@portalsai.io");
     expect(c.adminEmail).toBe("admin@portalsai.io");
+    expect(c.securityEmail).toBe("security@portalsai.io");
   });
 
   it("falls back to the QA inbox when a var is unset", async () => {
@@ -52,6 +59,7 @@ describe("contact addresses (#369)", () => {
     expect(c.supportEmail).toBe(QA);
     expect(c.salesEmail).toBe(QA);
     expect(c.adminEmail).toBe(QA);
+    expect(c.securityEmail).toBe(QA);
   });
 
   it("treats blank and whitespace-only values as unset", async () => {
@@ -72,7 +80,12 @@ describe("contact addresses (#369)", () => {
   it("never yields an empty address", async () => {
     // The upstream guarantee behind `verify-pages.mjs`'s empty-mailto gate.
     const c = await load({});
-    for (const value of [c.supportEmail, c.salesEmail, c.adminEmail]) {
+    for (const value of [
+      c.supportEmail,
+      c.salesEmail,
+      c.adminEmail,
+      c.securityEmail,
+    ]) {
       expect(value.trim()).not.toBe("");
     }
   });

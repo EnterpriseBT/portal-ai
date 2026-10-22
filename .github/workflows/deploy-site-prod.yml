@@ -5,8 +5,8 @@ name: Deploy Site (prod)
 # Two things make this different from the dev caller:
 #
 #   1. It NEVER builds from a branch. Prod publishes a released tag, so a
-#      merge to main can't reach the public site by accident. A dispatch or
-#      manual run resolves the latest release tag instead.
+#      merge to main can't reach the public site by accident. A dispatch,
+#      scheduled or manual run resolves the latest release tag instead.
 #   2. It runs in the `prod` GitHub Environment, whose required reviewers
 #      are the human gate on a public deploy.
 #
@@ -24,6 +24,9 @@ on:
     types: [published]
   repository_dispatch:
     types: [site-config-changed]
+  schedule:
+    # 09:00 UTC on the 1st — renews security.txt's 180-day Expires (#613).
+    - cron: "0 9 1 * *"
   workflow_dispatch:
 
 concurrency:

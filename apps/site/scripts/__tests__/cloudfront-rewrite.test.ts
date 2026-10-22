@@ -138,6 +138,7 @@ describe("SiteIndexRewrite", () => {
   it.each([
     "/robots.txt",
     "/llms.txt",
+    "/.well-known/security.txt", // #613: RFC 9116 location, served verbatim
     "/sitemap-index.xml",
     "/sitemap-0.xml",
     "/og-default.png",

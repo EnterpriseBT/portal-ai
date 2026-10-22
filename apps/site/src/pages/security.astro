@@ -1,0 +1,110 @@
+---
+import {
+  SUBPROCESSORS,
+  RESIDENCY_SUBPROCESSOR_NOTE,
+} from "@portalai/core/content";
+
+import Page from "../layouts/Page.astro";
+import { siteUrl, securityEmail } from "../lib/site-context.js";
+import { breadcrumbLd } from "../lib/jsonld.js";
+import { SECURITY_CONTROLS } from "../lib/security-controls.js";
+import {
+  DATA_AND_AI_PARAGRAPHS,
+  DISCLOSURE_PARAGRAPHS,
+} from "../lib/security-page.js";
+import { subprocessorLine } from "../lib/subprocessor-line.js";
+
+// The public security posture (#613). Every claim lives in `src/lib`, where
+// tests hold it to its evidence and to FORBIDDEN_CLAIMS; this file only lays
+// it out. The subprocessor list is the shared one privacy renders too.
+
+/** Effective/last-updated date, rendered from a single constant (#506). */
+const EFFECTIVE_DATE_ISO = "2026-10-22";
+const EFFECTIVE_DATE_LABEL = "October 22, 2026";
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Security", path: "/security/" },
+  ]),
+];
+---
+
+<Page
+  title="Security — Portals AI"
+  description="How Portals AI protects your data: the security controls in place today, how your data and AI prompts are handled, our subprocessors, and how to report a vulnerability."
+  path="/security/"
+  jsonLd={jsonLd}
+>
+  <h1>Security</h1>
+
+  <p class="effective-date">
+    Last updated: <time datetime={EFFECTIVE_DATE_ISO}
+      >{EFFECTIVE_DATE_LABEL}</time
+    >
+  </p>
+
+  <p>
+    This page describes the controls protecting the hosted Portals AI service
+    today. It lists only what is in place now, and we update it as that changes.
+  </p>
+
+  <section class="section" id="controls">
+    <h2>Controls</h2>
+    {
+      SECURITY_CONTROLS.map((control) => (
+        <div class="control">
+          <h3 id={control.id}>{control.title}</h3>
+          <p>{control.claim}</p>
+        </div>
+      ))
+    }
+  </section>
+
+  <section class="section" id="data-and-ai">
+    <h2>Your data and AI</h2>
+    {DATA_AND_AI_PARAGRAPHS.map((paragraph) => <p>{paragraph}</p>)}
+    <p>Read the <a href="/privacy/">privacy policy</a>.</p>
+  </section>
+
+  <section class="section" id="subprocessors">
+    <h2>Subprocessors</h2>
+    <p>
+      These third parties process customer data to run the Service. Each
+      receives only the data needed for its function.
+    </p>
+    <ul>
+      {SUBPROCESSORS.map((s) => <li>{subprocessorLine(s)}</li>)}
+    </ul>
+    <p>{RESIDENCY_SUBPROCESSOR_NOTE}</p>
+  </section>
+
+  <section class="section" id="disclosure">
+    <h2>Reporting a vulnerability</h2>
+    {
+      DISCLOSURE_PARAGRAPHS(securityEmail).map((paragraph) => (
+        <p>{paragraph}</p>
+      ))
+    }
+    <p>
+      Report to: <a href={`mailto:${securityEmail}`}>{securityEmail}</a>{" "}
+      · Machine-readable contact:{" "}
+      <a href="/.well-known/security.txt">security.txt</a>
+    </p>
+  </section>
+
+  <style>
+    .effective-date {
+      color: var(--color-text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .control + .control {
+      margin-block-start: calc(var(--space-unit) * 2);
+    }
+
+    h3 {
+      margin-block-end: calc(var(--space-unit) * 0.5);
+    }
+  </style>
+</Page>

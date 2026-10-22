@@ -35,6 +35,9 @@ describe("content module purity", () => {
       // #674 — the shared empty-station sentences (web alerts, system prompt,
       // platform_help). Pure string logic, no imports.
       "station-attachments.util.ts",
+      // #613 — the public subprocessor list, rendered by the marketing site's
+      // /security/ and privacy pages and checked against the API's egress.
+      "subprocessors.util.ts",
     ]);
   });
 

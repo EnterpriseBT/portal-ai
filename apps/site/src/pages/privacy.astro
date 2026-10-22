@@ -1,19 +1,28 @@
 ---
+import {
+  SUBPROCESSORS,
+  WEBHOOK_NOT_SUBPROCESSOR_NOTE,
+} from "@portalai/core/content";
+
 import Page from "../layouts/Page.astro";
 import { siteUrl, adminEmail } from "../lib/site-context.js";
 import { breadcrumbLd } from "../lib/jsonld.js";
+import { subprocessorLine } from "../lib/subprocessor-line.js";
 
 // Data-controller contact is the admin address (#369), not support.
 
 /** Effective/last-updated date, rendered from a single constant (#506). */
-const EFFECTIVE_DATE_ISO = "2026-09-04";
-const EFFECTIVE_DATE_LABEL = "September 4, 2026";
+const EFFECTIVE_DATE_ISO = "2026-10-22";
+const EFFECTIVE_DATE_LABEL = "October 22, 2026";
 
 /**
- * A section body is a sequence of paragraphs (plain strings) and bullet
- * lists (`{ list }`), so a section can mix prose and enumerations.
+ * A section body is a sequence of paragraphs (plain strings), bullet lists
+ * (`{ list }`) and paragraphs with inline links (`{ parts }`), so a section
+ * can mix prose, enumerations and cross-references. Every part renders as
+ * escaped text — no `set:html`.
  */
-type Block = string | { list: string[] };
+type Inline = string | { href: string; label: string };
+type Block = string | { list: string[] } | { parts: Inline[] };
 interface Section {
   heading: string;
   blocks: Block[];
@@ -45,18 +54,8 @@ const SECTIONS: Section[] = [
     heading: "Third parties we share it with",
     blocks: [
       "We rely on a small set of subprocessors to run the Service. Each receives only the data needed for its function:",
-      {
-        list: [
-          "Amazon Web Services (AWS) — cloud hosting and storage, in the United States region where the Service runs.",
-          "Auth0 — identity and authentication (sign-in and account identity).",
-          "Stripe — payment processing and subscription billing for paid plans.",
-          "Google and Microsoft — OAuth-based connectors, used only for the sources you explicitly connect and only within the access you grant.",
-          "Anthropic — the AI model provider behind portal answers; the prompts and context needed to answer your questions are sent to generate a response.",
-          "Tavily — web search, when a portal question uses the web-search tool.",
-          "Mapbox — geocoding, when a portal question uses the geocoding tool.",
-        ],
-      },
-      "In addition, any custom webhook tool you register sends data to the endpoint you host and control; that endpoint is your responsibility, not a Portals AI subprocessor. We may also disclose information where required by law or to protect the rights, safety, and security of Portals AI, our users, and the public.",
+      { list: SUBPROCESSORS.map(subprocessorLine) },
+      `${WEBHOOK_NOT_SUBPROCESSOR_NOTE} We may also disclose information where required by law or to protect the rights, safety, and security of Portals AI, our users, and the public.`,
     ],
   },
   {
@@ -83,7 +82,13 @@ const SECTIONS: Section[] = [
   {
     heading: "Security",
     blocks: [
-      "We protect your data with encryption in transit and at rest, and we handle connector credentials as secrets — stored encrypted and used only to access the sources you authorized.",
+      {
+        parts: [
+          "Traffic to the Service is encrypted in transit with TLS, and our database, file storage, and logs are encrypted at rest. We handle connector credentials as secrets — additionally encrypted by the application and used only to access the sources you authorized. Our ",
+          { href: "/security/", label: "security page" },
+          " describes the controls in place in more detail.",
+        ],
+      },
       "Access to production systems and data is scoped to what is needed to operate the Service. No method of transmission or storage is perfectly secure, but we work to protect your information consistent with the sensitivity of the data and industry practice.",
     ],
   },
@@ -124,6 +129,16 @@ const jsonLd = [
         {section.blocks.map((block) =>
           typeof block === "string" ? (
             <p>{block}</p>
+          ) : "parts" in block ? (
+            <p>
+              {block.parts.map((part) =>
+                typeof part === "string" ? (
+                  part
+                ) : (
+                  <a href={part.href}>{part.label}</a>
+                )
+              )}
+            </p>
           ) : (
             <ul>
               {block.list.map((item) => (
