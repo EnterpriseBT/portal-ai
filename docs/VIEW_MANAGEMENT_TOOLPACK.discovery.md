@@ -77,6 +77,8 @@ Contracts: `packages/core/src/contracts/curated-view.contract.ts`. Create :143 (
 
 **Lean: A**, implemented as a thin wrapper over `GrantService`. The user put it in scope, and an agent with only `view_management` enabled shouldn't need a second pack to finish "make it and share it". `grant_share`'s description also gains "curated view", since it already accepts one. One tool with share + revoke (an `access: "none"` or `revoke: true` arg), mirroring the Views page's single share dialog.
 
+*Amended at spec:* the pack also carries `member_list`, shared with `rbac_management` as one tool definition, so "share with Jane Doe" resolves without the other pack. The share tool takes `userId` or the team, no email.
+
 ### Decision 4 — How the agent names columns
 
 The route takes `fieldMappingIds`. **A. Same ids.** The agent must first find them through another pack (`entity_management`) or `station_context`. **B. Column keys** (`columns: ["region","owner"]`), resolved server-side against the entity's live mappings. Filters already reference keys.
