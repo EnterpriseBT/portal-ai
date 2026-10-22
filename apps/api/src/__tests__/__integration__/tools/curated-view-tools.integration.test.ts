@@ -168,15 +168,13 @@ describe("view_management tools — integration (#645)", () => {
     await d.insert(schema.organizations).values(org as never);
     orgId = org.id;
     await seedRbacForOrg(d as never, orgId);
-    await d
-      .insert(schema.organizationUsers)
-      .values([
-        createOrganizationUser(orgId, ownerId, { role: "owner", lastLogin: 0 }),
-        createOrganizationUser(orgId, memberId, {
-          role: "member",
-          lastLogin: 0,
-        }),
-      ] as never);
+    await d.insert(schema.organizationUsers).values([
+      createOrganizationUser(orgId, ownerId, { role: "owner", lastLogin: 0 }),
+      createOrganizationUser(orgId, memberId, {
+        role: "member",
+        lastLogin: 0,
+      }),
+    ] as never);
     await useTier(false);
 
     stationId = generateId();
