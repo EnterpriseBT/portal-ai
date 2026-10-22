@@ -49,6 +49,7 @@ import { CuratedViewDeleteService } from "./curated-view-delete.service.js";
 import { CuratedViewDependencyService } from "./curated-view-dependency.service.js";
 import { CuratedViewFilterSqlService } from "./curated-view-filter-sql.service.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
+import { unwrapPgError } from "../utils/pg-error.util.js";
 
 const logger = createLogger({ module: "curated-view-service" });
 
@@ -678,6 +679,19 @@ export class CuratedViewService {
       return view;
     }).catch((error) => {
       if (error instanceof ApiError) throw error;
+      // #645: two creates with one key can both pass the pre-check above;
+      // the loser hits the unique index and gets the same 409.
+      const pg = unwrapPgError(error);
+      if (
+        pg.code === "23505" &&
+        pg.message?.includes("curated_views_org_key_unique")
+      ) {
+        throw new ApiError(
+          409,
+          ApiCode.CURATED_VIEW_DUPLICATE_KEY,
+          "A curated view with this key already exists in this organization"
+        );
+      }
       logger.error({ error }, "curated view create failed");
       throw new ApiError(
         500,

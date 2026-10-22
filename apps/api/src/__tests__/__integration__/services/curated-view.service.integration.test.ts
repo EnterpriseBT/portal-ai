@@ -257,6 +257,19 @@ describe("CuratedViewService integration tests (#645)", () => {
     });
   });
 
+  it("answers the loser of two parallel same-key creates 409 DUPLICATE_KEY", async () => {
+    const results = await Promise.allSettled([
+      CuratedViewService.create(owner, createInput({ key: "race_key" })),
+      CuratedViewService.create(owner, createInput({ key: "race_key" })),
+    ]);
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    const err = (rejected[0] as PromiseRejectedResult).reason as ApiError;
+    expect(err.status).toBe(409);
+    expect(err.code).toBe(ApiCode.CURATED_VIEW_DUPLICATE_KEY);
+  });
+
   describe("listEntities", () => {
     const page = { limit: 25, offset: 0 };
 
