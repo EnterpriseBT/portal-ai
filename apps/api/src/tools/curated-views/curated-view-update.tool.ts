@@ -15,43 +15,39 @@ import { CuratedViewService } from "../../services/curated-view.service.js";
 import type { PermissionContext } from "../../services/permission.service.js";
 import { runViewTool } from "./curated-view-tool.util.js";
 
-const fields = {
-  curatedViewId: z
-    .string()
-    .min(1)
-    .describe("Id of the curated view, from curated_view_list"),
-  label: nameField("Label").optional(),
-  description: descriptionField().nullable().optional(),
-  filter: FilterExpressionSchema.nullable()
-    .optional()
-    .describe(
-      "A structured row filter; setting it clears any SQL filter, null removes it"
-    ),
-  filterSql: filterSqlField()
-    .nullable()
-    .optional()
-    .describe(
-      "An advanced SQL row filter; setting it clears any structured filter, null removes it"
-    ),
-  columns: z
-    .array(z.string().min(1))
-    .optional()
-    .describe(
-      "The full set of column keys the view shows, replacing the current set; [] for all columns"
-    ),
-};
-
-/**
- * The schema the model and the AI SDK see, without refines; see the create
- * tool for why. The refines run in `execute` (CheckedSchema).
- */
-const InputSchema = z.object(fields).strict();
-
-const CheckedSchema = InputSchema.superRefine(oneFilterMode).refine(
-  ({ curatedViewId: _id, ...changes }) =>
-    Object.values(changes).some((v) => v !== undefined),
-  { message: "Give at least one field to change" }
-);
+const InputSchema = z
+  .object({
+    curatedViewId: z
+      .string()
+      .min(1)
+      .describe("Id of the curated view, from curated_view_list"),
+    label: nameField("Label").optional(),
+    description: descriptionField().nullable().optional(),
+    filter: FilterExpressionSchema.nullable()
+      .optional()
+      .describe(
+        "A structured row filter; setting it clears any SQL filter, null removes it"
+      ),
+    filterSql: filterSqlField()
+      .nullable()
+      .optional()
+      .describe(
+        "An advanced SQL row filter; setting it clears any structured filter, null removes it"
+      ),
+    columns: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        "The full set of column keys the view shows, replacing the current set; [] for all columns"
+      ),
+  })
+  .strict()
+  .superRefine(oneFilterMode)
+  .refine(
+    ({ curatedViewId: _id, ...changes }) =>
+      Object.values(changes).some((v) => v !== undefined),
+    { message: "Give at least one field to change" }
+  );
 
 /** #645: edit a curated view's label, description, row filter or columns. */
 export class CuratedViewUpdateTool extends Tool<typeof InputSchema> {
@@ -70,8 +66,7 @@ export class CuratedViewUpdateTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: (input) =>
         runViewTool(ApiCode.CURATED_VIEW_UPDATE_FAILED, async () => {
-          const { curatedViewId, columns, ...body } =
-            CheckedSchema.parse(input);
+          const { curatedViewId, columns, ...body } = this.validate(input);
           const curatedView = await CuratedViewService.update(
             ctx,
             curatedViewId,

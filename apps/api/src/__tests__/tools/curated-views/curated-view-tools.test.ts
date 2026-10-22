@@ -395,11 +395,13 @@ describe("view_management tools (#645)", () => {
 });
 
 /**
- * The AI SDK checks tool input with its own zod copy before `execute` runs. A
- * refine failing there left the schema on the issue, and with the recursive
- * FilterExpressionSchema inside, reading the error's message threw "Converting
- * circular structure to JSON" (found in the #645 smoke walk). The model-facing
- * schemas carry no refines, so every SDK refusal must stay printable.
+ * The AI SDK checks tool input against the tool's schema before `execute`
+ * runs. While it resolved a second zod copy, a failed refine left the schema
+ * on the issue, and with the recursive FilterExpressionSchema inside, reading
+ * the error's message threw "Converting circular structure to JSON" (found in
+ * the #645 smoke walk; #645 moved the refines into `execute` to dodge it).
+ * #846 gave the SDK the app's zod, so the refines are back on the schema the
+ * model sees and every SDK refusal must stay printable, with the reason.
  */
 describe("view tool input refusals through the AI SDK (#645)", () => {
   const sdkError = async (schema: unknown, input: unknown) => {
@@ -471,12 +473,12 @@ describe("view tool input refusals through the AI SDK (#645)", () => {
       { curatedViewId: "v", filter: FILTER, filterSql: "x" },
     ],
   ])(
-    "%s passes the SDK and is refused in execute",
+    "%s is refused by the SDK with the refine's reason, not a schema dump",
     async (_name, ToolClass, input) => {
-      const result = await asSchema(new ToolClass().schema as never).validate!(
-        input
-      );
-      expect(result.success).toBe(true);
+      const err = await sdkError(new ToolClass().schema, input);
+      expect(() => err.message).not.toThrow();
+      expect(err.message).not.toContain('"schema"');
+      expect(err.message.length).toBeLessThan(400);
     }
   );
 });
