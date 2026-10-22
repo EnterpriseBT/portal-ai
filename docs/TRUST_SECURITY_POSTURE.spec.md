@@ -272,7 +272,7 @@ Run from each package with `npm run test:unit` (never raw jest).
 
 - [ ] `/security/` renders the controls, data & AI, subprocessors and disclosure sections. It has no compliance badge or status, and no claim about zero retention, DR, multi-AZ or Redis.
 - [ ] `/security/` is linked from the footer on every page, is listed in the sitemap and `llms.txt`, renders at 375px with no horizontal scroll, and follows the light/dark theme toggle.
-- [ ] Privacy's "Third parties" section and `/security/#subprocessors` show the same eight entries, from one source.
+- [ ] Privacy's "Third parties" section and `/security/#subprocessors` show the same ten entries (eight server-reached, plus CARTO and OpenStreetMap reached by the browser), from one source.
 - [ ] Adding a `process.env` read to `apps/api/src` without classifying it fails `npm run test:unit` in `apps/api`.
 - [ ] `GET /.well-known/security.txt` on the deployed site returns `200 text/plain` with `Contact: mailto:<security email>` and an `Expires` about 180 days after the build. On app-dev the contact is `qa@portalsai.io`.
 - [ ] Builds that leave out `SECURITY_EMAIL` still emit a valid file with the QA contact. A build whose file would be invalid fails.
