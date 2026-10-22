@@ -849,6 +849,12 @@ export enum ApiCode {
   /** A built-in tool's input carrying U+0000 (#805). Typed tool result; the
    *  tool never runs and the call is never charged. */
   TOOL_INPUT_INVALID_CHARACTERS = "TOOL_INPUT_INVALID_CHARACTERS",
+  /** #846: the AI SDK refused a tool call's input against the tool's schema
+   *  before it ran; the message is the schema's reason. */
+  TOOL_INPUT_INVALID = "TOOL_INPUT_INVALID",
+  /** #846: a tool threw instead of returning a result. The thrown text is
+   *  logged, never stored (it can carry DB detail, #687). */
+  TOOL_EXECUTION_FAILED = "TOOL_EXECUTION_FAILED",
 
   // Tool usage ledger (#179)
   /** Malformed itemized-usage query (unknown sortBy / bad pagination). 400. */

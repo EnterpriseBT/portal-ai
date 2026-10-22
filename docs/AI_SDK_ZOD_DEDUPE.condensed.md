@@ -33,7 +33,13 @@ Repro (`apps/api`, `asSchema(...).validate`): before, issue keys are `code,path,
 
 **Guard (direction 3):** `ai-sdk-zod.guard.test.ts` asserts that `zod` resolved from `@ai-sdk/provider-utils` is the **same file** as `apps/api`'s, the root cause, and that a refusal through `asSchema` from real tools (`FieldMappingUpdateTool`, and `CuratedViewCreateTool` with its recursive filter) has no `schema` key and a printable message. A future lockfile re-hoist fails CI instead of the agent.
 
-## Plan — 2 slices
+**Surface SDK refusals in the portal (added after code review).** With the refines on the schema again, a refused call reaches the portal as a `tool-error` stream part, not a `tool-result`. `PortalService.streamResponse` (`apps/api/src/services/portal.service.ts`) dropped `tool-error`. The UI step never got `tool_call_end` and spun for the rest of the turn, and the call was stripped from history as an orphan. This was already true of any SDK-refused input; slice 2 would have made the view refusals hit it.
+- New `handleToolError`: it closes the step and persists a typed `tool-result`.
+  - `TOOL_INPUT_INVALID` carries the schema's reasons, read from the zod issues down the error's `cause` chain, because the SDK's own message embeds the whole input.
+  - `TOOL_EXECUTION_FAILED` stores a generic message and logs the thrown text, which can carry DB detail (#687).
+- Each tool's `execute` keeps `this.validate`: 48 tools do it, so the double parse is the convention, not this ticket's to change.
+
+## Plan — 3 slices
 
 **Slice 1: one zod + guard.**
 - Edit root `package.json` and `package-lock.json`.
@@ -45,10 +51,14 @@ Repro (`apps/api`, `asSchema(...).validate`): before, issue keys are `code,path,
 - Edit `curated-view-tools.test.ts:455-481`: the four cases flip to "refused by the SDK with the refine's message, no schema key".
 - Tests: `npm run test:unit --workspace @portalai/api -- --testPathPattern curated-view|ai-sdk-zod`.
 
+**Slice 3: portal `tool-error`.**
+- Edit `portal.service.ts` (`handleToolError` and the stream branch), and add `TOOL_INPUT_INVALID` and `TOOL_EXECUTION_FAILED` to `api-codes.constants.ts`.
+- Tests in `__tests__/services/portal.service.test.ts`: the step closes, the refused call is kept with its reason, and a thrown tool is stored as `TOOL_EXECUTION_FAILED` without its text.
+
 ## Smoke (manual, against your dev stack)
 
 1. `npm install`, then `npm ls zod`: the root is 4.6.x, `apps/api` and `packages/core` have no nested copy, and only `@tanstack/router-*` hold 3.25.76.
-2. `npm run dev`. In a portal on a station with the Curated Views pack, prompt: **"Create a view on <entity> with both a structured filter and the SQL filter `amount > 10`."** The agent relays "set filter or filterSql, not both" (or similar refine text), not "Type validation failed" or "circular structure".
+2. `npm run dev`. In a portal on a station with the Curated Views pack, prompt: **"Create a view on <entity> with both a structured filter and the SQL filter `amount > 10`."** The agent relays "Use either the builder filter or a SQL filter, not both", not "Type validation failed" or "circular structure". The tool step in the activity strip **closes** (no spinner left running), and after a reload the turn still shows the tool call.
 3. Same portal: **"Rename field mapping <key> to c_total."** The agent relays the `c_` prefix refusal in one line, with no schema dump in the tool result (open the tool-call panel).
 4. `npm run build --workspace @portalai/web` passes (TanStack's generator still on zod 3).
 

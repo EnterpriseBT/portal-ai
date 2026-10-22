@@ -203,6 +203,80 @@ function handleToolResult(ctx: StreamContext, chunk: any): void {
   }
 }
 
+/** The zod issue messages somewhere down an error's `cause` chain, if any. */
+function issueMessages(error: unknown): string[] {
+  for (let e = error, depth = 0; e && depth < 5; depth++) {
+    const issues = (e as { issues?: { message?: unknown }[] }).issues;
+    if (Array.isArray(issues)) {
+      return issues
+        .map((i) => i.message)
+        .filter((m): m is string => typeof m === "string");
+    }
+    e = (e as { cause?: unknown }).cause;
+  }
+  return [];
+}
+
+/**
+ * Handle a tool-error chunk (#846): the AI SDK refused the call's input
+ * against the tool's schema, or the tool threw. Close the client's activity
+ * step and persist a typed tool-result in place of the missing one, so the
+ * step doesn't hang for the rest of the turn and the call isn't stripped from
+ * history as an orphan.
+ *
+ * A refusal keeps the schema's reasons (the SDK's own message embeds the whole
+ * input). A thrown error's text is logged, never stored: it can carry raw DB
+ * detail (#687), and history is readable by everyone in the session.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleToolError(ctx: StreamContext, chunk: any): void {
+  const toolName = chunk.toolName as string;
+  const toolCallId = chunk.toolCallId as string | undefined;
+  const error = chunk.error as unknown;
+
+  const invalidInput =
+    (error as { name?: unknown } | null)?.name === "AI_InvalidToolInputError";
+  const reasons = invalidInput ? issueMessages(error) : [];
+  if (!invalidInput) {
+    logger.warn(
+      {
+        toolName,
+        toolCallId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Tool threw during a portal turn"
+    );
+  }
+
+  ctx.assistantBlocks.push({
+    type: "tool-result",
+    toolCallId,
+    toolName,
+    content: {
+      error: invalidInput
+        ? {
+            code: ApiCode.TOOL_INPUT_INVALID,
+            message:
+              reasons.join("; ") ||
+              "The tool input didn't match the tool's schema.",
+          }
+        : {
+            code: ApiCode.TOOL_EXECUTION_FAILED,
+            message: "The tool failed while running.",
+          },
+    },
+  });
+
+  if (typeof toolCallId === "string" && toolCallId.length > 0) {
+    const endEvent: ToolCallEndEvent = {
+      type: "tool_call_end",
+      toolCallId,
+      toolName,
+    };
+    ctx.sse.send("tool_call_end", endEvent);
+  }
+}
+
 /**
  * Determine if a tool result should produce a display block for inline
  * rendering. Returns null for scalar/non-display results.
@@ -776,6 +850,8 @@ export class PortalService {
           handleToolCall(ctx, chunk);
         } else if (chunk.type === "tool-result") {
           handleToolResult(ctx, chunk);
+        } else if (chunk.type === "tool-error") {
+          handleToolError(ctx, chunk);
         } else if (chunk.type === "error") {
           // AI SDK v6 emits error chunks instead of always throwing.
           // Surface the error to the client and abort the stream.
