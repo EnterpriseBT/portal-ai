@@ -35,7 +35,8 @@
 		"turbo": "^2.3.3",
 		"typescript": "^5.7.2",
 		"wait-on": "^9.0.4",
-		"yaml": "^2.9.0"
+		"yaml": "^2.9.0",
+		"zod": "^4.3.6"
 	},
 	"packageManager": "npm@10.9.2",
 	"workspaces": [
