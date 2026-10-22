@@ -150,8 +150,11 @@ jobs:
         id: contact
         run: |
           prefix="/portalai/${{ inputs.environment == 'prod' && 'prod' || 'dev' }}"
+          # Line breaks are stripped: a newline inside a value would add or
+          # override a $GITHUB_OUTPUT line. Flattened, it can only make the
+          # address invalid, which verify-pages fails (#613 adversarial).
           get() {
-            aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || true
+            { aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || true; } | tr -d '\r\n'
           }
           echo "support=$(get "$prefix/support-email")" >> "$GITHUB_OUTPUT"
           echo "sales=$(get "$prefix/sales-email")" >> "$GITHUB_OUTPUT"

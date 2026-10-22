@@ -585,6 +585,21 @@ describe("static-site deploy publishes a valid security.txt (#613)", () => {
     expect(cp).toBeGreaterThan(body.lastIndexOf("aws s3 sync"));
   });
 
+  it("strips line breaks from every SSM contact value before $GITHUB_OUTPUT", () => {
+    // Adversarial §2.3: a newline inside a value would add, or override, an
+    // output line. Flattened, it can only make the address invalid, which
+    // the build's security.txt check then fails.
+    const body = read("deploy-static-site.yml");
+    const step = body.slice(
+      body.indexOf("name: Resolve contact addresses"),
+      body.indexOf("name: Build site")
+    );
+    expect(step).toMatch(/get\(\) \{[^}]*\|\| true; \} \| tr -d '\\r\\n'/);
+    for (const role of ["support", "sales", "admin", "security"]) {
+      expect(step).toContain(`echo "${role}=$(get "$prefix/${role}-email")"`);
+    }
+  });
+
   it("refuses to publish the QA fallback as prod's security contact", () => {
     // Prod is never seeded: an unset SECURITY_EMAIL falls back to qa@ and
     // still builds a valid file, so only the deploy can tell it's wrong.
