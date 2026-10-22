@@ -33,6 +33,7 @@ const view = {
   filterSqlKeys: [],
   fieldMappingIds: ["fm-1"],
   columns: [{ fieldMappingId: "fm-1", key: "email" }],
+  sourcePortalId: null,
   filtered: false,
   capabilities: { read: true, write: true, delete: true, share: true },
   projected: true,
@@ -106,6 +107,23 @@ const baseProps = {
 };
 
 describe("CuratedViewDetailUI", () => {
+  it("#645: marks a view created in a portal session", () => {
+    render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        view={{ ...view, sourcePortalId: "portal-1" }}
+      />
+    );
+    expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
+  });
+
+  it("#645: shows no provenance chip on a view made on the page", () => {
+    render(<CuratedViewDetailUI {...baseProps} />);
+    expect(
+      screen.queryByText("Created in a portal session")
+    ).not.toBeInTheDocument();
+  });
+
   it("renders the records table with data columns (excluding internal keys)", () => {
     render(<CuratedViewDetailUI {...baseProps} />);
     expect(screen.getByText("Acme")).toBeInTheDocument();

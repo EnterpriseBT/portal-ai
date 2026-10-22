@@ -478,11 +478,13 @@ export class CuratedViewService {
 
   /**
    * Create a view. Needs an unconditional `write curated_view` (#708) and
-   * read on the entity (#829, else 404).
+   * read on the entity (#829, else 404). `opts.sourcePortalId` records the
+   * agent session that created it (#641); the view is still the caller's.
    */
   static async create(
     ctx: PermissionContext,
-    input: CuratedViewCreateInput
+    input: CuratedViewCreateInput,
+    opts: { sourcePortalId?: string | null } = {}
   ): Promise<CuratedViewSelect> {
     const { organizationId, userId } = ctx;
     const { columnKeys, ...body } = input;
@@ -539,6 +541,7 @@ export class CuratedViewService {
       filterSql: body.filterSql ?? null,
       // #644: filled from the validator's result under the lock below.
       filterSqlKeys: [],
+      sourcePortalId: opts.sourcePortalId ?? null,
     });
     const row = model.parse();
     // #644: a SQL filter needs the tier's entitlement and the reader role.

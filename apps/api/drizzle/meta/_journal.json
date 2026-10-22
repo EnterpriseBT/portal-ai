@@ -918,6 +918,13 @@
       "when": 1792615523334,
       "tag": "0130_add-curated-view-filter-sql-and-tier-entitlement",
       "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1792637387265,
+      "tag": "0131_add-curated-view-source-portal-id",
+      "breakpoints": true
     }
   ]
 }

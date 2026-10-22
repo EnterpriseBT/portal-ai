@@ -238,4 +238,22 @@ describe("CuratedViewService integration tests (#645)", () => {
       expect(err.code).toBe(ApiCode.CURATED_VIEW_NOT_FOUND);
     });
   });
+
+  describe("provenance (#641)", () => {
+    it("records the portal session that created a view", async () => {
+      const view = await CuratedViewService.create(owner, createInput(), {
+        sourcePortalId: target.portalId,
+      });
+      expect(view.sourcePortalId).toBe(target.portalId);
+      expect(view.createdBy).toBe(target.ownerUserId);
+      expect(
+        (await CuratedViewService.get(owner, view.id)).sourcePortalId
+      ).toBe(target.portalId);
+    });
+
+    it("leaves it null for a view made outside a session", async () => {
+      const view = await CuratedViewService.create(owner, createInput());
+      expect(view.sourcePortalId).toBeNull();
+    });
+  });
 });

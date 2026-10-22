@@ -74,6 +74,29 @@ function baseProps(createGate: ActionGate = HIDE) {
 }
 
 describe("CuratedViewsUI", () => {
+  it("#645: marks a view created in a portal session", () => {
+    const [first, second] = views;
+    render(
+      <CuratedViewsUI
+        {...baseProps()}
+        views={
+          [
+            { ...first, sourcePortalId: "portal-1" },
+            { ...second, sourcePortalId: null },
+          ] as typeof views
+        }
+      />
+    );
+    expect(screen.getAllByText("Created in a portal session")).toHaveLength(1);
+  });
+
+  it("#645: shows no provenance chip on a view made on the page", () => {
+    render(<CuratedViewsUI {...baseProps()} />);
+    expect(
+      screen.queryByText("Created in a portal session")
+    ).not.toBeInTheDocument();
+  });
+
   it("#680: Row filter reads `filtered`, not the (redacted) filter", () => {
     render(<CuratedViewsUI {...baseProps()} />);
     expect(screen.getByText("All rows")).toBeInTheDocument();

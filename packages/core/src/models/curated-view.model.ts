@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 import { FilterExpressionSchema } from "../contracts/filter.contract.js";
+import { SourcePortalIdSchema } from "./provenance.model.js";
 
 /**
  * Curated View model (#599).
@@ -35,6 +36,9 @@ export const CuratedViewSchema = CoreSchema.extend({
   filterSql: z.string().nullable(),
   /** #644: the column keys `filterSql` references (derived at write). */
   filterSqlKeys: z.array(z.string()),
+  /** #645: the portal whose agent session created this view; null otherwise.
+   *  Provenance only, never read by authorization (#641). */
+  sourcePortalId: SourcePortalIdSchema,
 });
 
 export type CuratedView = z.infer<typeof CuratedViewSchema>;
