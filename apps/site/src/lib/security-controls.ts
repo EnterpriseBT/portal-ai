@@ -6,7 +6,7 @@
  * each claim rests on — never rendered — and `security-controls.test.ts`
  * fails when one is deleted, so a control can't quietly disappear from under
  * a public claim. Widen a claim only alongside the change that makes it true
- * (e.g. ElastiCache encryption, tracked under #578).
+ * (e.g. ElastiCache encryption, #852).
  */
 
 export interface SecurityControl {

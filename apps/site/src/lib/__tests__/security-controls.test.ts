@@ -95,3 +95,47 @@ describe("DATA_AND_AI_PARAGRAPHS", () => {
     expect(DATA_AND_AI_PARAGRAPHS.join(" ")).toMatch(/not used to train/i);
   });
 });
+
+describe("the legal pages agree with /security/", () => {
+  // Privacy and terms are legal-owned prose in `.astro` files, so they can't
+  // import the claims above. These pin the two sentences that contradicted
+  // the code when #613 surveyed them, plus the forbidden phrases, against the
+  // page source.
+  const source = (page: string): string =>
+    fs.readFileSync(
+      path.join(REPO_ROOT, "apps/site/src/pages", `${page}.astro`),
+      "utf8"
+    );
+
+  /** The text of one `SECTIONS` entry, from its heading to the next. */
+  const section = (page: string, heading: string): string => {
+    const text = source(page);
+    const start = text.indexOf(`heading: "${heading}"`);
+    expect(start).toBeGreaterThan(-1);
+    const next = text.indexOf("heading:", start + 1);
+    return text.slice(start, next === -1 ? undefined : next);
+  };
+
+  it("privacy's Security section claims no blanket encryption", () => {
+    // Our cache is not encrypted at rest until #852 ships; "encryption in
+    // transit and at rest" said it all was.
+    expect(section("privacy", "Security")).not.toMatch(
+      /encryption in transit and at rest/i
+    );
+  });
+
+  it("privacy's Security section makes no forbidden claim", () => {
+    const text = section("privacy", "Security").toLowerCase();
+    for (const phrase of FORBIDDEN_CLAIMS) {
+      expect(text).not.toContain(phrase.toLowerCase());
+    }
+  });
+
+  it("terms don't describe Google as the identity provider", () => {
+    // Sign-in runs through Auth0, with Google as one way in and enterprise
+    // SSO as another.
+    expect(section("terms", "Your account")).not.toMatch(
+      /identity provider \(Google\)/
+    );
+  });
+});

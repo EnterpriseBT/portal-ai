@@ -12,8 +12,8 @@ import { subprocessorLine } from "../lib/subprocessor-line.js";
 // Data-controller contact is the admin address (#369), not support.
 
 /** Effective/last-updated date, rendered from a single constant (#506). */
-const EFFECTIVE_DATE_ISO = "2026-09-04";
-const EFFECTIVE_DATE_LABEL = "September 4, 2026";
+const EFFECTIVE_DATE_ISO = "2026-10-22";
+const EFFECTIVE_DATE_LABEL = "October 22, 2026";
 
 /**
  * A section body is a sequence of paragraphs (plain strings) and bullet
@@ -79,7 +79,7 @@ const SECTIONS: Section[] = [
   {
     heading: "Security",
     blocks: [
-      "We protect your data with encryption in transit and at rest, and we handle connector credentials as secrets — stored encrypted and used only to access the sources you authorized.",
+      "Traffic to the Service is encrypted in transit with TLS, and our database, file storage, and logs are encrypted at rest. We handle connector credentials as secrets — additionally encrypted by the application and used only to access the sources you authorized. Our security page at /security/ describes the controls in place in more detail.",
       "Access to production systems and data is scoped to what is needed to operate the Service. No method of transmission or storage is perfectly secure, but we work to protect your information consistent with the sensitivity of the data and industry practice.",
     ],
   },
