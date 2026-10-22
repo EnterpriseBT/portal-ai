@@ -140,6 +140,7 @@ describe("costHint pin (#184)", () => {
     curated_view_delete: "free",
     curated_view_get: "free",
     curated_view_list: "free",
+    curated_view_entity_list: "free",
     curated_view_share: "free",
     curated_view_update: "free",
     depreciation: "free",

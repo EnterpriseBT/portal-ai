@@ -108,6 +108,7 @@ import {
   GrantListTool,
 } from "../tools/rbac/grant.tool.js";
 import { CuratedViewListTool } from "../tools/curated-views/curated-view-list.tool.js";
+import { CuratedViewEntityListTool } from "../tools/curated-views/curated-view-entity-list.tool.js";
 import { CuratedViewGetTool } from "../tools/curated-views/curated-view-get.tool.js";
 import { CuratedViewCreateTool } from "../tools/curated-views/curated-view-create.tool.js";
 import { CuratedViewUpdateTool } from "../tools/curated-views/curated-view-update.tool.js";
@@ -268,6 +269,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "grant_revoke",
   "grant_list",
   "curated_view_list",
+  "curated_view_entity_list",
   "curated_view_get",
   "curated_view_create",
   "curated_view_update",
@@ -886,6 +888,9 @@ export class ToolService {
         permissionContext
       );
       tools.curated_view_get = new CuratedViewGetTool().build(
+        permissionContext
+      );
+      tools.curated_view_entity_list = new CuratedViewEntityListTool().build(
         permissionContext
       );
       tools.curated_view_create = new CuratedViewCreateTool().build(

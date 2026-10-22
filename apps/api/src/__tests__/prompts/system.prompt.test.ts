@@ -326,6 +326,16 @@ describe("buildSystemPrompt — curated view notes (#645)", () => {
     expect(p).toContain("`filter` or a `filterSql`, never both");
     expect(p).toContain("CURATED_VIEW_FILTER_SQL_NOT_ENTITLED");
   });
+
+  it("names the entity lookup for creating a view on a new entity", () => {
+    const p = prompt();
+    expect(p).toContain("`curated_view_entity_list`");
+    expect(p).toContain("no view on yet");
+  });
+
+  it("says to finish an edit before querying the view", () => {
+    expect(prompt()).toContain("Finish editing a view before you query it");
+  });
 });
 
 describe("buildSystemPrompt — response style", () => {

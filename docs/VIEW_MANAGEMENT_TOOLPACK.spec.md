@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#645](https://github.com/EnterpriseBT/portal-ai/issues/645) · **Discovery:** `docs/VIEW_MANAGEMENT_TOOLPACK.discovery.md`
 
-This spec pins the `view_management` built-in toolpack: six agent tools over curated views. It also pins the `CuratedViewService` extracted from `curated-view.router.ts`, which both the routes and the tools call, and the session provenance column on `curated_views`.
+This spec pins the `view_management` built-in toolpack: seven agent tools over curated views (six as first specced, plus `curated_view_entity_list`, added in the smoke walk). It also pins the `CuratedViewService` extracted from `curated-view.router.ts`, which both the routes and the tools call, and the session provenance column on `curated_views`.
 
 ## Key decisions (flag for review)
 
@@ -96,6 +96,7 @@ Each tool extends `Tool` (`types/tools.ts:3`), and `build(ctx: PermissionContext
 |---|---|---|---|
 | `curated_view_list` (`curated-view-list.tool.ts`) | `{ search?, connectorEntityId?, limit?: 1–100 = 25, offset?: ≥0 = 0 }` | `CuratedViewService.list` (sort `label` asc) | `{ curatedViews: ListItem[], total, limit, offset }` |
 | `curated_view_get` (`curated-view-get.tool.ts`) | `{ curatedViewId }` | `get`, then `GrantService.list` only when `capabilities.share` | `{ curatedView, grants? }` |
+| `curated_view_entity_list` (`curated-view-entity-list.tool.ts`), *added in the smoke walk* | `{ search?, limit?: 1–100 = 25, offset?: ≥0 = 0 }` | `CuratedViewService.listEntities` (org + `visibilityPredicate("entity")`, sort `label` asc) | `{ entities: [{ connectorEntityId, key, label, connectorInstance: {id, name} \| null, columns: [{ key, label, type }] }], total, limit, offset }` |
 | `curated_view_create` (`curated-view-create.tool.ts`) | `{ connectorEntityId, key, label, description?, filter?, filterSql?, columns?: string[] }` | `create(ctx, {…, columnKeys: columns}, { sourcePortalId: portalId })` | `{ success: true, curatedView }` |
 | `curated_view_update` (`curated-view-update.tool.ts`) | `{ curatedViewId, label?, description?, filter?, filterSql?, columns? }`; at least one field besides the id | `update` | `{ success: true, curatedView }` |
 | `curated_view_delete` (`curated-view-delete.tool.ts`) | `{ curatedViewId }` | `delete` | `{ success: true, id, cascaded }` |
@@ -227,6 +228,8 @@ Run per package: `npm run test:unit -- --testPathPattern <file>` and `npm run te
 - [ ] Enabling both `rbac_management` and `view_management` on a station shows no tool-collision warning, and the session has one `member_list`.
 - [ ] The pack is available on all four tiers, and its tools are present on read-only stations.
 - [ ] No agent tool attaches a view to a station.
+- [ ] *(Smoke-walk amendment)* On a station with no views, the agent finds an entity and its column keys with `curated_view_entity_list` (only entities the caller can read) and creates a view without being given an id. A session only sees the entities behind its attached views (#599), so without this tool `station_context` listed none.
+- [ ] *(Smoke-walk amendment)* A tool input refusal (both filter modes, nothing to change, a reserved key) reaches the agent as `CURATED_VIEW_INVALID_PAYLOAD` with its reason.
 
 ## Risks & rollback
 

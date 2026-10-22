@@ -256,4 +256,89 @@ describe("CuratedViewService integration tests (#645)", () => {
       expect(view.sourcePortalId).toBeNull();
     });
   });
+
+  describe("listEntities", () => {
+    const page = { limit: 25, offset: 0 };
+
+    it("lists the org's readable entities with their column keys", async () => {
+      const r = await CuratedViewService.listEntities(owner, page);
+      expect(r.total).toBe(1);
+      const [entity] = r.entities;
+      expect(entity).toMatchObject({
+        connectorEntityId: target.connectorEntityId,
+        key: "contacts",
+        label: "Contacts",
+      });
+      expect(entity.connectorInstance?.id).toEqual(expect.any(String));
+      expect(entity.columns.map((c) => c.key).sort()).toEqual(
+        expect.arrayContaining(["age", "email"])
+      );
+      expect(entity.columns.find((c) => c.key === "age")).toEqual({
+        key: "age",
+        label: "Age",
+        type: "number",
+      });
+      // Another org's entity is never listed.
+      expect(
+        r.entities.some(
+          (e) => e.connectorEntityId === foreign.connectorEntityId
+        )
+      ).toBe(false);
+    });
+
+    it("matches search on key or label", async () => {
+      expect(
+        (
+          await CuratedViewService.listEntities(owner, {
+            ...page,
+            search: "CONT",
+          })
+        ).total
+      ).toBe(1);
+      expect(
+        (
+          await CuratedViewService.listEntities(owner, {
+            ...page,
+            search: "zzz",
+          })
+        ).total
+      ).toBe(0);
+    });
+
+    it("lists only entities a member can read", async () => {
+      // The fixture entity is system-created, which members read; make it
+      // the owner's so the member needs a grant.
+      await db
+        .update(schema.connectorEntities)
+        .set({ createdBy: target.ownerUserId })
+        .where(eq(schema.connectorEntities.id, target.connectorEntityId));
+      const member: PermissionContext = {
+        userId: generateId(),
+        organizationId: target.orgId,
+        roles: ["member"],
+      };
+      expect(
+        (await CuratedViewService.listEntities(member, page)).entities
+      ).toEqual([]);
+
+      await db.insert(schema.permissionGrants).values({
+        id: generateId(),
+        organizationId: target.orgId,
+        principalType: "user",
+        principalId: member.userId,
+        effect: "allow",
+        verb: "read",
+        resourceType: "entity",
+        resourceId: target.connectorEntityId,
+        condition: null,
+        conditionParam: null,
+        created: Date.now(),
+        createdBy: target.ownerUserId,
+      } as never);
+      const r = await CuratedViewService.listEntities(member, page);
+      expect(r.entities.map((e) => e.connectorEntityId)).toEqual([
+        target.connectorEntityId,
+      ]);
+    });
+  });
 });

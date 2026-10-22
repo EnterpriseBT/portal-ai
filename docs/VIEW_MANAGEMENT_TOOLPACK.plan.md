@@ -258,3 +258,11 @@ All of this lands at once, because the slug, prompt section, build block and nam
 ## Next step
 
 Implementation starts on this branch with slice 1, tests first, one commit per slice, once this plan is confirmed.
+
+## Smoke-walk amendments
+
+The smoke walk found two gaps, each fixed in its own commit on this branch:
+
+- **Refusals crashed in the SDK.** The AI SDK validates tool input with its own zod copy, and a failed refine left the recursive filter schema on the issue, so the error couldn't be printed. Create and update now give the SDK a refine-free schema and run the refines in `execute` (`CURATED_VIEW_INVALID_PAYLOAD`). Tests: the unit suite runs each refusal through `asSchema().validate`.
+- **No way to find an entity.** A session only sees the entities behind its attached views (#599), so the agent couldn't create a view over any other entity. New `curated_view_entity_list` (`CuratedViewService.listEntities`), with the mirror, capability (`rbacRead`), phase label, wiring and prompt guidance. Tests: unit (args), service integration (columns, search, member scoping, other org), tools integration (look up, then create from the returned keys).
+

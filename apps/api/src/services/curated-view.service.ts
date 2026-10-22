@@ -1,6 +1,7 @@
 import {
   eq,
   and,
+  or,
   ilike,
   inArray,
   isNotNull,
@@ -30,7 +31,11 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 import type { CuratedViewSelect } from "../db/schema/zod.js";
-import { curatedViews, fieldMappings } from "../db/schema/index.js";
+import {
+  connectorEntities,
+  curatedViews,
+  fieldMappings,
+} from "../db/schema/index.js";
 import {
   PermissionService,
   type PermissionContext,
@@ -57,6 +62,22 @@ export type CuratedViewCreateInput = CuratedViewCreateRequestBody & {
 export type CuratedViewUpdateInput = CuratedViewUpdateRequestBody & {
   columnKeys?: string[];
 };
+
+/** #645: one entity a view can be built on, with its column keys. */
+export interface CuratedViewEntityItem {
+  connectorEntityId: string;
+  key: string;
+  label: string;
+  connectorInstance: { id: string; name: string } | null;
+  columns: Array<{ key: string; label: string | null; type: string | null }>;
+}
+
+export interface CuratedViewEntityListResult {
+  entities: CuratedViewEntityItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
 
 /**
  * #645: the curated-view create/read/update/delete logic, shared by the REST
@@ -331,6 +352,72 @@ async function insertProjection(
 }
 
 export class CuratedViewService {
+  /**
+   * #645: the entities the caller may read, by label, each with its column
+   * keys: what `create` accepts as `connectorEntityId` and `columnKeys`. The
+   * same org + `visibilityPredicate("entity")` scoping as the entity list
+   * route; read on an entity reads all its columns (#829).
+   */
+  static async listEntities(
+    ctx: PermissionContext,
+    query: { search?: string; limit: number; offset: number }
+  ): Promise<CuratedViewEntityListResult> {
+    const { search, limit, offset } = query;
+    const set = await PermissionService.loadSet(ctx);
+    const filters: SQL[] = [
+      eq(connectorEntities.organizationId, ctx.organizationId),
+    ];
+    if (search) {
+      filters.push(
+        or(
+          ilike(connectorEntities.key, `%${search}%`),
+          ilike(connectorEntities.label, `%${search}%`)
+        )!
+      );
+    }
+    const visibility = set.visibilityPredicate("entity", {
+      createdByCol: connectorEntities.createdBy,
+      idCol: connectorEntities.id,
+    });
+    if (visibility) filters.push(visibility);
+    const where = and(...filters);
+
+    const [rows, total] = await Promise.all([
+      DbService.repository.connectorEntities.findMany(where, {
+        limit,
+        offset,
+        orderBy: { column: connectorEntities.label, direction: "asc" },
+        include: ["fieldMappings", "connectorInstance"],
+      }),
+      DbService.repository.connectorEntities.count(where),
+    ]);
+
+    type Row = {
+      id: string;
+      key: string;
+      label: string;
+      connectorInstance?: { id: string; name: string } | null;
+      fieldMappings?: Array<{
+        normalizedKey: string;
+        columnDefinition: { label: string; type: string } | null;
+      }>;
+    };
+    const entities = (rows as unknown as Row[]).map((e) => ({
+      connectorEntityId: e.id,
+      key: e.key,
+      label: e.label,
+      connectorInstance: e.connectorInstance
+        ? { id: e.connectorInstance.id, name: e.connectorInstance.name }
+        : null,
+      columns: (e.fieldMappings ?? []).map((m) => ({
+        key: m.normalizedKey,
+        label: m.columnDefinition?.label ?? null,
+        type: m.columnDefinition?.type ?? null,
+      })),
+    }));
+    return { entities, total, limit, offset };
+  }
+
   /**
    * The views the caller may read, paginated (#599). A `stationId` narrows to
    * that station's attached views and 404s a station the caller can't read

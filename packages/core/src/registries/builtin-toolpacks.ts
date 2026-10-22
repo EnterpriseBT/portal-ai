@@ -1396,7 +1396,7 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   slug: "view_management",
   name: "Curated Views",
   description:
-    "Manage curated views in a session: list and inspect views, create and edit a view's columns and row filter, delete views, and share them. Changes follow the caller's own permissions on each view. Attaching a view to a station is done when creating or editing the station.",
+    "Manage curated views in a session: list and inspect views, find the entities and columns a view can use, create and edit a view's columns and row filter, delete views, and share them. Changes follow the caller's own permissions on each view. Attaching a view to a station is done when creating or editing the station.",
   iconSlug: "Layers",
   tools: [
     {
@@ -1444,6 +1444,18 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       parameterSchema: objectSchema({ curatedViewId: curatedViewIdField }, [
         "curatedViewId",
       ]),
+    },
+    {
+      name: "curated_view_entity_list",
+      description:
+        "Lists the connector entities the user can read, sorted by label, each with its id, key, label, connector, and its columns (key, label, type). Use this to find the `connectorEntityId` and column keys for curated_view_create, including entities this station has no view on yet. It lists entities only; to query their data, a view on them must be attached to the station.",
+      parameterSchema: objectSchema({
+        search: stringField(
+          "Match entities whose key or label contains this text"
+        ),
+        limit: integerField("Page size, 1-100 (default 25)"),
+        offset: integerField("Rows to skip (default 0)"),
+      }),
     },
     {
       name: "curated_view_create",
@@ -1910,6 +1922,7 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   grant_list: rbacRead(),
   // view_management (#645) — control-plane over curated views, like RBAC.
   curated_view_list: rbacRead(),
+  curated_view_entity_list: rbacRead(),
   curated_view_get: rbacRead(),
   curated_view_create: rbacWrite(),
   curated_view_update: rbacWrite(),

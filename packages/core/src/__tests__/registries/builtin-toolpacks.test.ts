@@ -381,10 +381,11 @@ describe("part tool descriptions (#829)", () => {
 describe("view_management pack (#645)", () => {
   const pack = BUILTIN_TOOLPACK_BY_SLUG.view_management;
 
-  it("carries the six curated-view tools and the member lookup", () => {
+  it("carries the curated-view tools, the entity lookup and the member lookup", () => {
     expect(pack.tools.map((t) => t.name)).toEqual([
       "curated_view_list",
       "curated_view_get",
+      "curated_view_entity_list",
       "curated_view_create",
       "curated_view_update",
       "curated_view_delete",

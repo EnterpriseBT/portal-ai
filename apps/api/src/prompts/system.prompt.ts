@@ -575,14 +575,20 @@ export const PACK_PROMPT_SECTIONS: Record<
           "authority: a change they cannot make on the Views page you cannot " +
           "make here. `TOOL_PERMISSION_DENIED` means they lack that " +
           "permission; `TOOL_TARGET_NOT_FOUND` means the view (or its entity) " +
-          "doesn't exist for them. Relay either plainly and do not retry."
+          "doesn't exist for them. Relay either plainly and do not retry. " +
+          "Say which permission is missing; don't point them to an admin " +
+          "or name a role."
       );
       lines.push("");
       lines.push(
         "**Look things up before you act.** Find a view's id with " +
           "`curated_view_list` (or `curated_view_get` for its columns and " +
-          "filter). Columns are named by their column key exactly as the " +
-          "entity's columns show it. Never invent an id or a key."
+          "filter). To create a view, find the entity's " +
+          "`connectorEntityId` and column keys with " +
+          "`curated_view_entity_list`; it covers entities this station has " +
+          "no view on yet, which the station context doesn't list. Columns " +
+          "are named by their column key exactly as that list shows it. " +
+          "Never invent an id or a key."
       );
       lines.push("");
       lines.push(
@@ -604,6 +610,12 @@ export const PACK_PROMPT_SECTIONS: Record<
         "**You cannot attach a view to a station.** A view you create only " +
           "shows up in a session after someone attaches it while creating " +
           "or editing a station. Say so after you create one."
+      );
+      lines.push("");
+      lines.push(
+        "Finish editing a view before you query it: never run a " +
+          "`curated_view_update` and a query on that view in the same step, " +
+          "or the query may read the old filter."
       );
       lines.push("");
       lines.push(

@@ -912,6 +912,7 @@ describe("buildAnalyticsTools()", () => {
   const VIEW_TOOLS = [
     "curated_view_list",
     "curated_view_get",
+    "curated_view_entity_list",
     "curated_view_create",
     "curated_view_update",
     "curated_view_delete",

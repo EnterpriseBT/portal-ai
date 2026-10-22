@@ -276,6 +276,7 @@ describe("view_management tools — integration (#645)", () => {
     for (const name of [
       "curated_view_list",
       "curated_view_get",
+      "curated_view_entity_list",
       "curated_view_create",
       "curated_view_update",
       "curated_view_delete",
@@ -310,6 +311,26 @@ describe("view_management tools — integration (#645)", () => {
       got.curatedView as { columns: { key: string }[] }
     ).columns.map((c) => c.key);
     expect(cols.sort()).toEqual(["name", "region"]);
+  });
+
+  it("finds an entity and its column keys with curated_view_entity_list, then builds a view from them", async () => {
+    const found = await asOwner("curated_view_entity_list", {});
+    const entities = found.entities as {
+      connectorEntityId: string;
+      columns: { key: string }[];
+    }[];
+    const entity = entities.find((e) => e.connectorEntityId === entityId);
+    expect(entity).toBeDefined();
+    const keys = entity!.columns.map((c) => c.key);
+    expect(keys).toEqual(expect.arrayContaining(["name", "region"]));
+
+    const r = await asOwner("curated_view_create", {
+      connectorEntityId: entity!.connectorEntityId,
+      key: `found_${generateId().replace(/-/g, "").slice(0, 8)}`,
+      label: "Found",
+      columns: keys.slice(0, 1),
+    });
+    expect(r.error).toBeUndefined();
   });
 
   it("an owner edits the label, columns and filter", async () => {

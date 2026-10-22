@@ -14,12 +14,13 @@ import type { PermissionContext } from "../../../services/permission.service.js"
  */
 
 const list = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const listEntities = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const get = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const create = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const update = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const del = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.unstable_mockModule("../../../services/curated-view.service.js", () => ({
-  CuratedViewService: { list, get, create, update, delete: del },
+  CuratedViewService: { list, listEntities, get, create, update, delete: del },
 }));
 
 const grantShare = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -41,6 +42,8 @@ const { runViewTool } =
   await import("../../../tools/curated-views/curated-view-tool.util.js");
 const { CuratedViewListTool } =
   await import("../../../tools/curated-views/curated-view-list.tool.js");
+const { CuratedViewEntityListTool } =
+  await import("../../../tools/curated-views/curated-view-entity-list.tool.js");
 const { CuratedViewGetTool } =
   await import("../../../tools/curated-views/curated-view-get.tool.js");
 const { CuratedViewCreateTool } =
@@ -179,6 +182,23 @@ describe("view_management tools (#645)", () => {
         offset: 0,
       })
     );
+  });
+
+  it("curated_view_entity_list searches and defaults the page", async () => {
+    listEntities.mockResolvedValue({
+      entities: [],
+      total: 0,
+      limit: 25,
+      offset: 0,
+    });
+    await exec(new CuratedViewEntityListTool().build(ctx), {
+      search: "cust",
+    });
+    expect(listEntities).toHaveBeenCalledWith(ctx, {
+      search: "cust",
+      limit: 25,
+      offset: 0,
+    });
   });
 
   it("curated_view_get adds grants only for a caller who can share", async () => {

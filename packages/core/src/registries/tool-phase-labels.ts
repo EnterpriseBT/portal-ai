@@ -111,6 +111,7 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   // view_management (#645)
   curated_view_list: "Listing views",
   curated_view_get: "Reading the view",
+  curated_view_entity_list: "Listing entities for views",
   curated_view_create: "Creating the view",
   curated_view_update: "Updating the view",
   curated_view_delete: "Deleting the view",
