@@ -230,7 +230,13 @@ describe("the public subprocessor list matches the API's egress (#613)", () => {
   it("publishes no server-side subprocessor the API never reaches", () => {
     // The other direction: a removed integration must leave the public list.
     // Browser-side entries are held by apps/web's host guard instead.
-    const reached = new Set(Object.values(EGRESS));
+    // Reached means classified AND still read, so removing an integration
+    // names both the stale entry and the unreached subprocessor in one run.
+    const reached = new Set(
+      Object.entries(EGRESS)
+        .filter(([key]) => reads.has(key))
+        .map(([, id]) => id)
+    );
     const unreached = SUBPROCESSORS.filter((s) =>
       s.reachedBy.includes("server")
     )

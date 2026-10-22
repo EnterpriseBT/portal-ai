@@ -118,10 +118,15 @@ describe("the public subprocessor list matches the browser's egress (#613)", () 
   });
 
   it("publishes no browser-side subprocessor the app never reaches", () => {
+    // Reached means classified AND still named in the source, so swapping a
+    // vendor out names both the new host and the dropped subprocessor.
     const reached = new Set(
-      [...Object.values(HOSTS), ...Object.values(VITE_VARS)].filter(
-        (v): v is SubprocessorId => typeof v === "string"
-      )
+      [
+        ...Object.entries(HOSTS).filter(([host]) => hosts.has(host)),
+        ...Object.entries(VITE_VARS).filter(([name]) => viteVars.has(name)),
+      ]
+        .map(([, v]) => v)
+        .filter((v): v is SubprocessorId => typeof v === "string")
     );
     const unreached = SUBPROCESSORS.filter((s) =>
       s.reachedBy.includes("browser")
