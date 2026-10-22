@@ -227,12 +227,15 @@ describe("the public subprocessor list matches the API's egress (#613)", () => {
     }
   });
 
-  it("publishes no subprocessor the code never reaches", () => {
+  it("publishes no server-side subprocessor the API never reaches", () => {
     // The other direction: a removed integration must leave the public list.
+    // Browser-side entries are held by apps/web's host guard instead.
     const reached = new Set(Object.values(EGRESS));
-    const unreached = SUBPROCESSORS.map((s) => s.id).filter(
-      (id) => !reached.has(id)
-    );
+    const unreached = SUBPROCESSORS.filter((s) =>
+      s.reachedBy.includes("server")
+    )
+      .map((s) => s.id)
+      .filter((id) => !reached.has(id));
     expect(unreached).toEqual([]);
   });
 });

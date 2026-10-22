@@ -46,6 +46,28 @@ describe("SUBPROCESSORS", () => {
   });
 });
 
+describe("where each subprocessor is reached from", () => {
+  // The API's env-var guard (apps/api) covers "server" entries and the web
+  // app's host guard (apps/web) covers "browser" ones; an entry neither can
+  // reach would be checked by nothing.
+  it("names at least one side for every entry", () => {
+    for (const s of SUBPROCESSORS) {
+      expect(s.reachedBy.length).toBeGreaterThan(0);
+      for (const side of s.reachedBy) {
+        expect(["server", "browser"]).toContain(side);
+      }
+    }
+  });
+
+  it("lists the browser-loaded map tile providers", () => {
+    // CARTO is every portal map's default basemap and OpenStreetMap its
+    // fallback; both receive the viewer's IP and the map area on screen.
+    const byId = new Map(SUBPROCESSORS.map((s) => [s.id, s]));
+    expect(byId.get("carto")?.reachedBy).toEqual(["browser"]);
+    expect(byId.get("openstreetmap")?.reachedBy).toEqual(["browser"]);
+  });
+});
+
 describe("subprocessor notes", () => {
   it("are complete sentences", () => {
     expect(RESIDENCY_SUBPROCESSOR_NOTE).toMatch(SENTENCE);

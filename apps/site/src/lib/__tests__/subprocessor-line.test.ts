@@ -16,6 +16,7 @@ describe("subprocessorLine", () => {
         name: "AWS",
         purpose: "Hosting.",
         usedWhen: null,
+        reachedBy: ["server"],
       })
     ).toBe("AWS: Hosting.");
   });
@@ -27,6 +28,7 @@ describe("subprocessorLine", () => {
         name: "Tavily",
         purpose: "Web search.",
         usedWhen: "when a portal question uses the web-search tool",
+        reachedBy: ["server"],
       })
     ).toBe(
       "Tavily: Web search. Used when a portal question uses the web-search tool."
