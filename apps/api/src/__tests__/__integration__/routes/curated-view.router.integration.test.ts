@@ -52,6 +52,8 @@ const { app } = await import("../../../app.js");
 const { __setFilterSqlSuggesterForTesting, FilterSqlSuggestError } =
   await import("../../../services/curated-view-filter-suggest.haiku.js");
 const { SystemUtilities } = await import("../../../utils/system.util.js");
+const { CuratedViewService } =
+  await import("../../../services/curated-view.service.js");
 
 describe("curated-view.router integration", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -1180,6 +1182,55 @@ describe("curated-view.router integration", () => {
       .patch(`/api/curated-views/${id}`)
       .send({ label: "Renamed", filter: AGE_FILTER });
     expect(rename.status).toBe(200);
+  });
+
+  it("#645: a view writer who can't read its entity can't probe its column names with a filter", async () => {
+    const { id } = await memberOwnedView("member_filter_probe", [emailFmId]);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update connector_entities set created_by = 'someone-else' where id = ${entityId}`
+    );
+    const probe = (field: string) =>
+      request(app)
+        .patch(`/api/curated-views/${id}`)
+        .send({
+          filter: {
+            combinator: "and",
+            conditions: [{ field, operator: "eq", value: "x" }],
+          },
+        });
+    const unknown = await probe("no_such_column");
+    const known = await probe("email");
+    // The same refusal either way: nothing says which column exists.
+    expect(unknown.status).toBe(403);
+    expect(known.status).toBe(403);
+    expect(unknown.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(known.body.code).toBe(ApiCode.PERMISSION_DENIED);
+  });
+
+  it("#645: a view writer who can't read its entity can't probe its column names by key", async () => {
+    const { id } = await memberOwnedView("member_key_probe", [emailFmId]);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update connector_entities set created_by = 'someone-else' where id = ${entityId}`
+    );
+    const memberCtx = {
+      userId: memberId,
+      organizationId: orgId,
+      roles: ["member" as const],
+    };
+    const refusal = async (columnKeys: string[]) => {
+      try {
+        await CuratedViewService.update(memberCtx, id, { columnKeys });
+      } catch (err) {
+        return {
+          status: (err as { status?: number }).status,
+          code: (err as { code?: string }).code,
+        };
+      }
+      throw new Error("expected a refusal");
+    };
+    const forbidden = { status: 403, code: ApiCode.PERMISSION_DENIED };
+    expect(await refusal(["email", "no_such_column"])).toEqual(forbidden);
+    expect(await refusal(["email", "age"])).toEqual(forbidden);
   });
 
   it("#829: a writer can add a column someone else mapped", async () => {

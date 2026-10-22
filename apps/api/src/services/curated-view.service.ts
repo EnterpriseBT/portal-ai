@@ -255,10 +255,13 @@ function canonicalJson(value: unknown): string {
 
 /**
  * #645: the projection named by key, as field-mapping ids in the given order.
- * Each key is a live mapping's `normalizedKey` on the entity. Called only
- * after the caller is known to read the entity (create) or write the view
- * (update), so an unknown-key answer says nothing about an entity they can't
- * see. A repeated or unknown key is a 400 naming it.
+ * Each key is a live mapping's `normalizedKey` on the entity. A repeated or
+ * unknown key is a 400 naming it, so it is called only once the caller is
+ * known to read the entity (#829), on create and update alike: a view writer
+ * who can't read the entity would otherwise tell known columns from unknown
+ * ones by the answer. It runs on the transaction under the entity's
+ * view-dependency lock (#802), so a mapping can't be deleted between the
+ * lookup and the projection check.
  */
 async function resolveColumnKeys(
   connectorEntityId: string,
@@ -510,12 +513,6 @@ export class CuratedViewService {
         "Connector entity not found"
       );
     }
-    if (columnKeys) {
-      body.fieldMappingIds = await resolveColumnKeys(
-        body.connectorEntityId,
-        columnKeys
-      );
-    }
 
     const duplicate = await DbService.repository.curatedViews.findByKey(
       organizationId,
@@ -556,6 +553,13 @@ export class CuratedViewService {
       await CuratedViewDependencyService.lockEntities(tx, [
         body.connectorEntityId,
       ]);
+      if (columnKeys) {
+        body.fieldMappingIds = await resolveColumnKeys(
+          body.connectorEntityId,
+          columnKeys,
+          tx
+        );
+      }
       if (body.filter)
         await validateFilter(body.filter, body.connectorEntityId);
       // #644: validated and dry-run against the entity's columns under the
@@ -620,12 +624,6 @@ export class CuratedViewService {
       "write",
       notFound
     );
-    if (columnKeys) {
-      body.fieldMappingIds = await resolveColumnKeys(
-        existing.connectorEntityId,
-        columnKeys
-      );
-    }
 
     if (body.fieldMappingIds) assertNoDuplicates(body.fieldMappingIds);
 
@@ -635,17 +633,26 @@ export class CuratedViewService {
     const filterSqlChanged =
       body.filterSql !== undefined &&
       (body.filterSql ?? null) !== (existing.filterSql ?? null);
-    // Permission before tier (#688): a change needs read on the entity
-    // (#829, like a FilterGroup change), then the entitlement.
-    if (filterSqlChanged) {
+    // #829: a filter change needs read on the entity, like a column change.
+    // The editor sends the stored filter back on every save, so an unchanged
+    // one isn't checked (a rename still works).
+    const filterChanged =
+      body.filter !== undefined &&
+      canonicalJson(body.filter ?? null) !==
+        canonicalJson(existing.filter ?? null);
+    // Permission before tier (#688), and before anything that reads the
+    // entity's columns (#645): validating a filter or resolving column keys
+    // answers differently for a known and an unknown column, so a view writer
+    // who can't read the entity would learn its column names from it.
+    if (columnKeys || filterChanged || filterSqlChanged) {
       await assertEntityReadable(
         set,
         organizationId,
         existing.connectorEntityId
       );
-      if (body.filterSql) {
-        await CuratedViewFilterSqlService.beforeWrite(organizationId);
-      }
+    }
+    if (filterSqlChanged && body.filterSql) {
+      await CuratedViewFilterSqlService.beforeWrite(organizationId);
     }
 
     return DbService.transaction(async (tx) => {
@@ -653,22 +660,15 @@ export class CuratedViewService {
       await CuratedViewDependencyService.lockEntities(tx, [
         existing.connectorEntityId,
       ]);
+      if (columnKeys) {
+        body.fieldMappingIds = await resolveColumnKeys(
+          existing.connectorEntityId,
+          columnKeys,
+          tx
+        );
+      }
       if (body.filter) {
         await validateFilter(body.filter, existing.connectorEntityId);
-      }
-      // #829: a filter change needs read on the entity, like a column
-      // change. The editor sends the stored filter back on every save, so
-      // an unchanged one isn't checked (a rename still works).
-      if (
-        body.filter !== undefined &&
-        canonicalJson(body.filter ?? null) !==
-          canonicalJson(existing.filter ?? null)
-      ) {
-        await assertEntityReadable(
-          set,
-          organizationId,
-          existing.connectorEntityId
-        );
       }
       let filterSqlKeys: string[] = [];
       if (filterSqlChanged && body.filterSql) {
