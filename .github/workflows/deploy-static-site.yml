@@ -188,6 +188,18 @@ jobs:
           fi
           echo "No fixture stamp found; build used live configuration."
 
+      # Prod is never seeded, so an unset SECURITY_EMAIL falls back to the QA
+      # inbox (lib/contact.ts) and still builds a valid security.txt — every
+      # build-time check passes. Only here is "this is prod" known (#613).
+      - name: Refuse to publish a QA security contact to prod
+        if: inputs.environment == 'prod'
+        run: |
+          F=apps/site/dist/.well-known/security.txt
+          if grep -q 'qa@portalsai.io' "$F"; then
+            echo "::error::$F names the QA inbox as prod's security contact. Run: portalops vars set SECURITY_EMAIL - --env prod --yes --confirm-prod"
+            exit 1
+          fi
+
       # Microsoft publisher verification reads
       # /.well-known/microsoft-identity-association.json. Publishing it with the
       # placeholder still in place fails verification in a way that looks like a
@@ -246,6 +258,16 @@ jobs:
             --include "*.json" \
             --cache-control "public, max-age=0, must-revalidate" \
             --delete
+
+      # RFC 9116 §3 requires `text/plain; charset=utf-8`. Astro's static build
+      # keeps only the endpoint's body, and `s3 sync` guesses a bare
+      # `text/plain`, so the header is set here, after the pass above (#613).
+      - name: Set security.txt content type
+        run: |
+          aws s3 cp apps/site/dist/.well-known/security.txt \
+            "s3://${{ steps.stack.outputs.bucket }}/.well-known/security.txt" \
+            --content-type "text/plain; charset=utf-8" \
+            --cache-control "public, max-age=0, must-revalidate"
 
       - name: Invalidate CloudFront
         run: |
