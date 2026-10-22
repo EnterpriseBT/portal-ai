@@ -90,7 +90,7 @@ export async function runViewTool<T>(
 
 ### Tools — `apps/api/src/tools/curated-views/*.tool.ts` (new)
 
-Each tool extends `Tool` (`types/tools.ts:3`), and `build(ctx: PermissionContext)` returns ai-sdk `tool({ description, inputSchema, execute })`. `CuratedViewCreateTool.build(ctx, portalId: string | null)`. Inputs compose the exported contract fields (`CuratedViewKeySchema`, `nameField`, `descriptionField`, `filterSqlField`, `FilterExpressionSchema`). `oneFilterMode` is newly **exported** from `curated-view.contract.ts`. All input objects are `.strict()`.
+Each tool extends `Tool` (`types/tools.ts:3`), and `build(ctx: PermissionContext)` returns ai-sdk `tool({ description, inputSchema, execute })`. `CuratedViewCreateTool.build(ctx, portalId: string | null)`. Inputs compose the exported contract fields (`CuratedViewKeySchema`, `nameField`, `descriptionField`, `filterSqlField`, `FilterExpressionSchema`). `oneFilterMode` is newly **exported** from `curated-view.contract.ts`. All input objects are `.strict()`. *Amended in the smoke walk:* the model-facing `inputSchema` carries **no refines**. The AI SDK checks input with its own zod copy, and a failed refine there kept the schema on the issue, so the error became unprintable ("Converting circular structure to JSON") once the schema held the recursive `FilterExpressionSchema`. Create and update therefore run a second `CheckedSchema` (`CuratedViewKeySchema`, `oneFilterMode`, and update's "at least one change") in `execute`, where a refusal is `CURATED_VIEW_INVALID_PAYLOAD` with the refine's message.
 
 | Tool (file) | Input | Calls | Success result |
 |---|---|---|---|

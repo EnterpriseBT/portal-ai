@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import { asSchema } from "ai";
 
 import { ApiError } from "../../../services/http.service.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -222,15 +223,33 @@ describe("view_management tools (#645)", () => {
     expect(r).toEqual({ success: true, curatedView: { id: "cv-9" } });
   });
 
-  it("curated_view_create refuses both filter modes at once", () => {
-    const parsed = new CuratedViewCreateTool().schema.safeParse({
+  it("curated_view_create refuses both filter modes at once", async () => {
+    const r = await exec(new CuratedViewCreateTool().build(ctx, null), {
       connectorEntityId: "ent-1",
       key: "k",
       label: "L",
       filter: FILTER,
       filterSql: "region = 'NE'",
     });
-    expect(parsed.success).toBe(false);
+    expect(r).toEqual({
+      error: {
+        code: ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+        message: "Use either the builder filter or a SQL filter, not both",
+      },
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("curated_view_create refuses a reserved key", async () => {
+    const r = await exec(new CuratedViewCreateTool().build(ctx, null), {
+      connectorEntityId: "ent-1",
+      key: "_meta_columns",
+      label: "L",
+    });
+    expect(r).toMatchObject({
+      error: { code: ApiCode.CURATED_VIEW_INVALID_PAYLOAD },
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("curated_view_create refuses an unknown input key", () => {
@@ -244,8 +263,16 @@ describe("view_management tools (#645)", () => {
   });
 
   it("curated_view_update needs a change, and passes columns as keys", async () => {
-    const schema = new CuratedViewUpdateTool().schema;
-    expect(schema.safeParse({ curatedViewId: "cv-1" }).success).toBe(false);
+    const refused = await exec(new CuratedViewUpdateTool().build(ctx), {
+      curatedViewId: "cv-1",
+    });
+    expect(refused).toEqual({
+      error: {
+        code: ApiCode.CURATED_VIEW_INVALID_PAYLOAD,
+        message: "Give at least one field to change",
+      },
+    });
+    expect(update).not.toHaveBeenCalled();
 
     update.mockResolvedValue({ id: "cv-1" });
     await exec(new CuratedViewUpdateTool().build(ctx), {
@@ -345,4 +372,91 @@ describe("view_management tools (#645)", () => {
       })
     ).rejects.toMatchObject({ status: 403 });
   });
+});
+
+/**
+ * The AI SDK checks tool input with its own zod copy before `execute` runs. A
+ * refine failing there left the schema on the issue, and with the recursive
+ * FilterExpressionSchema inside, reading the error's message threw "Converting
+ * circular structure to JSON" (found in the #645 smoke walk). The model-facing
+ * schemas carry no refines, so every SDK refusal must stay printable.
+ */
+describe("view tool input refusals through the AI SDK (#645)", () => {
+  const sdkError = async (schema: unknown, input: unknown) => {
+    const result = await asSchema(schema as never).validate!(input);
+    expect(result.success).toBe(false);
+    return (result as { error: Error }).error;
+  };
+
+  it.each([
+    [
+      "create, a missing label",
+      CuratedViewCreateTool,
+      { connectorEntityId: "e", key: "k" },
+    ],
+    [
+      "create, an unknown field",
+      CuratedViewCreateTool,
+      { connectorEntityId: "e", key: "k", label: "L", extra: 1 },
+    ],
+    [
+      "create, a key too long",
+      CuratedViewCreateTool,
+      { connectorEntityId: "e", key: "k".repeat(64), label: "L" },
+    ],
+    [
+      "create, a bad filter operator",
+      CuratedViewCreateTool,
+      {
+        connectorEntityId: "e",
+        key: "k",
+        label: "L",
+        filter: {
+          combinator: "and",
+          conditions: [{ field: "r", operator: "nope", value: 1 }],
+        },
+      },
+    ],
+    [
+      "update, a label too long",
+      CuratedViewUpdateTool,
+      { curatedViewId: "v", label: "x".repeat(121) },
+    ],
+  ])("%s has a printable message", async (_name, ToolClass, input) => {
+    const err = await sdkError(new ToolClass().schema, input);
+    expect(() => err.message).not.toThrow();
+  });
+
+  it.each([
+    [
+      "create, both filter modes",
+      CuratedViewCreateTool,
+      {
+        connectorEntityId: "e",
+        key: "k",
+        label: "L",
+        filter: FILTER,
+        filterSql: "x",
+      },
+    ],
+    [
+      "create, a reserved key",
+      CuratedViewCreateTool,
+      { connectorEntityId: "e", key: "_meta_x", label: "L" },
+    ],
+    ["update, no change", CuratedViewUpdateTool, { curatedViewId: "v" }],
+    [
+      "update, both filter modes",
+      CuratedViewUpdateTool,
+      { curatedViewId: "v", filter: FILTER, filterSql: "x" },
+    ],
+  ])(
+    "%s passes the SDK and is refused in execute",
+    async (_name, ToolClass, input) => {
+      const result = await asSchema(new ToolClass().schema as never).validate!(
+        input
+      );
+      expect(result.success).toBe(true);
+    }
+  );
 });
