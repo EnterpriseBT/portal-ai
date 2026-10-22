@@ -589,7 +589,8 @@ export const PACK_PROMPT_SECTIONS: Record<
         "A view filters rows with a structured `filter` or a `filterSql`, " +
           "never both; setting one clears the other. A SQL filter needs a " +
           "plan with advanced view filters. If it is refused for that " +
-          "reason, offer the same condition as a structured filter."
+          "reason (`CURATED_VIEW_FILTER_SQL_NOT_ENTITLED`), offer the same " +
+          "condition as a structured filter."
       );
       lines.push("");
       lines.push(

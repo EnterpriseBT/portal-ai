@@ -324,6 +324,7 @@ describe("buildSystemPrompt — curated view notes (#645)", () => {
     const p = prompt();
     expect(p).toContain("`curated_view_list`");
     expect(p).toContain("`filter` or a `filterSql`, never both");
+    expect(p).toContain("CURATED_VIEW_FILTER_SQL_NOT_ENTITLED");
   });
 });
 

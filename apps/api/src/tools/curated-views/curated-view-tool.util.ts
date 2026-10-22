@@ -6,6 +6,10 @@ import { createLogger } from "../../utils/logger.util.js";
 
 const logger = createLogger({ module: "curated-view-tools" });
 
+/** A 403 about the org's plan rather than the caller's permissions. */
+const isPlanRefusal = (code: ApiCode): boolean =>
+  code.endsWith("_NOT_ENTITLED");
+
 /** A refusal or failure, returned *as a tool result* so the agent relays it. */
 export type ViewToolError = { error: { code: ApiCode; message: string } };
 
@@ -14,8 +18,13 @@ export type ViewToolError = { error: { code: ApiCode; message: string } };
  * outcome is a typed tool result the agent can relay, never a throw that ends
  * the turn:
  *
- * - **403** is re-thrown. The per-caller tool gate (`wrapWithPermissionGate`)
- *   turns it into `TOOL_PERMISSION_DENIED`, as for the rbac_management tools.
+ * - **A permission 403** is re-thrown. The per-caller tool gate
+ *   (`wrapWithPermissionGate`) turns it into `TOOL_PERMISSION_DENIED`, as for
+ *   the rbac_management tools.
+ * - **A plan 403** (`*_NOT_ENTITLED`, e.g. a SQL filter on a plan without
+ *   advanced view filters) keeps its own code, so the agent can tell "your
+ *   plan doesn't include this" from "you lack permission" and offer the
+ *   structured filter instead.
  * - **404** becomes `TOOL_TARGET_NOT_FOUND`: the view or entity doesn't exist
  *   for this caller (unreadable == absent), the same answer entity tools give.
  * - **Any other 4xx** keeps its own code (`CURATED_VIEW_DUPLICATE_KEY`,
@@ -31,7 +40,7 @@ export async function runViewTool<T>(
     return await fn();
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.status === 403) throw err;
+      if (err.status === 403 && !isPlanRefusal(err.code)) throw err;
       if (err.status === 404) {
         // The same result the permission gate's `targetNotFound` gives.
         return {

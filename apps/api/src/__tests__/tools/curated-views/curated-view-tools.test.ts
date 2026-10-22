@@ -76,6 +76,31 @@ describe("runViewTool (#645)", () => {
     );
   });
 
+  it("keeps a plan refusal's own code instead of re-throwing it", async () => {
+    const r = await runViewTool(failed, () =>
+      Promise.reject(
+        new ApiError(
+          403,
+          ApiCode.CURATED_VIEW_FILTER_SQL_NOT_ENTITLED,
+          "Your plan doesn't include advanced view filters"
+        )
+      )
+    );
+    expect(r).toEqual({
+      error: {
+        code: ApiCode.CURATED_VIEW_FILTER_SQL_NOT_ENTITLED,
+        message: "Your plan doesn't include advanced view filters",
+      },
+    });
+  });
+
+  it("re-throws a boundary refusal, which is about permissions", async () => {
+    const err = new ApiError(403, ApiCode.RBAC_GRANT_EXCEEDS_BOUNDARY, "no");
+    await expect(runViewTool(failed, () => Promise.reject(err))).rejects.toBe(
+      err
+    );
+  });
+
   it("turns a 404 into TOOL_TARGET_NOT_FOUND", async () => {
     const r = await runViewTool(failed, () =>
       Promise.reject(

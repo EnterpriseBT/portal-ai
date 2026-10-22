@@ -82,7 +82,8 @@ export async function runViewTool<T>(
 
 | Thrown | Result |
 |---|---|
-| `ApiError` 403 | rethrown → gate → `{ error: { code: TOOL_PERMISSION_DENIED, message } }` |
+| `ApiError` 403, permission (`PERMISSION_DENIED`, a boundary refusal) | rethrown → gate → `{ error: { code: TOOL_PERMISSION_DENIED, message } }` |
+| `ApiError` 403, plan (`*_NOT_ENTITLED`) | `{ error: { code: err.code, message } }`, so "your plan lacks this" stays distinct from "you lack permission" (amended in slice 7) |
 | `ApiError` 404 | `targetNotFound(message)` (`permission-gate.service.ts:71`) |
 | other `ApiError` 4xx | `{ error: { code: err.code, message: err.message } }` |
 | `ApiError` 5xx / non-`ApiError` | `{ error: { code: failedCode, message: "The curated view operation failed." } }` + `logger.error` |
