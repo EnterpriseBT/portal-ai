@@ -128,7 +128,7 @@ The controls, all evidenced in discovery's "Evidence" table:
 | `access-control` | Role- and policy-based permissions, checked server-side on every request, with per-object sharing | `apps/api/src/middleware/require-permission.middleware.ts`, `apps/api/src/__tests__/config/route-authorization.map.ts` |
 | `tenant-isolation` | Every request is scoped to your organization; agent SQL runs under a restricted database role | `apps/api/src/services/portal-sql-reader-role.service.ts` |
 | `audit-log` | Security-relevant actions are recorded in an organization audit log | `apps/api/src/services/audit.service.ts` |
-| `rate-limiting` | Per-user and per-organization API rate limits | `apps/api/src/middleware/authenticated-rate-limit.middleware.ts` |
+| `rate-limiting` | Authenticated API requests are rate-limited per user (per-user only: the middleware has no per-org bucket, so the page makes no per-org claim) | `apps/api/src/middleware/authenticated-rate-limit.middleware.ts` |
 | `vulnerability-management` | Every release image is scanned and blocked on fixable critical/high findings; signed, with an SBOM | `docs/SUPPLY_CHAIN.md`, `apps/api/Dockerfile` |
 
 `FORBIDDEN_CLAIMS` = `["zero retention", "zero-retention", "zero data retention", "SOC 2", "ISO 27001", "disaster recovery", "multi-AZ", "multi-region", "Redis", "certified", "military-grade"]`. The forbidden-claims test checks the rendered `claim` strings and the page's prose constants in `security-page.ts` (below).
