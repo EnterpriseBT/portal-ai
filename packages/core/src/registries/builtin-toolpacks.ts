@@ -1081,6 +1081,19 @@ const granteeSchema = {
 };
 
 /**
+ * The org's member roster (#629), shared by `rbac_management` and
+ * `view_management` (#645): one definition listed in both packs, so a session
+ * with both gets a single `member_list`. Reading the roster needs only org
+ * membership (`SeatService.listMembers`, #621).
+ */
+const MEMBER_LIST_TOOL: ToolpackToolSpec = {
+  name: "member_list",
+  description:
+    "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing something with them, and to read a member's current role/group set before replacing it.",
+  parameterSchema: objectSchema({}),
+};
+
+/**
  * RBAC management pack (#629) — the agent-facing companion to the RBAC admin UI
  * (`AccessAuthoring` + `ShareDialog`). Mirrors what the UI lets an admin do:
  * policy / role / group CRUD, group membership, member role + group assignment,
@@ -1276,12 +1289,7 @@ const RBAC_MANAGEMENT_PACK: BuiltinToolpackSpec = {
         ["id", "userIds"]
       ),
     },
-    {
-      name: "member_list",
-      description:
-        "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing with them, and to read a member's current role/group set before replacing it.",
-      parameterSchema: objectSchema({}),
-    },
+    MEMBER_LIST_TOOL,
     {
       name: "member_set_roles",
       description:
@@ -1510,6 +1518,8 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
         ["curatedViewId", "grantee", "access"]
       ),
     },
+    // Shared with rbac_management, to resolve "share with Jane" to a userId.
+    MEMBER_LIST_TOOL,
   ],
 };
 
@@ -2054,19 +2064,30 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
   },
 };
 
+/** #645: each source spec's attached tool, so a spec listed in several packs
+ *  (`member_list`) comes out as the same object in every one of them. */
+const ATTACHED_TOOLS = new Map<
+  ToolpackToolSpec,
+  BuiltinToolpack["tools"][number]
+>();
+
 /** Attach each tool's declared capability from the matrix; throw on any
  *  tool that lacks one (the completeness guarantee). */
 function attachCapabilities(spec: BuiltinToolpackSpec): BuiltinToolpack {
   return {
     ...spec,
     tools: spec.tools.map((tool) => {
+      const attached = ATTACHED_TOOLS.get(tool);
+      if (attached) return attached;
       const capability = CAPABILITIES[tool.name];
       if (!capability) {
         throw new Error(
           `builtin-toolpacks: no capability declared for tool '${tool.name}'`
         );
       }
-      return { ...tool, capability };
+      const result = { ...tool, capability };
+      ATTACHED_TOOLS.set(tool, result);
+      return result;
     }),
   };
 }

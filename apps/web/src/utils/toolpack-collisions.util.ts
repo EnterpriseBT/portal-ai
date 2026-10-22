@@ -29,20 +29,30 @@ export function detectToolpackCollisions(
   selectedRefs: string[],
   customs: Toolpack[]
 ): ToolpackCollision[] {
-  const ownersByTool = new Map<string, Set<string>>();
+  // #645: a collision is two *definitions* of a name, not two packs. A
+  // built-in tool shared by several packs (`member_list`) is one registry
+  // object, so it counts once; a custom pack's same-named tool is another.
+  const byTool = new Map<
+    string,
+    { definitions: Set<unknown>; owners: Set<string> }
+  >();
   for (const ref of selectedRefs) {
     const { tools, label } = resolve(ref, customs);
     if (!tools) continue;
     for (const tool of tools) {
-      const owners = ownersByTool.get(tool.name) ?? new Set();
-      owners.add(label);
-      ownersByTool.set(tool.name, owners);
+      const entry = byTool.get(tool.name) ?? {
+        definitions: new Set(),
+        owners: new Set(),
+      };
+      entry.definitions.add(tool);
+      entry.owners.add(label);
+      byTool.set(tool.name, entry);
     }
   }
 
   const collisions: ToolpackCollision[] = [];
-  for (const [toolName, owners] of ownersByTool.entries()) {
-    if (owners.size > 1) {
+  for (const [toolName, { definitions, owners }] of byTool.entries()) {
+    if (definitions.size > 1) {
       collisions.push({ toolName, ownerLabels: [...owners].sort() });
     }
   }

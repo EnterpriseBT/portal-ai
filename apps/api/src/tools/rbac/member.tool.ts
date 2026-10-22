@@ -30,7 +30,7 @@ export class MemberListTool extends Tool<typeof ListInput> {
   slug = "member_list";
   name = "member_list";
   description =
-    "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing with them, and to read a member's current role/group set before replacing it.";
+    "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing something with them, and to read a member's current role/group set before replacing it.";
 
   get schema() {
     return ListInput;

@@ -593,6 +593,13 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
+        "To share with a person, resolve their name or email to a `userId` " +
+          'with `member_list`, then share with { "type": "user", "userId": … }. ' +
+          'If several members match, ask which one. "The org" or "the ' +
+          'team" is { "type": "team" }. Never guess a `userId`.'
+      );
+      lines.push("");
+      lines.push(
         "**You cannot attach a view to a station.** A view you create only " +
           "shows up in a session after someone attaches it while creating " +
           "or editing a station. Say so after you create one."

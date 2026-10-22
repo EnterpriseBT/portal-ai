@@ -939,6 +939,21 @@ describe("buildAnalyticsTools()", () => {
     for (const name of VIEW_TOOLS) expect(tools[name]).toBeDefined();
   });
 
+  it.each([
+    [["view_management"]],
+    [["rbac_management"]],
+    [["rbac_management", "view_management"]],
+  ])("builds member_list once for %j", async (packs) => {
+    setupStationMocks(packs);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.member_list).toBeDefined();
+    expect(Object.keys(tools).filter((n) => n === "member_list")).toHaveLength(
+      1
+    );
+  });
+
   it("registers no view_management tools when the pack isn't enabled", async () => {
     setupStationMocks(["data_query"]);
 

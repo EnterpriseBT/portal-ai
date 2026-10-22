@@ -313,6 +313,13 @@ describe("buildSystemPrompt — curated view notes (#645)", () => {
     expect(p).toContain("do not retry");
   });
 
+  it("resolves a person with member_list and shares with the team for the org", () => {
+    const p = prompt();
+    expect(p).toContain("`member_list`");
+    expect(p).toContain('{ "type": "team" }');
+    expect(p).toContain("ask which one");
+  });
+
   it("names the list tool for finding ids and one filter mode at a time", () => {
     const p = prompt();
     expect(p).toContain("`curated_view_list`");

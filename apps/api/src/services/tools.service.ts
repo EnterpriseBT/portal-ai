@@ -852,7 +852,6 @@ export class ToolService {
       tools.group_set_members = new GroupSetMembersTool().build(
         permissionContext
       );
-      tools.member_list = new MemberListTool().build(permissionContext);
       tools.member_set_roles = new MemberSetRolesTool().build(
         permissionContext
       );
@@ -862,6 +861,16 @@ export class ToolService {
       tools.grant_share = new GrantShareTool().build(permissionContext);
       tools.grant_revoke = new GrantRevokeTool().build(permissionContext);
       tools.grant_list = new GrantListTool().build(permissionContext);
+    }
+
+    // #645: the member roster is one tool listed in both rbac_management and
+    // view_management (to resolve "share with Jane" to a userId), built once
+    // when either pack is on.
+    if (
+      enabledPacks.has("rbac_management") ||
+      enabledPacks.has("view_management")
+    ) {
+      tools.member_list = new MemberListTool().build(permissionContext);
     }
 
     // -------------------------------------------------------------------
