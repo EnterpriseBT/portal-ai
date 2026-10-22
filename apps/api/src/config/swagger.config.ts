@@ -1731,12 +1731,37 @@ const options: swaggerJsdoc.Options = {
             },
           ],
         },
+        // #645: one projected column, its mapping and that mapping's key.
+        CuratedViewColumn: {
+          type: "object",
+          required: ["fieldMappingId", "key"],
+          properties: {
+            fieldMappingId: { type: "string" },
+            key: {
+              type: ["string", "null"],
+              description:
+                "The field mapping's normalizedKey; null once the mapping has been deleted",
+            },
+          },
+        },
         CuratedViewGetResponsePayload: {
           type: "object",
           required: ["curatedView"],
           properties: {
             curatedView: {
-              $ref: "#/components/schemas/CuratedViewWithProjection",
+              allOf: [
+                { $ref: "#/components/schemas/CuratedViewWithProjection" },
+                {
+                  type: "object",
+                  required: ["columns"],
+                  properties: {
+                    columns: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/CuratedViewColumn" },
+                    },
+                  },
+                },
+              ],
             },
           },
         },

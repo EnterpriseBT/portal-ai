@@ -17,6 +17,10 @@ const view = {
   filterSql: null,
   filterSqlKeys: [],
   fieldMappingIds: ["fm-1", "fm-2"],
+  columns: [
+    { fieldMappingId: "fm-1", key: "email" },
+    { fieldMappingId: "fm-2", key: "age" },
+  ],
   filtered: false,
   capabilities: { read: true, write: true, delete: true, share: true },
   projected: true,

@@ -90,6 +90,7 @@ describe("curated-view get / list contract (#680)", () => {
         curatedView: {
           ...viewRow,
           fieldMappingIds: [],
+          columns: [],
           filtered: true,
           projected: false,
           capabilities: {
@@ -226,5 +227,36 @@ describe("curated-view SQL filter request bodies (#644)", () => {
     expect(
       issue(CuratedViewUpdateRequestBodySchema, { filterSqlKeys: ["a"] })
     ).toMatchObject({ code: "unrecognized_keys" });
+  });
+});
+
+describe("curated-view get contract columns (#645)", () => {
+  const view = {
+    ...viewRow,
+    fieldMappingIds: ["fm-1", "fm-2"],
+    filtered: false,
+    projected: true,
+    capabilities: { read: true, write: true, delete: true, share: true },
+  };
+
+  it("pairs each projected mapping with its key, null once deleted", () => {
+    expect(
+      CuratedViewGetResponsePayloadSchema.safeParse({
+        curatedView: {
+          ...view,
+          columns: [
+            { fieldMappingId: "fm-1", key: "email" },
+            { fieldMappingId: "fm-2", key: null },
+          ],
+        },
+      }).success
+    ).toBe(true);
+  });
+
+  it("requires columns", () => {
+    expect(
+      CuratedViewGetResponsePayloadSchema.safeParse({ curatedView: view })
+        .success
+    ).toBe(false);
   });
 });

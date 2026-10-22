@@ -76,9 +76,23 @@ export type CuratedViewListResponsePayload = z.infer<
 
 // ── Get ───────────────────────────────────────────────────────────────
 
+/** #645: one projected column — its field mapping and that mapping's key
+ *  (`normalizedKey`), null once the mapping has been deleted. */
+export const CuratedViewColumnSchema = z.object({
+  fieldMappingId: z.string(),
+  key: z.string().nullable(),
+});
+
+export type CuratedViewColumn = z.infer<typeof CuratedViewColumnSchema>;
+
 export const CuratedViewGetResponsePayloadSchema = z.object({
-  /** #688: with the caller's capabilities on the view. */
-  curatedView: withShareableCapabilities(CuratedViewWithProjectionSchema),
+  /** #688: with the caller's capabilities on the view. #645: `columns` pairs
+   *  each projected field mapping with its key. */
+  curatedView: withShareableCapabilities(
+    CuratedViewWithProjectionSchema.extend({
+      columns: z.array(CuratedViewColumnSchema),
+    })
+  ),
 });
 
 export type CuratedViewGetResponsePayload = z.infer<
@@ -125,8 +139,9 @@ export const filterSqlField = () =>
       `Filter must be at most ${FILTER_SQL_MAX_LENGTH} characters`
     );
 
-/** #644: a row filter is a FilterGroup or SQL, never both. */
-const oneFilterMode = (
+/** #644: a row filter is a FilterGroup or SQL, never both. #645: exported so
+ *  the `view_management` tool inputs refine the same way. */
+export const oneFilterMode = (
   body: { filter?: unknown; filterSql?: string | null },
   ctx: z.RefinementCtx
 ) => {

@@ -644,8 +644,13 @@ describe("curated-view.router integration", () => {
     expect([...view.fieldMappingIds].sort()).toEqual(
       [emailFmId, ageFmId].sort()
     );
-    // The filter's contents don't survive anywhere in the payload.
-    expect(JSON.stringify(got.body)).not.toContain('"age"');
+    // The filter's contents don't survive anywhere in the payload. (#645:
+    // `age` itself does, as a projected column's key, which every reader of
+    // the view sees per #829, so match the filter's own shape instead.)
+    const body = JSON.stringify(got.body);
+    expect(body).not.toContain('"field":"age"');
+    expect(body).not.toContain('"combinator"');
+    expect(body).not.toContain('"operator"');
 
     const list = await request(app).get(`/api/curated-views`);
     expect(list.status).toBe(200);
@@ -879,6 +884,46 @@ describe("curated-view.router integration", () => {
       .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
       .where(sql`${schema.fieldMappings.id} = ${id}`);
   }
+
+  it("#645: get returns the projection's columns with their keys", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "keyed_projection",
+        label: "Keyed",
+        fieldMappingIds: [ageFmId, emailFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.status).toBe(200);
+    expect(got.body.payload.curatedView.columns).toEqual(
+      expect.arrayContaining([
+        { fieldMappingId: ageFmId, key: "age" },
+        { fieldMappingId: emailFmId, key: "email" },
+      ])
+    );
+    expect(got.body.payload.curatedView.columns).toHaveLength(2);
+  });
+
+  it("#645: a deleted projected mapping's column key is null", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "keyed_stale",
+        label: "Keyed stale",
+        fieldMappingIds: [emailFmId, ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    await softDeleteMapping(ageFmId);
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.columns).toEqual(
+      expect.arrayContaining([
+        { fieldMappingId: emailFmId, key: "email" },
+        { fieldMappingId: ageFmId, key: null },
+      ])
+    );
+    expect(got.body.payload.curatedView.columns).toHaveLength(2);
+  });
 
   it("#736: create rejects an unknown field mapping id (400)", async () => {
     const res = await createView({

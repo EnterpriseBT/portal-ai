@@ -32,6 +32,7 @@ const view = {
   filterSql: null,
   filterSqlKeys: [],
   fieldMappingIds: ["fm-1"],
+  columns: [{ fieldMappingId: "fm-1", key: "email" }],
   filtered: false,
   capabilities: { read: true, write: true, delete: true, share: true },
   projected: true,
