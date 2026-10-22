@@ -42,13 +42,19 @@ export function checkSecurityTxt(text, { now, origin }) {
     }
   }
 
+  // Both are optional in the RFC but required here: Policy is the only way
+  // from security.txt to /security/#disclosure, and Canonical pins the file
+  // to this site so a copy elsewhere can't pose as ours.
   for (const name of ["Canonical", "Policy"]) {
-    for (const value of field(text, name)) {
-      if (!value.startsWith(`${origin}/`)) {
-        problems.push(
-          `security.txt: ${name} ${value} is not on this build's origin ${origin}`
-        );
-      }
+    const values = field(text, name);
+    if (values.length !== 1) {
+      problems.push(
+        `security.txt: needs exactly one ${name}, found ${values.length}`
+      );
+    } else if (!values[0].startsWith(`${origin}/`)) {
+      problems.push(
+        `security.txt: ${name} ${values[0]} is not on this build's origin ${origin}`
+      );
     }
   }
 

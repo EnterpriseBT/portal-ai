@@ -52,12 +52,17 @@ describe("SECURITY_CONTROLS", () => {
     }
   });
 
-  it.each(SECURITY_CONTROLS.flatMap((c) => c.evidence.map((e) => [c.id, e])))(
-    "%s: evidence %s still exists",
-    (_id, evidence) => {
-      expect(fs.existsSync(path.join(REPO_ROOT, evidence))).toBe(true);
-    }
-  );
+  it.each(
+    SECURITY_CONTROLS.flatMap((c) =>
+      c.evidence.map((e) => [c.id, e.path, e.contains])
+    )
+  )("%s: %s still contains %s", (_id, file, contains) => {
+    // The setting, not just the file: a claim of "14 days" outlives a file
+    // that still exists with `BackupRetentionPeriod=7` in it.
+    const full = path.join(REPO_ROOT, file);
+    expect(fs.existsSync(full)).toBe(true);
+    expect(fs.readFileSync(full, "utf8")).toContain(contains);
+  });
 });
 
 describe("FORBIDDEN_CLAIMS", () => {

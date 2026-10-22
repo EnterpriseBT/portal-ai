@@ -53,6 +53,12 @@ describe("checkSecurityTxt", () => {
     expect(check(text)).toEqual([expect.stringContaining("Expires")]);
   });
 
+  it.each(["Canonical", "Policy"])("fails a missing %s", (name) => {
+    // /security/#disclosure is only reachable from security.txt through Policy.
+    const text = valid().replace(new RegExp(`^${name}:.*\\n`, "m"), "");
+    expect(check(text)).toEqual([expect.stringContaining(name)]);
+  });
+
   it("fails a Canonical or Policy on another origin", () => {
     const text = valid().replace(
       "Canonical: https://portalsai.io",
