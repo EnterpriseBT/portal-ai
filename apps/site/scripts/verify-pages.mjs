@@ -21,12 +21,16 @@
  * - every emitted route present in the sitemap;
  * - the pricing page actually shows a figure or a contact card per tier —
  *   catches a snapshot that parsed but rendered empty;
- * - no fixture stamp when the build had a live config URL.
+ * - no fixture stamp when the build had a live config URL;
+ * - a valid RFC 9116 `/.well-known/security.txt` (#613) — a lapsed or
+ *   contactless one tells researchers nobody is listening.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { checkSecurityTxt } from "./check-security-txt.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -211,6 +215,27 @@ const robots = fs.existsSync(path.join(dist, "robots.txt"))
   : "";
 if (!robots.includes("Sitemap:")) fail("robots.txt has no Sitemap: line");
 
+// ── security.txt (#613) ──────────────────────────────────────────────
+// The origin comes from the home page's canonical, so this checks the file
+// against the same SITE_URL the pages were built with.
+
+const securityTxt = path.join(dist, ".well-known", "security.txt");
+const homeCanonical = pages
+  .find((p) => p.route === "/")
+  ?.html.match(/<link\s+rel="canonical"\s+href="([^"]*)"/)?.[1];
+if (!fs.existsSync(securityTxt)) {
+  fail(".well-known/security.txt was not emitted");
+} else if (!homeCanonical) {
+  fail("security.txt: no home-page canonical to take the origin from");
+} else {
+  for (const problem of checkSecurityTxt(fs.readFileSync(securityTxt, "utf8"), {
+    now: new Date(),
+    origin: new URL(homeCanonical).origin,
+  })) {
+    fail(problem);
+  }
+}
+
 // ── pricing page renders a figure or a contact card per tier ─────────
 
 const pricing = pages.find((p) => p.route === "/pricing/");
@@ -252,5 +277,5 @@ if (failures.length > 0) {
 
 console.log(
   `verify-pages — ${pages.length} pages OK ` +
-    `(unique titles, canonicals, JSON-LD, sitemap, pricing figures)`
+    `(unique titles, canonicals, JSON-LD, sitemap, pricing figures, security.txt)`
 );
