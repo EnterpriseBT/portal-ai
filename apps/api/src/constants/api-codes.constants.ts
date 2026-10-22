@@ -602,6 +602,8 @@ export enum ApiCode {
   CURATED_VIEW_CREATE_FAILED = "CURATED_VIEW_CREATE_FAILED",
   CURATED_VIEW_UPDATE_FAILED = "CURATED_VIEW_UPDATE_FAILED",
   CURATED_VIEW_DELETE_FAILED = "CURATED_VIEW_DELETE_FAILED",
+  /** #645: a curated_view_share tool call failed unexpectedly. */
+  CURATED_VIEW_SHARE_FAILED = "CURATED_VIEW_SHARE_FAILED",
 
   // Portal SQL surface (Phase 3)
   /** The LLM-supplied SQL hit the deny-list or other safety guard. */

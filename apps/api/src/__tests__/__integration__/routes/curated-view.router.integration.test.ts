@@ -52,6 +52,8 @@ const { app } = await import("../../../app.js");
 const { __setFilterSqlSuggesterForTesting, FilterSqlSuggestError } =
   await import("../../../services/curated-view-filter-suggest.haiku.js");
 const { SystemUtilities } = await import("../../../utils/system.util.js");
+const { CuratedViewService } =
+  await import("../../../services/curated-view.service.js");
 
 describe("curated-view.router integration", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -644,8 +646,13 @@ describe("curated-view.router integration", () => {
     expect([...view.fieldMappingIds].sort()).toEqual(
       [emailFmId, ageFmId].sort()
     );
-    // The filter's contents don't survive anywhere in the payload.
-    expect(JSON.stringify(got.body)).not.toContain('"age"');
+    // The filter's contents don't survive anywhere in the payload. (#645:
+    // `age` itself does, as a projected column's key, which every reader of
+    // the view sees per #829, so match the filter's own shape instead.)
+    const body = JSON.stringify(got.body);
+    expect(body).not.toContain('"field":"age"');
+    expect(body).not.toContain('"combinator"');
+    expect(body).not.toContain('"operator"');
 
     const list = await request(app).get(`/api/curated-views`);
     expect(list.status).toBe(200);
@@ -879,6 +886,46 @@ describe("curated-view.router integration", () => {
       .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
       .where(sql`${schema.fieldMappings.id} = ${id}`);
   }
+
+  it("#645: get returns the projection's columns with their keys", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "keyed_projection",
+        label: "Keyed",
+        fieldMappingIds: [ageFmId, emailFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.status).toBe(200);
+    expect(got.body.payload.curatedView.columns).toEqual(
+      expect.arrayContaining([
+        { fieldMappingId: ageFmId, key: "age" },
+        { fieldMappingId: emailFmId, key: "email" },
+      ])
+    );
+    expect(got.body.payload.curatedView.columns).toHaveLength(2);
+  });
+
+  it("#645: a deleted projected mapping's column key is null", async () => {
+    const id = (
+      await createView({
+        connectorEntityId: entityId,
+        key: "keyed_stale",
+        label: "Keyed stale",
+        fieldMappingIds: [emailFmId, ageFmId],
+      })
+    ).body.payload.curatedView.id as string;
+    await softDeleteMapping(ageFmId);
+    const got = await request(app).get(`/api/curated-views/${id}`);
+    expect(got.body.payload.curatedView.columns).toEqual(
+      expect.arrayContaining([
+        { fieldMappingId: emailFmId, key: "email" },
+        { fieldMappingId: ageFmId, key: null },
+      ])
+    );
+    expect(got.body.payload.curatedView.columns).toHaveLength(2);
+  });
 
   it("#736: create rejects an unknown field mapping id (400)", async () => {
     const res = await createView({
@@ -1135,6 +1182,55 @@ describe("curated-view.router integration", () => {
       .patch(`/api/curated-views/${id}`)
       .send({ label: "Renamed", filter: AGE_FILTER });
     expect(rename.status).toBe(200);
+  });
+
+  it("#645: a view writer who can't read its entity can't probe its column names with a filter", async () => {
+    const { id } = await memberOwnedView("member_filter_probe", [emailFmId]);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update connector_entities set created_by = 'someone-else' where id = ${entityId}`
+    );
+    const probe = (field: string) =>
+      request(app)
+        .patch(`/api/curated-views/${id}`)
+        .send({
+          filter: {
+            combinator: "and",
+            conditions: [{ field, operator: "eq", value: "x" }],
+          },
+        });
+    const unknown = await probe("no_such_column");
+    const known = await probe("email");
+    // The same refusal either way: nothing says which column exists.
+    expect(unknown.status).toBe(403);
+    expect(known.status).toBe(403);
+    expect(unknown.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(known.body.code).toBe(ApiCode.PERMISSION_DENIED);
+  });
+
+  it("#645: a view writer who can't read its entity can't probe its column names by key", async () => {
+    const { id } = await memberOwnedView("member_key_probe", [emailFmId]);
+    await (db as ReturnType<typeof drizzle>).execute(
+      sql`update connector_entities set created_by = 'someone-else' where id = ${entityId}`
+    );
+    const memberCtx = {
+      userId: memberId,
+      organizationId: orgId,
+      roles: ["member" as const],
+    };
+    const refusal = async (columnKeys: string[]) => {
+      try {
+        await CuratedViewService.update(memberCtx, id, { columnKeys });
+      } catch (err) {
+        return {
+          status: (err as { status?: number }).status,
+          code: (err as { code?: string }).code,
+        };
+      }
+      throw new Error("expected a refusal");
+    };
+    const forbidden = { status: 403, code: ApiCode.PERMISSION_DENIED };
+    expect(await refusal(["email", "no_such_column"])).toEqual(forbidden);
+    expect(await refusal(["email", "age"])).toEqual(forbidden);
   });
 
   it("#829: a writer can add a column someone else mapped", async () => {

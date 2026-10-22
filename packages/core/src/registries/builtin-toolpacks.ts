@@ -38,6 +38,7 @@ export const BuiltinToolpackSlugSchema = z.enum([
   "web_search",
   "entity_management",
   "rbac_management",
+  "view_management",
   "visualize",
   "gis",
 ]);
@@ -1080,6 +1081,19 @@ const granteeSchema = {
 };
 
 /**
+ * The org's member roster (#629), shared by `rbac_management` and
+ * `view_management` (#645): one definition listed in both packs, so a session
+ * with both gets a single `member_list`. Reading the roster needs only org
+ * membership (`SeatService.listMembers`, #621).
+ */
+const MEMBER_LIST_TOOL: ToolpackToolSpec = {
+  name: "member_list",
+  description:
+    "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing something with them, and to read a member's current role/group set before replacing it.",
+  parameterSchema: objectSchema({}),
+};
+
+/**
  * RBAC management pack (#629) — the agent-facing companion to the RBAC admin UI
  * (`AccessAuthoring` + `ShareDialog`). Mirrors what the UI lets an admin do:
  * policy / role / group CRUD, group membership, member role + group assignment,
@@ -1275,12 +1289,7 @@ const RBAC_MANAGEMENT_PACK: BuiltinToolpackSpec = {
         ["id", "userIds"]
       ),
     },
-    {
-      name: "member_list",
-      description:
-        "Lists the organization's members with each member's userId, email, name, system roles, all role slugs, and group ids. Use this to resolve a person (by email/name) to their userId before assigning roles/groups or sharing with them, and to read a member's current role/group set before replacing it.",
-      parameterSchema: objectSchema({}),
-    },
+    MEMBER_LIST_TOOL,
     {
       name: "member_set_roles",
       description:
@@ -1310,10 +1319,13 @@ const RBAC_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "grant_share",
       description:
-        "Shares a station or pin with an org member (or the whole team) at read or read-write access. read-write never conveys delete. The caller must be able to share the object.",
+        "Shares a station, pin, or curated view with an org member (or the whole team) at read or read-write access. read-write never conveys delete. The caller must be able to share the object.",
       parameterSchema: objectSchema(
         {
-          resourceType: { type: "string", enum: ["station", "pin"] },
+          resourceType: {
+            type: "string",
+            enum: ["station", "pin", "curated_view"],
+          },
           resourceId: stringField("The object to share"),
           grantee: granteeSchema,
           access: { type: "string", enum: ["read", "read-write"] },
@@ -1337,15 +1349,189 @@ const RBAC_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "grant_list",
       description:
-        "Lists who a station or pin is shared with and at what access. Use this to discover grant ids before revoking a share.",
+        "Lists who a station, pin, or curated view is shared with and at what access. Use this to discover grant ids before revoking a share.",
       parameterSchema: objectSchema(
         {
-          resourceType: { type: "string", enum: ["station", "pin"] },
+          resourceType: {
+            type: "string",
+            enum: ["station", "pin", "curated_view"],
+          },
           resourceId: stringField("The shared object's id"),
         },
         ["resourceType", "resourceId"]
       ),
     },
+  ],
+};
+
+/** A structured row filter (a `FilterGroup`) in a tool's JSON schema. */
+const viewFilterField = (description: string) => ({
+  type: ["object", "null"],
+  description,
+  properties: {
+    combinator: { type: "string", enum: ["and", "or"] },
+    conditions: {
+      type: "array",
+      items: { type: "object" },
+      description:
+        "Each { field: <column key>, operator, value }, or a nested group",
+    },
+  },
+});
+
+const curatedViewIdField = stringField(
+  "Id of the curated view, from curated_view_list"
+);
+
+/**
+ * View management pack (#645) — the agent-facing companion to the Views page:
+ * list, read, create, edit, delete and share curated views. Each tool routes
+ * to `CuratedViewService` / `GrantService`, which run the same checks as the
+ * REST routes; a refusal surfaces as `TOOL_PERMISSION_DENIED` (gate catch-403)
+ * or `TOOL_TARGET_NOT_FOUND`. Attaching a view to a station is not a tool:
+ * it's done when creating or editing the station. Hand-authored to match the
+ * `Tool` classes in `apps/api/src/tools/curated-views/*`.
+ */
+const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
+  slug: "view_management",
+  name: "Curated Views",
+  description:
+    "Manage curated views in a session: list and inspect views, find the entities and columns a view can use, create and edit a view's columns and row filter, delete views, and share them. Changes follow the caller's own permissions on each view. Attaching a view to a station is done when creating or editing the station.",
+  iconSlug: "Layers",
+  tools: [
+    {
+      name: "curated_view_list",
+      description:
+        "Lists the curated views the user can read, sorted by label, each with its id, key, label, entity, whether it filters rows or selects columns, and what the user may do to it (capabilities). Use this to find a view's id before reading, editing, deleting or sharing it.",
+      parameterSchema: objectSchema({
+        search: stringField("Match views whose label contains this text"),
+        connectorEntityId: stringField("Only views over this connector entity"),
+        limit: integerField("Page size, 1-100 (default 25)"),
+        offset: integerField("Rows to skip (default 0)"),
+      }),
+      examples: [
+        {
+          title: "Find a view before editing it",
+          input: { search: "NE" },
+          output: {
+            curatedViews: [
+              {
+                id: "cv_123",
+                key: "ne_accounts",
+                label: "NE accounts",
+                entity: { key: "accounts", label: "Accounts" },
+                filtered: true,
+                projected: true,
+                capabilities: {
+                  read: true,
+                  write: true,
+                  delete: true,
+                  share: true,
+                },
+              },
+            ],
+            total: 1,
+            limit: 25,
+            offset: 0,
+          },
+        },
+      ],
+    },
+    {
+      name: "curated_view_get",
+      description:
+        "Reads one curated view: its key, label, description, entity, projected columns (each with its key; none means all columns), its row filter (only when the user can edit the view), what the user may do to it, and, when the user can share it, who it is shared with.",
+      parameterSchema: objectSchema({ curatedViewId: curatedViewIdField }, [
+        "curatedViewId",
+      ]),
+    },
+    {
+      name: "curated_view_entity_list",
+      description:
+        "Lists the connector entities the user can read, sorted by label, each with its id, key, label, connector, and its columns (key, label, type). Use this to find the `connectorEntityId` and column keys for curated_view_create, including entities this station has no view on yet. It lists entities only; to query their data, a view on them must be attached to the station.",
+      parameterSchema: objectSchema({
+        search: stringField(
+          "Match entities whose key or label contains this text"
+        ),
+        limit: integerField("Page size, 1-100 (default 25)"),
+        offset: integerField("Rows to skip (default 0)"),
+      }),
+    },
+    {
+      name: "curated_view_create",
+      description:
+        "Creates a curated view over one connector entity: a unique key, a label, optionally the columns it shows (by column key) and a row filter (a structured filter or an advanced SQL filter, not both). It does not attach the view to any station. The user must be allowed to create views and read the entity.",
+      parameterSchema: objectSchema(
+        {
+          connectorEntityId: stringField(
+            "Id of the connector entity the view reads"
+          ),
+          key: stringField(
+            "Unique key for the view in the organization; it becomes the view's queryable name"
+          ),
+          label: stringField("Display name of the view"),
+          description: stringField("What the view is for"),
+          filter: viewFilterField(
+            "A structured row filter (a FilterGroup over column keys)"
+          ),
+          filterSql: stringField(
+            "An advanced SQL row filter over column keys, instead of `filter`. Needs a plan with advanced view filters"
+          ),
+          columns: stringArrayField(
+            "The column keys the view shows, in order; omit for all columns"
+          ),
+        },
+        ["connectorEntityId", "key", "label"]
+      ),
+    },
+    {
+      name: "curated_view_update",
+      description:
+        "Edits a curated view: its label, description, row filter (structured or SQL; setting one clears the other) or the full set of columns it shows (by column key). The view's key and entity can't change. The user must be allowed to edit the view, and to read its entity to change its columns or filter.",
+      parameterSchema: objectSchema(
+        {
+          curatedViewId: curatedViewIdField,
+          label: stringField("New display name"),
+          description: stringField("New description"),
+          filter: viewFilterField(
+            "A structured row filter; setting it clears any SQL filter, null removes it"
+          ),
+          filterSql: stringField(
+            "An advanced SQL row filter; setting it clears any structured filter, null removes it"
+          ),
+          columns: stringArrayField(
+            "The full set of column keys the view shows, replacing the current set; [] for all columns"
+          ),
+        },
+        ["curatedViewId"]
+      ),
+    },
+    {
+      name: "curated_view_delete",
+      description:
+        "Deletes a curated view. It is detached from every station and its shares are removed; the result counts what was removed. The user must be allowed to delete the view.",
+      parameterSchema: objectSchema({ curatedViewId: curatedViewIdField }, [
+        "curatedViewId",
+      ]),
+    },
+    {
+      name: "curated_view_share",
+      description:
+        "Shares a curated view with one member or the whole team at read or read-write access, replacing any share that grantee already had, or stops sharing it with access \"none\". The user must be allowed to share the view, and can't give access they don't have.",
+      parameterSchema: objectSchema(
+        {
+          curatedViewId: curatedViewIdField,
+          grantee: granteeSchema,
+          access: enumField(
+            ["read", "read-write", "none"],
+            "read, read-write (never conveys delete), or none to stop sharing with the grantee"
+          ),
+        },
+        ["curatedViewId", "grantee", "access"]
+      ),
+    },
+    // Shared with rbac_management, to resolve "share with Jane" to a userId.
+    MEMBER_LIST_TOOL,
   ],
 };
 
@@ -1480,10 +1666,11 @@ const entityWrite = (writes: string[], locks: string[]): ToolCapability => ({
 });
 
 /**
- * RBAC control-plane read (`rbac_management` list tools, #629). It hits the
- * backend (so not `pure`) but touches no entity **data plane** — `writes`/`reads`
- * are the entity-kind vocabulary the lock + tool-authorization machinery keys on,
- * and RBAC config is neither. `resultKind:"scalar"` = the agent consumes the
+ * Control-plane read (`rbac_management` list tools, #629; `view_management`
+ * list/get, #645). It hits the backend (so not `pure`) but touches no entity
+ * **data plane** — `writes`/`reads` are the entity-kind vocabulary the lock +
+ * tool-authorization machinery keys on, and RBAC config and curated views are
+ * neither. `resultKind:"scalar"` = the agent consumes the
  * result (to pick an id), not an auto-surfaced data table. `writes:[]` keeps
  * these tools off the per-object gate — they are authorized by their own service.
  */
@@ -1501,12 +1688,13 @@ const rbacRead = (): ToolCapability => ({
 });
 
 /**
- * RBAC control-plane mutation (`rbac_management` create/update/delete/assign/
- * share/revoke, #629). Like {@link rbacRead} it declares `writes:[]` — the
- * mutation is over the RBAC control plane, not the entity data plane, so it is
- * NOT a `TOOL_AUTHORIZATION` gate target; its own service self-gates (entitlement
- * + `member.role.assign` + statement boundary) and the gate's catch-403 surfaces
- * a denial. `costHint:"free"` — RBAC admin is never metered.
+ * Control-plane mutation (`rbac_management` create/update/delete/assign/
+ * share/revoke, #629; `view_management` create/update/delete/share, #645).
+ * Like {@link rbacRead} it declares `writes:[]` — the mutation is over the
+ * control plane, not the entity data plane, so it is NOT a `TOOL_AUTHORIZATION`
+ * gate target and stays available on read-only stations; its own service
+ * self-gates and the gate's catch-403 surfaces a denial. `costHint:"free"` —
+ * access and view admin is never metered.
  */
 const rbacWrite = (): ToolCapability => ({
   pure: false,
@@ -1732,6 +1920,14 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   grant_share: rbacWrite(),
   grant_revoke: rbacWrite(),
   grant_list: rbacRead(),
+  // view_management (#645) — control-plane over curated views, like RBAC.
+  curated_view_list: rbacRead(),
+  curated_view_entity_list: rbacRead(),
+  curated_view_get: rbacRead(),
+  curated_view_create: rbacWrite(),
+  curated_view_update: rbacWrite(),
+  curated_view_delete: rbacWrite(),
+  curated_view_share: rbacWrite(),
 };
 
 /**
@@ -1881,19 +2077,30 @@ export const TOOL_AUTHORIZATION: Record<string, ToolAuthorization> = {
   },
 };
 
+/** #645: each source spec's attached tool, so a spec listed in several packs
+ *  (`member_list`) comes out as the same object in every one of them. */
+const ATTACHED_TOOLS = new Map<
+  ToolpackToolSpec,
+  BuiltinToolpack["tools"][number]
+>();
+
 /** Attach each tool's declared capability from the matrix; throw on any
  *  tool that lacks one (the completeness guarantee). */
 function attachCapabilities(spec: BuiltinToolpackSpec): BuiltinToolpack {
   return {
     ...spec,
     tools: spec.tools.map((tool) => {
+      const attached = ATTACHED_TOOLS.get(tool);
+      if (attached) return attached;
       const capability = CAPABILITIES[tool.name];
       if (!capability) {
         throw new Error(
           `builtin-toolpacks: no capability declared for tool '${tool.name}'`
         );
       }
-      return { ...tool, capability };
+      const result = { ...tool, capability };
+      ATTACHED_TOOLS.set(tool, result);
+      return result;
     }),
   };
 }
@@ -1910,6 +2117,7 @@ export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
     WEB_SEARCH_PACK,
     ENTITY_MANAGEMENT_PACK,
     RBAC_MANAGEMENT_PACK,
+    VIEW_MANAGEMENT_PACK,
     GIS_PACK,
   ].map(attachCapabilities)
 );

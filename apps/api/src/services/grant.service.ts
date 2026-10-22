@@ -80,6 +80,20 @@ export class GrantService {
     return { createdBy: row.createdBy };
   }
 
+  /** #645: the engine principal a grantee's share is held by, with no
+   *  membership check. `team` = the org's base member role. */
+  static granteePrincipal(
+    organizationId: string,
+    grantee: ShareGrantee
+  ): Pick<ResolvedPrincipal, "principalType" | "principalId"> {
+    return grantee.type === "team"
+      ? {
+          principalType: "role",
+          principalId: `sysrole:${organizationId}:member`,
+        }
+      : { principalType: "user", principalId: grantee.userId };
+  }
+
   /** Grantee → engine principal. `team` = the org's base member role; a user
    *  grantee must be an active member (else `RBAC_GRANTEE_NOT_MEMBER`). */
   private static async resolvePrincipal(
@@ -88,8 +102,7 @@ export class GrantService {
   ): Promise<ResolvedPrincipal> {
     if (grantee.type === "team") {
       return {
-        principalType: "role",
-        principalId: `sysrole:${organizationId}:member`,
+        ...GrantService.granteePrincipal(organizationId, grantee),
         label: "The team",
       };
     }

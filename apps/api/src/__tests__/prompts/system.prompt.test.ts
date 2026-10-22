@@ -298,6 +298,46 @@ describe("buildSystemPrompt — entity management notes", () => {
   });
 });
 
+describe("buildSystemPrompt — curated view notes (#645)", () => {
+  const prompt = () =>
+    buildSystemPrompt(makeContext({ effectiveToolPacks: ["view_management"] }));
+
+  it("says the agent can't attach a view to a station", () => {
+    expect(prompt()).toContain("You cannot attach a view to a station");
+  });
+
+  it("explains both refusal codes and says not to retry", () => {
+    const p = prompt();
+    expect(p).toContain("TOOL_PERMISSION_DENIED");
+    expect(p).toContain("TOOL_TARGET_NOT_FOUND");
+    expect(p).toContain("do not retry");
+  });
+
+  it("resolves a person with member_list and shares with the team for the org", () => {
+    const p = prompt();
+    expect(p).toContain("`member_list`");
+    expect(p).toContain('{ "type": "team" }');
+    expect(p).toContain("ask which one");
+  });
+
+  it("names the list tool for finding ids and one filter mode at a time", () => {
+    const p = prompt();
+    expect(p).toContain("`curated_view_list`");
+    expect(p).toContain("`filter` or a `filterSql`, never both");
+    expect(p).toContain("CURATED_VIEW_FILTER_SQL_NOT_ENTITLED");
+  });
+
+  it("names the entity lookup for creating a view on a new entity", () => {
+    const p = prompt();
+    expect(p).toContain("`curated_view_entity_list`");
+    expect(p).toContain("no view on yet");
+  });
+
+  it("says to finish an edit before querying the view", () => {
+    expect(prompt()).toContain("Finish editing a view before you query it");
+  });
+});
+
 describe("buildSystemPrompt — response style", () => {
   // #277: the display cap made the worked example factually wrong — it
   // taught the agent to say "Showing all 5,402 parcels below.", which claims

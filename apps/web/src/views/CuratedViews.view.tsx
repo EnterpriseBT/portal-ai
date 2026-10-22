@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { CuratedViewListResponsePayload } from "@portalai/core/contracts";
+import { isSessionGenerated } from "@portalai/core/models";
 import {
   Box,
   DetailCard,
@@ -21,6 +22,7 @@ import ShareIcon from "@mui/icons-material/Share";
 import { useNavigate } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
+import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import {
   usePagination,
   PaginationToolbar,
@@ -146,6 +148,13 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
                     label: "Description",
                     value: view.description ?? "",
                     hidden: !view.description,
+                  },
+                  {
+                    // #645: provenance only; the view is still its creator's.
+                    label: "Provenance",
+                    value: <SessionGeneratedChipUI />,
+                    variant: "chip",
+                    hidden: !isSessionGenerated(view),
                   },
                 ]}
               />

@@ -259,6 +259,7 @@ const ALL_PACK_SLUGS = [
   "web_search",
   "entity_management",
   "rbac_management",
+  "view_management",
   "gis",
 ];
 
@@ -902,6 +903,64 @@ describe("buildAnalyticsTools()", () => {
     await expect(
       buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")
     ).rejects.toThrow(/provided by more than one enabled toolpack/);
+  });
+
+  // -----------------------------------------------------------------------
+  // Pack: view_management (#645)
+  // -----------------------------------------------------------------------
+
+  const VIEW_TOOLS = [
+    "curated_view_list",
+    "curated_view_get",
+    "curated_view_entity_list",
+    "curated_view_create",
+    "curated_view_update",
+    "curated_view_delete",
+    "curated_view_share",
+  ];
+
+  it("registers the view_management tools on a read-only station", async () => {
+    // Curated views are control-plane config, not entity data, so a station
+    // whose connectors permit no writes still gets them.
+    setupStationMocks(["view_management"]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: false },
+      },
+    ]);
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+
+    for (const name of VIEW_TOOLS) expect(tools[name]).toBeDefined();
+  });
+
+  it.each([
+    [["view_management"]],
+    [["rbac_management"]],
+    [["rbac_management", "view_management"]],
+  ])("builds member_list once for %j", async (packs) => {
+    setupStationMocks(packs);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.member_list).toBeDefined();
+    expect(Object.keys(tools).filter((n) => n === "member_list")).toHaveLength(
+      1
+    );
+  });
+
+  it("registers no view_management tools when the pack isn't enabled", async () => {
+    setupStationMocks(["data_query"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    for (const name of VIEW_TOOLS) expect(tools[name]).toBeUndefined();
   });
 
   // -----------------------------------------------------------------------

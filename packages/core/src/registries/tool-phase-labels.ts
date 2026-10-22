@@ -108,6 +108,14 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   grant_share: "Sharing access",
   grant_revoke: "Revoking access",
   grant_list: "Listing shares",
+  // view_management (#645)
+  curated_view_list: "Listing views",
+  curated_view_get: "Reading the view",
+  curated_view_entity_list: "Listing entities for views",
+  curated_view_create: "Creating the view",
+  curated_view_update: "Updating the view",
+  curated_view_delete: "Deleting the view",
+  curated_view_share: "Sharing the view",
 };
 
 /** Truncate to the ceiling, marking the cut so it doesn't read as the name. */

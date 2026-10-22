@@ -41,6 +41,29 @@ describe("detectToolpackCollisions", () => {
     expect(result).toEqual([]);
   });
 
+  it("#645: two built-in packs sharing member_list don't collide", () => {
+    expect(
+      detectToolpackCollisions(["rbac_management", "view_management"], [])
+    ).toEqual([]);
+  });
+
+  it("#645: a custom pack's own member_list still collides with the shared one", () => {
+    const customs = [
+      buildCustom({ id: "otp-m", name: "people", toolNames: ["member_list"] }),
+    ];
+    expect(
+      detectToolpackCollisions(
+        ["rbac_management", "view_management", "org:otp-m"],
+        customs
+      )
+    ).toEqual([
+      {
+        toolName: "member_list",
+        ownerLabels: ["Access & Roles", "Curated Views", "people"],
+      },
+    ]);
+  });
+
   // Case 121
   it("flags two custom packs that share a tool name", () => {
     const customs = [

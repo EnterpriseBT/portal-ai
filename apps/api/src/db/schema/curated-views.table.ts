@@ -49,6 +49,8 @@ export const curatedViews = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /** #645: the portal whose agent session created this view; null otherwise. Provenance only, never read by authorization (#641). */
+    sourcePortalId: text("source_portal_id"),
   },
   (table) => [
     // #644: the row filter is a FilterGroup or SQL, never both.

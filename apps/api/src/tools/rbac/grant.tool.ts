@@ -26,7 +26,7 @@ export class GrantShareTool extends Tool<typeof ShareInput> {
   slug = "grant_share";
   name = "grant_share";
   description =
-    "Shares a station or pin with an org member (or the whole team) at read or read-write access. read-write never conveys delete. The caller must be able to share the object.";
+    "Shares a station, pin, or curated view with an org member (or the whole team) at read or read-write access. read-write never conveys delete. The caller must be able to share the object.";
 
   get schema() {
     return ShareInput;
@@ -78,7 +78,7 @@ export class GrantListTool extends Tool<typeof ListInput> {
   slug = "grant_list";
   name = "grant_list";
   description =
-    "Lists who a station or pin is shared with and at what access. Use this to discover grant ids before revoking a share.";
+    "Lists who a station, pin, or curated view is shared with and at what access. Use this to discover grant ids before revoking a share.";
 
   get schema() {
     return ListInput;

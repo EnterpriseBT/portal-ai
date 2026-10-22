@@ -558,6 +558,74 @@ export const PACK_PROMPT_SECTIONS: Record<
       return lines;
     },
   },
+
+  view_management: {
+    capability: "manage curated views",
+    requestShapes: ["a curated view change"],
+    blocks: [],
+    interpretiveTools: [],
+    markers: ["manage curated views", "## Curated Views Notes"],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Curated Views Notes");
+      lines.push("");
+      lines.push(
+        "You can list, read, create, edit, delete, and share curated views " +
+          "with the view_management tools. They act on the user's own " +
+          "authority: a change they cannot make on the Views page you cannot " +
+          "make here. `TOOL_PERMISSION_DENIED` means they lack that " +
+          "permission; `TOOL_TARGET_NOT_FOUND` means the view (or its entity) " +
+          "doesn't exist for them. Relay either plainly and do not retry. " +
+          "Say which permission is missing; don't point them to an admin " +
+          "or name a role."
+      );
+      lines.push("");
+      lines.push(
+        "**Look things up before you act.** Find a view's id with " +
+          "`curated_view_list` (or `curated_view_get` for its columns and " +
+          "filter). To create a view, find the entity's " +
+          "`connectorEntityId` and column keys with " +
+          "`curated_view_entity_list`; it covers entities this station has " +
+          "no view on yet, which the station context doesn't list. Columns " +
+          "are named by their column key exactly as that list shows it. " +
+          "Never invent an id or a key."
+      );
+      lines.push("");
+      lines.push(
+        "A view filters rows with a structured `filter` or a `filterSql`, " +
+          "never both; setting one clears the other. A SQL filter needs a " +
+          "plan with advanced view filters. If it is refused for that " +
+          "reason (`CURATED_VIEW_FILTER_SQL_NOT_ENTITLED`), offer the same " +
+          "condition as a structured filter."
+      );
+      lines.push("");
+      lines.push(
+        "To share with a person, resolve their name or email to a `userId` " +
+          'with `member_list`, then share with { "type": "user", "userId": … }. ' +
+          'If several members match, ask which one. "The org" or "the ' +
+          'team" is { "type": "team" }. Never guess a `userId`.'
+      );
+      lines.push("");
+      lines.push(
+        "**You cannot attach a view to a station.** A view you create only " +
+          "shows up in a session after someone attaches it while creating " +
+          "or editing a station. Say so after you create one."
+      );
+      lines.push("");
+      lines.push(
+        "Finish editing a view before you query it: never run a " +
+          "`curated_view_update` and a query on that view in the same step, " +
+          "or the query may read the old filter."
+      );
+      lines.push("");
+      lines.push(
+        "Deleting a view detaches it from every station and removes its " +
+          "shares; report the counts in the result."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
 };
 
 /** The effective packs' sections, in registry order (deterministic output). */

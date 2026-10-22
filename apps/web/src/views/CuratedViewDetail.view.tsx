@@ -5,6 +5,7 @@ import type {
   CuratedViewRecordsResponsePayload,
   ResolvedColumn,
 } from "@portalai/core/contracts";
+import { isSessionGenerated } from "@portalai/core/models";
 import {
   Box,
   GatedButton,
@@ -22,6 +23,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
+import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import { EntityRecordDataTableUI } from "../components/EntityRecordDataTable.component";
 import { PaginationToolbar } from "../components/PaginationToolbar.component";
 import {
@@ -176,6 +178,13 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
               value: view.projected
                 ? `${view.fieldMappingIds.length} selected`
                 : "All columns",
+            },
+            {
+              // #645: provenance only; the view is still its creator's.
+              label: "Provenance",
+              value: <SessionGeneratedChipUI />,
+              variant: "chip",
+              hidden: !isSessionGenerated(view),
             },
           ]}
         />

@@ -254,7 +254,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Curated View",
     category: GlossaryCategory.Analytics,
     definition:
-      "A named, filtered window onto one entity's records: a chosen set of columns and an optional row filter. Views are attached to stations, and a portal session queries the attached views the user has read access to. A view someone can't read still shows on the station, locked, so it's clear it's there.",
+      "A named, filtered window onto one entity's records: a chosen set of columns and an optional row filter. Views are attached to stations, and a portal session queries the attached views the user has read access to. A view someone can't read still shows on the station, locked, so it's clear it's there. With the Curated Views tool pack, the assistant can create, edit, delete and share views in a session; attaching a view to a station is still done when creating or editing the station.",
     example:
       'An "Active customers" view over the Customers entity, showing only name, region and plan for rows where status is active.',
     relatedTerms: [

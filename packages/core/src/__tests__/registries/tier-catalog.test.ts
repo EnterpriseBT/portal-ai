@@ -54,6 +54,7 @@ describe("TIER_CATALOG (#218)", () => {
         "web_search",
         "entity_management",
         "rbac_management",
+        "view_management",
       ],
       customToolpacks: false,
       // #241: the free default has no card CTA.
@@ -83,6 +84,7 @@ describe("TIER_CATALOG (#218)", () => {
         "web_search",
         "entity_management",
         "rbac_management",
+        "view_management",
       ],
       customToolpacks: false,
       cta: "subscribe",
@@ -146,6 +148,13 @@ describe("TIER_CATALOG (#218)", () => {
   it("every tier entitles data_query (the station-create default)", () => {
     for (const entry of TIER_CATALOG) {
       expect(entry.builtinToolpacks).toContain("data_query");
+    }
+  });
+
+  // #645: view management is gated by RBAC, not by plan.
+  it("every tier entitles view_management", () => {
+    for (const entry of TIER_CATALOG) {
+      expect(entry.builtinToolpacks).toContain("view_management");
     }
   });
 

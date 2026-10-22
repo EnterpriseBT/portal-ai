@@ -1,0 +1,1 @@
+ALTER TABLE "curated_views" ADD COLUMN "source_portal_id" text;

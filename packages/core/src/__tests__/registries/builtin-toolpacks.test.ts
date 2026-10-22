@@ -11,10 +11,25 @@ import {
   deriveToolRole,
 } from "../../models/tool-capability.model.js";
 
+/** Names that more than one distinct tool object is registered under. */
+function distinctSpecsByName(
+  packs: ReadonlyArray<{ tools: ReadonlyArray<{ name: string }> }>
+): string[] {
+  const byName = new Map<string, Set<unknown>>();
+  for (const pack of packs) {
+    for (const tool of pack.tools) {
+      const specs = byName.get(tool.name) ?? new Set();
+      specs.add(tool);
+      byName.set(tool.name, specs);
+    }
+  }
+  return [...byName].filter(([, specs]) => specs.size > 1).map(([n]) => n);
+}
+
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
-  it("registers exactly nine packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(9);
+  it("registers exactly ten packs", () => {
+    expect(BUILTIN_TOOLPACKS.length).toBe(10);
   });
 
   // Case 2
@@ -27,6 +42,7 @@ describe("BUILTIN_TOOLPACKS", () => {
       "web_search",
       "entity_management",
       "rbac_management",
+      "view_management",
       "visualize",
       "gis",
     ];
@@ -62,15 +78,18 @@ describe("BUILTIN_TOOLPACKS", () => {
     }
   });
 
-  // Case 7
-  it("tool names are globally unique across packs", () => {
-    const names: string[] = [];
-    for (const pack of BUILTIN_TOOLPACKS) {
-      for (const tool of pack.tools) {
-        names.push(tool.name);
-      }
-    }
-    expect(new Set(names).size).toBe(names.length);
+  // Case 7 (#645): a tool may belong to several packs, but a name always
+  // means one definition: every pack that lists it holds the same object.
+  it("a tool name used by several packs is one shared definition", () => {
+    expect(distinctSpecsByName(BUILTIN_TOOLPACKS)).toEqual([]);
+  });
+
+  it("the shared-definition check catches two specs under one name", () => {
+    const a = { name: "member_list", description: "one" };
+    const b = { name: "member_list", description: "two" };
+    expect(
+      distinctSpecsByName([{ tools: [a] }, { tools: [b] }, { tools: [a] }])
+    ).toEqual(["member_list"]);
   });
 
   // Case 8
@@ -356,5 +375,46 @@ describe("part tool descriptions (#829)", () => {
     expect(description("connector_entity_update")).not.toContain(
       "connector instance"
     );
+  });
+});
+
+describe("view_management pack (#645)", () => {
+  const pack = BUILTIN_TOOLPACK_BY_SLUG.view_management;
+
+  it("carries the curated-view tools, the entity lookup and the member lookup", () => {
+    expect(pack.tools.map((t) => t.name)).toEqual([
+      "curated_view_list",
+      "curated_view_get",
+      "curated_view_entity_list",
+      "curated_view_create",
+      "curated_view_update",
+      "curated_view_delete",
+      "curated_view_share",
+      "member_list",
+    ]);
+  });
+
+  it("shares member_list with rbac_management as the same definition", () => {
+    const fromViews = pack.tools.find((t) => t.name === "member_list");
+    const fromRbac = BUILTIN_TOOLPACK_BY_SLUG.rbac_management.tools.find(
+      (t) => t.name === "member_list"
+    );
+    expect(fromViews).toBeDefined();
+    expect(fromViews).toBe(fromRbac);
+  });
+
+  it("is control-plane: no entity writes, locks or authorization descriptor", () => {
+    for (const tool of pack.tools) {
+      expect(tool.capability.writes).toEqual([]);
+      expect(tool.capability.locks).toEqual([]);
+      expect(tool.capability.costHint).toBe("free");
+      expect(TOOL_AUTHORIZATION[tool.name]).toBeUndefined();
+    }
+  });
+
+  it("never offers station attachment", () => {
+    for (const tool of pack.tools) {
+      expect(tool.name).not.toMatch(/attach/);
+    }
   });
 });
