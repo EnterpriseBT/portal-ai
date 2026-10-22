@@ -35,12 +35,18 @@ const issuesOf = (error: Error & { cause?: unknown }): object[] => {
 };
 
 describe("the AI SDK and the API share one zod (#846)", () => {
-  it("resolves the same zod module from @ai-sdk/provider-utils as from the API", () => {
-    const fromSdk = createRequire(
-      requireHere.resolve("@ai-sdk/provider-utils")
-    ).resolve("zod");
-    expect(fromSdk).toBe(requireHere.resolve("zod"));
-  });
+  // provider-utils is checked as each SDK entry point loads it, not only the
+  // hoisted copy: a version skew could nest a second provider-utils (with its
+  // own zod) under `ai` or the Anthropic provider.
+  it.each(["ai", "@ai-sdk/anthropic"])(
+    "resolves the same zod module through %s as the API does",
+    (entry) => {
+      const fromEntry = createRequire(requireHere.resolve(entry));
+      const providerUtils = fromEntry.resolve("@ai-sdk/provider-utils");
+      const zodFromSdk = createRequire(providerUtils).resolve("zod");
+      expect(zodFromSdk).toBe(requireHere.resolve("zod"));
+    }
+  );
 
   it("reports a refine refusal as { code, path, message }, with no schema on it", async () => {
     const schema = z
@@ -50,7 +56,10 @@ describe("the AI SDK and the API share one zod (#846)", () => {
       });
     const error = await sdkError(schema, { key: "c_total" });
 
-    for (const issue of issuesOf(error)) {
+    // Guards the loop below: a wrapper that hid the issues would pass it.
+    const issues = issuesOf(error);
+    expect(issues.length).toBeGreaterThan(0);
+    for (const issue of issues) {
       expect(Object.keys(issue)).not.toContain("schema");
     }
     expect(error.message).toContain("key must not start with c_");

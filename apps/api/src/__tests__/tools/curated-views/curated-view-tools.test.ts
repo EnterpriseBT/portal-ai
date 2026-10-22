@@ -460,25 +460,33 @@ describe("view tool input refusals through the AI SDK (#645)", () => {
         filter: FILTER,
         filterSql: "x",
       },
+      "not both",
     ],
     [
       "create, a reserved key",
       CuratedViewCreateTool,
       { connectorEntityId: "e", key: "_meta_x", label: "L" },
+      "Reserved key",
     ],
-    ["update, no change", CuratedViewUpdateTool, { curatedViewId: "v" }],
+    [
+      "update, no change",
+      CuratedViewUpdateTool,
+      { curatedViewId: "v" },
+      "Give at least one field to change",
+    ],
     [
       "update, both filter modes",
       CuratedViewUpdateTool,
       { curatedViewId: "v", filter: FILTER, filterSql: "x" },
+      "not both",
     ],
   ])(
     "%s is refused by the SDK with the refine's reason, not a schema dump",
-    async (_name, ToolClass, input) => {
+    async (_name, ToolClass, input, reason) => {
       const err = await sdkError(new ToolClass().schema, input);
       expect(() => err.message).not.toThrow();
+      expect(err.message).toContain(reason);
       expect(err.message).not.toContain('"schema"');
-      expect(err.message.length).toBeLessThan(400);
     }
   );
 });
