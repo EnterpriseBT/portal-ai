@@ -35,6 +35,20 @@ describe("checkSecurityTxt", () => {
     expect(check(text)).toEqual([expect.stringContaining("Contact")]);
   });
 
+  it.each([
+    ['x"><script>alert(1)</script>@evil.io'],
+    ["security team@portalsai.io"],
+    ["<security@portalsai.io>"],
+  ])("fails a Contact address carrying markup or spaces: %s", (address) => {
+    // Adversarial §2.1: the page escapes it, but security.txt would publish
+    // it verbatim to every scanner that reads the file.
+    const text = valid().replace(
+      /^Contact:.*$/m,
+      () => `Contact: mailto:${address}`
+    );
+    expect(check(text)).toEqual([expect.stringContaining("Contact")]);
+  });
+
   it("fails an Expires in the past", () => {
     const text = valid().replace(
       /^Expires:.*$/m,

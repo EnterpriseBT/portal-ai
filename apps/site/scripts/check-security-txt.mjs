@@ -22,7 +22,12 @@ export function checkSecurityTxt(text, { now, origin }) {
   const problems = [];
 
   const contacts = field(text, "Contact");
-  if (contacts.length !== 1 || !/^mailto:[^@\s]+@[^@\s]+$/.test(contacts[0])) {
+  // One plain address: no whitespace, and no `<`, `>` or `"`, which a page
+  // would escape but this plain-text file would publish verbatim.
+  if (
+    contacts.length !== 1 ||
+    !/^mailto:[^@\s<>"]+@[^@\s<>"]+$/.test(contacts[0])
+  ) {
     problems.push(
       `security.txt: needs exactly one Contact: mailto:<address>, found ${JSON.stringify(contacts)}`
     );
