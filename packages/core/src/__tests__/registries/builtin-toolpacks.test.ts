@@ -13,8 +13,8 @@ import {
 
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
-  it("registers exactly nine packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(9);
+  it("registers exactly ten packs", () => {
+    expect(BUILTIN_TOOLPACKS.length).toBe(10);
   });
 
   // Case 2
@@ -27,6 +27,7 @@ describe("BUILTIN_TOOLPACKS", () => {
       "web_search",
       "entity_management",
       "rbac_management",
+      "view_management",
       "visualize",
       "gis",
     ];
@@ -356,5 +357,35 @@ describe("part tool descriptions (#829)", () => {
     expect(description("connector_entity_update")).not.toContain(
       "connector instance"
     );
+  });
+});
+
+describe("view_management pack (#645)", () => {
+  const pack = BUILTIN_TOOLPACK_BY_SLUG.view_management;
+
+  it("carries the six curated-view tools", () => {
+    expect(pack.tools.map((t) => t.name)).toEqual([
+      "curated_view_list",
+      "curated_view_get",
+      "curated_view_create",
+      "curated_view_update",
+      "curated_view_delete",
+      "curated_view_share",
+    ]);
+  });
+
+  it("is control-plane: no entity writes, locks or authorization descriptor", () => {
+    for (const tool of pack.tools) {
+      expect(tool.capability.writes).toEqual([]);
+      expect(tool.capability.locks).toEqual([]);
+      expect(tool.capability.costHint).toBe("free");
+      expect(TOOL_AUTHORIZATION[tool.name]).toBeUndefined();
+    }
+  });
+
+  it("never offers station attachment", () => {
+    for (const tool of pack.tools) {
+      expect(tool.name).not.toMatch(/attach/);
+    }
   });
 });

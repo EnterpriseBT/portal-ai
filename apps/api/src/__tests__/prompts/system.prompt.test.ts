@@ -298,6 +298,28 @@ describe("buildSystemPrompt — entity management notes", () => {
   });
 });
 
+describe("buildSystemPrompt — curated view notes (#645)", () => {
+  const prompt = () =>
+    buildSystemPrompt(makeContext({ effectiveToolPacks: ["view_management"] }));
+
+  it("says the agent can't attach a view to a station", () => {
+    expect(prompt()).toContain("You cannot attach a view to a station");
+  });
+
+  it("explains both refusal codes and says not to retry", () => {
+    const p = prompt();
+    expect(p).toContain("TOOL_PERMISSION_DENIED");
+    expect(p).toContain("TOOL_TARGET_NOT_FOUND");
+    expect(p).toContain("do not retry");
+  });
+
+  it("names the list tool for finding ids and one filter mode at a time", () => {
+    const p = prompt();
+    expect(p).toContain("`curated_view_list`");
+    expect(p).toContain("`filter` or a `filterSql`, never both");
+  });
+});
+
 describe("buildSystemPrompt — response style", () => {
   // #277: the display cap made the worked example factually wrong — it
   // taught the agent to say "Showing all 5,402 parcels below.", which claims

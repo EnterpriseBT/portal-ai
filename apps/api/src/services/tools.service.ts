@@ -107,6 +107,12 @@ import {
   GrantRevokeTool,
   GrantListTool,
 } from "../tools/rbac/grant.tool.js";
+import { CuratedViewListTool } from "../tools/curated-views/curated-view-list.tool.js";
+import { CuratedViewGetTool } from "../tools/curated-views/curated-view-get.tool.js";
+import { CuratedViewCreateTool } from "../tools/curated-views/curated-view-create.tool.js";
+import { CuratedViewUpdateTool } from "../tools/curated-views/curated-view-update.tool.js";
+import { CuratedViewDeleteTool } from "../tools/curated-views/curated-view-delete.tool.js";
+import { CuratedViewShareTool } from "../tools/curated-views/curated-view-share.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
@@ -261,6 +267,12 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "grant_share",
   "grant_revoke",
   "grant_list",
+  "curated_view_list",
+  "curated_view_get",
+  "curated_view_create",
+  "curated_view_update",
+  "curated_view_delete",
+  "curated_view_share",
 ]);
 
 export class ToolService {
@@ -850,6 +862,36 @@ export class ToolService {
       tools.grant_share = new GrantShareTool().build(permissionContext);
       tools.grant_revoke = new GrantRevokeTool().build(permissionContext);
       tools.grant_list = new GrantListTool().build(permissionContext);
+    }
+
+    // -------------------------------------------------------------------
+    // Pack: view_management (#645)
+    // -------------------------------------------------------------------
+    // The agent-facing companion to the Views page. Each tool routes to
+    // CuratedViewService / GrantService, which run the routes' own checks;
+    // a refusal surfaces as TOOL_PERMISSION_DENIED (the gate's catch-403) or
+    // TOOL_TARGET_NOT_FOUND. Control-plane (`writes:[]`), so the tools stay
+    // on read-only stations. No tool attaches a view to a station.
+    if (enabledPacks.has("view_management")) {
+      tools.curated_view_list = new CuratedViewListTool().build(
+        permissionContext
+      );
+      tools.curated_view_get = new CuratedViewGetTool().build(
+        permissionContext
+      );
+      tools.curated_view_create = new CuratedViewCreateTool().build(
+        permissionContext,
+        portalId ?? null
+      );
+      tools.curated_view_update = new CuratedViewUpdateTool().build(
+        permissionContext
+      );
+      tools.curated_view_delete = new CuratedViewDeleteTool().build(
+        permissionContext
+      );
+      tools.curated_view_share = new CuratedViewShareTool().build(
+        permissionContext
+      );
     }
 
     // -------------------------------------------------------------------

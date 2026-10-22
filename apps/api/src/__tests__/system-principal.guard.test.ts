@@ -84,6 +84,7 @@ export const SESSION_CREATING_TOOLS = [
   "RoleCreateTool",
   "PolicyCreateTool",
   "GroupCreateTool",
+  "CuratedViewCreateTool",
 ] as const;
 
 /** Where authorization is decided; none of it may read provenance. */

@@ -2,7 +2,6 @@ import { ZodError } from "zod";
 
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
-import { targetNotFound } from "../../services/permission-gate.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 
 const logger = createLogger({ module: "curated-view-tools" });
@@ -33,7 +32,12 @@ export async function runViewTool<T>(
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.status === 403) throw err;
-      if (err.status === 404) return targetNotFound(err.message);
+      if (err.status === 404) {
+        // The same result the permission gate's `targetNotFound` gives.
+        return {
+          error: { code: ApiCode.TOOL_TARGET_NOT_FOUND, message: err.message },
+        };
+      }
       if (err.status !== undefined && err.status < 500) {
         return { error: { code: err.code, message: err.message } };
       }
