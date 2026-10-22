@@ -1,7 +1,13 @@
 ---
+import {
+  SUBPROCESSORS,
+  WEBHOOK_NOT_SUBPROCESSOR_NOTE,
+} from "@portalai/core/content";
+
 import Page from "../layouts/Page.astro";
 import { siteUrl, adminEmail } from "../lib/site-context.js";
 import { breadcrumbLd } from "../lib/jsonld.js";
+import { subprocessorLine } from "../lib/subprocessor-line.js";
 
 // Data-controller contact is the admin address (#369), not support.
 
@@ -45,18 +51,8 @@ const SECTIONS: Section[] = [
     heading: "Third parties we share it with",
     blocks: [
       "We rely on a small set of subprocessors to run the Service. Each receives only the data needed for its function:",
-      {
-        list: [
-          "Amazon Web Services (AWS) — cloud hosting and storage, in the United States region where the Service runs.",
-          "Auth0 — identity and authentication (sign-in and account identity).",
-          "Stripe — payment processing and subscription billing for paid plans.",
-          "Google and Microsoft — OAuth-based connectors, used only for the sources you explicitly connect and only within the access you grant.",
-          "Anthropic — the AI model provider behind portal answers; the prompts and context needed to answer your questions are sent to generate a response.",
-          "Tavily — web search, when a portal question uses the web-search tool.",
-          "Mapbox — geocoding, when a portal question uses the geocoding tool.",
-        ],
-      },
-      "In addition, any custom webhook tool you register sends data to the endpoint you host and control; that endpoint is your responsibility, not a Portals AI subprocessor. We may also disclose information where required by law or to protect the rights, safety, and security of Portals AI, our users, and the public.",
+      { list: SUBPROCESSORS.map(subprocessorLine) },
+      `${WEBHOOK_NOT_SUBPROCESSOR_NOTE} We may also disclose information where required by law or to protect the rights, safety, and security of Portals AI, our users, and the public.`,
     ],
   },
   {
