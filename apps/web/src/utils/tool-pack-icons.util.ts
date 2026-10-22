@@ -4,12 +4,12 @@ import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
 import ExtensionOutlined from "@mui/icons-material/ExtensionOutlined";
 import HubOutlined from "@mui/icons-material/HubOutlined";
+import LayersOutlined from "@mui/icons-material/LayersOutlined";
 import MapOutlined from "@mui/icons-material/MapOutlined";
 import PaidOutlined from "@mui/icons-material/PaidOutlined";
 import StorageOutlined from "@mui/icons-material/StorageOutlined";
 import TravelExploreOutlined from "@mui/icons-material/TravelExploreOutlined";
 import TrendingUpOutlined from "@mui/icons-material/TrendingUpOutlined";
-import ViewListOutlined from "@mui/icons-material/ViewListOutlined";
 
 import {
   BUILTIN_TOOLPACK_BY_SLUG,
@@ -48,7 +48,7 @@ const ICONS_BY_SLUG: Record<string, SvgIconComponent> = {
   Hub: HubOutlined,
   Map: MapOutlined,
   AdminPanelSettings: AdminPanelSettingsOutlined,
-  ViewList: ViewListOutlined,
+  Layers: LayersOutlined,
   [CUSTOM_PACK_ICON_SLUG]: ExtensionOutlined,
 };
 

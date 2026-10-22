@@ -1397,7 +1397,7 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   name: "Curated Views",
   description:
     "Manage curated views in a session: list and inspect views, create and edit a view's columns and row filter, delete views, and share them. Changes follow the caller's own permissions on each view. Attaching a view to a station is done when creating or editing the station.",
-  iconSlug: "ViewList",
+  iconSlug: "Layers",
   tools: [
     {
       name: "curated_view_list",

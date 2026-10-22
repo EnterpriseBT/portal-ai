@@ -140,7 +140,7 @@ All of this lands at once, because the slug, prompt section, build block and nam
   - `BUILTIN_TOOLPACKS`;
   - `grant_*` mirror descriptions "station, pin, or curated view".
 - Edit: `tool-phase-labels.ts` (six labels) and `tier-catalog.ts` (standard + plus).
-- Edit: `apps/web/src/utils/tool-pack-icons.util.ts` (`ViewList`).
+- Edit: `apps/web/src/utils/tool-pack-icons.util.ts` (`Layers`).
 - Edit: `apps/api/src/services/tools.service.ts`. Add the `view_management` block after rbac `:818` and the six names in `BUILTIN_TOOL_NAMES`.
 - Edit: `apps/api/src/tools/rbac/grant.tool.ts` descriptions.
 - Edit: `apps/api/src/prompts/system.prompt.ts`. Add the `view_management` section with spec items 1–5.

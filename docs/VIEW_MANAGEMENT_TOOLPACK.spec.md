@@ -121,7 +121,7 @@ Each tool extends `Tool` (`types/tools.ts:3`), and `build(ctx: PermissionContext
 
 - `builtin-toolpacks.ts`:
   - `BuiltinToolpackSlugSchema` (`:33`) adds `"view_management"`.
-  - New `VIEW_MANAGEMENT_PACK`: `name: "Curated Views"`, `iconSlug: "ViewList"`, description *"Manage curated views in a session: list and inspect views, create and edit a view's columns and row filter, delete views, and share them. Changes follow the caller's own permissions on each view. Attaching a view to a station is done when creating or editing the station."* It holds six tool mirrors with `parameterSchema` and at least one example on the first tool.
+  - New `VIEW_MANAGEMENT_PACK`: `name: "Curated Views"`, `iconSlug: "Layers"` (the Views nav item's icon), description *"Manage curated views in a session: list and inspect views, create and edit a view's columns and row filter, delete views, and share them. Changes follow the caller's own permissions on each view. Attaching a view to a station is done when creating or editing the station."* It holds six tool mirrors with `parameterSchema` and at least one example on the first tool.
   - It goes into `BUILTIN_TOOLPACKS` (`:1902`).
   - `CAPABILITIES` gets: list/get → `rbacRead()`; create/update/delete/share → `rbacWrite()`. Both helpers' JSDoc is generalized to "control-plane (RBAC, curated views)".
 - `tool-phase-labels.ts`:
@@ -132,7 +132,7 @@ Each tool extends `Tool` (`types/tools.ts:3`), and `build(ctx: PermissionContext
   - `curated_view_delete` "Deleting the view"
   - `curated_view_share` "Sharing the view"
 - `tier-catalog.ts`: `"view_management"` added to `standard` (`:131`) and `plus` (`:166`) `builtinToolpacks`.
-- `apps/web/src/utils/tool-pack-icons.util.ts`: `ViewList: ViewListOutlined`.
+- `apps/web/src/utils/tool-pack-icons.util.ts`: `Layers: LayersOutlined`.
 
 ### Model + table
 
@@ -212,7 +212,7 @@ Run per package: `npm run test:unit -- --testPathPattern <file>` and `npm run te
 
 - `__tests__/CuratedViewsView.test.tsx` and `__tests__/CuratedViewDetailView.test.tsx`: chip renders for `sourcePortalId` set, absent otherwise. ≈4
 - `__tests__/toolpack-collisions.util.test.ts`: `rbac_management` + `view_management` → no collision; a custom pack defining `member_list` alongside either → collision naming both labels. ≈2
-- The `ViewList` icon mapping has no test file today; it's covered by type-check (the slug is a plain string key), so none is added.
+- The `Layers` icon mapping has no test file today; it's covered by type-check (the slug is a plain string key), so none is added.
 
 **Totals ≈ 58 new cases**, plus the unchanged router suite as the refactor's regression net.
 
