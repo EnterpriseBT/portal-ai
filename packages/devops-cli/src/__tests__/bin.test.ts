@@ -278,6 +278,7 @@ describe("cache and service commands are wired (#852)", () => {
       ["cache", "status"],
       ["cache", "switch", "encrypted", "--yes"],
       ["service", "scale", "0", "--yes"],
+      ["cache", "refresh-template", "--dry-run"],
     ]) {
       expect(await runCli([...args, "--env", "local"])).toBe(3);
     }

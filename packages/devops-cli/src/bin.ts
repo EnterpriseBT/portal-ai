@@ -63,6 +63,7 @@ import {
 import { jobsRedispatch, jobsStatus } from "./commands/jobs.js";
 import {
   cachePhase,
+  cacheRefreshTemplate,
   cacheStatus,
   cacheSwitch,
   type CutoverPhase,
@@ -362,6 +363,20 @@ export function buildProgram(): Command {
   ).action(async (to: EndpointSource, o: GlobalOpts) =>
     execute(o, (def) => cacheSwitch(def, to, flags(o)))
   );
+
+  common(
+    cache
+      .command("refresh-template")
+      .description(
+        "apply main's cache.yml with parameters unchanged, previewed; for a template the deploy skipped (no resource changes)"
+      )
+  )
+    .option("--dry-run", "preview the change set; apply nothing")
+    .action(async (o: GlobalOpts & { dryRun?: boolean }) =>
+      execute(o, (def) =>
+        cacheRefreshTemplate(def, { ...flags(o), dryRun: o.dryRun })
+      )
+    );
 
   const service = program.command("service").description("the API ECS service");
 

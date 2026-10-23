@@ -27,7 +27,7 @@ portalops cache phase both --env app-dev --yes
 portalops cache status --env app-dev --json
 ```
 
-`phase both` creates `portalai-<env>-tls` and waits for the stack (10–20 minutes). Continue when `cache status` shows it `available` with `atRestEncryption: true`, `transitEncryption: true`, `transitEncryptionMode: "required"`. The API still uses the legacy cache, so nothing user-visible has changed. This step is also the first real test of the template against AWS: if the stack update fails, it rolls back on its own and the environment is untouched.
+`phase both` creates `portalai-<env>-tls` and waits for the stack (10–20 minutes). If it exits 9 saying the deployed template has no `RedisCutoverPhase`, the deploy skipped #852's cache template, which changes no resource at its `legacy` default (#861). From a clean, up-to-date `main` checkout, run `portalops cache refresh-template --env <env> --dry-run`. Expect no resource changes. Then run it with `--yes` (plus `--confirm-prod` on prod), and retry `phase both`. Continue when `cache status` shows it `available` with `atRestEncryption: true`, `transitEncryption: true`, `transitEncryptionMode: "required"`. The API still uses the legacy cache, so nothing user-visible has changed. This step is also the first real test of the template against AWS: if the stack update fails, it rolls back on its own and the environment is untouched.
 
 ## 2. The maintenance window
 
