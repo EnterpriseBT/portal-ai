@@ -16,19 +16,19 @@
 
 **Reproduced locally:** a copy of case 8 with only `Date` faked, set to 100 ms before a minute boundary for the first send and 100 ms after it for the second, fails with `Expected: 429, Received: 200`, the CI failure exactly. The same run shows that faking only `Date` works through the whole supertest → Postgres → Redis path: the first send still returns 200.
 
-## Decision: freeze only `Date`, mid-minute, for case 8
+## Decision: hold `Date.now()` still for case 8 with a spy
 
-- **Freeze `Date` (chosen).** `jest.useFakeTimers({ now, doNotFake: [every timer API] })` makes `Date.now()` constant. Postgres, Redis and supertest keep their real `setTimeout`, `setImmediate` and `nextTick`. Freeze at 30 s into the current minute so both sends share one window, whatever the runner's speed. Restore with `jest.useRealTimers()` in a `finally`, so a failed assertion can't leak a frozen clock into later tests in the file.
-- *Wait until the minute has N seconds left (rejected).* It adds up to N seconds per run, and a slow enough runner still crosses the boundary: it shrinks the flake rather than removing it.
-- *Assert on the day window instead (rejected).* That stops testing case 8's per-minute denial, and the same flake moves to UTC midnight.
-- *An injected clock in the service (rejected).* It adds a production seam for a test-only need. `checkAdmission` already takes `now`, and the route not passing it is correct.
+The gate reads the clock only through `Date.now()` (`checkAdmission`'s default and `incrementFixedWindow`). Case 8 therefore runs `jest.spyOn(Date, "now").mockReturnValue(instant)`, where `instant` is the real time at the start of the test, so both sends share one window whatever the runner's speed.
 
-The assertion stays as strict as it was: the second send must be `429 AGENT_TURN_LIMITED` with `Retry-After` in (0, 60] and nothing written. Frozen at `:30`, `Retry-After` is exactly 30.
+- **Why a spy, not `useFakeTimers` (changed in code review).** The first version faked only `Date` through a hand-copied `doNotFake` list of every timer API. A Jest upgrade that added a new fakeable API would silently fake it inside the real supertest, Postgres and Redis path. The spy touches nothing else: timers and `new Date()` stay real.
+- **Why the real instant, not :30 of the minute.** A fixed :30 could sit up to 30 s *before* the rows seeded in `beforeAll`, so time on the request path would run backwards. The test computes `Retry-After` from `instant` (`ceil((60 000 − instant mod 60 000) / 1000)`) and asserts that exact value, which is stricter than the old (0, 60] range.
+- **Restored in `afterEach` (`jest.restoreAllMocks()`).** A Jest timeout abandons the test body, so a `finally` wouldn't run, and the mocked clock would follow into teardown.
+- *Rejected:* waiting until the minute has N seconds left (it shrinks the flake, it doesn't remove it); asserting on the day window (it stops testing case 8, and the flake moves to midnight); an injected clock in the service (a production seam for a test-only need).
 
 ## Plan: 1 slice
 
-- **Files:** edit `agent-turn-gate.integration.test.ts`: add a date-only fake-timer config, freeze at the current minute + 30 s inside case 8, restore in `finally`, and add a comment naming #849. Assert `Retry-After === 30` (deterministic now) in place of the (0, 60] range.
-- **Tests:** `npm run test:integration --workspace @portalai/api -- --testPathPattern agent-turn-gate` passes. Proof that it no longer depends on the wall clock: temporarily move the freeze to `minute − 100 ms`, the instant that failed in the repro, and confirm it still passes (both sends share the frozen instant); then revert.
+- **Files:** edit `agent-turn-gate.integration.test.ts`: `Date.now` spy at the test's start instant, `Retry-After` asserted exactly, `afterEach` restore, and a comment naming #849.
+- **Tests:** `npm run test:integration --workspace @portalai/api -- --testPathPattern agent-turn-gate` passes. Proof that it no longer depends on the wall clock: temporarily set `instant` to 100 ms before a minute boundary, the instant that failed in the repro, and confirm it still passes with `Retry-After` 1; then revert.
 
 ## Smoke (manual, against your dev stack)
 
