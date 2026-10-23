@@ -90,6 +90,13 @@ jobs:
       - name: Check the integration shard logic
         run: npm run lint:integration-shards
 
+      # No integration test file may exceed the per-file ceiling (#857). A
+      # file can't be split across shards, so the slowest one is a floor on
+      # the check's time; this fails on the durations refresh that first
+      # records one, which is where the split belongs.
+      - name: Check no integration test file is over the duration ceiling
+        run: npm run lint:integration-durations
+
       # Guards the review-chain merge gate against silent drift between the
       # surfaces that describe it (#634): CLAUDE.md's merge-gate section +
       # coverage matrix + PR checklist, the copilot mirror, and the two skills
