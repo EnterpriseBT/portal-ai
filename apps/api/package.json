@@ -29,6 +29,8 @@
     "db:migrate:ci": "node dist/scripts/db-migrate.js",
     "db:upgrade": "dotenv -e .env -- tsx src/scripts/db-upgrade.ts",
     "db:upgrade:ci": "node dist/scripts/db-upgrade.js",
+    "jobs:redispatch": "dotenv -e .env -- tsx src/scripts/jobs-redispatch.ts",
+    "jobs:redispatch:ci": "node dist/scripts/jobs-redispatch.js",
     "db:push": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs push",
     "db:studio": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs studio",
     "db:seed": "dotenv -e .env -- tsx src/db/seed.ts",

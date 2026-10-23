@@ -100,7 +100,7 @@ export const redisTlsEnabled = (): boolean;   // REDIS_URL protocol === "rediss:
 - The result is `{ url: environment.REDIS_URL, maxRetriesPerRequest: null, ...(ca ? { tls: { ca } } : {}) }`.
 - When `REDIS_TLS_CA` is set and the scheme is `redis://`, it **throws** `Error("REDIS_TLS_CA is set but REDIS_URL is not rediss://")`: a CA with no TLS is a misconfiguration, not a preference.
 - `getRedisClient()` does `const { url, ...options } = redisConnection(); new Redis(url, options)`. Its `"connect"` log becomes `logger.info({ tls: redisTlsEnabled(), customCa: !!environment.REDIS_TLS_CA }, "Redis connected")`, never with the URL.
-- `connection: redisConnection()` replaces the inline object at `queues/jobs.queue.ts:27`, `jobs.worker.ts:285`, `maintenance.queue.ts:58`, `maintenance.worker.ts:53` and `__integration__/queues/queue.util.ts:3-7`.
+- `connection: redisConnection()` replaces the inline object at `queues/jobs.queue.ts:27`, `jobs.worker.ts:285`, `maintenance.queue.ts:58`, `maintenance.worker.ts:53`. A guard test keeps `environment.REDIS_URL` to that one reader. The integration helper `__tests__/__integration__/queues/queue.util.ts` builds its own plaintext test connections and stays as is.
 - `environment.ts` gains `REDIS_TLS_CA: process.env.REDIS_TLS_CA || undefined`. `subprocessor-egress-parity.test.ts` classifies it `"aws"` alongside `REDIS_URL` (`:38`).
 
 ### API: dispatch id (`apps/api/src/services/jobs.service.ts:111-119`)
@@ -124,7 +124,7 @@ export class JobRedispatchService {
 ```
 
 1. **Pages** with `DbService.repository.jobs.findRedispatchCandidates(cursor, PAGE_SIZE)` (new, `jobs.repository.ts`). The predicate is `status IN ('pending','active','stalled') AND deleted IS NULL ORDER BY created, id`, keyset on `(created, id)`. It doesn't filter on heartbeat: unlike the sweep, it is run deliberately.
-2. **Present:** the row counts as present only if `queue.getJob(row.id)` returns a job whose `data.jobId === row.id`. Any `getJob` throw aborts the run, unlike the sweep: an unreachable queue means re-dispatch can't do its job.
+2. **Present:** the row counts as present if `queue.getJob` returns a job whose `data.jobId === row.id`, looked up under the row id and, for a row dispatched before this change, under its stored legacy `bullJobId`. The `data.jobId` match is what keeps a reused legacy number on a replacement Redis from counting as present. Any `getJob` throw aborts the run, unlike the sweep: an unreachable queue means re-dispatch can't do its job.
 3. **Absent:** a conditional flip `UPDATE jobs SET bull_job_id = id WHERE id = $1 AND status NOT IN (<TERMINAL_JOB_STATUSES>)`, via a new `jobs.markRedispatched(id)` that returns a boolean.
    - If it returns false, count `skippedTerminal`.
    - If it returns true, `getJobsQueue().add(row.type, { jobId: row.id, type: row.type, ...metadata }, { jobId: row.id, attempts: row.maxAttempts })`.
@@ -135,7 +135,7 @@ export class JobRedispatchService {
 **Entrypoint** `apps/api/src/scripts/jobs-redispatch.ts`:
 
 - It parses `--dry-run`, prints the summary as one JSON line on stdout, and logs it.
-- It exits `0` on success or when the lock is held elsewhere (reported), and `1` on any abort.
+- It exits `0` on success, and `1` on any abort or when another pass holds the lock (fail-closed, like `db-upgrade`: a pass that didn't run isn't a success).
 - Scripts: `"jobs:redispatch": "dotenv -e .env -- tsx src/scripts/jobs-redispatch.ts"` and `"jobs:redispatch:ci": "node dist/scripts/jobs-redispatch.js"`.
 
 ### `portalops` (`packages/devops-cli`)
