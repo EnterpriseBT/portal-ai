@@ -68,7 +68,7 @@ Temporary credentials last **~15 min** — on `ExpiredToken` / `NoCredentials`, 
 | S3 upload bucket | `portalai-dev-uploads` — ⚠️ **not** `portalai-uploads-dev` (a stray bucket; the app uses `-dev-uploads`) |
 | ALB target group | `portalai-dev-api-tg` |
 | RDS instance | `portalai-dev` (Postgres 17) |
-| ElastiCache (Redis) | `portalai-dev.8hcfso.0001.use1.cache.amazonaws.com:6379` |
+| ElastiCache (Redis) | `portalai-dev` (plaintext, `redis://portalai-dev.8hcfso.0001.use1.cache.amazonaws.com:6379`) until the #852 cutover; then `portalai-dev-tls`, encrypted, reached over `rediss://` (`portalops cache status --env app-dev` prints both). See `docs/REDIS_ENCRYPTION_CUTOVER.runbook.md` |
 | CloudFormation stacks | `portalai-dev-{backend,network,database,cache,dns-certs,frontend,bastion}` |
 
 ## Logging operations

@@ -8,7 +8,8 @@
  * workflows never pass either parameter, so these commands are the only
  * thing that moves them. Every change is an UpdateStack on the DEPLOYED
  * template with every other parameter at its previous value: a cutover step
- * never redeploys code. The sequence is in COMMANDS.md → cache.
+ * never redeploys code. The sequence is in
+ * docs/REDIS_ENCRYPTION_CUTOVER.runbook.md.
  */
 
 import {

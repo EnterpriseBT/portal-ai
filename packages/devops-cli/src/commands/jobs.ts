@@ -5,7 +5,8 @@
  * or not Redis does. `redispatch` puts every live non-terminal row whose
  * BullMQ entry is gone back on the queue; it runs inside the API image (the
  * only thing that can reach the private Redis) and routes on the env's shape
- * like `db upgrade`. The cutover sequence is in COMMANDS.md → jobs.
+ * like `db upgrade`. The cutover sequence is in
+ * docs/REDIS_ENCRYPTION_CUTOVER.runbook.md.
  */
 
 import postgres from "postgres";
