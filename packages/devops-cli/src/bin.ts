@@ -9,7 +9,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Command, CommanderError, Option } from "commander";
+import {
+  Argument,
+  Command,
+  CommanderError,
+  InvalidArgumentError,
+  Option,
+} from "commander";
 
 import {
   getEnvironment,
@@ -55,6 +61,14 @@ import {
   type ProvisionStep,
 } from "./commands/local.js";
 import { jobsRedispatch, jobsStatus } from "./commands/jobs.js";
+import {
+  cachePhase,
+  cacheStatus,
+  cacheSwitch,
+  type CutoverPhase,
+  type EndpointSource,
+} from "./commands/cache.js";
+import { serviceScale } from "./commands/service.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -311,6 +325,66 @@ export function buildProgram(): Command {
   ).action(async (o: GlobalOpts) =>
     execute(o, (def) => dbUpgrade(def, flags(o)))
   );
+
+  // ── cache + service (#852) ─────────────────────────────────────────
+  const cache = program
+    .command("cache")
+    .description("the ElastiCache encryption cutover (cache.yml phases)");
+
+  common(
+    cache
+      .command("status")
+      .description(
+        "cutover phase, endpoint source, each cache's encryption, service counts"
+      )
+  ).action(async (o: GlobalOpts) => execute(o, (def) => cacheStatus(def)));
+
+  common(
+    cache
+      .command("phase")
+      .description(
+        "move cache.yml's phase: both creates the encrypted cache; encrypted removes the legacy one (destructive)"
+      )
+      .addArgument(
+        new Argument("<phase>").choices(["legacy", "both", "encrypted"])
+      )
+  ).action(async (phase: CutoverPhase, o: GlobalOpts) =>
+    execute(o, (def) => cachePhase(def, phase, flags(o)))
+  );
+
+  common(
+    cache
+      .command("switch")
+      .description(
+        "point the backend's REDIS_URL at the other cache (phase both, service at 0; holds it at 0)"
+      )
+      .addArgument(new Argument("<to>").choices(["legacy", "encrypted"]))
+  ).action(async (to: EndpointSource, o: GlobalOpts) =>
+    execute(o, (def) => cacheSwitch(def, to, flags(o)))
+  );
+
+  const service = program.command("service").description("the API ECS service");
+
+  common(
+    service
+      .command("scale")
+      .description(
+        "set the API task count through the backend stack; scale to 0 refuses while jobs are active"
+      )
+      .argument("<count>", "task count", (v) => {
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 0) {
+          throw new InvalidArgumentError("count must be a whole number ≥ 0");
+        }
+        return n;
+      })
+  )
+    .option("--allow-active", "scale to 0 even while jobs are active")
+    .action(async (count: number, o: GlobalOpts & { allowActive?: boolean }) =>
+      execute(o, (def) =>
+        serviceScale(def, count, { ...flags(o), allowActive: o.allowActive })
+      )
+    );
 
   // ── jobs (#852) ────────────────────────────────────────────────────
   const jobs = program

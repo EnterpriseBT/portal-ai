@@ -256,3 +256,30 @@ describe("jobs commands are wired (#852)", () => {
     expect(mocks.resolveEnvConnection).not.toHaveBeenCalled();
   });
 });
+
+describe("cache and service commands are wired (#852)", () => {
+  it("cache phase accepts only legacy|both|encrypted (usage → exit 2)", async () => {
+    expect(await runCli(["cache", "phase", "plain", "--env", "app-dev"])).toBe(
+      2
+    );
+  });
+
+  it("service scale takes a whole number (usage → exit 2)", async () => {
+    expect(await runCli(["service", "scale", "-1", "--env", "app-dev"])).toBe(
+      2
+    );
+    expect(await runCli(["service", "scale", "1.5", "--env", "app-dev"])).toBe(
+      2
+    );
+  });
+
+  it("the cutover commands refuse an env with no stacks (exit 3)", async () => {
+    for (const args of [
+      ["cache", "status"],
+      ["cache", "switch", "encrypted", "--yes"],
+      ["service", "scale", "0", "--yes"],
+    ]) {
+      expect(await runCli([...args, "--env", "local"])).toBe(3);
+    }
+  });
+});

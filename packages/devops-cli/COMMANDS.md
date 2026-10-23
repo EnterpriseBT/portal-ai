@@ -15,7 +15,7 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 | 6 | `ENV_DESTRUCTIVE_BLOCKED` — destructive op against production (no override exists) |
 | 7 | `ENV_INFRA_ERROR` — AWS / tunnel / psql / ECS failure (message carries the cause) |
 | 8 | not-found family — `TIER_APPLY_MISSING_PRICES` (a declared tier's Stripe lookup key resolves to no price; `tier apply` fails closed before any DB write) or `TIER_NOT_FOUND` (`tier update`/`tier description` target a slug that doesn't exist). Mirrors admin-cli's 8. |
-| 9 | conflict family — `TIER_ALREADY_EXISTS` (`tier create` targets a slug that already exists). Mirrors admin-cli's 9. |
+| 9 | conflict family — `TIER_ALREADY_EXISTS` (`tier create` targets a slug that already exists); `CACHE_CUTOVER_CONFLICT` (a `cache phase`/`cache switch` step taken out of order, #852). Mirrors admin-cli's 9. |
 
 `--json` errors: `{"error":{"code":"<CODE>","message":"<human text>"}}` on stdout, exit code as above.
 
@@ -23,10 +23,10 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 
 | Class | development | staging | production |
 |---|---|---|---|
-| read | — | — | — |
+| read (`cache status`, …) | — | — | — |
 | connect (`db tunnel`, `db psql`, `jobs status`) | — | — | `--confirm-prod` |
-| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`) | — | `--yes` | `--yes --confirm-prod` |
-| destructive (`db reset`, `db reset-seed`) | — | `--yes` | **refused** (exit 6) |
+| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`, `cache phase legacy\|both`, `cache switch`, `service scale`) | — | `--yes` | `--yes --confirm-prod` |
+| destructive (`db reset`, `db reset-seed`, `cache phase encrypted`) | — | `--yes` | **refused** (exit 6) |
 
 Every mutation/destructive command appends a JSONL audit entry to `~/.portalai/audit.log` (no secret values).
 
@@ -124,6 +124,28 @@ Mutation (not destructive — migrations are expand-only, so `prod` is gated by 
 `--json`: `{ "via": "ecs", "taskArn", "exitCode": 0 }` or `{ "via": "local", "script": "db:upgrade" }`
 
 Every ECS one-off runs the built script with `node` (`node dist/db/seed.js`, `node dist/scripts/db-upgrade.js`, `node dist/scripts/jobs-redispatch.js`), the command each `:ci` package script names. The runtime image has no npm (#573), so `npm run` there fails (#852).
+
+## cache
+
+The ElastiCache encryption cutover (#852). `cache.yml` holds the plaintext cache and the encrypted one side by side behind `RedisCutoverPhase` (`legacy` → `both` → `encrypted`), and `backend.yml`'s `REDIS_URL` follows `RedisEndpointSource` (`legacy` | `encrypted`). The deploy workflows never pass either, so a routine deploy keeps whatever these commands set. Every change is an UpdateStack on the **deployed** template, with every other parameter at its previous value: a step never redeploys code. A step taken out of order exits 9 (`CACHE_CUTOVER_CONFLICT`). Full sequence: [`docs/REDIS_ENCRYPTION_CUTOVER.runbook.md`](../../docs/REDIS_ENCRYPTION_CUTOVER.runbook.md).
+
+### `portalops cache status --env <env> [--json]`
+Read. The phase, the endpoint source, each cache present (`portalai-<env>` legacy, `portalai-<env>-tls` encrypted) with its status and encryption flags, and the API service's desired/running counts. A stack whose template predates #852 reads as `legacy`.
+`--json`: `{ "phase", "endpointSource", "caches": [{ "id", "kind": "cache-cluster|replication-group", "status", "atRestEncryption", "transitEncryption", "transitEncryptionMode" }], "service": { "desired", "running" } }`
+
+### `portalops cache phase <legacy|both|encrypted> --env <env> --yes [--confirm-prod] [--json]`
+`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`.
+`--json`: `{ "stack", "phase", "changed" }`
+
+### `portalops cache switch <legacy|encrypted> --env <env> --yes [--confirm-prod] [--json]`
+Mutation. Points the backend's `REDIS_URL` at the other cache (`rediss://` for `encrypted`). Requires phase `both` and the service at zero desired and running tasks (else exit 9), and holds `DesiredCount` at 0, so the tasks start against the new cache only after `jobs redispatch`. `legacy` is the rollback, until the legacy cache is retired.
+`--json`: `{ "stack", "endpointSource", "changed" }`
+
+## service
+
+### `portalops service scale <count> --env <env> --yes [--confirm-prod] [--allow-active] [--json]`
+Mutation. Sets the API service's task count through the backend stack's `DesiredCount` (never ECS UpdateService, so the stack stays the record), then waits for the service to stabilize. The workers run in the API process, so 0 stops both enqueuing and processing. Scaling to 0 refuses (exit 5) while any job is `active` unless `--allow-active`; those jobs would re-run through `jobs redispatch`.
+`--json`: `{ "service", "desired" }`
 
 ## jobs
 

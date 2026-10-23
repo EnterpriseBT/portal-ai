@@ -234,7 +234,7 @@ These are the operator levers for the phases and the maintenance window. They go
 1. **Tests (spec → `cache.test.ts` ≈9, `service.test.ts` ≈4, `bin.test.ts` ≈1; mocked SDK clients like `ecs.test.ts`).**
    - status assembles both groups' encryption flags;
    - phase sends `UsePreviousTemplate` with only the phase changed;
-   - two phase-precondition refusals (exit 2);
+   - two phase-precondition refusals (exit 9, `CACHE_CUTOVER_CONFLICT`);
    - `encrypted` is destructive: app-dev needs `--yes`, and prod is refused with exit 6;
    - switch refuses with a non-zero service, refuses outside phase `both`, and sends `DesiredCount=0` and the source;
    - local gives exit 3;

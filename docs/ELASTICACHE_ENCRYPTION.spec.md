@@ -145,8 +145,8 @@ Every command follows `common(...)` + `execute(...)` (`src/bin.ts:72-103`), writ
 | Command | Class | Behavior |
 |---|---|---|
 | `cache status --env` | read | Reads the cache stack's `RedisCutoverPhase` and the backend's `RedisEndpointSource` (DescribeStacks). For `portalai-<env>` and `portalai-<env>-tls` (DescribeReplicationGroups / DescribeCacheClusters) it reports `status`, `atRestEncryption`, `transitEncryption` and `transitEncryptionMode`. It also reports service `desired`/`running` (DescribeServices). |
-| `cache phase <legacy\|both\|encrypted> --env` | `both`, `legacy`: mutation. `encrypted`: **destructive** (removes the legacy cluster) | UpdateStack on `portalai-<env>-cache` with `UsePreviousTemplate`, every parameter `UsePreviousValue` except the phase, then waits for `UPDATE_COMPLETE`. Preconditions (exit `2`): `encrypted` requires backend source `encrypted`; `legacy` requires backend source `legacy`. |
-| `cache switch <legacy\|encrypted> --env` | mutation | Preconditions (exit `2`): phase `both`, service `desired == 0 && running == 0`. Then UpdateStack on the backend with `UsePreviousTemplate`, `RedisEndpointSource=<to>`, `DesiredCount=0`, the rest `UsePreviousValue`, and `CAPABILITY_NAMED_IAM`; waits. |
+| `cache phase <legacy\|both\|encrypted> --env` | `both`, `legacy`: mutation. `encrypted`: **destructive** (removes the legacy cluster) | UpdateStack on `portalai-<env>-cache` with `UsePreviousTemplate`, every parameter `UsePreviousValue` except the phase, then waits for `UPDATE_COMPLETE`. Preconditions (exit `9`, `CACHE_CUTOVER_CONFLICT`, the conflict family): `encrypted` requires backend source `encrypted`; `legacy` requires backend source `legacy`. |
+| `cache switch <legacy\|encrypted> --env` | mutation | Preconditions (exit `9`, `CACHE_CUTOVER_CONFLICT`, the conflict family): phase `both`, service `desired == 0 && running == 0`. Then UpdateStack on the backend with `UsePreviousTemplate`, `RedisEndpointSource=<to>`, `DesiredCount=0`, the rest `UsePreviousValue`, and `CAPABILITY_NAMED_IAM`; waits. |
 | `service scale <count> --env [--allow-active]` | mutation | Backend UpdateStack with `DesiredCount=<count>` (through CloudFormation, never `UpdateService`, so the stack stays the source of truth), then waits for `services-stable`. When `count == 0`, it first counts `active` job rows over the DB connection and refuses with exit `5` naming them, unless `--allow-active`. |
 | `jobs status --env` | connect | Non-terminal `jobs` counts by status and type over `resolveEnvConnection` (the tunnel). |
 | `jobs redispatch --env [--dry-run]` | mutation | Deployed env: an ECS one-off running `node dist/scripts/jobs-redispatch.js [--dry-run]`. Local: `runApiScript(def, "jobs:redispatch")`. Returns `{ via, taskArn? }`, and the summary is in the task's CloudWatch log. |
@@ -257,7 +257,7 @@ Run with `npm run test:unit` / `npm run test:integration` from each package, plu
   - switch refuses with a non-zero service, refuses outside phase `both`, and sends `DesiredCount=0` and the source;
   - local → exit 3.
   - ≈ 9 cases.
-- `service.test.ts`: scale goes through UpdateStack; scale 0 with active rows → exit 5, unless `--allow-active`; prod needs `--confirm-prod`. ≈ 4 cases.
+- `service` cases (in `cache.test.ts`, which holds the shared fake AWS): scale goes through UpdateStack; scale 0 with active rows → exit 5, unless `--allow-active`; prod needs `--confirm-prod`. ≈ 4 cases.
 - `jobs.test.ts`: status counts; redispatch routes to ECS with `node dist/scripts/jobs-redispatch.js`, routes to local `runApiScript`, passes `--dry-run`, and writes the audit line. ≈ 5 cases.
 - `ecs.test.ts`: the seed/upgrade commands are `node dist/...`. ≈ 2 cases (updated).
 - `bin.test.ts`: the new commands are registered with the common flags. ≈ 1 case.
