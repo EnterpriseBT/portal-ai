@@ -40,6 +40,7 @@ This spec pins the contract for running `apps/api`'s integration suite as N dura
      - a malformed durations file fails;
      - the setup action uses npm's download cache only on a miss, and saves the clean tree right after `npm ci`;
      - the refresh uses only merged PR heads' runs, with `pipefail`.
+   - **Durations are each file's median over the last 5 runs** (`SAMPLE_RUNS`, via `mergeRuns`), not one run's time. A single-run sample left one shard ~60% slower on every run: heavy files measured 21–46s across runs of one commit, and light ones spiked to 20s+. Turbo-cached repeats are deduplicated, and the refresh workflow samples up to 5 merged-head runs.
    - **The refresh opens an issue, not a PR.** A `GITHUB_TOKEN` PR needs the repo setting "Allow GitHub Actions to create and approve pull requests" (off here), which would also let workflows approve PRs. So the `workflow_dispatch` triggers added for the PR's checks are removed again, and the job needs only `issues: write`. Its dispatch is proven after merge, since GitHub only dispatches default-branch workflows.
 
 ## Scope

@@ -32,11 +32,14 @@ CI runs this suite as N shards, each on its own runner with its own Postgres + R
 - **Refreshing durations.** A weekly workflow opens or updates a drift issue, carrying the exact command, when they drift. To refresh by hand from a CI run:
 
   ```bash
-  gh run download <run-id> -p 'integration-jest-*' -D /tmp/reports
+  # one directory per run; each file's duration becomes its median across them
+  for id in <run-id> <run-id> <run-id>; do
+    gh run download "$id" -p 'integration-jest-*' -D "/tmp/reports/$id"
+  done
   node scripts/integration-shards.mjs update-durations --reports /tmp/reports
   ```
 
-  Then commit `durations.json`. Use CI times, not a local run: CI runs about 1.75× slower, and the planner budgets CI seconds.
+  Then commit `durations.json`. Sample several runs (`node scripts/integration-shards.mjs sample-runs` says how many the weekly job uses): one run is a noisy sample, and the median is what keeps shards even. Use CI times, not a local run: CI runs about 1.75× slower, and the planner budgets CI seconds.
 
 ## How It Works
 

@@ -53,7 +53,7 @@ The integration suite runs as **N shards behind one required check**, at about 3
   - a failed suite;
   - any integration test file (by Jest's own `__tests__/__integration__/` rule) that ran in no shard or in more than one. This is checked by name, since counts could cancel out.
 - **N is planned, not fixed.** N = ⌈Σ `durations.json` ÷ 150s⌉, clamped to 2–10 (150s leaves room for runner variance of up to ~30%). The cap is sized to the free plan's 20 concurrent jobs.
-- **Durations.** `apps/api/src/__tests__/__integration__/durations.json` drives both N and the split. The split is `jest.integration.sequencer.mjs`, longest-first bin packing used only when `--shard` is passed.
+- **Durations.** `apps/api/src/__tests__/__integration__/durations.json` drives both N and the split. Each file's entry is its **median over the last 5 runs** (`SAMPLE_RUNS`), not one run's time: a heavy file measured 21–46s across runs of one commit, and a single-run sample left one shard ~60% slower than the rest. Turbo-cached repeats count once, and a new file uses the samples it has. The split is `jest.integration.sequencer.mjs`, longest-first bin packing used only when `--shard` is passed.
 - **The shard reaches Jest and turbo** as `INTEGRATION_SHARD=i/N`.
   - `apps/api`'s `test:integration` appends `--shard` plus a JSON report only when it's set, so a local run is unchanged.
   - `turbo.json` hashes it, and caches the report as an output.
@@ -62,7 +62,7 @@ The integration suite runs as **N shards behind one required check**, at about 3
   - `npm run lint:integration-shards`: self-test of `scripts/integration-shards.mjs`, above all that every file lands in exactly one shard.
   - `npm run lint:integration-durations`: no file may exceed **120s**, and a missing or malformed `durations.json` fails rather than quietly reading as empty. A file can't be split across shards, so it sets the floor; split it by concern (as demo-seed was), or allowlist it with a reason in `scripts/integration-shards.lib.mjs`.
   - `lint:ci-cache` rules 3 and 6 (below).
-- **Freshness.** `refresh-integration-durations.yml` runs weekly. It takes the shard reports of the newest green run on a **merged PR's head** (the tree that became `main`; squash merges keep branch commits off `main`). It **opens or updates one issue** when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. The issue carries the result and the command that applies it, and a person lands that in a normal PR.
+- **Freshness.** `refresh-integration-durations.yml` runs weekly. It takes the shard reports of the newest green runs on **merged PRs' heads** (the trees that became `main`; squash merges keep branch commits off `main`), up to 5, and recomputes the medians. It **opens or updates one issue** when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. The issue carries the result and the command that applies it, and a person lands that in a normal PR.
   - Per-file times swing between identical runs, because the first suite on each runner pays the module compile, so smaller moves don't count.
   - It's an issue rather than a PR because a `GITHUB_TOKEN` PR needs "Allow GitHub Actions to create and approve pull requests", which would also let any workflow approve PRs. The job needs only `issues: write` and pushes nothing.
 - **Warnings, not failures.** The summary warns when a shard runs >25% over budget (refresh durations) or when the planner hit the cap.

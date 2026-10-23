@@ -71,31 +71,76 @@ const toApiRelative = (absolute) => {
 
 const round1 = (seconds) => Math.round(seconds * 10) / 10;
 
-/**
- * Durations from Jest JSON reports, keyed by path relative to apps/api.
- * A file's time is its suite's `endTime − startTime`. A file reported more
- * than once keeps its longest time, and files the checkout no longer has are
- * dropped, so a report from a branch with extra tests can't add them.
- * @param {Array<{testResults?: Array<{name: string, startTime: number, endTime: number}>}>} reports
- * @param {string[]} existingFiles paths relative to apps/api
- * @returns {Record<string, number>} keys sorted
- */
-export function mergeReports(reports, existingFiles) {
-  const existing = new Set(existingFiles);
+/** How many recent runs a refresh samples. Per-file times are noisy run to
+ *  run (a heavy file measured 21–46s across runs of one commit), so each
+ *  file's duration is its median over this many runs. */
+export const SAMPLE_RUNS = 5;
+
+/** One run's seconds per file: suite `endTime − startTime`, the longest if a
+ *  file appears twice, files outside `existing` dropped. */
+function runSeconds(reports, existing) {
   const seconds = {};
   for (const report of reports) {
     for (const result of report.testResults ?? []) {
       const file = toApiRelative(result.name ?? "");
       if (!file || !existing.has(file)) continue;
-      const elapsed = round1((result.endTime - result.startTime) / 1000);
+      const elapsed = (result.endTime - result.startTime) / 1000;
       if (!(file in seconds) || elapsed > seconds[file]) seconds[file] = elapsed;
     }
   }
+  return seconds;
+}
+
+/** A run's identity, from its suites' start times: a turbo-cached re-run
+ *  restores the original run's reports verbatim, so it matches exactly. */
+const runFingerprint = (reports) =>
+  reports
+    .flatMap((r) => (r.testResults ?? []).map((t) => `${t.name}@${t.startTime}`))
+    .sort()
+    .join("|");
+
+const medianOf = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+/**
+ * Durations from several runs' Jest JSON reports, keyed by path relative to
+ * apps/api: each file's MEDIAN across the runs that ran it. One run is a
+ * noisy sample (a file's time moves with its runner, its neighbours, and
+ * whether it ran first and paid the module compile), and the median keeps a
+ * single slow or fast run from skewing the split. A new file uses the
+ * samples it has. A run repeated verbatim (a turbo-cached re-run) counts once,
+ * and files the checkout no longer has are dropped, so a report from a
+ * branch with extra tests can't add them.
+ * @param {Array<Array<{testResults?: Array<{name: string, startTime: number, endTime: number}>}>>} runs
+ *   one array of shard reports per run
+ * @param {string[]} existingFiles paths relative to apps/api
+ * @returns {Record<string, number>} keys sorted, seconds to 0.1
+ */
+export function mergeRuns(runs, existingFiles) {
+  const existing = new Set(existingFiles);
+  const seen = new Set();
+  const samples = {};
+  for (const reports of runs) {
+    const fingerprint = runFingerprint(reports);
+    if (seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    for (const [file, s] of Object.entries(runSeconds(reports, existing))) {
+      (samples[file] ??= []).push(s);
+    }
+  }
   return Object.fromEntries(
-    Object.keys(seconds)
+    Object.keys(samples)
       .sort()
-      .map((f) => [f, seconds[f]])
+      .map((f) => [f, round1(medianOf(samples[f]))])
   );
+}
+
+/** A single run's durations: `mergeRuns` over one run. */
+export function mergeReports(reports, existingFiles) {
+  return mergeRuns([reports], existingFiles);
 }
 
 /**

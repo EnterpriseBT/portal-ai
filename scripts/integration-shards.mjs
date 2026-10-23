@@ -24,7 +24,10 @@
  *                                       SHARD_RESULT, PLANNED_COUNT, CAPPED)
  *   check-durations                     fail on a file over the ceiling (lint:integration-durations)
  *   update-durations --reports <dir> [--if-changed]
- *                                       rewrite durations.json from Jest JSON reports
+ *                                       rewrite durations.json from Jest JSON reports: each file's
+ *                                       median over the runs in <dir> (one subdirectory per run,
+ *                                       or the shard artifacts of a single run directly)
+ *   sample-runs                         how many recent runs a refresh samples (SAMPLE_RUNS)
  */
 
 import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -44,6 +47,8 @@ import {
   ceilingViolations,
   durationsChanged,
   mergeReports,
+  mergeRuns,
+  SAMPLE_RUNS,
   isIntegrationTestPath,
   parseDurations,
   planShards,
@@ -148,6 +153,45 @@ const CASES = [
       return JSON.stringify(out) === JSON.stringify({ "src/a.integration.test.ts": 3 });
     },
   },
+  ...(() => {
+    /** One run's reports: a single shard report holding `files` → seconds,
+     *  starting at `t0` (runs are told apart by their start times). */
+    const run = (files, t0 = 0) => [
+      {
+        testResults: Object.entries(files).map(([f, seconds], i) => ({
+          name: `/x/apps/api/${f}`,
+          startTime: t0 + i,
+          endTime: t0 + i + seconds * 1000,
+        })),
+      },
+    ];
+    const A = "src/__tests__/__integration__/a.integration.test.ts";
+    const B = "src/__tests__/__integration__/b.integration.test.ts";
+    const N = "src/__tests__/__integration__/new.integration.test.ts";
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return [
+      {
+        name: "mergeRuns: each file's median across runs, so one noisy run doesn't skew it",
+        run: () =>
+          same(
+            mergeRuns([run({ [A]: 20, [B]: 1 }, 0), run({ [A]: 46, [B]: 23 }, 1e6), run({ [A]: 22, [B]: 1.2 }, 2e6)], [A, B]),
+            { [A]: 22, [B]: 1.2 }
+          ),
+      },
+      {
+        name: "mergeRuns: a file only some runs have uses the samples it has",
+        run: () =>
+          same(mergeRuns([run({ [A]: 10 }, 0), run({ [A]: 12, [N]: 7 }, 1e6)], [A, N]), { [A]: 11, [N]: 7 }),
+      },
+      {
+        name: "mergeRuns: a run repeated verbatim (a turbo-cached re-run) counts once",
+        run: () => {
+          const cached = run({ [A]: 40 }, 5);
+          return same(mergeRuns([cached, cached, run({ [A]: 10 }, 1e6)], [A]), { [A]: 25 });
+        },
+      },
+    ];
+  })(),
   {
     name: "durationsChanged: a file added or removed is a change",
     run: () => durationsChanged({ a: 10 }, { a: 10, b: 1 }) && durationsChanged({ a: 10, b: 1 }, { a: 10 }),
@@ -420,8 +464,16 @@ function updateDurations() {
     console.error("update-durations needs --reports <dir>");
     return false;
   }
-  const reports = jsonFilesUnder(dir).map((f) => readJson(f, {}));
-  const next = mergeReports(reports, integrationFiles());
+  // `<dir>/integration-jest-*/` is one run's shard artifacts; otherwise each
+  // subdirectory of <dir> is a run (as the refresh workflow lays them out).
+  const entries = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }) : [];
+  const singleRun = entries.some((e) => e.name.startsWith("integration-jest-"));
+  const runDirs = singleRun
+    ? [dir]
+    : entries.filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name));
+  const runs = runDirs.map((d) => jsonFilesUnder(d).map((f) => readJson(f, {})));
+  console.log(`sampling ${runs.length} run(s)`);
+  const next = mergeRuns(runs, integrationFiles());
   if (Object.keys(next).length === 0) {
     console.error(`no integration test results found under ${dir}`);
     return false;
@@ -501,6 +553,10 @@ function summarize() {
 }
 
 const COMMANDS = {
+  "sample-runs": () => {
+    console.log(SAMPLE_RUNS);
+    return true;
+  },
   "--self-test": selfTest,
   plan,
   summarize,
