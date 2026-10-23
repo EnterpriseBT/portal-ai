@@ -85,3 +85,28 @@ export function ceilingViolations(durations, allowlist = CEILING_ALLOWLIST) {
     .filter(([file, s]) => s > FILE_CEILING_SECONDS && !allowed.has(file))
     .map(([file, seconds]) => ({ file, seconds }));
 }
+
+/**
+ * How many shards to run: enough that each gets about `BUDGET_SECONDS` of
+ * recorded Jest time, clamped to `[MIN_SHARDS, MAX_SHARDS]`. `capped` means
+ * the suite has outgrown the cap: shards now run over budget, and the
+ * per-worker-database follow-up is due.
+ * @param {Record<string, number>} durations
+ * @returns {{count: number, matrix: {index: number[]}, totalSeconds: number, capped: boolean}}
+ */
+export function planShards(durations) {
+  const totalSeconds = round1(
+    Object.values(durations).reduce((n, s) => n + (Number.isFinite(s) ? s : 0), 0)
+  );
+  const wanted = Math.ceil(totalSeconds / BUDGET_SECONDS);
+  const count =
+    totalSeconds === 0
+      ? FALLBACK_SHARDS
+      : Math.min(MAX_SHARDS, Math.max(MIN_SHARDS, wanted));
+  return {
+    count,
+    matrix: { index: Array.from({ length: count }, (_, i) => i + 1) },
+    totalSeconds,
+    capped: wanted > MAX_SHARDS,
+  };
+}

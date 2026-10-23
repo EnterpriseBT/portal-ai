@@ -18,6 +18,7 @@
  *
  * Usage: node scripts/integration-shards.mjs <command>
  *   --self-test                         the embedded cases (lint:integration-shards)
+ *   plan                                the shard count + matrix for CI (step outputs)
  *   check-durations                     fail on a file over the ceiling (lint:integration-durations)
  *   update-durations --reports <dir> [--if-changed]
  *                                       rewrite durations.json from Jest JSON reports
@@ -35,6 +36,7 @@ import {
   ceilingViolations,
   durationsChanged,
   mergeReports,
+  planShards,
 } from "./integration-shards.lib.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -158,6 +160,23 @@ const CASES = [
     name: "ceilingViolations: an allowlisted file is not listed",
     run: () => ceilingViolations({ "src/slow.integration.test.ts": 300 }, [{ file: "src/slow.integration.test.ts", reason: "x" }]).length === 0,
   },
+  ...[
+    [{}, 5, false, "no recorded durations → the fallback"],
+    [{ a: 50 }, 2, false, "a small suite → MIN"],
+    [{ a: 988 }, 5, false, "today's ~988s → 5"],
+    [{ a: 2100 }, 10, false, "2,100s → exactly the cap"],
+    [{ a: 5000 }, 10, true, "5,000s → the cap, flagged"],
+  ].map(([durations, count, capped, label]) => ({
+    name: `planShards: ${label}`,
+    run: () => {
+      const plan = planShards(durations);
+      return (
+        plan.count === count &&
+        plan.capped === capped &&
+        JSON.stringify(plan.matrix) === JSON.stringify({ index: Array.from({ length: count }, (_, i) => i + 1) })
+      );
+    },
+  })),
 ];
 
 function selfTest() {
@@ -268,8 +287,18 @@ function updateDurations() {
   return true;
 }
 
+function plan() {
+  const result = planShards(readJson(path.join(REPO_ROOT, DURATIONS_FILE), {}));
+  setOutput("count", String(result.count));
+  setOutput("matrix", JSON.stringify(result.matrix));
+  setOutput("capped", String(result.capped));
+  console.log(JSON.stringify(result));
+  return true;
+}
+
 const COMMANDS = {
   "--self-test": selfTest,
+  plan,
   "check-durations": checkDurations,
   "update-durations": updateDurations,
 };
