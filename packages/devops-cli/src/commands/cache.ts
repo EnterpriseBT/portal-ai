@@ -6,16 +6,22 @@
  * `RedisCutoverPhase` (legacy → both → encrypted), and `backend.yml` points
  * REDIS_URL at one of them through `RedisEndpointSource`. The deploy
  * workflows never pass either parameter, so these commands are the only
- * thing that moves them. Every change is an UpdateStack on the DEPLOYED
- * template with every other parameter at its previous value: a cutover step
- * never redeploys code. The sequence is in
+ * thing that moves them. Every phase or switch is an UpdateStack on the
+ * DEPLOYED template with every other parameter at its previous value: a
+ * cutover step never redeploys code. The one exception is
+ * `refresh-template` (#861), which applies main's cache.yml when the deploy
+ * skipped it, previewed and from a clean checkout. The sequence is in
  * docs/REDIS_ENCRYPTION_CUTOVER.runbook.md.
  */
 
 import {
   CloudFormationClient,
+  CreateChangeSetCommand,
+  DeleteChangeSetCommand,
+  DescribeChangeSetCommand,
   DescribeStacksCommand,
   UpdateStackCommand,
+  waitUntilChangeSetCreateComplete,
   waitUntilStackUpdateComplete,
 } from "@aws-sdk/client-cloudformation";
 import {
@@ -34,9 +40,10 @@ import {
   type EnvironmentDefinition,
 } from "@portalai/cli-env";
 
+import { parseDocument } from "yaml";
+
 import { apiServiceName } from "../ecs.js";
-import { templateDeclaresParameter } from "../template-params.js";
-import { readRepoTemplate } from "../templates.js";
+import { readRepoTemplate, repoGitState } from "../templates.js";
 import type { MutateOptions } from "./vars.js";
 
 /** A cutover step taken out of order (exit 9, the conflict family). */
@@ -50,9 +57,6 @@ export class CacheCutoverConflictError extends Error {
 
 export type CutoverPhase = "legacy" | "both" | "encrypted";
 export type EndpointSource = "legacy" | "encrypted";
-
-/** UpdateStack's inline TemplateBody limit; larger needs an S3 URL. */
-const TEMPLATE_BODY_MAX_BYTES = 51_200;
 
 // An ElastiCache creation or deletion takes 10–20 minutes.
 const STACK_WAIT_MAX_SECONDS = 3600;
@@ -104,15 +108,8 @@ export async function readStackParams(
  * UpdateStack on the deployed template, changing only `overrides`. Every
  * other parameter is sent as UsePreviousValue, read from the stack itself
  * rather than a hard-coded list, so a parameter added later can't be
- * silently reset to its default.
- *
- * An override the deployed template doesn't declare (#861): the deploy
- * workflows never apply a template whose only changes are parameters,
- * conditions and outputs (`aws cloudformation deploy` skips a change set with
- * no resource changes), so a deployed template can predate the parameter
- * even after its release ships. Then the operator's repo checkout of the
- * template is applied instead, if it declares the parameter; the runbook
- * requires that checkout to be `main`.
+ * silently reset to its default. An override the deployed template doesn't
+ * declare means the release carrying it isn't deployed yet.
  */
 export async function updateStackParams(
   def: EnvironmentDefinition,
@@ -121,35 +118,14 @@ export async function updateStackParams(
 ): Promise<{ changed: boolean }> {
   const name = stackName(def, kind);
   const current = await readStackParams(def, kind);
-  const missing = Object.keys(overrides).filter((key) => !(key in current));
-  let templateBody: string | undefined;
-  if (missing.length) {
-    const repo = readRepoTemplate(kind);
-    if (!repo) {
+  for (const key of Object.keys(overrides)) {
+    if (!(key in current)) {
       throw new CacheCutoverConflictError(
-        `${name}'s deployed template has no ${missing.join(", ")} parameter, and no repo checkout was found ` +
-          `to apply the current template from. Run portalops from a repo checkout of main.`
+        `${name}'s deployed template has no ${key} parameter. If its release is deployed, the deploy ` +
+          `skipped a template with no resource changes (#861): run \`portalops cache refresh-template ` +
+          `--env ${def.name}\` from a clean checkout of main, then retry.`
       );
     }
-    const undeclared = missing.filter(
-      (key) => !templateDeclaresParameter(repo.body, key)
-    );
-    if (undeclared.length) {
-      throw new CacheCutoverConflictError(
-        `${name} has no ${undeclared.join(", ")} parameter, and neither does ${repo.path}: ` +
-          `check out the main that carries it (#852) first`
-      );
-    }
-    if (Buffer.byteLength(repo.body) > TEMPLATE_BODY_MAX_BYTES) {
-      throw new EnvInfraError(
-        `${repo.path} is over UpdateStack's ${TEMPLATE_BODY_MAX_BYTES}-byte TemplateBody limit`
-      );
-    }
-    process.stderr.write(
-      `notice: ${name}'s deployed template predates ${missing.join(", ")}; applying ${repo.path} ` +
-        `with every deployed parameter at its previous value (#861)\n`
-    );
-    templateBody = repo.body;
   }
 
   const client = cfn(def);
@@ -157,20 +133,12 @@ export async function updateStackParams(
     await client.send(
       new UpdateStackCommand({
         StackName: name,
-        ...(templateBody
-          ? { TemplateBody: templateBody }
-          : { UsePreviousTemplate: true }),
-        Parameters: [
-          ...Object.keys(current).map((key) =>
-            key in overrides
-              ? { ParameterKey: key, ParameterValue: overrides[key] }
-              : { ParameterKey: key, UsePreviousValue: true }
-          ),
-          ...missing.map((key) => ({
-            ParameterKey: key,
-            ParameterValue: overrides[key],
-          })),
-        ],
+        UsePreviousTemplate: true,
+        Parameters: Object.keys(current).map((key) =>
+          key in overrides
+            ? { ParameterKey: key, ParameterValue: overrides[key] }
+            : { ParameterKey: key, UsePreviousValue: true }
+        ),
         // backend.yml names its IAM roles; cache.yml has none, and the
         // capability is only an acknowledgement.
         ...(kind === "backend"
@@ -412,4 +380,228 @@ export async function cacheSwitch(
     });
   }
   return { stack, endpointSource: to, changed };
+}
+
+/** UpdateStack's inline TemplateBody limit; larger needs an S3 URL. */
+const TEMPLATE_BODY_MAX_BYTES = 51_200;
+
+/** A template's declared parameters and whether each has a default.
+ *  CloudFormation's short tags (!Ref, !Sub) are kept, not resolved. */
+function declaredParameters(
+  body: string
+): Map<string, { hasDefault: boolean }> {
+  const doc = parseDocument(body, { logLevel: "silent" });
+  if (doc.errors.length) {
+    throw new EnvInfraError(
+      `template does not parse: ${doc.errors[0]!.message}`
+    );
+  }
+  const params =
+    (
+      doc.toJS({ maxAliasCount: -1 }) as {
+        Parameters?: Record<string, { Default?: unknown }>;
+      }
+    ).Parameters ?? {};
+  return new Map(
+    Object.entries(params).map(([key, p]) => [
+      key,
+      { hasDefault: p?.Default !== undefined },
+    ])
+  );
+}
+
+export interface ResourceChange {
+  logicalId: string;
+  action: string;
+  replacement: string | null;
+}
+
+export interface RefreshTemplateDeps {
+  readTemplate: typeof readRepoTemplate;
+  gitState: typeof repoGitState;
+}
+
+/**
+ * Apply main's `cache.yml` to the cache stack, parameters unchanged (#861).
+ *
+ * The deploy workflows skip a template whose only changes are parameters,
+ * conditions and outputs (no resource change), so the deployed cache
+ * template can predate a parameter its release added. This applies the
+ * template explicitly, and only when it is exactly main:
+ * - the checkout must be clean for the template and at `origin/main`;
+ * - every parameter the template declares and the stack has keeps its
+ *   previous value; a new one must have a default;
+ * - a change set previews it first, and any resource removal or replacement
+ *   counts as destructive (refused on prod);
+ * - the audit line records the template and the commit.
+ * The cutover commands stay parameter-only; this is the one place a template
+ * is applied.
+ */
+export async function cacheRefreshTemplate(
+  def: EnvironmentDefinition,
+  opts: MutateOptions & { dryRun?: boolean },
+  deps: RefreshTemplateDeps = {
+    readTemplate: readRepoTemplate,
+    gitState: repoGitState,
+  }
+): Promise<{
+  stack: string;
+  template: string;
+  commit: string;
+  resourceChanges: ResourceChange[];
+  dryRun: boolean;
+  changed: boolean;
+}> {
+  requireDeployed(def);
+  const stack = stackName(def, "cache");
+  const template = deps.readTemplate("cache");
+  if (!template) {
+    throw new CacheCutoverConflictError(
+      "No repo checkout found to read infra/cloudformation/cache.yml from: run portalops from a checkout of main"
+    );
+  }
+  const git = deps.gitState(template.path);
+  if (git.dirty) {
+    throw new CacheCutoverConflictError(
+      `${template.path} has uncommitted changes: refresh only from a clean checkout of origin/main`
+    );
+  }
+  if (!git.main || git.head !== git.main) {
+    throw new CacheCutoverConflictError(
+      `the checkout is at ${git.head.slice(0, 8)}, not origin/main${git.main ? ` (${git.main.slice(0, 8)})` : ""}: ` +
+        `\`git checkout main && git pull\` first`
+    );
+  }
+  if (Buffer.byteLength(template.body) > TEMPLATE_BODY_MAX_BYTES) {
+    throw new EnvInfraError(
+      `${template.path} is over UpdateStack's ${TEMPLATE_BODY_MAX_BYTES}-byte TemplateBody limit`
+    );
+  }
+
+  const declared = declaredParameters(template.body);
+  const current = await readStackParams(def, "cache");
+  const unsupplied = [...declared]
+    .filter(([key, p]) => !(key in current) && !p.hasDefault)
+    .map(([k]) => k);
+  if (unsupplied.length) {
+    throw new CacheCutoverConflictError(
+      `the template adds ${unsupplied.join(", ")} with no default, which the stack can't supply: deploy it through the workflow instead`
+    );
+  }
+  const parameters = [...declared.keys()]
+    .filter((key) => key in current)
+    .map((key) => ({ ParameterKey: key, UsePreviousValue: true }));
+
+  // Preview. A change set with no resource changes ends FAILED ("didn't
+  // contain changes"): that is the template-only case this exists for.
+  const client = cfn(def);
+  const changeSetName = `portalops-refresh-${Date.now()}`;
+  await client.send(
+    new CreateChangeSetCommand({
+      StackName: stack,
+      ChangeSetName: changeSetName,
+      TemplateBody: template.body,
+      Parameters: parameters,
+    })
+  );
+  let resourceChanges: ResourceChange[] = [];
+  try {
+    try {
+      await waitUntilChangeSetCreateComplete(
+        { client, maxWaitTime: 300 },
+        { StackName: stack, ChangeSetName: changeSetName }
+      );
+    } catch {
+      // read the status below either way
+    }
+    const described = await client.send(
+      new DescribeChangeSetCommand({
+        StackName: stack,
+        ChangeSetName: changeSetName,
+      })
+    );
+    if (described.Status === "FAILED") {
+      if (!/didn't contain changes/.test(described.StatusReason ?? "")) {
+        throw new EnvInfraError(
+          `Previewing ${stack} failed: ${described.StatusReason}`
+        );
+      }
+    } else {
+      resourceChanges = (described.Changes ?? []).map((c) => ({
+        logicalId: c.ResourceChange?.LogicalResourceId ?? "?",
+        action: c.ResourceChange?.Action ?? "?",
+        replacement: c.ResourceChange?.Replacement ?? null,
+      }));
+    }
+  } finally {
+    await client
+      .send(
+        new DeleteChangeSetCommand({
+          StackName: stack,
+          ChangeSetName: changeSetName,
+        })
+      )
+      .catch(() => undefined);
+  }
+
+  const result = {
+    stack,
+    template: template.path,
+    commit: git.head,
+    resourceChanges,
+  };
+  if (opts.dryRun) return { ...result, dryRun: true, changed: false };
+
+  const destructive = resourceChanges.some(
+    (c) =>
+      c.action === "Remove" ||
+      c.replacement === "True" ||
+      c.replacement === "Conditional"
+  );
+  assertOperationAllowed(def, {
+    destructive,
+    confirmed: !!opts.yes,
+    prodConfirmed: !!opts.confirmProd,
+  });
+
+  try {
+    await client.send(
+      new UpdateStackCommand({
+        StackName: stack,
+        TemplateBody: template.body,
+        Parameters: parameters,
+      })
+    );
+  } catch (err) {
+    if (/No updates are to be performed/.test((err as Error).message ?? "")) {
+      return { ...result, dryRun: false, changed: false };
+    }
+    throw new EnvInfraError(
+      `Updating ${stack} failed: ${(err as Error).message}`,
+      { cause: err }
+    );
+  }
+  try {
+    await waitUntilStackUpdateComplete(
+      { client, maxWaitTime: STACK_WAIT_MAX_SECONDS },
+      { StackName: stack }
+    );
+  } catch (err) {
+    throw new EnvInfraError(
+      `${stack} did not reach UPDATE_COMPLETE — check its events in the CloudFormation console (${(err as Error).message})`,
+      { cause: err }
+    );
+  }
+  await recordAudit({
+    env: def.name,
+    operator: "portalops",
+    command: "cache refresh-template",
+    args: {
+      stack,
+      template: template.path,
+      commit: git.head,
+      resourceChanges: resourceChanges.length,
+    },
+  });
+  return { ...result, dryRun: false, changed: true };
 }

@@ -1,15 +1,15 @@
 /**
  * The operator's repo checkout of a stack's CloudFormation template (#861).
  *
- * `cache phase`/`switch` normally update a stack on its DEPLOYED template.
- * That fails when the deployed template predates a parameter: the deploy
- * workflows apply templates with `aws cloudformation deploy`, which never
- * applies a change set with no resource changes, so a template that only
- * adds parameters, conditions and outputs never lands. The CLI then applies
- * the template from the checkout it runs in, which the runbook requires to be
- * `main`.
+ * `cache phase`/`switch` update a stack on its DEPLOYED template, changing
+ * parameters only. The deploy workflows apply templates with `aws
+ * cloudformation deploy`, which skips a change set with no resource changes,
+ * so a template that only adds parameters, conditions and outputs never
+ * lands. `cache refresh-template` applies it explicitly, from a clean
+ * checkout of `origin/main`.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,4 +32,28 @@ export function readRepoTemplate(
     dir = parent;
   }
   return null;
+}
+
+/** Where the checkout stands relative to `origin/main`, read with git in the
+ *  repo holding `templatePath`. `dirty` means that template has uncommitted
+ *  changes. */
+export function repoGitState(templatePath: string): {
+  head: string;
+  main: string;
+  dirty: boolean;
+} {
+  const cwd = path.dirname(templatePath);
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  let main = "";
+  try {
+    main = git("rev-parse", "origin/main");
+  } catch {
+    main = "";
+  }
+  return {
+    head: git("rev-parse", "HEAD"),
+    main,
+    dirty: git("status", "--porcelain", "--", templatePath) !== "",
+  };
 }

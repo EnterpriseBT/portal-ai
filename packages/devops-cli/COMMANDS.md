@@ -25,8 +25,8 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 |---|---|---|---|
 | read (`cache status`, …) | — | — | — |
 | connect (`db tunnel`, `db psql`, `jobs status`) | — | — | `--confirm-prod` |
-| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`, `cache phase legacy\|both`, `cache switch`, `service scale`) | — | `--yes` | `--yes --confirm-prod` |
-| destructive (`db reset`, `db reset-seed`, `cache phase encrypted`) | — | `--yes` | **refused** (exit 6) |
+| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`, `cache phase legacy\|both`, `cache switch`, `cache refresh-template`, `service scale`) | — | `--yes` | `--yes --confirm-prod` |
+| destructive (`db reset`, `db reset-seed`, `cache phase encrypted`, `cache refresh-template` that removes or replaces a resource) | — | `--yes` | **refused** (exit 6) |
 
 Every mutation/destructive command appends a JSONL audit entry to `~/.portalai/audit.log` (no secret values).
 
@@ -134,8 +134,17 @@ Read. The phase, the endpoint source, each cache present (`portalai-<env>` legac
 `--json`: `{ "phase", "endpointSource", "caches": [{ "id", "kind": "cache-cluster|replication-group", "status", "atRestEncryption", "transitEncryption", "transitEncryptionMode" }], "service": { "desired", "running" } }`
 
 ### `portalops cache phase <legacy|both|encrypted> --env <env> --yes [--confirm-prod] [--json]`
-`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`. If the **deployed** template predates `RedisCutoverPhase` (#861), it applies the repo checkout's `infra/cloudformation/cache.yml` instead and prints a notice. That happens because the deploy workflows never apply a resource-neutral template change. Every deployed parameter keeps its previous value. Run it from a checkout of `main`; outside a checkout, or with a template that lacks the parameter, it exits 9.
+`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`. If the deployed template predates `RedisCutoverPhase`, it exits 9 and points at `cache refresh-template` (#861).
 `--json`: `{ "stack", "phase", "changed" }`
+
+### `portalops cache refresh-template --env <env> [--dry-run] --yes [--confirm-prod] [--json]`
+Mutation (**destructive** when the preview removes or replaces a resource). Applies `main`'s `infra/cloudformation/cache.yml` to the cache stack, for a template the deploy workflows skipped. They use `aws cloudformation deploy`, which skips a change set with no resource changes, so a template that only adds parameters, conditions or outputs never lands (#861).
+- **Checkout:** refuses (exit 9) unless the checkout is clean for that file and `HEAD` is `origin/main`.
+- **Parameters:** every parameter the template declares and the stack has keeps its previous value. A new one must have a default.
+- **Preview:** a change set runs first, and is deleted after. A removal or replacement counts as destructive, so prod refuses it. `--dry-run` stops after the preview.
+- **Audit:** records the template path and the commit.
+
+`--json`: `{ "stack", "template", "commit", "resourceChanges": [{ "logicalId", "action", "replacement" }], "dryRun", "changed" }`
 
 ### `portalops cache switch <legacy|encrypted> --env <env> --yes [--confirm-prod] [--json]`
 Mutation. Points the backend's `REDIS_URL` at the other cache (`rediss://` for `encrypted`). Requires phase `both` and the service at zero desired and running tasks (else exit 9), and holds `DesiredCount` at 0, so the tasks start against the new cache only after `jobs redispatch`. `legacy` is the rollback, until the legacy cache is retired.

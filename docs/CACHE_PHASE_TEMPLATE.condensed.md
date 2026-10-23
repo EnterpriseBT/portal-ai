@@ -18,37 +18,46 @@ The backend stack isn't affected: every deploy changes its `ImageTag`. Package: 
 | Callers | `cachePhase`, `cacheSwitch` (`cache.ts`), `serviceScale` (`service.ts`) | all go through `updateStackParams` |
 | Templates | `infra/cloudformation/cache.yml` (~8 KB), `backend.yml` (~31 KB) | both under UpdateStack's 51,200-byte `TemplateBody` limit |
 
-## Decision — apply the repo's template when the deployed one predates the parameter
+## Decision — an explicit, previewed `cache refresh-template`
 
-- **A. Change the deploy so the template always lands** (e.g. a tag that changes on every deploy). This churns the cache resource on every deploy for a one-time problem, and a future resource-neutral change would hit the same trap.
-- **B. Document a manual `aws cloudformation deploy`.** The operator has to compose every parameter by hand, and that's exactly the step the CLI exists to own.
-- **C. In `updateStackParams`, when an override isn't a deployed parameter, apply the operator's repo checkout of `infra/cloudformation/<kind>.yml` as `TemplateBody`.**
-  - This happens only if that template declares the parameter; otherwise it keeps the exit-9 refusal.
-  - Every deployed parameter is still sent as `UsePreviousValue`, and the new parameter gets its override.
-  - It prints a stderr notice naming the template it applied.
-  - It refuses with exit 7 if the template is over 51,200 bytes.
+- **A. Change the deploy so the template always lands** (e.g. a tag that changes on every deploy). This churns the cache resource on every deploy for a one-time problem.
+- **B. A fallback inside `updateStackParams`** that applies the repo template whenever a parameter is missing. I built this first, and the code review rejected it. Every cutover command (`phase`, `switch`, `service scale`, and on `backend.yml` too) could then apply whatever template sits in the operator's working tree: no preview, no check that it's `main`, the destructive guard blind to replacements, and a regex for parameter parsing.
+- **C. A separate `portalops cache refresh-template`** (cache stack only):
+  - it refuses unless the checkout is clean and `HEAD` is `origin/main`;
+  - it parses the template with `yaml`;
+  - it sends exactly the declared parameters the stack has, each as `UsePreviousValue`, and a new one must have a default;
+  - it previews with a change set (deleted after), and counts a resource removal or replacement as destructive, so prod refuses it;
+  - it applies with `UpdateStack`, since a template-only change set can't be executed;
+  - it audits the template and the commit;
+  - `--dry-run` stops after the preview.
 
-**Chosen: C.** It fixes app-dev and prod the same way, through the step the runbook already names. The repo template is the one `main` deploys, and the runbook already requires a `main` checkout. The read happens in a small `templates.ts` module (`readRepoTemplate(kind)`, which walks up from the CLI to the repo's `infra/cloudformation/`), so the tests mock it.
+  `cache phase`/`switch` stay parameter-only and point at it.
+
+**Chosen: C.** It's narrow, explicit and reviewable, and it works the same on prod. The runbook's Provision step names it.
 
 ## Plan — 1 slice
 
 **Files**
-- New: `packages/devops-cli/src/templates.ts` — `readRepoTemplate(kind)` returns `{ path, body }`, or `null` when the CLI can't find a repo.
-- Edit: `packages/devops-cli/src/commands/cache.ts` — `updateStackParams` takes the `TemplateBody` path when a parameter is missing from the deployed template.
-- Edit: `packages/devops-cli/COMMANDS.md` (cache section) and `docs/REDIS_ENCRYPTION_CUTOVER.runbook.md` (Provision): one note each.
+- New: `packages/devops-cli/src/templates.ts` — `readRepoTemplate(kind)` and `repoGitState(path)`.
+- Edit: `packages/devops-cli/src/commands/cache.ts` — `cacheRefreshTemplate`, and `updateStackParams`'s refusal now names it.
+- Edit: `packages/devops-cli/src/bin.ts` — `cache refresh-template`.
+- Edit: `packages/devops-cli/package.json` — `yaml` moves to `dependencies`.
+- Edit: `COMMANDS.md` and the cutover runbook.
 
-**Tests** — `packages/devops-cli/src/__tests__/cache.test.ts`, run with `npm run test:unit` from `packages/devops-cli`:
-- deployed template lacks the parameter and the repo template declares it → UpdateStack uses `TemplateBody` (not `UsePreviousTemplate`), the other parameters are `UsePreviousValue`, the override is set, and a notice is printed;
-- the repo template lacks it too → exit 9, no update;
-- no repo checkout found → exit 9 with "run from a repo checkout";
-- a template over 51,200 bytes → exit 7, no update;
-- the parameter is already deployed → unchanged, `UsePreviousTemplate`.
+**Tests** — `packages/devops-cli/src/__tests__/cache.test.ts` and `bin.test.ts`, with `npm run test:unit`:
+- the preview, then the apply with previous values;
+- a replacement counted as destructive (prod refuses);
+- `--dry-run` applies nothing;
+- refusal on a dirty or non-`main` checkout, outside a checkout, and for a no-default new parameter;
+- already current → unchanged;
+- `phase` points at `refresh-template`;
+- the command is wired.
 
 ## Smoke (manual, against app-dev)
 
-1. On `main` after merge: `npm run build --workspace @portalai/devops-cli`, then `npx portalops cache phase both --env app-dev --yes --json`. The notice names `infra/cloudformation/cache.yml`; after 10–20 min it prints `{"phase":"both","changed":true}`.
-2. `npx portalops cache status --env app-dev --json` shows `phase: both`, the `-tls` group `available` with both encryption flags on and `transitEncryptionMode: "required"`, and the legacy cluster still present.
-3. `aws cloudformation describe-stacks --stack-name portalai-dev-cache --query "Stacks[0].Parameters"` lists `RedisCutoverPhase=both`, and every other parameter keeps its previous value.
+1. On a clean, up-to-date `main` after merge: `npm run build --workspace @portalai/devops-cli`, then `npx portalops cache refresh-template --env app-dev --dry-run --json`. Expect `resourceChanges: []`.
+2. The same with `--yes`. Expect `changed: true`, and `aws cloudformation describe-stacks --stack-name portalai-dev-cache --query "Stacks[0].Parameters"` now lists `RedisCutoverPhase=legacy`, with every other parameter unchanged.
+3. `npx portalops cache phase both --env app-dev --yes --json`. After 10–20 min it prints `{"phase":"both","changed":true}`, and `cache status` shows the `-tls` group `available` with both encryption flags and `required`.
 4. Resume `docs/ELASTICACHE_ENCRYPTION.smoke.md` §3 onward.
 
 ## Out of scope
