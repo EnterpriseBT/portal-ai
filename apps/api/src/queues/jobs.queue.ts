@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
 
-import { environment } from "../environment.js";
+import { redisConnection } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "jobs-queue" });
@@ -24,10 +24,7 @@ let _jobsQueue: Queue | null = null;
 export const getJobsQueue = (): Queue => {
   if (!_jobsQueue) {
     _jobsQueue = new Queue(JOBS_QUEUE_NAME, {
-      connection: {
-        url: environment.REDIS_URL,
-        maxRetriesPerRequest: null,
-      },
+      connection: redisConnection(),
       defaultJobOptions: {
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },

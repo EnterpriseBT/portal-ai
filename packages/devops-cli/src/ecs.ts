@@ -1,9 +1,11 @@
 /**
  * ECS one-off tasks (#192, #581) — read the live service's network config +
  * task definition, run a FARGATE one-off with the container command overridden,
- * wait for it to stop, and surface the container exit code. `runSeedTask` runs
- * `npm run db:seed:ci`; `runUpgradeTask` runs `npm run db:upgrade:ci`. Both
- * scripts must keep existing in apps/api — they run INSIDE the container.
+ * wait for it to stop, and surface the container exit code. Each runs a built
+ * apps/api script with `node`, the same command its `:ci` package script
+ * names: the runtime image has no npm (#573 removed it), so `npm run …` fails
+ * there (#852). The scripts must keep existing in apps/api — they run INSIDE
+ * the container.
  */
 
 import {
@@ -21,18 +23,39 @@ import {
   type EnvironmentDefinition,
 } from "@portalai/cli-env";
 
-const SEED_COMMAND = ["npm", "run", "db:seed:ci"];
-const UPGRADE_COMMAND = ["npm", "run", "db:upgrade:ci"];
+const SEED_COMMAND = ["node", "dist/db/seed.js"];
+const UPGRADE_COMMAND = ["node", "dist/scripts/db-upgrade.js"];
+const REDISPATCH_COMMAND = ["node", "dist/scripts/jobs-redispatch.js"];
 const WAIT_MAX_SECONDS = 900;
+
+/** Where a one-off task's stdout landed (the task definition's awslogs). */
+export interface TaskLogLocation {
+  region: string;
+  group: string;
+  stream: string;
+}
 
 export interface OneOffTaskResult {
   taskArn: string;
   exitCode: number;
+  /** Present when the task definition logs to CloudWatch (awslogs). */
+  log?: TaskLogLocation;
 }
+
+/** The API's ECS service. The one place its name is built (#852). */
+export const apiServiceName = (def: EnvironmentDefinition): string => {
+  if (!def.aws) {
+    throw new EnvNotConfiguredError(
+      `"${def.name}" has no deployed ECS service`
+    );
+  }
+  return `portalai-api-${def.aws.envName}`;
+};
 
 // Preserved names for existing consumers.
 export type SeedTaskResult = OneOffTaskResult;
 export type UpgradeTaskResult = OneOffTaskResult;
+export type RedispatchTaskResult = OneOffTaskResult;
 
 interface OneOffSpec {
   command: string[];
@@ -53,7 +76,7 @@ async function runOneOffTask(
   }
 
   const cluster = clusterName(def);
-  const service = `portalai-api-${def.aws.envName}`;
+  const service = apiServiceName(def);
   const client = new ECSClient({ region: def.aws.region });
 
   const services = await client.send(
@@ -69,7 +92,8 @@ async function runOneOffTask(
   const taskDef = await client.send(
     new DescribeTaskDefinitionCommand({ taskDefinition: svc.taskDefinition })
   );
-  const containerName = taskDef.taskDefinition?.containerDefinitions?.[0]?.name;
+  const container = taskDef.taskDefinition?.containerDefinitions?.[0];
+  const containerName = container?.name;
   if (!containerName) {
     throw new EnvInfraError(
       `Task definition ${svc.taskDefinition} has no containers`
@@ -108,7 +132,19 @@ async function runOneOffTask(
       `${spec.label} task exited with code ${exitCode}. Check CloudWatch logs for details (task ${taskArn}).`
     );
   }
-  return { taskArn, exitCode };
+  // awslogs names a task's stream `<prefix>/<container>/<task id>`.
+  const logOptions = container?.logConfiguration?.options;
+  const group = logOptions?.["awslogs-group"];
+  const prefix = logOptions?.["awslogs-stream-prefix"];
+  const log: TaskLogLocation | undefined =
+    container?.logConfiguration?.logDriver === "awslogs" && group && prefix
+      ? {
+          region: logOptions?.["awslogs-region"] ?? def.aws.region,
+          group,
+          stream: `${prefix}/${containerName}/${taskArn.split("/").pop()}`,
+        }
+      : undefined;
+  return { taskArn, exitCode, ...(log ? { log } : {}) };
 }
 
 export function runSeedTask(
@@ -128,5 +164,18 @@ export function runUpgradeTask(
     command: UPGRADE_COMMAND,
     label: "Upgrade",
     localHint: "upgrade local with `npm run db:upgrade` (apps/api)",
+  });
+}
+
+/** Re-dispatch orphaned jobs after a Redis replacement (#852). The summary is
+ *  in the task's CloudWatch log. */
+export function runRedispatchTask(
+  def: EnvironmentDefinition,
+  opts: { dryRun: boolean }
+): Promise<RedispatchTaskResult> {
+  return runOneOffTask(def, {
+    command: [...REDISPATCH_COMMAND, ...(opts.dryRun ? ["--dry-run"] : [])],
+    label: "Redispatch",
+    localHint: "run `npm run jobs:redispatch` (apps/api)",
   });
 }

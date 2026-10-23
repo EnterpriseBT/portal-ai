@@ -37,7 +37,7 @@ export interface ConnectOptions {
 }
 
 /** Prod connect barrier: connecting to production requires --confirm-prod. */
-function guardProdConnect(
+export function guardProdConnect(
   def: EnvironmentDefinition,
   opts: ConnectOptions
 ): void {

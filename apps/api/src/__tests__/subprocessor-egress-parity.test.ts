@@ -36,6 +36,8 @@ const EGRESS: Record<string, SubprocessorId> = {
   MIGRATE_DATABASE_URL: "aws",
   MIGRATE_DATABASE_PASSWORD: "aws",
   REDIS_URL: "aws",
+  // Trust anchor for REDIS_URL's TLS (#852); configures the same connection.
+  REDIS_TLS_CA: "aws",
   UPLOAD_S3_BUCKET: "aws",
   // Can name any S3-compatible store; on the hosted service it is AWS S3. A
   // residency deployment's own review record covers its choice.

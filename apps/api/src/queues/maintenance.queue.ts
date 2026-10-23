@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
 
-import { environment } from "../environment.js";
+import { redisConnection } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "maintenance-queue" });
@@ -55,10 +55,7 @@ let _maintenanceQueue: Queue | null = null;
 export const getMaintenanceQueue = (): Queue => {
   if (!_maintenanceQueue) {
     _maintenanceQueue = new Queue(MAINTENANCE_QUEUE_NAME, {
-      connection: {
-        url: environment.REDIS_URL,
-        maxRetriesPerRequest: null,
-      },
+      connection: redisConnection(),
       defaultJobOptions: {
         // Keep enough history for the admin read's "recent runs" without
         // unbounded Redis growth.

@@ -15,7 +15,7 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 | 6 | `ENV_DESTRUCTIVE_BLOCKED` — destructive op against production (no override exists) |
 | 7 | `ENV_INFRA_ERROR` — AWS / tunnel / psql / ECS failure (message carries the cause) |
 | 8 | not-found family — `TIER_APPLY_MISSING_PRICES` (a declared tier's Stripe lookup key resolves to no price; `tier apply` fails closed before any DB write) or `TIER_NOT_FOUND` (`tier update`/`tier description` target a slug that doesn't exist). Mirrors admin-cli's 8. |
-| 9 | conflict family — `TIER_ALREADY_EXISTS` (`tier create` targets a slug that already exists). Mirrors admin-cli's 9. |
+| 9 | conflict family — `TIER_ALREADY_EXISTS` (`tier create` targets a slug that already exists); `CACHE_CUTOVER_CONFLICT` (a `cache phase`/`cache switch` step taken out of order, #852). Mirrors admin-cli's 9. |
 
 `--json` errors: `{"error":{"code":"<CODE>","message":"<human text>"}}` on stdout, exit code as above.
 
@@ -23,10 +23,10 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 
 | Class | development | staging | production |
 |---|---|---|---|
-| read | — | — | — |
-| connect (`db tunnel`, `db psql`) | — | — | `--confirm-prod` |
-| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`) | — | `--yes` | `--yes --confirm-prod` |
-| destructive (`db reset`, `db reset-seed`) | — | `--yes` | **refused** (exit 6) |
+| read (`cache status`, …) | — | — | — |
+| connect (`db tunnel`, `db psql`, `jobs status`) | — | — | `--confirm-prod` |
+| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`, `cache phase legacy\|both`, `cache switch`, `service scale`) | — | `--yes` | `--yes --confirm-prod` |
+| destructive (`db reset`, `db reset-seed`, `cache phase encrypted`) | — | `--yes` | **refused** (exit 6) |
 
 Every mutation/destructive command appends a JSONL audit entry to `~/.portalai/audit.log` (no secret values).
 
@@ -122,6 +122,42 @@ Mutation. Restores the system rows a reset removes — the `standard` tier row t
 ### `portalops db upgrade --env <env> --yes [--confirm-prod] [--json]`
 Mutation (not destructive — migrations are expand-only, so `prod` is gated by `--yes --confirm-prod`, never refused). Applies pending migrations **and** the idempotent global seed as one advisory-locked operation (`db:upgrade`, #581) — a second concurrent pass acquires no lock and does no work. **Dispatches on the env's shape** exactly like `db seed`, with **no saas/residency branch**: a deployed env runs `db:upgrade:ci` as a FARGATE one-off ECS task (non-zero container exit → exit 7 naming CloudWatch); `--env local` spawns the app's own `db:upgrade`. A residency install upgrades via the Helm chart's `pre-upgrade` job and never uses this command — it serves our own SaaS/ECS channel.
 `--json`: `{ "via": "ecs", "taskArn", "exitCode": 0 }` or `{ "via": "local", "script": "db:upgrade" }`
+
+Every ECS one-off runs the built script with `node` (`node dist/db/seed.js`, `node dist/scripts/db-upgrade.js`, `node dist/scripts/jobs-redispatch.js`), the command each `:ci` package script names. The runtime image has no npm (#573), so `npm run` there fails (#852).
+
+## cache
+
+The ElastiCache encryption cutover (#852). `cache.yml` holds the plaintext cache and the encrypted one side by side behind `RedisCutoverPhase` (`legacy` → `both` → `encrypted`), and `backend.yml`'s `REDIS_URL` follows `RedisEndpointSource` (`legacy` | `encrypted`). The deploy workflows never pass either, so a routine deploy keeps whatever these commands set. Every change is an UpdateStack on the **deployed** template, with every other parameter at its previous value: a step never redeploys code. A step taken out of order exits 9 (`CACHE_CUTOVER_CONFLICT`). Full sequence: [`docs/REDIS_ENCRYPTION_CUTOVER.runbook.md`](../../docs/REDIS_ENCRYPTION_CUTOVER.runbook.md).
+
+### `portalops cache status --env <env> [--json]`
+Read. The phase, the endpoint source, each cache present (`portalai-<env>` legacy, `portalai-<env>-tls` encrypted) with its status and encryption flags, and the API service's desired/running counts. A stack whose template predates #852 reads as `legacy`.
+`--json`: `{ "phase", "endpointSource", "caches": [{ "id", "kind": "cache-cluster|replication-group", "status", "atRestEncryption", "transitEncryption", "transitEncryptionMode" }], "service": { "desired", "running" } }`
+
+### `portalops cache phase <legacy|both|encrypted> --env <env> --yes [--confirm-prod] [--json]`
+`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`.
+`--json`: `{ "stack", "phase", "changed" }`
+
+### `portalops cache switch <legacy|encrypted> --env <env> --yes [--confirm-prod] [--json]`
+Mutation. Points the backend's `REDIS_URL` at the other cache (`rediss://` for `encrypted`). Requires phase `both` and the service at zero desired and running tasks (else exit 9), and holds `DesiredCount` at 0, so the tasks start against the new cache only after `jobs redispatch`. `legacy` is the rollback, until the legacy cache is retired.
+`--json`: `{ "stack", "endpointSource", "changed" }`
+
+## service
+
+### `portalops service scale <count> --env <env> --yes [--confirm-prod] [--allow-active] [--json]`
+Mutation. Sets the API service's task count through the backend stack's `DesiredCount` (never ECS UpdateService, so the stack stays the record), and waits for the stack update, which CloudFormation completes only once the service is stable. A count already in place reports `changed: false` and isn't audited. The workers run in the API process, so 0 stops both enqueuing and processing. Scaling to 0 refuses (exit 5) while any job is `active` unless `--allow-active`; those jobs would re-run through `jobs redispatch`.
+`--json`: `{ "service", "desired", "changed" }`
+
+## jobs
+
+The job queue across a Redis replacement (#852). The cutover sequence is in [`docs/REDIS_ENCRYPTION_CUTOVER.runbook.md`](../../docs/REDIS_ENCRYPTION_CUTOVER.runbook.md).
+
+### `portalops jobs status --env <env> [--confirm-prod] [--json]`
+Connect (prod needs `--confirm-prod`). Counts live non-terminal `jobs` rows (`pending`, `active`, `awaiting_confirmation`, `stalled`) by status and type, from Postgres over the env connection (local: `.env`; AWS: the SSM tunnel). Postgres is the record of truth, so this works whether or not Redis does. A drain is done when `byStatus.active` is absent.
+`--json`: `{ "counts": [{ "status", "type", "count" }], "byStatus": { "<status>": n }, "total": n }`
+
+### `portalops jobs redispatch --env <env> --yes [--confirm-prod] [--dry-run] [--json]`
+Mutation. Puts every live `pending` / `active` / `stalled` row whose BullMQ entry is gone back on the queue, under its row id. Run it after a Redis replacement, with the API service at zero and **before** it scales up: the API's boot sweep (#391) would otherwise reap the queued rows as stranded. Each row is flipped while non-terminal before it's added, so a cancelled or reaped job is never revived. A second pass finds the rows queued and adds nothing, and an interrupted `active` row resumes as a lost execution (#464). Dispatches on the env's shape like `db upgrade`: a deployed env runs `node dist/scripts/jobs-redispatch.js` as a FARGATE one-off (the summary JSON line is in its CloudWatch log; non-zero exit → exit 7), and `--env local` spawns the app's `jobs:redispatch`. `--dry-run` reports without writing and isn't audited. A re-queued row keeps what is left of its retry budget, and its attempt count carries on. The pass's own summary comes back in the payload: parsed from the script's stdout locally, read back from the task's CloudWatch stream on ECS (`null` if that read fails; the pass still ran).
+`--json`: `{ "via": "ecs", "taskArn", "exitCode": 0, "log": { "region", "group", "stream" }, "summary" }` or `{ "via": "local", "script": "jobs:redispatch", "summary" }`, where `summary` is `{ "acquiredLock", "scanned", "redispatched": [{ "id", "type", "priorStatus" }], "present", "skippedTerminal", "dryRun" } | null`
 
 ## tier
 

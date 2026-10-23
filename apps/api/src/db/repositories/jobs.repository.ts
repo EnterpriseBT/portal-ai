@@ -5,8 +5,8 @@
  * such as lookup by organization, status, and BullMQ job ID.
  */
 
-import { eq, and, arrayOverlaps, inArray, sql } from "drizzle-orm";
-import { jobTypesLocking } from "@portalai/core/models";
+import { eq, and, arrayOverlaps, inArray, notInArray, sql } from "drizzle-orm";
+import { TERMINAL_JOB_STATUSES, jobTypesLocking } from "@portalai/core/models";
 import { jobs } from "../schema/index.js";
 import { db } from "../client.js";
 import { ListOptions, Repository, type DbClient } from "./base.repository.js";
@@ -280,6 +280,62 @@ export class JobsRepository extends Repository<
       )
       .orderBy(jobs.created)
       .limit(limit)) as JobSelect[];
+  }
+
+  /**
+   * Candidates for job re-dispatch (#852): every live non-terminal row a
+   * worker could still run, keyset-paged on `(created, id)`. Unlike the
+   * stranded sweep there is no heartbeat filter, because re-dispatch is run
+   * deliberately after a Redis replacement, when every queued entry is gone at
+   * once. `awaiting_confirmation` is excluded for the sweep's reason: its
+   * BullMQ entry is legitimately absent while the user decides.
+   */
+  async findRedispatchCandidates(
+    cursor: { created: number; id: string } | null,
+    limit: number,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          inArray(jobs.status, [
+            "pending",
+            "active",
+            "stalled",
+          ] as JobSelect["status"][]),
+          this.notDeleted(),
+          cursor
+            ? sql`(${jobs.created}, ${jobs.id}) > (${cursor.created}, ${cursor.id})`
+            : undefined
+        )
+      )
+      .orderBy(jobs.created, jobs.id)
+      .limit(limit)) as JobSelect[];
+  }
+
+  /**
+   * Point a row at its own id as its BullMQ id, only while it is still live
+   * and non-terminal (#852). Returns false when the row went terminal (or was
+   * deleted) since it was read, so re-dispatch never revives a cancelled or
+   * reaped job. `status` is left alone: an interrupted `active` row must
+   * still read `active` when the worker resumes it, which is how #464 counts
+   * the lost execution. `updated` is bumped as the row's heartbeat.
+   */
+  async markRedispatched(id: string, client: DbClient = db): Promise<boolean> {
+    const rows = await (client as typeof db)
+      .update(this.table)
+      .set({ bullJobId: id, updated: Date.now() })
+      .where(
+        and(
+          eq(jobs.id, id),
+          notInArray(jobs.status, TERMINAL_JOB_STATUSES),
+          this.notDeleted()
+        )
+      )
+      .returning({ id: jobs.id });
+    return rows.length > 0;
   }
 }
 

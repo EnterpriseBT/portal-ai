@@ -151,6 +151,9 @@ export const environment = {
   MICROSOFT_OAUTH_TENANT: process.env.MICROSOFT_OAUTH_TENANT || "common",
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
+  // PEM of a private CA for a `rediss://` REDIS_URL (#852). Optional: AWS
+  //    ElastiCache certs chain to a public root Node already trusts.
+  REDIS_TLS_CA: process.env.REDIS_TLS_CA || undefined,
   // ── Site-rebuild dispatch (#311). A fine-grained PAT scoped to this repo
   //    (Contents: read + repository dispatch) and the `owner/repo` it fires
   //    at. Unset ⇒ dispatch is a no-op: the nightly scheduled rebuild is the

@@ -21,9 +21,13 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const mockAdd = jest.fn<(...a: unknown[]) => Promise<unknown>>(async () => ({
-  id: "bull-1",
-}));
+// Like BullMQ: a custom `jobId` option becomes the job's id; otherwise the
+// queue assigns its own (sequential) one.
+const mockAdd = jest.fn<(...a: unknown[]) => Promise<unknown>>(
+  async (_name, _data, opts) => ({
+    id: (opts as { jobId?: string } | undefined)?.jobId ?? "bull-1",
+  })
+);
 jest.unstable_mockModule("../../queues/jobs.queue.js", () => ({
   getJobsQueue: () => ({ add: mockAdd }),
   JOBS_QUEUE_NAME: "jobs",
@@ -109,7 +113,42 @@ describe("JobsService.insertRow / dispatch (#769)", () => {
       (mockJobsCreate.mock.calls[0]![0] as { lockScopes: string[] }).lockScopes
     ).toEqual([]);
     expect(mockAdd).toHaveBeenCalledTimes(1);
-    expect(job.bullJobId).toBe("bull-1");
+    expect(job.bullJobId).toBe("job-1");
+  });
+});
+
+describe("JobsService.dispatch — the BullMQ id is the row id (#852)", () => {
+  beforeEach(() => {
+    mockJobsCreate.mockClear();
+    mockJobsUpdate.mockClear();
+    mockAdd.mockClear();
+  });
+
+  // BullMQ's own ids are a per-Redis counter, so a fresh Redis restarts at 1
+  // and an old row's stored id would name an unrelated job there. The row id
+  // is unique forever, and re-adding it is a no-op BullMQ ignores.
+  it("adds with jobId: job.id and the row's attempt budget", async () => {
+    await JobsService.create("user-1", {
+      organizationId: "org-1",
+      type: "system_check",
+      metadata: {},
+    });
+    expect(mockAdd).toHaveBeenCalledWith(
+      "system_check",
+      expect.objectContaining({ jobId: "job-1", type: "system_check" }),
+      { jobId: "job-1", attempts: expect.any(Number) }
+    );
+  });
+
+  it("stores bullJobId equal to the row id", async () => {
+    await JobsService.create("user-1", {
+      organizationId: "org-1",
+      type: "system_check",
+      metadata: {},
+    });
+    expect(mockJobsUpdate).toHaveBeenCalledWith("job-1", {
+      bullJobId: "job-1",
+    });
   });
 });
 
@@ -129,5 +168,34 @@ describe("JobsService.create refuses a job that locks scopes (#769)", () => {
     ).rejects.toThrow(/enqueueExclusive/);
     expect(mockJobsCreate).not.toHaveBeenCalled();
     expect(mockAdd).not.toHaveBeenCalled();
+  });
+});
+
+describe("JobsService.queuePayload — the row's identity always wins (#852 adversarial)", () => {
+  const job = (metadata: Record<string, unknown>) =>
+    ({
+      id: "row-1",
+      type: "system_check",
+      metadata,
+      maxAttempts: 3,
+    }) as never;
+
+  it("metadata can't override jobId or type", () => {
+    const data = JobsService.queuePayload(
+      job({ jobId: "other-row", type: "bulk_transform", foo: 1 })
+    );
+    expect(data).toEqual({ jobId: "row-1", type: "system_check", foo: 1 });
+  });
+
+  it("metadata can't set attemptOffset; only the re-dispatch's value counts", () => {
+    expect(JobsService.queuePayload(job({ attemptOffset: -5 }))).toEqual({
+      jobId: "row-1",
+      type: "system_check",
+    });
+    expect(
+      JobsService.queuePayload(job({ attemptOffset: -5 }), {
+        attemptOffset: 2,
+      })
+    ).toMatchObject({ attemptOffset: 2 });
   });
 });

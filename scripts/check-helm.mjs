@@ -147,6 +147,10 @@ const scenarios = [
         (out) => out.includes("imresamu/postgis:17-3.5"),
       ],
       [
+        "bundled Redis stays plaintext: no REDIS_TLS_CA (#852)",
+        (out) => !out.includes("REDIS_TLS_CA"),
+      ],
+      [
         "bundled Redis has a persistent volume claim",
         (out) => out.includes("kind: PersistentVolumeClaim"),
       ],
@@ -288,6 +292,40 @@ const scenarios = [
         (out) =>
           !out.includes("MIGRATE_DATABASE_URL") &&
           manifest(out, "Secret", "p-portalai-migrate") === "",
+      ],
+      [
+        "no CA secret configured: no REDIS_TLS_CA (#852)",
+        (out) => !out.includes("REDIS_TLS_CA"),
+      ],
+    ],
+  },
+  {
+    // #852: a managed TLS Redis whose cert chains to a private CA.
+    name: "external rediss:// + private CA (#852)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
+      "--set",
+      "redis.external.url=rediss://cache.example.com:6380",
+      "--set",
+      "redis.external.tls.caSecret.name=redis-ca",
+    ],
+    assertions: [
+      [
+        "REDIS_URL keeps the rediss:// scheme",
+        (out) => out.includes('REDIS_URL: "rediss://cache.example.com:6380"'),
+      ],
+      [
+        "the API reads REDIS_TLS_CA from the CA secret (default key ca.crt)",
+        (out) => {
+          const api = manifest(out, "Deployment", "p-portalai-api");
+          return /- name: REDIS_TLS_CA\n\s+valueFrom:\n\s+secretKeyRef:\n\s+name: redis-ca\n\s+key: ca\.crt/.test(
+            api
+          );
+        },
       ],
     ],
   },

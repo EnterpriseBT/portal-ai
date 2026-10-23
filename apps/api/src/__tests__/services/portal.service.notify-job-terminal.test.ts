@@ -31,6 +31,8 @@ jest.unstable_mockModule("../../utils/redis.util.js", () => ({
   getRedisClient: () => ({
     publish: mockRedisPublish,
   }),
+  // The queue modules portal.service imports build their connection here.
+  redisConnection: () => ({ url: "redis://test", maxRetriesPerRequest: null }),
 }));
 
 jest.unstable_mockModule("../../utils/system.util.js", () => ({

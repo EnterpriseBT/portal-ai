@@ -44,11 +44,13 @@ helm install portalai deploy/helm/portalai \
   --set postgresql.external.host=<db-host> \
   --set postgresql.external.password=<db-password> \
   --set redis.enabled=false \
-  --set redis.external.url=redis://<redis-host>:6379 \
+  --set redis.external.url=rediss://<redis-host>:6379 \
   --set minio.enabled=false \
   --set minio.external.endpoint=https://<s3-endpoint> \
   -f my-secrets.yaml   # secrets: { ENCRYPTION_KEY: ..., ANTHROPIC_API_KEY: ..., ... }
 ```
+
+The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, `redis://` in the clear. A managed Redis with in-transit encryption needs `rediss://`. If its certificate is signed by a private CA, put the CA's PEM in a Secret and name it: `--set redis.external.tls.caSecret.name=<secret>` (key `ca.crt` by default). The API refuses to start with a CA set on a `redis://` URL.
 
 ## Values reference
 
@@ -70,6 +72,8 @@ helm install portalai deploy/helm/portalai \
 | `postgresql.external.*` | `""` | Managed DB host/port/database/user/password. |
 | `postgresql.external.migrationUser` / `.migrationPassword` / `.migrationExistingSecret.{name,key}` | `""` / `""` / `""`,`password` | Optional privileged user for an external DB whose app user lacks CREATEROLE; used only to create the SQL reader role and grant it to the app user (#660). Only the migrate/upgrade jobs receive it. See *Restricted SQL reader role* below. |
 | `redis.enabled` | `true` | Bundle Redis (mandatory PVC). `false` → `redis.external.url`. |
+| `redis.external.url` | `""` | Managed Redis URL. `rediss://` connects over TLS (#852). |
+| `redis.external.tls.caSecret.{name,key}` | `""`,`ca.crt` | Secret holding a private CA's PEM for a `rediss://` URL; reaches the API as `REDIS_TLS_CA`. Leave empty when the cert chains to a public root. |
 | `redis.master.persistence.size` | `8Gi` | Redis PVC size (durable BullMQ store). |
 | `minio.enabled` | `true` | Bundle MinIO. `false` → `minio.external.*`. Full S3 wiring lands with #567. |
 | `migrate.enabled` | `true` | Run first-install migrations as a `pre-install` hook Job. |

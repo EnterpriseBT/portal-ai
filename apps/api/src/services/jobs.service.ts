@@ -103,6 +103,48 @@ export class JobsService {
   }
 
   /**
+   * The BullMQ payload for a job row. Shared by `dispatch` and the #852
+   * re-dispatch, so a re-queued job is indistinguishable from a fresh one.
+   * `attemptOffset` is the attempts the row already spent on an earlier
+   * queue; the worker adds it so `jobs.attempts` keeps counting across a
+   * Redis replacement.
+   *
+   * The row's identity is written last and the reserved keys are stripped
+   * from metadata, so metadata can never re-point the worker at another row
+   * or skew the attempt count (#852 adversarial).
+   */
+  static queuePayload(
+    job: JobSelect,
+    opts: { attemptOffset?: number } = {}
+  ): Record<string, unknown> {
+    const {
+      jobId: _jobId,
+      type: _type,
+      attemptOffset: _attemptOffset,
+      ...metadata
+    } = (job.metadata ?? {}) as Record<string, unknown>;
+    return {
+      ...metadata,
+      jobId: job.id,
+      type: job.type,
+      ...(opts.attemptOffset ? { attemptOffset: opts.attemptOffset } : {}),
+    };
+  }
+
+  /**
+   * The BullMQ options for a job row. The id is the row id, not BullMQ's
+   * per-Redis counter (#852): unique across a Redis replacement, and
+   * re-adding it is a no-op BullMQ ignores. `attempts` defaults to the row's
+   * whole budget; a re-dispatch passes what is left of it.
+   */
+  static queueOptions(
+    job: JobSelect,
+    attempts: number = job.maxAttempts
+  ): { jobId: string; attempts: number } {
+    return { jobId: job.id, attempts };
+  }
+
+  /**
    * Queue an inserted job on BullMQ and record its `bullJobId`. A failure
    * marks the row `failed` and throws `JOB_ENQUEUE_FAILED`.
    */
@@ -110,12 +152,8 @@ export class JobsService {
     try {
       const bullJob = await getJobsQueue().add(
         job.type,
-        {
-          jobId: job.id,
-          type: job.type,
-          ...(job.metadata as Record<string, unknown>),
-        },
-        { attempts: job.maxAttempts }
+        JobsService.queuePayload(job),
+        JobsService.queueOptions(job)
       );
 
       // 3. Store BullMQ reference

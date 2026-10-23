@@ -55,6 +55,15 @@ export const SEAT_LOCK_NAMESPACE = 0x5345_4154;
 export const UPGRADE_LOCK_NAMESPACE = 0x5550_4752;
 
 /**
+ * Advisory-lock namespace for job re-dispatch (#852), keyed by the constant
+ * `"jobs-redispatch"` (a singleton). Two concurrent passes would both see a
+ * row absent and both add it; the add is idempotent, but holding the lock
+ * keeps the summary an honest account of one pass. `0x5244_5350` is ASCII
+ * "RDSP".
+ */
+export const REDISPATCH_LOCK_NAMESPACE = 0x5244_5350;
+
+/**
  * Advisory-lock namespace for job scope locks (#769), keyed by
  * `lockScopeKey` ("entity:<id>" / "instance:<id>"). Transaction-scoped: a
  * write takes it shared before checking for a running job, and an enqueue

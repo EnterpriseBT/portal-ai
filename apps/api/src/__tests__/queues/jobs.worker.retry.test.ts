@@ -418,3 +418,40 @@ describe("jobs worker — retry-aware terminal state (#441)", () => {
     expect(openingCall()![2]).not.toHaveProperty("lostExecutions");
   });
 });
+
+/**
+ * A queue entry for a row that is already terminal (#852 review). The row is
+ * the record of truth: a stale entry (the old Redis after a cutover
+ * rollback, a re-delivery after a user cancel) must not move a finished job
+ * back to `active` and run its processor a second time.
+ */
+describe("jobs worker — never re-runs a terminal row (#852)", () => {
+  beforeEach(() => {
+    mockTransition.mockReset().mockResolvedValue(undefined);
+    mockFindById.mockReset();
+    captured = undefined;
+  });
+
+  it.each(["completed", "failed", "cancelled"])(
+    "skips a %s row without transitioning it or running the processor",
+    async (status) => {
+      mockFindById.mockResolvedValue({ status, lostExecutions: 0 });
+      const processor = jest.fn(async () => ({ ok: true }));
+      createJobsWorker({ connector_sync: processor });
+
+      const out = await captured!(job(0));
+      expect(out).toEqual({ skipped: true, status });
+      expect(processor).not.toHaveBeenCalled();
+      expect(mockTransition).not.toHaveBeenCalled();
+    }
+  );
+
+  it("still runs when the pre-read fails (fail-open)", async () => {
+    mockFindById.mockRejectedValue(new Error("db down"));
+    const processor = jest.fn(async () => ({ ok: true }));
+    createJobsWorker({ connector_sync: processor });
+
+    await captured!(job(0));
+    expect(processor).toHaveBeenCalled();
+  });
+});

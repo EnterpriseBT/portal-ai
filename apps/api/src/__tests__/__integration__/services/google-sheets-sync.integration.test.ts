@@ -38,6 +38,11 @@ const AUTH0_ID = "auth0|gsheets-sync-test-user";
 // still required to avoid a real Redis connection.
 const redisStore = new Map<string, string>();
 jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
+  // The queue modules the adapter imports build their connection here.
+  redisConnection: () => ({
+    url: process.env.REDIS_URL!,
+    maxRetriesPerRequest: null,
+  }),
   getRedisClient: () => ({
     set: async (key: string, value: string): Promise<"OK"> => {
       redisStore.set(key, value);

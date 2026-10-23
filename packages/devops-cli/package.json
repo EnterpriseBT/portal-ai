@@ -33,7 +33,10 @@
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1084.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1084.0",
     "@aws-sdk/client-ecs": "^3.1084.0",
+    "@aws-sdk/client-elasticache": "^3.1084.0",
     "@portalai/cli-env": "*",
     "@portalai/core": "*",
     "commander": "^14.0.0",
