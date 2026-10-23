@@ -4,6 +4,9 @@ on:
   push:
     branches-ignore:
       - main
+  # Lets the durations refresh PR (#857) get its required checks: a push
+  # made with GITHUB_TOKEN starts no workflows, but a dispatch does.
+  workflow_dispatch:
   workflow_call:
     # Declared so a caller that forgets to pass them is visible HERE, in the
     # workflow that needs them (#454). `required: false` because a
@@ -41,15 +44,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-integration:
-    name: Integration Tests
+  # The suite runs as N shards, each on its own runner with its own Postgres +
+  # Redis, behind ONE required check (#857). The suites can't share a database
+  # (teardownOrg deletes every row, queue suites obliterate shared queues), so
+  # parallelism comes from runners, not Jest workers. The control logic is in
+  # scripts/integration-shards.mjs, self-tested by lint:integration-shards.
+  #
+  #   changes ─▶ plan ─▶ shard × N ─▶ "Integration Tests" (the required check)
+
+  # A docs-only push can't affect this suite, and the suite is the most
+  # expensive thing in CI. This is deliberately NOT `paths-ignore` on the
+  # trigger: "Integration Tests" is a REQUIRED status check on main, and a
+  # required check that never runs never reports, so GitHub would block the
+  # PR indefinitely (#427). The summary job below always reports; this job
+  # only decides whether the shards run.
+  #
+  # "Docs-only" is measured from this branch's LAST SUCCESSFUL run of this
+  # workflow, not the previous push (#663). Fails safe: any doubt runs the
+  # suite. The logic and its self-test live in the script
+  # (`npm run lint:integration-skip`).
+  changes:
+    name: "Integration Tests: changes"
     runs-on: ubuntu-latest
-    # actions: read lets the skip decision read this workflow's run history
-    # (#663); contents: read is the checkout.
+    # actions: read lets the skip decision read this workflow's run history.
     permissions:
       contents: read
       actions: read
-
+    outputs:
+      run: ${{ steps.changes.outputs.run }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,45 +79,124 @@ jobs:
           # Need the pushed range available locally to diff it below.
           fetch-depth: 0
 
-      # A docs-only push cannot affect this suite, and the suite is the most
-      # expensive thing in CI (~6 min of docker compose + Postgres/Redis).
-      #
-      # This is deliberately NOT `paths-ignore` on the trigger: "Integration
-      # Tests" is a REQUIRED status check on main, and a required check that
-      # never runs never reports — GitHub then blocks the PR indefinitely,
-      # waiting for a status that will never arrive. Filtering inside the job
-      # keeps the check reporting success while skipping the work (#427).
-      #
-      # "Docs-only" is measured from this branch's LAST SUCCESSFUL run of this
-      # workflow, not the previous push (#663). Against the previous push, a
-      # docs push went green after a code push's run was cancelled (code never
-      # tested) or failed (a red suite masked on head).
-      #
-      # Fails safe: any doubt (not a push, no green run on the branch yet, the
-      # run-history lookup failing, a force-push, a diff failure) runs the
-      # suite. The logic and its self-test live in the script
-      # (`npm run lint:integration-skip`).
       - name: Does anything outside docs/ change since the last green run?
         id: changes
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/integration-skip-base.mjs
 
+  # How many shards: enough for ~210s of recorded Jest time each, clamped to
+  # 2..10. The cap is sized to the free plan's 20 concurrent jobs. No npm ci:
+  # the planner needs only the durations file and the script.
+  plan:
+    name: "Integration Tests: plan"
+    needs: [changes]
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      count: ${{ steps.plan.outputs.count }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      capped: ${{ steps.plan.outputs.capped }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+            apps/api/src/__tests__/__integration__/durations.json
+          sparse-checkout-cone-mode: false
+
+      - name: Plan the shards
+        id: plan
+        run: node scripts/integration-shards.mjs plan
+
+  shard:
+    name: Integration Tests (shard ${{ matrix.index }}/${{ needs.plan.outputs.count }})
+    needs: [changes, plan]
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      # Every shard runs to the end even when one fails: the summary wants
+      # every report, and a failure in one shard says nothing about the rest.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Start test services
-        if: steps.changes.outputs.run == 'true'
         run: docker compose up -d postgres-test redis --wait
 
       - name: Setup
-        if: steps.changes.outputs.run == 'true'
         uses: ./.github/actions/setup
 
-      - name: Run integration tests
-        if: steps.changes.outputs.run == 'true'
+      # INTEGRATION_SHARD reaches Jest through apps/api's test:integration
+      # (`--shard`, plus a JSON report) and is hashed by turbo, so each shard
+      # is its own cache entry (lint:ci-cache rule 6). The report is a turbo
+      # output, so a cache hit restores it too.
+      - name: Run integration tests (shard ${{ matrix.index }}/${{ needs.plan.outputs.count }})
         env:
           INTEGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/portal_ai_test
           REDIS_URL: redis://localhost:6380
+          INTEGRATION_SHARD: ${{ matrix.index }}/${{ needs.plan.outputs.count }}
         run: npm run test:integration
 
+      - name: Upload the shard's Jest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-jest-${{ matrix.index }}
+          path: apps/api/jest-integration-report.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
       - name: Stop test services
-        if: always() && steps.changes.outputs.run == 'true'
+        if: always()
         run: docker compose down
+
+  # THE required check. GitHub matches required contexts by job name, so this
+  # job — not the shards — carries "Integration Tests", and it runs whatever
+  # happened upstream (`always()`): green only when the docs-only skip said
+  # not to run, or when every shard passed and the suites across them add up
+  # to the checkout's test files (a file in no shard, or two, shows as a
+  # mismatch). Over-budget shards and the shard cap only warn.
+  # lint:ci-cache rule 3 holds this shape.
+  summary:
+    name: Integration Tests
+    needs: [changes, plan, shard]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+            apps/api/src
+          sparse-checkout-cone-mode: false
+
+      - name: Download the shards' Jest reports
+        if: needs.changes.outputs.run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: integration-jest-*
+          path: reports
+
+      - name: Every shard green, every file run exactly once?
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          RUN: ${{ needs.changes.outputs.run }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          SHARD_RESULT: ${{ needs.shard.result }}
+          PLANNED_COUNT: ${{ needs.plan.outputs.count }}
+          CAPPED: ${{ needs.plan.outputs.capped }}
+        run: node scripts/integration-shards.mjs summarize --reports reports

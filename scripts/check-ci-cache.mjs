@@ -21,7 +21,8 @@
  *
  * Rules land slice by slice, each with the change that satisfies it — see
  * `docs/TURBOREPO_CI_CACHING.plan.md`:
- *   - rule 3: required-check job names are exactly the three gated on `main`
+ *   - rule 3: required-check job names are exactly the three gated on `main`,
+ *     and a sharded check's name sits on the aggregator over its shards (#857)
  *   - rule 4: those workflows' `concurrency.group` leads with a literal
  *   - rule 5: `apps/site`'s build stays uncached, with its env declared
  *   - rule 1: a workflow that runs turbo carries the cache credentials
@@ -125,6 +126,39 @@ export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScri
           `every PR waiting for a context that never reports. Found ` +
           `${jobNames.length ? jobNames.map((n) => `"${n}"`).join(", ") : "no named jobs"}.`,
       });
+    }
+
+    // Rule 3, sharded (#857) — when the check runs as a matrix, the job that
+    // carries the required name must be the aggregator over it. A matrix job
+    // can't be that job: each leg reports its own context, so the required
+    // name would match one leg, or none. And an aggregator that doesn't wait
+    // for every leg, or that GitHub skips when a leg fails (no `always()`),
+    // reports green — or nothing — over a red shard.
+    const jobs = Object.entries(doc?.jobs ?? {});
+    const matrixJobs = jobs.filter(([, job]) => job?.strategy?.matrix).map(([id]) => id);
+    if (matrixJobs.length) {
+      const named = jobs.find(([, job]) => job?.name === expectedJobName);
+      const problems = [];
+      if (named) {
+        const [id, job] = named;
+        const needs = [].concat(job.needs ?? []);
+        if (matrixJobs.includes(id)) problems.push(`"${expectedJobName}" is itself the matrix job`);
+        if (!String(job.if ?? "").includes("always()")) {
+          problems.push(`its \`if\` lacks always(), so GitHub skips it when a shard fails`);
+        }
+        const missing = matrixJobs.filter((m) => m !== id && !needs.includes(m));
+        if (missing.length) problems.push(`its \`needs\` omits the matrix job(s) ${missing.join(", ")}`);
+      }
+      if (problems.length) {
+        violations.push({
+          rule: 3,
+          file,
+          message:
+            `the required check "${expectedJobName}" runs as a matrix, so the job with ` +
+            `that name must be a summary that needs every shard with if: always(): ` +
+            `${problems.join("; ")}.`,
+        });
+      }
     }
 
     // Rule 4 — the group must lead with a LITERAL. Inside a workflow_call every
@@ -438,6 +472,43 @@ jobs:
 
 const rootTurbo = (task) => ({ tasks: { "test:integration": task } });
 
+// Rule 3 (#857) fixtures: integration-test.yml as a matrix of shards behind a
+// summary job.
+const shardedIntegration = ({
+  summaryName = "Integration Tests",
+  summaryIf = "always()",
+  summaryNeeds = "[changes, plan, shard]",
+  shardName = "Integration Tests (shard \${{ matrix.index }})",
+} = {}) => `
+name: Integration Tests
+on: push
+${cleanConcurrency("integration-test")}
+jobs:
+  changes:
+    name: "Integration Tests: changes"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+  plan:
+    name: "Integration Tests: plan"
+    needs: [changes]
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+  shard:
+    name: "${shardName}"
+    needs: [changes, plan]
+    strategy:
+      matrix:
+        index: [1, 2]
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+  summary:
+    name: "${summaryName}"
+    needs: ${summaryNeeds}
+    if: ${summaryIf}
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+`;
+
 const FIXTURES = [
   {
     name: "rule 1 — runs turbo with no credentials",
@@ -558,6 +629,32 @@ concurrency:
     name: "rule 4 — concurrency block missing entirely",
     files: { "unit-test.yml": unitTest({ concurrency: "" }) },
     expectRule: 4,
+  },
+
+  {
+    name: "rule 3 — a sharded check behind an always() summary that needs every shard",
+    files: { "integration-test.yml": shardedIntegration() },
+    expectRule: null,
+  },
+  {
+    name: "rule 3 — the summary job skips when a shard fails (no always())",
+    files: { "integration-test.yml": shardedIntegration({ summaryIf: "success()" }) },
+    expectRule: 3,
+  },
+  {
+    name: "rule 3 — the summary job doesn't wait for the shards",
+    files: { "integration-test.yml": shardedIntegration({ summaryNeeds: "[changes, plan]" }) },
+    expectRule: 3,
+  },
+  {
+    name: "rule 3 — the matrix job itself carries the required name",
+    files: {
+      "integration-test.yml": shardedIntegration({
+        summaryName: "Integration summary",
+        shardName: "Integration Tests",
+      }),
+    },
+    expectRule: 3,
   },
 
   {

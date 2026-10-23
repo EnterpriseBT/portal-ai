@@ -110,3 +110,93 @@ export function planShards(durations) {
     capped: wanted > MAX_SHARDS,
   };
 }
+
+/**
+ * The verdict of the one required check, `Integration Tests`, over every
+ * shard. Fails closed: green only when the docs-only skip decided not to run,
+ * or when the plan and every shard succeeded, every shard's report is
+ * present, no suite failed, and the suites across all shards add up to the
+ * checkout's test files. A file in no shard, or in two, shows up as that
+ * count being off. Running over budget or at the cap only warns: slow is not
+ * broken.
+ *
+ * @param {{
+ *   changesResult: string, run: string, planResult: string, shardResult: string,
+ *   plannedCount: number, fileCount: number, capped: boolean,
+ *   reports: Array<{shard: number, report: {numTotalTestSuites?: number, numFailedTestSuites?: number, testResults?: Array<{startTime: number, endTime: number}>}}>
+ * }} input  `*Result` are GitHub `needs.<job>.result` values
+ * @returns {{ok: boolean, skipped: boolean, errors: string[], warnings: string[], table: string}}
+ */
+export function summaryVerdict(input) {
+  const errors = [];
+  const warnings = [];
+
+  if (input.changesResult !== "success") {
+    errors.push(
+      `the docs-only skip decision ended ${input.changesResult || "without a result"}`
+    );
+    return { ok: false, skipped: false, errors, warnings, table: "" };
+  }
+  if (input.run !== "true") {
+    return {
+      ok: true,
+      skipped: true,
+      errors,
+      warnings,
+      table: "Skipped: only docs changed since this branch's last green run.",
+    };
+  }
+
+  if (input.planResult !== "success") errors.push(`the shard plan ended ${input.planResult}`);
+  if (input.shardResult !== "success") {
+    errors.push(`the shards ended ${input.shardResult} (any failed or cancelled shard fails the check)`);
+  }
+  if (input.reports.length !== input.plannedCount) {
+    errors.push(`${input.reports.length} of ${input.plannedCount} shard report(s) arrived`);
+  }
+
+  const rows = [...input.reports]
+    .sort((a, b) => a.shard - b.shard)
+    .map(({ shard, report }) => {
+      const seconds = round1(
+        (report.testResults ?? []).reduce((n, t) => n + (t.endTime - t.startTime) / 1000, 0)
+      );
+      return {
+        shard,
+        suites: report.numTotalTestSuites ?? 0,
+        failed: report.numFailedTestSuites ?? 0,
+        seconds,
+      };
+    });
+
+  const suites = rows.reduce((n, r) => n + r.suites, 0);
+  if (input.reports.length === input.plannedCount && suites !== input.fileCount) {
+    errors.push(
+      `${suites} suite(s) ran across the shards, but the checkout has ${input.fileCount} integration test file(s): a file ran in no shard or in two`
+    );
+  }
+  const failed = rows.reduce((n, r) => n + r.failed, 0);
+  if (failed > 0) errors.push(`${failed} suite(s) failed`);
+
+  for (const r of rows) {
+    if (r.seconds > BUDGET_SECONDS * DRIFT_FACTOR) {
+      warnings.push(
+        `shard ${r.shard} ran ${r.seconds}s of Jest, over the ${BUDGET_SECONDS}s budget by more than ${Math.round((DRIFT_FACTOR - 1) * 100)}%: refresh durations.json`
+      );
+    }
+  }
+  if (input.capped) {
+    warnings.push(
+      `the suite needs more than the ${MAX_SHARDS}-shard cap, so shards run over budget: time for one database per Jest worker (#857 follow-up)`
+    );
+  }
+
+  const table = [
+    "| Shard | Suites | Failed | Jest seconds |",
+    "|---|---|---|---|",
+    ...rows.map((r) => `| ${r.shard} | ${r.suites} | ${r.failed} | ${r.seconds} |`),
+    `| **Total** | **${suites}** of ${input.fileCount} files | ${failed} | ${round1(rows.reduce((n, r) => n + r.seconds, 0))} |`,
+  ].join("\n");
+
+  return { ok: errors.length === 0, skipped: false, errors, warnings, table };
+}

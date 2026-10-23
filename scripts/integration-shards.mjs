@@ -19,16 +19,24 @@
  * Usage: node scripts/integration-shards.mjs <command>
  *   --self-test                         the embedded cases (lint:integration-shards)
  *   plan                                the shard count + matrix for CI (step outputs)
+ *   summarize --reports <dir>           the Integration Tests verdict over every shard
+ *                                       (job results via CHANGES_RESULT, RUN, PLAN_RESULT,
+ *                                       SHARD_RESULT, PLANNED_COUNT, CAPPED)
  *   check-durations                     fail on a file over the ceiling (lint:integration-durations)
  *   update-durations --reports <dir> [--if-changed]
  *                                       rewrite durations.json from Jest JSON reports
  */
 
-import { appendFileSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assignShards } from "../apps/api/jest.integration.sequencer.mjs";
+// Only the self-test needs the packer, and it pulls in @jest/test-sequencer.
+// CI's plan and summary jobs run without `npm ci`, so it isn't loaded there.
+const { assignShards } =
+  process.argv[2] === "--self-test"
+    ? await import("../apps/api/jest.integration.sequencer.mjs")
+    : { assignShards: null };
 import {
   CEILING_ALLOWLIST,
   DURATIONS_FILE,
@@ -37,6 +45,7 @@ import {
   durationsChanged,
   mergeReports,
   planShards,
+  summaryVerdict,
 } from "./integration-shards.lib.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -177,6 +186,89 @@ const CASES = [
       );
     },
   })),
+  ...(() => {
+    /** A shard's Jest report: `suites` suites of `seconds` each. */
+    const shardReport = (shard, suites, seconds = 10, failed = 0) => ({
+      shard,
+      report: {
+        numTotalTestSuites: suites,
+        numFailedTestSuites: failed,
+        testResults: Array.from({ length: suites }, (_, i) => ({
+          name: `/x/apps/api/src/s${shard}-${i}.integration.test.ts`,
+          startTime: 0,
+          endTime: seconds * 1000,
+        })),
+      },
+    });
+    const green = {
+      changesResult: "success",
+      run: "true",
+      planResult: "success",
+      shardResult: "success",
+      plannedCount: 2,
+      fileCount: 6,
+      capped: false,
+      reports: [shardReport(1, 3), shardReport(2, 3)],
+    };
+    const verdict = (over) => summaryVerdict({ ...green, ...over });
+    return [
+      {
+        name: "summaryVerdict: a docs-only skip is green, with no shard",
+        run: () => {
+          const v = verdict({ run: "false", planResult: "skipped", shardResult: "skipped", reports: [] });
+          return v.ok && v.skipped;
+        },
+      },
+      {
+        name: "summaryVerdict: the skip decision itself failing is red",
+        run: () => !verdict({ changesResult: "failure", run: "" }).ok,
+      },
+      {
+        name: "summaryVerdict: a cancelled shard is red, never green",
+        run: () => !verdict({ shardResult: "cancelled" }).ok,
+      },
+      {
+        name: "summaryVerdict: a failed plan is red",
+        run: () => !verdict({ planResult: "failure" }).ok,
+      },
+      {
+        name: "summaryVerdict: a missing shard report is red",
+        run: () => !verdict({ reports: [shardReport(1, 3)] }).ok,
+      },
+      {
+        name: "summaryVerdict: suites across shards ≠ test files is red (a file ran twice or never)",
+        run: () => {
+          const v = verdict({ fileCount: 7 });
+          return !v.ok && v.errors.some((e) => /6 suite/.test(e) && /7/.test(e));
+        },
+      },
+      {
+        name: "summaryVerdict: a failed suite is red",
+        run: () => !verdict({ reports: [shardReport(1, 3, 10, 1), shardReport(2, 3)] }).ok,
+      },
+      {
+        name: "summaryVerdict: every shard green and every file counted is green, without warnings",
+        run: () => {
+          const v = verdict({});
+          return v.ok && !v.skipped && v.errors.length === 0 && v.warnings.length === 0;
+        },
+      },
+      {
+        name: "summaryVerdict: a shard well over budget warns but stays green",
+        run: () => {
+          const v = verdict({ reports: [shardReport(1, 3, 100), shardReport(2, 3)] });
+          return v.ok && v.warnings.some((w) => /shard 1/.test(w));
+        },
+      },
+      {
+        name: "summaryVerdict: a capped plan warns but stays green",
+        run: () => {
+          const v = verdict({ capped: true });
+          return v.ok && v.warnings.some((w) => /cap/.test(w));
+        },
+      },
+    ];
+  })(),
 ];
 
 function selfTest() {
@@ -211,9 +303,10 @@ const readJson = (file, fallback) => {
   }
 };
 
-/** Every *.json file under `dir`, recursively (one per shard artifact). */
+/** Every *.json file under `dir`, recursively (one per shard artifact). A
+ *  missing dir is no reports, which the summary turns into a clear error. */
 const jsonFilesUnder = (dir) =>
-  readdirSync(dir, { recursive: true })
+  (existsSync(dir) ? readdirSync(dir, { recursive: true }) : [])
     .map(String)
     .filter((f) => f.endsWith(".json"))
     .map((f) => path.join(dir, f));
@@ -296,9 +389,51 @@ function plan() {
   return true;
 }
 
+function summarize() {
+  const dir = argValue("--reports");
+  // Each shard's artifact lands in its own `integration-jest-<i>/` folder.
+  const reports = dir
+    ? jsonFilesUnder(dir).map((file) => ({
+        shard: Number(/integration-jest-(\d+)/.exec(file)?.[1] ?? 0),
+        report: readJson(file, {}),
+      }))
+    : [];
+  const env = process.env;
+  const verdict = summaryVerdict({
+    changesResult: env.CHANGES_RESULT ?? "",
+    run: env.RUN ?? "",
+    planResult: env.PLAN_RESULT ?? "",
+    shardResult: env.SHARD_RESULT ?? "",
+    plannedCount: Number(env.PLANNED_COUNT ?? 0),
+    capped: env.CAPPED === "true",
+    fileCount: integrationFiles().length,
+    reports,
+  });
+
+  for (const e of verdict.errors) console.log(`::error title=Integration Tests::${e}`);
+  for (const w of verdict.warnings) console.log(`::warning title=Integration Tests::${w}`);
+  console.log(verdict.table);
+  if (env.GITHUB_STEP_SUMMARY) {
+    appendFileSync(
+      env.GITHUB_STEP_SUMMARY,
+      [
+        "## Integration Tests",
+        "",
+        verdict.table,
+        "",
+        ...verdict.errors.map((e) => `- ❌ ${e}`),
+        ...verdict.warnings.map((w) => `- ⚠️ ${w}`),
+        "",
+      ].join("\n")
+    );
+  }
+  return verdict.ok;
+}
+
 const COMMANDS = {
   "--self-test": selfTest,
   plan,
+  summarize,
   "check-durations": checkDurations,
   "update-durations": updateDurations,
 };
