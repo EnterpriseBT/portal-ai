@@ -171,6 +171,18 @@ describe("JobRedispatchService — integration (#852)", () => {
     expect((await jobRow(id)).attempts).toBe(3);
   });
 
+  it("queues under the row's own identity even when metadata carries jobId/attemptOffset", async () => {
+    const other = await seedJob("pending");
+    const id = await seedJob("pending", {
+      metadata: { jobId: other, attemptOffset: -5 },
+    });
+
+    await JobRedispatchService.redispatchOrphans({ dryRun: false });
+    const queued = await getJobsQueue().getJob(id);
+    expect(queued?.data.jobId).toBe(id);
+    expect(queued?.data.attemptOffset).toBeUndefined();
+  });
+
   it("never revives a terminal row", async () => {
     const id = await seedJob("cancelled", { completedAt: STALE() });
 

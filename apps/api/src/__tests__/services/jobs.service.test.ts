@@ -170,3 +170,32 @@ describe("JobsService.create refuses a job that locks scopes (#769)", () => {
     expect(mockAdd).not.toHaveBeenCalled();
   });
 });
+
+describe("JobsService.queuePayload — the row's identity always wins (#852 adversarial)", () => {
+  const job = (metadata: Record<string, unknown>) =>
+    ({
+      id: "row-1",
+      type: "system_check",
+      metadata,
+      maxAttempts: 3,
+    }) as never;
+
+  it("metadata can't override jobId or type", () => {
+    const data = JobsService.queuePayload(
+      job({ jobId: "other-row", type: "bulk_transform", foo: 1 })
+    );
+    expect(data).toEqual({ jobId: "row-1", type: "system_check", foo: 1 });
+  });
+
+  it("metadata can't set attemptOffset; only the re-dispatch's value counts", () => {
+    expect(JobsService.queuePayload(job({ attemptOffset: -5 }))).toEqual({
+      jobId: "row-1",
+      type: "system_check",
+    });
+    expect(
+      JobsService.queuePayload(job({ attemptOffset: -5 }), {
+        attemptOffset: 2,
+      })
+    ).toMatchObject({ attemptOffset: 2 });
+  });
+});

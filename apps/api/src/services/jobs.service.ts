@@ -108,15 +108,25 @@ export class JobsService {
    * `attemptOffset` is the attempts the row already spent on an earlier
    * queue; the worker adds it so `jobs.attempts` keeps counting across a
    * Redis replacement.
+   *
+   * The row's identity is written last and the reserved keys are stripped
+   * from metadata, so metadata can never re-point the worker at another row
+   * or skew the attempt count (#852 adversarial).
    */
   static queuePayload(
     job: JobSelect,
     opts: { attemptOffset?: number } = {}
   ): Record<string, unknown> {
+    const {
+      jobId: _jobId,
+      type: _type,
+      attemptOffset: _attemptOffset,
+      ...metadata
+    } = (job.metadata ?? {}) as Record<string, unknown>;
     return {
+      ...metadata,
       jobId: job.id,
       type: job.type,
-      ...(job.metadata as Record<string, unknown>),
       ...(opts.attemptOffset ? { attemptOffset: opts.attemptOffset } : {}),
     };
   }
