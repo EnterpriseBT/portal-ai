@@ -20,6 +20,7 @@ import {
   DeleteChangeSetCommand,
   DescribeChangeSetCommand,
   DescribeStacksCommand,
+  ExecuteChangeSetCommand,
   UpdateStackCommand,
   waitUntilChangeSetCreateComplete,
   waitUntilStackUpdateComplete,
@@ -122,8 +123,9 @@ export async function updateStackParams(
     if (!(key in current)) {
       throw new CacheCutoverConflictError(
         `${name}'s deployed template has no ${key} parameter. If its release is deployed, the deploy ` +
-          `skipped a template with no resource changes (#861): run \`portalops cache refresh-template ` +
-          `--env ${def.name}\` from a clean checkout of main, then retry.`
+          `skipped a template with no resource changes (#861): from a clean checkout of main, run ` +
+          `\`portalops cache refresh-template --env ${def.name} --phase <phase>\`, which applies main's ` +
+          `template with the phase set.`
       );
     }
   }
@@ -284,6 +286,26 @@ export async function cacheStatus(
   };
 }
 
+/** A phase may only drop the cache the backend isn't using. Shared by
+ *  `cache phase` and `cache refresh-template --phase`. */
+async function assertPhaseAllowed(
+  def: EnvironmentDefinition,
+  phase: CutoverPhase
+): Promise<void> {
+  const source =
+    (await readStackParams(def, "backend")).RedisEndpointSource ?? "legacy";
+  if (phase === "encrypted" && source !== "encrypted") {
+    throw new CacheCutoverConflictError(
+      "The backend still uses the legacy cache — run `portalops cache switch encrypted` before retiring it"
+    );
+  }
+  if (phase === "legacy" && source !== "legacy") {
+    throw new CacheCutoverConflictError(
+      "The backend uses the encrypted cache — run `portalops cache switch legacy` before removing it"
+    );
+  }
+}
+
 /**
  * Move `cache.yml`'s phase. `both` creates the encrypted cache; `encrypted`
  * removes the legacy one, so it is destructive (refused on prod, where the
@@ -302,18 +324,7 @@ export async function cachePhase(
     prodConfirmed: !!opts.confirmProd,
   });
 
-  const source =
-    (await readStackParams(def, "backend")).RedisEndpointSource ?? "legacy";
-  if (phase === "encrypted" && source !== "encrypted") {
-    throw new CacheCutoverConflictError(
-      "The backend still uses the legacy cache — run `portalops cache switch encrypted` before retiring it"
-    );
-  }
-  if (phase === "legacy" && source !== "legacy") {
-    throw new CacheCutoverConflictError(
-      "The backend uses the encrypted cache — run `portalops cache switch legacy` before removing it"
-    );
-  }
+  await assertPhaseAllowed(def, phase);
 
   const { changed } = await updateStackParams(def, "cache", {
     RedisCutoverPhase: phase,
@@ -382,6 +393,8 @@ export async function cacheSwitch(
   return { stack, endpointSource: to, changed };
 }
 
+const PHASE_PARAM = "RedisCutoverPhase";
+
 /** UpdateStack's inline TemplateBody limit; larger needs an S3 URL. */
 const TEMPLATE_BODY_MAX_BYTES = 51_200;
 
@@ -419,40 +432,64 @@ export interface ResourceChange {
 export interface RefreshTemplateDeps {
   readTemplate: typeof readRepoTemplate;
   gitState: typeof repoGitState;
+  sleep: (ms: number) => Promise<void>;
 }
 
 /**
- * Apply main's `cache.yml` to the cache stack, parameters unchanged (#861).
+ * Apply main's `cache.yml` to the cache stack, optionally with the phase set
+ * (#861).
  *
  * The deploy workflows skip a template whose only changes are parameters,
- * conditions and outputs (no resource change), so the deployed cache
- * template can predate a parameter its release added. This applies the
- * template explicitly, and only when it is exactly main:
+ * conditions and outputs, so the deployed cache template can predate a
+ * parameter its release added. CloudFormation won't apply such a template on
+ * its own either (a template-only change set or UpdateStack is "no changes",
+ * measured on app-dev): it lands only together with a resource change. For
+ * this stack that change is the cutover's first phase, so `--phase both`
+ * applies main's template with RedisCutoverPhase=both, and the new encrypted
+ * group carries the template.
+ *
+ * Only when it is exactly main, and only what was previewed:
+ * - the mutation guard runs before any AWS call;
  * - the checkout must be clean for the template and at `origin/main`;
  * - every parameter the template declares and the stack has keeps its
- *   previous value; a new one must have a default;
- * - a change set previews it first, and any resource removal or replacement
- *   counts as destructive (refused on prod);
- * - the audit line records the template and the commit.
- * The cutover commands stay parameter-only; this is the one place a template
- * is applied.
+ *   previous value, except RedisCutoverPhase under `--phase` (with `cache
+ *   phase`'s preconditions); a new one must have a default;
+ * - a change set previews it, and only a CREATE_COMPLETE one is trusted. A
+ *   resource removal or replacement counts as destructive (refused on prod).
+ *   No resource changes means already current, or a refusal naming
+ *   `--phase both`;
+ * - it executes that change set and waits for its execution to finish; the
+ *   change set is deleted on every path that doesn't execute it;
+ * - the audit line records the template, the commit and the phase.
+ * `cache phase`/`switch` stay parameter-only on the deployed template.
  */
 export async function cacheRefreshTemplate(
   def: EnvironmentDefinition,
-  opts: MutateOptions & { dryRun?: boolean },
+  opts: MutateOptions & { dryRun?: boolean; phase?: CutoverPhase },
   deps: RefreshTemplateDeps = {
     readTemplate: readRepoTemplate,
     gitState: repoGitState,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   }
 ): Promise<{
   stack: string;
   template: string;
   commit: string;
+  phase: CutoverPhase | null;
   resourceChanges: ResourceChange[];
   dryRun: boolean;
   changed: boolean;
 }> {
   requireDeployed(def);
+  const guard = (destructive: boolean) =>
+    assertOperationAllowed(def, {
+      destructive,
+      confirmed: !!opts.yes,
+      prodConfirmed: !!opts.confirmProd,
+    });
+  // Before any AWS call: a refused command must not write a change set.
+  if (!opts.dryRun) guard(false);
+
   const stack = stackName(def, "cache");
   const template = deps.readTemplate("cache");
   if (!template) {
@@ -469,7 +506,7 @@ export async function cacheRefreshTemplate(
   if (!git.main || git.head !== git.main) {
     throw new CacheCutoverConflictError(
       `the checkout is at ${git.head.slice(0, 8)}, not origin/main${git.main ? ` (${git.main.slice(0, 8)})` : ""}: ` +
-        `\`git checkout main && git pull\` first`
+        "`git checkout main && git pull` first"
     );
   }
   if (Buffer.byteLength(template.body) > TEMPLATE_BODY_MAX_BYTES) {
@@ -479,129 +516,163 @@ export async function cacheRefreshTemplate(
   }
 
   const declared = declaredParameters(template.body);
+  const phase = opts.phase ?? null;
+  if (phase) {
+    if (!declared.has(PHASE_PARAM)) {
+      throw new CacheCutoverConflictError(
+        `${template.path} doesn't declare ${PHASE_PARAM}`
+      );
+    }
+    await assertPhaseAllowed(def, phase);
+  }
   const current = await readStackParams(def, "cache");
   const unsupplied = [...declared]
-    .filter(([key, p]) => !(key in current) && !p.hasDefault)
+    .filter(
+      ([key, p]) =>
+        !(key in current) && !p.hasDefault && !(phase && key === PHASE_PARAM)
+    )
     .map(([k]) => k);
   if (unsupplied.length) {
     throw new CacheCutoverConflictError(
       `the template adds ${unsupplied.join(", ")} with no default, which the stack can't supply: deploy it through the workflow instead`
     );
   }
-  const parameters = [...declared.keys()]
-    .filter((key) => key in current)
-    .map((key) => ({ ParameterKey: key, UsePreviousValue: true }));
+  const parameters: Array<{
+    ParameterKey: string;
+    ParameterValue?: string;
+    UsePreviousValue?: boolean;
+  }> = [
+    ...[...declared.keys()]
+      .filter((key) => key in current && !(phase && key === PHASE_PARAM))
+      .map((key) => ({ ParameterKey: key, UsePreviousValue: true })),
+    ...(phase ? [{ ParameterKey: PHASE_PARAM, ParameterValue: phase }] : []),
+  ];
 
-  // Preview. A change set with no resource changes ends FAILED ("didn't
-  // contain changes"): that is the template-only case this exists for.
   const client = cfn(def);
   const changeSetName = `portalops-refresh-${Date.now()}`;
+  const ids = { StackName: stack, ChangeSetName: changeSetName };
   await client.send(
     new CreateChangeSetCommand({
-      StackName: stack,
-      ChangeSetName: changeSetName,
+      ...ids,
       TemplateBody: template.body,
       Parameters: parameters,
     })
   );
-  let resourceChanges: ResourceChange[] = [];
+
+  let executed = false;
   try {
     try {
-      await waitUntilChangeSetCreateComplete(
-        { client, maxWaitTime: 300 },
-        { StackName: stack, ChangeSetName: changeSetName }
-      );
+      await waitUntilChangeSetCreateComplete({ client, maxWaitTime: 300 }, ids);
     } catch {
-      // read the status below either way
+      // the status below decides
     }
-    const described = await client.send(
-      new DescribeChangeSetCommand({
-        StackName: stack,
-        ChangeSetName: changeSetName,
-      })
-    );
+    const described = await client.send(new DescribeChangeSetCommand(ids));
+    let resourceChanges: ResourceChange[] = [];
     if (described.Status === "FAILED") {
+      // "didn't contain changes" is the template-only case; anything else
+      // is a real failure.
       if (!/didn't contain changes/.test(described.StatusReason ?? "")) {
         throw new EnvInfraError(
           `Previewing ${stack} failed: ${described.StatusReason}`
         );
       }
-    } else {
+    } else if (described.Status === "CREATE_COMPLETE") {
       resourceChanges = (described.Changes ?? []).map((c) => ({
         logicalId: c.ResourceChange?.LogicalResourceId ?? "?",
         action: c.ResourceChange?.Action ?? "?",
         replacement: c.ResourceChange?.Replacement ?? null,
       }));
+    } else {
+      throw new EnvInfraError(
+        `The preview of ${stack} is ${described.Status}, not CREATE_COMPLETE: nothing applied`
+      );
     }
-  } finally {
-    await client
-      .send(
-        new DeleteChangeSetCommand({
-          StackName: stack,
-          ChangeSetName: changeSetName,
-        })
+
+    const result = {
+      stack,
+      template: template.path,
+      commit: git.head,
+      phase,
+      resourceChanges,
+    };
+    if (opts.dryRun) return { ...result, dryRun: true, changed: false };
+
+    if (resourceChanges.length === 0) {
+      const current_ = [...declared.keys()].every((key) => key in current);
+      if (current_ && (!phase || current[PHASE_PARAM] === phase)) {
+        return { ...result, dryRun: false, changed: false };
+      }
+      throw new CacheCutoverConflictError(
+        `${stack}: this changes no resource, and CloudFormation won't apply a template-only change. ` +
+          "Pass `--phase both` so the encrypted group's creation carries the template."
+      );
+    }
+
+    if (
+      resourceChanges.some(
+        (c) =>
+          c.action === "Remove" ||
+          c.replacement === "True" ||
+          c.replacement === "Conditional"
       )
-      .catch(() => undefined);
-  }
-
-  const result = {
-    stack,
-    template: template.path,
-    commit: git.head,
-    resourceChanges,
-  };
-  if (opts.dryRun) return { ...result, dryRun: true, changed: false };
-
-  const destructive = resourceChanges.some(
-    (c) =>
-      c.action === "Remove" ||
-      c.replacement === "True" ||
-      c.replacement === "Conditional"
-  );
-  assertOperationAllowed(def, {
-    destructive,
-    confirmed: !!opts.yes,
-    prodConfirmed: !!opts.confirmProd,
-  });
-
-  try {
-    await client.send(
-      new UpdateStackCommand({
-        StackName: stack,
-        TemplateBody: template.body,
-        Parameters: parameters,
-      })
-    );
-  } catch (err) {
-    if (/No updates are to be performed/.test((err as Error).message ?? "")) {
-      return { ...result, dryRun: false, changed: false };
+    ) {
+      guard(true);
     }
-    throw new EnvInfraError(
-      `Updating ${stack} failed: ${(err as Error).message}`,
-      { cause: err }
-    );
-  }
-  try {
+
+    try {
+      await client.send(new ExecuteChangeSetCommand(ids));
+      executed = true;
+    } catch (err) {
+      throw new EnvInfraError(
+        `Executing the previewed change set on ${stack} failed: ${(err as Error).message}`,
+        { cause: err }
+      );
+    }
+
+    // ExecuteChangeSet is asynchronous: wait for this change set's own
+    // execution, not the stack's (possibly still previous) status.
+    const deadline = Date.now() + STACK_WAIT_MAX_SECONDS * 1000;
+    for (;;) {
+      const { ExecutionStatus } = await client.send(
+        new DescribeChangeSetCommand(ids)
+      );
+      if (ExecutionStatus === "EXECUTE_COMPLETE") break;
+      if (
+        ExecutionStatus === "EXECUTE_FAILED" ||
+        ExecutionStatus === "OBSOLETE"
+      ) {
+        throw new EnvInfraError(
+          `${stack}: the change set ended ${ExecutionStatus} — check the stack's events in the CloudFormation console`
+        );
+      }
+      if (Date.now() > deadline) {
+        throw new EnvInfraError(
+          `${stack}: still ${ExecutionStatus} after ${STACK_WAIT_MAX_SECONDS}s`
+        );
+      }
+      await deps.sleep(15_000);
+    }
     await waitUntilStackUpdateComplete(
       { client, maxWaitTime: STACK_WAIT_MAX_SECONDS },
       { StackName: stack }
     );
-  } catch (err) {
-    throw new EnvInfraError(
-      `${stack} did not reach UPDATE_COMPLETE — check its events in the CloudFormation console (${(err as Error).message})`,
-      { cause: err }
-    );
+
+    await recordAudit({
+      env: def.name,
+      operator: "portalops",
+      command: "cache refresh-template",
+      args: {
+        stack,
+        template: template.path,
+        commit: git.head,
+        phase,
+        resourceChanges: resourceChanges.length,
+      },
+    });
+    return { ...result, dryRun: false, changed: true };
+  } finally {
+    if (!executed) {
+      await client.send(new DeleteChangeSetCommand(ids)).catch(() => undefined);
+    }
   }
-  await recordAudit({
-    env: def.name,
-    operator: "portalops",
-    command: "cache refresh-template",
-    args: {
-      stack,
-      template: template.path,
-      commit: git.head,
-      resourceChanges: resourceChanges.length,
-    },
-  });
-  return { ...result, dryRun: false, changed: true };
 }

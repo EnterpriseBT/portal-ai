@@ -134,17 +134,21 @@ Read. The phase, the endpoint source, each cache present (`portalai-<env>` legac
 `--json`: `{ "phase", "endpointSource", "caches": [{ "id", "kind": "cache-cluster|replication-group", "status", "atRestEncryption", "transitEncryption", "transitEncryptionMode" }], "service": { "desired", "running" } }`
 
 ### `portalops cache phase <legacy|both|encrypted> --env <env> --yes [--confirm-prod] [--json]`
-`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`. If the deployed template predates `RedisCutoverPhase`, it exits 9 and points at `cache refresh-template` (#861).
+`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`. If the deployed template predates `RedisCutoverPhase`, it exits 9 and points at `cache refresh-template --phase` (#861).
 `--json`: `{ "stack", "phase", "changed" }`
 
-### `portalops cache refresh-template --env <env> [--dry-run] --yes [--confirm-prod] [--json]`
+### `portalops cache refresh-template --env <env> [--phase <legacy|both|encrypted>] [--dry-run] --yes [--confirm-prod] [--json]`
 Mutation (**destructive** when the preview removes or replaces a resource). Applies `main`'s `infra/cloudformation/cache.yml` to the cache stack, for a template the deploy workflows skipped. They use `aws cloudformation deploy`, which skips a change set with no resource changes, so a template that only adds parameters, conditions or outputs never lands (#861).
 - **Checkout:** refuses (exit 9) unless the checkout is clean for that file and `HEAD` is `origin/main`.
 - **Parameters:** every parameter the template declares and the stack has keeps its previous value. A new one must have a default.
+- **`--phase`:** sets `RedisCutoverPhase` with the template, under `cache phase`'s preconditions. CloudFormation applies a template only together with a resource change (a template-only update is "No updates" too), so a template that only adds the parameter lands with the phase whose resource change carries it: `--phase both` adds the encrypted group.
+- **Apply:** it executes the previewed change set itself (only a `CREATE_COMPLETE` one is trusted), so what's applied is what was shown, and it waits for that execution to finish.
+  - No resource changes means the template is already current (`changed: false`), or a refusal (exit 9) naming `--phase both`.
+  - The guard runs before any AWS call, so a refused command writes no change set, and one that isn't executed is always deleted.
 - **Preview:** a change set runs first, and is deleted after. A removal or replacement counts as destructive, so prod refuses it. `--dry-run` stops after the preview.
 - **Audit:** records the template path and the commit.
 
-`--json`: `{ "stack", "template", "commit", "resourceChanges": [{ "logicalId", "action", "replacement" }], "dryRun", "changed" }`
+`--json`: `{ "stack", "template", "commit", "phase", "resourceChanges": [{ "logicalId", "action", "replacement" }], "dryRun", "changed" }`
 
 ### `portalops cache switch <legacy|encrypted> --env <env> --yes [--confirm-prod] [--json]`
 Mutation. Points the backend's `REDIS_URL` at the other cache (`rediss://` for `encrypted`). Requires phase `both` and the service at zero desired and running tasks (else exit 9), and holds `DesiredCount` at 0, so the tasks start against the new cache only after `jobs redispatch`. `legacy` is the rollback, until the legacy cache is retired.

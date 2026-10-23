@@ -42,6 +42,18 @@ const aws = {
     changes: Array<{ ResourceChange: Record<string, unknown> }>;
   },
   changeSetCalls: [] as string[],
+  lastChangeSetParameters: [] as Array<{
+    ParameterKey: string;
+    ParameterValue?: string;
+    UsePreviousValue?: boolean;
+  }>,
+  executedParameters: null as null | Array<{
+    ParameterKey: string;
+    ParameterValue?: string;
+    UsePreviousValue?: boolean;
+  }>,
+  executionStatus: "EXECUTE_COMPLETE",
+  executeError: "",
 };
 const NO_CHANGES =
   "The submitted information didn't contain changes. Submit different information to create a change set.";
@@ -72,14 +84,24 @@ const cfnSend = jest.fn(async (cmd: Cmd) => {
   }
   if (name === "CreateChangeSetCommand") {
     aws.changeSetCalls.push("create");
+    aws.lastChangeSetParameters = cmd.input
+      .Parameters as typeof aws.lastChangeSetParameters;
     return { Id: "cs-1" };
   }
   if (name === "DescribeChangeSetCommand") {
+    const executed = aws.changeSetCalls.some((c) => c.startsWith("execute:"));
     return {
       Status: aws.changeSet.status,
       StatusReason: aws.changeSet.reason,
       Changes: aws.changeSet.changes,
+      ExecutionStatus: executed ? aws.executionStatus : "AVAILABLE",
     };
+  }
+  if (name === "ExecuteChangeSetCommand") {
+    if (aws.executeError) throw new Error(aws.executeError);
+    aws.changeSetCalls.push(`execute:${cmd.input.ChangeSetName}`);
+    aws.executedParameters = aws.lastChangeSetParameters;
+    return {};
   }
   if (name === "DeleteChangeSetCommand") {
     aws.changeSetCalls.push("delete");
@@ -106,6 +128,7 @@ jest.unstable_mockModule("@aws-sdk/client-cloudformation", () => ({
   CreateChangeSetCommand: named("CreateChangeSetCommand"),
   DescribeChangeSetCommand: named("DescribeChangeSetCommand"),
   DeleteChangeSetCommand: named("DeleteChangeSetCommand"),
+  ExecuteChangeSetCommand: named("ExecuteChangeSetCommand"),
   waitUntilStackUpdateComplete: stackWait,
   // A change set with no resource changes ends FAILED, which the waiter
   // reports as a failure; the caller reads the status itself.
@@ -215,6 +238,10 @@ beforeEach(() => {
   aws.noUpdates = false;
   aws.changeSet = { status: "FAILED", reason: NO_CHANGES, changes: [] };
   aws.changeSetCalls = [];
+  aws.executedParameters = null;
+  aws.lastChangeSetParameters = [];
+  aws.executionStatus = "EXECUTE_COMPLETE";
+  aws.executeError = "";
   countActive.mockReset().mockResolvedValue(0);
   cfnSend.mockClear();
   stackWait.mockClear();
@@ -444,43 +471,37 @@ describe("cacheRefreshTemplate (#861)", () => {
   ) => ({
     readTemplate: () => ("template" in over ? over.template! : TEMPLATE),
     gitState: () => over.git ?? onMain,
+    sleep: async () => {},
   });
 
   beforeEach(() => {
     delete aws.stacks["portalai-dev-cache"]!.RedisCutoverPhase;
   });
 
-  it("previews, then applies main's template with every deployed parameter kept", async () => {
-    const out = await cacheRefreshTemplate(appDev, { yes: true }, deps());
-
+  it("refuses (exit 9) a preview with no resource changes, naming --phase both: CloudFormation won't apply a template-only change", async () => {
+    await expect(
+      cacheRefreshTemplate(appDev, { yes: true }, deps())
+    ).rejects.toThrow(/--phase both/);
+    expect(aws.updates).toEqual([]);
     expect(aws.changeSetCalls).toEqual(["create", "delete"]);
-    const update = lastUpdate() as unknown as Record<string, unknown>;
-    expect(update.TemplateBody).toBe(TEMPLATE.body);
-    expect(update.UsePreviousTemplate).toBeUndefined();
-    // Declared ∩ deployed keep their values; the new one takes its default.
-    expect(sent(lastUpdate())).toEqual({
-      Environment: "<previous>",
-      NodeType: "<previous>",
+  });
+
+  it("reports an already-current template as unchanged, not a refusal", async () => {
+    aws.stacks["portalai-dev-cache"]!.RedisCutoverPhase = "both";
+    const out = await cacheRefreshTemplate(appDev, { yes: true }, deps());
+    expect(out.changed).toBe(false);
+    expect(aws.changeSetCalls).toEqual(["create", "delete"]);
+  });
+
+  it("runs the mutation guard before any AWS call", async () => {
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvConfirmationRequiredError("needs --yes");
     });
-    expect(out).toMatchObject({
-      changed: true,
-      resourceChanges: [],
-      commit: "abc123",
-    });
-    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
-      destructive: false,
-      confirmed: true,
-      prodConfirmed: false,
-    });
-    expect(mocks.recordAudit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: "cache refresh-template",
-        args: expect.objectContaining({
-          template: TEMPLATE.path,
-          commit: "abc123",
-        }),
-      })
-    );
+    await expect(
+      cacheRefreshTemplate(appDev, {}, deps())
+    ).rejects.toBeInstanceOf(EnvConfirmationRequiredError);
+    expect(aws.changeSetCalls).toEqual([]);
+    expect(cfnSend).not.toHaveBeenCalled();
   });
 
   it("treats a resource replacement or removal in the preview as destructive (prod refuses)", async () => {
@@ -564,10 +585,140 @@ describe("cacheRefreshTemplate (#861)", () => {
     expect(aws.changeSetCalls).toEqual([]);
   });
 
-  it("reports an already-current template as unchanged", async () => {
-    aws.noUpdates = true;
-    const out = await cacheRefreshTemplate(appDev, { yes: true }, deps());
-    expect(out.changed).toBe(false);
+  /**
+   * The template alone never lands: CloudFormation answers a template-only
+   * UpdateStack with "No updates are to be performed" too (measured on
+   * app-dev). It lands with the resource change the phase makes, so
+   * `--phase` applies main's template with the phase set, by executing the
+   * previewed change set.
+   */
+  describe("--phase", () => {
+    const addsGroup = () => {
+      aws.changeSet = {
+        status: "CREATE_COMPLETE",
+        reason: "",
+        changes: [
+          {
+            ResourceChange: {
+              LogicalResourceId: "EncryptedRedisReplicationGroup",
+              Action: "Add",
+            },
+          },
+        ],
+      };
+    };
+
+    it("sets the phase alongside the template, and executes exactly the previewed change set", async () => {
+      addsGroup();
+      const out = await cacheRefreshTemplate(
+        appDev,
+        { yes: true, phase: "both" },
+        deps()
+      );
+
+      const sentParams = Object.fromEntries(
+        aws.executedParameters!.map((p) => [
+          p.ParameterKey,
+          p.UsePreviousValue ? "<previous>" : p.ParameterValue,
+        ])
+      );
+      expect(sentParams).toEqual({
+        Environment: "<previous>",
+        NodeType: "<previous>",
+        RedisCutoverPhase: "both",
+      });
+      expect(aws.changeSetCalls).toEqual([
+        "create",
+        expect.stringMatching(/^execute:portalops-refresh-/),
+      ]);
+      expect(aws.updates).toEqual([]);
+      expect(stackWait).toHaveBeenCalled();
+      expect(out).toMatchObject({
+        changed: true,
+        phase: "both",
+        resourceChanges: [
+          {
+            logicalId: "EncryptedRedisReplicationGroup",
+            action: "Add",
+            replacement: null,
+          },
+        ],
+      });
+      expect(mocks.assertOperationAllowed).toHaveBeenLastCalledWith(appDev, {
+        destructive: false,
+        confirmed: true,
+        prodConfirmed: false,
+      });
+      expect(mocks.recordAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: expect.objectContaining({ phase: "both" }),
+        })
+      );
+    });
+
+    it("holds cache phase's preconditions: no retiring the legacy cache the backend still uses", async () => {
+      await expect(
+        cacheRefreshTemplate(appDev, { yes: true, phase: "encrypted" }, deps())
+      ).rejects.toMatchObject({ code: "CACHE_CUTOVER_CONFLICT" });
+      expect(aws.changeSetCalls).toEqual([]);
+    });
+
+    it("refuses a phase the template doesn't declare", async () => {
+      const body = TEMPLATE.body.replace(
+        "  RedisCutoverPhase:\n    Type: String\n    Default: legacy\n",
+        ""
+      );
+      await expect(
+        cacheRefreshTemplate(
+          appDev,
+          { yes: true, phase: "both" },
+          deps({ template: { path: TEMPLATE.path, body } })
+        )
+      ).rejects.toThrow(/RedisCutoverPhase/);
+      expect(aws.changeSetCalls).toEqual([]);
+    });
+
+    it("never trusts a change set that isn't CREATE_COMPLETE: refuses, applies nothing, deletes it", async () => {
+      aws.changeSet = { status: "CREATE_PENDING", reason: "", changes: [] };
+      await expect(
+        cacheRefreshTemplate(appDev, { yes: true, phase: "both" }, deps())
+      ).rejects.toThrow(/CREATE_PENDING/);
+      expect(aws.updates).toEqual([]);
+      expect(aws.changeSetCalls).toEqual(["create", "delete"]);
+    });
+
+    it("deletes the change set when executing it fails", async () => {
+      addsGroup();
+      aws.executeError = "Stack is in UPDATE_IN_PROGRESS state";
+      await expect(
+        cacheRefreshTemplate(appDev, { yes: true, phase: "both" }, deps())
+      ).rejects.toMatchObject({ code: "ENV_INFRA_ERROR" });
+      expect(aws.changeSetCalls).toEqual(["create", "delete"]);
+    });
+
+    it("waits on the executed change set, and fails when its execution fails", async () => {
+      addsGroup();
+      aws.executionStatus = "EXECUTE_FAILED";
+      await expect(
+        cacheRefreshTemplate(appDev, { yes: true, phase: "both" }, deps())
+      ).rejects.toThrow(/EXECUTE_FAILED/);
+      expect(mocks.recordAudit).not.toHaveBeenCalled();
+    });
+
+    it("--dry-run previews the phase's changes and deletes the change set", async () => {
+      addsGroup();
+      const out = await cacheRefreshTemplate(
+        appDev,
+        { dryRun: true, phase: "both" },
+        deps()
+      );
+      expect(out).toMatchObject({
+        dryRun: true,
+        changed: false,
+        phase: "both",
+      });
+      expect(aws.changeSetCalls).toEqual(["create", "delete"]);
+    });
   });
 
   it("cache phase still refuses a parameter the deployed template lacks, pointing at refresh-template", async () => {
