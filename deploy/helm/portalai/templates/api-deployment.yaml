@@ -45,6 +45,17 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- /* #852: private CA for an external rediss:// Redis. Only when
+                   Redis is external: the bundled one is plaintext in-cluster. */}}
+            {{- with .Values.redis.external.tls.caSecret }}
+            {{- if and (not $.Values.redis.enabled) .name }}
+            - name: REDIS_TLS_CA
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key | default "ca.crt" }}
+            {{- end }}
+            {{- end }}
           # Liveness = deps-free process check; readiness = DB + Redis reachable.
           # A pod that can't reach its data plane is pulled from the Service but
           # NOT restarted (readiness ≠ liveness — #566).

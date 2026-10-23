@@ -151,7 +151,15 @@ redis:
       enabled: true
       size: 8Gi
   external:
+    # redis:// or rediss://. With rediss:// the API connects over TLS (the
+    # scheme is the switch, #852).
     url: ""
+    tls:
+      # A Secret holding the PEM of a private CA that signs the managed Redis's
+      # certificate. Leave name empty when the cert chains to a public root.
+      caSecret:
+        name: ""
+        key: ca.crt
 
 minio:
   enabled: true
