@@ -1449,6 +1449,151 @@ describe("PortalService", () => {
         });
       });
 
+      // #846: a tool call the SDK refuses (input that fails the tool's schema)
+      // or whose execute throws arrives as a `tool-error`, not a
+      // `tool-result`. Dropping it left the step open for the rest of the
+      // turn and stripped the call from history as an orphan.
+      const invalidInputError = () =>
+        Object.assign(
+          new Error(
+            'Invalid input for tool curated_view_create: Type validation failed: Value: {"filterSql":"x"}.'
+          ),
+          {
+            name: "AI_InvalidToolInputError",
+            cause: Object.assign(new Error("Type validation failed"), {
+              name: "AI_TypeValidationError",
+              cause: {
+                issues: [
+                  {
+                    code: "custom",
+                    path: [],
+                    message: "Set filter or filterSql, not both",
+                  },
+                ],
+              },
+            }),
+          }
+        );
+
+      const savedBlocks = () =>
+        (
+          (mockCreate_message.mock.calls as unknown as unknown[][]).at(
+            -1
+          )?.[0] as { blocks: unknown[] }
+        ).blocks;
+
+      it("closes the step when the SDK refuses a tool's input", async () => {
+        const sse = await runStream([
+          // The SDK's real shape (ai/dist parseToolCall + the stream
+          // transform): the error object rides the `tool-call` part, flagged
+          // `invalid`; the `tool-error` that follows carries only its message.
+          {
+            type: "tool-call",
+            toolName: "curated_view_create",
+            toolCallId: "tc-err",
+            input: { filterSql: "x" },
+            invalid: true,
+            error: invalidInputError(),
+          },
+          {
+            type: "tool-error",
+            toolName: "curated_view_create",
+            toolCallId: "tc-err",
+            input: { filterSql: "x" },
+            error: invalidInputError().message,
+          },
+          { type: "finish" },
+        ]);
+
+        expect(sentEvents(sse, "tool_call_end")).toHaveLength(1);
+        expect(sentEvents(sse, "tool_call_end")[0][1]).toEqual({
+          type: "tool_call_end",
+          toolCallId: "tc-err",
+          toolName: "curated_view_create",
+        });
+      });
+
+      it("keeps a refused call in history, with the schema's reason as a typed result", async () => {
+        await runStream([
+          // The SDK's real shape (ai/dist parseToolCall + the stream
+          // transform): the error object rides the `tool-call` part, flagged
+          // `invalid`; the `tool-error` that follows carries only its message.
+          {
+            type: "tool-call",
+            toolName: "curated_view_create",
+            toolCallId: "tc-err",
+            input: { filterSql: "x" },
+            invalid: true,
+            error: invalidInputError(),
+          },
+          {
+            type: "tool-error",
+            toolName: "curated_view_create",
+            toolCallId: "tc-err",
+            input: { filterSql: "x" },
+            error: invalidInputError().message,
+          },
+          { type: "finish" },
+        ]);
+
+        expect(savedBlocks()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "tool-call",
+              toolCallId: "tc-err",
+            }),
+            {
+              type: "tool-result",
+              toolCallId: "tc-err",
+              toolName: "curated_view_create",
+              content: {
+                error: {
+                  code: "TOOL_INPUT_INVALID",
+                  message: "Set filter or filterSql, not both",
+                },
+              },
+            },
+          ])
+        );
+      });
+
+      // A thrown error's text can carry raw DB detail (#687, #719); history is
+      // readable by everyone in the session, so it keeps a generic message.
+      it("records a tool that throws as TOOL_EXECUTION_FAILED, without its text", async () => {
+        await runStream([
+          {
+            type: "tool-call",
+            toolName: "sql_query",
+            toolCallId: "tc-throw",
+            input: { sql: "select 1" },
+          },
+          {
+            type: "tool-error",
+            toolName: "sql_query",
+            toolCallId: "tc-throw",
+            input: { sql: "select 1" },
+            error: new Error("connection reset"),
+          },
+          { type: "finish" },
+        ]);
+
+        expect(savedBlocks()).toEqual(
+          expect.arrayContaining([
+            {
+              type: "tool-result",
+              toolCallId: "tc-throw",
+              toolName: "sql_query",
+              content: {
+                error: {
+                  code: "TOOL_EXECUTION_FAILED",
+                  message: "The tool failed while running.",
+                },
+              },
+            },
+          ])
+        );
+      });
+
       it("emits tool_call_end before tool_result for the same call", async () => {
         const sse = await runStream([
           {

@@ -114,6 +114,12 @@ interface StreamContext {
   assistantBlocks: Record<string, unknown>[];
   sse: SseUtil;
   currentText: string;
+  /**
+   * #846: calls the SDK refused against the tool's schema, keyed by id. The
+   * SDK flags the `tool-call` part `invalid` and puts the error object there;
+   * the `tool-error` that follows carries only its message string.
+   */
+  invalidToolCalls: Map<string, unknown>;
 }
 
 /** Handle a text-delta chunk: accumulate text and send SSE. */
@@ -147,6 +153,9 @@ function handleToolCall(ctx: StreamContext, chunk: any): void {
   });
 
   const toolCallId = chunk.toolCallId as string | undefined;
+  if (chunk.invalid === true && typeof toolCallId === "string") {
+    ctx.invalidToolCalls.set(toolCallId, chunk.error);
+  }
   // Without an id the client can't pair the close event — emitting anyway
   // would open a step that never closes, which is worse than no step.
   if (typeof toolCallId === "string" && toolCallId.length > 0) {
@@ -200,6 +209,84 @@ function handleToolResult(ctx: StreamContext, chunk: any): void {
     };
     ctx.sse.send("tool_result", event);
     ctx.assistantBlocks.push(displayBlock.block);
+  }
+}
+
+/** The zod issue messages somewhere down an error's `cause` chain, if any. */
+function issueMessages(error: unknown): string[] {
+  for (let e = error, depth = 0; e && depth < 5; depth++) {
+    const issues = (e as { issues?: { message?: unknown }[] }).issues;
+    if (Array.isArray(issues)) {
+      return issues
+        .map((i) => i.message)
+        .filter((m): m is string => typeof m === "string");
+    }
+    e = (e as { cause?: unknown }).cause;
+  }
+  return [];
+}
+
+/**
+ * Handle a tool-error chunk (#846): the AI SDK refused the call's input
+ * against the tool's schema, or the tool threw. Close the client's activity
+ * step and persist a typed tool-result in place of the missing one, so the
+ * step doesn't hang for the rest of the turn and the call isn't stripped from
+ * history as an orphan.
+ *
+ * A refusal keeps the schema's reasons (the SDK's own message embeds the whole
+ * input). A thrown error's text is logged, never stored: it can carry raw DB
+ * detail (#687), and history is readable by everyone in the session.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleToolError(ctx: StreamContext, chunk: any): void {
+  const toolName = chunk.toolName as string;
+  const toolCallId = chunk.toolCallId as string | undefined;
+  const error = chunk.error as unknown;
+
+  // The refusal's error object is on the call's `tool-call` part; this
+  // chunk's `error` is only its message (see StreamContext.invalidToolCalls).
+  const invalidInput =
+    typeof toolCallId === "string" && ctx.invalidToolCalls.has(toolCallId);
+  const reasons = invalidInput
+    ? issueMessages(ctx.invalidToolCalls.get(toolCallId))
+    : [];
+  if (!invalidInput) {
+    logger.warn(
+      {
+        toolName,
+        toolCallId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Tool threw during a portal turn"
+    );
+  }
+
+  ctx.assistantBlocks.push({
+    type: "tool-result",
+    toolCallId,
+    toolName,
+    content: {
+      error: invalidInput
+        ? {
+            code: ApiCode.TOOL_INPUT_INVALID,
+            message:
+              reasons.join("; ") ||
+              "The tool input didn't match the tool's schema.",
+          }
+        : {
+            code: ApiCode.TOOL_EXECUTION_FAILED,
+            message: "The tool failed while running.",
+          },
+    },
+  });
+
+  if (typeof toolCallId === "string" && toolCallId.length > 0) {
+    const endEvent: ToolCallEndEvent = {
+      type: "tool_call_end",
+      toolCallId,
+      toolName,
+    };
+    ctx.sse.send("tool_call_end", endEvent);
   }
 }
 
@@ -766,6 +853,7 @@ export class PortalService {
       assistantBlocks: [],
       sse,
       currentText: "",
+      invalidToolCalls: new Map(),
     };
 
     try {
@@ -776,6 +864,8 @@ export class PortalService {
           handleToolCall(ctx, chunk);
         } else if (chunk.type === "tool-result") {
           handleToolResult(ctx, chunk);
+        } else if (chunk.type === "tool-error") {
+          handleToolError(ctx, chunk);
         } else if (chunk.type === "error") {
           // AI SDK v6 emits error chunks instead of always throwing.
           // Surface the error to the client and abort the stream.

@@ -51,7 +51,9 @@ export async function runViewTool<T>(
         return { error: { code: err.code, message: err.message } };
       }
     }
-    // Input the SDK's schema check let through but `validate` refused.
+    // `validate` refused the input. The AI SDK checks the same schema before
+    // execute runs (#846), so on the agent path this is defence in depth; a
+    // direct call (a test, a future caller) still gets a typed refusal.
     if (err instanceof ZodError) {
       return {
         error: {

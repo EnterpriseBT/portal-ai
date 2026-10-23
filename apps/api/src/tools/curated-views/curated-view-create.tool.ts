@@ -16,47 +16,33 @@ import { CuratedViewService } from "../../services/curated-view.service.js";
 import type { PermissionContext } from "../../services/permission.service.js";
 import { runViewTool } from "./curated-view-tool.util.js";
 
-const KEY_DESCRIPTION =
-  "Unique key for the view in the organization; it becomes the view's queryable name";
-
-const fields = {
-  connectorEntityId: z
-    .string()
-    .min(1)
-    .describe("Id of the connector entity the view reads"),
-  label: nameField("Label").describe("Display name of the view"),
-  description: descriptionField().nullable().optional(),
-  filter: FilterExpressionSchema.nullable()
-    .optional()
-    .describe("A structured row filter (a FilterGroup over column keys)"),
-  filterSql: filterSqlField()
-    .nullable()
-    .optional()
-    .describe(
-      "An advanced SQL row filter over column keys, instead of `filter`. Needs a plan with advanced view filters"
-    ),
-  columns: z
-    .array(z.string().min(1))
-    .optional()
-    .describe("The column keys the view shows, in order; omit for all columns"),
-};
-
-/**
- * The schema the model and the AI SDK see. It carries no refines: the SDK
- * checks input with its own zod copy, and a failed refine there leaves the
- * schema on the issue, so the error can't be printed once the schema holds the
- * recursive FilterExpressionSchema. The refines run in `execute` instead
- * (CheckedSchema), where a refusal is CURATED_VIEW_INVALID_PAYLOAD.
- */
 const InputSchema = z
   .object({
-    ...fields,
-    key: z.string().min(1).max(63).describe(KEY_DESCRIPTION),
+    connectorEntityId: z
+      .string()
+      .min(1)
+      .describe("Id of the connector entity the view reads"),
+    key: CuratedViewKeySchema.describe(
+      "Unique key for the view in the organization; it becomes the view's queryable name"
+    ),
+    label: nameField("Label").describe("Display name of the view"),
+    description: descriptionField().nullable().optional(),
+    filter: FilterExpressionSchema.nullable()
+      .optional()
+      .describe("A structured row filter (a FilterGroup over column keys)"),
+    filterSql: filterSqlField()
+      .nullable()
+      .optional()
+      .describe(
+        "An advanced SQL row filter over column keys, instead of `filter`. Needs a plan with advanced view filters"
+      ),
+    columns: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        "The column keys the view shows, in order; omit for all columns"
+      ),
   })
-  .strict();
-
-const CheckedSchema = z
-  .object({ ...fields, key: CuratedViewKeySchema })
   .strict()
   .superRefine(oneFilterMode);
 
@@ -80,7 +66,7 @@ export class CuratedViewCreateTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: (input) =>
         runViewTool(ApiCode.CURATED_VIEW_CREATE_FAILED, async () => {
-          const { columns, ...body } = CheckedSchema.parse(input);
+          const { columns, ...body } = this.validate(input);
           const curatedView = await CuratedViewService.create(
             ctx,
             { ...body, columnKeys: columns },
