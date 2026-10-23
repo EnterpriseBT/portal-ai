@@ -20,6 +20,7 @@ import {
   DeleteChangeSetCommand,
   DescribeChangeSetCommand,
   DescribeStacksCommand,
+  ExecuteChangeSetCommand,
   UpdateStackCommand,
   waitUntilChangeSetCreateComplete,
   waitUntilStackUpdateComplete,
@@ -122,8 +123,9 @@ export async function updateStackParams(
     if (!(key in current)) {
       throw new CacheCutoverConflictError(
         `${name}'s deployed template has no ${key} parameter. If its release is deployed, the deploy ` +
-          `skipped a template with no resource changes (#861): run \`portalops cache refresh-template ` +
-          `--env ${def.name}\` from a clean checkout of main, then retry.`
+          `skipped a template with no resource changes (#861): from a clean checkout of main, run ` +
+          `\`portalops cache refresh-template --env ${def.name} --phase <phase>\`, which applies main's ` +
+          `template with the phase set.`
       );
     }
   }
@@ -284,6 +286,26 @@ export async function cacheStatus(
   };
 }
 
+/** A phase may only drop the cache the backend isn't using. Shared by
+ *  `cache phase` and `cache refresh-template --phase`. */
+async function assertPhaseAllowed(
+  def: EnvironmentDefinition,
+  phase: CutoverPhase
+): Promise<void> {
+  const source =
+    (await readStackParams(def, "backend")).RedisEndpointSource ?? "legacy";
+  if (phase === "encrypted" && source !== "encrypted") {
+    throw new CacheCutoverConflictError(
+      "The backend still uses the legacy cache — run `portalops cache switch encrypted` before retiring it"
+    );
+  }
+  if (phase === "legacy" && source !== "legacy") {
+    throw new CacheCutoverConflictError(
+      "The backend uses the encrypted cache — run `portalops cache switch legacy` before removing it"
+    );
+  }
+}
+
 /**
  * Move `cache.yml`'s phase. `both` creates the encrypted cache; `encrypted`
  * removes the legacy one, so it is destructive (refused on prod, where the
@@ -302,18 +324,7 @@ export async function cachePhase(
     prodConfirmed: !!opts.confirmProd,
   });
 
-  const source =
-    (await readStackParams(def, "backend")).RedisEndpointSource ?? "legacy";
-  if (phase === "encrypted" && source !== "encrypted") {
-    throw new CacheCutoverConflictError(
-      "The backend still uses the legacy cache — run `portalops cache switch encrypted` before retiring it"
-    );
-  }
-  if (phase === "legacy" && source !== "legacy") {
-    throw new CacheCutoverConflictError(
-      "The backend uses the encrypted cache — run `portalops cache switch legacy` before removing it"
-    );
-  }
+  await assertPhaseAllowed(def, phase);
 
   const { changed } = await updateStackParams(def, "cache", {
     RedisCutoverPhase: phase,
@@ -382,6 +393,8 @@ export async function cacheSwitch(
   return { stack, endpointSource: to, changed };
 }
 
+const PHASE_PARAM = "RedisCutoverPhase";
+
 /** UpdateStack's inline TemplateBody limit; larger needs an S3 URL. */
 const TEMPLATE_BODY_MAX_BYTES = 51_200;
 
@@ -439,7 +452,7 @@ export interface RefreshTemplateDeps {
  */
 export async function cacheRefreshTemplate(
   def: EnvironmentDefinition,
-  opts: MutateOptions & { dryRun?: boolean },
+  opts: MutateOptions & { dryRun?: boolean; phase?: CutoverPhase },
   deps: RefreshTemplateDeps = {
     readTemplate: readRepoTemplate,
     gitState: repoGitState,
@@ -448,6 +461,7 @@ export async function cacheRefreshTemplate(
   stack: string;
   template: string;
   commit: string;
+  phase: CutoverPhase | null;
   resourceChanges: ResourceChange[];
   dryRun: boolean;
   changed: boolean;
@@ -469,7 +483,7 @@ export async function cacheRefreshTemplate(
   if (!git.main || git.head !== git.main) {
     throw new CacheCutoverConflictError(
       `the checkout is at ${git.head.slice(0, 8)}, not origin/main${git.main ? ` (${git.main.slice(0, 8)})` : ""}: ` +
-        `\`git checkout main && git pull\` first`
+        "`git checkout main && git pull` first"
     );
   }
   if (Buffer.byteLength(template.body) > TEMPLATE_BODY_MAX_BYTES) {
@@ -479,23 +493,54 @@ export async function cacheRefreshTemplate(
   }
 
   const declared = declaredParameters(template.body);
+  const phase = opts.phase ?? null;
+  if (phase) {
+    if (!declared.has(PHASE_PARAM)) {
+      throw new CacheCutoverConflictError(
+        `${template.path} doesn't declare ${PHASE_PARAM}`
+      );
+    }
+    await assertPhaseAllowed(def, phase);
+  }
   const current = await readStackParams(def, "cache");
   const unsupplied = [...declared]
-    .filter(([key, p]) => !(key in current) && !p.hasDefault)
+    .filter(
+      ([key, p]) =>
+        !(key in current) && !p.hasDefault && !(phase && key === PHASE_PARAM)
+    )
     .map(([k]) => k);
   if (unsupplied.length) {
     throw new CacheCutoverConflictError(
       `the template adds ${unsupplied.join(", ")} with no default, which the stack can't supply: deploy it through the workflow instead`
     );
   }
-  const parameters = [...declared.keys()]
-    .filter((key) => key in current)
-    .map((key) => ({ ParameterKey: key, UsePreviousValue: true }));
+  const parameters: Array<{
+    ParameterKey: string;
+    ParameterValue?: string;
+    UsePreviousValue?: boolean;
+  }> = [
+    ...[...declared.keys()]
+      .filter((key) => key in current && !(phase && key === PHASE_PARAM))
+      .map((key) => ({ ParameterKey: key, UsePreviousValue: true })),
+    ...(phase ? [{ ParameterKey: PHASE_PARAM, ParameterValue: phase }] : []),
+  ];
 
   // Preview. A change set with no resource changes ends FAILED ("didn't
-  // contain changes"): that is the template-only case this exists for.
+  // contain changes"). CloudFormation applies a template only together with a
+  // resource change (a template-only UpdateStack is "No updates" too, measured
+  // on app-dev), so a template that only adds RedisCutoverPhase lands with
+  // `--phase both`, whose new replication group is that change.
   const client = cfn(def);
   const changeSetName = `portalops-refresh-${Date.now()}`;
+  const deleteChangeSet = () =>
+    client
+      .send(
+        new DeleteChangeSetCommand({
+          StackName: stack,
+          ChangeSetName: changeSetName,
+        })
+      )
+      .catch(() => undefined);
   await client.send(
     new CreateChangeSetCommand({
       StackName: stack,
@@ -533,24 +578,22 @@ export async function cacheRefreshTemplate(
         replacement: c.ResourceChange?.Replacement ?? null,
       }));
     }
-  } finally {
-    await client
-      .send(
-        new DeleteChangeSetCommand({
-          StackName: stack,
-          ChangeSetName: changeSetName,
-        })
-      )
-      .catch(() => undefined);
+  } catch (err) {
+    await deleteChangeSet();
+    throw err;
   }
 
   const result = {
     stack,
     template: template.path,
     commit: git.head,
+    phase,
     resourceChanges,
   };
-  if (opts.dryRun) return { ...result, dryRun: true, changed: false };
+  if (opts.dryRun || resourceChanges.length === 0) {
+    await deleteChangeSet();
+    if (opts.dryRun) return { ...result, dryRun: true, changed: false };
+  }
 
   const destructive = resourceChanges.some(
     (c) =>
@@ -558,20 +601,35 @@ export async function cacheRefreshTemplate(
       c.replacement === "True" ||
       c.replacement === "Conditional"
   );
-  assertOperationAllowed(def, {
-    destructive,
-    confirmed: !!opts.yes,
-    prodConfirmed: !!opts.confirmProd,
-  });
+  try {
+    assertOperationAllowed(def, {
+      destructive,
+      confirmed: !!opts.yes,
+      prodConfirmed: !!opts.confirmProd,
+    });
+  } catch (err) {
+    if (resourceChanges.length) await deleteChangeSet();
+    throw err;
+  }
 
   try {
-    await client.send(
-      new UpdateStackCommand({
-        StackName: stack,
-        TemplateBody: template.body,
-        Parameters: parameters,
-      })
-    );
+    if (resourceChanges.length) {
+      // Apply exactly what was previewed.
+      await client.send(
+        new ExecuteChangeSetCommand({
+          StackName: stack,
+          ChangeSetName: changeSetName,
+        })
+      );
+    } else {
+      await client.send(
+        new UpdateStackCommand({
+          StackName: stack,
+          TemplateBody: template.body,
+          Parameters: parameters,
+        })
+      );
+    }
   } catch (err) {
     if (/No updates are to be performed/.test((err as Error).message ?? "")) {
       return { ...result, dryRun: false, changed: false };
@@ -600,6 +658,7 @@ export async function cacheRefreshTemplate(
       stack,
       template: template.path,
       commit: git.head,
+      phase,
       resourceChanges: resourceChanges.length,
     },
   });

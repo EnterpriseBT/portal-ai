@@ -33,6 +33,11 @@ The backend stack isn't affected: every deploy changes its `ImageTag`. Package: 
 
   `cache phase`/`switch` stay parameter-only and point at it.
 
+**Follow-up (the first smoke).** `refresh-template` alone didn't land the template on app-dev: CloudFormation answers a template-only `UpdateStack` with "No updates are to be performed" too, so a template can only land along with a resource change. So `refresh-template` takes `--phase`:
+- it applies main's template with `RedisCutoverPhase` set, under `cache phase`'s preconditions;
+- it executes the previewed change set itself;
+- `--phase both`'s new replication group is the resource change that carries the template.
+
 **Chosen: C.** It's narrow, explicit and reviewable, and it works the same on prod. The runbook's Provision step names it.
 
 ## Plan — 1 slice
@@ -55,10 +60,9 @@ The backend stack isn't affected: every deploy changes its `ImageTag`. Package: 
 
 ## Smoke (manual, against app-dev)
 
-1. On a clean, up-to-date `main` after merge: `npm run build --workspace @portalai/devops-cli`, then `npx portalops cache refresh-template --env app-dev --dry-run --json`. Expect `resourceChanges: []`.
-2. The same with `--yes`. Expect `changed: true`, and `aws cloudformation describe-stacks --stack-name portalai-dev-cache --query "Stacks[0].Parameters"` now lists `RedisCutoverPhase=legacy`, with every other parameter unchanged.
-3. `npx portalops cache phase both --env app-dev --yes --json`. After 10–20 min it prints `{"phase":"both","changed":true}`, and `cache status` shows the `-tls` group `available` with both encryption flags and `required`.
-4. Resume `docs/ELASTICACHE_ENCRYPTION.smoke.md` §3 onward.
+1. On a clean, up-to-date `main` after merge: `npm run build --workspace @portalai/devops-cli`, then `npx portalops cache refresh-template --env app-dev --phase both --dry-run --json`. Expect exactly one change, `{"logicalId":"EncryptedRedisReplicationGroup","action":"Add"}`.
+2. The same with `--yes`. After 10–20 min expect `changed: true`. `describe-stacks` then lists `RedisCutoverPhase=both` with every other parameter unchanged, and `cache status` shows the `-tls` group `available` with both encryption flags and `required`.
+3. Resume `docs/ELASTICACHE_ENCRYPTION.smoke.md` §3 from its status checks.
 
 ## Out of scope
 

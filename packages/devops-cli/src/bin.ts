@@ -372,10 +372,21 @@ export function buildProgram(): Command {
       )
   )
     .option("--dry-run", "preview the change set; apply nothing")
-    .action(async (o: GlobalOpts & { dryRun?: boolean }) =>
-      execute(o, (def) =>
-        cacheRefreshTemplate(def, { ...flags(o), dryRun: o.dryRun })
-      )
+    .addOption(
+      new Option(
+        "--phase <phase>",
+        "set RedisCutoverPhase with the template (a template-only change never lands; the phase's resource change carries it)"
+      ).choices(["legacy", "both", "encrypted"])
+    )
+    .action(
+      async (o: GlobalOpts & { dryRun?: boolean; phase?: CutoverPhase }) =>
+        execute(o, (def) =>
+          cacheRefreshTemplate(def, {
+            ...flags(o),
+            dryRun: o.dryRun,
+            phase: o.phase,
+          })
+        )
     );
 
   const service = program.command("service").description("the API ECS service");
