@@ -1,4 +1,4 @@
-import { Redis } from "ioredis";
+import { Redis, type RedisOptions } from "ioredis";
 
 import { environment } from "../environment.js";
 import { createLogger } from "./logger.util.js";
@@ -7,15 +7,48 @@ const logger = createLogger({ module: "redis" });
 
 let redisClient: Redis | null = null;
 
+/** ioredis options plus the URL, the shape BullMQ's `connection` accepts. */
+export type RedisConnection = RedisOptions & { url: string };
+
+export const redisTlsEnabled = (): boolean =>
+  new URL(environment.REDIS_URL).protocol === "rediss:";
+
+/**
+ * The one place Redis connection options are built (#852). Every client —
+ * the shared ioredis client and every BullMQ queue/worker — takes these, so
+ * a TLS setting can't reach some clients and miss others.
+ *
+ * TLS follows the scheme: ioredis turns `rediss://` into TLS on its own, and
+ * `redis://` stays plaintext (local dev, the Helm chart's bundled Redis).
+ * REDIS_TLS_CA (PEM) pins a private CA, which is meaningless without TLS, so
+ * that pairing is refused as a misconfiguration rather than ignored.
+ */
+export const redisConnection = (): RedisConnection => {
+  const ca = environment.REDIS_TLS_CA;
+  if (ca && !redisTlsEnabled()) {
+    throw new Error("REDIS_TLS_CA is set but REDIS_URL is not rediss://");
+  }
+  return {
+    url: environment.REDIS_URL,
+    maxRetriesPerRequest: null, // required by BullMQ
+    ...(ca ? { tls: { ca } } : {}),
+  };
+};
+
 export const getRedisClient = (): Redis => {
   if (!redisClient) {
-    redisClient = new Redis(environment.REDIS_URL, {
-      maxRetriesPerRequest: null, // required by BullMQ
-    });
+    const { url, ...options } = redisConnection();
+    redisClient = new Redis(url, options);
     redisClient.on("error", (err: Error) =>
       logger.error(err, "Redis connection error")
     );
-    redisClient.on("connect", () => logger.info("Redis connected"));
+    // Never log the URL: a managed Redis carries its credentials in it.
+    redisClient.on("connect", () =>
+      logger.info(
+        { tls: redisTlsEnabled(), customCa: !!environment.REDIS_TLS_CA },
+        "Redis connected"
+      )
+    );
   }
   return redisClient;
 };

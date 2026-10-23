@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 
-import { environment } from "../environment.js";
+import { redisConnection } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
   ENTITY_RECORD_RETENTION_PURGE_JOB,
@@ -50,10 +50,7 @@ export const createMaintenanceWorker = (): Worker => {
       throw new Error(`Unknown maintenance job: ${job.name}`);
     },
     {
-      connection: {
-        url: environment.REDIS_URL,
-        maxRetriesPerRequest: null,
-      },
+      connection: redisConnection(),
       concurrency: 1,
     }
   );

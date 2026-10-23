@@ -7,7 +7,7 @@ import {
 } from "@portalai/core/models";
 
 import type { SyncProgressUpdate } from "../adapters/adapter.interface.js";
-import { environment } from "../environment.js";
+import { redisConnection } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { JOBS_QUEUE_NAME } from "./jobs.queue.js";
 import { jobErrorText } from "../utils/job-error-text.util.js";
@@ -282,10 +282,7 @@ export const createJobsWorker = (
       }
     },
     {
-      connection: {
-        url: environment.REDIS_URL,
-        maxRetriesPerRequest: null,
-      },
+      connection: redisConnection(),
       // Capped at 2 to bound concurrent memory pressure from streaming XLSX /
       // CSV parsers (each holds an exceljs sharedStrings cache for the
       // duration of a workbook). All job types share this worker; cranking
