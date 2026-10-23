@@ -21,11 +21,14 @@
  *
  * Rules land slice by slice, each with the change that satisfies it — see
  * `docs/TURBOREPO_CI_CACHING.plan.md`:
- *   - rule 3: required-check job names are exactly the three gated on `main`
+ *   - rule 3: required-check job names are exactly the three gated on `main`,
+ *     and a sharded check's name sits on the aggregator over its shards (#857)
  *   - rule 4: those workflows' `concurrency.group` leads with a literal
  *   - rule 5: `apps/site`'s build stays uncached, with its env declared
  *   - rule 1: a workflow that runs turbo carries the cache credentials
  *   - rule 2: a workflow_call site passes every secret the callee declares
+ *   - rule 6: the integration shard var is in test:integration's task hash
+ *     (#857), so one shard can never restore another shard's cached result
  *
  * Usage: npm run lint:ci-cache [-- --self-test]
  */
@@ -96,10 +99,12 @@ function invokesTurbo(run, turboScripts) {
  * passed in rather than read from package.json so this stays pure and cannot
  * drift from the real script list.
  *
- * @param {{workflows?: Array<{file: string, doc: any}>, siteTurbo?: any, turboScripts?: string[]}} input
+ * `rootTurbo` follows `siteTurbo`'s convention: `undefined` skips rule 6.
+ *
+ * @param {{workflows?: Array<{file: string, doc: any}>, siteTurbo?: any, rootTurbo?: any, turboScripts?: string[]}} input
  * @returns {Array<{rule: number, file: string, message: string}>}
  */
-export function findViolations({ workflows = [], siteTurbo, turboScripts = [] } = {}) {
+export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScripts = [] } = {}) {
   const violations = [];
 
   for (const { file, doc } of workflows) {
@@ -121,6 +126,45 @@ export function findViolations({ workflows = [], siteTurbo, turboScripts = [] } 
           `every PR waiting for a context that never reports. Found ` +
           `${jobNames.length ? jobNames.map((n) => `"${n}"`).join(", ") : "no named jobs"}.`,
       });
+    }
+
+    // Rule 3, sharded (#857) — when the check runs as a matrix, the job that
+    // carries the required name must be the aggregator over it. A matrix job
+    // can't be that job: each leg reports its own context, so the required
+    // name would match one leg, or none. And an aggregator that doesn't wait
+    // for every leg, or that GitHub skips when a leg fails (no `always()`),
+    // reports green — or nothing — over a red shard.
+    const jobs = Object.entries(doc?.jobs ?? {});
+    const matrixJobs = jobs.filter(([, job]) => job?.strategy?.matrix).map(([id]) => id);
+    if (matrixJobs.length) {
+      const named = jobs.find(([, job]) => job?.name === expectedJobName);
+      const problems = [];
+      if (named) {
+        const [id, job] = named;
+        const needs = [].concat(job.needs ?? []);
+        if (matrixJobs.includes(id)) problems.push(`"${expectedJobName}" is itself the matrix job`);
+        // `always()` or `!cancelled()`: both run when a shard fails. The
+        // latter also stands down when the run itself is cancelled (a newer
+        // push superseded it), rather than posting red on the old commit.
+        const gate = String(job.if ?? "");
+        if (!gate.includes("always()") && !gate.includes("!cancelled()")) {
+          problems.push(
+            `its \`if\` has neither always() nor !cancelled(), so GitHub skips it when a shard fails`
+          );
+        }
+        const missing = matrixJobs.filter((m) => m !== id && !needs.includes(m));
+        if (missing.length) problems.push(`its \`needs\` omits the matrix job(s) ${missing.join(", ")}`);
+      }
+      if (problems.length) {
+        violations.push({
+          rule: 3,
+          file,
+          message:
+            `the required check "${expectedJobName}" runs as a matrix, so the job with ` +
+            `that name must be a summary that needs every shard, gated on always() or !cancelled(): ` +
+            `${problems.join("; ")}.`,
+        });
+      }
     }
 
     // Rule 4 — the group must lead with a LITERAL. Inside a workflow_call every
@@ -283,7 +327,46 @@ export function findViolations({ workflows = [], siteTurbo, turboScripts = [] } 
     }
   }
 
+  // Rule 6 — the integration shard var must be in test:integration's hash.
+  //
+  // Each shard runs a different slice of the suite, but every shard runs the
+  // same task over the same inputs. The shard var is the only thing that
+  // tells their results apart, so if it isn't hashed, every shard shares one
+  // cache entry: the first shard to finish caches a "pass", and the rest
+  // restore it without running their own files (#857). `passThroughEnv` is
+  // exactly that failure: the var reaches Jest, but not the hash.
+  if (rootTurbo !== undefined) {
+    const setter = workflows.find(({ doc }) => setsEnvVar(doc, SHARD_VAR));
+    if (setter) {
+      const task = rootTurbo?.tasks?.["test:integration"];
+      const env = Array.isArray(task?.env) ? task.env : [];
+      const passThrough = Array.isArray(task?.passThroughEnv) ? task.passThroughEnv : [];
+      if (!env.includes(SHARD_VAR) || passThrough.includes(SHARD_VAR)) {
+        violations.push({
+          rule: 6,
+          file: "turbo.json",
+          message:
+            `${setter.file} sets ${SHARD_VAR}, but turbo.json's test:integration ` +
+            `must list it in \`env\` (hashed) and not in \`passThroughEnv\`. ` +
+            `Otherwise every shard shares one cache entry and restores another ` +
+            `shard's result without running its own files.`,
+        });
+      }
+    }
+  }
+
   return violations;
+}
+
+const SHARD_VAR = "INTEGRATION_SHARD";
+
+/** Whether a workflow sets `name` in its workflow, job or step env. */
+function setsEnvVar(doc, name) {
+  const has = (env) => env && typeof env === "object" && name in env;
+  if (has(doc?.env)) return true;
+  return Object.values(doc?.jobs ?? {}).some(
+    (job) => has(job?.env) || (job?.steps ?? []).some((step) => has(step?.env))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +462,58 @@ const SITE_TURBO_PATH = "apps/site/turbo.json";
 const siteTurbo = (build) => ({ extends: ["//"], tasks: { build } });
 
 const SITE_ENV = ["SITE_URL", "SITE_CONFIG_URL"];
+
+// Rule 6 fixtures: a job that sets the shard var, and a root turbo.json.
+const setsShard = () => `
+name: Shards
+on: push
+jobs:
+  shard:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm run test:integration
+        env:
+          INTEGRATION_SHARD: "\${{ matrix.index }}/5"
+`;
+
+const rootTurbo = (task) => ({ tasks: { "test:integration": task } });
+
+// Rule 3 (#857) fixtures: integration-test.yml as a matrix of shards behind a
+// summary job.
+const shardedIntegration = ({
+  summaryName = "Integration Tests",
+  summaryIf = "always()",
+  summaryNeeds = "[changes, plan, shard]",
+  shardName = "Integration Tests (shard \${{ matrix.index }})",
+} = {}) => `
+name: Integration Tests
+on: push
+${cleanConcurrency("integration-test")}
+jobs:
+  changes:
+    name: "Integration Tests: changes"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+  plan:
+    name: "Integration Tests: plan"
+    needs: [changes]
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+  shard:
+    name: "${shardName}"
+    needs: [changes, plan]
+    strategy:
+      matrix:
+        index: [1, 2]
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+  summary:
+    name: "${summaryName}"
+    needs: ${summaryNeeds}
+    if: ${summaryIf}
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+`;
 
 const FIXTURES = [
   {
@@ -501,6 +636,65 @@ concurrency:
     files: { "unit-test.yml": unitTest({ concurrency: "" }) },
     expectRule: 4,
   },
+
+  {
+    name: "rule 3 — a sharded check behind an always() summary that needs every shard",
+    files: { "integration-test.yml": shardedIntegration() },
+    expectRule: null,
+  },
+  {
+    name: "rule 3 — a summary gated on !cancelled() (runs on a failed shard, not after a cancel)",
+    files: { "integration-test.yml": shardedIntegration({ summaryIf: "\${{ !cancelled() }}" }) },
+    expectRule: null,
+  },
+  {
+    name: "rule 3 — the summary job skips when a shard fails (no always())",
+    files: { "integration-test.yml": shardedIntegration({ summaryIf: "success()" }) },
+    expectRule: 3,
+  },
+  {
+    name: "rule 3 — the summary job doesn't wait for the shards",
+    files: { "integration-test.yml": shardedIntegration({ summaryNeeds: "[changes, plan]" }) },
+    expectRule: 3,
+  },
+  {
+    name: "rule 3 — the matrix job itself carries the required name",
+    files: {
+      "integration-test.yml": shardedIntegration({
+        summaryName: "Integration summary",
+        shardName: "Integration Tests",
+      }),
+    },
+    expectRule: 3,
+  },
+
+  {
+    name: "rule 6 — shard var set and hashed by test:integration",
+    files: { "shards.yml": setsShard() },
+    rootTurbo: rootTurbo({ env: ["REDIS_URL", "INTEGRATION_SHARD"] }),
+    expectRule: null,
+  },
+  {
+    name: "rule 6 — shard var set but missing from test:integration's env",
+    files: { "shards.yml": setsShard() },
+    rootTurbo: rootTurbo({ env: ["REDIS_URL"] }),
+    expectRule: 6,
+  },
+  {
+    name: "rule 6 — shard var only in passThroughEnv (reaches Jest, not the hash)",
+    files: { "shards.yml": setsShard() },
+    rootTurbo: rootTurbo({ env: ["REDIS_URL"], passThroughEnv: ["INTEGRATION_SHARD"] }),
+    expectRule: 6,
+  },
+  {
+    name: "rule 6 — shard var in both env and passThroughEnv",
+    files: { "shards.yml": setsShard() },
+    rootTurbo: rootTurbo({
+      env: ["INTEGRATION_SHARD"],
+      passThroughEnv: ["INTEGRATION_SHARD"],
+    }),
+    expectRule: 6,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -518,6 +712,7 @@ function runSelfTest() {
     const found = findViolations({
       workflows: toWorkflows(fixture.files),
       ...("siteTurbo" in fixture ? { siteTurbo: fixture.siteTurbo } : {}),
+      ...("rootTurbo" in fixture ? { rootTurbo: fixture.rootTurbo } : {}),
       ...(fixture.turboScripts ? { turboScripts: fixture.turboScripts } : {}),
     });
 
@@ -568,6 +763,13 @@ function runRealTree() {
     siteTurbo = null; // absent or unparseable — rule 5 reports it
   }
 
+  let rootTurbo = null;
+  try {
+    rootTurbo = parseJsonc(readFileSync(path.join(REPO_ROOT, "turbo.json"), "utf8"));
+  } catch {
+    rootTurbo = null; // unparseable — rule 6 reports it once a workflow shards
+  }
+
   // Derived, never hardcoded: any root script whose body starts with `turbo run`
   // is a turbo passthrough, so the list cannot drift from package.json.
   const rootPkg = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
@@ -575,7 +777,7 @@ function runRealTree() {
     .filter(([, body]) => /^turbo run /.test(body))
     .map(([name]) => name);
 
-  const found = findViolations({ workflows, siteTurbo, turboScripts });
+  const found = findViolations({ workflows, siteTurbo, rootTurbo, turboScripts });
 
   if (found.length) {
     console.error(`\n.github/workflows: ${found.length} violation(s)\n`);

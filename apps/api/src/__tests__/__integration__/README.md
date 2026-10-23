@@ -21,6 +21,26 @@ npm run test:integration -- --coverage
 
 The test database is automatically cleaned and migrated before each test run.
 
+## Sharding in CI (#857)
+
+CI runs this suite as N shards, each on its own runner with its own Postgres + Redis. The suites can't share a database (`teardownOrg()` deletes every row), so this is the only way to parallelize them. Locally nothing changes: `npm run test:integration` runs everything, serially.
+
+- **The split** is by recorded duration, not file count. [`jest.integration.sequencer.mjs`](../../../jest.integration.sequencer.mjs) bin-packs files using [`durations.json`](./durations.json); a file with no entry weighs the median. It only runs when `--shard` is passed.
+- **N** is about 150s of recorded time per shard, clamped to 2–10: `node scripts/integration-shards.mjs plan` from the repo root shows it.
+- **Reproduce one shard locally:** `INTEGRATION_SHARD=2/4 npm run test:integration`. It runs exactly the files CI's shard 2 of 4 ran, and writes `jest-integration-report.json`.
+- **Keep files under 120s.** A file can't be split across shards, so the slowest file sets the floor on its shard's time. `npm run lint:integration-durations` (root) fails on a file past the ceiling. Split it by concern, as `services/demo-seed.*.integration.test.ts` were, or add it to `CEILING_ALLOWLIST` in `scripts/integration-shards.lib.mjs` with a reason.
+- **Refreshing durations.** A weekly workflow opens or updates a drift issue, carrying the exact command, when they drift. To refresh by hand from a CI run:
+
+  ```bash
+  # one directory per run; each file's duration becomes its median across them
+  for id in <run-id> <run-id> <run-id>; do
+    gh run download "$id" -p 'integration-jest-*' -D "/tmp/reports/$id"
+  done
+  node scripts/integration-shards.mjs update-durations --reports /tmp/reports
+  ```
+
+  Then commit `durations.json`. Sample several runs (`node scripts/integration-shards.mjs sample-runs` says how many the weekly job uses): one run is a noisy sample, and the median is what keeps shards even. Use CI times, not a local run: CI runs about 1.75× slower, and the planner budgets CI seconds.
+
 ## How It Works
 
 1. **Setup** ([setup.ts](./setup.ts)):

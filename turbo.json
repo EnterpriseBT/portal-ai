@@ -104,7 +104,19 @@
       "cache": true,
       "env": [
         "INTEGRATION_TEST_DATABASE_URL",
-        "REDIS_URL"
+        "REDIS_URL",
+        // CI runs the suite as N shards ("i/N", #857), each a different slice
+        // of the same task over the same inputs. Hashing the shard is what
+        // keeps one shard from restoring another's cached result; in
+        // passThroughEnv it would reach Jest but not the hash. lint:ci-cache
+        // rule 6 holds this. Unset locally, so a local run is one entry.
+        "INTEGRATION_SHARD"
+      ],
+      // A sharded run writes its Jest report here (see apps/api's
+      // test:integration). Cached with the result so a cache hit restores it,
+      // and CI's summary can still count every suite on a fully cached re-run.
+      "outputs": [
+        "jest-integration-report.json"
       ]
     },
     "storybook": {

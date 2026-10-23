@@ -41,6 +41,10 @@ export default {
   globalSetup: "<rootDir>/src/__tests__/__integration__/setup.ts",
   globalTeardown: "<rootDir>/src/__tests__/__integration__/teardown.ts",
 
+  // Balances `--shard=i/N` by recorded duration (#857). Only consulted when
+  // a shard is requested, so a plain local run is unaffected.
+  testSequencer: "<rootDir>/jest.integration.sequencer.mjs",
+
   // Coverage configuration
   collectCoverageFrom: [
     "src/**/*.ts",

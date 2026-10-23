@@ -65,3 +65,6 @@ credentials.md
 # Helm chart vendored subchart archives (#566) — Chart.lock is committed; the
 # tgzs are fetched by `helm dependency build`.
 deploy/helm/*/charts/
+
+# Sharded integration run report (#857); a turbo output, never committed
+jest-integration-report.json
