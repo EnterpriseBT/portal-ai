@@ -115,7 +115,9 @@ export class JobsService {
           type: job.type,
           ...(job.metadata as Record<string, unknown>),
         },
-        { attempts: job.maxAttempts }
+        // The row id, not BullMQ's per-Redis counter (#852): unique across a
+        // Redis replacement, and re-adding it is a no-op BullMQ ignores.
+        { jobId: job.id, attempts: job.maxAttempts }
       );
 
       // 3. Store BullMQ reference
