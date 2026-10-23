@@ -114,6 +114,12 @@ interface StreamContext {
   assistantBlocks: Record<string, unknown>[];
   sse: SseUtil;
   currentText: string;
+  /**
+   * #846: calls the SDK refused against the tool's schema, keyed by id. The
+   * SDK flags the `tool-call` part `invalid` and puts the error object there;
+   * the `tool-error` that follows carries only its message string.
+   */
+  invalidToolCalls: Map<string, unknown>;
 }
 
 /** Handle a text-delta chunk: accumulate text and send SSE. */
@@ -147,6 +153,9 @@ function handleToolCall(ctx: StreamContext, chunk: any): void {
   });
 
   const toolCallId = chunk.toolCallId as string | undefined;
+  if (chunk.invalid === true && typeof toolCallId === "string") {
+    ctx.invalidToolCalls.set(toolCallId, chunk.error);
+  }
   // Without an id the client can't pair the close event — emitting anyway
   // would open a step that never closes, which is worse than no step.
   if (typeof toolCallId === "string" && toolCallId.length > 0) {
@@ -234,9 +243,13 @@ function handleToolError(ctx: StreamContext, chunk: any): void {
   const toolCallId = chunk.toolCallId as string | undefined;
   const error = chunk.error as unknown;
 
+  // The refusal's error object is on the call's `tool-call` part; this
+  // chunk's `error` is only its message (see StreamContext.invalidToolCalls).
   const invalidInput =
-    (error as { name?: unknown } | null)?.name === "AI_InvalidToolInputError";
-  const reasons = invalidInput ? issueMessages(error) : [];
+    typeof toolCallId === "string" && ctx.invalidToolCalls.has(toolCallId);
+  const reasons = invalidInput
+    ? issueMessages(ctx.invalidToolCalls.get(toolCallId))
+    : [];
   if (!invalidInput) {
     logger.warn(
       {
@@ -840,6 +853,7 @@ export class PortalService {
       assistantBlocks: [],
       sse,
       currentText: "",
+      invalidToolCalls: new Map(),
     };
 
     try {

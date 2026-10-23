@@ -1484,18 +1484,23 @@ describe("PortalService", () => {
 
       it("closes the step when the SDK refuses a tool's input", async () => {
         const sse = await runStream([
+          // The SDK's real shape (ai/dist parseToolCall + the stream
+          // transform): the error object rides the `tool-call` part, flagged
+          // `invalid`; the `tool-error` that follows carries only its message.
           {
             type: "tool-call",
             toolName: "curated_view_create",
             toolCallId: "tc-err",
             input: { filterSql: "x" },
+            invalid: true,
+            error: invalidInputError(),
           },
           {
             type: "tool-error",
             toolName: "curated_view_create",
             toolCallId: "tc-err",
             input: { filterSql: "x" },
-            error: invalidInputError(),
+            error: invalidInputError().message,
           },
           { type: "finish" },
         ]);
@@ -1510,18 +1515,23 @@ describe("PortalService", () => {
 
       it("keeps a refused call in history, with the schema's reason as a typed result", async () => {
         await runStream([
+          // The SDK's real shape (ai/dist parseToolCall + the stream
+          // transform): the error object rides the `tool-call` part, flagged
+          // `invalid`; the `tool-error` that follows carries only its message.
           {
             type: "tool-call",
             toolName: "curated_view_create",
             toolCallId: "tc-err",
             input: { filterSql: "x" },
+            invalid: true,
+            error: invalidInputError(),
           },
           {
             type: "tool-error",
             toolName: "curated_view_create",
             toolCallId: "tc-err",
             input: { filterSql: "x" },
-            error: invalidInputError(),
+            error: invalidInputError().message,
           },
           { type: "finish" },
         ]);
