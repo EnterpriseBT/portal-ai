@@ -1,0 +1,125 @@
+name: Refresh integration durations
+
+# Watches apps/api's integration durations.json for drift (#857). The file
+# sets how many shards the Integration Tests check runs and how files are
+# split across them, so a stale one means too few shards and slow runs.
+#
+# Weekly, it takes the shard reports of the newest green Integration Tests
+# runs on MERGED pull requests' heads (the trees that became main; a squash
+# merge never puts the branch's own commits on main), up to SAMPLE_RUNS of
+# them, and recomputes each file's median duration across them. One run is a
+# noisy sample. When planning would act on the change, it opens or updates
+# one issue with the result and the command that applies it. A person runs that
+# command and lands it in a normal PR.
+#
+# Why an issue, not a PR: a workflow opening a PR with GITHUB_TOKEN needs the
+# repo setting "Allow GitHub Actions to create and approve pull requests",
+# which would also let any workflow approve PRs. An issue needs only
+# `issues: write`, and this job pushes nothing.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: "refresh-integration-durations"
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+env:
+  TITLE: "Integration test durations have drifted"
+
+jobs:
+  refresh:
+    name: Refresh integration durations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # Newest first: runs whose commit is a recently merged PR's head, and
+      # that actually ran shards (a docs-only skip reports green with none),
+      # each into its own reports/<run id>/ so the medians are per run.
+      - name: Download the newest merged runs' shard reports
+        id: reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          want=$(node scripts/integration-shards.mjs sample-runs)
+          gh pr list --state merged --limit 100 --json headRefOid -q '.[].headRefOid' > merged.txt
+          gh run list --workflow integration-test.yml --status success --limit 200 \
+            --json databaseId,headSha -q '.[] | "\(.databaseId) \(.headSha)"' > runs.txt
+          got=()
+          while read -r id sha; do
+            grep -qx "$sha" merged.txt || continue
+            if gh run download "$id" -p 'integration-jest-*' -D "reports/$id" 2>/dev/null; then
+              got+=("$id")
+              [ "${#got[@]}" -ge "$want" ] && break
+            fi
+          done < runs.txt
+          if [ "${#got[@]}" -eq 0 ]; then
+            echo "::warning::No green Integration Tests run on a recently merged PR has shard reports; nothing to refresh."
+            echo "run=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Sampling ${#got[@]} run(s): ${got[*]}"
+          echo "run=${got[0]}" >> "$GITHUB_OUTPUT"
+          echo "runs=${got[*]}" >> "$GITHUB_OUTPUT"
+
+      # pipefail: without it `tee` would mask a failing update-durations and
+      # the job would report green while the durations went stale.
+      - name: Recompute the durations
+        id: update
+        if: steps.reports.outputs.run != ''
+        run: |
+          set -o pipefail
+          node scripts/integration-shards.mjs update-durations --reports reports --if-changed | tee update.log
+
+      - name: Open or update the drift issue
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.reports.outputs.run }}
+          RUN_IDS: ${{ steps.reports.outputs.runs }}
+        run: |
+          set -o pipefail
+          {
+            echo "The recorded integration durations no longer match CI. They set the shard count and the split, so refreshing them keeps the \`Integration Tests\` check at 3–6 min (#857)."
+            echo
+            echo "Each file's median over Integration Tests runs $RUN_IDS (newest: [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID)):"
+            echo
+            echo '```'
+            cat update.log
+            echo '```'
+            echo
+            echo "A line starting with \`!\` is a file over the 120s ceiling. \`lint:integration-durations\` will fail on it, so split it by concern first (or allowlist it with a reason in \`scripts/integration-shards.lib.mjs\`)."
+            echo
+            echo "**To apply**, on a branch off \`main\`:"
+            echo
+            echo '```bash'
+            for id in $RUN_IDS; do
+              echo "gh run download $id -p 'integration-jest-*' -D /tmp/integration-reports/$id"
+            done
+            echo "node scripts/integration-shards.mjs update-durations --reports /tmp/integration-reports"
+            echo "git commit -am 'chore(ci): refresh integration durations'"
+            echo '```'
+            echo
+            echo "Then open a PR. This issue is updated each week until the drift is gone."
+          } > body.md
+
+          existing=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            -q ".[] | select(.title == env.TITLE) | .number" | head -1)
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file body.md
+            echo "Updated #$existing"
+          else
+            gh issue create --title "$TITLE" --body-file body.md
+          fi

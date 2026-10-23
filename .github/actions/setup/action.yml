@@ -1,5 +1,5 @@
 name: "Setup Node & Install"
-description: "Checks out the repo, sets up Node.js, and installs dependencies with caching"
+description: "Sets up Node.js and installs dependencies, restoring node_modules from cache when the dependency inputs are unchanged"
 
 inputs:
   node-version:
@@ -10,12 +10,53 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # node_modules itself, not just npm's download cache (#857). `npm ci` took
+    # ~65s per job even with ~/.npm cached, and the sharded integration suite
+    # pays it once per shard. A restore is ~8s.
+    #
+    # The key is EXACT and there are no restore-keys: a hit is only ever a
+    # tree installed from this lockfile and these package.json files, on this
+    # OS, architecture and Node major (native addons are ABI-bound). Any
+    # dependency change misses and runs `npm ci` exactly as before, which is
+    # also what still catches a package.json out of sync with the lockfile.
+    # Workspace links are relative symlinks, so the tree is valid at any
+    # checkout path. The `v2` retires entries saved before the clean-tree
+    # save below existed; bump it to invalidate every entry.
+    - name: Restore node_modules
+      id: modules
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json', 'apps/*/package.json', 'packages/*/package.json') }}
+
+    # npm's download cache only matters on a miss, where it saves `npm ci`
+    # fetching every tarball from the registry (in parallel, across every job
+    # that missed). On a hit it would be a wasted restore.
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: "npm"
+        cache: ${{ steps.modules.outputs.cache-hit != 'true' && 'npm' || '' }}
 
     - name: Install dependencies
+      if: steps.modules.outputs.cache-hit != 'true'
       shell: bash
       run: npm ci
+
+    # Saved here, straight after `npm ci`, not at the end of the job: by then
+    # builds, lints and tests have written their own caches into node_modules
+    # (.cache, .vite), and the entry would be that job's tree rather than a
+    # clean install. Concurrent misses race to save the same key; the losers
+    # only log a warning.
+    - name: Save node_modules
+      if: steps.modules.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: ${{ steps.modules.outputs.cache-primary-key }}

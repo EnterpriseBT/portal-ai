@@ -166,6 +166,8 @@ The Swagger documentation will automatically include your new routes!
 - `npm run format` - Format code with Prettier
 - `npm run format:check` - Check code formatting
 - `npm run type-check` - Run TypeScript type checking
+- `npm run test:unit` - Run the unit tests
+- `npm run test:integration` - Run the integration tests against the `postgres-test` container, serially. `INTEGRATION_SHARD=i/N` runs one CI shard's files instead (see `src/__tests__/__integration__/README.md`)
 - `npm run swagger:generate` - Generate static OpenAPI spec file
 - `npm run swagger:watch` - Watch mode for spec generation
 
