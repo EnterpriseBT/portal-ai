@@ -16,11 +16,12 @@ Parameters:
       Single-node path only. NOT the redundancy knob — a Redis CacheCluster
       must have exactly 1 node; use ReplicationEnabled instead (#383).
   # ── #383 ─────────────────────────────────────────────────
-  # The Redis here is NOT a cache. It carries the BullMQ jobs queue, and there
-  # is no reconciliation of jobs left mid-flight: losing the node strands them
-  # in `active` in Postgres, and a non-terminal job holds an ENTITY_LOCKED_BY_JOB
-  # lock until someone cancels it by hand (#391). A node replacement is
-  # therefore an operational incident, not a cache miss.
+  # The Redis here is NOT a cache. It carries the BullMQ jobs queue. Losing the
+  # node leaves rows non-terminal in Postgres, holding their
+  # ENTITY_LOCKED_BY_JOB locks until the stranded sweep (#391) reaps them as
+  # failed, which loses the work. A node replacement is therefore an
+  # operational incident, not a cache miss; a planned one goes through
+  # `portalops jobs redispatch` (#852) instead of the sweep.
   #
   # A CacheCluster cannot have a replica at all, so prod switches resource type
   # behind this condition. Dev keeps its CacheCluster — flipping the type would
@@ -38,10 +39,32 @@ Parameters:
     MinValue: 0
     MaxValue: 35
     Description: Daily snapshot retention in days; 0 disables snapshots.
+  # ── #852 ─────────────────────────────────────────────────
+  # Encryption at rest can't be turned on for an existing cache (and a
+  # CacheCluster has no such setting at all), so the encrypted group is a new
+  # resource beside the legacy one, and an operator moves each environment
+  # through the phases: legacy → both (encrypted group created) → backend
+  # switched to it (backend.yml RedisEndpointSource) → encrypted (legacy
+  # removed). See docs/REDIS_ENCRYPTION_CUTOVER.runbook.md.
+  #
+  # The deploy workflows NEVER pass this: an unpassed parameter keeps its
+  # current value, so a routine deploy can't move a phase. Only
+  # `portalops cache phase` does.
+  RedisCutoverPhase:
+    Type: String
+    Default: legacy
+    AllowedValues: [legacy, both, encrypted]
+    Description: >-
+      legacy = plaintext cache only; both = plaintext + encrypted (cutover
+      window); encrypted = encrypted only.
 
 Conditions:
   IsReplicated: !Equals [!Ref ReplicationEnabled, "true"]
   IsSingleNode: !Not [!Equals [!Ref ReplicationEnabled, "true"]]
+  HasLegacy: !Not [!Equals [!Ref RedisCutoverPhase, encrypted]]
+  HasEncrypted: !Not [!Equals [!Ref RedisCutoverPhase, legacy]]
+  LegacySingle: !And [!Condition HasLegacy, !Condition IsSingleNode]
+  LegacyReplicated: !And [!Condition HasLegacy, !Condition IsReplicated]
 
 Resources:
   # ── Cache Subnet Group ───────────────────────────────────
@@ -78,7 +101,7 @@ Resources:
   # ── Redis Cluster ────────────────────────────────────────
   RedisCluster:
     Type: AWS::ElastiCache::CacheCluster
-    Condition: IsSingleNode
+    Condition: LegacySingle
     Properties:
       ClusterName: !Sub "portalai-${Environment}"
       Engine: redis
@@ -97,7 +120,7 @@ Resources:
   # branch on the same condition for exactly that reason.
   RedisReplicationGroup:
     Type: AWS::ElastiCache::ReplicationGroup
-    Condition: IsReplicated
+    Condition: LegacyReplicated
     Properties:
       ReplicationGroupId: !Sub "portalai-${Environment}"
       ReplicationGroupDescription: !Sub "portalai-${Environment} redis (jobs queue)"
@@ -115,9 +138,40 @@ Resources:
         - Key: Name
           Value: !Sub "portalai-${Environment}-redis"
 
+  # Encrypted at rest and in transit (#852). One resource type for both
+  # environments: dev is a one-node group, prod keeps two nodes with failover.
+  # TransitEncryptionMode `required` makes the cluster refuse plaintext, so a
+  # client without TLS fails to connect rather than talking in the clear.
+  EncryptedRedisReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Condition: HasEncrypted
+    Properties:
+      ReplicationGroupId: !Sub "portalai-${Environment}-tls"
+      ReplicationGroupDescription: !Sub "portalai-${Environment} redis, encrypted (jobs queue)"
+      Engine: redis
+      EngineVersion: "7.1"
+      CacheNodeType: !Ref NodeType
+      NumCacheClusters: !If [IsReplicated, 2, 1]
+      AutomaticFailoverEnabled: !If [IsReplicated, true, false]
+      MultiAZEnabled: !If [IsReplicated, true, false]
+      SnapshotRetentionLimit: !Ref SnapshotRetentionLimit
+      AtRestEncryptionEnabled: true
+      TransitEncryptionEnabled: true
+      TransitEncryptionMode: required
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      SecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-redis-tls"
+
 # ── Exports ──────────────────────────────────────────────
+# Each endpoint export exists exactly while its cache does. CloudFormation
+# refuses to remove an export another stack imports, which is what holds the
+# order: the legacy pair can't go until backend.yml imports the TLS pair.
 Outputs:
   RedisEndpoint:
+    Condition: HasLegacy
     Value: !If
       - IsReplicated
       - !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
@@ -126,12 +180,25 @@ Outputs:
       Name: !Sub "${Environment}-RedisEndpoint"
 
   RedisPort:
+    Condition: HasLegacy
     Value: !If
       - IsReplicated
       - !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
       - !GetAtt RedisCluster.RedisEndpoint.Port
     Export:
       Name: !Sub "${Environment}-RedisPort"
+
+  RedisTlsEndpoint:
+    Condition: HasEncrypted
+    Value: !GetAtt EncryptedRedisReplicationGroup.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub "${Environment}-RedisTlsEndpoint"
+
+  RedisTlsPort:
+    Condition: HasEncrypted
+    Value: !GetAtt EncryptedRedisReplicationGroup.PrimaryEndPoint.Port
+    Export:
+      Name: !Sub "${Environment}-RedisTlsPort"
 
   CacheSecurityGroupId:
     Value: !Ref CacheSecurityGroup
