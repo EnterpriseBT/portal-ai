@@ -28,6 +28,12 @@ This spec pins the contract for running `apps/api`'s integration suite as N dura
 7. **The refresh PR gets its checks by dispatch.** Pushes made with `GITHUB_TOKEN` don't trigger workflows, but `workflow_dispatch` calls made with it do. So the three required-check workflows gain a `workflow_dispatch` trigger, and the refresh workflow dispatches them on its branch. No PAT or new secret is involved.
 8. **Local runs are unchanged.** With `INTEGRATION_SHARD` unset, the npm script adds no flags and the sequencer's `shard()` is never called.
 
+9. **Changed in implementation:**
+   - **Pure functions and constants moved to `scripts/integration-shards.lib.mjs`.** The CLI and self-test stay in `integration-shards.mjs`, which loads the sequencer only for `--self-test`, so CI's plan and summary jobs need no `npm ci`.
+   - **`durationsChanged` counts only what planning acts on:** files added or removed, the total moving more than 10%, or one file moving more than 30s and 50%. Two CI runs of one commit moved single files by up to 22s, because the first suite on each runner pays the module compile.
+   - **Initial durations are CI-measured,** from the first sharded run (40010967045).
+   - **Dispatch can't be tested before merge.** GitHub only dispatches workflows that exist on the default branch, so the refresh workflow and the new triggers are proven after merge.
+
 ## Scope
 
 ### In scope

@@ -40,16 +40,38 @@ Prettier is enforced, not advisory: a husky pre-commit hook (installed by `npm i
 
 The suites do **not** re-run when a PR merges. `main` requires branches to be up to date and the convention is squash, so the merged commit's *tree* is identical to the branch tree the checks just passed against — re-running it tests nothing. `deploy-dev` therefore runs the suites only for `workflow_dispatch`, which has no PR behind it. **This depends on "require branches to be up to date" staying on**; if it is ever disabled, `deploy-dev.yml`'s test jobs must go back to unconditional (the file says so too).
 
-A push to a branch cancels that branch's in-flight run, and a push that is docs-only **since the branch's last successful Integration Tests run** skips the integration suite while still reporting its check (#663: measured from the previous push, a docs push went green after a code push's run was cancelled or failed; the decision lives in `scripts/integration-skip-base.mjs`, self-tested by `npm run lint:integration-skip`). Filtering happens *inside* the job, never via `paths-ignore`, because a required check that never runs never reports and GitHub blocks the PR forever waiting for it.
+A push to a branch cancels that branch's in-flight run, and a push that is docs-only **since the branch's last successful Integration Tests run** skips the integration suite while still reporting its check (#663: measured from the previous push, a docs push went green after a code push's run was cancelled or failed; the decision lives in `scripts/integration-skip-base.mjs`, self-tested by `npm run lint:integration-skip`). Filtering happens *inside* the workflow, never via `paths-ignore`, because a required check that never runs never reports and GitHub blocks the PR forever waiting for it.
+
+#### Sharded integration suite (#857)
+
+The integration suite runs as **N shards behind one required check**, at about 3–6 min instead of ~20.
+- **Why runners, not workers.** Its suites can't share a database: `teardownOrg()` deletes every row, and the queue suites obliterate shared BullMQ queues. So each shard runs serially on its own runner with its own Postgres + Redis.
+- **Shape.** `integration-test.yml` is `changes` (the docs-only skip) → `plan` → `shard` × N, named `Integration Tests (shard i/N)` → `summary`. The summary job is named **exactly `Integration Tests`**, and it alone is the required context.
+- **The summary fails closed.** It runs `if: always()` and goes red on any failed or cancelled shard, a missing shard report, a failed suite, or suites across the shards that don't add up to the checkout's `*.integration.test.ts` files (a file run in no shard, or in two).
+- **N is planned, not fixed.** N = ⌈Σ `durations.json` ÷ 210s⌉, clamped to 2–10. The cap is sized to the free plan's 20 concurrent jobs.
+- **Durations.** `apps/api/src/__tests__/__integration__/durations.json` drives both N and the split. The split is `jest.integration.sequencer.mjs`, longest-first bin packing used only when `--shard` is passed.
+- **The shard reaches Jest and turbo** as `INTEGRATION_SHARD=i/N`.
+  - `apps/api`'s `test:integration` appends `--shard` plus a JSON report only when it's set, so a local run is unchanged.
+  - `turbo.json` hashes it, and caches the report as an output.
+  - The packer and durations live in `apps/api` so turbo hashes them too. A cached "pass" can never be restored for a shard whose files moved.
+- **Guards:**
+  - `npm run lint:integration-shards`: self-test of `scripts/integration-shards.mjs`, above all that every file lands in exactly one shard.
+  - `npm run lint:integration-durations`: no file may exceed **120s**. A file can't be split across shards, so it sets the floor; split it by concern (as demo-seed was), or allowlist it with a reason in `scripts/integration-shards.lib.mjs`.
+  - `lint:ci-cache` rules 3 and 6 (below).
+- **Freshness.** `refresh-integration-durations.yml` runs weekly. It takes the newest green run's shard reports and opens or updates one PR when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. Per-file times swing between identical runs, because the first suite on each runner pays the module compile. The PR's required checks are **dispatched** (`unit-test`/`static-checks`/`integration-test.yml` carry `workflow_dispatch` for this), because GitHub starts no workflows for a `GITHUB_TOKEN` push.
+- **Warnings, not failures.** The summary warns when a shard runs >25% over budget (refresh durations) or when the planner hit the cap.
+- **The cap warning is the trigger** for the next step: one database per Jest worker inside each shard, rather than more runners or a paid plan.
 
 #### Turborepo remote caching (#454)
 
 Every turbo invocation in CI reads and writes a shared **Vercel Remote Cache**, so a suite skips work an earlier run already did. Measured on the implementing branch: Static Checks 3.8m → 1.6m, Unit Tests 5–7m → 1.1m, Integration Tests 6.4m → 1.5m, with the remaining time dominated by `npm ci` rather than by builds.
 
-The wiring is **guarded, not documented-and-hoped**: `npm run lint:ci-cache` (`scripts/check-ci-cache.mjs`, run in `unit-test.yml`) fails the build on five rules, and self-tests those rules against embedded fixtures before checking the real tree. It exists because every failure mode here is silent:
+The wiring is **guarded, not documented-and-hoped**: `npm run lint:ci-cache` (`scripts/check-ci-cache.mjs`, run in `unit-test.yml`) fails the build on six rules, and self-tests those rules against embedded fixtures before checking the real tree. It exists because every failure mode here is silent:
 
 - **Credentials (rules 1–2).** A workflow that runs turbo carries `TURBO_TOKEN` + `TURBO_TEAM` + `TURBO_REMOTE_CACHE_SIGNATURE_KEY` in scope, and a `workflow_call` site passes every secret the callee declares. **Without the token turbo caches nothing and still reports success** — there is no error to notice, and an unpassed secret is simply empty inside a reusable workflow.
 - **Required-check names and concurrency literals (rules 3–4).** Pre-existing invariants that previously lived only in comments.
+- **A sharded check's name sits on its aggregator (rule 3, #857).** When a required check's workflow has a matrix, the job carrying the required name must be a non-matrix summary that `needs` every matrix job with `if: always()`. Otherwise a leg could report the name, or a red shard could leave the check skipped.
+- **The integration shard is hashed (rule 6, #857).** A workflow that sets `INTEGRATION_SHARD` requires `turbo.json`'s `test:integration` to list it in `env` and never in `passThroughEnv`. Unhashed, every shard shares one cache entry and restores another shard's result without running its own files.
 - **`apps/site` stays uncached (rule 5).** Its build bakes live prices into static HTML, and its env vars are `passThroughEnv` — they reach the build but are *deliberately* absent from the task hash. Flipping `cache: true` there would let a prod deploy restore dev's artifact, with nothing to indicate it happened.
 
 Two properties worth internalising: the policy is **fail-open on cache availability, fail-closed on cache integrity** (artifacts are HMAC-signed via `remoteCache.signature`; an unreachable cache just runs the work), and **a cache hit can never turn a red check green** — a failing task is never written to the cache at all. One nuance: "fail-closed" describes *verification*. A **missing** signature key does not fail — turbo warns and uploads unsigned — so rule 1 requiring the key in scope is what actually holds that guarantee, not the flag. `apps/web#build` misses on every new commit by design, because the commit SHA reaches its hash through `VITE_APP_SHA`.
@@ -788,7 +810,7 @@ gh api --method PATCH repos/EnterpriseBT/portal-ai/branches/main/protection/requ
 Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: the latter replaces the entire protection object, so every rule you do not resend is silently dropped. Resend `strict` with the contexts — omitting it would clear "require branches to be up to date", which `deploy-dev`'s skipped test suites depend on.
 
 - **Require a pull request before merging.** Direct pushes to `main` blocked.
-- **Require status checks to pass before merging** — currently `Unit Tests`, `Integration Tests`, `Static Checks`. These are **job names** (the `name:` on the job), not workflow filenames: the context GitHub matches is what the job reports as. Renaming a job silently un-gates it *and* wedges every PR, which then waits forever on a context that never reports. Add new required checks as they're added to CI.
+- **Require status checks to pass before merging** — currently `Unit Tests`, `Integration Tests`, `Static Checks`. These are **job names** (the `name:` on the job), not workflow filenames: the context GitHub matches is what the job reports as. `Integration Tests` is the summary job over the shards (#857); the `Integration Tests (shard i/N)` contexts are never required, since N varies run to run. Renaming a job silently un-gates it *and* wedges every PR, which then waits forever on a context that never reports. Add new required checks as they're added to CI.
 - **Require branches to be up to date before merging.** Prevents merging a PR that hasn't seen the latest `main`.
 - **Require linear history.** Matches the squash convention; no merge commits on `main`.
 - **Do not allow bypassing the above settings** — applies to administrators too. Force-push and deletion are off by default once protection is enabled.
