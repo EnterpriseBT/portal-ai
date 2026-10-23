@@ -4,6 +4,9 @@ on:
   push:
     branches-ignore:
       - main
+  # Lets the durations refresh PR (#857) get its required checks: a push
+  # made with GITHUB_TOKEN starts no workflows, but a dispatch does.
+  workflow_dispatch:
   workflow_call:
     # Declared so a caller that forgets to pass them is visible HERE, in the
     # workflow that needs them (#454). `required: false` because a

@@ -1,0 +1,116 @@
+name: Refresh integration durations
+
+# Keeps apps/api's integration durations.json current (#857). The file sets
+# how many shards the Integration Tests check runs and how files are split
+# across them, so a stale one means too few shards and slow runs.
+#
+# Weekly, it takes the newest green Integration Tests run's shard reports,
+# rewrites durations.json, and opens (or updates) ONE pull request when
+# anything moved beyond noise. It never commits to main: the PR goes through
+# the normal checks and a human merges it. A file over the 120s ceiling fails
+# that PR's Unit Tests (lint:integration-durations), which is where the split
+# belongs.
+#
+# Its pushes use GITHUB_TOKEN, and GitHub starts no workflows for those, so
+# the PR's three required checks would never report. Dispatches made with
+# GITHUB_TOKEN DO start runs, so the last step dispatches each on the branch.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: "refresh-integration-durations"
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+env:
+  BRANCH: chore/refresh-integration-durations
+
+jobs:
+  refresh:
+    name: Refresh integration durations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # The newest green run that actually ran shards. A docs-only skip
+      # reports green with no reports, so it's passed over.
+      - name: Download the newest green run's shard reports
+        id: reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh run list --workflow integration-test.yml --status success --limit 20 --json databaseId -q '.[].databaseId'); do
+            rm -rf reports
+            if gh run download "$id" -p 'integration-jest-*' -D reports 2>/dev/null; then
+              echo "run=$id" >> "$GITHUB_OUTPUT"
+              echo "Using run $id"
+              exit 0
+            fi
+          done
+          echo "::warning::No recent green Integration Tests run has shard reports; nothing to refresh."
+          echo "run=" >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite durations.json if anything moved beyond noise
+        id: update
+        if: steps.reports.outputs.run != ''
+        run: |
+          node scripts/integration-shards.mjs update-durations --reports reports --if-changed | tee update.log
+
+      - name: Open or update the refresh PR
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.reports.outputs.run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add apps/api/src/__tests__/__integration__/durations.json
+          git commit -m "chore(ci): refresh integration durations (#857)" -m "From Integration Tests run $RUN_ID."
+          git push --force origin "$BRANCH"
+
+          {
+            echo "## Summary"
+            echo
+            echo "- Refreshes \`durations.json\` from Integration Tests run [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID). It sets the shard count and the split, so keeping it current keeps the check at 3–6 min."
+            echo
+            echo '```'
+            cat update.log
+            echo '```'
+            echo
+            echo "A line starting with \`!\` is a file over the 120s ceiling: Unit Tests fails on it until the file is split by concern (or allowlisted with a reason in \`scripts/integration-shards.lib.mjs\`)."
+            echo
+            echo "## Test plan"
+            echo
+            echo "- [ ] Unit Tests, Static Checks and Integration Tests green (dispatched on this branch)"
+            echo
+            echo "Refs #857"
+          } > body.md
+
+          existing=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body-file body.md
+          else
+            gh pr create --base main --head "$BRANCH" --title "Refresh integration test durations" --body-file body.md
+          fi
+
+      # GITHUB_TOKEN pushes start no workflows; dispatches do. Each required
+      # check reports on the branch's commit, which is the PR's head.
+      - name: Run the required checks on the refresh branch
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in unit-test.yml static-checks.yml integration-test.yml; do
+            gh workflow run "$wf" --ref "$BRANCH"
+          done

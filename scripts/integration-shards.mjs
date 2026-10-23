@@ -151,12 +151,19 @@ const CASES = [
     run: () => durationsChanged({ a: 10 }, { a: 10, b: 1 }) && durationsChanged({ a: 10, b: 1 }, { a: 10 }),
   },
   {
-    name: "durationsChanged: a small move is not a change (under 20% or under 5s)",
-    run: () => !durationsChanged({ a: 10, b: 100 }, { a: 14, b: 115 }),
+    name: "durationsChanged: per-file swings with a steady total are noise, not a change",
+    // Measured between two CI runs of one commit (#857): the first suite on
+    // each runner pays the module compile, so files trade seconds as the
+    // split changes while the total barely moves.
+    run: () => !durationsChanged({ a: 22.9, b: 0.8, c: 57.1, d: 100 }, { a: 1.1, b: 8.5, c: 28.5, d: 140 }),
   },
   {
-    name: "durationsChanged: a move over 20% and 5s is a change",
-    run: () => durationsChanged({ a: 100 }, { a: 130 }),
+    name: "durationsChanged: the total moving over 10% is a change (the shard count may move)",
+    run: () => durationsChanged({ a: 100, b: 100 }, { a: 115, b: 115 }),
+  },
+  {
+    name: "durationsChanged: one file moving over 30s and 50% is a change (it may near the ceiling)",
+    run: () => durationsChanged({ a: 40, b: 500 }, { a: 75, b: 470 }),
   },
   {
     name: "ceilingViolations: a file over the ceiling is listed with its seconds",

@@ -65,16 +65,25 @@ export function mergeReports(reports, existingFiles) {
 }
 
 /**
- * Whether a refresh is worth a PR: a file added or removed, or one that moved
- * by more than 20% AND more than 5s. Smaller moves are run-to-run noise.
+ * Whether a refresh is worth a PR. Per-file times are noisy between runs of
+ * the same commit: the first suite on each runner pays the module compile, so
+ * files trade tens of seconds as the split changes (measured on #857: 22.9s →
+ * 1.1s for one file, 0.8s → 8.5s for another, totals within 10%). So a
+ * refresh counts only what planning acts on:
+ * - a file added or removed;
+ * - the total moving more than 10% (the shard count may move);
+ * - one file moving more than 30s AND 50% (it may be nearing the ceiling).
  */
 export function durationsChanged(prev, next) {
   const a = Object.keys(prev);
   const b = Object.keys(next);
   if (a.length !== b.length || a.some((f) => !(f in next))) return true;
+  const total = (d) => Object.values(d).reduce((n, s) => n + s, 0);
+  const before = total(prev);
+  if (before > 0 && Math.abs(total(next) - before) > before * 0.1) return true;
   return b.some((f) => {
     const delta = Math.abs(next[f] - prev[f]);
-    return delta > 5 && delta > prev[f] * 0.2;
+    return delta > 30 && delta > prev[f] * 0.5;
   });
 }
 
