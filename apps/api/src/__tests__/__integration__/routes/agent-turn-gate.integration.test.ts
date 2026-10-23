@@ -9,7 +9,15 @@
  * denies deterministically.
  */
 
-import { jest, describe, it, expect, beforeAll, afterAll } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  afterEach,
+} from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -44,6 +52,16 @@ const { app } = await import("../../../app.js");
 const { organizations, stations, portals, portalMessages, tiers } = schema;
 
 const now = Date.now();
+
+/**
+ * #849: hold `Date.now()` still for case 8. The ceiling reads only
+ * `Date.now()` (`checkAdmission`'s default, `incrementFixedWindow`) and
+ * counts turns in fixed UTC minute windows, so two real sends straddling a
+ * minute boundary landed in different windows and both passed on a loaded CI
+ * runner. A spy, not fake timers: every timer and `new Date()` stay real, and
+ * a Jest upgrade can't widen what gets faked.
+ */
+const MINUTE_MS = 60_000;
 
 describe("agent-turn ceiling gate (#498)", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -127,6 +145,12 @@ describe("agent-turn ceiling gate (#498)", () => {
     } as never);
   });
 
+  // In a hook, not the test's finally: a Jest timeout abandons the test body,
+  // and a still-mocked clock would follow into teardown.
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   afterAll(async () => {
     await teardownOrg(db as never);
     await db.delete(tiers).where(eq(tiers.slug, tierSlug));
@@ -134,6 +158,12 @@ describe("agent-turn ceiling gate (#498)", () => {
   });
 
   it("allows the first send, denies the second pre-write with 429 + Retry-After (case 8)", async () => {
+    // Both sends at the instant the test starts: the same window whatever
+    // the runner's speed, never earlier than the rows seeded in beforeAll,
+    // and a Retry-After the test can compute exactly.
+    const instant = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(instant);
+    const retryAfter = Math.ceil((MINUTE_MS - (instant % MINUTE_MS)) / 1000);
     const first = await request(app)
       .post(`/api/portals/${portalId}/messages`)
       .send({ message: "first turn" });
@@ -150,8 +180,7 @@ describe("agent-turn ceiling gate (#498)", () => {
       .send({ message: "second turn, same minute" });
     expect(second.status).toBe(429);
     expect(second.body.code).toBe(ApiCode.AGENT_TURN_LIMITED);
-    expect(Number(second.headers["retry-after"])).toBeGreaterThan(0);
-    expect(Number(second.headers["retry-after"])).toBeLessThanOrEqual(60);
+    expect(Number(second.headers["retry-after"])).toBe(retryAfter);
 
     // The load-bearing guarantee: the denied send wrote NOTHING.
     const afterSecond = await db
