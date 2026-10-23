@@ -45,6 +45,33 @@ const { organizations, stations, portals, portalMessages, tiers } = schema;
 
 const now = Date.now();
 
+/**
+ * #849: fake `Date` only. The ceiling counts turns in fixed UTC minute
+ * windows, so two real sends straddling a minute boundary land in different
+ * windows and both pass, which a loaded CI runner hit. Every timer API stays
+ * real, so supertest, Postgres and Redis run as normal.
+ */
+const freezeDate = (now: number) =>
+  jest.useFakeTimers({
+    now,
+    doNotFake: [
+      "hrtime",
+      "nextTick",
+      "performance",
+      "queueMicrotask",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "requestIdleCallback",
+      "cancelIdleCallback",
+      "setImmediate",
+      "clearImmediate",
+      "setInterval",
+      "clearInterval",
+      "setTimeout",
+      "clearTimeout",
+    ],
+  });
+
 describe("agent-turn ceiling gate (#498)", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: ReturnType<typeof drizzle>;
@@ -134,30 +161,37 @@ describe("agent-turn ceiling gate (#498)", () => {
   });
 
   it("allows the first send, denies the second pre-write with 429 + Retry-After (case 8)", async () => {
-    const first = await request(app)
-      .post(`/api/portals/${portalId}/messages`)
-      .send({ message: "first turn" });
-    expect(first.status).toBe(200);
+    // Both sends at one instant, 30 s into the current minute: the same
+    // window whatever the runner's speed, and a deterministic Retry-After.
+    const minuteStart = Math.floor(Date.now() / 60_000) * 60_000;
+    freezeDate(minuteStart + 30_000);
+    try {
+      const first = await request(app)
+        .post(`/api/portals/${portalId}/messages`)
+        .send({ message: "first turn" });
+      expect(first.status).toBe(200);
 
-    const afterFirst = await db
-      .select()
-      .from(portalMessages)
-      .where(eq(portalMessages.portalId, portalId));
-    expect(afterFirst).toHaveLength(1);
+      const afterFirst = await db
+        .select()
+        .from(portalMessages)
+        .where(eq(portalMessages.portalId, portalId));
+      expect(afterFirst).toHaveLength(1);
 
-    const second = await request(app)
-      .post(`/api/portals/${portalId}/messages`)
-      .send({ message: "second turn, same minute" });
-    expect(second.status).toBe(429);
-    expect(second.body.code).toBe(ApiCode.AGENT_TURN_LIMITED);
-    expect(Number(second.headers["retry-after"])).toBeGreaterThan(0);
-    expect(Number(second.headers["retry-after"])).toBeLessThanOrEqual(60);
+      const second = await request(app)
+        .post(`/api/portals/${portalId}/messages`)
+        .send({ message: "second turn, same minute" });
+      expect(second.status).toBe(429);
+      expect(second.body.code).toBe(ApiCode.AGENT_TURN_LIMITED);
+      expect(Number(second.headers["retry-after"])).toBe(30);
 
-    // The load-bearing guarantee: the denied send wrote NOTHING.
-    const afterSecond = await db
-      .select()
-      .from(portalMessages)
-      .where(eq(portalMessages.portalId, portalId));
-    expect(afterSecond).toHaveLength(1);
+      // The load-bearing guarantee: the denied send wrote NOTHING.
+      const afterSecond = await db
+        .select()
+        .from(portalMessages)
+        .where(eq(portalMessages.portalId, portalId));
+      expect(afterSecond).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
