@@ -11,6 +11,7 @@
 		"lint:doc-pointers": "node scripts/check-doc-pointers.mjs",
 		"lint:ci-cache": "node scripts/check-ci-cache.mjs",
 		"lint:integration-skip": "node scripts/integration-skip-base.mjs --self-test",
+		"lint:integration-shards": "node scripts/integration-shards.mjs --self-test",
 		"lint:review-chain": "node scripts/check-review-chain.mjs",
 		"lint:migrations": "node scripts/check-migrations.mjs",
 		"lint:helm": "node scripts/check-helm.mjs",

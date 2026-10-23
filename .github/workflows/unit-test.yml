@@ -84,6 +84,12 @@ jobs:
       - name: Check the integration docs-only skip decision
         run: npm run lint:integration-skip
 
+      # The sharded integration suite's control logic (#857): above all, that
+      # the shard assignment puts every test file in exactly one shard. A
+      # file that lands in none is never run, and nothing else would notice.
+      - name: Check the integration shard logic
+        run: npm run lint:integration-shards
+
       # Guards the review-chain merge gate against silent drift between the
       # surfaces that describe it (#634): CLAUDE.md's merge-gate section +
       # coverage matrix + PR checklist, the copilot mirror, and the two skills
