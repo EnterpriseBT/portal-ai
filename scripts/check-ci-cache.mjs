@@ -143,8 +143,14 @@ export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScri
         const [id, job] = named;
         const needs = [].concat(job.needs ?? []);
         if (matrixJobs.includes(id)) problems.push(`"${expectedJobName}" is itself the matrix job`);
-        if (!String(job.if ?? "").includes("always()")) {
-          problems.push(`its \`if\` lacks always(), so GitHub skips it when a shard fails`);
+        // `always()` or `!cancelled()`: both run when a shard fails. The
+        // latter also stands down when the run itself is cancelled (a newer
+        // push superseded it), rather than posting red on the old commit.
+        const gate = String(job.if ?? "");
+        if (!gate.includes("always()") && !gate.includes("!cancelled()")) {
+          problems.push(
+            `its \`if\` has neither always() nor !cancelled(), so GitHub skips it when a shard fails`
+          );
         }
         const missing = matrixJobs.filter((m) => m !== id && !needs.includes(m));
         if (missing.length) problems.push(`its \`needs\` omits the matrix job(s) ${missing.join(", ")}`);
@@ -155,7 +161,7 @@ export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScri
           file,
           message:
             `the required check "${expectedJobName}" runs as a matrix, so the job with ` +
-            `that name must be a summary that needs every shard with if: always(): ` +
+            `that name must be a summary that needs every shard, gated on always() or !cancelled(): ` +
             `${problems.join("; ")}.`,
         });
       }
@@ -634,6 +640,11 @@ concurrency:
   {
     name: "rule 3 — a sharded check behind an always() summary that needs every shard",
     files: { "integration-test.yml": shardedIntegration() },
+    expectRule: null,
+  },
+  {
+    name: "rule 3 — a summary gated on !cancelled() (runs on a failed shard, not after a cancel)",
+    files: { "integration-test.yml": shardedIntegration({ summaryIf: "\${{ !cancelled() }}" }) },
     expectRule: null,
   },
   {

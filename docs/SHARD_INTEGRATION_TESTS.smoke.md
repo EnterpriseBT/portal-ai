@@ -34,6 +34,7 @@ The surface is CI, so the walk is GitHub Actions runs, not a browser. Every step
 - [ ] Push `smoke/857-forced-failure`, a branch off this one that breaks one assertion in a single integration test. — backend
 - [ ] Exactly one shard fails. The other shards run to completion (`fail-fast: false`). — backend
 - [ ] `Integration Tests` (the summary) is **red**, and its log names the failed suite and "the shards ended failure". — backend
+- [ ] A push that supersedes an in-flight run cancels it, and the old run's `Integration Tests` is **skipped**, not red (`!cancelled()`). — backend
 - [ ] Delete the branch. — backend
 
 ## §4 — Docs-only push: green with no shard
@@ -52,7 +53,7 @@ The surface is CI, so the walk is GitHub Actions runs, not a browser. Every step
 
 ## §7 — After merge
 
-- [ ] `gh workflow run refresh-integration-durations.yml`: the run either reports "unchanged beyond noise", or opens/updates **one** PR whose `Unit Tests`, `Static Checks` and `Integration Tests` checks appear (dispatched). Close it if it's only a test. — backend
+- [ ] `gh workflow run refresh-integration-durations.yml`: the run picks the newest green run on a merged PR's head, and either reports "unchanged beyond noise" or opens/updates **one** issue titled "Integration test durations have drifted" with the apply command. It pushes nothing. Close the issue if it's only a test. — backend
 - [ ] `gh workflow run deploy-dev.yml` (the `workflow_dispatch` path that calls `integration-test.yml` as a reusable workflow): the called workflow plans and shards, and `deploy-infra` waits on its aggregate result. — backend
 - [ ] The first Monday after merge, the scheduled refresh runs on its own. — backend
 

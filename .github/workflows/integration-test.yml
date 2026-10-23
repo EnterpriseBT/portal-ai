@@ -4,9 +4,6 @@ on:
   push:
     branches-ignore:
       - main
-  # Lets the durations refresh PR (#857) get its required checks: a push
-  # made with GITHUB_TOKEN starts no workflows, but a dispatch does.
-  workflow_dispatch:
   workflow_call:
     # Declared so a caller that forgets to pass them is visible HERE, in the
     # workflow that needs them (#454). `required: false` because a
@@ -161,8 +158,10 @@ jobs:
         run: docker compose down
 
   # THE required check. GitHub matches required contexts by job name, so this
-  # job — not the shards — carries "Integration Tests", and it runs whatever
-  # happened upstream (`always()`): green only when the docs-only skip said
+  # job — not the shards — carries "Integration Tests". It runs whatever
+  # happened upstream, short of the run being cancelled (`!cancelled()`): a
+  # newer push supersedes a cancelled run and reports for itself, so the old
+  # commit isn't left with a red check. Green only when the docs-only skip said
   # not to run, or when every shard passed and the suites across them add up
   # to the checkout's test files (a file in no shard, or two, shows as a
   # mismatch). Over-budget shards and the shard cap only warn.
@@ -170,7 +169,7 @@ jobs:
   summary:
     name: Integration Tests
     needs: [changes, plan, shard]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

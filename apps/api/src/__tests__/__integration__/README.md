@@ -29,7 +29,7 @@ CI runs this suite as N shards, each on its own runner with its own Postgres + R
 - **N** is about 150s of recorded time per shard, clamped to 2–10: `node scripts/integration-shards.mjs plan` from the repo root shows it.
 - **Reproduce one shard locally:** `INTEGRATION_SHARD=2/4 npm run test:integration`. It runs exactly the files CI's shard 2 of 4 ran, and writes `jest-integration-report.json`.
 - **Keep files under 120s.** A file can't be split across shards, so the slowest file sets the floor on its shard's time. `npm run lint:integration-durations` (root) fails on a file past the ceiling. Split it by concern, as `services/demo-seed.*.integration.test.ts` were, or add it to `CEILING_ALLOWLIST` in `scripts/integration-shards.lib.mjs` with a reason.
-- **Refreshing durations.** A weekly workflow opens a PR when they drift. To refresh by hand from a CI run:
+- **Refreshing durations.** A weekly workflow opens or updates a drift issue, carrying the exact command, when they drift. To refresh by hand from a CI run:
 
   ```bash
   gh run download <run-id> -p 'integration-jest-*' -D /tmp/reports

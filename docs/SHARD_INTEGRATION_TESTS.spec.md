@@ -33,7 +33,14 @@ This spec pins the contract for running `apps/api`'s integration suite as N dura
    - **`durationsChanged` counts only what planning acts on:** files added or removed, the total moving more than 10%, or one file moving more than 30s and 50%. Two CI runs of one commit moved single files by up to 22s, because the first suite on each runner pays the module compile.
    - **Initial durations are CI-measured,** from the first sharded run (40010967045).
    - **Budget lowered to 150s** (from 210s). Identically sized shards measured up to ~30% apart on different runners, and a 210s budget put one run at 6m17s. 150s gives 5 shards today, and the cap now covers ~1,500s of CI time, about 2.2× today's suite.
-   - **Dispatch can't be tested before merge.** GitHub only dispatches workflows that exist on the default branch, so the refresh workflow and the new triggers are proven after merge.
+   - **Code-review fixes (PR #860):**
+     - the summary checks the file set by name;
+     - it gates on `!cancelled()`, and rule 3 accepts either gate;
+     - the expected files follow Jest's `__integration__` rule;
+     - a malformed durations file fails;
+     - the setup action uses npm's download cache only on a miss, and saves the clean tree right after `npm ci`;
+     - the refresh uses only merged PR heads' runs, with `pipefail`.
+   - **The refresh opens an issue, not a PR.** A `GITHUB_TOKEN` PR needs the repo setting "Allow GitHub Actions to create and approve pull requests" (off here), which would also let workflows approve PRs. So the `workflow_dispatch` triggers added for the PR's checks are removed again, and the job needs only `issues: write`. Its dispatch is proven after merge, since GitHub only dispatches default-branch workflows.
 
 ## Scope
 

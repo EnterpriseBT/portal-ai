@@ -47,7 +47,11 @@ A push to a branch cancels that branch's in-flight run, and a push that is docs-
 The integration suite runs as **N shards behind one required check**, at about 3–6 min instead of ~20.
 - **Why runners, not workers.** Its suites can't share a database: `teardownOrg()` deletes every row, and the queue suites obliterate shared BullMQ queues. So each shard runs serially on its own runner with its own Postgres + Redis.
 - **Shape.** `integration-test.yml` is `changes` (the docs-only skip) → `plan` → `shard` × N, named `Integration Tests (shard i/N)` → `summary`. The summary job is named **exactly `Integration Tests`**, and it alone is the required context.
-- **The summary fails closed.** It runs `if: always()` and goes red on any failed or cancelled shard, a missing shard report, a failed suite, or suites across the shards that don't add up to the checkout's `*.integration.test.ts` files (a file run in no shard, or in two).
+- **The summary fails closed.** It runs `if: ${{ !cancelled() }}`, so it still runs when a shard fails but stands down when a newer push cancels the run, leaving no red check on the old commit. It goes red on:
+  - any failed or cancelled shard;
+  - a missing shard report;
+  - a failed suite;
+  - any integration test file (by Jest's own `__tests__/__integration__/` rule) that ran in no shard or in more than one. This is checked by name, since counts could cancel out.
 - **N is planned, not fixed.** N = ⌈Σ `durations.json` ÷ 150s⌉, clamped to 2–10 (150s leaves room for runner variance of up to ~30%). The cap is sized to the free plan's 20 concurrent jobs.
 - **Durations.** `apps/api/src/__tests__/__integration__/durations.json` drives both N and the split. The split is `jest.integration.sequencer.mjs`, longest-first bin packing used only when `--shard` is passed.
 - **The shard reaches Jest and turbo** as `INTEGRATION_SHARD=i/N`.
@@ -56,15 +60,17 @@ The integration suite runs as **N shards behind one required check**, at about 3
   - The packer and durations live in `apps/api` so turbo hashes them too. A cached "pass" can never be restored for a shard whose files moved.
 - **Guards:**
   - `npm run lint:integration-shards`: self-test of `scripts/integration-shards.mjs`, above all that every file lands in exactly one shard.
-  - `npm run lint:integration-durations`: no file may exceed **120s**. A file can't be split across shards, so it sets the floor; split it by concern (as demo-seed was), or allowlist it with a reason in `scripts/integration-shards.lib.mjs`.
+  - `npm run lint:integration-durations`: no file may exceed **120s**, and a missing or malformed `durations.json` fails rather than quietly reading as empty. A file can't be split across shards, so it sets the floor; split it by concern (as demo-seed was), or allowlist it with a reason in `scripts/integration-shards.lib.mjs`.
   - `lint:ci-cache` rules 3 and 6 (below).
-- **Freshness.** `refresh-integration-durations.yml` runs weekly. It takes the newest green run's shard reports and opens or updates one PR when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. Per-file times swing between identical runs, because the first suite on each runner pays the module compile. The PR's required checks are **dispatched** (`unit-test`/`static-checks`/`integration-test.yml` carry `workflow_dispatch` for this), because GitHub starts no workflows for a `GITHUB_TOKEN` push.
+- **Freshness.** `refresh-integration-durations.yml` runs weekly. It takes the shard reports of the newest green run on a **merged PR's head** (the tree that became `main`; squash merges keep branch commits off `main`). It **opens or updates one issue** when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. The issue carries the result and the command that applies it, and a person lands that in a normal PR.
+  - Per-file times swing between identical runs, because the first suite on each runner pays the module compile, so smaller moves don't count.
+  - It's an issue rather than a PR because a `GITHUB_TOKEN` PR needs "Allow GitHub Actions to create and approve pull requests", which would also let any workflow approve PRs. The job needs only `issues: write` and pushes nothing.
 - **Warnings, not failures.** The summary warns when a shard runs >25% over budget (refresh durations) or when the planner hit the cap.
 - **The cap warning is the trigger** for the next step: one database per Jest worker inside each shard, rather than more runners or a paid plan.
 
 #### Turborepo remote caching (#454)
 
-Every turbo invocation in CI reads and writes a shared **Vercel Remote Cache**, so a suite skips work an earlier run already did. Measured on the implementing branch: Static Checks 3.8m → 1.6m, Unit Tests 5–7m → 1.1m, Integration Tests 6.4m → 1.5m, with the remaining time dominated by `npm ci` rather than by builds. Since #857 the shared setup action (`.github/actions/setup`) restores `node_modules` itself from an exact-key cache: OS, arch, Node major, and the lockfile + every `package.json`, with no restore-keys, so a hit is always the tree that lockfile installs. That took setup from ~65s to ~8s per job. Any dependency change misses and runs `npm ci` as before.
+Every turbo invocation in CI reads and writes a shared **Vercel Remote Cache**, so a suite skips work an earlier run already did. Measured on the implementing branch: Static Checks 3.8m → 1.6m, Unit Tests 5–7m → 1.1m, Integration Tests 6.4m → 1.5m, with the remaining time dominated by `npm ci` rather than by builds. Since #857 the shared setup action (`.github/actions/setup`) restores `node_modules` itself from an exact-key cache: OS, arch, Node major, and the lockfile + every `package.json`, with no restore-keys, so a hit is always the tree that lockfile installs. That took setup from ~65s to ~8s per job. Any dependency change misses and runs `npm ci` as before, with npm's download cache on for that miss only, and the tree is saved straight after `npm ci`, before any job writes tool caches into it.
 
 The wiring is **guarded, not documented-and-hoped**: `npm run lint:ci-cache` (`scripts/check-ci-cache.mjs`, run in `unit-test.yml`) fails the build on six rules, and self-tests those rules against embedded fixtures before checking the real tree. It exists because every failure mode here is silent:
 

@@ -44,6 +44,8 @@ import {
   ceilingViolations,
   durationsChanged,
   mergeReports,
+  isIntegrationTestPath,
+  parseDurations,
   planShards,
   summaryVerdict,
 } from "./integration-shards.lib.mjs";
@@ -176,6 +178,29 @@ const CASES = [
     name: "ceilingViolations: an allowlisted file is not listed",
     run: () => ceilingViolations({ "src/slow.integration.test.ts": 300 }, [{ file: "src/slow.integration.test.ts", reason: "x" }]).length === 0,
   },
+  {
+    name: "isIntegrationTestPath: only what Jest's testMatch runs (under __tests__/__integration__/)",
+    run: () =>
+      isIntegrationTestPath("src/__tests__/__integration__/routes/a.integration.test.ts") &&
+      isIntegrationTestPath("src/modules/__tests__/__integration__/b.integration.test.ts") &&
+      !isIntegrationTestPath("src/services/c.integration.test.ts") &&
+      !isIntegrationTestPath("src/__tests__/__integration__/d.test.ts"),
+  },
+  {
+    name: "parseDurations: a valid file parses",
+    run: () => JSON.stringify(parseDurations('{"src/a.integration.test.ts": 1.5}')) === '{"src/a.integration.test.ts":1.5}',
+  },
+  ...['{"a": 1', "[1, 2]", '{"a": "fast"}', "null"].map((text) => ({
+    name: `parseDurations: refuses malformed content ${JSON.stringify(text)}`,
+    run: () => {
+      try {
+        parseDurations(text);
+        return false;
+      } catch {
+        return true;
+      }
+    },
+  })),
   ...[
     [{}, 5, false, "no recorded durations → the fallback"],
     [{ a: 50 }, 2, false, "a small suite → MIN"],
@@ -194,26 +219,32 @@ const CASES = [
     },
   })),
   ...(() => {
-    /** A shard's Jest report: `suites` suites of `seconds` each. */
-    const shardReport = (shard, suites, seconds = 10, failed = 0) => ({
-      shard,
-      report: {
-        numTotalTestSuites: suites,
-        numFailedTestSuites: failed,
-        testResults: Array.from({ length: suites }, (_, i) => ({
-          name: `/x/apps/api/src/s${shard}-${i}.integration.test.ts`,
-          startTime: 0,
-          endTime: seconds * 1000,
-        })),
-      },
-    });
+    const file = (shard, i) => `src/__tests__/__integration__/s${shard}-${i}.integration.test.ts`;
+    /** A shard's Jest report: `suites` suites of `seconds` each, or the
+     *  files named in `files`. */
+    const shardReport = (shard, suites, seconds = 10, failed = 0, files) => {
+      const names = files ?? Array.from({ length: suites }, (_, i) => file(shard, i));
+      return {
+        shard,
+        report: {
+          numTotalTestSuites: names.length,
+          numFailedTestSuites: failed,
+          testResults: names.map((f) => ({
+            name: `/home/runner/work/portal-ai/portal-ai/apps/api/${f}`,
+            startTime: 0,
+            endTime: seconds * 1000,
+          })),
+        },
+      };
+    };
+    const expectedFiles = [1, 2].flatMap((shard) => [0, 1, 2].map((i) => file(shard, i)));
     const green = {
       changesResult: "success",
       run: "true",
       planResult: "success",
       shardResult: "success",
       plannedCount: 2,
-      fileCount: 6,
+      expectedFiles,
       capped: false,
       reports: [shardReport(1, 3), shardReport(2, 3)],
     };
@@ -243,10 +274,26 @@ const CASES = [
         run: () => !verdict({ reports: [shardReport(1, 3)] }).ok,
       },
       {
-        name: "summaryVerdict: suites across shards ≠ test files is red (a file ran twice or never)",
+        name: "summaryVerdict: a file run in two shards and another in none is red, naming both, though the counts match",
         run: () => {
-          const v = verdict({ fileCount: 7 });
-          return !v.ok && v.errors.some((e) => /6 suite/.test(e) && /7/.test(e));
+          const twice = file(1, 0);
+          const never = file(2, 2);
+          const v = verdict({
+            reports: [shardReport(1, 3), shardReport(2, 3, 10, 0, [file(2, 0), file(2, 1), twice])],
+          });
+          return (
+            !v.ok &&
+            v.errors.some((e) => e.includes(twice) && /more than one shard/.test(e)) &&
+            v.errors.some((e) => e.includes(never) && /no shard/.test(e))
+          );
+        },
+      },
+      {
+        name: "summaryVerdict: a test file that no shard ran is red, by name",
+        run: () => {
+          const extra = "src/__tests__/__integration__/new.integration.test.ts";
+          const v = verdict({ expectedFiles: [...expectedFiles, extra] });
+          return !v.ok && v.errors.some((e) => e.includes(extra));
         },
       },
       {
@@ -318,12 +365,27 @@ const jsonFilesUnder = (dir) =>
     .filter((f) => f.endsWith(".json"))
     .map((f) => path.join(dir, f));
 
-/** The integration test files the checkout has, relative to apps/api. */
+/** The integration test files the checkout has, relative to apps/api: the
+ *  ones Jest's integration config runs, by the same rule. */
 const integrationFiles = () =>
   readdirSync(path.join(REPO_ROOT, "apps/api/src"), { recursive: true })
-    .map(String)
-    .filter((f) => f.endsWith(".integration.test.ts"))
-    .map((f) => path.posix.join("src", f.split(path.sep).join("/")));
+    .map((f) => path.posix.join("src", String(f).split(path.sep).join("/")))
+    .filter(isIntegrationTestPath)
+    .sort();
+
+/**
+ * The committed durations. A missing file reads as "nothing recorded" only
+ * when `allowMissing`; a malformed one always throws, so the lint and the
+ * planner fail on it instead of quietly losing the balance.
+ */
+const readDurations = ({ allowMissing }) => {
+  const file = path.join(REPO_ROOT, DURATIONS_FILE);
+  if (!existsSync(file)) {
+    if (allowMissing) return {};
+    throw new Error(`${DURATIONS_FILE} is missing`);
+  }
+  return parseDurations(readFileSync(file, "utf8"));
+};
 
 /** A GitHub Actions step output; a no-op outside Actions. */
 const setOutput = (name, value) => {
@@ -336,7 +398,7 @@ const argValue = (flag) => {
 };
 
 function checkDurations() {
-  const durations = readJson(path.join(REPO_ROOT, DURATIONS_FILE), {});
+  const durations = readDurations({ allowMissing: false });
   const over = ceilingViolations(durations, CEILING_ALLOWLIST);
   if (over.length) {
     for (const { file, seconds } of over) {
@@ -365,7 +427,7 @@ function updateDurations() {
     return false;
   }
   const target = path.join(REPO_ROOT, DURATIONS_FILE);
-  const prev = readJson(target, {});
+  const prev = readDurations({ allowMissing: true });
   const changed = durationsChanged(prev, next);
   setOutput("changed", String(changed));
 
@@ -388,7 +450,8 @@ function updateDurations() {
 }
 
 function plan() {
-  const result = planShards(readJson(path.join(REPO_ROOT, DURATIONS_FILE), {}));
+  // Missing means nothing recorded yet (the fallback count); malformed throws.
+  const result = planShards(readDurations({ allowMissing: true }));
   setOutput("count", String(result.count));
   setOutput("matrix", JSON.stringify(result.matrix));
   setOutput("capped", String(result.capped));
@@ -413,7 +476,7 @@ function summarize() {
     shardResult: env.SHARD_RESULT ?? "",
     plannedCount: Number(env.PLANNED_COUNT ?? 0),
     capped: env.CAPPED === "true",
-    fileCount: integrationFiles().length,
+    expectedFiles: integrationFiles(),
     reports,
   });
 
@@ -450,4 +513,11 @@ if (!run) {
   console.error(`usage: node scripts/integration-shards.mjs <${Object.keys(COMMANDS).join("|")}>`);
   process.exit(2);
 }
-process.exit(run() ? 0 : 1);
+let ok;
+try {
+  ok = run();
+} catch (err) {
+  console.error(`✗ ${err?.message ?? err}`);
+  ok = false;
+}
+process.exit(ok ? 0 : 1);

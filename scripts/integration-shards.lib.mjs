@@ -30,6 +30,38 @@ export const DURATIONS_FILE =
 
 const API_MARKER = "/apps/api/";
 
+/**
+ * Whether a path (relative to apps/api) is a test Jest's integration config
+ * runs: its testMatch is any `*.integration.test.ts` under a
+ * `__tests__/__integration__/` directory in `src`.
+ * The summary's expected file set and the durations writer both use this,
+ * so a `*.integration.test.ts` outside `__integration__/` (which Jest never
+ * runs) is neither expected nor recorded.
+ */
+export function isIntegrationTestPath(relative) {
+  return /^src\/(.*\/)?__tests__\/__integration__\/(.*\/)?[^/]+\.integration\.test\.ts$/.test(relative);
+}
+
+/**
+ * durations.json's contents, validated: an object of finite numbers. Throws
+ * on anything else, so a broken file fails the lint and the planner rather
+ * than quietly reading as "nothing recorded".
+ * @param {string} text
+ * @returns {Record<string, number>}
+ */
+export function parseDurations(text) {
+  const parsed = JSON.parse(text);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("durations.json must be an object of seconds per file");
+  }
+  for (const [file, seconds] of Object.entries(parsed)) {
+    if (typeof seconds !== "number" || !Number.isFinite(seconds)) {
+      throw new Error(`durations.json: ${file} is ${JSON.stringify(seconds)}, not a number of seconds`);
+    }
+  }
+  return parsed;
+}
+
 /** A Jest report path made relative to apps/api, whatever machine ran it. */
 const toApiRelative = (absolute) => {
   const normalized = absolute.split("\\").join("/");
@@ -126,14 +158,15 @@ export function planShards(durations) {
  * The verdict of the one required check, `Integration Tests`, over every
  * shard. Fails closed: green only when the docs-only skip decided not to run,
  * or when the plan and every shard succeeded, every shard's report is
- * present, no suite failed, and the suites across all shards add up to the
- * checkout's test files. A file in no shard, or in two, shows up as that
- * count being off. Running over budget or at the cap only warns: slow is not
+ * present, no suite failed, and the shards together ran exactly the
+ * checkout's integration test files, each once. That is checked by name, not
+ * by count: a file run twice and another never run would cancel out in a
+ * count. Running over budget or at the cap only warns: slow is not
  * broken.
  *
  * @param {{
  *   changesResult: string, run: string, planResult: string, shardResult: string,
- *   plannedCount: number, fileCount: number, capped: boolean,
+ *   plannedCount: number, expectedFiles: string[], capped: boolean,
  *   reports: Array<{shard: number, report: {numTotalTestSuites?: number, numFailedTestSuites?: number, testResults?: Array<{startTime: number, endTime: number}>}}>
  * }} input  `*Result` are GitHub `needs.<job>.result` values
  * @returns {{ok: boolean, skipped: boolean, errors: string[], warnings: string[], table: string}}
@@ -181,10 +214,23 @@ export function summaryVerdict(input) {
     });
 
   const suites = rows.reduce((n, r) => n + r.suites, 0);
-  if (input.reports.length === input.plannedCount && suites !== input.fileCount) {
-    errors.push(
-      `${suites} suite(s) ran across the shards, but the checkout has ${input.fileCount} integration test file(s): a file ran in no shard or in two`
-    );
+  if (input.reports.length === input.plannedCount) {
+    const runs = new Map();
+    for (const { report } of input.reports) {
+      for (const t of report.testResults ?? []) {
+        const f = toApiRelative(t.name ?? "");
+        if (f) runs.set(f, (runs.get(f) ?? 0) + 1);
+      }
+    }
+    const expected = new Set(input.expectedFiles);
+    const list = (files) =>
+      files.slice(0, 10).join(", ") + (files.length > 10 ? `, and ${files.length - 10} more` : "");
+    const twice = [...runs].filter(([, n]) => n > 1).map(([f]) => f);
+    const never = input.expectedFiles.filter((f) => !runs.has(f));
+    const unknown = [...runs.keys()].filter((f) => !expected.has(f));
+    if (twice.length) errors.push(`ran in more than one shard: ${list(twice)}`);
+    if (never.length) errors.push(`ran in no shard: ${list(never)}`);
+    if (unknown.length) errors.push(`ran but isn't an integration test file in the checkout: ${list(unknown)}`);
   }
   const failed = rows.reduce((n, r) => n + r.failed, 0);
   if (failed > 0) errors.push(`${failed} suite(s) failed`);
@@ -206,7 +252,7 @@ export function summaryVerdict(input) {
     "| Shard | Suites | Failed | Jest seconds |",
     "|---|---|---|---|",
     ...rows.map((r) => `| ${r.shard} | ${r.suites} | ${r.failed} | ${r.seconds} |`),
-    `| **Total** | **${suites}** of ${input.fileCount} files | ${failed} | ${round1(rows.reduce((n, r) => n + r.seconds, 0))} |`,
+    `| **Total** | **${suites}** of ${input.expectedFiles.length} files | ${failed} | ${round1(rows.reduce((n, r) => n + r.seconds, 0))} |`,
   ].join("\n");
 
   return { ok: errors.length === 0, skipped: false, errors, warnings, table };

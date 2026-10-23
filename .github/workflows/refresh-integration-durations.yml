@@ -1,19 +1,20 @@
 name: Refresh integration durations
 
-# Keeps apps/api's integration durations.json current (#857). The file sets
-# how many shards the Integration Tests check runs and how files are split
-# across them, so a stale one means too few shards and slow runs.
+# Watches apps/api's integration durations.json for drift (#857). The file
+# sets how many shards the Integration Tests check runs and how files are
+# split across them, so a stale one means too few shards and slow runs.
 #
-# Weekly, it takes the newest green Integration Tests run's shard reports,
-# rewrites durations.json, and opens (or updates) ONE pull request when
-# anything moved beyond noise. It never commits to main: the PR goes through
-# the normal checks and a human merges it. A file over the 120s ceiling fails
-# that PR's Unit Tests (lint:integration-durations), which is where the split
-# belongs.
+# Weekly, it takes the shard reports of the newest green Integration Tests
+# run on a MERGED pull request's head (the tree that became main; a squash
+# merge never puts the branch's own commits on main), recomputes the
+# durations, and, when planning would act on the change, opens or updates one
+# issue with the result and the command that applies it. A person runs that
+# command and lands it in a normal PR.
 #
-# Its pushes use GITHUB_TOKEN, and GitHub starts no workflows for those, so
-# the PR's three required checks would never report. Dispatches made with
-# GITHUB_TOKEN DO start runs, so the last step dispatches each on the branch.
+# Why an issue, not a PR: a workflow opening a PR with GITHUB_TOKEN needs the
+# repo setting "Allow GitHub Actions to create and approve pull requests",
+# which would also let any workflow approve PRs. An issue needs only
+# `issues: write`, and this job pushes nothing.
 
 on:
   schedule:
@@ -25,12 +26,12 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
+  actions: read
+  issues: write
 
 env:
-  BRANCH: chore/refresh-integration-durations
+  TITLE: "Integration test durations have drifted"
 
 jobs:
   refresh:
@@ -42,75 +43,72 @@ jobs:
         with:
           ref: main
 
-      # The newest green run that actually ran shards. A docs-only skip
-      # reports green with no reports, so it's passed over.
-      - name: Download the newest green run's shard reports
+      # Newest first: a run whose commit is a recently merged PR's head, and
+      # that actually ran shards (a docs-only skip reports green with none).
+      - name: Download the newest merged run's shard reports
         id: reports
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for id in $(gh run list --workflow integration-test.yml --status success --limit 20 --json databaseId -q '.[].databaseId'); do
+          set -o pipefail
+          gh pr list --state merged --limit 50 --json headRefOid -q '.[].headRefOid' > merged.txt
+          gh run list --workflow integration-test.yml --status success --limit 100 \
+            --json databaseId,headSha -q '.[] | "\(.databaseId) \(.headSha)"' > runs.txt
+          while read -r id sha; do
+            grep -qx "$sha" merged.txt || continue
             rm -rf reports
             if gh run download "$id" -p 'integration-jest-*' -D reports 2>/dev/null; then
               echo "run=$id" >> "$GITHUB_OUTPUT"
-              echo "Using run $id"
+              echo "Using run $id ($sha)"
               exit 0
             fi
-          done
-          echo "::warning::No recent green Integration Tests run has shard reports; nothing to refresh."
+          done < runs.txt
+          echo "::warning::No green Integration Tests run on a recently merged PR has shard reports; nothing to refresh."
           echo "run=" >> "$GITHUB_OUTPUT"
 
-      - name: Rewrite durations.json if anything moved beyond noise
+      # pipefail: without it `tee` would mask a failing update-durations and
+      # the job would report green while the durations went stale.
+      - name: Recompute the durations
         id: update
         if: steps.reports.outputs.run != ''
         run: |
+          set -o pipefail
           node scripts/integration-shards.mjs update-durations --reports reports --if-changed | tee update.log
 
-      - name: Open or update the refresh PR
+      - name: Open or update the drift issue
         if: steps.update.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.reports.outputs.run }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B "$BRANCH"
-          git add apps/api/src/__tests__/__integration__/durations.json
-          git commit -m "chore(ci): refresh integration durations (#857)" -m "From Integration Tests run $RUN_ID."
-          git push --force origin "$BRANCH"
-
+          set -o pipefail
           {
-            echo "## Summary"
+            echo "The recorded integration durations no longer match CI. They set the shard count and the split, so refreshing them keeps the \`Integration Tests\` check at 3–6 min (#857)."
             echo
-            echo "- Refreshes \`durations.json\` from Integration Tests run [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID). It sets the shard count and the split, so keeping it current keeps the check at 3–6 min."
+            echo "From Integration Tests run [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID):"
             echo
             echo '```'
             cat update.log
             echo '```'
             echo
-            echo "A line starting with \`!\` is a file over the 120s ceiling: Unit Tests fails on it until the file is split by concern (or allowlisted with a reason in \`scripts/integration-shards.lib.mjs\`)."
+            echo "A line starting with \`!\` is a file over the 120s ceiling. \`lint:integration-durations\` will fail on it, so split it by concern first (or allowlist it with a reason in \`scripts/integration-shards.lib.mjs\`)."
             echo
-            echo "## Test plan"
+            echo "**To apply**, on a branch off \`main\`:"
             echo
-            echo "- [ ] Unit Tests, Static Checks and Integration Tests green (dispatched on this branch)"
+            echo '```bash'
+            echo "gh run download $RUN_ID -p 'integration-jest-*' -D /tmp/integration-reports"
+            echo "node scripts/integration-shards.mjs update-durations --reports /tmp/integration-reports"
+            echo "git commit -am 'chore(ci): refresh integration durations'"
+            echo '```'
             echo
-            echo "Refs #857"
+            echo "Then open a PR. This issue is updated each week until the drift is gone."
           } > body.md
 
-          existing=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+          existing=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            -q ".[] | select(.title == env.TITLE) | .number" | head -1)
           if [ -n "$existing" ]; then
-            gh pr edit "$existing" --body-file body.md
+            gh issue edit "$existing" --body-file body.md
+            echo "Updated #$existing"
           else
-            gh pr create --base main --head "$BRANCH" --title "Refresh integration test durations" --body-file body.md
+            gh issue create --title "$TITLE" --body-file body.md
           fi
-
-      # GITHUB_TOKEN pushes start no workflows; dispatches do. Each required
-      # check reports on the branch's commit, which is the PR's head.
-      - name: Run the required checks on the refresh branch
-        if: steps.update.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for wf in unit-test.yml static-checks.yml integration-test.yml; do
-            gh workflow run "$wf" --ref "$BRANCH"
-          done
