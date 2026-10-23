@@ -36,7 +36,8 @@ jest.unstable_mockModule("@aws-sdk/client-ecs", () => ({
   waitUntilTasksStopped: waitMock,
 }));
 
-const { runSeedTask, runUpgradeTask } = await import("../ecs.js");
+const { runSeedTask, runUpgradeTask, runRedispatchTask } =
+  await import("../ecs.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
 const local = BUILTIN_ENVIRONMENTS["local"];
@@ -93,7 +94,7 @@ describe("runSeedTask", () => {
       networkConfiguration: NETWORK,
       overrides: {
         containerOverrides: [
-          { name: "api", command: ["npm", "run", "db:seed:ci"] },
+          { name: "api", command: ["node", "dist/db/seed.js"] },
         ],
       },
     });
@@ -116,7 +117,7 @@ describe("runSeedTask", () => {
 });
 
 describe("runUpgradeTask", () => {
-  it("overrides the container command with db:upgrade:ci", async () => {
+  it("overrides the container command with the built db-upgrade script", async () => {
     happyPath(0);
     const out = await runUpgradeTask(appDev);
     expect(out).toEqual({ taskArn: "arn:aws:ecs:task/abc", exitCode: 0 });
@@ -127,7 +128,7 @@ describe("runUpgradeTask", () => {
     expect(runTask.input).toMatchObject({
       overrides: {
         containerOverrides: [
-          { name: "api", command: ["npm", "run", "db:upgrade:ci"] },
+          { name: "api", command: ["node", "dist/scripts/db-upgrade.js"] },
         ],
       },
     });
@@ -145,5 +146,34 @@ describe("runUpgradeTask", () => {
     await expect(p).rejects.toBeInstanceOf(EnvNotConfiguredError);
     await expect(p).rejects.toThrow(/npm run db:upgrade/);
     expect(ecsSend).not.toHaveBeenCalled();
+  });
+});
+
+// #852: the runtime image has no npm (#573 removed it), so every one-off runs
+// the built script with node, the same command the package's `:ci` script names.
+describe("runRedispatchTask", () => {
+  const command = () =>
+    (
+      ecsSend.mock.calls
+        .map((c) => c[0])
+        .find((c) => c.constructor.name === "RunTaskCommand")!.input as {
+        overrides: { containerOverrides: Array<{ command: string[] }> };
+      }
+    ).overrides.containerOverrides[0]!.command;
+
+  it("runs the built jobs-redispatch script", async () => {
+    happyPath(0);
+    await runRedispatchTask(appDev, { dryRun: false });
+    expect(command()).toEqual(["node", "dist/scripts/jobs-redispatch.js"]);
+  });
+
+  it("passes --dry-run through", async () => {
+    happyPath(0);
+    await runRedispatchTask(appDev, { dryRun: true });
+    expect(command()).toEqual([
+      "node",
+      "dist/scripts/jobs-redispatch.js",
+      "--dry-run",
+    ]);
   });
 });

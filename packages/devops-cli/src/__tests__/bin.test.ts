@@ -234,3 +234,25 @@ describe("local provision (#490)", () => {
     expect(err).toContain("E2E_AUTH0_USERNAME");
   });
 });
+
+describe("jobs commands are wired (#852)", () => {
+  it("jobs redispatch runs the guard (a denial maps to exit 5)", async () => {
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvConfirmationRequiredError("needs --yes");
+    });
+    const code = await runCli([
+      "jobs",
+      "redispatch",
+      "--dry-run",
+      "--env",
+      "app-dev",
+    ]);
+    expect(code).toBe(5);
+  });
+
+  it("jobs status needs the production barrier (exit 5) before connecting", async () => {
+    const code = await runCli(["jobs", "status", "--env", "prod", "--json"]);
+    expect(code).toBe(5);
+    expect(mocks.resolveEnvConnection).not.toHaveBeenCalled();
+  });
+});

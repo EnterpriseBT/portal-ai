@@ -24,8 +24,8 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 | Class | development | staging | production |
 |---|---|---|---|
 | read | — | — | — |
-| connect (`db tunnel`, `db psql`) | — | — | `--confirm-prod` |
-| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`) | — | `--yes` | `--yes --confirm-prod` |
+| connect (`db tunnel`, `db psql`, `jobs status`) | — | — | `--confirm-prod` |
+| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`) | — | `--yes` | `--yes --confirm-prod` |
 | destructive (`db reset`, `db reset-seed`) | — | `--yes` | **refused** (exit 6) |
 
 Every mutation/destructive command appends a JSONL audit entry to `~/.portalai/audit.log` (no secret values).
@@ -122,6 +122,20 @@ Mutation. Restores the system rows a reset removes — the `standard` tier row t
 ### `portalops db upgrade --env <env> --yes [--confirm-prod] [--json]`
 Mutation (not destructive — migrations are expand-only, so `prod` is gated by `--yes --confirm-prod`, never refused). Applies pending migrations **and** the idempotent global seed as one advisory-locked operation (`db:upgrade`, #581) — a second concurrent pass acquires no lock and does no work. **Dispatches on the env's shape** exactly like `db seed`, with **no saas/residency branch**: a deployed env runs `db:upgrade:ci` as a FARGATE one-off ECS task (non-zero container exit → exit 7 naming CloudWatch); `--env local` spawns the app's own `db:upgrade`. A residency install upgrades via the Helm chart's `pre-upgrade` job and never uses this command — it serves our own SaaS/ECS channel.
 `--json`: `{ "via": "ecs", "taskArn", "exitCode": 0 }` or `{ "via": "local", "script": "db:upgrade" }`
+
+Every ECS one-off runs the built script with `node` (`node dist/db/seed.js`, `node dist/scripts/db-upgrade.js`, `node dist/scripts/jobs-redispatch.js`), the command each `:ci` package script names. The runtime image has no npm (#573), so `npm run` there fails (#852).
+
+## jobs
+
+The job queue across a Redis replacement (#852). The cutover sequence is in [`docs/REDIS_ENCRYPTION_CUTOVER.runbook.md`](../../docs/REDIS_ENCRYPTION_CUTOVER.runbook.md).
+
+### `portalops jobs status --env <env> [--confirm-prod] [--json]`
+Connect (prod needs `--confirm-prod`). Counts live non-terminal `jobs` rows (`pending`, `active`, `awaiting_confirmation`, `stalled`) by status and type, from Postgres over the env connection (local: `.env`; AWS: the SSM tunnel). Postgres is the record of truth, so this works whether or not Redis does. A drain is done when `byStatus.active` is absent.
+`--json`: `{ "counts": [{ "status", "type", "count" }], "byStatus": { "<status>": n }, "total": n }`
+
+### `portalops jobs redispatch --env <env> --yes [--confirm-prod] [--dry-run] [--json]`
+Mutation. Puts every live `pending` / `active` / `stalled` row whose BullMQ entry is gone back on the queue, under its row id. Run it after a Redis replacement, with the API service at zero and **before** it scales up: the API's boot sweep (#391) would otherwise reap the queued rows as stranded. Each row is flipped while non-terminal before it's added, so a cancelled or reaped job is never revived. A second pass finds the rows queued and adds nothing, and an interrupted `active` row resumes as a lost execution (#464). Dispatches on the env's shape like `db upgrade`: a deployed env runs `node dist/scripts/jobs-redispatch.js` as a FARGATE one-off (the summary JSON line is in its CloudWatch log; non-zero exit → exit 7), and `--env local` spawns the app's `jobs:redispatch`. `--dry-run` reports without writing and isn't audited.
+`--json`: `{ "via": "ecs", "taskArn", "exitCode": 0 }` or `{ "via": "local", "script": "jobs:redispatch" }`
 
 ## tier
 

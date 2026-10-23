@@ -54,6 +54,7 @@ import {
   type LocalProvisionResult,
   type ProvisionStep,
 } from "./commands/local.js";
+import { jobsRedispatch, jobsStatus } from "./commands/jobs.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -310,6 +311,33 @@ export function buildProgram(): Command {
   ).action(async (o: GlobalOpts) =>
     execute(o, (def) => dbUpgrade(def, flags(o)))
   );
+
+  // ── jobs (#852) ────────────────────────────────────────────────────
+  const jobs = program
+    .command("jobs")
+    .description("the job queue across a Redis replacement");
+
+  common(
+    jobs
+      .command("status")
+      .description("live non-terminal job rows by status and type")
+  ).action(async (o: GlobalOpts) =>
+    execute(o, (def) => jobsStatus(def, { confirmProd: o.confirmProd }))
+  );
+
+  common(
+    jobs
+      .command("redispatch")
+      .description(
+        "re-queue live non-terminal jobs missing from the queue: ECS one-off task, or the app's jobs:redispatch script for local"
+      )
+  )
+    .option("--dry-run", "report what would be re-queued; write nothing")
+    .action(async (o: GlobalOpts & { dryRun?: boolean }) =>
+      execute(o, (def) =>
+        jobsRedispatch(def, { ...flags(o), dryRun: o.dryRun })
+      )
+    );
 
   // ── tier (#218) ────────────────────────────────────────────────────
   const tier = program
