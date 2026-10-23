@@ -131,6 +131,11 @@ jest.unstable_mockModule("../commands/jobs.js", () => ({
   countActiveJobs: countActive,
 }));
 
+// The operator's repo checkout of a stack's template (#861).
+const readRepoTemplate =
+  jest.fn<(kind: string) => { path: string; body: string } | null>();
+jest.unstable_mockModule("../templates.js", () => ({ readRepoTemplate }));
+
 const { cacheStatus, cachePhase, cacheSwitch } =
   await import("../commands/cache.js");
 const { serviceScale } = await import("../commands/service.js");
@@ -181,6 +186,7 @@ beforeEach(() => {
   aws.service = { desired: 0, running: 0 };
   aws.updates = [];
   aws.noUpdates = false;
+  readRepoTemplate.mockReset().mockReturnValue(null);
   countActive.mockReset().mockResolvedValue(0);
   cfnSend.mockClear();
   stackWait.mockClear();
@@ -377,5 +383,89 @@ describe("serviceScale — no-op (#852 review)", () => {
     const out = await serviceScale(appDev, 1, { yes: true });
     expect(out.changed).toBe(false);
     expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * #861: the deploy never applies a template whose only changes are new
+ * parameters, conditions and outputs (CloudFormation sees no resource change),
+ * so the deployed cache template can predate RedisCutoverPhase. The CLI then
+ * applies the operator's repo template, not the deployed one.
+ */
+describe("a deployed template that predates the parameter (#861)", () => {
+  const REPO_TEMPLATE = {
+    path: "/repo/infra/cloudformation/cache.yml",
+    body: "Parameters:\n  Environment:\n    Type: String\n  RedisCutoverPhase:\n    Type: String\n",
+  };
+  let stderr: string;
+  let errSpy: ReturnType<typeof jest.spyOn>;
+
+  beforeEach(() => {
+    delete aws.stacks["portalai-dev-cache"]!.RedisCutoverPhase;
+    stderr = "";
+    errSpy = jest.spyOn(process.stderr, "write").mockImplementation(((
+      s: string
+    ) => {
+      stderr += s;
+      return true;
+    }) as never);
+  });
+  afterEach(() => errSpy.mockRestore());
+
+  it("applies the repo template, keeping every deployed parameter and setting the new one", async () => {
+    readRepoTemplate.mockReturnValue(REPO_TEMPLATE);
+    const out = await cachePhase(appDev, "both", { yes: true });
+
+    expect(out.changed).toBe(true);
+    const update = lastUpdate() as unknown as Record<string, unknown>;
+    expect(update.UsePreviousTemplate).toBeUndefined();
+    expect(update.TemplateBody).toBe(REPO_TEMPLATE.body);
+    expect(sent(lastUpdate())).toEqual({
+      Environment: "<previous>",
+      NodeType: "<previous>",
+      RedisCutoverPhase: "both",
+    });
+    expect(stderr).toContain(REPO_TEMPLATE.path);
+  });
+
+  it("still refuses (exit 9) when the repo template lacks the parameter too", async () => {
+    readRepoTemplate.mockReturnValue({
+      path: REPO_TEMPLATE.path,
+      body: "Parameters:\n  Environment:\n",
+    });
+    await expect(
+      cachePhase(appDev, "both", { yes: true })
+    ).rejects.toMatchObject({
+      code: "CACHE_CUTOVER_CONFLICT",
+    });
+    expect(aws.updates).toEqual([]);
+  });
+
+  it("refuses (exit 9) outside a repo checkout, saying where to run it", async () => {
+    await expect(cachePhase(appDev, "both", { yes: true })).rejects.toThrow(
+      /repo checkout/
+    );
+    expect(aws.updates).toEqual([]);
+  });
+
+  it("refuses (exit 7) a template over UpdateStack's 51,200-byte TemplateBody limit", async () => {
+    readRepoTemplate.mockReturnValue({
+      path: REPO_TEMPLATE.path,
+      body: REPO_TEMPLATE.body + "#".repeat(51_200),
+    });
+    await expect(
+      cachePhase(appDev, "both", { yes: true })
+    ).rejects.toMatchObject({
+      code: "ENV_INFRA_ERROR",
+    });
+    expect(aws.updates).toEqual([]);
+  });
+
+  it("leaves a deployed parameter on the deployed template", async () => {
+    aws.stacks["portalai-dev-cache"]!.RedisCutoverPhase = "legacy";
+    readRepoTemplate.mockReturnValue(REPO_TEMPLATE);
+    await cachePhase(appDev, "both", { yes: true });
+    expect(lastUpdate().UsePreviousTemplate).toBe(true);
+    expect(readRepoTemplate).not.toHaveBeenCalled();
   });
 });

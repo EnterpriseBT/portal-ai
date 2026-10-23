@@ -27,7 +27,7 @@ portalops cache phase both --env app-dev --yes
 portalops cache status --env app-dev --json
 ```
 
-`phase both` creates `portalai-<env>-tls` and waits for the stack (10–20 minutes). Continue when `cache status` shows it `available` with `atRestEncryption: true`, `transitEncryption: true`, `transitEncryptionMode: "required"`. The API still uses the legacy cache, so nothing user-visible has changed. This step is also the first real test of the template against AWS: if the stack update fails, it rolls back on its own and the environment is untouched.
+`phase both` creates `portalai-<env>-tls` and waits for the stack (10–20 minutes). The first time, it prints a notice that it's applying the repo's `infra/cloudformation/cache.yml`. The deploy never applies #852's cache template, because that template changes no resource at the `legacy` default (#861). So run it from an up-to-date `main` checkout. Continue when `cache status` shows it `available` with `atRestEncryption: true`, `transitEncryption: true`, `transitEncryptionMode: "required"`. The API still uses the legacy cache, so nothing user-visible has changed. This step is also the first real test of the template against AWS: if the stack update fails, it rolls back on its own and the environment is untouched.
 
 ## 2. The maintenance window
 

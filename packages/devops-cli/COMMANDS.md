@@ -134,7 +134,7 @@ Read. The phase, the endpoint source, each cache present (`portalai-<env>` legac
 `--json`: `{ "phase", "endpointSource", "caches": [{ "id", "kind": "cache-cluster|replication-group", "status", "atRestEncryption", "transitEncryption", "transitEncryptionMode" }], "service": { "desired", "running" } }`
 
 ### `portalops cache phase <legacy|both|encrypted> --env <env> --yes [--confirm-prod] [--json]`
-`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`.
+`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`. If the **deployed** template predates `RedisCutoverPhase` (#861), it applies the repo checkout's `infra/cloudformation/cache.yml` instead and prints a notice. That happens because the deploy workflows never apply a resource-neutral template change. Every deployed parameter keeps its previous value. Run it from a checkout of `main`; outside a checkout, or with a template that lacks the parameter, it exits 9.
 `--json`: `{ "stack", "phase", "changed" }`
 
 ### `portalops cache switch <legacy|encrypted> --env <env> --yes [--confirm-prod] [--json]`

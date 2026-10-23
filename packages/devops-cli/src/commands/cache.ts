@@ -35,6 +35,8 @@ import {
 } from "@portalai/cli-env";
 
 import { apiServiceName } from "../ecs.js";
+import { templateDeclaresParameter } from "../template-params.js";
+import { readRepoTemplate } from "../templates.js";
 import type { MutateOptions } from "./vars.js";
 
 /** A cutover step taken out of order (exit 9, the conflict family). */
@@ -48,6 +50,9 @@ export class CacheCutoverConflictError extends Error {
 
 export type CutoverPhase = "legacy" | "both" | "encrypted";
 export type EndpointSource = "legacy" | "encrypted";
+
+/** UpdateStack's inline TemplateBody limit; larger needs an S3 URL. */
+const TEMPLATE_BODY_MAX_BYTES = 51_200;
 
 // An ElastiCache creation or deletion takes 10–20 minutes.
 const STACK_WAIT_MAX_SECONDS = 3600;
@@ -99,8 +104,15 @@ export async function readStackParams(
  * UpdateStack on the deployed template, changing only `overrides`. Every
  * other parameter is sent as UsePreviousValue, read from the stack itself
  * rather than a hard-coded list, so a parameter added later can't be
- * silently reset to its default. An override the deployed template doesn't
- * declare means the release carrying it isn't deployed yet.
+ * silently reset to its default.
+ *
+ * An override the deployed template doesn't declare (#861): the deploy
+ * workflows never apply a template whose only changes are parameters,
+ * conditions and outputs (`aws cloudformation deploy` skips a change set with
+ * no resource changes), so a deployed template can predate the parameter
+ * even after its release ships. Then the operator's repo checkout of the
+ * template is applied instead, if it declares the parameter; the runbook
+ * requires that checkout to be `main`.
  */
 export async function updateStackParams(
   def: EnvironmentDefinition,
@@ -109,12 +121,35 @@ export async function updateStackParams(
 ): Promise<{ changed: boolean }> {
   const name = stackName(def, kind);
   const current = await readStackParams(def, kind);
-  for (const key of Object.keys(overrides)) {
-    if (!(key in current)) {
+  const missing = Object.keys(overrides).filter((key) => !(key in current));
+  let templateBody: string | undefined;
+  if (missing.length) {
+    const repo = readRepoTemplate(kind);
+    if (!repo) {
       throw new CacheCutoverConflictError(
-        `${name} has no ${key} parameter — deploy the release that adds it (#852) first`
+        `${name}'s deployed template has no ${missing.join(", ")} parameter, and no repo checkout was found ` +
+          `to apply the current template from. Run portalops from a repo checkout of main.`
       );
     }
+    const undeclared = missing.filter(
+      (key) => !templateDeclaresParameter(repo.body, key)
+    );
+    if (undeclared.length) {
+      throw new CacheCutoverConflictError(
+        `${name} has no ${undeclared.join(", ")} parameter, and neither does ${repo.path}: ` +
+          `check out the main that carries it (#852) first`
+      );
+    }
+    if (Buffer.byteLength(repo.body) > TEMPLATE_BODY_MAX_BYTES) {
+      throw new EnvInfraError(
+        `${repo.path} is over UpdateStack's ${TEMPLATE_BODY_MAX_BYTES}-byte TemplateBody limit`
+      );
+    }
+    process.stderr.write(
+      `notice: ${name}'s deployed template predates ${missing.join(", ")}; applying ${repo.path} ` +
+        `with every deployed parameter at its previous value (#861)\n`
+    );
+    templateBody = repo.body;
   }
 
   const client = cfn(def);
@@ -122,12 +157,20 @@ export async function updateStackParams(
     await client.send(
       new UpdateStackCommand({
         StackName: name,
-        UsePreviousTemplate: true,
-        Parameters: Object.keys(current).map((key) =>
-          key in overrides
-            ? { ParameterKey: key, ParameterValue: overrides[key] }
-            : { ParameterKey: key, UsePreviousValue: true }
-        ),
+        ...(templateBody
+          ? { TemplateBody: templateBody }
+          : { UsePreviousTemplate: true }),
+        Parameters: [
+          ...Object.keys(current).map((key) =>
+            key in overrides
+              ? { ParameterKey: key, ParameterValue: overrides[key] }
+              : { ParameterKey: key, UsePreviousValue: true }
+          ),
+          ...missing.map((key) => ({
+            ParameterKey: key,
+            ParameterValue: overrides[key],
+          })),
+        ],
         // backend.yml names its IAM roles; cache.yml has none, and the
         // capability is only an acknowledgement.
         ...(kind === "backend"
