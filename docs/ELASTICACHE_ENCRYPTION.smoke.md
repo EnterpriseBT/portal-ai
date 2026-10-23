@@ -2,7 +2,7 @@
 
 Manual smoke test for [#852](https://github.com/EnterpriseBT/portal-ai/issues/852): ElastiCache encryption at rest and in transit, the TLS client seam, lossless job re-dispatch, and the `portalops` cutover commands. **Branch under test:** `feat/852-elasticache-encryption` (PR [#859](https://github.com/EnterpriseBT/portal-ai/pull/859)).
 
-This ticket has almost no browser surface: its acceptance criteria hold in AWS, the API process and the CLI. Steps tagged `— backend` are CLI/AWS/log probes, which an agent can run from the devcontainer with the operator's AWS session. Steps tagged `— manual` need a human: judging the app's behavior, the bastion session, the Helm cluster. **§3–§5 take the app-dev API down for about 15 minutes.** Run them when nobody else is using app-dev, and hold merges to `main` for the duration (a `main` push redeploys app-dev mid-window).
+This ticket has almost no browser surface: its acceptance criteria hold in AWS, the API process and the CLI. Steps tagged `— backend` are CLI/AWS/log probes, which an agent can run from the devcontainer with the operator's AWS session. Steps tagged `— manual` need a human: judging the app's behavior, the bastion session, the Helm cluster. **When it runs.** app-dev's deploy role trusts `main` only, so the branch can't be deployed there; §1 and §3–§7 run **after merge**, against the `main` deploy. Merging is inert, and the pre-merge evidence is in PR #859: change-set previews of both live stacks show no changes, and `phase both` adds only the encrypted group. #852 stays open until this walk passes. **§4 takes the app-dev API down for about 15 minutes.** Run them when nobody else is using app-dev, and hold merges to `main` for the duration (a `main` push redeploys app-dev mid-window).
 
 ## Preflight
 
@@ -23,7 +23,7 @@ This ticket has almost no browser surface: its acceptance criteria hold in AWS, 
 
 ## §1 — Merging changes nothing (inert deploy)
 
-- [ ] Deploy the branch to app-dev: `gh workflow run deploy-dev.yml --ref feat/852-elasticache-encryption`, and wait for it to go green. — backend
+- [ ] After merge, the `main` push deploys app-dev (`deploy-dev.yml`); wait for it to go green. — backend
 - [ ] `npx portalops cache status --env app-dev --json` → `"phase":"legacy"`, `"endpointSource":"legacy"`, one cache `portalai-dev` (`cache-cluster`, `atRestEncryption:false`), `service.running` = 1. — backend
 - [ ] The API's new boot log line (CloudWatch `/ecs/portalai-api-dev`) reads `Redis connected` with `tls: false, customCa: false`, and contains no Redis URL or host. — backend
 - [ ] The app works as before: log in, open a connector, trigger a sync; it reaches completed. — manual
@@ -40,7 +40,7 @@ This ticket has almost no browser surface: its acceptance criteria hold in AWS, 
 - [ ] `npx portalops cache phase both --env app-dev --yes --json` → `{"phase":"both","changed":true}` after 10–20 min. — backend
 - [ ] `aws elasticache describe-replication-groups --replication-group-id portalai-dev-tls --query 'ReplicationGroups[0].[Status,AtRestEncryptionEnabled,TransitEncryptionEnabled,TransitEncryptionMode]'` → `["available", true, true, "required"]`. **(Acceptance: the encryption flags.)** — backend
 - [ ] `cache status` still shows `endpointSource: legacy`, and the app still works (no downtime yet). — backend
-- [ ] **A routine deploy keeps the phase:** re-run `gh workflow run deploy-dev.yml --ref feat/852-elasticache-encryption`; afterwards `cache status` still reads `phase: both`. — backend
+- [ ] **A routine deploy keeps the phase:** re-run `gh workflow run deploy-dev.yml` (on `main`); afterwards `cache status` still reads `phase: both`. — backend
 
 ## §4 — The window: drain, switch, re-dispatch
 
@@ -59,7 +59,7 @@ This ticket has almost no browser surface: its acceptance criteria hold in AWS, 
 - [ ] The job queued across the window reaches `completed` (Jobs page), never `failed` with the stranded-job error. `jobs status` drains to no `pending`/`active`. **(Acceptance: no job lost.)** — manual
 - [ ] A new sync started after the window runs to completed. Live progress updates arrive, which proves SSE pub/sub over TLS. — manual
 - [ ] **Plaintext is refused:** from the bastion (`aws ssm start-session --target <bastion id>`; `sudo dnf install -y redis6` if needed), `redis6-cli -h <tls endpoint> -p 6379 PING` fails (connection closed / I/O error), while `redis6-cli -h <tls endpoint> -p 6379 --tls PING` → `PONG`. **(Acceptance: plaintext refused.)** — manual
-- [ ] A routine deploy (`gh workflow run deploy-dev.yml --ref feat/852-elasticache-encryption`) keeps `endpointSource: encrypted`, and the API stays on `tls: true`. — backend
+- [ ] A routine deploy (`gh workflow run deploy-dev.yml` on `main`) keeps `endpointSource: encrypted`, and the API stays on `tls: true`. — backend
 
 ## §6 — Retire the legacy cache (one-way)
 
