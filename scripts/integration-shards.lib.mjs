@@ -4,8 +4,10 @@
  * side-effect-free so the self-test drives it directly.
  */
 
-/** Target Jest seconds per shard; N = ⌈recorded total ÷ this⌉. */
-export const BUDGET_SECONDS = 210;
+/** Target Jest seconds per shard; N = ⌈recorded total ÷ this⌉. 150s leaves
+ *  room for runner variance: identically sized shards measured up to ~30%
+ *  apart, and a 210s budget put one run at 6m17s (#857). */
+export const BUDGET_SECONDS = 150;
 /** Shard-count bounds. MAX is sized to GitHub's free plan: 20 concurrent
  *  jobs per account, shared by every workflow and PR, and a push already
  *  starts three other checks. */

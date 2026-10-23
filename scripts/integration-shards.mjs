@@ -179,8 +179,8 @@ const CASES = [
   ...[
     [{}, 5, false, "no recorded durations → the fallback"],
     [{ a: 50 }, 2, false, "a small suite → MIN"],
-    [{ a: 988 }, 5, false, "today's ~988s → 5"],
-    [{ a: 2100 }, 10, false, "2,100s → exactly the cap"],
+    [{ a: 688 }, 5, false, "today's ~688s of CI time → 5"],
+    [{ a: 1500 }, 10, false, "1,500s → exactly the cap"],
     [{ a: 5000 }, 10, true, "5,000s → the cap, flagged"],
   ].map(([durations, count, capped, label]) => ({
     name: `planShards: ${label}`,

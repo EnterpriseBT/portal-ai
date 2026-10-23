@@ -48,7 +48,7 @@ The integration suite runs as **N shards behind one required check**, at about 3
 - **Why runners, not workers.** Its suites can't share a database: `teardownOrg()` deletes every row, and the queue suites obliterate shared BullMQ queues. So each shard runs serially on its own runner with its own Postgres + Redis.
 - **Shape.** `integration-test.yml` is `changes` (the docs-only skip) → `plan` → `shard` × N, named `Integration Tests (shard i/N)` → `summary`. The summary job is named **exactly `Integration Tests`**, and it alone is the required context.
 - **The summary fails closed.** It runs `if: always()` and goes red on any failed or cancelled shard, a missing shard report, a failed suite, or suites across the shards that don't add up to the checkout's `*.integration.test.ts` files (a file run in no shard, or in two).
-- **N is planned, not fixed.** N = ⌈Σ `durations.json` ÷ 210s⌉, clamped to 2–10. The cap is sized to the free plan's 20 concurrent jobs.
+- **N is planned, not fixed.** N = ⌈Σ `durations.json` ÷ 150s⌉, clamped to 2–10 (150s leaves room for runner variance of up to ~30%). The cap is sized to the free plan's 20 concurrent jobs.
 - **Durations.** `apps/api/src/__tests__/__integration__/durations.json` drives both N and the split. The split is `jest.integration.sequencer.mjs`, longest-first bin packing used only when `--shard` is passed.
 - **The shard reaches Jest and turbo** as `INTEGRATION_SHARD=i/N`.
   - `apps/api`'s `test:integration` appends `--shard` plus a JSON report only when it's set, so a local run is unchanged.

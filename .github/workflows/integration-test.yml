@@ -85,7 +85,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/integration-skip-base.mjs
 
-  # How many shards: enough for ~210s of recorded Jest time each, clamped to
+  # How many shards: enough for ~150s of recorded Jest time each, clamped to
   # 2..10. The cap is sized to the free plan's 20 concurrent jobs. No npm ci:
   # the planner needs only the durations file and the script.
   plan:

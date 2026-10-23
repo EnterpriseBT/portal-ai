@@ -116,7 +116,7 @@ One feature = one branch = one PR. Artifacts land as commits/gates on that branc
 - the integration shard var being in `test:integration`'s hash.
 
 The **integration suite runs sharded** (#857): `changes` → `plan` → `Integration Tests (shard i/N)` × N → a summary job named exactly `Integration Tests`, the only required context.
-- **N is planned** from `apps/api/src/__tests__/__integration__/durations.json`: ~210s per shard, clamped to 2–10, sized to the free plan's 20 concurrent jobs.
+- **N is planned** from `apps/api/src/__tests__/__integration__/durations.json`: ~150s per shard, clamped to 2–10, sized to the free plan's 20 concurrent jobs.
 - **The summary fails closed** on any failed or cancelled shard, a missing report, or suites that don't add up to the test files.
 - **Guards:** `lint:integration-shards` (every file in exactly one shard) and `lint:integration-durations` (no file over 120s).
 - **Refresh:** a weekly PR refreshes the durations.
