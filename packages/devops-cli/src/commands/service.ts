@@ -3,25 +3,21 @@
  * the backend stack's DesiredCount (never ECS UpdateService, so the stack
  * stays the record of what should run). It is the maintenance-window lever
  * of the Redis cutover: the workers run in the API process, so scaling to
- * zero is what stops both enqueuing and processing.
+ * zero is what stops both enqueuing and processing. The stack update's own
+ * wait covers the service reaching its new count: CloudFormation completes
+ * an ECS service update only once the service is stable.
  */
-
-import { ECSClient, waitUntilServicesStable } from "@aws-sdk/client-ecs";
 
 import {
   assertOperationAllowed,
-  clusterName,
   recordAudit,
   EnvConfirmationRequiredError,
-  EnvInfraError,
   type EnvironmentDefinition,
 } from "@portalai/cli-env";
 
 import { requireDeployed, serviceName, updateStackParams } from "./cache.js";
 import { countActiveJobs } from "./jobs.js";
 import type { MutateOptions } from "./vars.js";
-
-const SERVICE_WAIT_MAX_SECONDS = 1800;
 
 /**
  * Scaling to zero kills whatever the workers are running. Those rows still
@@ -34,8 +30,8 @@ export async function serviceScale(
   count: number,
   opts: MutateOptions & { allowActive?: boolean },
   countActive: typeof countActiveJobs = countActiveJobs
-): Promise<{ service: string; desired: number }> {
-  const aws = requireDeployed(def);
+): Promise<{ service: string; desired: number; changed: boolean }> {
+  requireDeployed(def);
   assertOperationAllowed(def, {
     destructive: false,
     confirmed: !!opts.yes,
@@ -51,29 +47,18 @@ export async function serviceScale(
     }
   }
 
-  await updateStackParams(def, "backend", { DesiredCount: String(count) });
+  const { changed } = await updateStackParams(def, "backend", {
+    DesiredCount: String(count),
+  });
 
   const service = serviceName(def);
-  try {
-    await waitUntilServicesStable(
-      {
-        client: new ECSClient({ region: aws.region }),
-        maxWaitTime: SERVICE_WAIT_MAX_SECONDS,
-      },
-      { cluster: clusterName(def), services: [service] }
-    );
-  } catch (err) {
-    throw new EnvInfraError(
-      `${service} did not stabilize at ${count} task(s): ${(err as Error).message}`,
-      { cause: err }
-    );
+  if (changed) {
+    await recordAudit({
+      env: def.name,
+      operator: "portalops",
+      command: "service scale",
+      args: { service, desired: count },
+    });
   }
-
-  await recordAudit({
-    env: def.name,
-    operator: "portalops",
-    command: "service scale",
-    args: { service, desired: count },
-  });
-  return { service, desired: count };
+  return { service, desired: count, changed };
 }

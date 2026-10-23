@@ -23,6 +23,8 @@ export type JobProcessor = (job: BullJob) => Promise<unknown>;
 export type JobData<T extends JobType = JobType> = {
   jobId: string;
   type: T;
+  /** Attempts spent on an earlier queue, set by a #852 re-dispatch. */
+  attemptOffset?: number;
 } & JobTypeMap[T]["metadata"];
 
 /** Typed processor — constrains both input data and return type per job type. */
@@ -172,11 +174,20 @@ export const createJobsWorker = (
       // only place a lost execution is knowable. Fail-open: a failed read must
       // never sink a real execution, so a missing/unreadable row just skips
       // the diagnostic increment.
+      //
+      // The same read guards the other way (#852): a row already terminal
+      // has nothing left to run. Its queue entry is stale — a cutover
+      // rollback back onto the old Redis, a re-delivery after a cancel — and
+      // running it would move a finished job back to `active` and repeat its
+      // work (a second import, a transform applied twice).
       let lostExecutionsPatch: { lostExecutions?: number } = {};
+      let terminalStatus: JobStatus | null = null;
       try {
         const DbService = await getDbService();
         const prior = await DbService.repository.jobs.findById(jobId);
-        if (prior?.status === "active") {
+        if (prior && TERMINAL_JOB_STATUSES.includes(prior.status)) {
+          terminalStatus = prior.status;
+        } else if (prior?.status === "active") {
           lostExecutionsPatch = { lostExecutions: prior.lostExecutions + 1 };
         }
       } catch (readErr) {
@@ -184,6 +195,13 @@ export const createJobsWorker = (
           { jobId, err: readErr },
           "Lost-execution pre-read failed; proceeding without incrementing"
         );
+      }
+      if (terminalStatus) {
+        logger.warn(
+          { jobId, type, status: terminalStatus },
+          "Skipping a queued job whose row is already terminal"
+        );
+        return { skipped: true, status: terminalStatus };
       }
 
       await JobEventsService.transition(jobId, "active", {
@@ -195,7 +213,12 @@ export const createJobsWorker = (
         error: null,
         // 1-based, so a first run reads 1. Nothing wrote this before, so
         // `jobs.attempts` sat at 0 through every retry in the evidence.
-        attempts: (bullJob.attemptsMade ?? 0) + 1,
+        // `attemptOffset` carries the attempts a re-dispatched row spent on
+        // an earlier queue (#852), so the count keeps going across one.
+        attempts:
+          (Number(bullJob.data.attemptOffset) || 0) +
+          (bullJob.attemptsMade ?? 0) +
+          1,
         ...lostExecutionsPatch,
       });
       try {

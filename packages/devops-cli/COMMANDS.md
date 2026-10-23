@@ -144,8 +144,8 @@ Mutation. Points the backend's `REDIS_URL` at the other cache (`rediss://` for `
 ## service
 
 ### `portalops service scale <count> --env <env> --yes [--confirm-prod] [--allow-active] [--json]`
-Mutation. Sets the API service's task count through the backend stack's `DesiredCount` (never ECS UpdateService, so the stack stays the record), then waits for the service to stabilize. The workers run in the API process, so 0 stops both enqueuing and processing. Scaling to 0 refuses (exit 5) while any job is `active` unless `--allow-active`; those jobs would re-run through `jobs redispatch`.
-`--json`: `{ "service", "desired" }`
+Mutation. Sets the API service's task count through the backend stack's `DesiredCount` (never ECS UpdateService, so the stack stays the record), and waits for the stack update, which CloudFormation completes only once the service is stable. A count already in place reports `changed: false` and isn't audited. The workers run in the API process, so 0 stops both enqueuing and processing. Scaling to 0 refuses (exit 5) while any job is `active` unless `--allow-active`; those jobs would re-run through `jobs redispatch`.
+`--json`: `{ "service", "desired", "changed" }`
 
 ## jobs
 
@@ -156,8 +156,8 @@ Connect (prod needs `--confirm-prod`). Counts live non-terminal `jobs` rows (`pe
 `--json`: `{ "counts": [{ "status", "type", "count" }], "byStatus": { "<status>": n }, "total": n }`
 
 ### `portalops jobs redispatch --env <env> --yes [--confirm-prod] [--dry-run] [--json]`
-Mutation. Puts every live `pending` / `active` / `stalled` row whose BullMQ entry is gone back on the queue, under its row id. Run it after a Redis replacement, with the API service at zero and **before** it scales up: the API's boot sweep (#391) would otherwise reap the queued rows as stranded. Each row is flipped while non-terminal before it's added, so a cancelled or reaped job is never revived. A second pass finds the rows queued and adds nothing, and an interrupted `active` row resumes as a lost execution (#464). Dispatches on the env's shape like `db upgrade`: a deployed env runs `node dist/scripts/jobs-redispatch.js` as a FARGATE one-off (the summary JSON line is in its CloudWatch log; non-zero exit → exit 7), and `--env local` spawns the app's `jobs:redispatch`. `--dry-run` reports without writing and isn't audited.
-`--json`: `{ "via": "ecs", "taskArn", "exitCode": 0 }` or `{ "via": "local", "script": "jobs:redispatch" }`
+Mutation. Puts every live `pending` / `active` / `stalled` row whose BullMQ entry is gone back on the queue, under its row id. Run it after a Redis replacement, with the API service at zero and **before** it scales up: the API's boot sweep (#391) would otherwise reap the queued rows as stranded. Each row is flipped while non-terminal before it's added, so a cancelled or reaped job is never revived. A second pass finds the rows queued and adds nothing, and an interrupted `active` row resumes as a lost execution (#464). Dispatches on the env's shape like `db upgrade`: a deployed env runs `node dist/scripts/jobs-redispatch.js` as a FARGATE one-off (the summary JSON line is in its CloudWatch log; non-zero exit → exit 7), and `--env local` spawns the app's `jobs:redispatch`. `--dry-run` reports without writing and isn't audited. A re-queued row keeps what is left of its retry budget, and its attempt count carries on. The pass's own summary comes back in the payload: parsed from the script's stdout locally, read back from the task's CloudWatch stream on ECS (`null` if that read fails; the pass still ran).
+`--json`: `{ "via": "ecs", "taskArn", "exitCode": 0, "log": { "region", "group", "stream" }, "summary" }` or `{ "via": "local", "script": "jobs:redispatch", "summary" }`, where `summary` is `{ "acquiredLock", "scanned", "redispatched": [{ "id", "type", "priorStatus" }], "present", "skippedTerminal", "dryRun" } | null`
 
 ## tier
 

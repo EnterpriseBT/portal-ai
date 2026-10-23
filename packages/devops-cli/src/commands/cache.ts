@@ -34,6 +34,7 @@ import {
   type EnvironmentDefinition,
 } from "@portalai/cli-env";
 
+import { apiServiceName } from "../ecs.js";
 import type { MutateOptions } from "./vars.js";
 
 /** A cutover step taken out of order (exit 9, the conflict family). */
@@ -67,8 +68,10 @@ export const stackName = (
   kind: "cache" | "backend"
 ): string => `portalai-${requireDeployed(def).envName}-${kind}`;
 
-export const serviceName = (def: EnvironmentDefinition): string =>
-  `portalai-api-${requireDeployed(def).envName}`;
+export const serviceName = (def: EnvironmentDefinition): string => {
+  requireDeployed(def);
+  return apiServiceName(def);
+};
 
 const cfn = (def: EnvironmentDefinition) =>
   new CloudFormationClient({ region: requireDeployed(def).region });

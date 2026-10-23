@@ -157,6 +157,20 @@ describe("JobRedispatchService — integration (#852)", () => {
     expect((await jobRow(id)).lostExecutions).toBe(1);
   });
 
+  it("carries the spent attempts over: the row keeps its budget and its count", async () => {
+    // Failed attempts 1 and 2 on the old Redis; one attempt is left.
+    const id = await seedJob("pending", { attempts: 2 });
+
+    await JobRedispatchService.redispatchOrphans({ dryRun: false });
+    const queued = await getJobsQueue().getJob(id);
+    expect(queued?.opts.attempts).toBe(1);
+    expect(queued?.data.attemptOffset).toBe(2);
+
+    startWorker();
+    await waitForStatus(id, "completed");
+    expect((await jobRow(id)).attempts).toBe(3);
+  });
+
   it("never revives a terminal row", async () => {
     const id = await seedJob("cancelled", { completedAt: STALE() });
 

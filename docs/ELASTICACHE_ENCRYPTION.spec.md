@@ -29,13 +29,25 @@ The public claim widening isn't in this PR. It ships in a follow-up ticket after
    Three caveats remain, all mitigated by draining first:
    - a `bulk_transform` whose source is also its target, with a non-idempotent expression, compounds on a re-run;
    - `commitCharge` increments usage before its ledger insert, so a run killed between the two would double-count on re-run;
-   - a re-added job's retry budget resets, because the worker derives `attempts` from BullMQ's `attemptsMade`.
+   - ~~a re-added job's retry budget resets~~ (fixed in review: the re-add passes the remaining budget and an `attemptOffset` the worker adds to `jobs.attempts`).
 
    An interrupted `active` row gets `lost_executions + 1` through the existing #464 path.
 5. **Fail-closed transport.** The encrypted group sets `TransitEncryptionMode: required`, so plaintext is refused at the cluster. The API stays scheme-driven (PRD) and doesn't refuse `redis://`.
 6. **Retiring the legacy cluster is destructive.** `portalops cache phase encrypted` is a destructive op: allowed on app-dev with `--yes`, and refused on prod by the guard. Prod's legacy cluster goes away through the cleanup PR's release.
 7. **Discovery Q1 resolved:** the claim widening is a follow-up ticket. **Q2:** `portalops service scale`. **Q4:** an upload preview's workbook cache is lost in the window (the runbook says so). **Q5:** narrowing the security group is out of scope (it would create a circular stack import).
 8. **Fixed here because the cutover depends on it:** `packages/devops-cli/src/ecs.ts:24-25` runs `npm run db:seed:ci` / `db:upgrade:ci`, but the runtime image has no npm (`apps/api/Dockerfile:59-65`, #573). So `portalops db seed|upgrade` against a deployed env fails today. The one-off commands become `node dist/...`.
+
+9. **Code-review fixes (PR #859):**
+   - the worker skips an entry whose row is already terminal;
+   - re-dispatch counts only a *live* BullMQ entry as queued, and removes a finished one under the row id before re-adding;
+   - the remaining retry budget carries over;
+   - `deploy-prod` keeps the task count while the cache phase is `both`;
+   - `redisTlsEnabled` mirrors ioredis's case-sensitive `rediss://` test;
+   - `jobs redispatch` returns the pass's summary (stdout locally, the task's CloudWatch stream on ECS);
+   - the queue payload and options come from shared `JobsService.queuePayload` / `queueOptions`;
+   - the service is a class with static methods;
+   - the ECS service name is built in one place;
+   - `service scale` relies on the stack's own wait and audits only a change.
 
 ## Scope
 

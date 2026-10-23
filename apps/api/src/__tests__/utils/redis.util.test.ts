@@ -89,6 +89,24 @@ describe("redisConnection", () => {
     );
   });
 
+  it("reads the scheme exactly as ioredis does (case-sensitive), so the log can't claim TLS ioredis won't use", async () => {
+    const upper = await loadRedisUtil({ REDIS_URL: "REDISS://host:6379" });
+    expect(upper.redisTlsEnabled()).toBe(false);
+
+    const withCa = await loadRedisUtil({
+      REDIS_URL: "REDISS://host:6379",
+      REDIS_TLS_CA: PEM,
+    });
+    expect(() => withCa.redisConnection()).toThrow(/not rediss/);
+  });
+
+  it("never throws on a URL WHATWG can't parse (ioredis accepts host:port)", async () => {
+    const { redisTlsEnabled } = await loadRedisUtil({
+      REDIS_URL: "localhost:6380",
+    });
+    expect(redisTlsEnabled()).toBe(false);
+  });
+
   it("always sets maxRetriesPerRequest: null (BullMQ requires it)", async () => {
     for (const REDIS_URL of ["redis://a:1", "rediss://a:1"]) {
       const { redisConnection } = await loadRedisUtil({ REDIS_URL });

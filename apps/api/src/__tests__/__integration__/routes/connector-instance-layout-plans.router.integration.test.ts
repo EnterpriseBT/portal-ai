@@ -63,6 +63,11 @@ jest.unstable_mockModule(
 // `layout-plans.router.integration.test.ts` uses.
 const redisStore = new Map<string, string>();
 jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
+  // The queue modules the app imports build their connection here.
+  redisConnection: () => ({
+    url: process.env.REDIS_URL!,
+    maxRetriesPerRequest: null,
+  }),
   getRedisClient: () => ({
     set: async (key: string, value: string): Promise<"OK"> => {
       redisStore.set(key, value);

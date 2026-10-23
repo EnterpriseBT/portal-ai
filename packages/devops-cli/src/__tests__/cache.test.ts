@@ -118,6 +118,11 @@ jest.unstable_mockModule("@aws-sdk/client-ecs", () => ({
     });
   },
   DescribeServicesCommand: named("DescribeServicesCommand"),
+  // ecs.ts (the shared service name) imports these; unused here.
+  DescribeTaskDefinitionCommand: named("DescribeTaskDefinitionCommand"),
+  DescribeTasksCommand: named("DescribeTasksCommand"),
+  RunTaskCommand: named("RunTaskCommand"),
+  waitUntilTasksStopped: jest.fn(),
   waitUntilServicesStable: servicesStable,
 }));
 
@@ -318,16 +323,22 @@ describe("cacheSwitch", () => {
 });
 
 describe("serviceScale", () => {
-  it("scales through the backend stack's DesiredCount and waits for the service", async () => {
+  it("scales through the backend stack's DesiredCount, waiting on the stack alone", async () => {
     aws.service = { desired: 1, running: 1 };
     const out = await serviceScale(appDev, 2, { yes: true });
 
-    expect(out).toEqual({ service: "portalai-api-dev", desired: 2 });
+    expect(out).toEqual({
+      service: "portalai-api-dev",
+      desired: 2,
+      changed: true,
+    });
     expect(sent(lastUpdate())).toMatchObject({
       DesiredCount: "2",
       RedisEndpointSource: "<previous>",
     });
-    expect(servicesStable).toHaveBeenCalled();
+    // CloudFormation completes an ECS service update only once it is stable.
+    expect(stackWait).toHaveBeenCalled();
+    expect(servicesStable).not.toHaveBeenCalled();
     expect(mocks.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ command: "service scale" })
     );
@@ -357,5 +368,14 @@ describe("serviceScale", () => {
       confirmed: true,
       prodConfirmed: true,
     });
+  });
+});
+
+describe("serviceScale — no-op (#852 review)", () => {
+  it("doesn't audit a scale that changed nothing", async () => {
+    aws.noUpdates = true;
+    const out = await serviceScale(appDev, 1, { yes: true });
+    expect(out.changed).toBe(false);
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
   });
 });

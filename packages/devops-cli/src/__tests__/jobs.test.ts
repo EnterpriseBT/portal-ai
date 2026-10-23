@@ -21,6 +21,20 @@ jest.unstable_mockModule("../ecs.js", () => ({
 const { jobsStatus, jobsRedispatch, countActiveJobs } =
   await import("../commands/jobs.js");
 
+const SUMMARY = {
+  acquiredLock: true,
+  scanned: 2,
+  redispatched: [{ id: "j1", type: "connector_sync", priorStatus: "pending" }],
+  present: 1,
+  skippedTerminal: 0,
+  dryRun: false,
+};
+const LOG = {
+  region: "us-east-1",
+  group: "/ecs/portalai-api-dev",
+  stream: "api/api/abc",
+};
+
 type RunApiScript = (
   def: MockEnvDef,
   script: string,
@@ -73,7 +87,12 @@ describe("jobsRedispatch (#852)", () => {
     const runScript = jest.fn<RunApiScript>();
     const out = await jobsRedispatch(appDev, { yes: true }, runScript);
 
-    expect(out).toEqual({ via: "ecs", taskArn: "rd-arn", exitCode: 0 });
+    expect(out).toEqual({
+      via: "ecs",
+      taskArn: "rd-arn",
+      exitCode: 0,
+      summary: null,
+    });
     expect(runRedispatchTaskMock).toHaveBeenCalledWith(appDev, {
       dryRun: false,
     });
@@ -91,7 +110,11 @@ describe("jobsRedispatch (#852)", () => {
     const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
     const out = await jobsRedispatch(local, {}, runScript);
 
-    expect(out).toEqual({ via: "local", script: "jobs:redispatch" });
+    expect(out).toEqual({
+      via: "local",
+      script: "jobs:redispatch",
+      summary: null,
+    });
     expect(runScript).toHaveBeenCalledWith(local, "jobs:redispatch", []);
     expect(runRedispatchTaskMock).not.toHaveBeenCalled();
   });
@@ -108,5 +131,65 @@ describe("jobsRedispatch (#852)", () => {
       "--dry-run",
     ]);
     expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("jobsRedispatch returns the pass's summary (#852 review)", () => {
+  it("local: parses the summary line out of the script's stdout", async () => {
+    const runScript = jest
+      .fn<RunApiScript>()
+      .mockResolvedValue(
+        `> @portalai/api jobs:redispatch\nINFO REDISPATCH COMPLETE\n${JSON.stringify(SUMMARY)}\n`
+      );
+    const out = await jobsRedispatch(local, {}, runScript);
+    expect(out.summary).toEqual(SUMMARY);
+  });
+
+  it("ECS: reads the summary back from the task's CloudWatch stream", async () => {
+    runRedispatchTaskMock.mockResolvedValue({
+      taskArn: "rd-arn",
+      exitCode: 0,
+      log: LOG,
+    });
+    const readLog = jest.fn(async () =>
+      [
+        '{"level":30,"msg":"REDISPATCH COMPLETE"}',
+        JSON.stringify(SUMMARY),
+      ].join("\n")
+    );
+    const out = await jobsRedispatch(
+      appDev,
+      { yes: true },
+      jest.fn<RunApiScript>(),
+      readLog
+    );
+    expect(readLog).toHaveBeenCalledWith(LOG);
+    expect(out.summary).toEqual(SUMMARY);
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.objectContaining({ redispatched: 1 }),
+      })
+    );
+  });
+
+  it("ECS: a failed log read keeps the run's result, with a null summary", async () => {
+    runRedispatchTaskMock.mockResolvedValue({
+      taskArn: "rd-arn",
+      exitCode: 0,
+      log: LOG,
+    });
+    const errSpy = jest
+      .spyOn(process.stderr, "write")
+      .mockImplementation((() => true) as never);
+    const out = await jobsRedispatch(
+      appDev,
+      { yes: true },
+      jest.fn<RunApiScript>(),
+      async () => {
+        throw new Error("AccessDenied");
+      }
+    );
+    errSpy.mockRestore();
+    expect(out).toMatchObject({ via: "ecs", exitCode: 0, summary: null });
   });
 });

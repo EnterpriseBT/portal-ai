@@ -28,10 +28,29 @@ const UPGRADE_COMMAND = ["node", "dist/scripts/db-upgrade.js"];
 const REDISPATCH_COMMAND = ["node", "dist/scripts/jobs-redispatch.js"];
 const WAIT_MAX_SECONDS = 900;
 
+/** Where a one-off task's stdout landed (the task definition's awslogs). */
+export interface TaskLogLocation {
+  region: string;
+  group: string;
+  stream: string;
+}
+
 export interface OneOffTaskResult {
   taskArn: string;
   exitCode: number;
+  /** Present when the task definition logs to CloudWatch (awslogs). */
+  log?: TaskLogLocation;
 }
+
+/** The API's ECS service. The one place its name is built (#852). */
+export const apiServiceName = (def: EnvironmentDefinition): string => {
+  if (!def.aws) {
+    throw new EnvNotConfiguredError(
+      `"${def.name}" has no deployed ECS service`
+    );
+  }
+  return `portalai-api-${def.aws.envName}`;
+};
 
 // Preserved names for existing consumers.
 export type SeedTaskResult = OneOffTaskResult;
@@ -57,7 +76,7 @@ async function runOneOffTask(
   }
 
   const cluster = clusterName(def);
-  const service = `portalai-api-${def.aws.envName}`;
+  const service = apiServiceName(def);
   const client = new ECSClient({ region: def.aws.region });
 
   const services = await client.send(
@@ -73,7 +92,8 @@ async function runOneOffTask(
   const taskDef = await client.send(
     new DescribeTaskDefinitionCommand({ taskDefinition: svc.taskDefinition })
   );
-  const containerName = taskDef.taskDefinition?.containerDefinitions?.[0]?.name;
+  const container = taskDef.taskDefinition?.containerDefinitions?.[0];
+  const containerName = container?.name;
   if (!containerName) {
     throw new EnvInfraError(
       `Task definition ${svc.taskDefinition} has no containers`
@@ -112,7 +132,19 @@ async function runOneOffTask(
       `${spec.label} task exited with code ${exitCode}. Check CloudWatch logs for details (task ${taskArn}).`
     );
   }
-  return { taskArn, exitCode };
+  // awslogs names a task's stream `<prefix>/<container>/<task id>`.
+  const logOptions = container?.logConfiguration?.options;
+  const group = logOptions?.["awslogs-group"];
+  const prefix = logOptions?.["awslogs-stream-prefix"];
+  const log: TaskLogLocation | undefined =
+    container?.logConfiguration?.logDriver === "awslogs" && group && prefix
+      ? {
+          region: logOptions?.["awslogs-region"] ?? def.aws.region,
+          group,
+          stream: `${prefix}/${containerName}/${taskArn.split("/").pop()}`,
+        }
+      : undefined;
+  return { taskArn, exitCode, ...(log ? { log } : {}) };
 }
 
 export function runSeedTask(

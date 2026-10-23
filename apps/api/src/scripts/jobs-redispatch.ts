@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 import { closeJobsQueue } from "../queues/jobs.queue.js";
-import { runRedispatch } from "../services/job-redispatch.service.js";
+import { JobRedispatchService } from "../services/job-redispatch.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "jobs-redispatch" });
@@ -22,7 +22,7 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   const dryRun = process.argv.includes("--dry-run");
-  runRedispatch({ dryRun })
+  JobRedispatchService.redispatchOrphans({ dryRun })
     .then(async (summary) => {
       process.stdout.write(JSON.stringify(summary) + "\n");
       await closeJobsQueue();

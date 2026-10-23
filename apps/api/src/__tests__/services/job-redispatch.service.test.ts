@@ -19,14 +19,28 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 jest.unstable_mockModule("../../queues/jobs.queue.js", () => ({
   getJobsQueue: () => ({}),
 }));
+jest.unstable_mockModule("../../services/jobs.service.js", () => ({
+  JobsService: {},
+}));
 jest.unstable_mockModule("../../services/sync-lock.service.js", () => ({
   SyncLockService: { withAdvisoryLock: jest.fn() },
   REDISPATCH_LOCK_NAMESPACE: 0,
 }));
 
-const { runRedispatch, JobRedispatchService } =
+const { JobRedispatchService } =
   await import("../../services/job-redispatch.service.js");
-type Deps = Parameters<typeof runRedispatch>[1];
+type Deps = NonNullable<
+  Parameters<typeof JobRedispatchService.redispatchOrphans>[1]
+>;
+const runRedispatch = (opts: { dryRun: boolean }, deps: Deps) =>
+  JobRedispatchService.redispatchOrphans(opts, deps);
+
+/** A BullMQ entry for row `jobId`, in `state`. */
+const entry = (jobId: string, state = "waiting") => ({
+  data: { jobId },
+  getState: jest.fn(async () => state),
+  remove: jest.fn(async () => {}),
+});
 
 const row = (id: string, over: Partial<JobSelect> = {}): JobSelect =>
   ({
@@ -66,7 +80,7 @@ describe("runRedispatch", () => {
   it("skips a row already in the queue under its own id", async () => {
     const { d } = deps([[row("j1")]], {
       getQueuedJob: jest.fn(async (id: string) =>
-        id === "j1" ? { data: { jobId: "j1" } } : undefined
+        id === "j1" ? entry("j1") : undefined
       ),
     });
     const s = await runRedispatch({ dryRun: false }, d);
@@ -80,8 +94,8 @@ describe("runRedispatch", () => {
       [row("j1", { bullJobId: "57" }), row("j2", { bullJobId: "58" })],
     ]);
     d.getQueuedJob = jest.fn(async (id: string) => {
-      if (id === "57") return { data: { jobId: "j1" } }; // still j1's entry
-      if (id === "58") return { data: { jobId: "someone-else" } }; // reused id
+      if (id === "57") return entry("j1"); // still j1's entry
+      if (id === "58") return entry("someone-else"); // reused id
       return undefined;
     });
     const s = await runRedispatch({ dryRun: false }, d);
@@ -163,5 +177,41 @@ describe("runRedispatch", () => {
     const s = await runRedispatch({ dryRun: false }, d);
     expect(s.acquiredLock).toBe(false);
     expect(d.findCandidates).not.toHaveBeenCalled();
+  });
+});
+
+describe("redispatchOrphans — entries that will never run (#852 review)", () => {
+  it("re-adds a row whose entry under its own id is finished, removing the stale entry first", async () => {
+    const stale = entry("j1", "completed");
+    const { d, calls } = deps([[row("j1")]], {
+      getQueuedJob: jest.fn(async (id: string) =>
+        id === "j1" ? stale : undefined
+      ),
+    });
+    const s = await runRedispatch({ dryRun: false }, d);
+    expect(stale.remove).toHaveBeenCalled();
+    expect(calls).toEqual(["mark:j1", "add:j1"]);
+    expect(s.present).toBe(0);
+  });
+
+  it("doesn't count a finished legacy entry as queued, and leaves it alone", async () => {
+    const legacy = entry("j1", "failed");
+    const { d } = deps([[row("j1", { bullJobId: "57" })]], {
+      getQueuedJob: jest.fn(async (id: string) =>
+        id === "57" ? legacy : undefined
+      ),
+    });
+    const s = await runRedispatch({ dryRun: false }, d);
+    expect(s.redispatched.map((r) => r.id)).toEqual(["j1"]);
+    expect(legacy.remove).not.toHaveBeenCalled();
+  });
+
+  it("removes nothing on a dry run", async () => {
+    const stale = entry("j1", "completed");
+    const { d } = deps([[row("j1")]], {
+      getQueuedJob: jest.fn(async () => stale),
+    });
+    await runRedispatch({ dryRun: true }, d);
+    expect(stale.remove).not.toHaveBeenCalled();
   });
 });

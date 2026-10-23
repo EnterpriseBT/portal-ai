@@ -144,6 +144,39 @@ describe("deploys inherit the operator's phase (#852)", () => {
 
   it.each(workflows)("%s passes neither phase parameter", (file) => {
     const body = fs.readFileSync(path.join(dir, file), "utf8");
-    expect(body).not.toMatch(/RedisCutoverPhase|RedisEndpointSource/);
+    // Reading the phase (deploy-prod does, below) is fine; passing it isn't.
+    expect(body).not.toMatch(/(RedisCutoverPhase|RedisEndpointSource)=/);
+  });
+});
+
+describe("a prod release can't start the API mid-cutover (#852 review)", () => {
+  // deploy-prod's last backend deploy restores DesiredCount=2. Mid-window
+  // (service held at 0 by `cache switch`, re-dispatch not yet run) that would
+  // boot the API on the new Redis, and its stranded sweep would reap the
+  // queued rows. So the count is decided by a step that keeps the current
+  // value while the cache phase is `both`.
+  const body = fs.readFileSync(
+    path.join(ROOT, ".github/workflows/deploy-prod.yml"),
+    "utf8"
+  );
+  const step = (name: string) => {
+    const start = body.indexOf(`- name: ${name}`);
+    expect(start).toBeGreaterThan(-1);
+    const next = body.indexOf("\n      - name:", start + 1);
+    return body.slice(start, next === -1 ? undefined : next);
+  };
+
+  it("the final backend deploy takes DesiredCount from the decision step", () => {
+    const deploy = step("Update backend stack and deploy");
+    expect(deploy).toContain("${{ steps.restore-count.outputs.args }}");
+    expect(deploy).not.toMatch(/DesiredCount=2/);
+  });
+
+  it("the decision step keeps the current count while the phase is both", () => {
+    const decide = step("Decide the restored task count");
+    expect(decide).toContain("id: restore-count");
+    expect(decide).toContain("RedisCutoverPhase");
+    expect(decide).toMatch(/"both"/);
+    expect(decide).toContain("args=DesiredCount=2");
   });
 });

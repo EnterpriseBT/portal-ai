@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1084.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1084.0",
     "@aws-sdk/client-ecs": "^3.1084.0",
     "@aws-sdk/client-elasticache": "^3.1084.0",
     "@portalai/cli-env": "*",

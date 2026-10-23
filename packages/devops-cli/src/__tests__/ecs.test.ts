@@ -177,3 +177,37 @@ describe("runRedispatchTask", () => {
     ]);
   });
 });
+
+describe("one-off log location (#852 review)", () => {
+  it("returns the task's awslogs stream so its output can be read back", async () => {
+    happyPath(0);
+    const base = ecsSend.getMockImplementation()!;
+    ecsSend.mockImplementation(async (cmd) =>
+      cmd.constructor.name === "DescribeTaskDefinitionCommand"
+        ? {
+            taskDefinition: {
+              containerDefinitions: [
+                {
+                  name: "api",
+                  logConfiguration: {
+                    logDriver: "awslogs",
+                    options: {
+                      "awslogs-group": "/ecs/portalai-api-dev",
+                      "awslogs-region": "us-east-1",
+                      "awslogs-stream-prefix": "api",
+                    },
+                  },
+                },
+              ],
+            },
+          }
+        : base(cmd)
+    );
+    const out = await runRedispatchTask(appDev, { dryRun: false });
+    expect(out.log).toEqual({
+      region: "us-east-1",
+      group: "/ecs/portalai-api-dev",
+      stream: "api/api/abc",
+    });
+  });
+});

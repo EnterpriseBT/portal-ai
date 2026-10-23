@@ -10,8 +10,14 @@ let redisClient: Redis | null = null;
 /** ioredis options plus the URL, the shape BullMQ's `connection` accepts. */
 export type RedisConnection = RedisOptions & { url: string };
 
+/**
+ * Whether ioredis will use TLS for REDIS_URL. Its own test, verbatim: a
+ * case-sensitive `rediss://` prefix (`REDISS://` connects in plaintext). A
+ * WHATWG `URL` parse would lowercase the scheme and disagree, and would throw
+ * on the `host:port` form ioredis accepts.
+ */
 export const redisTlsEnabled = (): boolean =>
-  new URL(environment.REDIS_URL).protocol === "rediss:";
+  environment.REDIS_URL.startsWith("rediss://");
 
 /**
  * The one place Redis connection options are built (#852). Every client —

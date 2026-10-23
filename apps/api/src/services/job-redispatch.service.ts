@@ -4,6 +4,7 @@ import type { JobSelect } from "../db/schema/zod.js";
 import { getJobsQueue } from "../queues/jobs.queue.js";
 import { createLogger } from "../utils/logger.util.js";
 import { DbService } from "./db.service.js";
+import { JobsService } from "./jobs.service.js";
 import {
   REDISPATCH_LOCK_NAMESPACE,
   SyncLockService,
@@ -26,15 +27,20 @@ export interface RedispatchSummary {
     type: JobType;
     priorStatus: "pending" | "active" | "stalled";
   }[];
-  /** Already in the current queue (under its row id or its legacy id). */
+  /** Still live in the current queue (under its row id or its legacy id). */
   present: number;
   /** Went terminal between the read and the flip; never re-added. */
   skippedTerminal: number;
   dryRun: boolean;
 }
 
-/** A queued job as far as re-dispatch cares: whose row it belongs to. */
-type QueuedJob = { data: { jobId?: unknown } };
+/** A queued job as far as re-dispatch cares: whose row it belongs to, and
+ *  whether BullMQ will still run it. */
+export interface QueuedJob {
+  data: { jobId?: unknown };
+  getState: () => Promise<string>;
+  remove: () => Promise<void>;
+}
 
 /**
  * The pass's side effects, injectable so the ordering and every abort path
@@ -51,50 +57,15 @@ export interface RedispatchDeps {
   withLock: <T>(fn: () => Promise<T>) => Promise<SyncLockOutcome<T>>;
 }
 
-export const DEFAULT_REDISPATCH_DEPS: RedispatchDeps = {
-  findCandidates: (cursor, limit) =>
-    DbService.repository.jobs.findRedispatchCandidates(cursor, limit),
-  getQueuedJob: (bullJobId) => getJobsQueue().getJob(bullJobId),
-  markRedispatched: (id) => DbService.repository.jobs.markRedispatched(id),
-  add: async (row) => {
-    // The same payload and options `JobsService.dispatch` builds, so the
-    // worker can't tell a re-dispatched job from a fresh one.
-    await getJobsQueue().add(
-      row.type,
-      {
-        jobId: row.id,
-        type: row.type,
-        ...(row.metadata as Record<string, unknown>),
-      },
-      { jobId: row.id, attempts: row.maxAttempts }
-    );
-  },
-  withLock: (fn) =>
-    SyncLockService.withAdvisoryLock(
-      REDISPATCH_LOCK_NAMESPACE,
-      REDISPATCH_LOCK_KEY,
-      fn,
-      { event: "jobs-redispatch.lock", subject: "redispatch" }
-    ),
-};
-
-/**
- * Whether the row's job is still queued. Checked under the row id (every
- * dispatch since #852) and under its stored legacy id (BullMQ's own counter,
- * before #852). A legacy id is a per-Redis counter, so a hit only counts when
- * the job it names is this row's: on a replacement Redis the same number can
- * belong to an unrelated job.
- */
-async function isQueued(row: JobSelect, deps: RedispatchDeps) {
-  const ids = [row.id];
-  if (row.bullJobId && row.bullJobId !== row.id) ids.push(row.bullJobId);
-  for (const id of ids) {
-    // A throw propagates: absence must be observed, never assumed.
-    const queued = await deps.getQueuedJob(id);
-    if (queued?.data.jobId === row.id) return true;
-  }
-  return false;
-}
+/** BullMQ states in which an entry will still run. `completed` and `failed`
+ *  entries linger for days (removeOnComplete/removeOnFail) but never run. */
+const LIVE_STATES = new Set([
+  "waiting",
+  "delayed",
+  "active",
+  "prioritized",
+  "waiting-children",
+]);
 
 /**
  * Put every non-terminal `jobs` row whose BullMQ entry is gone back on the
@@ -104,84 +75,132 @@ async function isQueued(row: JobSelect, deps: RedispatchDeps) {
  * reconciliation sweep (#391) would otherwise reap the queued rows as
  * stranded.
  *
- * Each absent row is flipped first (`bullJobId = id` while non-terminal), then
- * added under its row id. The flip is the guard that keeps a row cancelled or
- * reaped meanwhile from being revived. An add failure aborts; the flipped row
- * is still absent from the queue, so the next run picks it up, and a
- * duplicate add is a no-op BullMQ ignores. An interrupted `active` row
- * resumes through the worker's own re-delivery path (#464 `lost_executions`).
+ * Each row without a live entry is flipped first (`bullJobId = id` while
+ * non-terminal), then added under its row id. The flip is the guard that
+ * keeps a row cancelled or reaped meanwhile from being revived; the worker
+ * also skips any entry whose row is terminal, so a stale entry left on the
+ * other Redis after a rollback can't re-run finished work. An add failure
+ * aborts; the flipped row is still absent from the queue, so the next run
+ * picks it up, and a duplicate add is a no-op BullMQ ignores. An interrupted
+ * `active` row resumes through the worker's own re-delivery path (#464
+ * `lost_executions`).
  */
-export async function runRedispatch(
-  opts: { dryRun: boolean },
-  deps: RedispatchDeps = DEFAULT_REDISPATCH_DEPS
-): Promise<RedispatchSummary> {
-  const summary: RedispatchSummary = {
-    acquiredLock: true,
-    scanned: 0,
-    redispatched: [],
-    present: 0,
-    skippedTerminal: 0,
-    dryRun: opts.dryRun,
-  };
-
-  const outcome = await deps.withLock(async () => {
-    let cursor: RedispatchCursor | null = null;
-    for (;;) {
-      const page = await deps.findCandidates(
-        cursor,
-        JobRedispatchService.PAGE_SIZE
-      );
-      for (const row of page) {
-        summary.scanned++;
-        if (await isQueued(row, deps)) {
-          summary.present++;
-          continue;
-        }
-        const entry = {
-          id: row.id,
-          type: row.type,
-          priorStatus: row.status as "pending" | "active" | "stalled",
-        };
-        if (opts.dryRun) {
-          summary.redispatched.push(entry);
-          continue;
-        }
-        if (!(await deps.markRedispatched(row.id))) {
-          summary.skippedTerminal++;
-          continue;
-        }
-        await deps.add(row);
-        summary.redispatched.push(entry);
-      }
-      if (page.length < JobRedispatchService.PAGE_SIZE) break;
-      const last = page[page.length - 1]!;
-      cursor = { created: last.created, id: last.id };
-    }
-  });
-
-  if (!outcome.acquired) {
-    logger.warn("REDISPATCH SKIPPED: another pass is already running");
-    return { ...summary, acquiredLock: false };
-  }
-  logger.info(
-    {
-      scanned: summary.scanned,
-      redispatched: summary.redispatched.length,
-      present: summary.present,
-      skippedTerminal: summary.skippedTerminal,
-      dryRun: summary.dryRun,
-    },
-    "REDISPATCH COMPLETE"
-  );
-  return summary;
-}
-
 export class JobRedispatchService {
   static readonly PAGE_SIZE = 200;
 
-  static redispatchOrphans(opts: {
-    dryRun: boolean;
-  }): Promise<RedispatchSummary> {
-    return runRedispatch(opts);
+  static readonly DEFAULT_DEPS: RedispatchDeps = {
+    findCandidates: (cursor, limit) =>
+      DbService.repository.jobs.findRedispatchCandidates(cursor, limit),
+    getQueuedJob: async (bullJobId) =>
+      (await getJobsQueue().getJob(bullJobId)) ?? undefined,
+    markRedispatched: (id) => DbService.repository.jobs.markRedispatched(id),
+    add: async (row) => {
+      // What the row has left of its budget: a sync that spent 2 of 3
+      // attempts on the old queue gets 1 more, not a fresh 3 (#852 review).
+      const spent = Math.min(row.attempts ?? 0, row.maxAttempts - 1);
+      await getJobsQueue().add(
+        row.type,
+        JobsService.queuePayload(row, { attemptOffset: spent }),
+        JobsService.queueOptions(row, row.maxAttempts - spent)
+      );
+    },
+    withLock: (fn) =>
+      SyncLockService.withAdvisoryLock(
+        REDISPATCH_LOCK_NAMESPACE,
+        REDISPATCH_LOCK_KEY,
+        fn,
+        { event: "jobs-redispatch.lock", subject: "redispatch" }
+      ),
+  };
+
+  /**
+   * Whether the row's job will still run from the current queue. Looked up
+   * under the row id (every dispatch since #852) and under its stored legacy
+   * id (BullMQ's own counter, before #852). A legacy id is a per-Redis
+   * counter, so a hit only counts when the job it names is this row's; and
+   * only a live entry counts, since a `completed`/`failed` one never runs
+   * again even though the row says otherwise. A finished entry under the row
+   * id is removed so the re-add isn't ignored as a duplicate.
+   */
+  private static async isQueued(
+    row: JobSelect,
+    deps: RedispatchDeps,
+    dryRun: boolean
+  ): Promise<boolean> {
+    const ids = [row.id];
+    if (row.bullJobId && row.bullJobId !== row.id) ids.push(row.bullJobId);
+    for (const id of ids) {
+      // A throw propagates: absence must be observed, never assumed.
+      const queued = await deps.getQueuedJob(id);
+      if (queued?.data.jobId !== row.id) continue;
+      if (LIVE_STATES.has(await queued.getState())) return true;
+      if (id === row.id && !dryRun) await queued.remove();
+    }
+    return false;
+  }
+
+  static async redispatchOrphans(
+    opts: { dryRun: boolean },
+    deps: RedispatchDeps = JobRedispatchService.DEFAULT_DEPS
+  ): Promise<RedispatchSummary> {
+    const summary: RedispatchSummary = {
+      acquiredLock: true,
+      scanned: 0,
+      redispatched: [],
+      present: 0,
+      skippedTerminal: 0,
+      dryRun: opts.dryRun,
+    };
+
+    const outcome = await deps.withLock(async () => {
+      let cursor: RedispatchCursor | null = null;
+      for (;;) {
+        const page = await deps.findCandidates(
+          cursor,
+          JobRedispatchService.PAGE_SIZE
+        );
+        for (const row of page) {
+          summary.scanned++;
+          if (await JobRedispatchService.isQueued(row, deps, opts.dryRun)) {
+            summary.present++;
+            continue;
+          }
+          const entry = {
+            id: row.id,
+            type: row.type,
+            priorStatus: row.status as "pending" | "active" | "stalled",
+          };
+          if (opts.dryRun) {
+            summary.redispatched.push(entry);
+            continue;
+          }
+          if (!(await deps.markRedispatched(row.id))) {
+            summary.skippedTerminal++;
+            continue;
+          }
+          await deps.add(row);
+          summary.redispatched.push(entry);
+        }
+        if (page.length < JobRedispatchService.PAGE_SIZE) break;
+        const last = page[page.length - 1]!;
+        cursor = { created: last.created, id: last.id };
+      }
+    });
+
+    if (!outcome.acquired) {
+      logger.warn("REDISPATCH SKIPPED: another pass is already running");
+      return { ...summary, acquiredLock: false };
+    }
+    logger.info(
+      {
+        scanned: summary.scanned,
+        redispatched: summary.redispatched.length,
+        present: summary.present,
+        skippedTerminal: summary.skippedTerminal,
+        dryRun: summary.dryRun,
+      },
+      "REDISPATCH COMPLETE"
+    );
+    return summary;
   }
 }

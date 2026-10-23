@@ -17,7 +17,7 @@ Every command below is `portalops` (`packages/devops-cli/COMMANDS.md` → cache,
 - [ ] The release carrying #852 is deployed to the environment. app-dev deploys on every push to `main` (or `gh workflow run deploy-dev.yml --ref <branch>`); prod deploys on a published release.
 - [ ] `portalops cache status --env app-dev` shows `phase: legacy`, `endpointSource: legacy`, and the legacy cache `available`.
 - [ ] Your shell has AWS credentials for the environment, and a rebuilt CLI (`npm run build --workspace @portalai/devops-cli`, since `npx portalops` runs `dist/`).
-- [ ] **No deploy runs during the window.** A deploy keeps the cutover parameters, but prod's `deploy-backend` sets `DesiredCount=2` and would start tasks mid-window. Hold merges to `main` (app-dev) or don't publish a release (prod) until Verify passes.
+- [ ] **No deploy runs during the window.** A deploy keeps the cutover parameters, and prod's release leaves the task count alone while the cache phase is `both`, but a deploy mid-window still rolls the service and muddies the walk. Hold merges to `main` (app-dev) or don't publish a release (prod) until Verify passes.
 - [ ] Note the service's current desired count (`cache status` → `service.desired`; app-dev runs 1, prod 2). You restore it at the end.
 
 ## 1. Provision (no downtime)
@@ -36,7 +36,7 @@ Users see the API go down here; budget about 15 minutes.
 1. **Drain.** `portalops jobs status --env app-dev`, repeated, until `byStatus` has no `active` count. Queued (`pending`) rows are fine: re-dispatch carries them over. Pick a quiet moment, since a long import or sync keeps a row `active` until it finishes.
 2. **Stop the service.** `portalops service scale 0 --env app-dev --yes`. It refuses while any job is `active`. `--allow-active` overrides that, and those jobs then re-run from the start through re-dispatch: safe for every job type, but a `bulk_transform` whose source is also its target can apply its expression twice, so prefer waiting.
 3. **Switch.** `portalops cache switch encrypted --env app-dev --yes`. It points `REDIS_URL` at `rediss://<tls endpoint>` and holds the service at 0.
-4. **Re-dispatch.** `portalops jobs redispatch --env app-dev --yes`. It runs as an ECS one-off on the new task definition, so it talks to the new Redis. Its summary is the last line of the task's CloudWatch log (`/ecs/portalai-api-<env>`): `redispatched` lists every row it re-queued, and `priorStatus: "active"` marks one the scale-down interrupted. Re-running it is safe: a row already queued is skipped.
+4. **Re-dispatch.** `portalops jobs redispatch --env app-dev --yes --json`. It runs as an ECS one-off on the new task definition, so it talks to the new Redis. Its `summary` lists every row it re-queued under `redispatched`, and `priorStatus: "active"` marks one the scale-down interrupted. The summary is read back from the task's CloudWatch stream; if that read fails it's `null`, and the stream named in `log` holds it. A re-queued row keeps what is left of its retry budget. Re-running is safe: a row already queued is skipped.
 5. **Start the service.** `portalops service scale <prior count> --env app-dev --yes`.
 
 ## 3. Verify
@@ -71,7 +71,7 @@ portalops jobs redispatch --env app-dev --yes
 portalops service scale <prior count> --env app-dev --yes
 ```
 
-Re-dispatch carries over the rows queued on the encrypted cache too. A failed `cache phase both` needs no rollback: CloudFormation reverts the stack itself.
+Re-dispatch carries over the rows queued on the encrypted cache too. Entries for jobs that finished on the encrypted cache are still sitting in the legacy queue; the worker skips any entry whose row is already terminal, so they don't run again. A failed `cache phase both` needs no rollback: CloudFormation reverts the stack itself.
 
 ## 4. Retire the legacy cache
 
