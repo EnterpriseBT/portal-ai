@@ -9,7 +9,7 @@
  * which is what this gate makes possible.
  *
  * Ephemeral phase artifacts are exempt (#419). `docs/*.{discovery,spec,plan,
- * smoke,condensed}.md` are per-ticket working files that the next feature
+ * smoke,adversarial,condensed}.md` are per-ticket working files that the next feature
  * ticket sweeps, so a comment citing one goes stale *by design* — and that is
  * acceptable, because the ticket, branch and doc are all recoverable from git
  * history (`git log --diff-filter=D -- docs/`). Gating on them would mean
@@ -37,7 +37,7 @@ const POINTER = /docs\/[A-Za-z0-9_.,{}-]+\.md/g;
  * signal: a durable reference carries none, so `docs/CLI_OPERATIONS_CHARTER.md`
  * stays gated while `docs/ANY_TICKET.plan.md` does not.
  */
-const EPHEMERAL = /\.(discovery|spec|plan|smoke|condensed)\.md$/;
+const EPHEMERAL = /\.(discovery|spec|plan|smoke|adversarial|condensed)\.md$/;
 
 /**
  * Expand a single brace group — `phase-{B,C}.plan.md` becomes two candidates.
@@ -108,7 +108,7 @@ console.error(
   "\nFix each site: repoint it at the surviving doc, inline the rationale it was standing in for,\n" +
     "or drop the pointer when the surrounding prose already stands on its own.\n" +
     "Only unsuffixed durable docs are gated — phase artifacts\n" +
-    "(.discovery/.spec/.plan/.smoke/.condensed) are exempt, so a citation of one is never\n" +
+    "(.discovery/.spec/.plan/.smoke/.adversarial/.condensed) are exempt, so a citation of one is never\n" +
     "the cause of this failure."
 );
 process.exit(1);

@@ -61,11 +61,15 @@ If a branch by that name already exists locally or remotely, stop and ask the us
 Phase docs are per-ticket working artifacts, not a library (`CLAUDE.md` → "Issue → PR Workflow"). A feature starts by clearing the ones prior tickets left behind, so `docs/` never accumulates:
 
 ```bash
-git rm -q docs/*.discovery.md docs/*.spec.md docs/*.plan.md docs/*.smoke.md docs/*.condensed.md 2>/dev/null || true
+# One rm per suffix: a single `git rm` with a glob that matches nothing aborts
+# the whole command, leaving every other spent doc in place.
+for s in discovery spec plan smoke adversarial condensed; do
+  ls docs/*.$s.md >/dev/null 2>&1 && git rm -q docs/*.$s.md
+done
 git status --short docs/
 ```
 
-The glob is the whole rule — an **unsuffixed** doc is a durable reference (charter, integration contract, runbook, `LOCAL_DEVELOPMENT.md`) and is never swept. Commit the sweep on its own (`chore: sweep spent phase docs (#<N>)`) before the discovery doc lands, so the deletion is one reviewable commit rather than noise in the design diff.
+The suffix list is the whole rule: the six suffixes the ticket process produces (`.discovery`, `.spec`, `.plan`, `.smoke`, `.adversarial`, `.condensed`). A phase that starts writing a new suffixed doc adds it here, to `EPHEMERAL` in `scripts/check-doc-pointers.mjs`, and to `CLAUDE.md`. — an **unsuffixed** doc is a durable reference (charter, integration contract, runbook, `LOCAL_DEVELOPMENT.md`) and is never swept. Commit the sweep on its own (`chore: sweep spent phase docs (#<N>)`) before the discovery doc lands, so the deletion is one reviewable commit rather than noise in the design diff.
 
 Nothing is lost — `git log --diff-filter=D -- docs/` finds any swept doc and `git show <sha>:<path>` reads it, with the ticket and branch carrying the context. Do **not** hunt down source comments that cited a swept doc; a stale `docs/` citation is acceptable by design and `lint:doc-pointers` exempts these suffixes.
 
