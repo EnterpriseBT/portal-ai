@@ -64,7 +64,7 @@ The integration suite runs as **N shards behind one required check**, at about 3
 
 #### Turborepo remote caching (#454)
 
-Every turbo invocation in CI reads and writes a shared **Vercel Remote Cache**, so a suite skips work an earlier run already did. Measured on the implementing branch: Static Checks 3.8m → 1.6m, Unit Tests 5–7m → 1.1m, Integration Tests 6.4m → 1.5m, with the remaining time dominated by `npm ci` rather than by builds.
+Every turbo invocation in CI reads and writes a shared **Vercel Remote Cache**, so a suite skips work an earlier run already did. Measured on the implementing branch: Static Checks 3.8m → 1.6m, Unit Tests 5–7m → 1.1m, Integration Tests 6.4m → 1.5m, with the remaining time dominated by `npm ci` rather than by builds. Since #857 the shared setup action (`.github/actions/setup`) restores `node_modules` itself from an exact-key cache: OS, arch, Node major, and the lockfile + every `package.json`, with no restore-keys, so a hit is always the tree that lockfile installs. That took setup from ~65s to ~8s per job. Any dependency change misses and runs `npm ci` as before.
 
 The wiring is **guarded, not documented-and-hoped**: `npm run lint:ci-cache` (`scripts/check-ci-cache.mjs`, run in `unit-test.yml`) fails the build on six rules, and self-tests those rules against embedded fixtures before checking the real tree. It exists because every failure mode here is silent:
 
