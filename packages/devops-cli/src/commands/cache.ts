@@ -14,16 +14,18 @@
  * docs/REDIS_ENCRYPTION_CUTOVER.runbook.md.
  */
 
+import { randomUUID } from "node:crypto";
+
 import {
   CloudFormationClient,
   CreateChangeSetCommand,
   DeleteChangeSetCommand,
   DescribeChangeSetCommand,
+  DescribeStackEventsCommand,
   DescribeStacksCommand,
   ExecuteChangeSetCommand,
   UpdateStackCommand,
   waitUntilChangeSetCreateComplete,
-  waitUntilStackUpdateComplete,
 } from "@aws-sdk/client-cloudformation";
 import {
   DescribeCacheClustersCommand,
@@ -105,6 +107,101 @@ export async function readStackParams(
   );
 }
 
+/** Poll interval for stack operations; tests swap `sleep` out. */
+export const stackTiming = {
+  pollMs: 15_000,
+  sleep: (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms)),
+};
+
+/** A token that tags one stack operation's events (#864). */
+const operationToken = () => `portalops-${randomUUID()}`;
+
+const STACK_FAILED = new Set([
+  "UPDATE_ROLLBACK_COMPLETE",
+  "UPDATE_ROLLBACK_FAILED",
+  "UPDATE_FAILED",
+  "ROLLBACK_COMPLETE",
+  "ROLLBACK_FAILED",
+]);
+
+/**
+ * Wait for the stack operation started with `token` to finish (#864).
+ *
+ * It reads the stack's events for the stack-level event that carries this
+ * operation's ClientRequestToken, so neither another operation (a deploy
+ * that lands meanwhile) nor the stack's previous status can be taken for
+ * this one. Until this operation's first event appears, an executed change
+ * set is checked directly, so a failure before the update starts
+ * (EXECUTE_FAILED, OBSOLETE) is reported at once; a successful execute
+ * removes the change set, which is not an error. A missing stack fails at
+ * once. Succeeds only on UPDATE_COMPLETE.
+ */
+export async function waitForStackOperation(
+  client: CloudFormationClient,
+  stack: string,
+  token: string,
+  opts: { changeSetName?: string } = {}
+): Promise<void> {
+  const deadline = Date.now() + STACK_WAIT_MAX_SECONDS * 1000;
+  for (;;) {
+    let events;
+    try {
+      events =
+        (
+          await client.send(
+            new DescribeStackEventsCommand({ StackName: stack })
+          )
+        ).StackEvents ?? [];
+    } catch (err) {
+      throw new EnvInfraError(
+        `Reading ${stack}'s events failed: ${(err as Error).message}`,
+        { cause: err }
+      );
+    }
+    const mine = events.find(
+      (e) =>
+        e.ClientRequestToken === token &&
+        e.LogicalResourceId === stack &&
+        e.ResourceType === "AWS::CloudFormation::Stack"
+    );
+    const status = mine?.ResourceStatus ?? "";
+    if (status === "UPDATE_COMPLETE") return;
+    if (STACK_FAILED.has(status)) {
+      throw new EnvInfraError(
+        `${stack} ended ${status}${mine?.ResourceStatusReason ? `: ${mine.ResourceStatusReason}` : ""}`
+      );
+    }
+    if (!mine && opts.changeSetName) {
+      try {
+        const cs = await client.send(
+          new DescribeChangeSetCommand({
+            StackName: stack,
+            ChangeSetName: opts.changeSetName,
+          })
+        );
+        if (
+          cs.ExecutionStatus === "EXECUTE_FAILED" ||
+          cs.ExecutionStatus === "OBSOLETE"
+        ) {
+          throw new EnvInfraError(
+            `${stack}: the change set ended ${cs.ExecutionStatus} before the update started${cs.StatusReason ? `: ${cs.StatusReason}` : ""}`
+          );
+        }
+      } catch (err) {
+        if (err instanceof EnvInfraError) throw err;
+        // Removed: CloudFormation drops change sets once one executes.
+      }
+    }
+    if (Date.now() > deadline) {
+      throw new EnvInfraError(
+        `${stack}: ${status ? `still ${status}` : "no sign of the update"} after ${STACK_WAIT_MAX_SECONDS}s`
+      );
+    }
+    await stackTiming.sleep(stackTiming.pollMs);
+  }
+}
+
 /**
  * UpdateStack on the deployed template, changing only `overrides`. Every
  * other parameter is sent as UsePreviousValue, read from the stack itself
@@ -131,10 +228,12 @@ export async function updateStackParams(
   }
 
   const client = cfn(def);
+  const token = operationToken();
   try {
     await client.send(
       new UpdateStackCommand({
         StackName: name,
+        ClientRequestToken: token,
         UsePreviousTemplate: true,
         Parameters: Object.keys(current).map((key) =>
           key in overrides
@@ -158,17 +257,7 @@ export async function updateStackParams(
     );
   }
 
-  try {
-    await waitUntilStackUpdateComplete(
-      { client, maxWaitTime: STACK_WAIT_MAX_SECONDS },
-      { StackName: name }
-    );
-  } catch (err) {
-    throw new EnvInfraError(
-      `${name} did not reach UPDATE_COMPLETE — check its events in the CloudFormation console (${(err as Error).message})`,
-      { cause: err }
-    );
-  }
+  await waitForStackOperation(client, name, token);
   return { changed: true };
 }
 
@@ -432,7 +521,6 @@ export interface ResourceChange {
 export interface RefreshTemplateDeps {
   readTemplate: typeof readRepoTemplate;
   gitState: typeof repoGitState;
-  sleep: (ms: number) => Promise<void>;
 }
 
 /**
@@ -458,8 +546,9 @@ export interface RefreshTemplateDeps {
  *   resource removal or replacement counts as destructive (refused on prod).
  *   No resource changes means already current, or a refusal naming
  *   `--phase both`;
- * - it executes that change set and waits for the stack update to finish
- *   (on the stack: CloudFormation removes executed change sets, #864); the
+ * - it executes that change set and waits for the stack events tagged with
+ *   its ClientRequestToken (CloudFormation removes executed change sets,
+ *   #864); the
  *   change set is deleted on every path that doesn't execute it;
  * - the audit line records the template, the commit and the phase.
  * `cache phase`/`switch` stay parameter-only on the deployed template.
@@ -470,7 +559,6 @@ export async function cacheRefreshTemplate(
   deps: RefreshTemplateDeps = {
     readTemplate: readRepoTemplate,
     gitState: repoGitState,
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   }
 ): Promise<{
   stack: string;
@@ -620,14 +708,11 @@ export async function cacheRefreshTemplate(
       guard(true);
     }
 
-    // Read before executing: the stack's last update, so the wait below can
-    // tell this update's UPDATE_COMPLETE from the previous one's.
-    const before = (
-      await client.send(new DescribeStacksCommand({ StackName: stack }))
-    ).Stacks?.[0]?.LastUpdatedTime?.getTime();
-
+    const token = operationToken();
     try {
-      await client.send(new ExecuteChangeSetCommand(ids));
+      await client.send(
+        new ExecuteChangeSetCommand({ ...ids, ClientRequestToken: token })
+      );
       executed = true;
     } catch (err) {
       throw new EnvInfraError(
@@ -635,33 +720,9 @@ export async function cacheRefreshTemplate(
         { cause: err }
       );
     }
-
-    // Wait on the stack, not the change set: CloudFormation removes a stack's
-    // change sets once one executes (#864). ExecuteChangeSet is asynchronous,
-    // so the update counts as finished only once LastUpdatedTime has moved
-    // past `before` and the status has settled.
-    const deadline = Date.now() + STACK_WAIT_MAX_SECONDS * 1000;
-    for (;;) {
-      const now = (
-        await client.send(new DescribeStacksCommand({ StackName: stack }))
-      ).Stacks?.[0];
-      const status = now?.StackStatus ?? "";
-      const started =
-        now?.LastUpdatedTime !== undefined &&
-        now.LastUpdatedTime.getTime() !== before;
-      if (started && !status.endsWith("_IN_PROGRESS")) {
-        if (status === "UPDATE_COMPLETE") break;
-        throw new EnvInfraError(
-          `${stack} ended ${status} — check its events in the CloudFormation console`
-        );
-      }
-      if (Date.now() > deadline) {
-        throw new EnvInfraError(
-          `${stack}: still ${status || "unknown"} after ${STACK_WAIT_MAX_SECONDS}s`
-        );
-      }
-      await deps.sleep(15_000);
-    }
+    await waitForStackOperation(client, stack, token, {
+      changeSetName,
+    });
 
     await recordAudit({
       env: def.name,

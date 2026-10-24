@@ -16,21 +16,30 @@ Package: `packages/devops-cli`.
 | The wait | `packages/devops-cli/src/commands/cache.ts` `cacheRefreshTemplate` | polled `DescribeChangeSet` → `ExecutionStatus` after execute |
 | The fake | `packages/devops-cli/src/__tests__/cache.test.ts` | kept the change set after execute, unlike CloudFormation |
 
-## Decision — wait on the stack
+## Decision — wait on this operation's own stack events
 
-- **A. The SDK's `waitUntilStackUpdateComplete`.** Its first poll can see the *previous* `UPDATE_COMPLETE`, because the asynchronous execute may not have started the update yet. That's the false success #863's review flagged.
-- **B. Poll `DescribeStacks` against a baseline.** Record `LastUpdatedTime` before executing, then treat the update as finished only once `LastUpdatedTime` has moved past it and the status no longer ends in `_IN_PROGRESS`. Succeed only on `UPDATE_COMPLETE`; any other settled status (rollback, failure) is an error that names it, and nothing is audited.
+- **A. The SDK's `waitUntilStackUpdateComplete`.** Its first poll can see the *previous* `UPDATE_COMPLETE`, because the asynchronous execute may not have started the update yet.
+- **B. A `LastUpdatedTime` baseline** (this PR's first version). The code review found three holes:
+  - an execution that fails before the update starts never moves the time, so it hangs for an hour;
+  - another update landing meanwhile (a deploy) is taken for this one;
+  - a missing stack spins until the deadline.
+- **C. Tag the operation with a `ClientRequestToken`, and wait on the stack-level event that carries it.**
+  - It succeeds only on `UPDATE_COMPLETE`, and fails on a rollback or failure, naming the status and CloudFormation's reason.
+  - Until the operation's first event appears, it reads the executed change set, so `EXECUTE_FAILED`/`OBSOLETE` fail at once. Its removal after a successful execute is expected.
+  - A missing stack fails at once.
 
-**Chosen: B.** It's correct whether the update has started yet or not, and it reads only the stack, which outlives the change set.
+**Chosen: C**, in one shared `waitForStackOperation`. `updateStackParams` (`cache phase`/`switch`, `service scale`) tags its `UpdateStack` and uses the same wait, replacing the SDK waiter.
 
 ## Plan — 1 slice
 
-**Files:** edit `packages/devops-cli/src/commands/cache.ts` (the wait) and `packages/devops-cli/src/__tests__/cache.test.ts`. The fake now removes change sets on execute and plays a stack-status timeline through `DescribeStacks`.
+**Files:** edit `packages/devops-cli/src/commands/cache.ts` (`waitForStackOperation`, `stackTiming`, tokens on `UpdateStack`/`ExecuteChangeSet`) and `packages/devops-cli/src/__tests__/cache.test.ts`. The fake keys stack events by token; a successful execute removes the change set, and a failed one leaves it `EXECUTE_FAILED`.
 
 **Tests** (`npm run test:unit` in `packages/devops-cli`):
-- success through `UPDATE_IN_PROGRESS` → `UPDATE_COMPLETE`, audited;
-- a stale first `UPDATE_COMPLETE` (the update not started) isn't taken for this update's;
-- `UPDATE_ROLLBACK_COMPLETE` fails, unaudited.
+- success on this operation's token, audited;
+- another operation's `UPDATE_COMPLETE` is ignored;
+- a rollback fails, unaudited, naming the status and reason;
+- an execution that fails before the update starts fails fast;
+- the phase, switch and scale tests now wait on their own token.
 
 ## Smoke (manual)
 
