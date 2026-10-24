@@ -52,8 +52,11 @@ const aws = {
     ParameterValue?: string;
     UsePreviousValue?: boolean;
   }>,
-  executionStatus: "EXECUTE_COMPLETE",
   executeError: "",
+  stackStatus: "UPDATE_COMPLETE",
+  stackUpdated: 1_000,
+  /** What the stack reports on each read after an execute. */
+  afterExecute: [] as Array<{ status: string; updated: number }>,
 };
 const NO_CHANGES =
   "The submitted information didn't contain changes. Submit different information to create a change set.";
@@ -70,10 +73,21 @@ const cfnSend = jest.fn(async (cmd: Cmd) => {
   if (name === "DescribeStacksCommand") {
     const params = aws.stacks[stackName];
     if (!params) throw new Error(`Stack ${stackName} does not exist`);
+    // After an execute, each read advances the stack along its timeline.
+    const executedNow = aws.changeSetCalls.some((c) =>
+      c.startsWith("execute:")
+    );
+    if (executedNow && aws.afterExecute.length) {
+      const next = aws.afterExecute.shift()!;
+      aws.stackStatus = next.status;
+      aws.stackUpdated = next.updated;
+    }
     return {
       Stacks: [
         {
           StackName: stackName,
+          StackStatus: aws.stackStatus,
+          LastUpdatedTime: new Date(aws.stackUpdated),
           Parameters: Object.entries(params).map(([k, v]) => ({
             ParameterKey: k,
             ParameterValue: v,
@@ -89,12 +103,19 @@ const cfnSend = jest.fn(async (cmd: Cmd) => {
     return { Id: "cs-1" };
   }
   if (name === "DescribeChangeSetCommand") {
-    const executed = aws.changeSetCalls.some((c) => c.startsWith("execute:"));
+    // As in CloudFormation, executing a change set removes the stack's
+    // change sets (#864).
+    if (aws.changeSetCalls.some((c) => c.startsWith("execute:"))) {
+      const e = new Error(
+        `ChangeSet [${cmd.input.ChangeSetName}] does not exist`
+      );
+      e.name = "ChangeSetNotFoundException";
+      throw e;
+    }
     return {
       Status: aws.changeSet.status,
       StatusReason: aws.changeSet.reason,
       Changes: aws.changeSet.changes,
-      ExecutionStatus: executed ? aws.executionStatus : "AVAILABLE",
     };
   }
   if (name === "ExecuteChangeSetCommand") {
@@ -240,7 +261,12 @@ beforeEach(() => {
   aws.changeSetCalls = [];
   aws.executedParameters = null;
   aws.lastChangeSetParameters = [];
-  aws.executionStatus = "EXECUTE_COMPLETE";
+  aws.stackStatus = "UPDATE_COMPLETE";
+  aws.stackUpdated = 1_000;
+  aws.afterExecute = [
+    { status: "UPDATE_IN_PROGRESS", updated: 2_000 },
+    { status: "UPDATE_COMPLETE", updated: 2_000 },
+  ];
   aws.executeError = "";
   countActive.mockReset().mockResolvedValue(0);
   cfnSend.mockClear();
@@ -632,7 +658,7 @@ describe("cacheRefreshTemplate (#861)", () => {
         expect.stringMatching(/^execute:portalops-refresh-/),
       ]);
       expect(aws.updates).toEqual([]);
-      expect(stackWait).toHaveBeenCalled();
+      expect(aws.stackStatus).toBe("UPDATE_COMPLETE");
       expect(out).toMatchObject({
         changed: true,
         phase: "both",
@@ -696,12 +722,44 @@ describe("cacheRefreshTemplate (#861)", () => {
       expect(aws.changeSetCalls).toEqual(["create", "delete"]);
     });
 
-    it("waits on the executed change set, and fails when its execution fails", async () => {
+    it("waits for the stack itself to finish, not the change set CloudFormation removes on execute (#864)", async () => {
       addsGroup();
-      aws.executionStatus = "EXECUTE_FAILED";
+      const sleep = jest.fn(async () => {});
+      const out = await cacheRefreshTemplate(
+        appDev,
+        { yes: true, phase: "both" },
+        { ...deps(), sleep }
+      );
+      expect(out.changed).toBe(true);
+      expect(sleep).toHaveBeenCalled();
+      expect(mocks.recordAudit).toHaveBeenCalled();
+    });
+
+    it("doesn't take the stack's previous UPDATE_COMPLETE for this update's", async () => {
+      addsGroup();
+      aws.afterExecute = [
+        { status: "UPDATE_COMPLETE", updated: 1_000 }, // not started yet
+        { status: "UPDATE_IN_PROGRESS", updated: 2_000 },
+        { status: "UPDATE_COMPLETE", updated: 2_000 },
+      ];
+      const sleep = jest.fn(async () => {});
+      await cacheRefreshTemplate(
+        appDev,
+        { yes: true, phase: "both" },
+        { ...deps(), sleep }
+      );
+      expect(sleep).toHaveBeenCalledTimes(2);
+    });
+
+    it("fails, unaudited, when the update rolls back", async () => {
+      addsGroup();
+      aws.afterExecute = [
+        { status: "UPDATE_IN_PROGRESS", updated: 2_000 },
+        { status: "UPDATE_ROLLBACK_COMPLETE", updated: 2_000 },
+      ];
       await expect(
         cacheRefreshTemplate(appDev, { yes: true, phase: "both" }, deps())
-      ).rejects.toThrow(/EXECUTE_FAILED/);
+      ).rejects.toThrow(/UPDATE_ROLLBACK_COMPLETE/);
       expect(mocks.recordAudit).not.toHaveBeenCalled();
     });
 

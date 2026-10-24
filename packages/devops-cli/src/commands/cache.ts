@@ -458,7 +458,8 @@ export interface RefreshTemplateDeps {
  *   resource removal or replacement counts as destructive (refused on prod).
  *   No resource changes means already current, or a refusal naming
  *   `--phase both`;
- * - it executes that change set and waits for its execution to finish; the
+ * - it executes that change set and waits for the stack update to finish
+ *   (on the stack: CloudFormation removes executed change sets, #864); the
  *   change set is deleted on every path that doesn't execute it;
  * - the audit line records the template, the commit and the phase.
  * `cache phase`/`switch` stay parameter-only on the deployed template.
@@ -619,6 +620,12 @@ export async function cacheRefreshTemplate(
       guard(true);
     }
 
+    // Read before executing: the stack's last update, so the wait below can
+    // tell this update's UPDATE_COMPLETE from the previous one's.
+    const before = (
+      await client.send(new DescribeStacksCommand({ StackName: stack }))
+    ).Stacks?.[0]?.LastUpdatedTime?.getTime();
+
     try {
       await client.send(new ExecuteChangeSetCommand(ids));
       executed = true;
@@ -629,33 +636,32 @@ export async function cacheRefreshTemplate(
       );
     }
 
-    // ExecuteChangeSet is asynchronous: wait for this change set's own
-    // execution, not the stack's (possibly still previous) status.
+    // Wait on the stack, not the change set: CloudFormation removes a stack's
+    // change sets once one executes (#864). ExecuteChangeSet is asynchronous,
+    // so the update counts as finished only once LastUpdatedTime has moved
+    // past `before` and the status has settled.
     const deadline = Date.now() + STACK_WAIT_MAX_SECONDS * 1000;
     for (;;) {
-      const { ExecutionStatus } = await client.send(
-        new DescribeChangeSetCommand(ids)
-      );
-      if (ExecutionStatus === "EXECUTE_COMPLETE") break;
-      if (
-        ExecutionStatus === "EXECUTE_FAILED" ||
-        ExecutionStatus === "OBSOLETE"
-      ) {
+      const now = (
+        await client.send(new DescribeStacksCommand({ StackName: stack }))
+      ).Stacks?.[0];
+      const status = now?.StackStatus ?? "";
+      const started =
+        now?.LastUpdatedTime !== undefined &&
+        now.LastUpdatedTime.getTime() !== before;
+      if (started && !status.endsWith("_IN_PROGRESS")) {
+        if (status === "UPDATE_COMPLETE") break;
         throw new EnvInfraError(
-          `${stack}: the change set ended ${ExecutionStatus} — check the stack's events in the CloudFormation console`
+          `${stack} ended ${status} — check its events in the CloudFormation console`
         );
       }
       if (Date.now() > deadline) {
         throw new EnvInfraError(
-          `${stack}: still ${ExecutionStatus} after ${STACK_WAIT_MAX_SECONDS}s`
+          `${stack}: still ${status || "unknown"} after ${STACK_WAIT_MAX_SECONDS}s`
         );
       }
       await deps.sleep(15_000);
     }
-    await waitUntilStackUpdateComplete(
-      { client, maxWaitTime: STACK_WAIT_MAX_SECONDS },
-      { StackName: stack }
-    );
 
     await recordAudit({
       env: def.name,
