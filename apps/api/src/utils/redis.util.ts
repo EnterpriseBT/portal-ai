@@ -41,6 +41,54 @@ export const redisConnection = (): RedisConnection => {
   };
 };
 
+/**
+ * One bounded check that Redis answers (#867). Every long-lived client
+ * retries its connection forever (BullMQ needs `maxRetriesPerRequest: null`),
+ * which is right for the API and wrong for a one-shot script: given a bad CA
+ * or endpoint, `jobs redispatch` sat retrying until it was killed. This
+ * client makes one attempt, never retries, and gives up after `timeoutMs`,
+ * so the script can fail with the cause instead. The error never carries the
+ * URL, which can hold credentials.
+ */
+export const assertRedisReachable = async ({
+  connection = redisConnection(),
+  timeoutMs = 10_000,
+}: {
+  connection?: RedisConnection;
+  timeoutMs?: number;
+} = {}): Promise<void> => {
+  const { url, ...options } = connection;
+  const probe = new Redis(url, {
+    ...options,
+    lazyConnect: true,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 0,
+    retryStrategy: () => null,
+    connectTimeout: timeoutMs,
+  });
+  // The failure reaches us through connect()'s rejection; without a listener
+  // ioredis would also report it as an unhandled error event.
+  let lastError: Error | undefined;
+  probe.on("error", (err: Error) => (lastError = err));
+
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`no answer within ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+  try {
+    await Promise.race([probe.connect().then(() => probe.ping()), deadline]);
+  } catch (err) {
+    const cause = lastError ?? (err as Error);
+    throw new Error(`Redis unreachable: ${cause.message}`, { cause });
+  } finally {
+    clearTimeout(timer);
+    probe.disconnect();
+  }
+};
+
 export const getRedisClient = (): Redis => {
   if (!redisClient) {
     const { url, ...options } = redisConnection();
