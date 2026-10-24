@@ -7,7 +7,8 @@
  */
 
 import { drizzle } from "drizzle-orm/postgres-js";
-import { sql } from "drizzle-orm";
+import postgres from "postgres";
+import { getTableName, sql } from "drizzle-orm";
 import { UUIDv4Factory } from "@portalai/core/utils";
 import {
   PermissionStatementModelFactory,
@@ -320,84 +321,147 @@ export async function allowForUser(
  * Deletes from child tables first to respect foreign key constraints.
  * Includes all tables that reference users or organizations.
  */
-/** The teardown's lock wait budget (#850): well inside Jest's 60s hook timeout. */
-const TEARDOWN_LOCK_TIMEOUT_MS = 15_000;
+/** How long one delete may wait for a lock (#850). */
+const TEARDOWN_LOCK_TIMEOUT_MS = 10_000;
+/** The whole teardown's budget, well inside Jest's 60s hook timeout: waits
+ *  that each stay under the lock timeout can't add up past it. */
+const TEARDOWN_BUDGET_MS = 40_000;
+
+/** Tables cleared before the audit log, children before parents. #599:
+ *  curated-view tables are leaf-most (FK → curated_views, stations,
+ *  connector_entities, field_mappings, organizations). */
+const BEFORE_AUDIT = [
+  stationViews,
+  curatedViewFieldMappings,
+  curatedViews,
+  stationToolpacks,
+  organizationToolpacks,
+  stationInstances,
+  portalResults,
+  portalMessages,
+  portals,
+  stations,
+  entityGroupMembers,
+  entityGroups,
+  entityTagAssignments,
+  entityTags,
+  entityRecords,
+  wideTableColumns,
+  fieldMappings,
+  apiEndpointConfigs,
+  connectorEntities,
+  columnDefinitions,
+  jobs,
+  fileUploads,
+  connectorInstanceLayoutPlans,
+  connectorInstances,
+  connectorDefinitions,
+  usage,
+  toolUsageLedger,
+] as const;
+/** Cleared after the audit log. #584: invitations FK organizations + users.
+ *  #598/#622: the RBAC rows FK organizations, and user_group → groups → org,
+ *  so memberships drain first. */
+const AFTER_AUDIT = [
+  invitations,
+  userGroup,
+  groups,
+  userRole,
+  permissionGrants,
+  permissionStatements,
+  policyAttachments,
+  permissionPolicies,
+  roles,
+  organizationUsers,
+  organizations,
+  users,
+] as const;
 
 /**
  * Clear every row the integration suites write, children before parents.
  *
- * One transaction, with a `lock_timeout` (#850). A suite's `beforeEach` once
- * sat past the 60s hook timeout here in CI with nothing in the log saying
- * why; deleting 10,002 rows takes ~36ms, so the time was a wait on a lock.
- * Now a blocked teardown fails inside the hook budget and names the sessions
- * holding locks, so the next occurrence carries its cause.
+ * Each delete autocommits, so teardown never holds a lock past its own
+ * statement. A suite's `beforeEach` once sat past the 60s hook timeout here in
+ * CI with nothing in the log saying why (#850); deleting 10,002 rows takes
+ * ~36ms, so the time was a wait on a lock. So every delete runs under a
+ * `lock_timeout`, the whole teardown under a budget, and a delete that waits
+ * has its blockers read with `pg_blocking_pids()` from a separate connection
+ * while it waits. A blocked teardown fails inside the hook budget, naming the
+ * table it waited on and the session that held it.
  */
 export async function teardownOrg(
   db: Db,
-  opts: { lockTimeoutMs?: number } = {}
+  opts: { lockTimeoutMs?: number; budgetMs?: number } = {}
 ): Promise<void> {
-  const lockTimeoutMs = opts.lockTimeoutMs ?? TEARDOWN_LOCK_TIMEOUT_MS;
-  try {
-    await db.transaction(async (tx) => {
-      await tx.execute(
-        sql.raw(`SET LOCAL lock_timeout = ${Math.floor(lockTimeoutMs)}`)
+  const lockTimeoutMs = Math.max(
+    1,
+    Math.floor(opts.lockTimeoutMs ?? TEARDOWN_LOCK_TIMEOUT_MS)
+  );
+  const budgetMs = opts.budgetMs ?? TEARDOWN_BUDGET_MS;
+  const started = Date.now();
+  const [{ pid }] = (await db.execute(
+    sql`SELECT pg_backend_pid() AS pid`
+  )) as unknown as Array<{ pid: number }>;
+  const previous = (
+    (await db.execute(sql`SHOW lock_timeout`)) as unknown as Array<{
+      lock_timeout: string;
+    }>
+  )[0]!.lock_timeout;
+  await db.execute(
+    sql`SELECT set_config('lock_timeout', ${String(lockTimeoutMs)}, false)`
+  );
+
+  const step = async (label: string, run: () => Promise<unknown>) => {
+    if (Date.now() - started > budgetMs) {
+      throw new Error(
+        `teardownOrg passed its ${budgetMs}ms budget before clearing ${label} (#850)`
       );
-      // #599: curated-view tables are leaf-most (FK → curated_views, stations,
-      // connector_entities, field_mappings, organizations) — drain before the
-      // rows they reference.
-      await tx.delete(stationViews);
-      await tx.delete(curatedViewFieldMappings);
-      await tx.delete(curatedViews);
-      await tx.delete(stationToolpacks);
-      await tx.delete(organizationToolpacks);
-      await tx.delete(stationInstances);
-      await tx.delete(portalResults);
-      await tx.delete(portalMessages);
-      await tx.delete(portals);
-      await tx.delete(stations);
-      await tx.delete(entityGroupMembers);
-      await tx.delete(entityGroups);
-      await tx.delete(entityTagAssignments);
-      await tx.delete(entityTags);
-      await tx.delete(entityRecords);
-      await tx.delete(wideTableColumns);
-      await tx.delete(fieldMappings);
-      await tx.delete(apiEndpointConfigs);
-      await tx.delete(connectorEntities);
-      await tx.delete(columnDefinitions);
-      await tx.delete(jobs);
-      await tx.delete(fileUploads);
-      await tx.delete(connectorInstanceLayoutPlans);
-      await tx.delete(connectorInstances);
-      await tx.delete(connectorDefinitions);
-      await tx.delete(usage);
-      await tx.delete(toolUsageLedger);
-      // #575: audit_log FK-references organizations and its append-only trigger
-      // blocks a plain DELETE — purge it (flagged) before the org rows it points at.
-      await tx.execute(sql`SET LOCAL app.audit_retention_purge = 'on'`);
-      await tx.delete(auditLog);
-      await tx.delete(invitations); // #584: FK → organizations + users
-      // #598: RBAC engine — statements/attachments FK policies + organizations;
-      // policies + roles + groups FK organizations. Delete before the org rows they
-      // point at (#622: user_group → groups → org, so drain memberships first).
-      await tx.delete(userGroup);
-      await tx.delete(groups);
-      await tx.delete(userRole);
-      await tx.delete(permissionGrants);
-      await tx.delete(permissionStatements);
-      await tx.delete(policyAttachments);
-      await tx.delete(permissionPolicies);
-      await tx.delete(roles);
-      await tx.delete(organizationUsers);
-      await tx.delete(organizations);
-      await tx.delete(users);
-    });
-  } catch (err) {
-    if (!isLockTimeout(err)) throw err;
-    throw new Error(
-      `teardownOrg waited ${lockTimeoutMs}ms for a lock (#850). Sessions holding locks:\n` +
-        (await describeLockHolders(db))
+    }
+    // Read the blockers while the delete is still waiting: once it times
+    // out, pg_blocking_pids has nothing left to report.
+    let blockers: Promise<string> | undefined;
+    const timer = setTimeout(
+      () => {
+        blockers = describeBlockers(pid);
+      },
+      Math.min(2_000, Math.ceil(lockTimeoutMs / 2))
     );
+    try {
+      await run();
+    } catch (err) {
+      if (!isLockTimeout(err)) throw err;
+      const report = blockers
+        ? await blockers
+        : "  (the blocker wasn't caught while it held the lock)";
+      throw new Error(
+        `teardownOrg waited ${lockTimeoutMs}ms for a lock clearing ${label} (#850): ` +
+          `${(err as Error).message}\nBlocked by:\n${report}`,
+        { cause: err }
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  try {
+    for (const table of BEFORE_AUDIT) {
+      await step(getTableName(table), () => db.delete(table));
+    }
+    // #575: audit_log's append-only trigger blocks a plain DELETE — purge it
+    // with the flag set, scoped to this one short transaction.
+    await step("audit_log", () =>
+      db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL app.audit_retention_purge = 'on'`);
+        await tx.delete(auditLog);
+      })
+    );
+    for (const table of AFTER_AUDIT) {
+      await step(getTableName(table), () => db.delete(table));
+    }
+  } finally {
+    await db
+      .execute(sql`SELECT set_config('lock_timeout', ${previous}, false)`)
+      .catch(() => undefined);
   }
 }
 
@@ -407,29 +471,38 @@ function isLockTimeout(err: unknown): boolean {
   return e?.code === "55P03" || e?.cause?.code === "55P03";
 }
 
-/** Every other session in this database that holds a granted relation lock:
- *  its pid, state, transaction age and current (or last) query. */
-async function describeLockHolders(db: Db): Promise<string> {
-  const rows = (await db.execute(sql`
-    SELECT a.pid, a.state, a.application_name,
-           extract(epoch FROM now() - a.xact_start)::int AS xact_seconds,
-           string_agg(DISTINCT l.relation::regclass::text || ':' || l.mode, ', ') AS locks,
-           left(a.query, 300) AS query
-    FROM pg_locks l
-    JOIN pg_stat_activity a ON a.pid = l.pid
-    WHERE l.granted AND l.relation IS NOT NULL
-      AND a.datname = current_database() AND a.pid <> pg_backend_pid()
-    GROUP BY a.pid, a.state, a.application_name, a.xact_start, a.query
-  `)) as unknown as Array<Record<string, unknown>>;
-  if (rows.length === 0)
-    return "  (none found: the holder released before this read)";
-  return rows
-    .map(
-      (r) =>
-        `  pid ${r.pid} [${r.state}${r.application_name ? `, ${r.application_name}` : ""}] ` +
-        `in a ${r.xact_seconds ?? "?"}s transaction, holding ${r.locks}; query: ${r.query}`
-    )
-    .join("\n");
+/**
+ * The sessions blocking `pid` right now, from a separate short-lived
+ * connection (the teardown's own is busy waiting). Capped, and never throws:
+ * a diagnostic must not replace the error it explains.
+ */
+async function describeBlockers(pid: number): Promise<string> {
+  const probe = postgres(process.env.DATABASE_URL!, {
+    max: 1,
+    connect_timeout: 5,
+  });
+  try {
+    const rows = await probe`
+      SELECT a.pid, a.state, a.application_name,
+             extract(epoch FROM now() - a.xact_start)::int AS xact_seconds,
+             left(a.query, 300) AS query
+      FROM pg_stat_activity a
+      WHERE a.pid = ANY(pg_blocking_pids(${pid}))
+      LIMIT 5
+    `;
+    if (rows.length === 0) return "  (no session was blocking it when checked)";
+    return rows
+      .map(
+        (r) =>
+          `  pid ${r.pid} [${r.state}${r.application_name ? `, ${r.application_name}` : ""}] ` +
+          `in a ${r.xact_seconds ?? "?"}s transaction; query: ${r.query}`
+      )
+      .join("\n");
+  } catch (err) {
+    return `  (couldn't read the blockers: ${(err as Error).message})`;
+  } finally {
+    await probe.end({ timeout: 1 }).catch(() => undefined);
+  }
 }
 
 /**

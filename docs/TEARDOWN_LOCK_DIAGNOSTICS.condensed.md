@@ -19,27 +19,34 @@ So the cause was a lock wait, seen once, under a slow runner, and it doesn't rep
 
 - **A. Raise the hook timeout.** The issue's own "last resort": it hides the next occurrence.
 - **B. Guess at the holder and change the tile service.** Nothing local implicates it; that would be a change without evidence.
-- **C. Make the wait visible.**
-  - `teardownOrg` runs as **one transaction with `SET LOCAL lock_timeout`** (15s, well inside the 60s hook).
-  - On `55P03` it rethrows an error listing **every other session holding a relation lock**: pid, state, application, transaction age, the locks, and its current or last query.
-  - Every suite uses `teardownOrg`, so every suite gets the diagnostic.
+- **C. Make the wait visible.** My first version ran the whole teardown as one transaction under `SET LOCAL lock_timeout`. The code review showed that held every teardown lock until commit, so teardown could itself become the blocker, or deadlock with leftover work. The final shape:
+  - every delete still **autocommits**, so no lock outlives its statement;
+  - a **session `lock_timeout`** (10s, set with parameterized `set_config`, clamped, restored afterwards) bounds each wait;
+  - a **budget** (40s) bounds the whole teardown, so sub-timeout waits can't add up past the hook;
+  - while a delete waits, a timer reads **`pg_blocking_pids()`** for the teardown's session from a separate short-lived connection, so the error names *the* blocker (capped at 5), not every lock holder;
+  - the rethrown error names the table it waited on, keeps the original as `cause`, and a failing diagnostic never replaces it;
+  - the audit-log purge flag stays scoped to its own two-statement transaction.
 
-**Chosen: C.** It doesn't paper over the flake, since a real wait still fails the test. The next occurrence's CI log names its cause, which is what's needed to fix it.
+  Every suite uses `teardownOrg`, so every suite gets the diagnostic.
+
+**Chosen: C.** It doesn't paper over the flake, since a real wait still fails the test. The next occurrence's CI log names its cause.
 
 ## Plan — 1 slice
 
 **Files**
-- Edit: `apps/api/src/__tests__/__integration__/utils/application.util.ts` — `teardownOrg(db, { lockTimeoutMs })` in one transaction, plus `isLockTimeout` and `describeLockHolders`.
+- Edit: `apps/api/src/__tests__/__integration__/utils/application.util.ts` — `teardownOrg(db, { lockTimeoutMs, budgetMs })` over two ordered table lists, plus `isLockTimeout` and `describeBlockers`.
 - New: `apps/api/src/__tests__/__integration__/utils/teardown-org.integration.test.ts`:
-  - clears every org;
-  - a second connection holds `ACCESS EXCLUSIVE` on `entity_records`, and `teardownOrg` fails in about 1s (not 120s) with the holder's query in the message.
+  - a seeded org, user and membership are cleared;
+  - a second connection holds `ACCESS EXCLUSIVE` on `entity_records`, and `teardownOrg` fails in about 1s (not 120s), naming `entity_records`, with the blocker's query and the original error as `cause`;
+  - the connection's `lock_timeout` is restored, even on failure;
+  - the budget bounds the whole teardown.
 
-**Tests:** `cd apps/api && npm run test:integration -- --testPathPattern utils/teardown-org`, then the full suite locally, since every suite now tears down in one transaction.
+**Tests:** `cd apps/api && npm run test:integration -- --testPathPattern utils/teardown-org`, then the full suite locally, since every suite tears down through it.
 
 ## Smoke
 
-1. CI on the PR is green, every shard included, so the one-transaction teardown changes nothing for the suites.
-2. If the flake recurs, the failing `beforeEach` fails with `teardownOrg waited 15000ms for a lock (#850)` followed by the holders, instead of `Exceeded timeout of 60000 ms for a hook`. Re-open #850 with that output.
+1. CI on the PR is green, every shard included, so the per-delete lock timeout and budget change nothing for the suites.
+2. If the flake recurs, the failing `beforeEach` fails with `teardownOrg waited 10000ms for a lock clearing <table> (#850)` followed by the blocking session, instead of `Exceeded timeout of 60000 ms for a hook`. Re-open #850 with that output.
 
 ## Out of scope
 
