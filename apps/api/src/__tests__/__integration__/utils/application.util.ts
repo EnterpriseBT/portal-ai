@@ -320,58 +320,116 @@ export async function allowForUser(
  * Deletes from child tables first to respect foreign key constraints.
  * Includes all tables that reference users or organizations.
  */
-export async function teardownOrg(db: Db): Promise<void> {
-  // #599: curated-view tables are leaf-most (FK → curated_views, stations,
-  // connector_entities, field_mappings, organizations) — drain before the
-  // rows they reference.
-  await db.delete(stationViews);
-  await db.delete(curatedViewFieldMappings);
-  await db.delete(curatedViews);
-  await db.delete(stationToolpacks);
-  await db.delete(organizationToolpacks);
-  await db.delete(stationInstances);
-  await db.delete(portalResults);
-  await db.delete(portalMessages);
-  await db.delete(portals);
-  await db.delete(stations);
-  await db.delete(entityGroupMembers);
-  await db.delete(entityGroups);
-  await db.delete(entityTagAssignments);
-  await db.delete(entityTags);
-  await db.delete(entityRecords);
-  await db.delete(wideTableColumns);
-  await db.delete(fieldMappings);
-  await db.delete(apiEndpointConfigs);
-  await db.delete(connectorEntities);
-  await db.delete(columnDefinitions);
-  await db.delete(jobs);
-  await db.delete(fileUploads);
-  await db.delete(connectorInstanceLayoutPlans);
-  await db.delete(connectorInstances);
-  await db.delete(connectorDefinitions);
-  await db.delete(usage);
-  await db.delete(toolUsageLedger);
-  // #575: audit_log FK-references organizations and its append-only trigger
-  // blocks a plain DELETE — purge it (flagged) before the org rows it points at.
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.audit_retention_purge = 'on'`);
-    await tx.delete(auditLog);
-  });
-  await db.delete(invitations); // #584: FK → organizations + users
-  // #598: RBAC engine — statements/attachments FK policies + organizations;
-  // policies + roles + groups FK organizations. Delete before the org rows they
-  // point at (#622: user_group → groups → org, so drain memberships first).
-  await db.delete(userGroup);
-  await db.delete(groups);
-  await db.delete(userRole);
-  await db.delete(permissionGrants);
-  await db.delete(permissionStatements);
-  await db.delete(policyAttachments);
-  await db.delete(permissionPolicies);
-  await db.delete(roles);
-  await db.delete(organizationUsers);
-  await db.delete(organizations);
-  await db.delete(users);
+/** The teardown's lock wait budget (#850): well inside Jest's 60s hook timeout. */
+const TEARDOWN_LOCK_TIMEOUT_MS = 15_000;
+
+/**
+ * Clear every row the integration suites write, children before parents.
+ *
+ * One transaction, with a `lock_timeout` (#850). A suite's `beforeEach` once
+ * sat past the 60s hook timeout here in CI with nothing in the log saying
+ * why; deleting 10,002 rows takes ~36ms, so the time was a wait on a lock.
+ * Now a blocked teardown fails inside the hook budget and names the sessions
+ * holding locks, so the next occurrence carries its cause.
+ */
+export async function teardownOrg(
+  db: Db,
+  opts: { lockTimeoutMs?: number } = {}
+): Promise<void> {
+  const lockTimeoutMs = opts.lockTimeoutMs ?? TEARDOWN_LOCK_TIMEOUT_MS;
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql.raw(`SET LOCAL lock_timeout = ${Math.floor(lockTimeoutMs)}`)
+      );
+      // #599: curated-view tables are leaf-most (FK → curated_views, stations,
+      // connector_entities, field_mappings, organizations) — drain before the
+      // rows they reference.
+      await tx.delete(stationViews);
+      await tx.delete(curatedViewFieldMappings);
+      await tx.delete(curatedViews);
+      await tx.delete(stationToolpacks);
+      await tx.delete(organizationToolpacks);
+      await tx.delete(stationInstances);
+      await tx.delete(portalResults);
+      await tx.delete(portalMessages);
+      await tx.delete(portals);
+      await tx.delete(stations);
+      await tx.delete(entityGroupMembers);
+      await tx.delete(entityGroups);
+      await tx.delete(entityTagAssignments);
+      await tx.delete(entityTags);
+      await tx.delete(entityRecords);
+      await tx.delete(wideTableColumns);
+      await tx.delete(fieldMappings);
+      await tx.delete(apiEndpointConfigs);
+      await tx.delete(connectorEntities);
+      await tx.delete(columnDefinitions);
+      await tx.delete(jobs);
+      await tx.delete(fileUploads);
+      await tx.delete(connectorInstanceLayoutPlans);
+      await tx.delete(connectorInstances);
+      await tx.delete(connectorDefinitions);
+      await tx.delete(usage);
+      await tx.delete(toolUsageLedger);
+      // #575: audit_log FK-references organizations and its append-only trigger
+      // blocks a plain DELETE — purge it (flagged) before the org rows it points at.
+      await tx.execute(sql`SET LOCAL app.audit_retention_purge = 'on'`);
+      await tx.delete(auditLog);
+      await tx.delete(invitations); // #584: FK → organizations + users
+      // #598: RBAC engine — statements/attachments FK policies + organizations;
+      // policies + roles + groups FK organizations. Delete before the org rows they
+      // point at (#622: user_group → groups → org, so drain memberships first).
+      await tx.delete(userGroup);
+      await tx.delete(groups);
+      await tx.delete(userRole);
+      await tx.delete(permissionGrants);
+      await tx.delete(permissionStatements);
+      await tx.delete(policyAttachments);
+      await tx.delete(permissionPolicies);
+      await tx.delete(roles);
+      await tx.delete(organizationUsers);
+      await tx.delete(organizations);
+      await tx.delete(users);
+    });
+  } catch (err) {
+    if (!isLockTimeout(err)) throw err;
+    throw new Error(
+      `teardownOrg waited ${lockTimeoutMs}ms for a lock (#850). Sessions holding locks:\n` +
+        (await describeLockHolders(db))
+    );
+  }
+}
+
+/** Postgres `lock_not_available`, however drizzle wraps it. */
+function isLockTimeout(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code === "55P03" || e?.cause?.code === "55P03";
+}
+
+/** Every other session in this database that holds a granted relation lock:
+ *  its pid, state, transaction age and current (or last) query. */
+async function describeLockHolders(db: Db): Promise<string> {
+  const rows = (await db.execute(sql`
+    SELECT a.pid, a.state, a.application_name,
+           extract(epoch FROM now() - a.xact_start)::int AS xact_seconds,
+           string_agg(DISTINCT l.relation::regclass::text || ':' || l.mode, ', ') AS locks,
+           left(a.query, 300) AS query
+    FROM pg_locks l
+    JOIN pg_stat_activity a ON a.pid = l.pid
+    WHERE l.granted AND l.relation IS NOT NULL
+      AND a.datname = current_database() AND a.pid <> pg_backend_pid()
+    GROUP BY a.pid, a.state, a.application_name, a.xact_start, a.query
+  `)) as unknown as Array<Record<string, unknown>>;
+  if (rows.length === 0)
+    return "  (none found: the holder released before this read)";
+  return rows
+    .map(
+      (r) =>
+        `  pid ${r.pid} [${r.state}${r.application_name ? `, ${r.application_name}` : ""}] ` +
+        `in a ${r.xact_seconds ?? "?"}s transaction, holding ${r.locks}; query: ${r.query}`
+    )
+    .join("\n");
 }
 
 /**
