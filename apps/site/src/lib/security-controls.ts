@@ -6,8 +6,9 @@
  * each claim rests on — a repo path and a string that must stay in it, never
  * rendered — and `security-controls.test.ts` fails when one goes, so a
  * control can't quietly disappear (or weaken) from under a public claim.
- * Widen a claim only once it holds in every environment: the cache joined
- * both encryption claims (#858) after #852's cutover reached prod.
+ * Evidence is file text, so it can't see which environment runs what. Widen
+ * a claim only after checking that it holds live in every environment (for
+ * the cache, `portalops cache status` in app-dev and prod, #858).
  */
 
 export interface SecurityControl {
@@ -228,6 +229,9 @@ export const FORBIDDEN_CLAIMS: readonly string[] = [
   "disaster recovery",
   "multi-AZ",
   "multi-region",
+  // The copy says "cache"; naming the vendor invites claims the settings
+  // don't back (customer-managed keys: the cache has no KmsKeyId).
+  "Redis",
   "military-grade",
   "per-organization rate",
 ];

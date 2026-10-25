@@ -22,7 +22,7 @@ The claims say "cache" rather than "Redis": the page describes what a customer's
 
 Evidence cites only the encrypted group's settings and the `rediss://` URL. The cleanup release removes the legacy group and the phase parameters, but not these, so nothing has to change when it lands.
 
-`Redis` leaves `FORBIDDEN_CLAIMS` as the issue asks, though the copy doesn't use the word. The privacy test that blocked "encryption in transit and at rest" stays: naming the stores is still better than a blanket claim. Its #852 rationale goes. A new pin requires privacy's at-rest list to match `/security/`'s, so the two pages can't drift apart.
+`Redis` stays in `FORBIDDEN_CLAIMS`, though the issue asked to remove it (code review on #871). The copy says "cache", and keeping the vendor name forbidden still blocks claims the settings can't back, such as customer-managed keys. The privacy test that blocked "encryption in transit and at rest" stays: naming the stores is still better than a blanket claim. Its #852 rationale goes. A new pin requires privacy's at-rest list to match `/security/`'s, so the two pages can't drift apart.
 
 The prod legacy group (`portalai-prod`, plaintext) still exists until the cleanup release, but nothing reads or writes it: the API switched, and it held only finished-job queue entries. The claim describes the cache the Service uses.
 

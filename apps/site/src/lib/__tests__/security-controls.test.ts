@@ -133,9 +133,14 @@ describe("the legal pages agree with /security/", () => {
     // The cache joined both lists together (#858); one without the other
     // would make the two pages disagree.
     const atRest = SECURITY_CONTROLS.find((c) => c.id === "encryption-at-rest");
-    expect(atRest?.claim).toContain("database, cache, file storage and logs");
+    const stores = /^Our (.+) are encrypted at rest\./.exec(
+      atRest?.claim ?? ""
+    )?.[1];
+    expect(stores).toBeDefined();
+    // Privacy is legal prose with a serial comma: "a, b, c, and d".
+    const serial = stores!.replace(/ and (\S+)$/, ", and $1");
     expect(section("privacy", "Security")).toContain(
-      "database, cache, file storage, and logs are encrypted at rest"
+      `our ${serial} are encrypted at rest`
     );
   });
 
