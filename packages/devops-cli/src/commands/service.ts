@@ -2,7 +2,7 @@
  * `portalops service scale` (#852): the API service's task count, set through
  * the backend stack's DesiredCount (never ECS UpdateService, so the stack
  * stays the record of what should run). It is the maintenance-window lever
- * of the Redis cutover: the workers run in the API process, so scaling to
+ * of a Redis replacement: the workers run in the API process, so scaling to
  * zero is what stops both enqueuing and processing. The stack update's own
  * wait covers the service reaching its new count: CloudFormation completes
  * an ECS service update only once the service is stable.
