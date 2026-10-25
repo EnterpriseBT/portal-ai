@@ -1,12 +1,11 @@
 /**
- * ElastiCache encryption guards (#852).
+ * ElastiCache encryption guards (#852, #872).
  *
- * The encrypted cache is introduced beside the plaintext one and moved
- * through operator-run phases (`portalops cache phase|switch`), so the
- * template carries both for a while. These pin the parts whose loss would be
- * silent: the encryption flags themselves, the conditions that keep each
- * export alive exactly while something can import it, and the `legacy`
- * defaults that make merging this a no-op for every environment.
+ * The encrypted replication group is the only cache: #872 removed the
+ * plaintext one and the cutover parameters that chose between them. These
+ * pin the shape the site's /security/ claims rest on: every cache encrypted
+ * at rest and in transit and refusing plaintext, with no condition that could
+ * leave one out, and the API reaching it over rediss:// with no other branch.
  *
  * `yaml` keeps CloudFormation's short tags (!If, !Sub, …) as plain values, so
  * `!If [Cond, A, B]` reads back as `[Cond, A, B]`.
@@ -56,127 +55,94 @@ function load(file: string): Template {
 const cache = load("cache.yml");
 const backend = load("backend.yml");
 
-describe("cache.yml — the encrypted replication group", () => {
-  const group = cache.Resources.EncryptedRedisReplicationGroup;
+describe("cache.yml — every cache is encrypted", () => {
+  const caches = Object.entries(cache.Resources).filter(([, r]) =>
+    r.Type.startsWith("AWS::ElastiCache::")
+  );
+  const groups = caches.filter(
+    ([, r]) => r.Type !== "AWS::ElastiCache::SubnetGroup"
+  );
 
-  it("encrypts at rest and in transit, and refuses plaintext", () => {
-    expect(group.Type).toBe("AWS::ElastiCache::ReplicationGroup");
-    expect(group.Properties).toMatchObject({
-      AtRestEncryptionEnabled: true,
-      TransitEncryptionEnabled: true,
-      TransitEncryptionMode: "required",
-    });
+  it("declares exactly one cache, a replication group", () => {
+    // A CacheCluster can't encrypt at rest, so none may come back.
+    expect(groups.map(([id, r]) => [id, r.Type])).toEqual([
+      ["EncryptedRedisReplicationGroup", "AWS::ElastiCache::ReplicationGroup"],
+    ]);
   });
 
-  it("exists only once the phase reaches both/encrypted, under its own name", () => {
-    expect(group.Condition).toBe("HasEncrypted");
-    expect(group.Properties.ReplicationGroupId).toBe(
-      "portalai-${Environment}-tls"
-    );
+  it.each(groups.map(([id]) => id))(
+    "%s encrypts at rest and in transit, refuses plaintext, and is unconditional",
+    (id) => {
+      const group = cache.Resources[id]!;
+      expect(group.Condition).toBeUndefined();
+      expect(group.Properties).toMatchObject({
+        AtRestEncryptionEnabled: true,
+        TransitEncryptionEnabled: true,
+        TransitEncryptionMode: "required",
+      });
+    }
+  );
+
+  it("keeps the group's name, so the endpoint the backend imports is stable", () => {
+    expect(
+      cache.Resources.EncryptedRedisReplicationGroup!.Properties
+        .ReplicationGroupId
+    ).toBe("portalai-${Environment}-tls");
+  });
+
+  it("has no cutover parameters or conditions left", () => {
+    expect(Object.keys(cache.Parameters)).not.toContain("RedisCutoverPhase");
+    expect(Object.keys(cache.Conditions)).toEqual(["IsReplicated"]);
   });
 });
 
-describe("cache.yml — phases and exports", () => {
-  it("conditions the legacy resources and exports on HasLegacy", () => {
-    expect(cache.Resources.RedisCluster.Condition).toBe("LegacySingle");
-    expect(cache.Resources.RedisReplicationGroup.Condition).toBe(
-      "LegacyReplicated"
-    );
-    expect(cache.Outputs.RedisEndpoint.Condition).toBe("HasLegacy");
-    expect(cache.Outputs.RedisPort.Condition).toBe("HasLegacy");
-  });
-
-  it("exports the TLS endpoint and port only while the encrypted group exists", () => {
+describe("cache.yml — exports", () => {
+  it("exports only the TLS endpoint and port, unconditionally", () => {
     for (const [key, name] of [
       ["RedisTlsEndpoint", "${Environment}-RedisTlsEndpoint"],
       ["RedisTlsPort", "${Environment}-RedisTlsPort"],
     ]) {
-      expect(cache.Outputs[key].Condition).toBe("HasEncrypted");
-      expect(cache.Outputs[key].Export?.Name).toBe(name);
+      expect(cache.Outputs[key]!.Condition).toBeUndefined();
+      expect(cache.Outputs[key]!.Export?.Name).toBe(name);
     }
+    expect(cache.Outputs.RedisEndpoint).toBeUndefined();
+    expect(cache.Outputs.RedisPort).toBeUndefined();
   });
 });
 
-describe("merging changes nothing until an operator moves a phase", () => {
-  it("defaults both phase parameters to legacy", () => {
-    expect(cache.Parameters.RedisCutoverPhase).toMatchObject({
-      Default: "legacy",
-      AllowedValues: ["legacy", "both", "encrypted"],
-    });
-    expect(backend.Parameters.RedisEndpointSource).toMatchObject({
-      Default: "legacy",
-      AllowedValues: ["legacy", "encrypted"],
-    });
-  });
-});
-
-describe("backend.yml — REDIS_URL follows RedisEndpointSource", () => {
+describe("backend.yml — REDIS_URL is always rediss://", () => {
   const env = (
-    backend.Resources.TaskDefinition.Properties.ContainerDefinitions as Array<{
+    backend.Resources.TaskDefinition!.Properties.ContainerDefinitions as Array<{
       Environment: Array<{ Name: string; Value: unknown }>;
     }>
   )[0]!.Environment;
-  const redisUrl = env.find((e) => e.Name === "REDIS_URL")!.Value as [
-    string,
-    [string, Record<string, unknown>],
-    [string, Record<string, unknown>],
-  ];
+  const redisUrl = env.find((e) => e.Name === "REDIS_URL")!.Value;
 
-  it("builds rediss:// from the TLS exports when encrypted, redis:// from the legacy ones otherwise", () => {
-    const [condition, encrypted, legacy] = redisUrl;
-    expect(condition).toBe("UseEncryptedRedis");
-    expect(encrypted[0]).toBe("rediss://${Endpoint}:${Port}");
-    expect(JSON.stringify(encrypted[1])).toContain("RedisTlsEndpoint");
-    expect(legacy[0]).toBe("redis://${Endpoint}:${Port}");
-    expect(JSON.stringify(legacy[1])).not.toContain("RedisTls");
+  it("builds rediss:// from the TLS exports, with no other branch", () => {
+    const [format, vars] = redisUrl as [string, Record<string, unknown>];
+    expect(format).toBe("rediss://${Endpoint}:${Port}");
+    expect(JSON.stringify(vars)).toContain("RedisTlsEndpoint");
+    expect(JSON.stringify(vars)).toContain("RedisTlsPort");
+  });
+
+  it("has no endpoint-source parameter or condition", () => {
+    expect(Object.keys(backend.Parameters)).not.toContain(
+      "RedisEndpointSource"
+    );
+    expect(Object.keys(backend.Conditions)).not.toContain("UseEncryptedRedis");
   });
 });
 
-describe("deploys inherit the operator's phase (#852)", () => {
-  // `aws cloudformation deploy` keeps an unpassed parameter's current value,
-  // the same rule deploy-prod relies on for DesiredCount. A workflow that
-  // passed either of these would silently move an environment back (or
-  // forward) on its next routine deploy, mid-cutover.
+describe("no workflow passes a removed cutover parameter (#872)", () => {
+  // `aws cloudformation deploy --parameter-overrides` fails on a parameter
+  // the template doesn't declare, so passing either would break the deploy.
   const dir = path.join(ROOT, ".github/workflows");
   const workflows = fs
     .readdirSync(dir)
     .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
 
-  it.each(workflows)("%s passes neither phase parameter", (file) => {
+  it.each(workflows)("%s names neither parameter", (file) => {
     const body = fs.readFileSync(path.join(dir, file), "utf8");
-    // Reading the phase (deploy-prod does, below) is fine; passing it isn't.
-    expect(body).not.toMatch(/(RedisCutoverPhase|RedisEndpointSource)=/);
-  });
-});
-
-describe("a prod release can't start the API mid-cutover (#852 review)", () => {
-  // deploy-prod's last backend deploy restores DesiredCount=2. Mid-window
-  // (service held at 0 by `cache switch`, re-dispatch not yet run) that would
-  // boot the API on the new Redis, and its stranded sweep would reap the
-  // queued rows. So the count is decided by a step that keeps the current
-  // value while the cache phase is `both`.
-  const body = fs.readFileSync(
-    path.join(ROOT, ".github/workflows/deploy-prod.yml"),
-    "utf8"
-  );
-  const step = (name: string) => {
-    const start = body.indexOf(`- name: ${name}`);
-    expect(start).toBeGreaterThan(-1);
-    const next = body.indexOf("\n      - name:", start + 1);
-    return body.slice(start, next === -1 ? undefined : next);
-  };
-
-  it("the final backend deploy takes DesiredCount from the decision step", () => {
-    const deploy = step("Update backend stack and deploy");
-    expect(deploy).toContain("${{ steps.restore-count.outputs.args }}");
-    expect(deploy).not.toMatch(/DesiredCount=2/);
-  });
-
-  it("the decision step keeps the current count while the phase is both", () => {
-    const decide = step("Decide the restored task count");
-    expect(decide).toContain("id: restore-count");
-    expect(decide).toContain("RedisCutoverPhase");
-    expect(decide).toMatch(/"both"/);
-    expect(decide).toContain("args=DesiredCount=2");
+    expect(body).not.toMatch(/RedisCutoverPhase|RedisEndpointSource/);
   });
 });
