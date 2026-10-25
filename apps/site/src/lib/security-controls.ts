@@ -5,8 +5,9 @@
  * its claim says no more than the code does. `evidence` names the setting
  * each claim rests on — a repo path and a string that must stay in it, never
  * rendered — and `security-controls.test.ts` fails when one goes, so a
- * control can't quietly disappear (or weaken) from under a public claim. Widen a claim only alongside the change that makes it true
- * (e.g. ElastiCache encryption, #852).
+ * control can't quietly disappear (or weaken) from under a public claim.
+ * Widen a claim only once it holds in every environment: the cache joined
+ * both encryption claims (#858) after #852's cutover reached prod.
  */
 
 export interface SecurityControl {
@@ -30,7 +31,7 @@ export const SECURITY_CONTROLS: readonly SecurityControl[] = [
     id: "encryption-in-transit",
     title: "Encryption in transit",
     claim:
-      "Every connection to the Service uses HTTPS. Our web front ends require TLS 1.2 or later and redirect plain HTTP to HTTPS, and the app and API send HTTP Strict Transport Security headers.",
+      "Every connection to the Service uses HTTPS. Our web front ends require TLS 1.2 or later and redirect plain HTTP to HTTPS, and the app and API send HTTP Strict Transport Security headers. Inside our network, the API reaches its cache over TLS, and the cache refuses unencrypted connections.",
     evidence: [
       {
         path: "infra/cloudformation/site.yml",
@@ -50,13 +51,25 @@ export const SECURITY_CONTROLS: readonly SecurityControl[] = [
       },
       { path: "infra/cloudformation/backend.yml", contains: "Protocol: HTTPS" },
       { path: "apps/api/src/app.ts", contains: "helmet(" },
+      {
+        path: "infra/cloudformation/cache.yml",
+        contains: "TransitEncryptionEnabled: true",
+      },
+      {
+        path: "infra/cloudformation/cache.yml",
+        contains: "TransitEncryptionMode: required",
+      },
+      {
+        path: "infra/cloudformation/backend.yml",
+        contains: '"rediss://${Endpoint}:${Port}"',
+      },
     ],
   },
   {
     id: "encryption-at-rest",
     title: "Encryption at rest",
     claim:
-      "Our database, file storage and logs are encrypted at rest. Credentials you grant to connectors are additionally encrypted by the application with AES-256-GCM before they are stored.",
+      "Our database, cache, file storage and logs are encrypted at rest. Credentials you grant to connectors are additionally encrypted by the application with AES-256-GCM before they are stored.",
     evidence: [
       {
         path: "infra/cloudformation/database.yml",
@@ -67,6 +80,10 @@ export const SECURITY_CONTROLS: readonly SecurityControl[] = [
         contains: "SSEAlgorithm: AES256",
       },
       { path: "infra/cloudformation/backend.yml", contains: "KmsKeyId" },
+      {
+        path: "infra/cloudformation/cache.yml",
+        contains: "AtRestEncryptionEnabled: true",
+      },
       { path: "apps/api/src/utils/crypto.util.ts", contains: '"aes-256-gcm"' },
     ],
   },
@@ -211,7 +228,6 @@ export const FORBIDDEN_CLAIMS: readonly string[] = [
   "disaster recovery",
   "multi-AZ",
   "multi-region",
-  "Redis",
   "military-grade",
   "per-organization rate",
 ];

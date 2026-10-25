@@ -6,7 +6,7 @@
  * So every control names the repo paths it rests on, and this suite fails
  * when one disappears. Wording stays a review concern; `FORBIDDEN_CLAIMS`
  * blocks the specific overclaims discovery found (zero retention, a
- * compliance badge, DR, Redis encryption).
+ * compliance badge, DR).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -122,10 +122,20 @@ describe("the legal pages agree with /security/", () => {
   };
 
   it("privacy's Security section claims no blanket encryption", () => {
-    // Our cache is not encrypted at rest until #852 ships; "encryption in
-    // transit and at rest" said it all was.
+    // Name what is encrypted rather than "encryption in transit and at rest",
+    // which promised it of everything.
     expect(section("privacy", "Security")).not.toMatch(
       /encryption in transit and at rest/i
+    );
+  });
+
+  it("privacy's at-rest sentence names the same stores as /security/", () => {
+    // The cache joined both lists together (#858); one without the other
+    // would make the two pages disagree.
+    const atRest = SECURITY_CONTROLS.find((c) => c.id === "encryption-at-rest");
+    expect(atRest?.claim).toContain("database, cache, file storage and logs");
+    expect(section("privacy", "Security")).toContain(
+      "database, cache, file storage, and logs are encrypted at rest"
     );
   });
 
