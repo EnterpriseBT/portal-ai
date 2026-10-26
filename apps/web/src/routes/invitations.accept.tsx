@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { AcceptInvitationView } from "../views/AcceptInvitation.view";
 import { Authorized } from "../components/Authorized.component";
-import { AuthorizedLayout } from "../layouts/Authorized.layout";
+import { PublicLayout } from "../layouts/Public.layout";
 import { ApplicationRoute } from "../utils/routes.util";
 
 /**
@@ -10,6 +10,12 @@ import { ApplicationRoute } from "../utils/routes.util";
  * invitee is sent to login first and returned here afterwards (Auth0
  * `appState.returnTo`). The token travels in the query string only to reach the
  * app; the view posts it in the request body (never logged in the URL).
+ *
+ * #881: `PublicLayout`, not `AuthorizedLayout`. The app chrome's org switcher
+ * and nav read `/memberships` and `/current`, which self-provision a caller
+ * with no live membership, so an invitee without one would get a stray
+ * personal org before the accept POST binds the invited one. Nothing here
+ * reads the caller's org until the accept has run.
  */
 export const Route = createFileRoute(ApplicationRoute.AcceptInvitation)({
   component: AcceptInvitationRoute,
@@ -20,11 +26,15 @@ export const Route = createFileRoute(ApplicationRoute.AcceptInvitation)({
 
 function AcceptInvitationRoute() {
   const { token } = Route.useSearch();
+  return <AcceptInvitationPage token={token} />;
+}
+
+export function AcceptInvitationPage({ token }: { token?: string }) {
   return (
     <Authorized>
-      <AuthorizedLayout>
+      <PublicLayout>
         <AcceptInvitationView token={token} />
-      </AuthorizedLayout>
+      </PublicLayout>
     </Authorized>
   );
 }

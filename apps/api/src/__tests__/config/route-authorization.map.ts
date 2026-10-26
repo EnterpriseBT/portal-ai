@@ -387,7 +387,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "GET /api/organization/current": {
     kind: "authorized",
-    by: "caller resolved from JWT sub -> own active org membership only",
+    by: "caller resolved from JWT sub (getApplicationMetadata, self-heals #881) -> own active org membership only",
   },
   "GET /api/organization/invitations": {
     kind: "authorized",

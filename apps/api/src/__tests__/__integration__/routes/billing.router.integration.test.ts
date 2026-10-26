@@ -48,7 +48,14 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
   Auth0Service: {
     hasAccessToken: jest.fn(),
     getAccessToken: jest.fn(),
-    getAuth0UserProfile: jest.fn(),
+    // #881: GET /tiers self-provisions an unknown subject, which reads the
+    // profile. Defined in the factory (see organization.router's test).
+    getAuth0UserProfile: jest.fn(async () => ({
+      email: "billing-first-login@example.com",
+      name: "Billing First Login",
+      picture: null,
+      email_verified: true,
+    })),
   },
 }));
 
@@ -247,6 +254,13 @@ describe("Billing router", () => {
         ).status
       ).toBe(401);
       expect((await request(app).post("/api/billing/portal")).status).toBe(401);
+    });
+
+    // #881: the Billing tab can be a new user's first page.
+    it("self-provisions an unknown subject on the plan list", async () => {
+      currentAuth0Id = `auth0|billing-new-${generateId().slice(0, 8)}`;
+      const res = await request(app).get("/api/billing/tiers");
+      expect(res.status).toBe(200);
     });
 
     it("lets a non-owner member read the plan list", async () => {

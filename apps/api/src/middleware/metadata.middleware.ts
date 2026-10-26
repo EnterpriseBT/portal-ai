@@ -63,7 +63,8 @@ export const getApplicationMetadata = async (
     // concurrent requests during a first login converge on one org. The Auth0
     // profile is fetched lazily — only when a user row must be created — via
     // the request's own access token. A fetch failure falls to the catch below
-    // → 500 METADATA_FETCH_FAILED (fail-closed): never a nameless partial user.
+    // and fails closed (its ApiError, else 500 METADATA_FETCH_FAILED): never a
+    // nameless partial user.
     if (!user || !orgResult) {
       const ensured = await ApplicationService.ensureProvisioned(
         auth0Id,
@@ -140,6 +141,10 @@ export const getApplicationMetadata = async (
 
     next();
   } catch (error) {
+    // #881: a deliberate refusal (403 SSO_PROVISIONING_NOT_INVITED, 401 on a
+    // missing token, 502 when Auth0 fails) reaches the client as itself. It
+    // still fails closed; a 500 would only hide it behind the web's retries.
+    if (error instanceof ApiError) return next(error);
     logger.error(
       { error: error instanceof Error ? error.message : "Unknown error" },
       "Failed to resolve application metadata"

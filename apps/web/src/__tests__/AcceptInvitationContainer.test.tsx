@@ -8,7 +8,10 @@ import { jest } from "@jest/globals";
 
 const mutateAsync = jest.fn<(vars: { token: string }) => Promise<unknown>>();
 jest.unstable_mockModule("../api/sdk", () => ({
-  sdk: { invitations: { accept: () => ({ mutateAsync }) } },
+  sdk: {
+    invitations: { accept: () => ({ mutateAsync }) },
+    auth: { logout: () => ({ logout: jest.fn() }) },
+  },
 }));
 
 const { render, screen, waitFor } = await import("./test-utils");
