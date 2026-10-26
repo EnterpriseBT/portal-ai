@@ -1227,3 +1227,68 @@ describe("rotation-proof db credentials wiring (#500)", () => {
     expect(block).toContain("secret:rds!*");
   });
 });
+
+describe("each deploy role can push to every repository backend.yml creates (#397)", () => {
+  // The prod app policy listed only portalai-api-prod, so the first deploy
+  // after AdministratorAccess was detached failed pushing the web image.
+  // Raw text for the same reason as above: !Sub doesn't survive toJS().
+  const IAM_YML = path.join(ROOT, "infra/cloudformation/iam.yml");
+  const PUSH = ["ecr:PutImage", "ecr:GetDownloadUrlForLayer"];
+  const MANAGE = ["ecr:CreateRepository", "ecr:PutLifecyclePolicy"];
+
+  /** Every AWS::ECR::Repository, however its name is spelled. */
+  function repositories(): string[] {
+    const resources = (
+      loadTemplate() as unknown as {
+        Resources: Record<
+          string,
+          { Type: string; Properties?: { RepositoryName?: unknown } }
+        >;
+      }
+    ).Resources;
+    return Object.values(resources)
+      .filter((r) => r.Type === "AWS::ECR::Repository")
+      .map((r) => String(r.Properties?.RepositoryName));
+  }
+
+  /** The EcrPushPull statement of one env's app policy: its actions and
+   *  resources only, so an ARN elsewhere in the policy can't satisfy it. */
+  function ecrStatement(env: "Dev" | "Prod"): string {
+    const raw = fs.readFileSync(IAM_YML, "utf8");
+    const policy = raw.indexOf(`Deploy${env}AppPolicy:`);
+    expect(policy).toBeGreaterThan(-1);
+    const start = raw.indexOf("- Sid: EcrPushPull", policy);
+    expect(start).toBeGreaterThan(policy);
+    const end = raw.indexOf("- Sid:", start + 1);
+    // Drop comment lines: a commented-out ARN must not count as granted.
+    const statement = raw
+      .slice(start, end)
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+    expect(statement).toContain("Effect: Allow");
+    return statement;
+  }
+
+  it("finds every repository backend.yml declares", () => {
+    const repos = repositories();
+    expect(repos).toContain("portalai-api-${Environment}");
+    expect(repos).toContain("portalai-web-${Environment}");
+  });
+
+  it.each([
+    ["Dev", "dev"],
+    ["Prod", "prod"],
+  ] as const)(
+    "Deploy%sAppPolicy's ECR statement can push to and manage every repository",
+    (env, name) => {
+      const statement = ecrStatement(env);
+      for (const action of [...PUSH, ...MANAGE])
+        expect(statement).toContain(`- ${action}\n`);
+      const missing = repositories()
+        .map((r) => r.replace("${Environment}", name))
+        .filter((r) => !statement.includes(`:repository/${r}"`));
+      expect(missing).toEqual([]);
+    }
+  );
+});
