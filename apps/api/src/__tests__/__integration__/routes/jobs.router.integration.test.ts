@@ -380,6 +380,54 @@ describe("Jobs SSE — a job that finishes while the stream opens (#886)", () =>
         return { name, data: JSON.parse(data) as Record<string, unknown> };
       });
 
+  // Custom events (bulk "batch" payloads) are never persisted, so one
+  // published while the snapshot is read must still be delivered.
+  it("delivers a custom event published while the snapshot is read", async () => {
+    const { JobsService } = await import("../../../services/jobs.service.js");
+    const { JobEventsService } =
+      await import("../../../services/job-events.service.js");
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const row = createJob(organizationId, {
+      status: "active",
+      progress: 40,
+      startedAt: now,
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values([row] as never);
+
+    // The route reads the job twice: to authorize, and (after subscribing)
+    // for the snapshot. Publish a custom event, then finish the job, from
+    // inside the second read.
+    const original = JobsService.findById.bind(JobsService);
+    let reads = 0;
+    jest
+      .spyOn(JobsService, "findById")
+      .mockImplementation(async (...args: Parameters<typeof original>) => {
+        reads += 1;
+        if (reads === 2) {
+          await JobEventsService.publishCustomEvent(row.id, "batch", {
+            rows: 7,
+          });
+          await JobEventsService.transition(row.id, "completed", {
+            progress: 100,
+          });
+        }
+        return original(...args);
+      });
+
+    const res = await request(app)
+      .get(`/api/sse/jobs/${row.id}/events?token=test-token`)
+      .timeout(8000);
+
+    const all = events(res.text);
+    expect(all.map((e) => e.name)).toContain("job:batch");
+    expect(all[all.length - 1].data.status).toBe("completed");
+  });
+
   it("still delivers the terminal state and closes", async () => {
     const { PermissionService } =
       await import("../../../services/permission.service.js");

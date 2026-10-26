@@ -17,7 +17,10 @@
 
 The options were a client-side poll fallback (it hides the server gap and every consumer would need it), or ordering the route correctly. **Chosen: ordering.**
 - `JobEventsService.subscribeReady` resolves once Redis has acknowledged the subscription, a second listener on a channel included. `subscribe` stays for `awaitJobTerminal`.
-- The route authorizes as before, then awaits `subscribeReady`, **re-reads** the job and snapshots that. It closes if the job is terminal, and otherwise flushes the events held during the read that are terminal or newer than the row's `updated`.
+- The route authorizes as before (one permission load, reused for payload visibility), then awaits `subscribeReady`, **re-reads** the job and snapshots that. It flushes **every** event held during the read, then closes if the job is terminal.
+- Why no timestamp filter: custom events (bulk `batch`) are never persisted, and `updated` can come from another host's clock. A repeated update is harmless, while a dropped event is lost.
+- `subscribeReady` never rejects and waits at most 5s for the acknowledgement. With Redis down the stream still gets its snapshot, and a finished job still closes. A failed SUBSCRIBE isn't cached, so the next listener re-subscribes.
+- Nothing after the SSE headers can throw: a failed re-read falls back to the authorizing read.
 - Because `transition` persists before it publishes, a read after the acknowledgement can't miss a transition: it's either in the read or arrives as an event.
 
 ## Plan — 1 slice
@@ -26,7 +29,11 @@ The options were a client-side poll fallback (it hides the server gap and every 
 
 **Tests** (`cd apps/api && npm run test:integration -- --testPathPattern "(routes/jobs.router|services/job-events.service)"`):
 - `jobs.router.integration.test.ts`. The job finishes inside the window, from the access check (a `PermissionService.loadSet` spy that runs `JobEventsService.transition`). The stream still ends with `completed`. Before the fix it never closed (timeout).
-- `job-events.service.integration.test.ts`. A publish straight after `subscribeReady` resolves reaches both of two concurrent listeners.
+- `jobs.router.integration.test.ts`. A custom event published during the snapshot read is still delivered, and the stream then closes on `completed`.
+- `job-events.service.integration.test.ts`:
+  - a publish straight after `subscribeReady` resolves reaches both of two concurrent listeners;
+  - it resolves after its timeout when the acknowledgement never comes;
+  - a failed SUBSCRIBE is retried by the next listener instead of being cached.
 
 ## Smoke (manual, against your dev stack)
 

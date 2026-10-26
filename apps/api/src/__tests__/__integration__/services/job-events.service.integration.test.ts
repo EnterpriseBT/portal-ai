@@ -409,6 +409,56 @@ describe("JobEventsService Integration Tests", () => {
     });
   });
 
+  // #886 review: the stream waits on this, so it must not hang on a Redis
+  // outage, and a failed SUBSCRIBE must not poison the channel for later
+  // listeners.
+  it("resolves after its timeout when the SUBSCRIBE ack never arrives", async () => {
+    const spy = jest
+      .spyOn(Redis.prototype, "subscribe")
+      .mockImplementationOnce((() => new Promise(() => {})) as never);
+    const jobId = uniqueJobId();
+    const t0 = Date.now();
+    const stop = await JobEventsService.subscribeReady(jobId, () => {}, {
+      timeoutMs: 150,
+    });
+    expect(Date.now() - t0).toBeLessThan(2000);
+    stop();
+    spy.mockRestore();
+  });
+
+  it("re-subscribes after a failed SUBSCRIBE rather than caching the failure", async () => {
+    const jobId = uniqueJobId();
+    const spy = jest
+      .spyOn(Redis.prototype, "subscribe")
+      .mockImplementationOnce((() =>
+        Promise.reject(new Error("down"))) as never);
+    const keep: JobUpdateEvent[] = [];
+    // A long-lived listener (awaitJobTerminal's kind) stays on the channel.
+    const stopFirst = JobEventsService.subscribe(jobId, (e) => keep.push(e));
+    await new Promise((r) => setTimeout(r, 50));
+    spy.mockRestore();
+
+    const received: JobUpdateEvent[] = [];
+    const stopSecond = await JobEventsService.subscribeReady(jobId, (e) =>
+      received.push(e)
+    );
+    await publisherClient.publish(
+      `job:events:${jobId}`,
+      JSON.stringify({
+        jobId,
+        status: "completed",
+        progress: 100,
+        timestamp: Date.now(),
+      })
+    );
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(received).toHaveLength(1);
+    expect(keep).toHaveLength(1);
+    stopFirst();
+    stopSecond();
+  });
+
   describe("subscribe()", () => {
     it("should receive events published to the job channel", async () => {
       const jobId = uniqueJobId();

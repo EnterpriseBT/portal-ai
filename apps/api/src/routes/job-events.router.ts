@@ -80,9 +80,10 @@ jobEventsRouter.get(
       // #685: the same rule as GET /api/jobs/:id. Another org's job, or one
       // the caller can't read, is absent (404).
       const caller = req.application!.metadata;
+      const permissions = await PermissionService.loadSet(caller);
       const readable =
         job.organizationId === caller.organizationId &&
-        (await PermissionService.loadSet(caller)).can("resource.read", {
+        permissions.can("resource.read", {
           type: "job",
           id: job.id,
           createdBy: job.createdBy,
@@ -96,24 +97,22 @@ jobEventsRouter.get(
       // payload events (e.g. bulk "batch" progress).
       const seePayload = JobPayloadRedactionService.canSeePayload(
         caller,
-        await PermissionService.loadSet(caller),
+        permissions,
         job
       );
 
       const sse = new SseUtil(res);
       let cleaned = false;
       let unsubscribe: () => void = () => {};
-      const close = () => {
+      // One teardown for every exit: the client leaving (the response is
+      // already closed) and a terminal state (end the stream).
+      const teardown = (endStream: boolean) => {
         if (cleaned) return;
         cleaned = true;
         unsubscribe();
-        sse.end();
+        if (endStream) sse.end();
       };
-      req.on("close", () => {
-        if (cleaned) return;
-        cleaned = true;
-        unsubscribe();
-      });
+      req.on("close", () => teardown(false));
 
       const deliver = (event: JobUpdateEvent) => {
         if (cleaned) return;
@@ -128,14 +127,16 @@ jobEventsRouter.get(
           sse.send(sseEventName, { ...event, result: null });
         }
         // Close stream when job reaches terminal state
-        if (JobModel.isTerminalStatus(event.status)) close();
+        if (JobModel.isTerminalStatus(event.status)) teardown(true);
       };
 
-      // 1. Subscribe first, and wait for Redis to acknowledge it (#886). Read
-      //    the job before that, and a job finishing in between publishes its
-      //    terminal event to nobody: the client gets a non-terminal snapshot
-      //    and waits forever. Events arriving before the snapshot is sent are
-      //    held, then flushed if they're newer than it.
+      // 1. Subscribe first, and wait (bounded) for Redis to acknowledge it
+      //    (#886). Read the job before that, and a job finishing in between
+      //    publishes its terminal event to nobody: the client gets a
+      //    non-terminal snapshot and waits forever. Events arriving before
+      //    the snapshot is sent are held, then flushed after it. Custom
+      //    events are never persisted, so none can be dropped as "already in
+      //    the snapshot"; a repeated update is harmless.
       const held: JobUpdateEvent[] = [];
       let snapshotSent = false;
       unsubscribe = await JobEventsService.subscribeReady(jobId, (event) => {
@@ -148,8 +149,10 @@ jobEventsRouter.get(
       }
 
       // 2. Snapshot from a read made after the subscription is live (recovery
-      //    on reconnect, and the state a fast job already reached).
-      const current = await JobsService.findById(jobId);
+      //    on reconnect, and the state a fast job already reached). Headers
+      //    are out, so a failed re-read falls back to the authorizing read
+      //    rather than throwing into a started stream.
+      const current = await JobsService.findById(jobId).catch(() => job);
       const snapshot: JobSnapshotEvent = {
         jobId: current.id,
         status: current.status,
@@ -165,22 +168,10 @@ jobEventsRouter.get(
       sse.send("snapshot", snapshot);
       snapshotSent = true;
 
-      // 3. Already terminal: close immediately.
-      if (JobModel.isTerminalStatus(current.status)) {
-        close();
-        return;
-      }
-
-      // 4. Flush what arrived while the snapshot was read; older events are
-      //    already reflected in it.
-      for (const event of held) {
-        if (
-          JobModel.isTerminalStatus(event.status) ||
-          event.timestamp >= (current.updated ?? 0)
-        ) {
-          deliver(event);
-        }
-      }
+      // 3. Flush what arrived while the snapshot was read, then close if the
+      //    job had already finished.
+      for (const event of held) deliver(event);
+      if (JobModel.isTerminalStatus(current.status)) teardown(true);
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

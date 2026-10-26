@@ -40,6 +40,7 @@ const channelListeners = new Map<string, Set<EventCallback>>();
 // Redis has acknowledged it, including a second listener on a channel whose
 // first SUBSCRIBE is still in flight.
 const channelReady = new Map<string, Promise<unknown>>();
+const SUBSCRIBE_READY_TIMEOUT_MS = 5_000;
 
 function getSharedSubscriber(): Redis {
   if (!sharedSubscriber) {
@@ -277,17 +278,35 @@ export class JobEventsService {
    * subscription (#886). State read from Postgres *after* this resolves can't
    * miss a transition: `transition` persists before it publishes, so a change
    * either is already in that read or arrives as an event.
+   *
+   * It never rejects and never waits longer than `timeoutMs`: with Redis down
+   * the ack may not come, and a caller holding a request open must not hang
+   * on it. Either way the listener stays registered, so events arrive once
+   * the subscription is live.
    */
   static async subscribeReady(
     jobId: string,
-    onEvent: (event: JobUpdateEvent) => void
+    onEvent: (event: JobUpdateEvent) => void,
+    opts: { timeoutMs?: number } = {}
   ): Promise<() => void> {
     const { ready, unsubscribe } = JobEventsService.listen(jobId, onEvent);
-    try {
-      await ready;
-    } catch (err) {
-      unsubscribe();
-      throw err;
+    const timeoutMs = opts.timeoutMs ?? SUBSCRIBE_READY_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const outcome = await Promise.race([
+      ready.then(
+        () => "ready" as const,
+        () => "failed" as const
+      ),
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), timeoutMs);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (outcome !== "ready") {
+      logger.warn(
+        { jobId, outcome },
+        "Job event subscription not acknowledged"
+      );
     }
     return unsubscribe;
   }
@@ -304,15 +323,22 @@ export class JobEventsService {
     if (!listeners) {
       listeners = new Set();
       channelListeners.set(channel, listeners);
+    }
+    // Subscribe when the channel has no live or in-flight SUBSCRIBE. A failed
+    // one is forgotten, so the next listener retries instead of inheriting it.
+    let ready = channelReady.get(channel);
+    if (!ready) {
       const ack = sub.subscribe(channel);
-      // A failed SUBSCRIBE stays visible to subscribeReady's caller only.
-      ack.catch(() => undefined);
+      ready = ack;
       channelReady.set(channel, ack);
+      ack.catch(() => {
+        if (channelReady.get(channel) === ack) channelReady.delete(channel);
+      });
     }
     listeners.add(onEvent);
 
     return {
-      ready: channelReady.get(channel) ?? Promise.resolve(),
+      ready,
       unsubscribe: () => {
         listeners!.delete(onEvent);
         if (listeners!.size === 0) {
