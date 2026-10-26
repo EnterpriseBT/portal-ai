@@ -5,7 +5,7 @@
     "noEmit": true,
     "composite": false,
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node", "jest"]
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "test-results", ".auth"]
