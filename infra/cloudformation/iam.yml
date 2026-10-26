@@ -450,6 +450,16 @@ Resources:
               - ecr:GetRepositoryPolicy
               - ecr:GetLifecyclePolicy
               - ecr:TagResource
+              # backend.yml owns both repositories, so a deploy that changes one
+              # (lifecycle, tags) or creates the stack needs these. No
+              # DeleteRepository or SetRepositoryPolicy: removing a repo or opening it
+              # to another principal stays an admin act.
+              - ecr:CreateRepository
+              - ecr:PutLifecyclePolicy
+              - ecr:DeleteLifecyclePolicy
+              - ecr:UntagResource
+              - ecr:PutImageScanningConfiguration
+              - ecr:PutImageTagMutability
             Resource:
               - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-api-dev"
               - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-web-dev"
@@ -769,6 +779,16 @@ Resources:
               - ecr:GetRepositoryPolicy
               - ecr:GetLifecyclePolicy
               - ecr:TagResource
+              # backend.yml owns both repositories, so a deploy that changes one
+              # (lifecycle, tags) or creates the stack needs these. No
+              # DeleteRepository or SetRepositoryPolicy: removing a repo or opening it
+              # to another principal stays an admin act.
+              - ecr:CreateRepository
+              - ecr:PutLifecyclePolicy
+              - ecr:DeleteLifecyclePolicy
+              - ecr:UntagResource
+              - ecr:PutImageScanningConfiguration
+              - ecr:PutImageTagMutability
             Resource:
               - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-api-prod"
               - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-web-prod"
