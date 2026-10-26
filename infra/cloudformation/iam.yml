@@ -125,6 +125,7 @@ Resources:
               - ecs:Describe*
               - ecs:List*
               - rds:Describe*
+              - elasticache:Describe*
               - cloudformation:Describe*
               - cloudformation:List*
               - cloudformation:GetTemplate
@@ -156,6 +157,19 @@ Resources:
               - secretsmanager:DescribeSecret
             Resource:
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/dev/*"
+          # The RDS-managed master secret (rds!db-…), which db url / psql /
+          # studio compose from since #500. Its name carries no env, so it's
+          # scoped by the tag RDS stamps on it.
+          - Sid: RdsMasterSecretRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
+            Condition:
+              StringEquals:
+                secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:portalai-dev"
           # Bastion tunnel (db psql / studio). StartSession sits in READ:
           # it is the operator's daily DB-inspection path, the DB-write guard
           # is the CLI's prod barrier + --yes, and IAM cannot see the SQL
@@ -217,6 +231,7 @@ Resources:
               - ecs:Describe*
               - ecs:List*
               - rds:Describe*
+              - elasticache:Describe*
               - cloudformation:Describe*
               - cloudformation:List*
               - cloudformation:GetTemplate
@@ -248,6 +263,19 @@ Resources:
               - secretsmanager:DescribeSecret
             Resource:
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/prod/*"
+          # The RDS-managed master secret (rds!db-…), which db url / psql /
+          # studio compose from since #500. Its name carries no env, so it's
+          # scoped by the tag RDS stamps on it.
+          - Sid: RdsMasterSecretRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
+            Condition:
+              StringEquals:
+                secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:portalai-prod"
           - Sid: SsmStartSessionBastion
             Effect: Allow
             Action:

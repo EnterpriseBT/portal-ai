@@ -1344,3 +1344,46 @@ describe("the break-glass admin group requires MFA (#397)", () => {
     ]);
   });
 });
+
+describe("operator read roles reach what the read commands need (#397)", () => {
+  // Found walking the operator flow: cache status (#852) needs ElastiCache
+  // describes, and db url / psql (#500) read the RDS-managed rds!… secret,
+  // whose name has no env in it, so it's scoped by the tag RDS stamps on it.
+  interface Statement {
+    Sid?: string;
+    Action: string[];
+    Resource: unknown;
+    Condition?: Record<string, Record<string, string>>;
+  }
+  const resources = (
+    parseDocument(
+      fs.readFileSync(path.join(ROOT, "infra/cloudformation/iam.yml"), "utf8"),
+      { logLevel: "silent" }
+    ).toJS({ maxAliasCount: -1 }) as {
+      Resources: Record<
+        string,
+        { Properties: { PolicyDocument: { Statement: Statement[] } } }
+      >;
+    }
+  ).Resources;
+
+  it.each([
+    ["DevOperatorReadPolicy", "dev"],
+    ["ProdOperatorReadPolicy", "prod"],
+  ])("%s", (name, env) => {
+    const statements = resources[name].Properties.PolicyDocument.Statement;
+    expect(statements.flatMap((s) => s.Action)).toContain(
+      "elasticache:Describe*"
+    );
+    const rds = statements.find((s) => s.Sid === "RdsMasterSecretRead");
+    expect(rds?.Action).toEqual([
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:DescribeSecret",
+    ]);
+    expect(
+      rds?.Condition?.StringEquals?.[
+        "secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn"
+      ]
+    ).toMatch(new RegExp(`:db:portalai-${env}$`));
+  });
+});

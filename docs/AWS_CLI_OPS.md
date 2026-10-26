@@ -33,6 +33,37 @@ eval "$(aws sts assume-role --role-arn arn:aws:iam::<acct>:role/portalai-dev-ope
 # a mutation: assume the write role instead (prod-write additionally needs --serial-number/--token-code MFA)
 ```
 
+Or, once, put the four roles in `~/.aws/config` as profiles over the operator user's key (`[profile portalai-operator]` holds only `region`; its key lives in `~/.aws/credentials`). `~/.aws` is in the devcontainer's writable layer, so a **rebuild** loses it: re-add this block, and replace the key (create a new one, delete the old) since its secret can't be read back.
+
+```ini
+[profile portalai-dev-read]
+role_arn = arn:aws:iam::<acct>:role/portalai-dev-operator-read
+source_profile = portalai-operator
+role_session_name = portalai-operator
+region = us-east-1
+
+[profile portalai-dev-write]
+role_arn = arn:aws:iam::<acct>:role/portalai-dev-operator-write
+source_profile = portalai-operator
+role_session_name = portalai-operator
+region = us-east-1
+
+[profile portalai-prod-read]
+role_arn = arn:aws:iam::<acct>:role/portalai-prod-operator-read
+source_profile = portalai-operator
+role_session_name = portalai-operator
+region = us-east-1
+
+[profile portalai-prod-write]
+role_arn = arn:aws:iam::<acct>:role/portalai-prod-operator-write
+source_profile = portalai-operator
+role_session_name = portalai-operator
+mfa_serial = arn:aws:iam::<acct>:mfa/<portalai-operator device>
+region = us-east-1
+```
+
+Then `eval "$(aws configure export-credentials --profile portalai-dev-read --format env)"` before running `portalops`/`portalai`. Run prod-write in a real terminal, since it prompts for the MFA code.
+
 The **deploy** roles (`github-cicd-deploy-{dev,prod}`, GitHub-OIDC) carry scoped policies from the same stack — no longer `AdministratorAccess`. CI never uses the operator user; it assumes its OIDC deploy role.
 
 **Break-glass admin.** `Admin` (group `EBT_Administrator`) keeps `AdministratorAccess` for what the operator roles deliberately can't do: applying the `portalai-iam` stack and console-only account work. The same stack attaches `portalai-admin-require-mfa` to that group, which denies everything in a session without MFA except changing one's own password. MFA enrolment isn't exempt, so a session without MFA can't enrol its way past the gate: `Admin` keeps an enrolled device, and a lost one is recovered through root. Use `Admin` only from an MFA console sign-in, or CLI credentials derived from one; #397 records whether `aws login --remote` carries that MFA. Everyday inspection and mutations go through the operator roles, not `Admin`.
