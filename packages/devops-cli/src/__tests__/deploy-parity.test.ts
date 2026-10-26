@@ -1227,3 +1227,44 @@ describe("rotation-proof db credentials wiring (#500)", () => {
     expect(block).toContain("secret:rds!*");
   });
 });
+
+describe("each deploy role can push to every repository backend.yml creates (#397)", () => {
+  // The prod app policy listed only portalai-api-prod, so the first deploy
+  // after AdministratorAccess was detached failed pushing the web image.
+  // Raw text for the same reason as above: !Sub doesn't survive toJS().
+  const IAM_YML = path.join(ROOT, "infra/cloudformation/iam.yml");
+
+  function repositories(): string[] {
+    const raw = fs.readFileSync(BACKEND_YML, "utf8");
+    return [...raw.matchAll(/RepositoryName: !Sub "([^"]+)"/g)].map(
+      (m) => m[1]
+    );
+  }
+
+  function appPolicy(env: "Dev" | "Prod"): string {
+    const raw = fs.readFileSync(IAM_YML, "utf8");
+    const start = raw.indexOf(`Deploy${env}AppPolicy:`);
+    const end = raw.indexOf(`Deploy${env}InfraPolicy:`, start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    return raw.slice(start, end);
+  }
+
+  it("finds both repositories", () => {
+    expect(repositories()).toEqual([
+      "portalai-api-${Environment}",
+      "portalai-web-${Environment}",
+    ]);
+  });
+
+  it.each([
+    ["Dev", "dev"],
+    ["Prod", "prod"],
+  ] as const)("Deploy%sAppPolicy grants every repository", (env, name) => {
+    const block = appPolicy(env);
+    const missing = repositories()
+      .map((r) => r.replace("${Environment}", name))
+      .filter((r) => !block.includes(`:repository/${r}"`));
+    expect(missing).toEqual([]);
+  });
+});

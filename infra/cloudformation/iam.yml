@@ -771,6 +771,7 @@ Resources:
               - ecr:TagResource
             Resource:
               - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-api-prod"
+              - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/portalai-web-prod"
           - Sid: RdsSnapshot
             Effect: Allow
             Action:
