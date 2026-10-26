@@ -601,25 +601,6 @@ jobs:
       # can never be published on the public site. Prod's addresses are
       # provisioned by hand; see docs/PROD_PROVISIONING.runbook.md.
 
-      # #852: a Redis cutover holds the service at 0 between `portalops cache
-      # switch` and `jobs redispatch`. Restoring 2 there would boot the API on
-      # the new Redis before its jobs are re-queued, and the boot sweep would
-      # reap them. While the cache phase is `both` (a cutover is open) the
-      # count is left as it is; the runbook scales it back up.
-      - name: Decide the restored task count
-        id: restore-count
-        run: |
-          PHASE=$(aws cloudformation describe-stacks \
-            --stack-name portalai-prod-cache \
-            --query "Stacks[0].Parameters[?ParameterKey=='RedisCutoverPhase'].ParameterValue" \
-            --output text)
-          if [ "$PHASE" = "both" ]; then
-            echo "::warning::A Redis cutover is open (cache phase both): keeping the service's current task count. See docs/REDIS_ENCRYPTION_CUTOVER.runbook.md."
-            echo "args=" >> "$GITHUB_OUTPUT"
-          else
-            echo "args=DesiredCount=2" >> "$GITHUB_OUTPUT"
-          fi
-
       # Restores DesiredCount after a first-deploy bootstrap, and rolls the
       # service onto the image pushed above.
       - name: Update backend stack and deploy
@@ -632,6 +613,6 @@ jobs:
               ImageTag=prod-${{ github.sha }} \
               BuildVersion=${{ github.event.release.tag_name || github.sha }} \
               BuildSha=${{ github.sha }} \
-              ${{ steps.restore-count.outputs.args }} \
+              DesiredCount=2 \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset

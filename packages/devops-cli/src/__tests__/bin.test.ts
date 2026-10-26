@@ -257,11 +257,15 @@ describe("jobs commands are wired (#852)", () => {
   });
 });
 
-describe("cache and service commands are wired (#852)", () => {
-  it("cache phase accepts only legacy|both|encrypted (usage → exit 2)", async () => {
-    expect(await runCli(["cache", "phase", "plain", "--env", "app-dev"])).toBe(
-      2
-    );
+describe("cache and service commands are wired (#852, #872)", () => {
+  it("the cutover commands are gone (unknown command → exit 2)", async () => {
+    for (const args of [
+      ["cache", "phase", "encrypted"],
+      ["cache", "switch", "encrypted"],
+      ["cache", "refresh-template"],
+    ]) {
+      expect(await runCli([...args, "--env", "app-dev", "--yes"])).toBe(2);
+    }
   });
 
   it("service scale takes a whole number (usage → exit 2)", async () => {
@@ -273,12 +277,10 @@ describe("cache and service commands are wired (#852)", () => {
     );
   });
 
-  it("the cutover commands refuse an env with no stacks (exit 3)", async () => {
+  it("cache status and service scale refuse an env with no stacks (exit 3)", async () => {
     for (const args of [
       ["cache", "status"],
-      ["cache", "switch", "encrypted", "--yes"],
       ["service", "scale", "0", "--yes"],
-      ["cache", "refresh-template", "--dry-run"],
     ]) {
       expect(await runCli([...args, "--env", "local"])).toBe(3);
     }

@@ -15,7 +15,7 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 | 6 | `ENV_DESTRUCTIVE_BLOCKED` — destructive op against production (no override exists) |
 | 7 | `ENV_INFRA_ERROR` — AWS / tunnel / psql / ECS failure (message carries the cause) |
 | 8 | not-found family — `TIER_APPLY_MISSING_PRICES` (a declared tier's Stripe lookup key resolves to no price; `tier apply` fails closed before any DB write) or `TIER_NOT_FOUND` (`tier update`/`tier description` target a slug that doesn't exist). Mirrors admin-cli's 8. |
-| 9 | conflict family — `TIER_ALREADY_EXISTS` (`tier create` targets a slug that already exists); `CACHE_CUTOVER_CONFLICT` (a `cache phase`/`cache switch` step taken out of order, #852). Mirrors admin-cli's 9. |
+| 9 | conflict family — `TIER_ALREADY_EXISTS` (`tier create` targets a slug that already exists). Mirrors admin-cli's 9. |
 
 `--json` errors: `{"error":{"code":"<CODE>","message":"<human text>"}}` on stdout, exit code as above.
 
@@ -25,8 +25,8 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 |---|---|---|---|
 | read (`cache status`, …) | — | — | — |
 | connect (`db tunnel`, `db psql`, `jobs status`) | — | — | `--confirm-prod` |
-| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`, `cache phase legacy\|both`, `cache switch`, `cache refresh-template`, `service scale`) | — | `--yes` | `--yes --confirm-prod` |
-| destructive (`db reset`, `db reset-seed`, `cache phase encrypted`, `cache refresh-template` that removes or replaces a resource) | — | `--yes` | **refused** (exit 6) |
+| mutation (`vars set/apply`, `db seed`, `db upgrade`, `db url --write`, `jobs redispatch`, `service scale`) | — | `--yes` | `--yes --confirm-prod` |
+| destructive (`db reset`, `db reset-seed`) | — | `--yes` | **refused** (exit 6) |
 
 Every mutation/destructive command appends a JSONL audit entry to `~/.portalai/audit.log` (no secret values).
 
@@ -127,32 +127,11 @@ Every ECS one-off runs the built script with `node` (`node dist/db/seed.js`, `no
 
 ## cache
 
-The ElastiCache encryption cutover (#852). `cache.yml` holds the plaintext cache and the encrypted one side by side behind `RedisCutoverPhase` (`legacy` → `both` → `encrypted`), and `backend.yml`'s `REDIS_URL` follows `RedisEndpointSource` (`legacy` | `encrypted`). The deploy workflows never pass either, so a routine deploy keeps whatever these commands set. Every change is an UpdateStack on the **deployed** template, with every other parameter at its previous value: a step never redeploys code. A step taken out of order exits 9 (`CACHE_CUTOVER_CONFLICT`). Full sequence: [`docs/REDIS_ENCRYPTION_CUTOVER.runbook.md`](../../docs/REDIS_ENCRYPTION_CUTOVER.runbook.md).
+Each environment runs one cache, the replication group `portalai-<env>-tls`: encrypted at rest and in transit, with `TransitEncryptionMode: required`, reached over `rediss://`. It carries the BullMQ jobs queue. #852 moved both environments onto it, and #872 removed the plaintext cache it replaced, along with the `cache phase` / `cache switch` / `cache refresh-template` commands that ran the move.
 
 ### `portalops cache status --env <env> [--json]`
-Read. The phase, the endpoint source, each cache present (`portalai-<env>` legacy, `portalai-<env>-tls` encrypted) with its status and encryption flags, and the API service's desired/running counts. A stack whose template predates #852 reads as `legacy`.
-`--json`: `{ "phase", "endpointSource", "caches": [{ "id", "kind": "cache-cluster|replication-group", "status", "atRestEncryption", "transitEncryption", "transitEncryptionMode" }], "service": { "desired", "running" } }`
-
-### `portalops cache phase <legacy|both|encrypted> --env <env> --yes [--confirm-prod] [--json]`
-`both` creates the encrypted cache (mutation; 10–20 min, waits for `UPDATE_COMPLETE`). `encrypted` removes the legacy cache and is **destructive**: refused on prod, where the legacy cache goes with the cleanup release. A phase may only drop the cache the backend isn't using (else exit 9). Re-applying the current phase reports `changed: false`. If the deployed template predates `RedisCutoverPhase`, it exits 9 and points at `cache refresh-template --phase` (#861).
-`--json`: `{ "stack", "phase", "changed" }`
-
-### `portalops cache refresh-template --env <env> [--phase <legacy|both|encrypted>] [--dry-run] --yes [--confirm-prod] [--json]`
-Mutation (**destructive** when the preview removes or replaces a resource). Applies `main`'s `infra/cloudformation/cache.yml` to the cache stack, for a template the deploy workflows skipped. They use `aws cloudformation deploy`, which skips a change set with no resource changes, so a template that only adds parameters, conditions or outputs never lands (#861).
-- **Checkout:** refuses (exit 9) unless the checkout is clean for that file and `HEAD` is `origin/main`.
-- **Parameters:** every parameter the template declares and the stack has keeps its previous value. A new one must have a default.
-- **`--phase`:** sets `RedisCutoverPhase` with the template, under `cache phase`'s preconditions. CloudFormation applies a template only together with a resource change (a template-only update is "No updates" too), so a template that only adds the parameter lands with the phase whose resource change carries it: `--phase both` adds the encrypted group.
-- **Apply:** it executes the previewed change set itself (only a `CREATE_COMPLETE` one is trusted), so what's applied is what was shown, and it waits for that execution to finish.
-  - No resource changes means the template is already current (`changed: false`), or a refusal (exit 9) naming `--phase both`.
-  - The guard runs before any AWS call, so a refused command writes no change set, and one that isn't executed is always deleted.
-- **Preview:** a change set runs first, and is deleted after. A removal or replacement counts as destructive, so prod refuses it. `--dry-run` stops after the preview.
-- **Audit:** records the template path and the commit.
-
-`--json`: `{ "stack", "template", "commit", "phase", "resourceChanges": [{ "logicalId", "action", "replacement" }], "dryRun", "changed" }`
-
-### `portalops cache switch <legacy|encrypted> --env <env> --yes [--confirm-prod] [--json]`
-Mutation. Points the backend's `REDIS_URL` at the other cache (`rediss://` for `encrypted`). Requires phase `both` and the service at zero desired and running tasks (else exit 9), and holds `DesiredCount` at 0, so the tasks start against the new cache only after `jobs redispatch`. `legacy` is the rollback, until the legacy cache is retired.
-`--json`: `{ "stack", "endpointSource", "changed" }`
+Read. Each cache present, with its status and encryption flags, and the API service's desired/running counts. It looks up the old plaintext ids (`portalai-<env>`, as a cache cluster or a replication group) as well as `portalai-<env>-tls`, so a leftover plaintext cache shows up. After #872 only the `-tls` group should be listed. The public `/security/` claims rest on that.
+`--json`: `{ "caches": [{ "id", "kind": "cache-cluster|replication-group", "status", "atRestEncryption", "transitEncryption", "transitEncryptionMode" }], "service": { "desired", "running" } }`
 
 ## service
 
@@ -162,7 +141,16 @@ Mutation. Sets the API service's task count through the backend stack's `Desired
 
 ## jobs
 
-The job queue across a Redis replacement (#852). The cutover sequence is in [`docs/REDIS_ENCRYPTION_CUTOVER.runbook.md`](../../docs/REDIS_ENCRYPTION_CUTOVER.runbook.md).
+The job queue across a Redis replacement (#852). Postgres `jobs` is the record of truth and Redis only holds the queue, so a planned replacement (a node type change, a new cache) loses nothing if it runs in this order:
+1. Wait for `jobs status` to show no `active` jobs.
+2. Run `service scale 0`.
+3. Replace the cache.
+4. Run `jobs redispatch`.
+5. Scale the service back up (`service scale 1` on app-dev, `2` on prod).
+
+Redispatch must come before the scale-up, or the boot sweep (#391) reaps the queued rows.
+
+**This sequence covers a replacement done outside a deploy** (ElastiCache's own node replacement or failover, or a change made with the AWS CLI or console). A replacement that ships as a `cache.yml` change in a release doesn't fit it. Deploy Prod updates the cache stack and then restores the service to 2 tasks in the same run, before step 4 can happen. Since #872 nothing holds that count, so before shipping such a change, add a hold to `deploy-prod.yml` for the window first, as #852 did with its phase-keyed step.
 
 ### `portalops jobs status --env <env> [--confirm-prod] [--json]`
 Connect (prod needs `--confirm-prod`). Counts live non-terminal `jobs` rows (`pending`, `active`, `awaiting_confirmation`, `stalled`) by status and type, from Postgres over the env connection (local: `.env`; AWS: the SSM tunnel). Postgres is the record of truth, so this works whether or not Redis does. A drain is done when `byStatus.active` is absent.

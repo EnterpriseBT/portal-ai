@@ -21,9 +21,6 @@ export const EXIT_CODES: Record<string, number> = {
   // Conflict family (mirrors admin-cli's 9): `tier create` targets a slug
   // that already exists (#241).
   TIER_ALREADY_EXISTS: 9,
-  // A cache cutover step taken out of order (#852): retiring the cache the
-  // backend still uses, or switching with the service running.
-  CACHE_CUTOVER_CONFLICT: 9,
 };
 
 export function exitCodeFor(err: unknown): number {
