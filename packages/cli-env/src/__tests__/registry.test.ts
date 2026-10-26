@@ -56,6 +56,20 @@ describe("BUILTIN_ENVIRONMENTS", () => {
     expect(prod.apiBaseUrl).toBe("https://api.portalsai.io");
     expect(prod.aws).toEqual({ region: "us-east-1", envName: "prod" });
   });
+
+  // #489: the e2e harness signs in to each env's web app, which the API URL
+  // alone doesn't locate.
+  it("each built-in carries its web app URL", () => {
+    expect(BUILTIN_ENVIRONMENTS["local"].webBaseUrl).toBe(
+      "http://localhost:3000"
+    );
+    expect(BUILTIN_ENVIRONMENTS["app-dev"].webBaseUrl).toBe(
+      "https://app-dev.portalsai.io"
+    );
+    expect(BUILTIN_ENVIRONMENTS["prod"].webBaseUrl).toBe(
+      "https://app.portalsai.io"
+    );
+  });
 });
 
 describe("AWS naming helpers (mirror api-cli.sh conventions)", () => {
@@ -122,6 +136,30 @@ describe("override file (~/.portalai/environments.json)", () => {
     });
     // Built-ins are untouched.
     expect(envs["app-dev"].kind).toBe("staging");
+  });
+
+  // #489: webBaseUrl is optional, so override files written before it existed
+  // still load (the entry above has none).
+  it("carries an override's webBaseUrl when it declares one", () => {
+    writeOverrides({
+      "scratch-web": {
+        apiBaseUrl: "http://localhost:3999",
+        webBaseUrl: "http://localhost:3998",
+      },
+    });
+    expect(loadEnvironments()["scratch-web"].webBaseUrl).toBe(
+      "http://localhost:3998"
+    );
+  });
+
+  it("rejects an override with a malformed webBaseUrl", () => {
+    writeOverrides({
+      "scratch-web": {
+        apiBaseUrl: "http://localhost:3999",
+        webBaseUrl: "nope",
+      },
+    });
+    expect(() => loadEnvironments()).toThrow(EnvNotConfiguredError);
   });
 
   it("rejects an override that shadows a built-in", () => {
