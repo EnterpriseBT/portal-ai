@@ -46,15 +46,18 @@ export const Authorized: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { isLoading, error, isAuthenticated } = sdk.auth.session();
   const href = useRouterState({ select: (s) => s.location.href });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // Remember where the user was headed so login can return them there (#585) —
   // the invite accept link is the motivating case (logged-out invitee → login →
   // back to /invitations/accept?token=…). Read by LoginForm at login time.
+  // The redirect below re-renders this with the /login location before it
+  // unmounts; that is not where the user was headed (#884).
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (!isLoading && !isAuthenticated && pathname !== "/login") {
       stashReturnTo(PRE_LOGIN_RETURN_TO_KEY, href);
     }
-  }, [isLoading, isAuthenticated, href]);
+  }, [isLoading, isAuthenticated, href, pathname]);
 
   return (
     <AuthorizedUI loading={isLoading} error={error}>
