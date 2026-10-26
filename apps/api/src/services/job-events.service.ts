@@ -36,6 +36,10 @@ type EventCallback = (event: JobUpdateEvent) => void;
 
 let sharedSubscriber: Redis | null = null;
 const channelListeners = new Map<string, Set<EventCallback>>();
+// #886: each channel's SUBSCRIBE acknowledgement. A listener is only live once
+// Redis has acknowledged it, including a second listener on a channel whose
+// first SUBSCRIBE is still in flight.
+const channelReady = new Map<string, Promise<unknown>>();
 
 function getSharedSubscriber(): Redis {
   if (!sharedSubscriber) {
@@ -265,6 +269,33 @@ export class JobEventsService {
     jobId: string,
     onEvent: (event: JobUpdateEvent) => void
   ): () => void {
+    return JobEventsService.listen(jobId, onEvent).unsubscribe;
+  }
+
+  /**
+   * Like `subscribe`, but resolves once Redis has acknowledged the
+   * subscription (#886). State read from Postgres *after* this resolves can't
+   * miss a transition: `transition` persists before it publishes, so a change
+   * either is already in that read or arrives as an event.
+   */
+  static async subscribeReady(
+    jobId: string,
+    onEvent: (event: JobUpdateEvent) => void
+  ): Promise<() => void> {
+    const { ready, unsubscribe } = JobEventsService.listen(jobId, onEvent);
+    try {
+      await ready;
+    } catch (err) {
+      unsubscribe();
+      throw err;
+    }
+    return unsubscribe;
+  }
+
+  private static listen(
+    jobId: string,
+    onEvent: (event: JobUpdateEvent) => void
+  ): { ready: Promise<unknown>; unsubscribe: () => void } {
     const channel = `${JOB_CHANNEL_PREFIX}${jobId}`;
     const sub = getSharedSubscriber();
 
@@ -273,16 +304,23 @@ export class JobEventsService {
     if (!listeners) {
       listeners = new Set();
       channelListeners.set(channel, listeners);
-      sub.subscribe(channel);
+      const ack = sub.subscribe(channel);
+      // A failed SUBSCRIBE stays visible to subscribeReady's caller only.
+      ack.catch(() => undefined);
+      channelReady.set(channel, ack);
     }
     listeners.add(onEvent);
 
-    return () => {
-      listeners!.delete(onEvent);
-      if (listeners!.size === 0) {
-        channelListeners.delete(channel);
-        sub.unsubscribe(channel);
-      }
+    return {
+      ready: channelReady.get(channel) ?? Promise.resolve(),
+      unsubscribe: () => {
+        listeners!.delete(onEvent);
+        if (listeners!.size === 0) {
+          channelListeners.delete(channel);
+          channelReady.delete(channel);
+          sub.unsubscribe(channel);
+        }
+      },
     };
   }
 }

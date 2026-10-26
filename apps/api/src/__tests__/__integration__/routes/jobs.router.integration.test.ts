@@ -338,3 +338,90 @@ describe("Jobs SSE — GET /api/sse/jobs/:id/events snapshot (#458)", () => {
     expect(snapshot).toHaveProperty("progressDetail", null);
   });
 });
+
+/**
+ * #886: the stream read the job, checked access, then subscribed. A job that
+ * finished in between published its terminal event to nobody, so the client
+ * got a non-terminal snapshot and waited forever (an upload stuck at
+ * "Parsing… 90%"). The job finishes inside that window here, from the access
+ * check itself.
+ */
+describe("Jobs SSE — a job that finishes while the stream opens (#886)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await connection.end();
+  });
+
+  const events = (body: string) =>
+    body
+      .split("\n\n")
+      .filter((chunk) => chunk.includes("data: "))
+      .map((chunk) => {
+        const name = chunk
+          .split("\n")
+          .find((l) => l.startsWith("event: "))
+          ?.slice("event: ".length);
+        const data = chunk
+          .split("\n")
+          .find((l) => l.startsWith("data: "))!
+          .slice("data: ".length);
+        return { name, data: JSON.parse(data) as Record<string, unknown> };
+      });
+
+  it("still delivers the terminal state and closes", async () => {
+    const { PermissionService } =
+      await import("../../../services/permission.service.js");
+    const { JobEventsService } =
+      await import("../../../services/job-events.service.js");
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const row = createJob(organizationId, {
+      status: "active",
+      progress: 90,
+      startedAt: now,
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values([row] as never);
+
+    // The first access check runs after the route has read the job: finish
+    // the job there, persisting and publishing exactly as a worker does.
+    const original = PermissionService.loadSet.bind(PermissionService);
+    let finished = false;
+    jest
+      .spyOn(PermissionService, "loadSet")
+      .mockImplementation(async (...args: Parameters<typeof original>) => {
+        if (!finished) {
+          finished = true;
+          await JobEventsService.transition(row.id, "completed", {
+            progress: 100,
+            result: { ok: true },
+          });
+        }
+        return original(...args);
+      });
+
+    const res = await request(app)
+      .get(`/api/sse/jobs/${row.id}/events?token=test-token`)
+      .timeout(8000);
+
+    expect(res.status).toBe(200);
+    const all = events(res.text);
+    expect(all.length).toBeGreaterThan(0);
+    expect(all[all.length - 1].data.status).toBe("completed");
+  });
+});

@@ -378,6 +378,37 @@ describe("JobEventsService Integration Tests", () => {
 
   // ── subscribe() ─────────────────────────────────────────────────────
 
+  describe("subscribeReady() (#886)", () => {
+    // No settle delay: resolving means Redis acknowledged the subscription,
+    // so a publish straight after it is delivered. That includes a second
+    // listener on a channel whose first SUBSCRIBE was still in flight.
+    it("receives an event published immediately after it resolves", async () => {
+      const jobId = uniqueJobId();
+      const first: JobUpdateEvent[] = [];
+      const second: JobUpdateEvent[] = [];
+
+      const [stopFirst, stopSecond] = await Promise.all([
+        JobEventsService.subscribeReady(jobId, (e) => first.push(e)),
+        JobEventsService.subscribeReady(jobId, (e) => second.push(e)),
+      ]);
+      await publisherClient.publish(
+        `job:events:${jobId}`,
+        JSON.stringify({
+          jobId,
+          status: "completed",
+          progress: 100,
+          timestamp: Date.now(),
+        })
+      );
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(first).toHaveLength(1);
+      expect(second).toHaveLength(1);
+      stopFirst();
+      stopSecond();
+    });
+  });
+
   describe("subscribe()", () => {
     it("should receive events published to the job channel", async () => {
       const jobId = uniqueJobId();
