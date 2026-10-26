@@ -15,10 +15,10 @@ Removing the webhook has a vendor side the code cannot do for you, and **orderin
 
 1. **Remove/disable the post-login Action FIRST.** In each tenant's **Actions → Flows → Login**, detach and delete the Action that POSTs to `…/api/webhooks/auth0/sync`. Provisioning does **not** gap: the request-path self-heal (#583) already provisions every login without the webhook. Do this **before** (or in the same change as) deploying the webhook removal — never leave a live Action pointing at a route the deployed app no longer serves, or every login in that window loops. The Action also carried the HMAC secret below.
 2. **Then deploy the webhook removal.** With no Action calling it, the gone route is inert.
-3. **Remove `AUTH0_WEBHOOK_SECRET`** from each env's secret store, **after** the new build (which no longer reads it) is deployed:
+3. **Remove `AUTH0_WEBHOOK_SECRET`** from each env's secret store, but only **after** a deploy whose `backend.yml` no longer references it (#873). The app stopped reading it in #577, but until #873 the task definition still injected it from Secrets Manager. **ECS refuses to start a task whose secret is missing**, so deleting it first takes the API down at the next deploy or task replacement.
    - `local`: delete the line from your `.env`.
-   - `app-dev` / `prod`: it lives in AWS Secrets Manager / SSM. Remove it with `portalops vars` (per `packages/devops-cli/COMMANDS.md`); on `prod` the guard requires `--yes --confirm-prod`.
-   The code no longer references it (removed from `environment.ts` + `.env.example`), so a lingering secret is inert — but leaving credentials in a store is exactly what SOC 2 access-control review flags, so clear it.
+   - `app-dev` / `prod`: after that deploy, run `aws secretsmanager delete-secret --secret-id portalai/<env>/auth0-webhook-secret --recovery-window-in-days 7`, then delete the `DEV_`/`PROD_SECRET_ARN_AUTH0_WEBHOOK_SECRET` repo secrets. The recovery window is the rollback: redeploying a pre-#873 release needs the secret again, and `aws secretsmanager restore-secret` brings it back. (`portalops` has no delete verb, and the key left its catalog in #873.)
+   Leaving unused credentials in a store is what SOC 2 access-control review flags, so do clear it.
 
 There is **no rollback coupling**: if you must roll the app back, the request path still provisions; you'd only lose the eager pre-first-request provision (invisible to users) until the Action is restored.
 
@@ -61,4 +61,4 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 | `SSO_ENTERPRISE_CLAIM` / `_VALUE` | api | **saas only** — marks an enterprise-federated login for invite-gating |
 | `OIDC_ISSUER` / `OIDC_AUDIENCE` | api | **residency only** — the single customer issuer; boot guard requires both |
 | web auth provider | web | runtime `config.js` `AUTH_PROVIDER` (`auth0` / `oidc`, #607) — not a build-time `VITE_*` |
-| ~~`AUTH0_WEBHOOK_SECRET`~~ | — | **removed** (#577); clear it from every store |
+| ~~`AUTH0_WEBHOOK_SECRET`~~ | — | **removed** (#577 from the app, #873 from the deployment); delete it from each store after the #873 deploy (step 3 above) |

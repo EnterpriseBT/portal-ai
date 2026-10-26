@@ -136,9 +136,9 @@ export class ApplicationService {
   }
 
   /**
-   * First-login provisioning — the single idempotent, concurrency-safe path
-   * shared by the Auth0 webhook (eager) and `getApplicationMetadata` (the
-   * request-path self-heal). Find-or-create the user, then, under an advisory
+   * First-login provisioning — the single idempotent, concurrency-safe path,
+   * run from `getApplicationMetadata` on the request path (the Auth0 webhook
+   * that also called it was removed in #577). Find-or-create the user, then, under an advisory
    * lock keyed by the Auth0 sub, provision a personal owner-org **iff** the
    * user has no live membership. (#583)
    *

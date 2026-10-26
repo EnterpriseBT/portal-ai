@@ -41,7 +41,7 @@ Free, unlimited, all toolpacks, `cta contact`, no Stripe price — a **custom ti
 
 ### Prod (admin@portalsai.io)
 
-1. **First login.** admin@portalsai.io signs in with Google on `app.portalsai.io`; the Auth0 post-login webhook creates the user + default org (`application.service.ts:125`). Nothing can target the org before this (`org create --owner-email` throws `User not found`).
+1. **First login.** admin@portalsai.io signs in with Google on `app.portalsai.io`; the first authenticated request creates the user + default org (`metadata.middleware` → `ApplicationService.ensureProvisioned`, #577). Nothing can target the org before this (`org create --owner-email` throws `User not found`).
 2. **Stripe check.** Read `organizations.stripe_subscription_id` for admin@'s org. If it carries the internal `pro` subscription (`docs/TIER_PRICING_MODEL.md:126`), **cancel it in Stripe** — the `customer.subscription.deleted` webhook reverts the org to `standard` and clears the id (`billing.service.ts:87-120`). **Never `--allow-stripe-desync`** (the grandfathered $49 price is unmapped since #497).
 3. **Tier.** Create the prod `demo` tier (above), then `portalai org set-tier <orgId> demo --env prod --yes --confirm-prod` (refused, exit 9, while a live subscription remains — that's why step 2 comes first).
 4. **OAuth.** admin@ connects **Google Sheets** (its Workspace Drive holds #508's sheet) against the prod callback URL. (No Microsoft/OneDrive step — Excel is out of scope.)

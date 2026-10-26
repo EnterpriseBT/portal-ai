@@ -44,7 +44,6 @@ export const CATALOG: CatalogEntry[] = [
   // ── Secrets Manager (sensitive) ─
   secret("DATABASE_URL", "database-url"),
   secret("ENCRYPTION_KEY", "encryption-key"),
-  secret("AUTH0_WEBHOOK_SECRET", "auth0-webhook-secret"),
   secret("ANTHROPIC_API_KEY", "anthropic-api-key"),
   secret("TAVILY_API_KEY", "tavily-api-key"),
   // #315: Mapbox access token behind geocode / reverse_geocode /

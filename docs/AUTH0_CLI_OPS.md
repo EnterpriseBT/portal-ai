@@ -109,4 +109,4 @@ Auth0 **roles/permissions are manageable here**, but the app does **not** enforc
 
 `prod` has its **own tenant** and credential, gated. Its commands are identical to the above with `auth0 tenants use <prod-tenant>` selected — per-env tenant separation is settled practice, so nothing about the command surface changes.
 
-The tenant itself, its SPA and API applications, the post-login Action and the device-flow app for `portalai login` are created by an operator: `docs/PROD_PROVISIONING.runbook.md` §2.
+The tenant itself, its SPA and API applications and the device-flow app for `portalai login` are created by an operator: `docs/PROD_PROVISIONING.runbook.md` §2. A tenant has **no** post-login Action: one that calls the API's removed webhook route loops every login (#873).

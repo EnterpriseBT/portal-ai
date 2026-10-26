@@ -20,7 +20,7 @@
 
 ## Decision — remove it from the template first, delete it after the deploy
 
-1. **In code (this PR):** remove the parameter, the IAM resource line and the container secret from `backend.yml`. In the same commit, stop both workflows from passing the ARN, because `aws cloudformation deploy` fails on an override the template doesn't declare. Drop the catalog entry and its test line. The parity test still holds, since both sides lose it together.
+1. **In code (this PR):** remove the parameter, the IAM resource line and the container secret from `backend.yml`. In the same commit, stop both workflows from passing the ARN. `aws cloudformation deploy` would silently drop the override, so this is cleanup rather than a deploy fix, and it leaves the repo secrets with no reader. Drop the catalog entry and its test line. The parity test still holds, since both sides lose it together.
 2. **After the deploy, on each env (#854 lines):** `aws secretsmanager delete-secret --secret-id portalai/<env>/auth0-webhook-secret --recovery-window-in-days 7`, then delete the `DEV_`/`PROD_SECRET_ARN_AUTH0_WEBHOOK_SECRET` repo secrets. The recovery window is the rollback: redeploying a pre-#873 release needs the secret, and `aws secretsmanager restore-secret` brings it back within 7 days. `portalops` has no delete verb and doesn't get one for a single use.
 3. **Docs:** PROD_PROVISIONING §2 replaces the Action step with a ⚠️ step: create **no** post-login Action that calls the API, because provisioning happens on the first authenticated request and an Action calling a missing route loops every login. §1, §11, verify and the key table drop the secret (§11 goes from twelve ARNs to eleven). ENTERPRISE_SSO step 3 adds the template-first ordering. The API README's troubleshooting entry becomes "login loops back to sign-in → a stale post-login Action", with the 401/404 log signature we saw. Its 28P01 subsection stays as its own entry.
 
@@ -29,7 +29,7 @@
 **Files:** `infra/cloudformation/backend.yml`, `.github/workflows/deploy-{dev,prod}.yml`, `packages/devops-cli/src/catalog.ts` + `__tests__/catalog.test.ts`, `apps/api/src/__tests__/setup.ts`, the comments and docs in the table above.
 
 **Tests:**
-- `cd packages/devops-cli && npm run test:unit` (catalog + deploy-parity; parity now asserts no workflow passes `SecretArnAuth0WebhookSecret`);
+- `cd packages/devops-cli && npm run test:unit` (catalog + deploy-parity; parity asserts no workflow or template names `SecretArnAuth0WebhookSecret`);
 - `cd apps/api && npm run test:unit -- --testPathPattern environment`;
 - `aws cloudformation validate-template` on `backend.yml`;
 - root `lint:doc-pointers`.

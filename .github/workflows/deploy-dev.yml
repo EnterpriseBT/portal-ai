@@ -250,7 +250,6 @@ jobs:
               Memory=4096 \
               SecretArnDatabaseUrl=${{ secrets.DEV_SECRET_ARN_DATABASE_URL }} \
               SecretArnEncryptionKey=${{ secrets.DEV_SECRET_ARN_ENCRYPTION_KEY }} \
-              SecretArnAuth0WebhookSecret=${{ secrets.DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET }} \
               SecretArnAnthropicApiKey=${{ secrets.DEV_SECRET_ARN_ANTHROPIC_API_KEY }} \
               SecretArnTavilyApiKey=${{ secrets.DEV_SECRET_ARN_TAVILY_API_KEY }} \
               SecretArnGeocodingApiKey=${{ secrets.DEV_SECRET_ARN_GEOCODING_API_KEY }} \

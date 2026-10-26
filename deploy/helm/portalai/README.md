@@ -62,7 +62,7 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
 | `deployMode` | `saas` | `saas` \| `residency`. Sets `DEPLOY_MODE` (API auth validator) and the web `config.js`. |
 | `oidc.issuer` / `.audience` / `.clientId` | `""` | Customer OIDC identity (residency). Reaches the API validator and the web `config.js`. |
 | `config` | `{}` | Non-secret env → ConfigMap (e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `CORS_ORIGIN`). |
-| `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `AUTH0_WEBHOOK_SECRET`, `STRIPE_*`, `OAUTH_STATE_SECRET`). |
+| `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `STRIPE_*`, `OAUTH_STATE_SECRET`). |
 | `existingSecret` | `""` | Use a pre-created Secret instead of rendering one from `secrets`. |
 | `api.replicaCount` / `web.replicaCount` | `1` | Replicas. |
 | `api.resources` / `web.resources` | see values | Resource requests/limits. |

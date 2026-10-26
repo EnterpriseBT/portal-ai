@@ -48,16 +48,15 @@ These have external review queues. Everything else in this runbook is same-day.
 
 ## 1 — Generated secrets
 
-Three values are generated, not obtained. Each must be **fresh per environment** — never copy dev's.
+Two values are generated, not obtained. Each must be **fresh per environment** — never copy dev's.
 
 ```bash
-for KEY in ENCRYPTION_KEY OAUTH_STATE_SECRET AUTH0_WEBHOOK_SECRET; do
+for KEY in ENCRYPTION_KEY OAUTH_STATE_SECRET; do
   openssl rand -base64 32 | portalops vars set $KEY - --env $ENV $GUARD
 done
 ```
 
-- [ ] All three written.
-- [ ] **Keep `AUTH0_WEBHOOK_SECRET` to hand** — step 2 pastes the same value into the Auth0 Action. If you lose it, re-run for that one key and update both sides.
+- [ ] Both written.
 
 `ENCRYPTION_KEY` encrypts `connector_instances.credentials` and toolpack auth headers at rest. Rotating it later strands existing rows, so treat it as write-once in practice.
 
@@ -81,39 +80,7 @@ Each environment has its own tenant; `app-dev` is `portalsai-staging.us.auth0.co
   **How to tell, without guessing:** the probe below returns `redirect_uri=https://login.us.auth0.com/login/callback` on dev keys, versus `https://<your-tenant>/login/callback` on real ones. **The redirect host is the reliable signal — not the client id**, which looks equally plausible either way.
 
   For Google, the login client needs `https://<tenant>/login/callback` as an authorized redirect URI, and its **consent screen must be published to "In production"** — Testing mode admits only listed test users and expires refresh tokens after 7 days. Login-only scopes (`openid email profile`) are non-sensitive and publish without Google review, so keep the login client in a **separate GCP project** from the Sheets/Drive connector — otherwise login availability inherits that project's verification queue (see [#408](https://github.com/EnterpriseBT/portal-ai/issues/408)).
-- [ ] **Post-login Action** posting to **`https://api.portalsai.io/api/webhooks/auth0/sync`** — note the `/sync` suffix; the bare `/api/webhooks/auth0` is a 404. Signed with the `AUTH0_WEBHOOK_SECRET` from step 1.
-
-  The signing contract, from `apps/api/src/middleware/webhook-auth.middleware.ts`:
-
-  | | |
-  |---|---|
-  | Header | `X-Auth0-Webhook-Signature` |
-  | Value | **bare lowercase hex** — no `sha256=` prefix |
-  | Algorithm | HMAC-SHA256 over the **exact raw request body** |
-  | Key | the secret as a **literal string** (do not base64-decode it) |
-
-  ```js
-  exports.onExecutePostLogin = async (event, api) => {
-    const crypto = require("crypto");
-    const body = JSON.stringify({ /* Auth0PostLoginWebhookPayloadSchema */ });
-    const signature = crypto
-      .createHmac("sha256", event.secrets.WEBHOOK_SECRET)
-      .update(body)
-      .digest("hex");
-    await fetch("https://api.portalsai.io/api/webhooks/auth0/sync", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-auth0-webhook-signature": signature,
-      },
-      body,
-    });
-  };
-  ```
-
-  ⚠️ **Send bare hex, not `sha256=<hex>`.** The middleware compares with `crypto.timingSafeEqual`, which **throws on a length mismatch** rather than returning false — so a prefixed signature surfaces as a **500**, not the `401 WEBHOOK_INVALID_SIGNATURE` you would expect, and looks like a server fault instead of a signing mismatch. The middleware's own doc-comment claims the `sha256=` format; the comment is wrong and the code is the contract.
-
-  ⚠️ **Sign the exact bytes you send.** The verifier hashes `req.rawBody`. Build the JSON string once, sign that string, and send that same string as the body — re-serializing between signing and sending changes the bytes and breaks verification.
+- [ ] ⚠️ **Create no post-login Action that calls the API.** Users are provisioned on their first authenticated request (`metadata.middleware` → `ensureProvisioned`, #577), so the tenant needs no Action at all. There is no webhook route any more: `POST /api/webhooks/auth0/sync` was removed in #577. An Action that calls it fails, Auth0 then fails the whole login, and every user is bounced back to the sign-in page. That is how prod's login broke after v1.1.0, until the leftover Action was removed (#873). If a tenant has one, see `docs/ENTERPRISE_SSO.runbook.md` → Auth0 vendor teardown.
 - [ ] **Machine-to-machine app for the device flow** ([#194](https://github.com/EnterpriseBT/portal-ai/issues/194)) — this is what `portalai login --env $ENV` uses.
   - [ ] **Enable the `device_code` grant type on this app.** Dashboard → the app → Settings → Advanced Settings → **Grant Types** → check ☑ **Device Code** → Save (or `auth0 apps update <client-id> --grants <existing…>,device_code` — `--grants` *replaces* the list, so include what's already there). Creating the app does **not** enable it by default. Without it, `portalai login --env $ENV` fails with *"Grant type 'urn:ietf:params:oauth:grant-type:device_code' not allowed for the client."* — a `portalai …--env $ENV` mutation then returns `ENV_NOT_AUTHORIZED` because no session can be established. (Prod hit exactly this: the app existed with its ids in SSM, but the grant was off.)
   - [ ] **Authorize this app against the API** (resource server `https://api.portalsai.io`) — the device-flow app requests that audience, so it needs the grant just like the SPA (line above). Dashboard → **APIs** → the API → **Machine To Machine Applications** tab → toggle this app **Authorized** → Update (or `auth0 api post client-grants --data '{"client_id":"<id>","audience":"https://api.portalsai.io","scope":[]}'`). Without it the device flow is rejected with *"Client '…' is not authorized to access resource server 'https://api.portalsai.io'."* — a distinct failure from the `device_code` grant above, and it appears only **after** that one is fixed. (Prod hit this second.)
@@ -328,10 +295,10 @@ portalops db url --env $ENV --write $GUARD
 
 ## 11 — Capture the secret ARNs into GitHub
 
-`backend.yml` takes every secret **by ARN parameter**, so each one needs a repository secret before #383's backend stack can deploy. Twelve of them:
+`backend.yml` takes every secret **by ARN parameter**, so each one needs a repository secret before #383's backend stack can deploy. Eleven of them:
 
 ```bash
-for KEY in database-url encryption-key auth0-webhook-secret anthropic-api-key \
+for KEY in database-url encryption-key anthropic-api-key \
            tavily-api-key geocoding-api-key google-oauth-client-secret \
            microsoft-oauth-client-secret oauth-state-secret stripe-secret-key \
            stripe-webhook-secret github-dispatch-token; do
@@ -343,7 +310,7 @@ done
 ```
 
 - [ ] Also set `${PREFIX}_HOSTED_ZONE_ID` and `${PREFIX}_AWS_ROLE_ARN` (the prod deploy role from #383).
-- [ ] `gh secret list --repo EnterpriseBT/portal-ai | grep -c "${PREFIX}_SECRET_ARN_"` → **12**.
+- [ ] `gh secret list --repo EnterpriseBT/portal-ai | grep -c "${PREFIX}_SECRET_ARN_"` → **11**.
 
 ---
 
@@ -357,7 +324,7 @@ done
 - [ ] `portalai login --env $ENV` completes the device flow.
 - [ ] `https://api.portalsai.io/api/health` returns 200.
 - [ ] The ECS task started — no `ResourceNotFoundException` in any stopped task's reason. A missing secret shows up here.
-- [ ] Auth0 login works on `https://app.portalsai.io`, and the post-login webhook verifies.
+- [ ] Auth0 login works on `https://app.portalsai.io` and lands in the app, not back on the sign-in page.
 - [ ] Google Sheets **and** Microsoft Excel OAuth each round-trip against the prod callback URLs.
 - [ ] **Call a geocode, and run a `bulk_geocode_records` job.** This is the only check that proves `GEOCODING_API_KEY` resolved — it fails open, so nothing else will tell you.
 - [ ] The app and the marketing site render `support@` / `sales@` / `admin@portalsai.io` — no `qa@` anywhere.
@@ -372,7 +339,6 @@ done
 | `DB_MASTER_SECRET_ARN` | plain env (CFN `!ImportValue`, not in the vars catalog) | database stack export (#384/#500) | — |
 | `ENCRYPTION_KEY` | secret | generated | 1 |
 | `OAUTH_STATE_SECRET` | secret | generated | 1 |
-| `AUTH0_WEBHOOK_SECRET` | secret | generated | 1 |
 | `ANTHROPIC_API_KEY` | secret | vendor | 5 |
 | `TAVILY_API_KEY` | secret | vendor | 5 |
 | `GEOCODING_API_KEY` | secret | vendor (Mapbox) | 5 |

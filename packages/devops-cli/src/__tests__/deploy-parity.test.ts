@@ -161,6 +161,23 @@ describe("every required SecretArn parameter is passed by each backend deploy (#
   });
 });
 
+// #873: the reverse direction. `aws cloudformation deploy` silently drops an
+// override the template doesn't declare, so a workflow still passing a
+// retired secret's ARN deploys cleanly and keeps a repo secret alive that
+// nothing reads (AUTH0_WEBHOOK_SECRET outlived its route by a release).
+describe("every SecretArn a backend deploy passes is declared (#873)", () => {
+  const declared = new Set(Object.keys(loadTemplate().Parameters));
+
+  it.each(backendDeployWorkflows())(
+    "%s passes no undeclared one",
+    (_file, body) => {
+      const passed = [...body.matchAll(/\b(SecretArn\w+)=/g)].map((m) => m[1]!);
+      expect(passed.length).toBeGreaterThan(0);
+      expect(passed.filter((p) => !declared.has(p))).toEqual([]);
+    }
+  );
+});
+
 // #383: the ALB listener's certificate moved from an Fn::ImportValue to a
 // required, defaultless parameter, so frontend.yml, site.yml and backend.yml
 // all take it the same way. Defaultless is deliberate — a default would let a
@@ -740,6 +757,15 @@ describe("provisioning runbook covers the Auth0 wiring (#403)", () => {
     const s = auth0Section();
     expect(s).toContain("not authorized to access resource server");
     expect(s).toMatch(/does nothing|address bar/i);
+  });
+
+  it("tells the operator to create no post-login Action that calls the API (#873)", () => {
+    // #577 removed the sync webhook; an Action still calling it fails every
+    // login back to the sign-in page, which is how v1.1.0 broke prod login.
+    const s = auth0Section();
+    expect(s).toMatch(/no post-login Action/i);
+    expect(s).not.toContain("onExecutePostLogin");
+    expect(s).not.toMatch(/AUTH0_WEBHOOK_SECRET/);
   });
 
   it("warns against Auth0's shared developer keys", () => {

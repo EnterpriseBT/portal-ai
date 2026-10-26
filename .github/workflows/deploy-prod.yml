@@ -245,7 +245,6 @@ jobs:
               ${{ steps.scale.outputs.args }} \
               SecretArnDatabaseUrl=${{ secrets.PROD_SECRET_ARN_DATABASE_URL }} \
               SecretArnEncryptionKey=${{ secrets.PROD_SECRET_ARN_ENCRYPTION_KEY }} \
-              SecretArnAuth0WebhookSecret=${{ secrets.PROD_SECRET_ARN_AUTH0_WEBHOOK_SECRET }} \
               SecretArnAnthropicApiKey=${{ secrets.PROD_SECRET_ARN_ANTHROPIC_API_KEY }} \
               SecretArnTavilyApiKey=${{ secrets.PROD_SECRET_ARN_TAVILY_API_KEY }} \
               SecretArnGeocodingApiKey=${{ secrets.PROD_SECRET_ARN_GEOCODING_API_KEY }} \

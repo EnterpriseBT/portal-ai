@@ -12,7 +12,6 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
         .sort();
     expect(byKind("secret")).toEqual([
       "ANTHROPIC_API_KEY",
-      "AUTH0_WEBHOOK_SECRET",
       "DATABASE_URL",
       "DEMO_TOOLPACK_SIGNING_SECRETS", // #510 shared demo webhook toolpack allow-list
       "ENCRYPTION_KEY",

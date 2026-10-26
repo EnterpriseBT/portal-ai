@@ -154,7 +154,6 @@ Merging to `main` triggers `.github/workflows/deploy-dev.yml`:
 | `DEV_HOSTED_ZONE_ID` | Route 53 hosted zone ID |
 | `DEV_SECRET_ARN_DATABASE_URL` | Secrets Manager ARN (full, with suffix) |
 | `DEV_SECRET_ARN_ENCRYPTION_KEY` | Secrets Manager ARN |
-| `DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET` | Secrets Manager ARN |
 | `DEV_SECRET_ARN_ANTHROPIC_API_KEY` | Secrets Manager ARN |
 | `DEV_SECRET_ARN_TAVILY_API_KEY` | Secrets Manager ARN |
 | `DEV_VITE_AUTH0_DOMAIN` | Auth0 tenant domain |

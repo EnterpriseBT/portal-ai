@@ -77,9 +77,6 @@ Parameters:
   SecretArnEncryptionKey:
     Type: String
     Description: Full ARN of portalai/{env}/encryption-key secret
-  SecretArnAuth0WebhookSecret:
-    Type: String
-    Description: Full ARN of portalai/{env}/auth0-webhook-secret secret
   SecretArnAnthropicApiKey:
     Type: String
     Description: Full ARN of portalai/{env}/anthropic-api-key secret
@@ -328,7 +325,6 @@ Resources:
             Resource:
               - !Ref SecretArnDatabaseUrl
               - !Ref SecretArnEncryptionKey
-              - !Ref SecretArnAuth0WebhookSecret
               - !Ref SecretArnAnthropicApiKey
               - !Ref SecretArnTavilyApiKey
               - !Ref SecretArnGeocodingApiKey
@@ -643,8 +639,6 @@ Resources:
               ValueFrom: !Ref SecretArnDatabaseUrl
             - Name: ENCRYPTION_KEY
               ValueFrom: !Ref SecretArnEncryptionKey
-            - Name: AUTH0_WEBHOOK_SECRET
-              ValueFrom: !Ref SecretArnAuth0WebhookSecret
             - Name: ANTHROPIC_API_KEY
               ValueFrom: !Ref SecretArnAnthropicApiKey
             - Name: TAVILY_API_KEY
