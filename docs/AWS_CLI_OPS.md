@@ -22,7 +22,7 @@ This model is realized in `infra/cloudformation/iam.yml` (the account-global `po
 
 | Role | Grants | Assume |
 |---|---|---|
-| `portalai-{dev,prod}-operator-read` | the read set above + `ssm`/`secretsmanager` reads on `portalai/{env}/*` + the bastion tunnel (`ssm:StartSession`, env-isolated by the bastion's `Name` tag) | the default inspection identity |
+| `portalai-{dev,prod}-operator-read` | the read set above + `elasticache:Describe*` (`portalops cache status`) + `ssm`/`secretsmanager` reads on `portalai/{env}/*` + the env's RDS-managed master secret (`rds!db-…`, scoped by its `aws:rds:primaryDBInstanceArn` tag; `db url`/`psql`/`studio` compose from it) + the bastion tunnel (`ssm:StartSession`, env-isolated by the bastion's `Name` tag). That secret is the master credential, so the read role *can* write through the tunnel: the CLI's prod barrier + `--yes` is the DB-write guard, not IAM | the default inspection identity |
 | `portalai-{dev,prod}-operator-write` | read **+** `ssm:PutParameter`, `secretsmanager:Put/CreateSecret` on `portalai/{env}/*`, `ecs:RunTask` + `iam:PassRole` for the one-off DB tasks | assumed only for a mutation; **prod-write requires MFA** on `AssumeRole` |
 
 ```bash
@@ -62,7 +62,7 @@ mfa_serial = arn:aws:iam::<acct>:mfa/<portalai-operator device>
 region = us-east-1
 ```
 
-Then `eval "$(aws configure export-credentials --profile portalai-dev-read --format env)"` before running `portalops`/`portalai`. Run prod-write in a real terminal, since it prompts for the MFA code.
+Then `export AWS_PROFILE=portalai-dev-read` (or prefix one command with it). The JS SDK assumes the role from `source_profile` and refreshes it, so `portalops`/`portalai` keep working past the 1-hour session. prod-write needs an MFA code, which the SDK can't prompt for: in a real terminal, `eval "$(aws configure export-credentials --profile portalai-prod-write --format env)"` (prompts once). Those exported credentials last an hour; re-run on `ExpiredToken`.
 
 The **deploy** roles (`github-cicd-deploy-{dev,prod}`, GitHub-OIDC) carry scoped policies from the same stack — no longer `AdministratorAccess`. CI never uses the operator user; it assumes its OIDC deploy role.
 

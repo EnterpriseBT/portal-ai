@@ -93,7 +93,7 @@ Resources:
   #  Read policies — the inspection surface (per env)
   # ══════════════════════════════════════════════════════════
   # Matches docs/AWS_CLI_OPS.md's documented read set, scoped to the env.
-  # Read-only account-wide Describe/List (ecs/rds/cfn/elb) are left broad:
+  # Read-only account-wide Describe/List (ecs/rds/cfn/elb/elasticache) are left broad:
   # they are list-only, largely don't support resource scoping, and a
   # too-tight read role is the fail-CLOSED risk (an operator locked out
   # mid-incident). The SENSITIVE reads (secrets, params, the bastion tunnel)
@@ -159,7 +159,12 @@ Resources:
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/dev/*"
           # The RDS-managed master secret (rds!db-…), which db url / psql /
           # studio compose from since #500. Its name carries no env, so it's
-          # scoped by the tag RDS stamps on it.
+          # scoped by the tag RDS stamps on it. The trailing * keeps a restore
+          # to a new identifier (portalai-<env>-restored, say) readable
+          # mid-incident; customers can't set aws:-prefixed tags, so it can't
+          # be forged. This is the master credential: the read role can write
+          # through the tunnel, and the CLI's prod barrier + --yes is the DB
+          # write guard (accepted on #879).
           - Sid: RdsMasterSecretRead
             Effect: Allow
             Action:
@@ -168,8 +173,8 @@ Resources:
             Resource:
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
             Condition:
-              StringEquals:
-                secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:portalai-dev"
+              StringLike:
+                secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:portalai-dev*"
           # Bastion tunnel (db psql / studio). StartSession sits in READ:
           # it is the operator's daily DB-inspection path, the DB-write guard
           # is the CLI's prod barrier + --yes, and IAM cannot see the SQL
@@ -265,7 +270,12 @@ Resources:
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:portalai/prod/*"
           # The RDS-managed master secret (rds!db-…), which db url / psql /
           # studio compose from since #500. Its name carries no env, so it's
-          # scoped by the tag RDS stamps on it.
+          # scoped by the tag RDS stamps on it. The trailing * keeps a restore
+          # to a new identifier (portalai-<env>-restored, say) readable
+          # mid-incident; customers can't set aws:-prefixed tags, so it can't
+          # be forged. This is the master credential: the read role can write
+          # through the tunnel, and the CLI's prod barrier + --yes is the DB
+          # write guard (accepted on #879).
           - Sid: RdsMasterSecretRead
             Effect: Allow
             Action:
@@ -274,8 +284,8 @@ Resources:
             Resource:
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
             Condition:
-              StringEquals:
-                secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:portalai-prod"
+              StringLike:
+                secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:portalai-prod*"
           - Sid: SsmStartSessionBastion
             Effect: Allow
             Action:
