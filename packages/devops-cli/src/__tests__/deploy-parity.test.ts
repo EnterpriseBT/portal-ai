@@ -1292,3 +1292,30 @@ describe("each deploy role can push to every repository backend.yml creates (#39
     }
   );
 });
+
+describe("the break-glass admin group requires MFA (#397)", () => {
+  // Raw text, as above. The deny must cover everything but MFA enrolment,
+  // and only for a session without MFA, or the group is standing admin.
+  const raw = fs.readFileSync(
+    path.join(ROOT, "infra/cloudformation/iam.yml"),
+    "utf8"
+  );
+  const start = raw.indexOf("AdminRequireMfaPolicy:");
+  const block = raw.slice(start, raw.indexOf("\n  # ═", start));
+
+  it("is attached to EBT_Administrator", () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(block).toMatch(/Groups:\s*\n\s*- EBT_Administrator/);
+  });
+
+  it("denies everything except MFA enrolment when MFA is absent", () => {
+    expect(block).toContain("Effect: Deny");
+    expect(block).toContain("NotAction:");
+    expect(block).toContain('Resource: "*"');
+    expect(block).toMatch(
+      /BoolIfExists:\s*\n\s*aws:MultiFactorAuthPresent: "false"/
+    );
+    expect(block).toContain("iam:EnableMFADevice");
+    expect(block).not.toMatch(/- (iam|sts):\*/);
+  });
+});

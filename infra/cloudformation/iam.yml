@@ -52,6 +52,42 @@ Resources:
               - !GetAtt ProdOperatorWriteRole.Arn
 
   # ══════════════════════════════════════════════════════════
+  #  Break-glass admin — MFA required (#397 step 3)
+  # ══════════════════════════════════════════════════════════
+  # The console-created EBT_Administrator group (member: Admin) keeps
+  # AdministratorAccess as the break-glass identity that applies this stack,
+  # but nothing it holds works without MFA: this deny overrides every allow
+  # in a session that didn't present MFA, leaving only what's needed to
+  # enrol a device and sign in with it. Attached BY NAME to the group (no
+  # import). Apply only from an MFA session: the deny takes effect mid-
+  # deploy, so a non-MFA caller would lose CloudFormation access to finish.
+  AdminRequireMfaPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: portalai-admin-require-mfa
+      Groups:
+        - EBT_Administrator
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyAllWithoutMfa
+            Effect: Deny
+            NotAction:
+              - iam:CreateVirtualMFADevice
+              - iam:EnableMFADevice
+              - iam:ResyncMFADevice
+              - iam:ListMFADevices
+              - iam:ListVirtualMFADevices
+              - iam:GetUser
+              - iam:ChangePassword
+              - iam:GetAccountPasswordPolicy
+              - sts:GetSessionToken
+            Resource: "*"
+            Condition:
+              BoolIfExists:
+                aws:MultiFactorAuthPresent: "false"
+
+  # ══════════════════════════════════════════════════════════
   #  Read policies — the inspection surface (per env)
   # ══════════════════════════════════════════════════════════
   # Matches docs/AWS_CLI_OPS.md's documented read set, scoped to the env.

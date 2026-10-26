@@ -35,6 +35,8 @@ eval "$(aws sts assume-role --role-arn arn:aws:iam::<acct>:role/portalai-dev-ope
 
 The **deploy** roles (`github-cicd-deploy-{dev,prod}`, GitHub-OIDC) carry scoped policies from the same stack — no longer `AdministratorAccess`. CI never uses the operator user; it assumes its OIDC deploy role.
 
+**Break-glass admin.** `Admin` (group `EBT_Administrator`) keeps `AdministratorAccess` for what the operator roles deliberately can't do: applying the `portalai-iam` stack and console-only account work. The same stack attaches `portalai-admin-require-mfa` to that group, which denies everything in a session without MFA except enrolling a device. So `Admin` works only after an MFA sign-in, and `aws login --remote` inherits that console session's MFA. Everyday inspection and mutations go through the operator roles, not `Admin`.
+
 ### Agent / devcontainer path
 Plain `aws login` here redirects to an ephemeral **localhost** callback the host browser can't reach → a **400 on redirect**. Use the cross-device flow instead:
 ```bash
