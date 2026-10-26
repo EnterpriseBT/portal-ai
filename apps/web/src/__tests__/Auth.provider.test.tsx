@@ -16,10 +16,23 @@ const mockLogout = jest.fn();
 
 let mockUseAuth0Value: Record<string, unknown>;
 
+// The props the app passed to Auth0Provider, so a test can drive its
+// redirect callback the way auth0-react does after a login round trip.
+let mockAuth0Props: {
+  onRedirectCallback?: (appState?: { returnTo?: string }) => void;
+} = {};
+
 jest.unstable_mockModule("@auth0/auth0-react", () => ({
-  Auth0Provider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
+  Auth0Provider: ({
+    children,
+    ...props
+  }: {
+    children: React.ReactNode;
+    onRedirectCallback?: (appState?: { returnTo?: string }) => void;
+  }) => {
+    mockAuth0Props = props;
+    return <>{children}</>;
+  },
   useAuth0: () => mockUseAuth0Value,
 }));
 
@@ -52,7 +65,7 @@ const setRuntimeConfig = (cfg: Record<string, string>) => {
   ).__RUNTIME_CONFIG__ = cfg;
 };
 
-const { render, screen, fireEvent, waitFor } =
+const { render, screen, fireEvent, waitFor, act } =
   await import("@testing-library/react");
 const { AuthProvider, useAuth } = await import("../providers/Auth.provider");
 
@@ -162,6 +175,58 @@ describe("useAuth() seam — Auth0 bridge (#607)", () => {
       authorizationParams?: { connection?: string };
     };
     expect(lastCall.authorizationParams?.connection).toBeUndefined();
+  });
+
+  // #884: the callback returns the user to where they were headed *before*
+  // auth settles, so the page Auth0 landed on (the dashboard) never mounts.
+  it("#884 — the redirect callback hands the stashed returnTo to onLoginReturn", () => {
+    const onLoginReturn = jest.fn((_href: string) => {});
+    render(
+      <AuthProvider onLoginReturn={onLoginReturn}>
+        <Probe />
+      </AuthProvider>
+    );
+    mockAuth0Props.onRedirectCallback?.({
+      returnTo: "/invitations/accept?token=t#top",
+    });
+    expect(onLoginReturn).toHaveBeenCalledWith(
+      "/invitations/accept?token=t#top"
+    );
+  });
+
+  // Code-split routes make the navigation async; until it lands, no route may
+  // render signed-in content (the dashboard would self-provision an org).
+  it("#884 — the session stays loading until the return navigation lands", async () => {
+    let land!: () => void;
+    const onLoginReturn = jest.fn(
+      (_href: string) => new Promise<void>((resolve) => (land = resolve))
+    );
+    render(
+      <AuthProvider onLoginReturn={onLoginReturn}>
+        <Probe />
+      </AuthProvider>
+    );
+    expect(screen.getByTestId("loading")).toHaveTextContent("false");
+
+    await act(async () => {
+      mockAuth0Props.onRedirectCallback?.({ returnTo: "/stations" });
+    });
+    expect(screen.getByTestId("loading")).toHaveTextContent("true");
+
+    await act(async () => land());
+    expect(screen.getByTestId("loading")).toHaveTextContent("false");
+  });
+
+  it("#884 — with no returnTo it still returns to / (dropping ?code=&state=)", () => {
+    const onLoginReturn = jest.fn((_href: string) => {});
+    render(
+      <AuthProvider onLoginReturn={onLoginReturn}>
+        <Probe />
+      </AuthProvider>
+    );
+    mockAuth0Props.onRedirectCallback?.(undefined);
+    mockAuth0Props.onRedirectCallback?.({ returnTo: "//evil.test/x" });
+    expect(onLoginReturn.mock.calls).toEqual([["/"], ["/"]]);
   });
 
   it("case 10 — logout calls the vendor logout with returnTo origin", () => {
