@@ -20,6 +20,7 @@ import {
   provisionTestOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import { SeedService } from "../../../services/seed.service.js";
 
 const AUTH0_ID = "auth0|org-test-user";
 
@@ -36,12 +37,21 @@ jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   },
 }));
 
-// Mock Auth0Service (required by profile router which shares the protected router)
+// Mock Auth0Service (required by profile router which shares the protected
+// router). #881: an unknown subject's first request self-provisions, which
+// reads the Auth0 profile, so the mock answers with one. Defined in the
+// factory: a mock mutated after import isn't reliably the instance the app
+// holds under ESM module mocks.
 jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
   Auth0Service: {
     hasAccessToken: jest.fn(),
     getAccessToken: jest.fn(),
-    getAuth0UserProfile: jest.fn(),
+    getAuth0UserProfile: jest.fn(async () => ({
+      email: "first-login@example.com",
+      name: "First Login",
+      picture: null,
+      email_verified: true,
+    })),
   },
 }));
 
@@ -62,6 +72,9 @@ describe("Organization Router", () => {
     db = drizzle(connection, { schema });
 
     await teardownOrg(db as ReturnType<typeof drizzle>);
+    // #881: self-provisioning creates the default Sandbox connector, which
+    // needs its definition.
+    await new SeedService().seedConnectorDefinitions(db);
   });
 
   afterEach(async () => {
@@ -89,17 +102,53 @@ describe("Organization Router", () => {
   }
 
   describe("GET /api/organization/current", () => {
-    it("should return 404 when user does not exist", async () => {
+    // #881: before this, a new user's first /current 404'd
+    // ORGANIZATION_USER_NOT_FOUND and the web logged them out.
+    it("provisions a personal org on an unknown subject's first call", async () => {
       const res = await request(app)
         .get("/api/organization/current")
         .set("Authorization", "Bearer test-token");
 
-      expect(res.status).toBe(404);
-      expect(res.body.success).toBe(false);
-      expect(res.body.code).toBe(ApiCode.ORGANIZATION_USER_NOT_FOUND);
+      expect(res.status).toBe(200);
+      expect(res.body.payload.organization.id).toEqual(expect.any(String));
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(users)
+        .where(eq(users.auth0Id, AUTH0_ID));
+      expect(rows).toHaveLength(1);
     });
 
-    it("should return 404 when user exists but has no organization", async () => {
+    it("converges concurrent first-load calls on one user and one org", async () => {
+      const [current, memberships] = await Promise.all([
+        request(app)
+          .get("/api/organization/current")
+          .set("Authorization", "Bearer test-token"),
+        request(app)
+          .get("/api/organization/memberships")
+          .set("Authorization", "Bearer test-token"),
+      ]);
+
+      expect(current.status).toBe(200);
+      expect(memberships.status).toBe(200);
+      expect(memberships.body.payload.memberships).toHaveLength(1);
+      expect(memberships.body.payload.memberships[0].organization.id).toBe(
+        current.body.payload.organization.id
+      );
+      // Two responses agreeing isn't proof: the rows are.
+      const d = db as ReturnType<typeof drizzle>;
+      const userRows = await d
+        .select()
+        .from(users)
+        .where(eq(users.auth0Id, AUTH0_ID));
+      expect(userRows).toHaveLength(1);
+      const memberRows = await d
+        .select()
+        .from(organizationUsers)
+        .where(eq(organizationUsers.userId, userRows[0].id));
+      expect(memberRows).toHaveLength(1);
+    });
+
+    it("provisions a personal org for a user row with no membership", async () => {
       // Create user directly without an organization
       const owner = createOwner();
       await (db as ReturnType<typeof drizzle>).insert(users).values({
@@ -120,9 +169,15 @@ describe("Organization Router", () => {
         .get("/api/organization/current")
         .set("Authorization", "Bearer test-token");
 
-      expect(res.status).toBe(404);
-      expect(res.body.success).toBe(false);
-      expect(res.body.code).toBe(ApiCode.ORGANIZATION_NOT_FOUND);
+      expect(res.status).toBe(200);
+      const memberships = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(organizationUsers)
+        .where(eq(organizationUsers.userId, owner.id));
+      expect(memberships).toHaveLength(1);
+      expect(memberships[0].organizationId).toBe(
+        res.body.payload.organization.id
+      );
     });
 
     it("should return 200 with the current organization", async () => {
@@ -209,6 +264,14 @@ describe("Organization Router", () => {
   });
 
   describe("GET /api/organization/usage (#172 slice 3)", () => {
+    // #881: Settings and portal pages read it on a deep-linked first load.
+    it("self-provisions an unknown subject instead of 404ing them out", async () => {
+      const res = await request(app)
+        .get("/api/organization/usage")
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+    });
+
     it("returns the tier policy and a zeroed usage balance for a standard org", async () => {
       const owner = createOwner();
       await provisionTestOrg(owner);
@@ -297,12 +360,12 @@ describe("Organization Router", () => {
   }
 
   describe("GET /api/organization/memberships", () => {
-    it("returns 404 when the user does not exist", async () => {
+    it("provisions and lists one membership for an unknown subject (#881)", async () => {
       const res = await request(app)
         .get("/api/organization/memberships")
         .set("Authorization", "Bearer test-token");
-      expect(res.status).toBe(404);
-      expect(res.body.code).toBe(ApiCode.ORGANIZATION_USER_NOT_FOUND);
+      expect(res.status).toBe(200);
+      expect(res.body.payload.memberships).toHaveLength(1);
     });
 
     it("lists the user's live memberships, flagging the current one", async () => {
@@ -547,7 +610,7 @@ describe("Organization Router", () => {
       );
     });
 
-    it("deletes on the happy path; repeat and /current 404 (case 16)", async () => {
+    it("deletes on the happy path; repeat 404s and /current re-provisions (case 16)", async () => {
       const owner = createOwner();
       const result = await provisionTestOrg(owner);
 
@@ -560,10 +623,15 @@ describe("Organization Router", () => {
       expect(res.body.success).toBe(true);
       expect(res.body.payload.id).toBe(result.organization.id);
 
+      // #881: like every self-healing route, /current gives a caller with no
+      // live membership a fresh personal org.
       const current = await request(app)
         .get("/api/organization/current")
         .set("Authorization", "Bearer test-token");
-      expect(current.status).toBe(404);
+      expect(current.status).toBe(200);
+      expect(current.body.payload.organization.id).not.toBe(
+        result.organization.id
+      );
 
       const repeat = await request(app)
         .delete(`/api/organization/${result.organization.id}`)

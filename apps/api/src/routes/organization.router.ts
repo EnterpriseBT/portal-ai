@@ -104,8 +104,20 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/OrganizationGetResponse'
+ *       401:
+ *         description: Missing authentication subject (METADATA_MISSING_AUTH)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: An enterprise-federated caller with no invitation (SSO_PROVISIONING_NOT_INVITED). An unknown caller is otherwise provisioned a personal organization on this request (#881).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: User or organization not found
+ *         description: No live organization resolved for the caller (ORGANIZATION_NOT_FOUND)
  *         content:
  *           application/json:
  *             schema:
@@ -947,33 +959,17 @@ organizationRouter.delete(
 
 organizationRouter.get(
   "/current",
+  // #881: the SPA's first request after a new user's first login. The
+  // self-heal provisions them here too, so this route can't lose the race
+  // against the other first-load requests and 404 a new user out.
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth0Id = req.auth?.payload.sub as string;
-      logger.info({ auth0Id }, "GET /api/organization/current called");
-
-      const user = await DbService.repository.users
-        .findByAuth0Id(auth0Id)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ORGANIZATION_FETCH_FAILED,
-            error instanceof Error ? error.message : "Failed to fetch user"
-          );
-        });
-      if (!user) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.ORGANIZATION_USER_NOT_FOUND,
-            "User not found"
-          )
-        );
-      }
+      const { userId } = req.application!.metadata;
+      logger.info({ userId }, "GET /api/organization/current called");
 
       const result = await ApplicationService.getCurrentOrganization(
-        user.id
+        userId
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -996,7 +992,7 @@ organizationRouter.get(
 
       return HttpService.success<OrganizationGetResponse>(res, {
         organization: result.organization,
-        ...(await orgRoleFields(user.id, result.organization.id)),
+        ...(await orgRoleFields(userId, result.organization.id)),
       });
     } catch (error) {
       logger.error(
@@ -1035,25 +1031,34 @@ organizationRouter.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/UserMembershipsGetResponse'
- *       404:
- *         description: User not found
+ *       401:
+ *         description: Missing authentication subject (METADATA_MISSING_AUTH)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: An enterprise-federated caller with no invitation (SSO_PROVISIONING_NOT_INVITED). An unknown caller is otherwise provisioned a personal organization on this request (#881).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Failed to resolve the caller or list memberships
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 organizationRouter.get(
   "/memberships",
+  // #881: self-heals like /current; the org switcher loads on first render.
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth0Id = req.auth?.payload.sub as string;
-      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
-      if (!user) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.ORGANIZATION_USER_NOT_FOUND,
-            "User not found"
-          )
-        );
-      }
-      const memberships = await ApplicationService.listUserMemberships(user.id);
+      const memberships = await ApplicationService.listUserMemberships(
+        req.application!.metadata.userId
+      );
       return HttpService.success<UserMembershipsGetResponse>(res, {
         memberships,
       });
@@ -1189,8 +1194,14 @@ organizationRouter.post(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/OrganizationUsageGetResponse'
+ *       403:
+ *         description: An enterprise-federated caller with no invitation (SSO_PROVISIONING_NOT_INVITED). An unknown caller is otherwise provisioned a personal organization on this request (#881).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: User or organization not found
+ *         description: No live organization resolved for the caller (ORGANIZATION_NOT_FOUND)
  *         content:
  *           application/json:
  *             schema:
@@ -1204,6 +1215,9 @@ organizationRouter.post(
  */
 organizationRouter.get(
   "/usage",
+  // #881: read on first render of Settings and portal pages, so it must
+  // self-heal too, or a new user's deep-linked first load 404s them out.
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth0Id = req.auth?.payload.sub as string;
