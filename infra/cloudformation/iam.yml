@@ -57,10 +57,19 @@ Resources:
   # The console-created EBT_Administrator group (member: Admin) keeps
   # AdministratorAccess as the break-glass identity that applies this stack,
   # but nothing it holds works without MFA: this deny overrides every allow
-  # in a session that didn't present MFA, leaving only what's needed to
-  # enrol a device and sign in with it. Attached BY NAME to the group (no
-  # import). Apply only from an MFA session: the deny takes effect mid-
-  # deploy, so a non-MFA caller would lose CloudFormation access to finish.
+  # in a session that didn't present MFA. Attached BY NAME to the group (no
+  # import).
+  #
+  # MFA enrolment is deliberately NOT exempt. Exempting it would let any
+  # session without MFA (a leaked key, a phished password) enrol its own
+  # device and mint an MFA session, or enrol one on portalai-operator to
+  # satisfy prod-write's MFA condition. So Admin enrols its device BEFORE
+  # this applies, and a lost device is recovered through root. Only the
+  # caller-only password APIs stay exempt, so an expired password can be
+  # changed at sign-in.
+  #
+  # Apply only from an MFA session: the deny takes effect mid-deploy, so a
+  # caller without MFA would lose CloudFormation access before it finishes.
   AdminRequireMfaPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -73,15 +82,8 @@ Resources:
           - Sid: DenyAllWithoutMfa
             Effect: Deny
             NotAction:
-              - iam:CreateVirtualMFADevice
-              - iam:EnableMFADevice
-              - iam:ResyncMFADevice
-              - iam:ListMFADevices
-              - iam:ListVirtualMFADevices
-              - iam:GetUser
               - iam:ChangePassword
               - iam:GetAccountPasswordPolicy
-              - sts:GetSessionToken
             Resource: "*"
             Condition:
               BoolIfExists:

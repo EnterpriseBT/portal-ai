@@ -1294,28 +1294,53 @@ describe("each deploy role can push to every repository backend.yml creates (#39
 });
 
 describe("the break-glass admin group requires MFA (#397)", () => {
-  // Raw text, as above. The deny must cover everything but MFA enrolment,
-  // and only for a session without MFA, or the group is standing admin.
-  const raw = fs.readFileSync(
-    path.join(ROOT, "infra/cloudformation/iam.yml"),
-    "utf8"
+  // Parsed, not sliced: the whole resource is compared exactly, so a wider
+  // NotAction (enrolment, a wildcard, sts:AssumeRole) or a softer condition
+  // fails here. Enrolment is excluded on purpose: exempting it lets a
+  // session without MFA enrol its own device and mint an MFA session.
+  interface Statement {
+    Effect: string;
+    NotAction?: string[];
+    Action?: unknown;
+    Resource: unknown;
+    Condition?: unknown;
+  }
+  const doc = parseDocument(
+    fs.readFileSync(path.join(ROOT, "infra/cloudformation/iam.yml"), "utf8"),
+    { logLevel: "silent" }
   );
-  const start = raw.indexOf("AdminRequireMfaPolicy:");
-  const block = raw.slice(start, raw.indexOf("\n  # ═", start));
+  const policy = (
+    doc.toJS({ maxAliasCount: -1 }) as {
+      Resources: Record<
+        string,
+        {
+          Type: string;
+          Properties: {
+            Groups?: string[];
+            PolicyDocument: { Statement: Statement[] };
+          };
+        }
+      >;
+    }
+  ).Resources.AdminRequireMfaPolicy;
 
-  it("is attached to EBT_Administrator", () => {
-    expect(start).toBeGreaterThan(-1);
-    expect(block).toMatch(/Groups:\s*\n\s*- EBT_Administrator/);
+  it("is a managed policy attached to EBT_Administrator only", () => {
+    expect(doc.errors).toHaveLength(0);
+    expect(policy.Type).toBe("AWS::IAM::ManagedPolicy");
+    expect(policy.Properties.Groups).toEqual(["EBT_Administrator"]);
   });
 
-  it("denies everything except MFA enrolment when MFA is absent", () => {
-    expect(block).toContain("Effect: Deny");
-    expect(block).toContain("NotAction:");
-    expect(block).toContain('Resource: "*"');
-    expect(block).toMatch(
-      /BoolIfExists:\s*\n\s*aws:MultiFactorAuthPresent: "false"/
-    );
-    expect(block).toContain("iam:EnableMFADevice");
-    expect(block).not.toMatch(/- (iam|sts):\*/);
+  it("denies everything but the caller's own password APIs without MFA", () => {
+    expect(policy.Properties.PolicyDocument.Statement).toEqual([
+      {
+        Sid: "DenyAllWithoutMfa",
+        Effect: "Deny",
+        NotAction: ["iam:ChangePassword", "iam:GetAccountPasswordPolicy"],
+        Resource: "*",
+        Condition: {
+          BoolIfExists: { "aws:MultiFactorAuthPresent": "false" },
+        },
+      },
+    ]);
   });
 });
