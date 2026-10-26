@@ -21,7 +21,7 @@ import {
  * Post-login `returnTo` bridge (#585), Auth0 path. On login we seed Auth0
  * `appState.returnTo` from the PRE key `Authorized` stashed; on the redirect
  * back, `onRedirectCallback` re-stashes it under the POST key that
- * `usePostLoginReturnTo` (in the router root) consumes to navigate. Auth0-only,
+ * `Authorized` consumes, once auth has settled, to navigate (#884). Auth0-only,
  * as #585 always was — the router is created inside this provider, so the
  * callback can't navigate directly. Residency OIDC login is IdP-hosted and out
  * of #585's scope.
