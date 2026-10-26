@@ -22,7 +22,7 @@ This model is realized in `infra/cloudformation/iam.yml` (the account-global `po
 
 | Role | Grants | Assume |
 |---|---|---|
-| `portalai-{dev,prod}-operator-read` | the read set above + `ssm`/`secretsmanager` reads on `portalai/{env}/*` + the bastion tunnel (`ssm:StartSession`, env-isolated by the bastion's `Name` tag) | the default inspection identity |
+| `portalai-{dev,prod}-operator-read` | the read set above + `elasticache:Describe*` (`portalops cache status`) + `ssm`/`secretsmanager` reads on `portalai/{env}/*` + the env's RDS-managed master secret (`rds!db-…`, scoped by its `aws:rds:primaryDBInstanceArn` tag; `db url`/`psql`/`studio` compose from it) + the bastion tunnel (`ssm:StartSession`, env-isolated by the bastion's `Name` tag). That secret is the master credential, so the read role *can* write through the tunnel: the CLI's prod barrier + `--yes` is the DB-write guard, not IAM | the default inspection identity |
 | `portalai-{dev,prod}-operator-write` | read **+** `ssm:PutParameter`, `secretsmanager:Put/CreateSecret` on `portalai/{env}/*`, `ecs:RunTask` + `iam:PassRole` for the one-off DB tasks | assumed only for a mutation; **prod-write requires MFA** on `AssumeRole` |
 
 ```bash
@@ -32,6 +32,37 @@ eval "$(aws sts assume-role --role-arn arn:aws:iam::<acct>:role/portalai-dev-ope
   | jq -r '"export AWS_ACCESS_KEY_ID=\(.AccessKeyId) AWS_SECRET_ACCESS_KEY=\(.SecretAccessKey) AWS_SESSION_TOKEN=\(.SessionToken)"')"
 # a mutation: assume the write role instead (prod-write additionally needs --serial-number/--token-code MFA)
 ```
+
+Or, once, put the four roles in `~/.aws/config` as profiles over the operator user's key (`[profile portalai-operator]` holds only `region`; its key lives in `~/.aws/credentials`). `~/.aws` is in the devcontainer's writable layer, so a **rebuild** loses it: re-add this block, and replace the key (create a new one, delete the old) since its secret can't be read back.
+
+```ini
+[profile portalai-dev-read]
+role_arn = arn:aws:iam::<acct>:role/portalai-dev-operator-read
+source_profile = portalai-operator
+role_session_name = portalai-operator
+region = us-east-1
+
+[profile portalai-dev-write]
+role_arn = arn:aws:iam::<acct>:role/portalai-dev-operator-write
+source_profile = portalai-operator
+role_session_name = portalai-operator
+region = us-east-1
+
+[profile portalai-prod-read]
+role_arn = arn:aws:iam::<acct>:role/portalai-prod-operator-read
+source_profile = portalai-operator
+role_session_name = portalai-operator
+region = us-east-1
+
+[profile portalai-prod-write]
+role_arn = arn:aws:iam::<acct>:role/portalai-prod-operator-write
+source_profile = portalai-operator
+role_session_name = portalai-operator
+mfa_serial = arn:aws:iam::<acct>:mfa/<portalai-operator device>
+region = us-east-1
+```
+
+Then `export AWS_PROFILE=portalai-dev-read` (or prefix one command with it). The JS SDK assumes the role from `source_profile` and refreshes it, so `portalops`/`portalai` keep working past the 1-hour session. prod-write needs an MFA code, which the SDK can't prompt for: in a real terminal, `eval "$(aws configure export-credentials --profile portalai-prod-write --format env)"` (prompts once). Those exported credentials last an hour; re-run on `ExpiredToken`.
 
 The **deploy** roles (`github-cicd-deploy-{dev,prod}`, GitHub-OIDC) carry scoped policies from the same stack — no longer `AdministratorAccess`. CI never uses the operator user; it assumes its OIDC deploy role.
 

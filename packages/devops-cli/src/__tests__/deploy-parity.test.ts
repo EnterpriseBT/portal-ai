@@ -74,6 +74,36 @@ function loadTemplate(): BackendTemplate {
   return doc.toJS({ maxAliasCount: -1 }) as BackendTemplate;
 }
 
+/** The account-global IAM stack, parsed the same way. */
+interface IamStatement {
+  Sid?: string;
+  Effect: string;
+  Action?: string[];
+  NotAction?: string[];
+  Resource: unknown;
+  Condition?: Record<string, Record<string, string>>;
+}
+interface IamTemplate {
+  Resources: Record<
+    string,
+    {
+      Type: string;
+      Properties: {
+        Groups?: string[];
+        PolicyDocument: { Statement: IamStatement[] };
+      };
+    }
+  >;
+}
+function loadIam(): IamTemplate {
+  const doc = parseDocument(
+    fs.readFileSync(path.join(ROOT, "infra/cloudformation/iam.yml"), "utf8"),
+    { logLevel: "silent" }
+  );
+  expect(doc.errors).toHaveLength(0);
+  return doc.toJS({ maxAliasCount: -1 }) as IamTemplate;
+}
+
 /** Collect every `Name` at any depth. A conditional entry (`!If [Cond, {…},
  *  AWS::NoValue]`) parses to an array, so a flat `.map(e => e.Name)` would
  *  silently skip it — which is exactly how GITHUB_DISPATCH_TOKEN is declared. */
@@ -1294,44 +1324,21 @@ describe("each deploy role can push to every repository backend.yml creates (#39
 });
 
 describe("the break-glass admin group requires MFA (#397)", () => {
-  // Parsed, not sliced: the whole resource is compared exactly, so a wider
-  // NotAction (enrolment, a wildcard, sts:AssumeRole) or a softer condition
-  // fails here. Enrolment is excluded on purpose: exempting it lets a
-  // session without MFA enrol its own device and mint an MFA session.
-  interface Statement {
-    Effect: string;
-    NotAction?: string[];
-    Action?: unknown;
-    Resource: unknown;
-    Condition?: unknown;
-  }
-  const doc = parseDocument(
-    fs.readFileSync(path.join(ROOT, "infra/cloudformation/iam.yml"), "utf8"),
-    { logLevel: "silent" }
-  );
-  const policy = (
-    doc.toJS({ maxAliasCount: -1 }) as {
-      Resources: Record<
-        string,
-        {
-          Type: string;
-          Properties: {
-            Groups?: string[];
-            PolicyDocument: { Statement: Statement[] };
-          };
-        }
-      >;
-    }
-  ).Resources.AdminRequireMfaPolicy;
-
+  // Parsed and compared exactly, so a wider NotAction (enrolment, a
+  // wildcard, sts:AssumeRole) or a softer condition fails here. Enrolment
+  // is excluded on purpose: exempting it lets a session without MFA enrol
+  // its own device and mint an MFA session.
   it("is a managed policy attached to EBT_Administrator only", () => {
-    expect(doc.errors).toHaveLength(0);
+    const policy = loadIam().Resources.AdminRequireMfaPolicy;
     expect(policy.Type).toBe("AWS::IAM::ManagedPolicy");
     expect(policy.Properties.Groups).toEqual(["EBT_Administrator"]);
   });
 
   it("denies everything but the caller's own password APIs without MFA", () => {
-    expect(policy.Properties.PolicyDocument.Statement).toEqual([
+    expect(
+      loadIam().Resources.AdminRequireMfaPolicy.Properties.PolicyDocument
+        .Statement
+    ).toEqual([
       {
         Sid: "DenyAllWithoutMfa",
         Effect: "Deny",
@@ -1342,5 +1349,41 @@ describe("the break-glass admin group requires MFA (#397)", () => {
         },
       },
     ]);
+  });
+});
+
+describe("operator read roles reach what the read commands need (#397)", () => {
+  // Found walking the operator flow: cache status (#852) needs ElastiCache
+  // describes, and db url / psql (#500) read the RDS-managed rds!… secret,
+  // whose name has no env in it, so it's scoped by the tag RDS stamps on it.
+  it.each([
+    ["DevOperatorReadPolicy", "dev"],
+    ["ProdOperatorReadPolicy", "prod"],
+  ])("%s", (name, env) => {
+    const statements =
+      loadIam().Resources[name].Properties.PolicyDocument.Statement;
+    expect(statements.every((s) => s.Effect === "Allow")).toBe(true);
+
+    const describe = statements.find(
+      (s) => s.Sid === "ServiceDescribeReadOnly"
+    );
+    expect(describe?.Action).toContain("elasticache:Describe*");
+
+    expect(statements.find((s) => s.Sid === "RdsMasterSecretRead")).toEqual({
+      Sid: "RdsMasterSecretRead",
+      Effect: "Allow",
+      Action: [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+      ],
+      Resource: [
+        "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*",
+      ],
+      Condition: {
+        StringLike: {
+          "secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn": `arn:\${AWS::Partition}:rds:\${AWS::Region}:\${AWS::AccountId}:db:portalai-${env}*`,
+        },
+      },
+    });
   });
 });
