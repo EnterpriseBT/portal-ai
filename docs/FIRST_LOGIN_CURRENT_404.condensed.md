@@ -34,6 +34,8 @@ Behaviour changes, all consistent with every other self-healing route:
 
 Concurrency: `ensureProvisioned` is advisory-locked, so parallel first requests converge on one user and one org.
 
+**The invitation-accept page (found in code review).** `/invitations/accept` rendered inside `AuthorizedLayout`, whose org switcher and nav read `/memberships` and `/current`. With the self-heal, an invitee with no live membership (removed from their last org, or a new user whose email is unverified or doesn't match the invite) would get a stray personal org before the accept POST bound the invited one. The page now uses `PublicLayout`, so nothing reads the caller's org until the accept has run; `SeatService.acceptByToken` already creates a missing user. That page has no app chrome, so its failure states offer **Sign out** themselves (e.g. to switch to the invited account).
+
 ## Plan — 1 slice
 
 **Files**
@@ -50,13 +52,17 @@ Concurrency: `ensureProvisioned` is advisory-locked, so parallel first requests 
   `Auth0Service.getAuth0UserProfile` is mocked to return a profile.
 - Edit: the `@openapi` blocks for all four routes. A missing user no longer 404s; the 401/403/404/500 the middleware and handler can return are documented.
 
-**Tests:** `cd apps/api && npm run test:integration -- --testPathPattern organization.router.integration`.
+- Edit: `apps/web/src/routes/invitations.accept.tsx` (`PublicLayout`, with an exported `AcceptInvitationPage` for its test) and `apps/web/src/views/AcceptInvitation.view.tsx` (`onSignOut` on failure states).
+- New: `apps/web/src/__tests__/AcceptInvitationPage.test.tsx`. Every `sdk.*` call is recorded, and the page must not call `organizations.current` / `organizations.memberships`.
+
+**Tests:** `cd apps/api && npm run test:integration -- --testPathPattern "routes/(organization|billing).router.integration"`, `cd apps/api && npm run test:unit -- --testPathPattern middleware/metadata`, `cd apps/web && npm run test:unit -- --testPathPattern AcceptInvitation`.
 
 ## Smoke (manual, against your dev stack)
 
 1. Delete your local user row (or use a never-seen Database-connection user), then sign in at `http://localhost:3000`. The dashboard loads on the **first** attempt with no bounce to `/login`. The API log shows `GET /api/organization/current 200`, with no `ORGANIZATION_USER_NOT_FOUND`.
 2. Sign out and back in as an existing user. Same org as before; nothing new provisioned.
-3. Re-run #489's `login` spec against a freshly dropped `portal_ai_e2e` database (`e2e-stack.sh up`). It passes on the first run.
+3. As a user with no live membership, open an invitation link. The page shows only the logo and theme switch (no org switcher or nav), the accept completes, and the user is a member of exactly the invited org: no extra personal org. On an invalid link, **Sign out** is offered.
+4. Re-run #489's `login` spec against a freshly dropped `portal_ai_e2e` database (`e2e-stack.sh up`). It passes on the first run.
 
 ## Out of scope
 

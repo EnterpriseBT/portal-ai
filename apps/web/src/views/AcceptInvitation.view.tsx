@@ -38,6 +38,9 @@ export interface AcceptInvitationViewUIProps {
   /** The server message, shown on a generic error. */
   errorMessage?: string | null;
   onGoHome: () => void;
+  /** #881: offered when the accept fails (e.g. signed in as the wrong
+   *  account); the page has no app chrome to sign out from. */
+  onSignOut?: () => void;
 }
 
 interface StateCopy {
@@ -91,6 +94,7 @@ export const AcceptInvitationViewUI: React.FC<AcceptInvitationViewUIProps> = ({
   orgName,
   errorMessage,
   onGoHome,
+  onSignOut,
 }) => {
   const center = {
     minHeight: "60vh",
@@ -132,6 +136,11 @@ export const AcceptInvitationViewUI: React.FC<AcceptInvitationViewUIProps> = ({
           <Button variant="contained" onClick={onGoHome}>
             Go to dashboard
           </Button>
+          {status !== "success" && onSignOut && (
+            <Button variant="text" onClick={onSignOut}>
+              Sign out
+            </Button>
+          )}
         </Stack>
       </Paper>
     </Box>
@@ -183,6 +192,7 @@ export const AcceptInvitationView: React.FC<AcceptInvitationViewProps> = ({
   const toast = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { logout } = sdk.auth.logout();
   const [outcome, setOutcome] = useState<AcceptOutcome | null>(null);
 
   useEffect(() => {
@@ -235,6 +245,7 @@ export const AcceptInvitationView: React.FC<AcceptInvitationViewProps> = ({
       orgName={outcome?.orgName}
       errorMessage={outcome?.errorMessage}
       onGoHome={() => navigate({ to: "/" })}
+      onSignOut={logout}
     />
   );
 };

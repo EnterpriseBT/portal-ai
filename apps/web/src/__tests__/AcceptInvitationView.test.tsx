@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import userEvent from "@testing-library/user-event";
 import { render, screen } from "./test-utils";
 import {
   AcceptInvitationViewUI,
@@ -19,6 +20,37 @@ const renderState = (
   );
 
 describe("AcceptInvitationViewUI", () => {
+  // #881: the page has no app chrome (it must not read the caller's org), so
+  // a failed accept offers sign-out itself, e.g. to switch to the invited
+  // account.
+  it("offers sign-out when the accept fails, and calls it", async () => {
+    const user = userEvent.setup();
+    const onSignOut = jest.fn();
+    render(
+      <AcceptInvitationViewUI
+        status="invalid"
+        onGoHome={jest.fn()}
+        onSignOut={onSignOut}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no sign-out once the invitation is accepted", () => {
+    render(
+      <AcceptInvitationViewUI
+        status="success"
+        orgName="Acme Inc"
+        onGoHome={jest.fn()}
+        onSignOut={jest.fn()}
+      />
+    );
+    expect(
+      screen.queryByRole("button", { name: "Sign out" })
+    ).not.toBeInTheDocument();
+  });
+
   it("pending: shows a spinner", () => {
     renderState("pending");
     expect(screen.getByLabelText("Accepting invitation")).toBeInTheDocument();
