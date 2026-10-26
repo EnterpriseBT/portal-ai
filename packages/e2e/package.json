@@ -19,10 +19,12 @@
     "e2e:auth:all": "npm run e2e:auth && npm run e2e:auth:admin && npm run e2e:auth:member",
     "e2e:auth:app-dev": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env app-dev",
     "e2e:auth:prod": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env prod",
+    "e2e:stub:anthropic": "tsx src/stubs/anthropic-stub.ts",
     "e2e:use": "sh -c 'test -n \"$0\" && cp .auth/\"$0\".storageState.json .auth/storageState.json && echo \"active MCP identity: $0 (restart the MCP session to load it)\" || echo \"usage: npm run e2e:use <admin|member>  (owner/default is the plain storageState.json)\"'"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
+    "@portalai/core": "*",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
