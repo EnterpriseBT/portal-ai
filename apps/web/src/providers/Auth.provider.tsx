@@ -68,6 +68,9 @@ export interface AuthLogin {
   withGoogle: () => void;
   /** The guarded dev/E2E sign-in affordance (#304); Auth0 Universal Login. */
   withUniversal: () => void;
+  /** #489: Auth0 login pinned to the build's QA connection. No-op when the
+   *  build names none, and under residency OIDC. */
+  withQaConnection: () => void;
 }
 
 export interface NormalizedAuth {
@@ -90,6 +93,13 @@ export const useAuth = (): NormalizedAuth => {
 };
 
 const openUrl = (url: string): void => window.location.replace(url);
+
+/** The QA login's authorization params, or null when no connection is set (#489). */
+export const qaAuthorizationParams = (
+  connection: string,
+  origin: string
+): { connection: string; redirect_uri: string } | null =>
+  connection ? { connection, redirect_uri: origin } : null;
 
 /** Bridges `@auth0/auth0-react` into the normalized `AuthContext` (SaaS). */
 const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
@@ -133,6 +143,18 @@ const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
             appState: auth0ReturnToAppState(),
             authorizationParams: { redirect_uri: window.location.origin },
           }),
+        withQaConnection: () => {
+          const authorizationParams = qaAuthorizationParams(
+            resolveAuth0Settings().qaConnection,
+            window.location.origin
+          );
+          if (!authorizationParams) return;
+          void loginWithRedirect({
+            openUrl,
+            appState: auth0ReturnToAppState(),
+            authorizationParams,
+          });
+        },
       },
       logout: () =>
         logout({
@@ -187,6 +209,7 @@ const OidcAuthBridge: React.FC<{ children: React.ReactNode }> = ({
       login: {
         withGoogle: () => void oidc.signinRedirect(),
         withUniversal: () => void oidc.signinRedirect(),
+        withQaConnection: () => {},
       },
       logout: () => void oidc.signoutRedirect(),
     }),

@@ -1,7 +1,11 @@
 import React from "react";
 import MuiLink from "@mui/material/Link";
 import { sdk } from "../api/sdk";
-import { getRuntimeConfig } from "../utils/runtime-config.util";
+import {
+  getRuntimeConfig,
+  resolveAuth0Settings,
+  shouldShowQaLogin,
+} from "../utils/runtime-config.util";
 import {
   Box,
   Paper,
@@ -22,6 +26,10 @@ export interface LoginFormUIProps {
    *  container supplies it solely under its dev guard, so it is absent for
    *  normal users and in production bundles. */
   onClickDevLogin?: () => void;
+  /** QA sign-in for the deployed-env QA identity (#489). Rendered only when
+   *  provided — the container supplies it only in builds that name a QA
+   *  connection, and only on `?qa`. */
+  onClickQaLogin?: () => void;
   /** Primary-button copy. Defaults to the SaaS Google label; a residency
    *  (OIDC) install passes a generic "Sign in" (#607). */
   primaryLabel?: string;
@@ -32,6 +40,7 @@ export interface LoginFormUIProps {
 export const LoginFormUI: React.FC<LoginFormUIProps> = ({
   onClickGoogleLogin,
   onClickDevLogin,
+  onClickQaLogin,
   primaryLabel = "Sign in with Google",
   showProviderIcon = true,
 }) => {
@@ -118,6 +127,19 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
                 Dev sign-in (E2E)
               </Button>
             )}
+
+            {onClickQaLogin && (
+              <Button
+                variant="text"
+                size="small"
+                fullWidth
+                onClick={onClickQaLogin}
+                data-testid="e2e-qa-login"
+                sx={{ textTransform: "none" }}
+              >
+                QA sign-in
+              </Button>
+            )}
           </Stack>
         </Paper>
       </Box>
@@ -126,7 +148,7 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
 };
 
 export const LoginForm = () => {
-  const { withGoogle, withUniversal } = sdk.auth.login();
+  const { withGoogle, withUniversal, withQaConnection } = sdk.auth.login();
   // Residency (OIDC) login is IdP-hosted, not Google — use generic copy (#607).
   const isOidc = getRuntimeConfig().authProvider === "oidc";
 
@@ -144,10 +166,19 @@ export const LoginForm = () => {
     !!import.meta.env?.DEV &&
     new URLSearchParams(window.location.search).has("e2e");
 
+  // QA sign-in for the deployed-env QA identity (#489): only in builds that
+  // name a QA connection, and only on `?qa`. See shouldShowQaLogin.
+  const showQaLogin = shouldShowQaLogin({
+    isOidc,
+    qaConnection: resolveAuth0Settings().qaConnection,
+    search: window.location.search,
+  });
+
   return (
     <LoginFormUI
       onClickGoogleLogin={handleGoogleLogin}
       onClickDevLogin={showDevLogin ? () => withUniversal() : undefined}
+      onClickQaLogin={showQaLogin ? () => withQaConnection() : undefined}
       primaryLabel={isOidc ? "Sign in" : "Sign in with Google"}
       showProviderIcon={!isOidc}
     />

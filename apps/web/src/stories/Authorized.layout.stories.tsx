@@ -13,7 +13,11 @@ const mockAuth: NormalizedAuth = {
     error: undefined,
   },
   getToken: async () => "story-token",
-  login: { withGoogle: () => {}, withUniversal: () => {} },
+  login: {
+    withGoogle: () => {},
+    withUniversal: () => {},
+    withQaConnection: () => {},
+  },
   logout: () => {},
 };
 

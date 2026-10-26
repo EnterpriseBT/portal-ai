@@ -54,7 +54,8 @@ const setRuntimeConfig = (cfg: Record<string, string>) => {
 
 const { render, screen, fireEvent, waitFor } =
   await import("@testing-library/react");
-const { AuthProvider, useAuth } = await import("../providers/Auth.provider");
+const { AuthProvider, useAuth, qaAuthorizationParams } =
+  await import("../providers/Auth.provider");
 
 const Probe: React.FC = () => {
   const auth = useAuth();
@@ -76,6 +77,7 @@ const Probe: React.FC = () => {
       </button>
       <button onClick={() => auth.login.withGoogle()}>google</button>
       <button onClick={() => auth.login.withUniversal()}>universal</button>
+      <button onClick={() => auth.login.withQaConnection()}>qa</button>
       <button onClick={() => auth.logout()}>logout</button>
     </div>
   );
@@ -164,6 +166,26 @@ describe("useAuth() seam — Auth0 bridge (#607)", () => {
     expect(lastCall.authorizationParams?.connection).toBeUndefined();
   });
 
+  it("#489 — withQaConnection is a no-op when the build names no QA connection", () => {
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    fireEvent.click(screen.getByText("qa"));
+    expect(mockLoginWithRedirect).not.toHaveBeenCalled();
+  });
+
+  it("#489 — the QA login pins the configured connection", () => {
+    expect(
+      qaAuthorizationParams("qa-users", "https://app.example.test")
+    ).toEqual({
+      connection: "qa-users",
+      redirect_uri: "https://app.example.test",
+    });
+    expect(qaAuthorizationParams("", "https://app.example.test")).toBeNull();
+  });
+
   it("case 10 — logout calls the vendor logout with returnTo origin", () => {
     render(
       <AuthProvider>
@@ -210,6 +232,9 @@ describe("useAuth() seam — OIDC bridge (#607)", () => {
 
     fireEvent.click(screen.getByText("google"));
     fireEvent.click(screen.getByText("universal"));
+    expect(mockSigninRedirect).toHaveBeenCalledTimes(2);
+    // #489: residency never offers the Auth0 QA connection.
+    fireEvent.click(screen.getByText("qa"));
     expect(mockSigninRedirect).toHaveBeenCalledTimes(2);
 
     fireEvent.click(screen.getByText("logout"));

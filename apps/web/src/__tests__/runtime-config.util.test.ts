@@ -13,6 +13,7 @@ import {
   getRuntimeConfig,
   readAuth0Settings,
   resolveAuth0Settings,
+  shouldShowQaLogin,
   resolveOidcSettings,
   RuntimeConfigError,
 } from "../utils/runtime-config.util";
@@ -96,7 +97,15 @@ describe("readAuth0Settings (#607)", () => {
       domain: "portalai.us.auth0.com",
       clientId: "abc123",
       audience: "https://api.portalsai.io",
+      qaConnection: "",
     });
+  });
+
+  it("#489 — maps VITE_AUTH0_QA_CONNECTION, trimmed", () => {
+    expect(
+      readAuth0Settings({ VITE_AUTH0_QA_CONNECTION: "  qa-users \n" })
+        .qaConnection
+    ).toBe("qa-users");
   });
 
   it("imports cleanly under jest (no import.meta.env) → empty strings", () => {
@@ -106,7 +115,30 @@ describe("readAuth0Settings (#607)", () => {
       domain: "",
       clientId: "",
       audience: "",
+      qaConnection: "",
     });
+  });
+});
+
+describe("shouldShowQaLogin (#489)", () => {
+  const on = { isOidc: false, qaConnection: "qa-users", search: "?qa=1" };
+
+  it("shows only when the build names a connection AND ?qa is present", () => {
+    expect(shouldShowQaLogin(on)).toBe(true);
+    expect(shouldShowQaLogin({ ...on, search: "?qa" })).toBe(true);
+  });
+
+  it("hides without a configured connection (every build that doesn't opt in)", () => {
+    expect(shouldShowQaLogin({ ...on, qaConnection: "" })).toBe(false);
+  });
+
+  it("hides without ?qa, so normal users never see it", () => {
+    expect(shouldShowQaLogin({ ...on, search: "" })).toBe(false);
+    expect(shouldShowQaLogin({ ...on, search: "?e2e=1" })).toBe(false);
+  });
+
+  it("hides under residency OIDC, which has no Auth0 connection", () => {
+    expect(shouldShowQaLogin({ ...on, isOidc: true })).toBe(false);
   });
 });
 

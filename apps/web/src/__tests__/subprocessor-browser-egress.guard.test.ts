@@ -45,6 +45,7 @@ const VITE_VARS: Record<string, SubprocessorId | { notSubprocessor: string }> =
     VITE_AUTH0_DOMAIN: "auth0",
     VITE_AUTH0_AUDIENCE: "auth0",
     VITE_AUTH0_CLIENT_ID: "auth0",
+    VITE_AUTH0_QA_CONNECTION: "auth0", // #489: a connection name on the same tenant
     VITE_API_BASE_URL: { notSubprocessor: "our own API" },
     VITE_SITE_URL: { notSubprocessor: "our own marketing site" },
     VITE_APP_SHA: { notSubprocessor: "build metadata" },
