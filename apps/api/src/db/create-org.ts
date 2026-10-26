@@ -1,7 +1,7 @@
 /**
  * `db:create-org` — provision a full organization for an EXISTING user
  * (#190, the portalai CLI's `org create` spawn target). Rides the same
- * ApplicationService transaction the Auth0 webhook uses.
+ * ApplicationService transaction first-login provisioning uses.
  *
  * Usage: tsx src/db/create-org.ts --owner-email <email> --name <name>
  */

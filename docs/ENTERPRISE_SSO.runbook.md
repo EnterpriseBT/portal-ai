@@ -13,14 +13,14 @@ Companion phase docs (swept over time): `ENTERPRISE_SSO.discovery.md` / `.spec.m
 
 Removing the webhook has a vendor side the code cannot do for you, and **ordering is load-bearing**: a post-login Action that POSTs to the removed route will fail, and unless the Action swallows its own error, **Auth0 fails the entire login** — the user is bounced straight back to the sign-in page (a login loop, observed during #577 smoke). The Action must therefore go **before** the webhook route disappears from the app that users hit. Per Auth0 tenant (`local` · `app-dev` · `prod`):
 
-1. **Remove/disable the post-login Action FIRST.** In each tenant's **Actions → Flows → Login**, detach and delete the Action that POSTs to `…/api/webhooks/auth0/sync`. Provisioning does **not** gap: the request-path self-heal (#583) already provisions every login without the webhook. Do this **before** (or in the same change as) deploying the webhook removal — never leave a live Action pointing at a route the deployed app no longer serves, or every login in that window loops. The Action also carried the HMAC secret below.
+1. **Remove/disable the post-login Action FIRST.** In each tenant's **Actions → Triggers → post-login**, drag the Action out of the flow, click **Apply**, and delete the Action that POSTs to `…/api/webhooks/auth0/sync`. Provisioning does **not** gap: the request-path self-heal (#583) already provisions every login without the webhook. Do this **before** (or in the same change as) deploying the webhook removal — never leave a live Action pointing at a route the deployed app no longer serves, or every login in that window loops. The Action also carried the HMAC secret below.
 2. **Then deploy the webhook removal.** With no Action calling it, the gone route is inert.
-3. **Remove `AUTH0_WEBHOOK_SECRET`** from each env's secret store, **after** the new build (which no longer reads it) is deployed:
+3. **Remove `AUTH0_WEBHOOK_SECRET`** from each env's secret store, but only **after** a deploy whose `backend.yml` no longer references it (#873). The app stopped reading it in #577, but until #873 the task definition still injected it from Secrets Manager. **ECS refuses to start a task whose secret is missing**, so deleting it first takes the API down at the next deploy or task replacement.
    - `local`: delete the line from your `.env`.
-   - `app-dev` / `prod`: it lives in AWS Secrets Manager / SSM. Remove it with `portalops vars` (per `packages/devops-cli/COMMANDS.md`); on `prod` the guard requires `--yes --confirm-prod`.
-   The code no longer references it (removed from `environment.ts` + `.env.example`), so a lingering secret is inert — but leaving credentials in a store is exactly what SOC 2 access-control review flags, so clear it.
+   - `app-dev` / `prod`: after that deploy, run `aws secretsmanager delete-secret --secret-id portalai/<env>/auth0-webhook-secret --recovery-window-in-days 7`, and delete the `DEV_`/`PROD_SECRET_ARN_AUTH0_WEBHOOK_SECRET` repo secret only **after** the 7-day window has passed. The window is the rollback: redeploying a pre-#873 release needs both the secret (`aws secretsmanager restore-secret` brings it back) and the repo secret its workflow passes as the ARN. (`portalops` has no delete verb, and the key left its catalog in #873.)
+   Leaving unused credentials in a store is what SOC 2 access-control review flags, so do clear it.
 
-There is **no rollback coupling**: if you must roll the app back, the request path still provisions; you'd only lose the eager pre-first-request provision (invisible to users) until the Action is restored.
+**Rolling back:** provisioning needs nothing from Auth0, because the request path provisions every release. **Never restore the Action**: no release since #577 serves its route, so it loops every login. A release from before #873 needs `AUTH0_WEBHOOK_SECRET` to exist, though, because its task definition injects it. Within step 3's 7-day window, restore the secret first. After the window, re-create it and its repo secret before redeploying such a release.
 
 ## Per-env SSO configuration
 
@@ -61,4 +61,4 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 | `SSO_ENTERPRISE_CLAIM` / `_VALUE` | api | **saas only** — marks an enterprise-federated login for invite-gating |
 | `OIDC_ISSUER` / `OIDC_AUDIENCE` | api | **residency only** — the single customer issuer; boot guard requires both |
 | web auth provider | web | runtime `config.js` `AUTH_PROVIDER` (`auth0` / `oidc`, #607) — not a build-time `VITE_*` |
-| ~~`AUTH0_WEBHOOK_SECRET`~~ | — | **removed** (#577); clear it from every store |
+| ~~`AUTH0_WEBHOOK_SECRET`~~ | — | **removed** (#577 from the app, #873 from the deployment); delete it from each store after the #873 deploy (step 3 above) |

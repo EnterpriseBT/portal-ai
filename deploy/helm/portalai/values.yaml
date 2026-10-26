@@ -78,7 +78,7 @@ oidc:
 # (e.g. AUTH0_DOMAIN, PUBLIC_API_BASE_URL, CORS_ORIGIN, GOOGLE_* non-secret).
 config: {}
 
-# Secret env → Secret (e.g. ENCRYPTION_KEY, ANTHROPIC_API_KEY, AUTH0_WEBHOOK_SECRET,
+# Secret env → Secret (e.g. ENCRYPTION_KEY, ANTHROPIC_API_KEY,
 # STRIPE_*, OAUTH_STATE_SECRET). Rendered into a chart-managed Secret unless
 # existingSecret is set, in which case the app reads env from that Secret and
 # these are ignored.

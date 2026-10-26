@@ -396,7 +396,6 @@ Path prefix: `portalai/<env>/`. Each entry is referenced by a `SecretArn*` Cloud
 |---------|-------------|---------|
 | `DATABASE_URL` | `database-url` | Postgres connection string for the RDS instance (user, password, host, db, sslmode). |
 | `ENCRYPTION_KEY` | `encryption-key` | Base64-encoded 32-byte key used to encrypt OAuth tokens and other sensitive fields at rest. |
-| `AUTH0_WEBHOOK_SECRET` | `auth0-webhook-secret` | Shared secret Auth0 signs `post-login` webhook payloads with. |
 | `ANTHROPIC_API_KEY` | `anthropic-api-key` | API key for Claude (Anthropic) calls used by `interpret()`. |
 | `TAVILY_API_KEY` | `tavily-api-key` | API key for Tavily search-augmented retrieval. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | `google-oauth-client-secret` | OAuth2 client secret for the google-sheets connector. |
@@ -446,7 +445,6 @@ Set under **Settings → Secrets and variables → Actions** in the GitHub repo.
 | `DEV_HOSTED_ZONE_ID` | Route 53 hosted-zone id for `*.portalsai.io`. |
 | `DEV_SECRET_ARN_DATABASE_URL` | Full ARN of `portalai/dev/database-url`. |
 | `DEV_SECRET_ARN_ENCRYPTION_KEY` | Full ARN of `portalai/dev/encryption-key`. |
-| `DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET` | Full ARN of `portalai/dev/auth0-webhook-secret`. |
 | `DEV_SECRET_ARN_ANTHROPIC_API_KEY` | Full ARN of `portalai/dev/anthropic-api-key`. |
 | `DEV_SECRET_ARN_TAVILY_API_KEY` | Full ARN of `portalai/dev/tavily-api-key`. |
 | `DEV_SECRET_ARN_GOOGLE_OAUTH_CLIENT_SECRET` | Full ARN of `portalai/dev/google-oauth-client-secret`. |
@@ -951,21 +949,15 @@ This makes it possible to search logs and error tracking tools by code (e.g. `US
 
 ## Troubleshooting
 
-### Auth0 login bounces back to the app with `access_denied`
+### Auth0 login loops back to the sign-in page
 
-**Symptom.** Users are redirected from Auth0 to `https://<app>/?error=access_denied&error_description=Request%20failed%20with%20status%20code%20500`. Auth0 tenant logs show an `actions_execution_failed` event on the `Handle Login` post-login action with `action_error.message = "Request failed with status code 500"`.
+**Symptom.** Signing in with Google appears to succeed, then the app lands back on the sign-in page, every time. The Auth0 tenant logs show `actions_execution_failed` on a post-login Action.
 
-The action calls `POST /api/webhooks/auth0/sync` on startup-sync. If that endpoint returns non-2xx, Auth0 aborts the login.
+**Cause.** The tenant still runs a post-login Action that calls `POST /api/webhooks/auth0/sync`. #577 removed that route, so the call fails, and Auth0 fails the whole login when an Action fails. The API logs show those calls failing with a 4xx; prod logged `401`s on `/api/webhooks/auth0/sync`. Nothing else in the app is wrong. This is how prod's login broke after v1.1.0 (#873).
 
-**Check the API logs** for the matching request. The catch-all error handler will emit a line like:
+**Fix.** In that tenant, open **Actions → Triggers → post-login**, drag the Action out of the flow, click **Apply**, then delete the Action. Login works at once. Users are provisioned on their first authenticated request, so nothing is lost. A tenant needs no post-login Action at all (`docs/PROD_PROVISIONING.runbook.md` §2).
 
-```
-{ code: "WEBHOOK_SYNC_FAILED", status: 500, msg: "ApiError caught by error handler" }
-```
-
-Look at the preceding log line from `module: "webhook"` — its `error.cause` field contains the real root cause. Common causes and fixes below.
-
-#### Postgres `28P01` — password authentication failed
+### Postgres `28P01` — password authentication failed
 
 The app's `DATABASE_URL` secret is out of sync with the live DB password. Happens when the RDS master password rotates (or is reset) but the app-facing `portalai/<env>/database-url` secret isn't updated. Rotation is currently **disabled** on non-production environments, but the two secrets can still drift via snapshot restores, manual `ALTER USER`, or re-enabling rotation.
 
