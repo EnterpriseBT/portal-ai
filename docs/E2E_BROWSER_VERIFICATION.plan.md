@@ -174,7 +174,7 @@ A deterministic stand-in for `POST /v1/messages`, so interpret runs without a li
 
 **Steps**
 
-1. **Unit tests (spec: playwright-config cases).** A deployed target ⇒ `trace: "off"`, list-only reporter and `outputDir` `test-results/<target>/`. Local ⇒ html + `retain-on-first-retry`. Run; they fail. Implement `buildConfig`; green.
+1. **Unit tests (spec: playwright-config cases).** A deployed target ⇒ `trace: "off"`, list-only reporter and `outputDir` `test-results/<target>/`. Local ⇒ html + `on-first-retry`. Run; they fail. Implement `buildConfig`; green.
 2. **Browser specs, written red-first.**
    - Write `login.spec.ts`. Run it against the dev stack with `E2E_SIGN_IN_VIA=dev`. It goes green, and asserting a wrong org count makes it red; that's the "fails loudly" check.
    - Write `core-loop.spec.ts`. Run it against the e2e stack, which is booted as CI will boot it (spec → Workflow steps 4–7): API on the test DB + MinIO + stub, web via `vite preview` with the QA connection set to the local tenant's CI connection.

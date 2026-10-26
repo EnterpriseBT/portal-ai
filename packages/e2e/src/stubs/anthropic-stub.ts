@@ -5,7 +5,11 @@
  * and an axis-name recommender, via `generateObject`). The e2e stack points
  * the API's `ANTHROPIC_BASE_URL` here so the core loop runs with no key, no
  * cost and no nondeterminism. Each answer is the schema-valid "no confident
- * match", so interpret binds every column to the seeded `text` definition.
+ * match". The classifier's must name every candidate (the parser pairs them
+ * by index and binds a `null` one to the seeded `text` definition; an empty
+ * list leaves the columns unbound, which the commit's drift check refuses),
+ * so the stub reads the candidates' `sourceHeader` lines from the prompt
+ * (`buildClassifierPrompt` in @portalai/spreadsheet-parsing).
  *
  * Recognises a request by its JSON schema's top-level properties, from either
  * native structured output (`output_config.format.schema`, what the AI SDK
@@ -19,12 +23,43 @@ import { pathToFileURL } from "node:url";
 
 type Json = Record<string, unknown>;
 
+/** Every `- sourceHeader: "<json string>"` line in the request's messages. */
+function candidateHeaders(body: Json): string[] {
+  const texts: string[] = [];
+  const collect = (content: unknown) => {
+    if (typeof content === "string") texts.push(content);
+    else if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part && typeof (part as Json).text === "string") {
+          texts.push((part as Json).text as string);
+        }
+      }
+    }
+  };
+  for (const m of (body.messages as Json[] | undefined) ?? [])
+    collect(m.content);
+  const headers: string[] = [];
+  for (const line of texts.join("\n").split("\n")) {
+    const match = /^- sourceHeader: (".*")\s*$/.exec(line);
+    if (match) headers.push(JSON.parse(match[1]) as string);
+  }
+  return headers;
+}
+
 /** The canned "no confident match" per known schema, keyed by its properties. */
-function answerFor(schema: unknown): Json | null {
+function answerFor(schema: unknown, body: Json): Json | null {
   const props = Object.keys(
     ((schema as Json | undefined)?.properties as Json | undefined) ?? {}
   );
-  if (props.includes("classifications")) return { classifications: [] };
+  if (props.includes("classifications")) {
+    return {
+      classifications: candidateHeaders(body).map((sourceHeader) => ({
+        sourceHeader,
+        columnDefinitionId: null,
+        confidence: 0,
+      })),
+    };
+  }
   if (props.includes("name") && props.includes("confidence")) {
     return { name: "value", confidence: 0 };
   }
@@ -47,7 +82,7 @@ function respond(body: Json): { status: number; payload: Json } {
     | Json
     | undefined;
   if (format?.schema) {
-    const answer = answerFor(format.schema);
+    const answer = answerFor(format.schema, body);
     if (answer) {
       return {
         status: 200,
@@ -62,7 +97,7 @@ function respond(body: Json): { status: number; payload: Json } {
 
   const tools = body.tools as Json[] | undefined;
   if (tools?.length === 1) {
-    const answer = answerFor(tools[0].input_schema);
+    const answer = answerFor(tools[0].input_schema, body);
     if (answer) {
       return {
         status: 200,

@@ -13,7 +13,7 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
 
 1. **D1 — build-flagged QA sign-in.** `VITE_AUTH0_QA_CONNECTION` (an Auth0 connection name) makes `/login?qa=1` render **QA sign-in**, pinned to that connection. When unset, nothing renders. The #304 `DEV` + `?e2e` affordance is unchanged. The security boundary is Auth0-side: sign-ups disabled, one user, brute-force protection.
 2. **D2 — PR-stack auth** is a dedicated CI user in the **local/dev** Auth0 tenant. **Refinement of discovery:** the CI web is a production build (`vite preview`), which strips the `DEV`-only affordance, so CI signs in through the **QA sign-in path** (D1) with `VITE_AUTH0_QA_CONNECTION` set to the CI user's connection. The PR run therefore exercises the same sign-in code the deployed check uses. The fresh DB's first login self-provisions the org (`ApplicationService.ensureProvisioned`, personal-org fallback), so no `db:seed:org` runs.
-3. **D3 — an Anthropic stub** behind `ANTHROPIC_BASE_URL` answers interpret's two `generateObject` calls with schema-valid "no confident match" objects, so columns fall back to `text`.
+3. **D3 — an Anthropic stub** behind `ANTHROPIC_BASE_URL` answers interpret's two `generateObject` calls with schema-valid "no confident match" objects. The classifier's names every candidate from the prompt with `columnDefinitionId: null`, so the parser binds each column to the seeded `text` definition. An empty list would leave them unbound, and the commit's drift check refuses that. Columns fall back to `text`.
 4. **D4 — one MCP server per env** (`playwright`, `playwright-app-dev`, `playwright-prod`). Each deployed server is fenced by `--allowed-origins`.
 5. **D5 — no browser service.** CI installs Chromium on the runner and caches it by Playwright version.
 6. **Q1 MFA:** if a tenant enforces MFA, the QA user is exempted **by connection** in the tenant's MFA Action (runbook step), not by switching MFA off tenant-wide.
@@ -38,7 +38,7 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
 1. A shared sign-in library and the env-aware `e2e:auth --env` in `packages/e2e`.
 2. Playwright projects `setup`, `core-loop` and `login`; scripts `test:e2e` / `test:e2e:ui`; the Turbo task.
 3. The core-loop spec and the login spec.
-4. An Anthropic stub server, plus MinIO (and its bucket init) in `docker-compose.yml` under an `e2e` profile.
+4. An Anthropic stub server, plus `s3mock` in `docker-compose.yml` under an `e2e` profile, and `scripts/e2e-stack.sh up|down`, which boots the stack for CI and local runs alike.
 5. The `e2e-test.yml` PR workflow (non-required).
 6. The web QA sign-in affordance (`VITE_AUTH0_QA_CONNECTION`).
 7. A `webBaseUrl` field and QA-secret catalog entries in `cli-env` / `devops-cli`.
@@ -141,17 +141,21 @@ export function storageStatePath(target: E2eTarget, identity?: string): string;
 | `login` | `login.spec.ts` | none (fresh context) | 0 | the only spec that signs in itself; runs against any target |
 
 Settings that switch on `resolveTarget().deployed`:
-- `trace` is `"retain-on-first-retry"` locally and `"off"` when deployed;
+- `trace` is `"on-first-retry"` locally and `"off"` when deployed;
 - `screenshot` is `"only-on-failure"` and `video` is `"retain-on-failure"` in both cases;
 - the `reporter` is `[["list"], ["html", { open: "never" }]]` locally and `[["list"]]` when deployed;
 - `outputDir` is `test-results/<target>/`.
 
 **`src/specs/core-loop.spec.ts`**: one serial `describe` against a freshly provisioned org.
 1. `/` renders Dashboard.
-2. `/connectors` → File upload → upload `apps/web/public/samples/supported_layouts.csv` → draw/accept the region → interpret (via the stub) → commit. The spec then waits for the `file_upload_parse`/commit job to reach a terminal state.
-3. The new entity's records page shows ≥ 1 row.
-4. `/stations/` → create station `e2e-station-<runId>`.
-5. Create a portal from that station's detail → `/portals/$portalId` renders its composer.
+2. `/connectors` → Catalog → File Upload's **Connect** → upload `src/fixtures/core-loop.csv` (a plain 3-column table). The steps after that:
+   - drag a region over A1:C4 (a real mouse drag; the canvas reads pointer geometry);
+   - **+ Add row axis**;
+   - **Create new entity** with label `E2E People <run>`;
+   - **Interpret** (via the stub) → **Commit plan** → the new connector's page lists `e2e_people_<run>`.
+3. `/entities` → that entity → its records show the fixture's values.
+4. `/stations` → **New Station** `E2E Station <run>` → its detail page.
+5. **Open Portal** → `/portals/$portalId` renders the composer and names the station.
 6. A `page.on("console")` collector fails the test on any `error`-level message not in an explicit `ALLOWED_CONSOLE` list (empty to start).
 
 Selectors are role- or label-based. Test ids are added only where no accessible name exists, and each one gets listed in the plan.
@@ -160,7 +164,7 @@ Selectors are role- or label-based. Test ids are added only where no accessible 
 - `resolveTarget()` → `signIn(page, { via: target.via, ... })`.
 - `page.waitForResponse` asserts `${apiBaseUrl}/api/organization/current` returns 200.
 - `GET /api/organization/memberships` must return exactly 1 membership. This holds the "QA identity has one org" invariant on every run.
-- The org selector/header shows the org name.
+- The Dashboard heading renders. A single-org user sees no org name anywhere to assert on.
 - All three checks fit a 30s budget.
 
 **Scripts (`packages/e2e/package.json`)**: `test:e2e` = `playwright test`, and `test:e2e:ui` = `playwright test --ui`. `e2e:auth` gains the `--env` pass-through. New scripts `e2e:auth:app-dev` (`--env app-dev`) and `e2e:auth:prod` (`--env prod`). New `e2e:stub:anthropic` = `tsx src/stubs/anthropic-stub.ts`. `@portalai/cli-env` is added as a dependency.
@@ -170,24 +174,27 @@ Selectors are role- or label-based. Test ids are added only where no accessible 
 ### Anthropic stub — `packages/e2e/src/stubs/anthropic-stub.ts`
 
 - An HTTP server on `E2E_ANTHROPIC_STUB_PORT` (default `4010`).
-- `POST /v1/messages` reads the request's single tool `input_schema.properties` and answers a `tool_use` content block:
-  - `classifications` in the schema → `{ classifications: [] }`;
+- `POST /v1/messages` reads the JSON schema the request asks for. The AI SDK's native structured output (`output_config.format.schema`) is answered with a `text` block and `end_turn`; tool mode (one tool's `input_schema`) is answered with `tool_use`.
+  - `classifications` in the schema → one `{ sourceHeader, columnDefinitionId: null, confidence: 0 }` per `- sourceHeader: "…"` line in the prompt (`buildClassifierPrompt`'s format);
   - `name` + `confidence` in the schema → `{ name: "value", confidence: 0 }`;
   - anything else → `400 { error: "e2e stub: unrecognized schema" }`, so a new LLM call site fails loudly rather than silently.
-- `usage` is zeroed, and `stop_reason` is `"tool_use"`. `GET /health` → 200.
+- `usage` is zeroed. `GET /health` → 200. The test fixtures are real request bodies captured from the API's `ai` / `@ai-sdk/anthropic` versions.
 - The API under test runs with `ANTHROPIC_BASE_URL=http://localhost:4010/v1` and `ANTHROPIC_API_KEY=e2e-stub`.
 
 ### Compose — `docker-compose.yml`
 
-Two services, both `profiles: ["e2e"]`, so they're ignored by a plain `up`:
-- `minio`: `minio/minio:<pinned>` running `server /data`, port `9000`, `MINIO_API_CORS_ALLOW_ORIGIN=http://localhost:3000`, healthcheck `/minio/health/live`.
-- `minio-init`: `minio/mc:<pinned>`, which runs `mc mb --ignore-existing local/portalai-uploads-e2e` and exits. It `depends_on: minio: { condition: service_healthy }`.
+One service, `profiles: ["e2e"]`, so a plain `up` ignores it:
+- `s3mock`: `adobe/s3mock:4.7.0` on port `9090`, with `COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS=portalai-uploads-e2e` (the bucket exists at boot). Its healthcheck is busybox `netstat`, since the image has no curl or wget.
+  - Not MinIO: MinIO's public images are gone from Docker Hub, and the quay mirror needs auth.
+  - s3mock accepts presigned requests and answers CORS for any origin. A real SigV4 presigned PUT plus preflight was verified.
 
-The API runs with:
-- `UPLOAD_S3_ENDPOINT=http://localhost:9000`
-- `UPLOAD_S3_FORCE_PATH_STYLE=true`
-- `UPLOAD_S3_BUCKET=portalai-uploads-e2e`
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` set to the MinIO root credentials
+`scripts/e2e-stack.sh up` runs the API with:
+- `UPLOAD_S3_ENDPOINT` = `http://s3mock:9090` on the devcontainer's compose network, else `http://localhost:9090`;
+- `UPLOAD_S3_FORCE_PATH_STYLE=true` and `UPLOAD_S3_BUCKET=portalai-uploads-e2e`;
+- dummy `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`;
+- a fresh `portal_ai_e2e` database on `postgres-test`, Redis db 5, and a throwaway `ENCRYPTION_KEY`.
+
+The web is a production build served by `vite preview` on `:3000`, same-origin through its `/api` proxy.
 
 ### Workflow — `.github/workflows/e2e-test.yml` (new)
 
@@ -196,11 +203,8 @@ The API runs with:
   1. Checkout, then `./.github/actions/setup`. Turbo env is carried, per rule 1.
   2. If `secrets.E2E_CI_AUTH0_PASSWORD` is empty → emit a `::notice::` and exit 0.
   3. Restore `~/.cache/ms-playwright`, keyed on `@playwright/test` version and OS, then `npx playwright install --with-deps chromium`. The install is a no-op on a cache hit except for deps.
-  4. `docker compose --profile e2e up -d postgres-test redis minio minio-init --wait`.
-  5. API: `db:migrate`, `db:seed`, `build`, then `start &` with the test DB, Redis, MinIO and stub env, plus the dev-tenant `AUTH0_*` from secrets. Wait on `/api/health`.
-  6. Stub: `npm run --workspace @portalai/e2e e2e:stub:anthropic &`.
-  7. Web: `build` with `VITE_AUTH0_*` from `E2E_CI_VITE_AUTH0_*` secrets and `VITE_API_BASE_URL=http://localhost:3001`, served by `vite preview --port 3000`.
-     The dev affordance requires `import.meta.env.DEV`, which a preview build strips, so this run signs in via the **QA path**: the build sets `VITE_AUTH0_QA_CONNECTION` to the CI user's connection and the `setup` project uses `via: "qa"`. That also exercises the same code the deployed check uses.
+  4–7. `packages/e2e/scripts/e2e-stack.sh up`, with `E2E_QA_CONNECTION` and the dev-tenant `AUTH0_*` / `VITE_AUTH0_*` from secrets. It boots compose (`postgres-test`, `redis`, `s3mock`), migrates and seeds a fresh database, starts the stub, builds and starts the API, then builds and previews the web, waiting on each.
+     The dev affordance requires `import.meta.env.DEV`, which a preview build strips, so this run signs in via the **QA path**: the build sets `VITE_AUTH0_QA_CONNECTION` (from `E2E_QA_CONNECTION`) to the CI user's connection, and the `setup` project uses `via: "qa"`. That also exercises the same code the deployed check uses.
   8. `npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login` with `E2E_TARGET=local`, `E2E_SIGN_IN_VIA=qa`, CI creds in `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD`, and `CI=1`.
   9. `if: failure()`: upload `packages/e2e/test-results/` and `playwright-report/` (14-day retention).
   10. `if: always()`: `docker compose --profile e2e down -v`.
@@ -301,11 +305,11 @@ None. No schema change. The deployed QA org is created by the existing first-log
   - deployed with no env vars calls the mocked `getSecret` with `qa-auth0-username` / `-password`;
   - local with missing vars throws an error that names the vars, not the values.
 - `src/__tests__/anthropic-stub.test.ts`:
-  - a classifier schema → `classifications: []` that validates `LlmBridge.ClassifierResponseSchema`;
+  - a classifier schema → one null-bound classification per prompt candidate, validating `LlmBridge.ClassifierResponseSchema` (and `[]` with no candidates);
   - an axis schema validates `AxisNameRecommenderResponseSchema`;
   - an unknown schema → 400;
   - `/health` → 200.
-- `src/__tests__/playwright-config.test.ts`: a deployed target ⇒ `trace: "off"` and no html reporter; local ⇒ html + retain-on-first-retry.
+- `src/__tests__/playwright-config.test.ts`: a deployed target ⇒ `trace: "off"` and no html reporter; local ⇒ html + on-first-retry.
 - `E2eSignInError` messages never contain the password (unit, against a fabricated failure).
 
 ### `packages/e2e`, run with `npm run test:e2e` (browser suites, not in `test:unit`)
@@ -326,7 +330,7 @@ Each red run's artifact is linked from the PR.
 ## Acceptance criteria
 
 - [ ] `npm run test:e2e` (from a clean checkout, after `docker compose --profile e2e up`, the stub, and the API + web started per the README) passes `setup`, `core-loop` and `login` locally.
-- [ ] `E2E Tests` runs on a PR, boots its own Postgres, Redis, MinIO, stub, API and web, walks the core loop on a freshly provisioned org, tears down, and is not required.
+- [ ] `E2E Tests` runs on a PR, boots its own Postgres, Redis, s3mock, stub, API and web, walks the core loop on a freshly provisioned org, tears down, and is not required.
 - [ ] A red `E2E Tests` run uploads trace, screenshots, video and HTML report. A red `verify-login` uploads screenshots + video only.
 - [ ] After `deploy-dev` / `deploy-prod`, `verify-login` signs in as that env's QA user and asserts `organization/current` 200 plus exactly one membership. A broken login turns the run red, and nothing rolls back.
 - [ ] `npm run --workspace @portalai/e2e e2e:auth:prod` (with AWS credentials) writes `.auth/prod/owner.storageState.json` (mode 0600). After an MCP restart, `mcp__playwright-prod__*` can walk the QA org. Navigating to any non-allowed origin is refused.
@@ -379,7 +383,7 @@ Each red run's artifact is linked from the PR.
 1. the e2e library (`target`, `sign-in`) + `e2e:auth --env` + unit tests;
 2. web QA sign-in;
 3. the `cli-env` `webBaseUrl` + catalog entries;
-4. the Anthropic stub + MinIO compose + Playwright projects + core-loop/login specs green locally;
+4. the Anthropic stub + s3mock compose + `e2e-stack.sh` + Playwright projects + core-loop/login specs green locally;
 5. `e2e-test.yml`;
 6. `verify-login` in both deploy workflows;
 7. `.mcp.json` per-env servers;

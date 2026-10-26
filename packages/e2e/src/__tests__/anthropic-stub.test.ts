@@ -44,13 +44,50 @@ const textJson = async (res: Response): Promise<unknown> => {
 };
 
 describe("anthropic stub", () => {
-  it("answers the classifier with no confident match", async () => {
-    const res = await post(fixture("classifier"));
+  // The parser pairs classifications with candidates by index and binds a
+  // null one to the default `text` definition, so every candidate is named.
+  it("answers the classifier with no confident match for every candidate", async () => {
+    const body = fixture("classifier");
+    body.messages = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: [
+              "## Candidates",
+              '- sourceHeader: "name"',
+              "  sourceCol: 1",
+              '  samples: ["Ada"]',
+              '- sourceHeader: "unit \\"price\\""',
+              "  sourceCol: 2",
+              '  samples: ["3"]',
+              "",
+              "## Catalog",
+              "- id: text",
+            ].join("\n"),
+          },
+        ],
+      },
+    ];
+    const res = await post(body);
     expect(res.status).toBe(200);
     const out = await textJson(res);
     expect(LlmBridge.ClassifierResponseSchema.parse(out)).toEqual({
-      classifications: [],
+      classifications: [
+        { sourceHeader: "name", columnDefinitionId: null, confidence: 0 },
+        {
+          sourceHeader: 'unit "price"',
+          columnDefinitionId: null,
+          confidence: 0,
+        },
+      ],
     });
+  });
+
+  it("answers an empty list when the prompt names no candidates", async () => {
+    const out = await textJson(await post(fixture("classifier")));
+    expect(out).toEqual({ classifications: [] });
   });
 
   it("answers the axis-name recommender with a zero-confidence name", async () => {

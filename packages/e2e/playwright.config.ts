@@ -1,14 +1,16 @@
 import { defineConfig } from "@playwright/test";
 
+import { buildConfig } from "./src/lib/playwright-config.js";
+import { resolveTarget } from "./src/lib/target.js";
+
 /**
- * Playwright harness for agent-guided browser sessions (#304).
+ * Playwright specs and the agent-guided harness (#304, #489).
  *
- * The agent drives the running dev stack through the Playwright MCP server
- * (see repo-root `.mcp.json`); this config is the shared source of truth for
- * baseURL, the reused auth `storageState`, and failure artifacts. Automated
- * `*.spec.ts` and the CI runner are deferred (a follow-up prod / app-dev
- * login-verification ticket) — `testDir` is empty by design for now, and
- * `test:unit` / `test:integration` are no-ops in this package's scripts.
+ * `E2E_TARGET` (default `local`) picks the stack; see src/lib/target.ts. The
+ * projects (src/lib/playwright-config.ts): `setup` signs in once, `core-loop`
+ * walks a freshly provisioned org through the app's core loop on the
+ * ephemeral stack (`scripts/e2e-stack.sh`), and `login` signs in against any
+ * target — the post-deploy check runs it alone against app-dev / prod.
  *
  * Browser lockstep: a Playwright launches only the browser revision it
  * bundles, and `@playwright/mcp` releases bundle Playwright alphas — so this
@@ -16,17 +18,7 @@ import { defineConfig } from "@playwright/test";
  * one browser build. The devcontainer `Dockerfile` therefore bakes one build
  * per consumer, each installed via its own pin. Bumping `@playwright/test`
  * here or `@playwright/mcp` in `.mcp.json` means updating the matching
- * Dockerfile RUN line and rebuilding the container.
+ * Dockerfile RUN line and rebuilding the container (CI installs the
+ * `@playwright/test` browser itself, cached by version).
  */
-export default defineConfig({
-  testDir: "./src/specs",
-  outputDir: "./test-results",
-  use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
-    storageState: "./.auth/storageState.json",
-    trace: "on-first-retry",
-    screenshot: "only-on-failure",
-    video: "retain-on-failure",
-    headless: true,
-  },
-});
+export default defineConfig(buildConfig(resolveTarget()));

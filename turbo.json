@@ -69,6 +69,12 @@
       ],
       "cache": false
     },
+    "test:e2e": {
+      // #489: drives a live stack (scripts/e2e-stack.sh in @portalai/e2e, or a
+      // deployed env via E2E_TARGET), so nothing about its result is a
+      // function of the tree alone. Never cached.
+      "cache": false
+    },
     "test:unit": {
       "dependsOn": [
         "^build"
