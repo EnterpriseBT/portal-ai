@@ -58,6 +58,7 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
 // Dynamic import after mocks are registered
 const { getApplicationMetadata } =
   await import("../../middleware/metadata.middleware.js");
+const { ApiError } = await import("../../services/http.service.js");
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -207,6 +208,24 @@ describe("getApplicationMetadata", () => {
         code: ApiCode.METADATA_FETCH_FAILED,
       })
     );
+    expect(req.application).toBeUndefined();
+  });
+
+  // #881: a deliberate refusal from provisioning (an un-invited enterprise
+  // subject) must reach the client as itself, not as a retryable 500.
+  it("passes an ApiError from provisioning through unchanged", async () => {
+    mockFindByAuth0Id.mockResolvedValue(null);
+    const refusal = new ApiError(
+      403,
+      ApiCode.SSO_PROVISIONING_NOT_INVITED,
+      "Not invited"
+    );
+    mockEnsureProvisioned.mockRejectedValue(refusal);
+    const { req, res, next } = createMocks({ sub: "auth0|abc123" });
+
+    await getApplicationMetadata(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(refusal);
     expect(req.application).toBeUndefined();
   });
 

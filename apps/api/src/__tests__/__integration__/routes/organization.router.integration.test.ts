@@ -134,6 +134,18 @@ describe("Organization Router", () => {
       expect(memberships.body.payload.memberships[0].organization.id).toBe(
         current.body.payload.organization.id
       );
+      // Two responses agreeing isn't proof: the rows are.
+      const d = db as ReturnType<typeof drizzle>;
+      const userRows = await d
+        .select()
+        .from(users)
+        .where(eq(users.auth0Id, AUTH0_ID));
+      expect(userRows).toHaveLength(1);
+      const memberRows = await d
+        .select()
+        .from(organizationUsers)
+        .where(eq(organizationUsers.userId, userRows[0].id));
+      expect(memberRows).toHaveLength(1);
     });
 
     it("provisions a personal org for a user row with no membership", async () => {
@@ -252,6 +264,14 @@ describe("Organization Router", () => {
   });
 
   describe("GET /api/organization/usage (#172 slice 3)", () => {
+    // #881: Settings and portal pages read it on a deep-linked first load.
+    it("self-provisions an unknown subject instead of 404ing them out", async () => {
+      const res = await request(app)
+        .get("/api/organization/usage")
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+    });
+
     it("returns the tier policy and a zeroed usage balance for a standard org", async () => {
       const owner = createOwner();
       await provisionTestOrg(owner);

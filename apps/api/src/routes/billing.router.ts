@@ -13,6 +13,7 @@ import { BillingService } from "../services/billing.service.js";
 import { DbService } from "../services/db.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
+import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
   BillingCheckoutRequestSchema,
@@ -86,11 +87,16 @@ async function resolveCallerOrg(req: Request): Promise<{
  *               $ref: '#/components/schemas/BillingTiersGetResponse'
  *       401:
  *         description: Unauthenticated
+ *       403:
+ *         description: An enterprise-federated caller with no invitation (SSO_PROVISIONING_NOT_INVITED). An unknown caller is otherwise provisioned a personal organization on this request (#881).
  *       404:
- *         description: User or organization not found
+ *         description: No live organization resolved for the caller
  */
 billingRouter.get(
   "/tiers",
+  // #881: the Billing tab reads this on first render (a deep link); it must
+  // self-heal so a new user isn't 404'd out before anything provisions them.
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { organization } = await resolveCallerOrg(req); // membership check

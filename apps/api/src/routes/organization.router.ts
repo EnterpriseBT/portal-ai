@@ -104,8 +104,20 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/OrganizationGetResponse'
+ *       401:
+ *         description: Missing authentication subject (METADATA_MISSING_AUTH)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: An enterprise-federated caller with no invitation (SSO_PROVISIONING_NOT_INVITED). An unknown caller is otherwise provisioned a personal organization on this request (#881).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: No live organization resolved for the caller (ORGANIZATION_NOT_FOUND)
  *         content:
  *           application/json:
  *             schema:
@@ -1019,8 +1031,24 @@ organizationRouter.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/UserMembershipsGetResponse'
+ *       401:
+ *         description: Missing authentication subject (METADATA_MISSING_AUTH)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: An enterprise-federated caller with no invitation (SSO_PROVISIONING_NOT_INVITED). An unknown caller is otherwise provisioned a personal organization on this request (#881).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Failed to resolve the caller or list memberships
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 organizationRouter.get(
   "/memberships",
@@ -1166,8 +1194,14 @@ organizationRouter.post(
  *                   example: true
  *                 payload:
  *                   $ref: '#/components/schemas/OrganizationUsageGetResponse'
+ *       403:
+ *         description: An enterprise-federated caller with no invitation (SSO_PROVISIONING_NOT_INVITED). An unknown caller is otherwise provisioned a personal organization on this request (#881).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: User or organization not found
+ *         description: No live organization resolved for the caller (ORGANIZATION_NOT_FOUND)
  *         content:
  *           application/json:
  *             schema:
@@ -1181,6 +1215,9 @@ organizationRouter.post(
  */
 organizationRouter.get(
   "/usage",
+  // #881: read on first render of Settings and portal pages, so it must
+  // self-heal too, or a new user's deep-linked first load 404s them out.
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth0Id = req.auth?.payload.sub as string;
