@@ -1,0 +1,117 @@
+name: E2E Tests
+
+# #489: the Playwright walk of a freshly provisioned org (login → dashboard →
+# CSV import → records → station → portal) on an ephemeral stack this job
+# boots itself. NOT a required check: promotion waits on a flake record and is
+# its own follow-up. Runs on every non-main push, like the other suites.
+on:
+  push:
+    branches-ignore:
+      - main
+
+# Turborepo remote cache (#454): the workspace-package builds below go through
+# turbo. Without the token turbo caches nothing and still succeeds;
+# `npm run lint:ci-cache` (rule 1) is what holds this.
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
+
+# Leads with the literal "e2e-test" (lint:ci-cache rule 4).
+concurrency:
+  group: "e2e-test-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The CI sign-in user (local/dev Auth0 tenant) and the connection the
+      # QA sign-in pins: the stack serves a production build, which has no
+      # DEV-only affordance (#489 spec, D2).
+      E2E_AUTH0_USERNAME: ${{ secrets.E2E_CI_AUTH0_USERNAME }}
+      E2E_AUTH0_PASSWORD: ${{ secrets.E2E_CI_AUTH0_PASSWORD }}
+      E2E_QA_CONNECTION: ${{ vars.E2E_QA_CONNECTION }}
+      E2E_TARGET: local
+      E2E_SIGN_IN_VIA: qa
+      # The API verifies the dev tenant's tokens; the web build bakes its
+      # client settings.
+      AUTH0_DOMAIN: ${{ secrets.E2E_CI_AUTH0_DOMAIN }}
+      AUTH0_AUDIENCE: ${{ secrets.E2E_CI_AUTH0_AUDIENCE }}
+      CORS_ORIGIN: http://localhost:3000
+      VITE_AUTH0_DOMAIN: ${{ secrets.E2E_CI_VITE_AUTH0_DOMAIN }}
+      VITE_AUTH0_CLIENT_ID: ${{ secrets.E2E_CI_VITE_AUTH0_CLIENT_ID }}
+      VITE_AUTH0_AUDIENCE: ${{ secrets.E2E_CI_VITE_AUTH0_AUDIENCE }}
+      CI: "1"
+    steps:
+      # Fork PRs and a repo without the CI user get no secrets: skip with a
+      # notice rather than fail, since the check isn't required.
+      - name: Check for the CI user
+        id: creds
+        run: |
+          if [ -z "$E2E_AUTH0_PASSWORD" ] || [ -z "$E2E_QA_CONNECTION" ]; then
+            echo "::notice::E2E skipped: the E2E_CI_* secrets or E2E_QA_CONNECTION aren't available to this run."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.creds.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup
+        if: steps.creds.outputs.run == 'true'
+        uses: ./.github/actions/setup
+
+      # Keyed on the pinned @playwright/test version: a bump re-installs.
+      - name: Playwright version
+        if: steps.creds.outputs.run == 'true'
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browsers
+        if: steps.creds.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.creds.outputs.run == 'true'
+        run: npm run --workspace @portalai/e2e playwright:install
+
+      # The stack script builds the API and web itself; their workspace
+      # dependencies (core, spreadsheet-parsing, cli-env…) come from turbo.
+      - name: Build workspace dependencies
+        if: steps.creds.outputs.run == 'true'
+        run: npm run build -- --filter=@portalai/api^... --filter=@portalai/web^... --filter=@portalai/e2e^...
+
+      - name: Boot the ephemeral stack
+        if: steps.creds.outputs.run == 'true'
+        run: npm run --workspace @portalai/e2e e2e:stack:up
+
+      - name: Walk the core loop
+        if: steps.creds.outputs.run == 'true'
+        run: npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login
+
+      # The stack's own logs (API, web, stub, migrate/seed) and Playwright's
+      # traces, screenshots, video and HTML report. Local-target artifacts
+      # carry no deployed credential: the session file is under .auth/.
+      - name: Upload artifacts
+        if: failure() && steps.creds.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ github.run_id }}
+          path: |
+            packages/e2e/test-results/
+            packages/e2e/playwright-report/
+          retention-days: 14
+
+      - name: Tear down
+        if: always() && steps.creds.outputs.run == 'true'
+        run: |
+          npm run --workspace @portalai/e2e e2e:stack:down || true
+          docker compose --profile e2e down -v || true

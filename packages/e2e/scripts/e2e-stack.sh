@@ -82,6 +82,9 @@ up)
   export UPLOAD_S3_BUCKET=portalai-uploads-e2e UPLOAD_S3_REGION=us-east-1
   export AWS_ACCESS_KEY_ID=e2e AWS_SECRET_ACCESS_KEY=e2e-secret
   export ANTHROPIC_BASE_URL=http://localhost:4010/v1 ANTHROPIC_API_KEY=e2e-stub
+  # createdBy for system-seeded rows; required, and only set by apps/api/.env
+  # locally (CI has none).
+  export SYSTEM_ID="${SYSTEM_ID:-SYSTEM}"
   # A throwaway key: nothing this stack encrypts outlives its database.
   export ENCRYPTION_KEY="${ENCRYPTION_KEY:-$(openssl rand -base64 32)}"
 

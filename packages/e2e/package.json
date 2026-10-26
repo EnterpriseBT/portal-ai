@@ -14,6 +14,7 @@
     "test:integration": "true",
     "test:e2e": "dotenv -e .env -- playwright test",
     "test:e2e:ui": "dotenv -e .env -- playwright test --ui",
+    "playwright:install": "playwright install --with-deps chromium",
     "e2e:stack:up": "scripts/e2e-stack.sh up",
     "e2e:stack:down": "scripts/e2e-stack.sh down",
     "e2e:seed": "dotenv -e .env -- sh -c 'npm --workspace @portalai/api run db:seed:org -- --name e2e-fixture --owner-email \"$E2E_AUTH0_USERNAME\" --admin-email \"$E2E_AUTH0_USERNAME_ADMIN\" --member-email \"$E2E_AUTH0_USERNAME_MEMBER\" --all-toolpacks'",
