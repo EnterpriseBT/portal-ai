@@ -158,7 +158,8 @@ jest.unstable_mockModule("../commands/jobs.js", () => ({
   countActiveJobs: countActive,
 }));
 
-const { cacheStatus, stackTiming } = await import("../commands/cache.js");
+const { cacheStatus } = await import("../commands/cache.js");
+const { stackTiming } = await import("../stacks.js");
 const { serviceScale } = await import("../commands/service.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];

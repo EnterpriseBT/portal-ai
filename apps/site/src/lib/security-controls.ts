@@ -73,8 +73,9 @@ export const SECURITY_CONTROLS: readonly SecurityControl[] = [
         path: "infra/cloudformation/backend.yml",
         contains: '"rediss://${Endpoint}:${Port}"',
       },
-      // #872: no plaintext branch for REDIS_URL to take.
-      { path: "infra/cloudformation/backend.yml", lacks: '"redis://' },
+      // #872: no plaintext branch for REDIS_URL to take. `redis://` in any
+      // quoting; `rediss://` doesn't contain it.
+      { path: "infra/cloudformation/backend.yml", lacks: "redis://" },
     ],
   },
   {

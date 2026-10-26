@@ -20,7 +20,7 @@
 
 ## Decision 1 — one release, cache stack first, with no extra ordering step
 
-Both backends already import the TLS exports. CloudFormation treats an `ImportValue` in the untaken branch of an `!If` as unused, which is how app-dev's legacy exports were removed on 2026-10-24 while `backend.yml` still named them. So the deploy's existing order works: the cache stack deletes `RedisReplicationGroup` and its exports, then the backend stack drops the `!If`. If a backend were still on legacy, its import would be live, and CloudFormation would refuse to remove the export and roll back the cache update. That fails safely, so no preflight step is needed.
+Both backends already import the TLS exports. CloudFormation treats an `ImportValue` in the untaken branch of an `!If` as unused, which is how app-dev's legacy exports were removed on 2026-10-24 while `backend.yml` still named them. So the deploy's existing order works: the cache stack deletes `RedisReplicationGroup` and its exports, then the backend stack drops the `!If`. If a backend were still on legacy, its import would be live, and CloudFormation would refuse to remove the export and roll back the cache update. That fails safely, so no preflight step is needed. Checked live on 2026-10-26: `aws cloudformation list-imports` reports that no stack imports `prod-RedisEndpoint` or `prod-RedisPort`, and that only `portalai-prod-backend` imports `prod-RedisTlsEndpoint`.
 
 **On prod this deletes `portalai-prod` in the release's Deploy Prod run.** That's the cleanup #852 deferred to here. It holds only finished-job queue entries and nothing connects to it. On app-dev the cache stack has no resource change (its legacy cache is already gone), so `aws cloudformation deploy` skips it, and the stack keeps its old template with `RedisCutoverPhase=encrypted`. That leaves the same resources, and the stack picks up the new template at its next resource change. The backend deploys on both envs land, because the image tag changes.
 
@@ -28,7 +28,8 @@ Both backends already import the TLS exports. CloudFormation treats an `ImportVa
 
 - **Remove** `cache phase`, `cache switch` and `cache refresh-template` (with `templates.ts` and `CacheCutoverConflictError`). They act only on the removed parameters. `refresh-template` can't land a template-only change either (it refuses one), so it has no remaining use.
 - **Keep** `cache status`, minus `phase`/`endpointSource`. It still describes both the legacy and the `-tls` IDs, so it shows a leftover plaintext cache. #871's claim comment points at it.
-- **Keep** `service scale` and `jobs redispatch`. They're generic: `cache.yml`'s #383 note sends a planned node replacement through `redispatch`.
+- **Keep** `service scale` and `jobs redispatch`. They're generic: `cache.yml`'s #383 note sends a planned node replacement through `redispatch`. COMMANDS.md limits the sequence to replacements done outside a deploy, because Deploy Prod restores the task count before a redispatch could run (code review).
+- **Move** the stack and service helpers that `service scale` uses into `src/stacks.ts`, narrowed to the backend stack (code review).
 - **Delete** `REDIS_ENCRYPTION_CUTOVER.runbook.md`. Rolling back to plaintext is no longer possible by design, and git keeps the record. Fix its four pointers.
 
 ## Decision 3 — the evidence asserts that plaintext is gone

@@ -150,6 +150,8 @@ The job queue across a Redis replacement (#852). Postgres `jobs` is the record o
 
 Redispatch must come before the scale-up, or the boot sweep (#391) reaps the queued rows.
 
+**This sequence covers a replacement done outside a deploy** (ElastiCache's own node replacement or failover, or a change made with the AWS CLI or console). A replacement that ships as a `cache.yml` change in a release doesn't fit it. Deploy Prod updates the cache stack and then restores the service to 2 tasks in the same run, before step 4 can happen. Since #872 nothing holds that count, so before shipping such a change, add a hold to `deploy-prod.yml` for the window first, as #852 did with its phase-keyed step.
+
 ### `portalops jobs status --env <env> [--confirm-prod] [--json]`
 Connect (prod needs `--confirm-prod`). Counts live non-terminal `jobs` rows (`pending`, `active`, `awaiting_confirmation`, `stalled`) by status and type, from Postgres over the env connection (local: `.env`; AWS: the SSM tunnel). Postgres is the record of truth, so this works whether or not Redis does. A drain is done when `byStatus.active` is absent.
 `--json`: `{ "counts": [{ "status", "type", "count" }], "byStatus": { "<status>": n }, "total": n }`

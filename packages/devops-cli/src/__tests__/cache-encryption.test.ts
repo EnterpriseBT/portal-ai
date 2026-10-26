@@ -134,8 +134,9 @@ describe("backend.yml — REDIS_URL is always rediss://", () => {
 });
 
 describe("no workflow passes a removed cutover parameter (#872)", () => {
-  // `aws cloudformation deploy --parameter-overrides` fails on a parameter
-  // the template doesn't declare, so passing either would break the deploy.
+  // `aws cloudformation deploy --parameter-overrides` silently drops a
+  // parameter the template doesn't declare, so a workflow passing either
+  // would deploy cleanly and the value would do nothing.
   const dir = path.join(ROOT, ".github/workflows");
   const workflows = fs
     .readdirSync(dir)

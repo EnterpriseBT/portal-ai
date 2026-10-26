@@ -15,7 +15,11 @@ import {
   type EnvironmentDefinition,
 } from "@portalai/cli-env";
 
-import { requireDeployed, serviceName, updateStackParams } from "./cache.js";
+import {
+  requireDeployed,
+  serviceName,
+  updateBackendParams,
+} from "../stacks.js";
 import { countActiveJobs } from "./jobs.js";
 import type { MutateOptions } from "./vars.js";
 
@@ -47,7 +51,7 @@ export async function serviceScale(
     }
   }
 
-  const { changed } = await updateStackParams(def, "backend", {
+  const { changed } = await updateBackendParams(def, {
     DesiredCount: String(count),
   });
 
