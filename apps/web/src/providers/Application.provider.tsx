@@ -6,7 +6,7 @@ import "@portalai/core/styles";
 import { queryClient } from "../client";
 import { useStorage, registerAuthLogout } from "../utils";
 import { useRateLimitNotice } from "../utils/use-rate-limit-notice.util";
-import { AuthProvider, useAuth } from "./Auth.provider";
+import { AuthProvider, useAuth, type LoginReturn } from "./Auth.provider";
 import { LayoutProvider } from "./Layout.provider";
 import { ToastProvider } from "./Toast.provider";
 
@@ -30,11 +30,15 @@ const RateLimitNotice: React.FC = () => {
 export interface ApplicationProviderProps {
   children: React.ReactNode;
   defaultTheme?: ThemeName;
+  /** #884: where a completed login goes (`Application.tsx` passes the
+   *  router's history). */
+  onLoginReturn?: LoginReturn;
 }
 
 export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
   children,
   defaultTheme = "brand",
+  onLoginReturn,
 }) => {
   const { value: theme } = useStorage<ThemeName>({
     key: "portalai-theme",
@@ -46,7 +50,7 @@ export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
     <StrictMode>
       {/* AuthProvider selects Auth0 (SaaS) or a generic OIDC client (residency)
           at runtime from window.__RUNTIME_CONFIG__ (#607). */}
-      <AuthProvider>
+      <AuthProvider onLoginReturn={onLoginReturn}>
         <AuthErrorHandler />
         <ThemeProvider defaultTheme={theme}>
           <LayoutProvider>

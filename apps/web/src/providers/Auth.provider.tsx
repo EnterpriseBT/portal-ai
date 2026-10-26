@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useMemo } from "react";
+import React, { useCallback, useContext, useMemo, useState } from "react";
 import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 import {
   AuthProvider as OidcProvider,
@@ -12,25 +12,34 @@ import {
 } from "../utils/runtime-config.util";
 import {
   PRE_LOGIN_RETURN_TO_KEY,
-  POST_LOGIN_RETURN_TO_KEY,
   takeReturnTo,
-  stashReturnTo,
 } from "../utils/post-login-return-to.util";
 
 /**
  * Post-login `returnTo` bridge (#585), Auth0 path. On login we seed Auth0
  * `appState.returnTo` from the PRE key `Authorized` stashed; on the redirect
- * back, `onRedirectCallback` re-stashes it under the POST key that
- * `usePostLoginReturnTo` (in the router root) consumes to navigate. Auth0-only,
- * as #585 always was — the router is created inside this provider, so the
- * callback can't navigate directly. Residency OIDC login is IdP-hosted and out
- * of #585's scope.
+ * back, the callback hands it to `onLoginReturn`, which the app wires to the
+ * router (#884). The session reports loading until that navigation lands:
+ * routes are code-split, so it is async, and until it completes the page
+ * Auth0 landed on (the dashboard at "/") must not mount and fire its
+ * self-provisioning requests. Replacing the location also drops the
+ * callback's `?code=&state=`. Auth0-only, as #585 always was; residency OIDC
+ * login is IdP-hosted and out of #585's scope.
  */
-const auth0OnRedirectCallback = (appState?: { returnTo?: string }): void => {
-  if (appState?.returnTo) {
-    stashReturnTo(POST_LOGIN_RETURN_TO_KEY, appState.returnTo);
-  }
-};
+const safeReturnTo = (returnTo?: string): string =>
+  // Only an in-app path; never a protocol-relative //host.
+  returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
+    ? returnTo
+    : "/";
+
+/** Outside the app (tests, a provider rendered alone): replace the URL. */
+const replaceLocation = (href: string): void =>
+  window.history.replaceState({}, document.title, href);
+
+/** Where a completed login goes; a promise keeps the session loading until it
+ *  settles. */
+export type LoginReturn = (href: string) => void | Promise<unknown>;
+
 const auth0ReturnToAppState = (): { returnTo?: string } => {
   const returnTo = takeReturnTo(PRE_LOGIN_RETURN_TO_KEY);
   return returnTo ? { returnTo } : {};
@@ -92,9 +101,11 @@ export const useAuth = (): NormalizedAuth => {
 const openUrl = (url: string): void => window.location.replace(url);
 
 /** Bridges `@auth0/auth0-react` into the normalized `AuthContext` (SaaS). */
-const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+const Auth0AuthBridge: React.FC<{
+  children: React.ReactNode;
+  /** #884: a post-login navigation is still in flight. */
+  returning: boolean;
+}> = ({ children, returning }) => {
   const {
     user,
     isAuthenticated,
@@ -115,7 +126,12 @@ const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
 
   const value = useMemo<NormalizedAuth>(
     () => ({
-      session: { user, isAuthenticated, isLoading, error },
+      session: {
+        user,
+        isAuthenticated,
+        isLoading: isLoading || returning,
+        error,
+      },
       getToken,
       login: {
         withGoogle: () =>
@@ -144,6 +160,7 @@ const Auth0AuthBridge: React.FC<{ children: React.ReactNode }> = ({
       user,
       isAuthenticated,
       isLoading,
+      returning,
       error,
       getToken,
       loginWithRedirect,
@@ -202,10 +219,25 @@ const OidcAuthBridge: React.FC<{ children: React.ReactNode }> = ({
  * incomplete OIDC config **fails closed** (`resolveOidcSettings` throws) rather
  * than silently running against our Auth0 tenant or anonymous.
  */
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+export interface AuthProviderProps {
+  children: React.ReactNode;
+  /** #884: where a completed Auth0 login goes; the app passes the router's
+   *  navigate, and the session stays loading until it lands. */
+  onLoginReturn?: LoginReturn;
+}
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({
   children,
+  onLoginReturn = replaceLocation,
 }) => {
   const cfg = getRuntimeConfig();
+  const [returning, setReturning] = useState(false);
+  const onRedirectCallback = (appState?: { returnTo?: string }): void => {
+    setReturning(true);
+    void Promise.resolve(onLoginReturn(safeReturnTo(appState?.returnTo)))
+      .catch(() => undefined)
+      .finally(() => setReturning(false));
+  };
 
   if (cfg.authProvider === "auth0") {
     const settings = resolveAuth0Settings();
@@ -217,11 +249,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           redirect_uri: window.location.origin,
           audience: settings.audience,
         }}
-        onRedirectCallback={auth0OnRedirectCallback}
+        onRedirectCallback={onRedirectCallback}
         cacheLocation="localstorage"
         useRefreshTokens={true}
       >
-        <Auth0AuthBridge>{children}</Auth0AuthBridge>
+        <Auth0AuthBridge returning={returning}>{children}</Auth0AuthBridge>
       </Auth0Provider>
     );
   }
