@@ -709,9 +709,7 @@ describe("prod deploy: release-only, and one-off tasks run the new image (#83)",
       backend.lastIndexOf("aws cloudformation deploy")
     );
     expect(finalDeploy).toContain("ImageTag=prod-${{ github.sha }}");
-    // #852: the count comes from a step that restores 2 except mid-cutover.
-    expect(finalDeploy).toContain("${{ steps.restore-count.outputs.args }}");
-    expect(code()).toContain("args=DesiredCount=2");
+    expect(finalDeploy).toContain("DesiredCount=2");
     // The seed must precede it: code never rolls onto an un-migrated schema.
     expect(backend.indexOf("db:seed:ci")).toBeLessThan(
       backend.lastIndexOf("aws cloudformation deploy")

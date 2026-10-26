@@ -3,9 +3,10 @@
  *
  * Accuracy over aspiration: a control is listed only once it has shipped, and
  * its claim says no more than the code does. `evidence` names the setting
- * each claim rests on — a repo path and a string that must stay in it, never
- * rendered — and `security-controls.test.ts` fails when one goes, so a
- * control can't quietly disappear (or weaken) from under a public claim.
+ * each claim rests on — a repo path and a string that must stay in it, or
+ * one that must never appear there, never rendered — and
+ * `security-controls.test.ts` fails when one breaks, so a control can't
+ * quietly disappear (or weaken) from under a public claim.
  * Evidence is file text, so it can't see which environment runs what. Widen
  * a claim only after checking that it holds live in every environment (for
  * the cache, `portalops cache status` in app-dev and prod, #858).
@@ -20,12 +21,20 @@ export interface SecurityControl {
   evidence: readonly Evidence[];
 }
 
-export interface Evidence {
-  /** Repo-root-relative. */
-  path: string;
-  /** Text that must stay in it for the claim to hold — the setting itself. */
-  contains: string;
-}
+export type Evidence =
+  | {
+      /** Repo-root-relative. */
+      path: string;
+      /** Text that must stay in it for the claim to hold — the setting itself. */
+      contains: string;
+    }
+  | {
+      /** Repo-root-relative. */
+      path: string;
+      /** Text that must never appear in it: the shape that would make the
+       *  claim false (a plaintext cache, a plaintext URL). */
+      lacks: string;
+    };
 
 export const SECURITY_CONTROLS: readonly SecurityControl[] = [
   {
@@ -64,6 +73,9 @@ export const SECURITY_CONTROLS: readonly SecurityControl[] = [
         path: "infra/cloudformation/backend.yml",
         contains: '"rediss://${Endpoint}:${Port}"',
       },
+      // #872: no plaintext branch for REDIS_URL to take. `redis://` in any
+      // quoting; `rediss://` doesn't contain it.
+      { path: "infra/cloudformation/backend.yml", lacks: "redis://" },
     ],
   },
   {
@@ -84,6 +96,12 @@ export const SECURITY_CONTROLS: readonly SecurityControl[] = [
       {
         path: "infra/cloudformation/cache.yml",
         contains: "AtRestEncryptionEnabled: true",
+      },
+      // #872: a CacheCluster can't encrypt at rest, and none remains. The
+      // devops-cli cache-encryption test pins that every cache is encrypted.
+      {
+        path: "infra/cloudformation/cache.yml",
+        lacks: "AWS::ElastiCache::CacheCluster",
       },
       { path: "apps/api/src/utils/crypto.util.ts", contains: '"aes-256-gcm"' },
     ],

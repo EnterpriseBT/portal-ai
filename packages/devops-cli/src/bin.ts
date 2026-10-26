@@ -10,7 +10,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  Argument,
   Command,
   CommanderError,
   InvalidArgumentError,
@@ -61,14 +60,7 @@ import {
   type ProvisionStep,
 } from "./commands/local.js";
 import { jobsRedispatch, jobsStatus } from "./commands/jobs.js";
-import {
-  cachePhase,
-  cacheRefreshTemplate,
-  cacheStatus,
-  cacheSwitch,
-  type CutoverPhase,
-  type EndpointSource,
-} from "./commands/cache.js";
+import { cacheStatus } from "./commands/cache.js";
 import { serviceScale } from "./commands/service.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
@@ -330,64 +322,15 @@ export function buildProgram(): Command {
   // ── cache + service (#852) ─────────────────────────────────────────
   const cache = program
     .command("cache")
-    .description("the ElastiCache encryption cutover (cache.yml phases)");
+    .description("the encrypted ElastiCache Redis (the jobs queue)");
 
   common(
     cache
       .command("status")
       .description(
-        "cutover phase, endpoint source, each cache's encryption, service counts"
+        "each cache's encryption (a leftover plaintext one included), service counts"
       )
   ).action(async (o: GlobalOpts) => execute(o, (def) => cacheStatus(def)));
-
-  common(
-    cache
-      .command("phase")
-      .description(
-        "move cache.yml's phase: both creates the encrypted cache; encrypted removes the legacy one (destructive)"
-      )
-      .addArgument(
-        new Argument("<phase>").choices(["legacy", "both", "encrypted"])
-      )
-  ).action(async (phase: CutoverPhase, o: GlobalOpts) =>
-    execute(o, (def) => cachePhase(def, phase, flags(o)))
-  );
-
-  common(
-    cache
-      .command("switch")
-      .description(
-        "point the backend's REDIS_URL at the other cache (phase both, service at 0; holds it at 0)"
-      )
-      .addArgument(new Argument("<to>").choices(["legacy", "encrypted"]))
-  ).action(async (to: EndpointSource, o: GlobalOpts) =>
-    execute(o, (def) => cacheSwitch(def, to, flags(o)))
-  );
-
-  common(
-    cache
-      .command("refresh-template")
-      .description(
-        "apply main's cache.yml with parameters unchanged, previewed; for a template the deploy skipped (no resource changes)"
-      )
-  )
-    .option("--dry-run", "preview the change set; apply nothing")
-    .addOption(
-      new Option(
-        "--phase <phase>",
-        "set RedisCutoverPhase with the template (a template-only change never lands; the phase's resource change carries it)"
-      ).choices(["legacy", "both", "encrypted"])
-    )
-    .action(
-      async (o: GlobalOpts & { dryRun?: boolean; phase?: CutoverPhase }) =>
-        execute(o, (def) =>
-          cacheRefreshTemplate(def, {
-            ...flags(o),
-            dryRun: o.dryRun,
-            phase: o.phase,
-          })
-        )
-    );
 
   const service = program.command("service").description("the API ECS service");
 

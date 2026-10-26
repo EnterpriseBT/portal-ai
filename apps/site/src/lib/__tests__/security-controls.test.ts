@@ -54,7 +54,9 @@ describe("SECURITY_CONTROLS", () => {
 
   it.each(
     SECURITY_CONTROLS.flatMap((c) =>
-      c.evidence.map((e) => [c.id, e.path, e.contains])
+      c.evidence.flatMap((e) =>
+        "contains" in e ? [[c.id, e.path, e.contains]] : []
+      )
     )
   )("%s: %s still contains %s", (_id, file, contains) => {
     // The setting, not just the file: a claim of "14 days" outlives a file
@@ -62,6 +64,17 @@ describe("SECURITY_CONTROLS", () => {
     const full = path.join(REPO_ROOT, file);
     expect(fs.existsSync(full)).toBe(true);
     expect(fs.readFileSync(full, "utf8")).toContain(contains);
+  });
+
+  it.each(
+    SECURITY_CONTROLS.flatMap((c) =>
+      c.evidence.flatMap((e) => ("lacks" in e ? [[c.id, e.path, e.lacks]] : []))
+    )
+  )("%s: %s never contains %s", (_id, file, lacks) => {
+    // The file must exist, or a renamed template would pass vacuously.
+    const full = path.join(REPO_ROOT, file);
+    expect(fs.existsSync(full)).toBe(true);
+    expect(fs.readFileSync(full, "utf8")).not.toContain(lacks);
   });
 });
 

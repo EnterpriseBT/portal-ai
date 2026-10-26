@@ -46,16 +46,6 @@ Parameters:
   DesiredCount:
     Type: Number
     Default: 1
-  # #852: which cache REDIS_URL points at. Moved only by
-  # `portalops cache switch` (with the service at zero, after a drain); the
-  # deploy workflows never pass it, so a deploy keeps the current value.
-  RedisEndpointSource:
-    Type: String
-    Default: legacy
-    AllowedValues: [legacy, encrypted]
-    Description: >-
-      legacy = plaintext redis:// endpoint; encrypted = the TLS replication
-      group over rediss:// (cache.yml phase both or encrypted).
   ImageTag:
     Type: String
     Default: latest
@@ -143,7 +133,6 @@ Conditions:
   # simply absent, `RebuildDispatchService` no-ops, and the nightly scheduled
   # rebuild remains the freshness guarantee.
   HasGithubDispatchToken: !Not [!Equals [!Ref SecretArnGithubDispatchToken, ""]]
-  UseEncryptedRedis: !Equals [!Ref RedisEndpointSource, encrypted]
 
 Resources:
   # ── ECR Repository ───────────────────────────────────────
@@ -613,23 +602,15 @@ Resources:
             - Name: MICROSOFT_OAUTH_REDIRECT_URI
               Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/microsoft-excel/callback"
             # #852: the scheme is the TLS switch (the API's ioredis turns
-            # rediss:// into TLS). RedisEndpointSource is moved only by
-            # `portalops cache switch`, never by a deploy workflow.
+            # rediss:// into TLS), and the cache refuses plaintext. There is
+            # no plaintext cache to point at since #872.
             - Name: REDIS_URL
-              Value: !If
-                - UseEncryptedRedis
-                - !Sub
-                  - "rediss://${Endpoint}:${Port}"
-                  - Endpoint: !ImportValue
-                      Fn::Sub: "${Environment}-RedisTlsEndpoint"
-                    Port: !ImportValue
-                      Fn::Sub: "${Environment}-RedisTlsPort"
-                - !Sub
-                  - "redis://${Endpoint}:${Port}"
-                  - Endpoint: !ImportValue
-                      Fn::Sub: "${Environment}-RedisEndpoint"
-                    Port: !ImportValue
-                      Fn::Sub: "${Environment}-RedisPort"
+              Value: !Sub
+                - "rediss://${Endpoint}:${Port}"
+                - Endpoint: !ImportValue
+                    Fn::Sub: "${Environment}-RedisTlsEndpoint"
+                  Port: !ImportValue
+                    Fn::Sub: "${Environment}-RedisTlsPort"
             # #500: ARN of the RDS-managed master secret (rds!…). The app
             # resolves the DB password from it per NEW connection (TTL-cached,
             # fail-open — apps/api/src/db/credentials.util.ts), so the weekly
