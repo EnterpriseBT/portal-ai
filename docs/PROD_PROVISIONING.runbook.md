@@ -310,7 +310,7 @@ done
 ```
 
 - [ ] Also set `${PREFIX}_HOSTED_ZONE_ID` and `${PREFIX}_AWS_ROLE_ARN` (the prod deploy role from #383).
-- [ ] `gh secret list --repo EnterpriseBT/portal-ai | grep -c "${PREFIX}_SECRET_ARN_"` → **11**.
+- [ ] `gh secret list --repo EnterpriseBT/portal-ai | grep -c "${PREFIX}_SECRET_ARN_"` → **11**. An environment provisioned before #873 shows **12** until its `${PREFIX}_SECRET_ARN_AUTH0_WEBHOOK_SECRET` is deleted (`docs/ENTERPRISE_SSO.runbook.md` step 3). That one is expected; anything else missing is not.
 
 ---
 
