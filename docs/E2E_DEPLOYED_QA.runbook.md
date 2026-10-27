@@ -17,6 +17,22 @@ Every QA identity in an environment is a member of **exactly one org, the QA org
 
 So the invariant (one membership, and it is the QA org) is checked on every post-deploy run (for the owner) and in this runbook (for all three). A fourth member in the QA org, or a second membership for any QA user, is an incident: see "Rotation and incidents".
 
+## Per environment: scripted setup
+
+`packages/e2e/scripts/setup-qa-auth0.sh` does the next two sections in one pass: the Auth0 connection and users, the Secrets Manager entries and the repo secret. It also reports the tenant's MFA settings. The passwords are generated and piped straight to `portalops`, so they're never printed or written to disk. Re-running is safe: it reuses the connection and leaves existing users and their stored values alone.
+
+```bash
+auth0 login --domain portalsai-staging.us.auth0.com \
+  --scopes create:connections,read:connections,update:connections,read:clients,read:users,create:users,read:actions,read:guardian_factors,read:mfa_policies
+aws login --remote && eval "$(aws configure export-credentials --format env)"
+npm run build --workspace @portalai/devops-cli
+npm run --workspace @portalai/e2e e2e:qa:setup -- app-dev
+```
+
+For prod, sign in with `--domain portalsai.us.auth0.com` and pass `prod`; the script adds `--confirm-prod` itself. If the tenant has more than one SPA app, it stops and asks for `--spa-client-id <id>`. It warns that each secret is new ("add its ARN to the deploy workflow"). That doesn't apply here: only the API's secrets go in `backend.yml`, and the deploy role reads `portalai/<env>/*`.
+
+The manual steps below are what it does, for when the script can't be used.
+
 ## Per environment: Auth0 tenant
 
 Tenants: **app-dev** is `portalsai-staging.us.auth0.com`, **prod** is `portalsai.us.auth0.com`. Do prod before the release that first carries `verify-login`, or that release's deploy goes red (the #873 lesson: vendor steps go on the release checklist, #854).

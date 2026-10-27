@@ -29,7 +29,8 @@
     "e2e:auth:app-dev:member": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env app-dev --identity member",
     "e2e:auth:prod:admin": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env prod --identity admin",
     "e2e:auth:prod:member": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env prod --identity member",
-    "e2e:use": "tsx src/setup/use-identity.ts"
+    "e2e:use": "tsx src/setup/use-identity.ts",
+    "e2e:qa:setup": "scripts/setup-qa-auth0.sh"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

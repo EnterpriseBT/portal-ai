@@ -99,7 +99,7 @@ Notes:
 
 ## Deployed environments (app-dev, prod)
 
-Each deployed env has three QA users (owner, admin, member), and each one's only membership is that env's QA org. The membership is the boundary, and the API enforces it. Setup, verification, rotation and incidents: **`docs/E2E_DEPLOYED_QA.runbook.md`**.
+Each deployed env has three QA users (owner, admin, member), and each one's only membership is that env's QA org. The membership is the boundary, and the API enforces it. Setup, verification, rotation and incidents: **`docs/E2E_DEPLOYED_QA.runbook.md`**. The Auth0 and secrets setup is scripted: `npm run --workspace @portalai/e2e e2e:qa:setup -- app-dev|prod`.
 
 ```bash
 npm run --workspace @portalai/e2e e2e:auth:app-dev            # owner; also the active session
