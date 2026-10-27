@@ -28,14 +28,15 @@
 
 **Files**
 - Edit: `infra/cloudformation/backend.yml`: `WEB_APP_URL` from `FrontendOrigin`, with a comment citing #889 beside `PUBLIC_API_BASE_URL`'s. Correct `FrontendOrigin`'s description (it's no longer CORS-only).
-- Edit: `apps/api/src/services/seat.service.ts`: the production loopback refusal in `inviteUrl`, checked before the row is written.
+- New: `apps/api/src/utils/invite-link.util.ts`: `inviteLinkBase()` (the production loopback refusal) and `inviteUrl(token)`. A pure util, so it's unit-testable without the database.
+- Edit: `apps/api/src/services/seat.service.ts`: invite and resend call `inviteLinkBase()` before writing; revoke doesn't (it builds no link).
 - Edit: `apps/api/src/constants/api-codes.constants.ts`: `INVITATION_LINK_UNCONFIGURED`.
 - Edit: `deploy/helm/portalai/values.yaml` + `README.md`: name `WEB_APP_URL` among the `config` examples.
 - Edit: `apps/api/.env.example:142`: note that deployed envs get it from the stack.
 
 **Tests** (`npm run test:unit` / `npm run test:integration`, from each package)
-- New: `apps/api/src/__tests__/services/seat-invite-url.test.ts`: production + unset or `localhost` / `127.0.0.1` → `INVITATION_LINK_UNCONFIGURED`; production + `https://app.example` → `https://app.example/invitations/accept?token=…`; development + localhost → allowed.
-- Edit: `seat.service.integration.test.ts`: the link starts with `environment.WEB_APP_URL`, not just `token=`. Also: a refused invite in production leaves no pending row.
+- New: `apps/api/src/__tests__/utils/invite-link.util.test.ts`: production + unset or `localhost` / `127.0.0.1` → `INVITATION_LINK_UNCONFIGURED`; production + `https://app.example` → `https://app.example/invitations/accept?token=…`; development + localhost → allowed.
+- Edit: `seat.service.integration.test.ts`: the link starts with `environment.WEB_APP_URL`, not just `token=`. Also: in production, a refused invite leaves no row, a refused resend leaves the token and expiry as they were, and revoke still works.
 - Edit: `packages/devops-cli/src/__tests__/deploy-parity.test.ts`: the API container sets `WEB_APP_URL` and `PUBLIC_API_BASE_URL`, and `WEB_APP_URL` is `!Ref FrontendOrigin`.
 
 ## Smoke (manual, against your dev stack)

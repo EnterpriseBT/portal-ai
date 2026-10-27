@@ -1387,3 +1387,55 @@ describe("operator read roles reach what the read commands need (#397)", () => {
     });
   });
 });
+
+/**
+ * The API's externally-reachable URLs (#382, #889). Both default to localhost
+ * in `environment.ts`, so a task that doesn't set one silently uses loopback:
+ * #382 had webhook runtimes calling back to their own localhost, and #889 had
+ * every deployed invite link pointing at http://localhost:3000.
+ */
+describe("the API task sets its externally-reachable URLs (#889)", () => {
+  type Entry = { Name?: unknown; Value?: unknown };
+
+  /** The raw YAML node for a container Environment entry, so the CloudFormation
+   *  tag (!Ref / !Sub) is still visible. */
+  function environmentNode(name: string) {
+    const doc = parseDocument(fs.readFileSync(BACKEND_YML, "utf8"), {
+      logLevel: "silent",
+    });
+    const env = doc.getIn([
+      "Resources",
+      "TaskDefinition",
+      "Properties",
+      "ContainerDefinitions",
+      0,
+      "Environment",
+    ]) as { items: { get(key: string, keepScalar: true): unknown }[] };
+    return env.items.find(
+      (item) =>
+        (item.get("Name", true) as { value?: unknown } | undefined)?.value ===
+        name
+    );
+  }
+
+  it.each(["WEB_APP_URL", "PUBLIC_API_BASE_URL"])("sets %s", (name) => {
+    const entries = (container().Environment as Entry[]).filter(
+      (e) => e && typeof e === "object" && e.Name === name
+    );
+    expect(entries).toHaveLength(1);
+  });
+
+  it("takes WEB_APP_URL from the FrontendOrigin each deploy passes", () => {
+    const value = environmentNode("WEB_APP_URL")?.get("Value", true) as
+      | { tag?: string; value?: unknown }
+      | undefined;
+    expect(value?.tag).toBe("!Ref");
+    expect(value?.value).toBe("FrontendOrigin");
+    for (const [file, body] of backendDeployWorkflows()) {
+      expect({ file, passes: /FrontendOrigin=https:\/\//.test(body) }).toEqual({
+        file,
+        passes: true,
+      });
+    }
+  });
+});
