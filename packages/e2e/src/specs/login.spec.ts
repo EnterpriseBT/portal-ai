@@ -17,7 +17,12 @@ const BUDGET_MS = 30_000;
 
 test("signs in and lands in exactly one org", async ({ page }) => {
   const target = resolveTarget();
-  const { username, password } = await resolveCredentials(target);
+  // The post-deploy check signs in as the owner; E2E_IDENTITY runs the same
+  // check as a deployed env's QA admin or member (the runbook's
+  // one-membership check).
+  const { username, password } = await resolveCredentials(target, {
+    identity: process.env.E2E_IDENTITY || undefined,
+  });
 
   const current = page.waitForResponse(
     (r) =>

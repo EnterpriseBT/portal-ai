@@ -792,7 +792,20 @@ Which review-chain phases are *required* scales by ticket kind and sizing — he
 
 ### Agent-guided browser sessions
 
-The gate's agent walk runs on a shared harness (`@portalai/e2e`, #304): Playwright browsers baked into the devcontainer image, a reusable Auth0 session (`npm run --workspace @portalai/e2e e2e:auth` → git-ignored `storageState`, via a twice-guarded dev-only login affordance since the app is Google-only), a deterministic seeded org (`e2e:seed` → `db:seed:org`), and the **Playwright MCP** server (repo-root `.mcp.json`) that gives an in-container Claude session `mcp__playwright__*` tools — navigate, click, screenshot, read console/network. The same session serves day-to-day troubleshooting (reproduce a reported bug, inspect a broken render, confirm a fix in the real app), not only smoke and adversarial walks. Automated `*.spec.ts` and CI runs are a **deferred** tier (a follow-up prod / app-dev login-verification ticket) — this is the local/agent harness. Setup + usage: `packages/e2e/README.md`.
+The gate's agent walk runs on a shared harness (`@portalai/e2e`, #304): Playwright browsers baked into the devcontainer image, a reusable Auth0 session (`npm run --workspace @portalai/e2e e2e:auth` → git-ignored `storageState`, via a twice-guarded dev-only login affordance since the app is Google-only), a deterministic seeded org (`e2e:seed` → `db:seed:org`), and the **Playwright MCP** server (repo-root `.mcp.json`) that gives an in-container Claude session `mcp__playwright__*` tools — navigate, click, screenshot, read console/network. The same session serves day-to-day troubleshooting (reproduce a reported bug, inspect a broken render, confirm a fix in the real app), not only smoke and adversarial walks. Setup + usage: `packages/e2e/README.md`.
+
+Three automated and deployed tiers build on it (#489):
+- **`E2E Tests`** (`e2e-test.yml`) runs on every branch push. It is **not a required check** until it has a flake record. It boots an ephemeral stack (`packages/e2e/scripts/e2e-stack.sh`: fresh DB, s3mock, an Anthropic stub so no live LLM runs) and walks a freshly provisioned org: login, the core loop (CSV import → records → station → portal) and the owner / admin / member split. Each hidden affordance is checked against its server 403.
+- **`verify-login`** is the last job of `deploy-dev.yml` / `deploy-prod.yml`. It signs in to the env just deployed as its QA owner, and goes red (never rolls back) if login breaks — #873's prod login loop is what it would have caught.
+- **Deployed agent sessions** go through `playwright-app-dev` / `playwright-prod` in `.mcp.json`, as that env's QA owner, admin or member (`e2e:auth:<env>[:admin|:member]`, switched with `e2e:use <role> --env <env>`).
+
+**Deployed sign-in and its boundary.**
+- **Sign-in:** every deployed tier signs in through the **QA sign-in** (`/login?qa=1`). It renders only in a build that bakes `VITE_AUTH0_QA_CONNECTION`, an Auth0 Database connection with sign-ups disabled, and a normal user's `/login` is unchanged.
+- **Boundary:** each QA identity's only membership is its env's QA org. That, enforced by the API, is the boundary, not the MCP server's `--allowed-origins`, which doesn't cover redirects.
+- **Conduct:** stay in the QA org; reproduce a customer's bug by recreating its conditions there, never by entering their org; no billing checkout; label created data and clean it up.
+- **Traces:** a deployed run records no trace, since a trace would hold the QA password and a token.
+- **Runbook:** setup, rotation and incidents are in `docs/E2E_DEPLOYED_QA.runbook.md`.
+- **Prod releases:** a prod release that first carries a new vendor-side step needs that step done first (#854).
 
 ### After merge
 
