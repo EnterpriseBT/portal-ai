@@ -91,6 +91,17 @@ The guard (`npm run lint:ci-cache`) enforces the CI half of this; nothing enforc
 
 ## Troubleshooting
 
+- **After a pull, services don't resolve by name, or the e2e stack can't reach them.** The compose network was renamed from `mcp-net` to `portal-net` (#882). A container started before the pull stays on the old network, and one recreated since (say by `e2e:stack:up`) is on the new one, so the two can't see each other. It shows up two ways:
+  - an app process fails with `getaddrinfo ENOTFOUND postgres` (or `redis`);
+  - `e2e:stack:up` can't resolve `postgres-test`, so it falls back to `localhost:5433` / `:6380` / `:9090`. Those reach nothing inside the devcontainer, so the error is `ECONNREFUSED` on localhost, or a service that "did not come up".
+
+  To fix it:
+  1. Run **Rebuild Container**. Compose recreates every service onto `portal-net`; the named volumes (`pgdata`, `redis-data`, `ollama_data`) are untouched.
+  2. The e2e profile's `s3mock` moves the next time `e2e:stack:up` starts it.
+  3. Remove the empty old network. Its prefix is your compose project, named after your checkout folder, so look it up first: `docker network ls --filter name=mcp-net`, then `docker network rm <that name>`. It refuses harmlessly if anything still uses it.
+
+  A branch cut before #882 still declares `mcp-net`, so starting compose from it recreates the old network and splits the stack again. Merge `main` into the branch first, or rebuild again after switching back.
+
 - **Every SQL tool fails with `PORTAL_SQL_UNAVAILABLE`.** Agent SQL runs under the restricted `portalai_sql_reader` role (#660), which migration `0118` creates. `npm run dev` seeds but doesn't migrate, so run `npm run db:migrate` (from `apps/api`) once. The API log's `portal-sql.reader-role-unavailable` line gives the reason; the next SQL call re-checks, so no restart is needed.
 
 - **Maps 500 with `Cannot find SRID (3857) in spatial_ref_sys`.** PostGIS's coordinate-system table on your local DB is empty. `CREATE EXTENSION postgis` (migration `0076`) populates it (~8500 rows) on a fresh DB, so this only happens if it was truncated out-of-band. Repopulate from the PostGIS-shipped SQL:

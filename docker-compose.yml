@@ -18,7 +18,7 @@ services:
         condition: service_healthy
     command: sleep infinity
     networks:
-      - mcp-net
+      - portal-net
 
   ollama:
     image: ollama/ollama
@@ -33,7 +33,7 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - mcp-net
+      - portal-net
 
   redis:
     image: redis:7-alpine
@@ -48,7 +48,7 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - mcp-net
+      - portal-net
 
   postgres:
     # PostGIS-enabled base image (#316). `CREATE EXTENSION postgis` in the
@@ -77,7 +77,7 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - mcp-net
+      - portal-net
 
   postgres-test:
     # PostGIS-enabled base image (#316) — must match the app database above so
@@ -99,7 +99,7 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - mcp-net
+      - portal-net
 
   # #489: S3-compatible object storage for the e2e core-loop walk (the
   # browser PUTs uploads to a presigned URL). e2e profile only, so a plain
@@ -120,7 +120,7 @@ services:
       timeout: 3s
       retries: 20
     networks:
-      - mcp-net
+      - portal-net
 
 volumes:
   pgdata:
@@ -128,5 +128,5 @@ volumes:
   redis-data:
 
 networks:
-  mcp-net:
+  portal-net:
     driver: bridge
