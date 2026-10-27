@@ -22,6 +22,7 @@ import {
   assertDeployModeConsistency,
   deployMode,
 } from "./config/deploy-mode.js";
+import { publicUrlWarnings } from "./utils/public-url.util.js";
 
 const jobsWorker = createJobsWorker(processors);
 const maintenanceWorker = createMaintenanceWorker();
@@ -61,6 +62,19 @@ async function start() {
       "Deploy-mode config is inconsistent — refusing to start"
     );
     process.exit(1);
+  }
+
+  // #891: a missing public URL doesn't stop the API (an install may never use
+  // what it serves), but production says so once, naming what it breaks.
+  for (const warning of publicUrlWarnings(environment)) {
+    logger.warn(
+      {
+        code: ApiCode.PUBLIC_URL_UNCONFIGURED,
+        setting: warning.setting,
+        value: warning.value,
+      },
+      warning.message
+    );
   }
 
   await connectDatabase();

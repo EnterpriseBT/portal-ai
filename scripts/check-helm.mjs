@@ -18,6 +18,8 @@
  */
 
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -111,19 +113,138 @@ const apiHasNoMigrationCreds = (out) => {
   );
 };
 
-// #889: every WEB_APP_URL the ConfigMap carries. Invite links are built on it,
-// and production refuses invites without a real one.
-const webAppUrls = (out) =>
+// #889, #891: every value the ConfigMap carries for `key`. The public URLs
+// default from the ingress, so each must render once, or not at all.
+const configValues = (out, key) =>
   [
     ...manifest(out, "ConfigMap", "p-portalai-config").matchAll(
-      /^\s+WEB_APP_URL: "([^"]*)"$/gm
+      new RegExp(`^\\s+${key}: "([^"]*)"$`, "gm")
     ),
   ].map((m) => m[1]);
+const webAppUrls = (out) => configValues(out, "WEB_APP_URL");
+const publicApiUrls = (out) => configValues(out, "PUBLIC_API_BASE_URL");
 
 const MIGRATION_USER_ARGS = [
   "--set",
   "postgresql.external.migrationUser=owner",
 ];
+
+// #891: the install notes name a missing public URL in the API's own words.
+// `helm template` doesn't render NOTES.txt, so render it as a ConfigMap
+// through `tpl` in a scratch copy of the chart.
+function renderNotes(args) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "portalai-notes-"));
+  try {
+    const chart = path.join(dir, "chart");
+    fs.cpSync(CHART, chart, { recursive: true });
+    fs.renameSync(
+      path.join(chart, "templates", "NOTES.txt"),
+      path.join(chart, "notes.tpl")
+    );
+    fs.writeFileSync(
+      path.join(chart, "templates", "zz-notes.yaml"),
+      'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: rendered-notes\ndata:\n  notes: |\n{{ tpl (.Files.Get "notes.tpl") . | indent 4 }}\n'
+    );
+    const out = run([
+      "template",
+      "p",
+      chart,
+      ...IMAGE_ARGS,
+      ...args,
+      "--show-only",
+      "templates/zz-notes.yaml",
+    ]);
+    return out.split("notes: |")[1] ?? "";
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The consequence sentences the API logs, from `public-url.util.ts`. */
+function apiConsequences() {
+  const src = fs.readFileSync(
+    path.join(REPO_ROOT, "apps/api/src/utils/public-url.util.ts"),
+    "utf8"
+  );
+  const pick = (key) => {
+    const m = new RegExp(`${key}:\\s*"([^"]+)"`).exec(src);
+    if (!m) throw new Error(`PUBLIC_URL_CONSEQUENCES.${key} not found`);
+    return m[1];
+  };
+  return {
+    WEB_APP_URL: pick("WEB_APP_URL"),
+    PUBLIC_API_BASE_URL: pick("PUBLIC_API_BASE_URL"),
+  };
+}
+
+const flat = (text) => text.replace(/\s+/g, " ");
+const notesSay = (notes, key, consequence) =>
+  flat(notes).includes(`${key} isn't set`) &&
+  flat(notes).includes(consequence);
+
+const notesScenarios = () => {
+  const said = apiConsequences();
+  return [
+    {
+      name: "notes: no ingress, no config",
+      args: [],
+      assertions: [
+        [
+          "names WEB_APP_URL in the API's words",
+          (n) => notesSay(n, "WEB_APP_URL", said.WEB_APP_URL),
+        ],
+        [
+          "names PUBLIC_API_BASE_URL in the API's words",
+          (n) =>
+            notesSay(n, "PUBLIC_API_BASE_URL", said.PUBLIC_API_BASE_URL),
+        ],
+      ],
+    },
+    {
+      name: "notes: TLS ingress",
+      args: [
+        "--set",
+        "ingress.enabled=true",
+        "--set",
+        "ingress.host=app.example.com",
+        "--set",
+        "ingress.tls.enabled=true",
+      ],
+      assertions: [
+        ["names no missing URL", (n) => !flat(n).includes("isn't set")],
+      ],
+    },
+    {
+      name: "notes: only config.PUBLIC_API_BASE_URL",
+      args: ["--set", "config.PUBLIC_API_BASE_URL=https://api.example.org"],
+      assertions: [
+        [
+          "names only WEB_APP_URL",
+          (n) =>
+            flat(n).includes("WEB_APP_URL isn't set") &&
+            !flat(n).includes("PUBLIC_API_BASE_URL isn't set"),
+        ],
+      ],
+    },
+    {
+      name: "notes: ingress + empty config.PUBLIC_API_BASE_URL",
+      args: [
+        "--set",
+        "ingress.enabled=true",
+        "--set",
+        "ingress.host=app.example.com",
+        "--set",
+        "config.PUBLIC_API_BASE_URL=",
+      ],
+      assertions: [
+        [
+          "an empty value isn't 'set': the ingress default applies, so no note",
+          (n) => !flat(n).includes("PUBLIC_API_BASE_URL isn't set"),
+        ],
+      ],
+    },
+  ];
+};
 
 const scenarios = [
   {
@@ -141,6 +262,10 @@ const scenarios = [
       [
         "no WEB_APP_URL without an ingress or config (#889)",
         (out) => webAppUrls(out).length === 0,
+      ],
+      [
+        "no PUBLIC_API_BASE_URL without an ingress or config (#891)",
+        (out) => publicApiUrls(out).length === 0,
       ],
       [
         "api reads env from ConfigMap + Secret",
@@ -241,6 +366,10 @@ const scenarios = [
         "invite links default to the ingress origin (#889)",
         (out) => webAppUrls(out).join() === "https://app.example.com",
       ],
+      [
+        "webhook callbacks default to the ingress origin (#891)",
+        (out) => publicApiUrls(out).join() === "https://app.example.com",
+      ],
     ],
   },
   {
@@ -260,10 +389,35 @@ const scenarios = [
         "invite links default to http on the ingress host",
         (out) => webAppUrls(out).join() === "http://portal.corp",
       ],
+      [
+        "webhook callbacks default to http on the ingress host",
+        (out) => publicApiUrls(out).join() === "http://portal.corp",
+      ],
     ],
   },
   {
-    name: "explicit config.WEB_APP_URL beats the ingress default (#889)",
+    name: "an empty config URL falls back to the ingress default (#891)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "ingress.enabled=true",
+      "--set",
+      "ingress.host=app.example.com",
+      "--set",
+      "config.PUBLIC_API_BASE_URL=",
+    ],
+    assertions: [
+      [
+        "PUBLIC_API_BASE_URL renders once, from the ingress",
+        (out) => publicApiUrls(out).join() === "http://app.example.com",
+      ],
+    ],
+  },
+  {
+    name: "explicit config URLs beat the ingress defaults (#889, #891)",
     args: [
       "template",
       "p",
@@ -275,11 +429,17 @@ const scenarios = [
       "ingress.host=app.example.com",
       "--set",
       "config.WEB_APP_URL=https://portal.example.org",
+      "--set",
+      "config.PUBLIC_API_BASE_URL=https://api.example.org",
     ],
     assertions: [
       [
         "WEB_APP_URL renders once, from config",
         (out) => webAppUrls(out).join() === "https://portal.example.org",
+      ],
+      [
+        "PUBLIC_API_BASE_URL renders once, from config",
+        (out) => publicApiUrls(out).join() === "https://api.example.org",
       ],
     ],
   },
@@ -530,6 +690,29 @@ function main() {
     }
     for (const [label, predicate] of scenario.assertions) {
       if (predicate(out)) {
+        console.log(`✓ [${scenario.name}] ${label}`);
+      } else {
+        console.error(`✗ [${scenario.name}] ${label}`);
+        failures.push(`${scenario.name}: ${label}`);
+      }
+    }
+  }
+
+  // install notes (#891)
+  for (const scenario of notesScenarios()) {
+    let notes;
+    try {
+      notes = renderNotes(scenario.args);
+    } catch (err) {
+      console.error(
+        `✗ [${scenario.name}] failed to render:\n` +
+          (err.stderr || err.stdout || err.message)
+      );
+      failures.push(`render: ${scenario.name}`);
+      continue;
+    }
+    for (const [label, predicate] of scenario.assertions) {
+      if (predicate(notes)) {
         console.log(`✓ [${scenario.name}] ${label}`);
       } else {
         console.error(`✗ [${scenario.name}] ${label}`);

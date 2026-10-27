@@ -18,7 +18,28 @@ import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js
 import { WebhookReadTokenService } from "../services/webhook-read-token.service.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
-import { environment } from "../environment.js";
+import {
+  callbackAddressAvailable,
+  publicApiBase,
+} from "../utils/public-url.util.js";
+
+/** The typed result a webhook tool returns when it needs a callback and this
+ *  server has no public API address (#891). The agent relays it. */
+export function webhookCallbackRefusal(
+  slug: string,
+  reason: "pull" | "stage"
+): { error: { code: ApiCode; message: string } } {
+  const why =
+    reason === "pull"
+      ? `pull its input from this server, and this server's public API address (PUBLIC_API_BASE_URL) isn't set. Pass the data as inline \`rows\` instead of a \`queryHandle\` to run it without a callback.`
+      : `stage its result on this server because it's too large to return inline, and this server's public API address (PUBLIC_API_BASE_URL) isn't set.`;
+  return {
+    error: {
+      code: ApiCode.WEBHOOK_CALLBACK_UNCONFIGURED,
+      message: `The "${slug}" tool needs to ${why} Other webhook tools still work.`,
+    },
+  };
+}
 
 /** Page size advertised to a `streaming` webhook for its pull-on-read loop —
  *  the `getSnapshot` per-call ceiling. */
@@ -72,6 +93,16 @@ export class WebhookTool extends Tool {
     );
   }
 
+  /** A `streaming` call given a `queryHandle`: its runtime must pull the
+   *  input back from this server (#891). */
+  private pullsHandle(validated: Record<string, unknown>): boolean {
+    return (
+      this.consumption?.mode === "streaming" &&
+      typeof validated.queryHandle === "string" &&
+      validated.queryHandle.length > 0
+    );
+  }
+
   /** A `bounded`/`streaming` tool computes over a dataset, so the runtime
    *  injects the compute-source fields (`queryHandle` / `rows`) into its
    *  schema — for `bounded` it resolves them and POSTs `records`; for
@@ -110,6 +141,26 @@ export class WebhookTool extends Tool {
       inputSchema: this.schema as any,
       execute: async (rawInput: Record<string, unknown>) => {
         const validated = this.validate(rawInput) as Record<string, unknown>;
+        // #891: a runtime that must call back (to pull a queryHandle, or to
+        // stage a large result) needs this server's public API address. In
+        // production without one it's never handed a loopback URL: a pull is
+        // refused with the reason, and a large-result tool runs without its
+        // write grant. A plain tool never calls back.
+        const canCallBack = callbackAddressAvailable();
+        if (this.pullsHandle(validated) && !canCallBack) {
+          logger.warn(
+            {
+              toolName: this.slug,
+              code: ApiCode.WEBHOOK_CALLBACK_UNCONFIGURED,
+            },
+            "Webhook tool refused: PUBLIC_API_BASE_URL isn't a public URL"
+          );
+          return webhookCallbackRefusal(this.slug, "pull");
+        }
+        // A result small enough to return inline needs no write grant, so a
+        // large-result tool still runs without one; only a result too big
+        // to return inline then fails, and says why.
+        const withholdOutputGrant = this.wantsOutputGrant && !canCallBack;
         logger.info(
           {
             toolName: this.slug,
@@ -171,17 +222,26 @@ export class WebhookTool extends Tool {
           // ── Output tier (production, #161): the write-grant is driven by
           // the OUTPUT declaration, not the input mode — so a `none`/`bounded`
           // tool that produces a large row set can stage a handle too.
-          if (this.wantsOutputGrant) {
+          if (this.wantsOutputGrant && !withholdOutputGrant) {
             const output = await this.buildOutputGrant();
             sessionId = output.sessionId;
             writeToken = output.writeToken;
             body.output = output.grant;
           }
 
-          const result = await ToolService.callWebhook(
-            this.implementation,
-            body
-          );
+          let result: unknown;
+          try {
+            result = await ToolService.callWebhook(this.implementation, body);
+          } catch (err) {
+            if (
+              withholdOutputGrant &&
+              (err as { code?: unknown }).code ===
+                ApiCode.TOOLPACK_RUNTIME_TOO_LARGE
+            ) {
+              return webhookCallbackRefusal(this.slug, "stage");
+            }
+            throw err;
+          }
 
           // #124 outbound: a `{ resultHandle }` response opts into the staged
           // handle. Resolve it against what we staged this session (a webhook
@@ -235,7 +295,7 @@ export class WebhookTool extends Tool {
       sessionId,
       writeToken,
       grant: {
-        writeUrl: `${environment.PUBLIC_API_BASE_URL}/api/webhook/handle/${sessionId}`,
+        writeUrl: `${publicApiBase()}/api/webhook/handle/${sessionId}`,
         writeToken,
       },
     };
@@ -305,7 +365,7 @@ export class WebhookTool extends Tool {
       mode: "read",
     });
     return {
-      readUrl: `${environment.PUBLIC_API_BASE_URL}/api/webhook/handle/${handleId}`,
+      readUrl: `${publicApiBase()}/api/webhook/handle/${handleId}`,
       readToken,
       rowCount: meta.rowCount,
       schema: meta.schema,

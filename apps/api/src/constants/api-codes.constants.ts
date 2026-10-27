@@ -116,6 +116,13 @@ export enum ApiCode {
    *  (`WEB_APP_URL` unset or loopback), so it refuses rather than hand out a
    *  dead link (#889). 503. */
   INVITATION_LINK_UNCONFIGURED = "INVITATION_LINK_UNCONFIGURED",
+  /** Production has no public `PUBLIC_API_BASE_URL` / `WEB_APP_URL`; logged
+   *  once per setting at startup, naming what it breaks (#891). */
+  PUBLIC_URL_UNCONFIGURED = "PUBLIC_URL_UNCONFIGURED",
+  /** A webhook tool that must call back (a streaming pull, or staging a large
+   *  result) refused: this server has no public API address (#891). Returned
+   *  as a typed tool result. */
+  WEBHOOK_CALLBACK_UNCONFIGURED = "WEBHOOK_CALLBACK_UNCONFIGURED",
   /** Removing this member would strand the org with no owner. 409. */
   LAST_OWNER_REMOVAL = "LAST_OWNER_REMOVAL",
   /** A set-roles that would leave the member with no roles (≥1-role guard). 409. */
