@@ -36,7 +36,50 @@ import { apiConnector } from "./api-connector.api";
 
 export { queryKeys } from "./keys";
 
-export const sdk = {
+/**
+ * The SDK's shape, named per module so TypeScript serializes it by reference.
+ * Inferring it from the object literal expands every hook's return type inline,
+ * which outgrew the compiler's serialization limit (TS7056).
+ */
+export interface Sdk {
+  readonly auditLog: typeof auditLog;
+  readonly auth: typeof auth;
+  readonly billing: typeof billing;
+  readonly connectorConfig: typeof connectorConfig;
+  readonly columnDefinitions: typeof columnDefinitions;
+  readonly connectorDefinitions: typeof connectorDefinitions;
+  readonly connectorEntities: typeof connectorEntities;
+  readonly connectorInstances: typeof connectorInstances;
+  readonly connectorInstanceLayoutPlans: typeof connectorInstanceLayoutPlans;
+  readonly entityGroups: typeof entityGroups;
+  readonly entityRecords: typeof entityRecords;
+  readonly entityTags: typeof entityTags;
+  readonly curatedViews: typeof curatedViews;
+  readonly entityTagAssignments: typeof entityTagAssignments;
+  readonly fieldMappings: typeof fieldMappings;
+  readonly fileUploads: typeof fileUploads;
+  readonly googleSheets: typeof googleSheets;
+  readonly microsoftExcel: typeof microsoftExcel;
+  readonly health: typeof health;
+  readonly layoutPlans: typeof layoutPlans;
+  readonly jobs: typeof jobs;
+  readonly organizations: typeof organizations;
+  readonly members: typeof members;
+  readonly grants: typeof grants;
+  readonly policies: typeof policies;
+  readonly roles: typeof roles;
+  readonly groups: typeof groups;
+  readonly invitations: typeof invitations;
+  readonly portalResults: typeof portalResults;
+  readonly portalSql: typeof portalSql;
+  readonly portals: typeof portals;
+  readonly sse: typeof sse;
+  readonly stations: typeof stations;
+  readonly toolpacks: typeof toolpacks;
+  readonly apiConnector: typeof apiConnector;
+}
+
+export const sdk: Sdk = {
   auditLog,
   auth,
   billing,
@@ -72,4 +115,4 @@ export const sdk = {
   stations,
   toolpacks,
   apiConnector,
-} as const;
+};

@@ -41,6 +41,7 @@ import { sdk, queryKeys } from "../../api/sdk";
 import { putToS3 } from "../../api/file-uploads.api";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
+import { commitAndAwait } from "../../utils/commit-job.util";
 import { generatedConnectorName } from "../../utils/connector-instance-name.util";
 import type {
   CellBounds,
@@ -57,6 +58,7 @@ import type { SelectOption } from "@portalai/core/ui";
 import type { ColumnDataType } from "@portalai/core/models";
 import type { SearchResult } from "../../api/types";
 import type { FileUploadProgress } from "./utils/file-upload-workflow.util";
+import { ApiError } from "../../utils/api.util";
 import type { ServerError } from "../../utils/api.util";
 
 /**
@@ -191,6 +193,8 @@ export interface FileUploadConnectorWorkflowUIProps {
   serverError: ServerError | null;
   isInterpreting: boolean;
   isCommitting: boolean;
+  /** The commit job's progress (0–100) while it runs (#887). */
+  commitProgress?: number | null;
 
   // Lazy-loaded cells for sliced sheets. Undefined for workbooks whose cells
   // were inlined in the parse response.
@@ -248,6 +252,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   serverError,
   isInterpreting,
   isCommitting,
+  commitProgress,
   loadSlice,
 }) => {
   const isUploadDisabled =
@@ -333,6 +338,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
               onCommit={onCommit}
               onBack={onBack}
               isCommitting={isCommitting}
+              commitProgress={commitProgress}
               serverError={serverError}
             />
           </StepPanel>
@@ -392,6 +398,9 @@ export const FileUploadConnectorWorkflow: React.FC<
   const { mutateAsync: parseMutate } = sdk.fileUploads.parse();
   const { mutateAsync: sheetSliceMutate } = sdk.fileUploads.sheetSlice();
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
+  const { mutateAsync: fetchJobMutate } = sdk.jobs.fetch();
+  const { mutateAsync: fetchConnectorInstanceMutate } =
+    sdk.connectorInstances.fetch();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
   // Auth-aware EventSource factory used to await the file_upload_parse job's
   // SSE completion event after `parseMutate` returns 202.
@@ -538,31 +547,44 @@ export const FileUploadConnectorWorkflow: React.FC<
   );
 
   const runCommit: FileUploadWorkflowCallbacks["runCommit"] = useCallback(
-    async (plan) => {
+    async (plan, options) => {
       const uploadSessionId = uploadSessionIdRef.current;
       if (!uploadSessionId) throw new Error("Upload session missing");
-      const enqueue = await commitMutate({
-        connectorDefinitionId,
-        name: deriveConnectorInstanceName(filesRef.current),
-        plan,
-        uploadSessionId,
-      });
-      // Fire-and-forget cache invalidation: when the worker terminates,
-      // sweep the entity-list / records / plan caches so the lock alert
-      // disappears and the freshly-imported entities appear without a
-      // manual refresh. We don't await — the modal closes and the user
-      // lands on /connectors/:id immediately; the lock alert there
-      // serves as the "import in progress" confirmation while the
-      // worker finishes. The connectSse closure + queryClient survive
-      // the modal unmounting (queryClient is provider-scoped; the
-      // EventSource keeps itself open until the terminal event lands).
-      // `.finally` (not `.then`) so the cache sweep runs on BOTH
-      // success and failure — a failed commit flips the connector
-      // instance to status "error" server-side, and the chip on
-      // /connectors/:id needs to refetch to reflect that.
-      awaitJobCompletion(connectSse, enqueue.jobId)
-        .finally(() =>
-          Promise.all(
+      // #887: wait for the job before navigating. This commit creates the
+      // connector instance, and a failed job's rollback deletes it again, so
+      // navigating on the 202 left the user on "Connector instance not
+      // found" with the reason never shown. commitAndAwait throws the job's
+      // error when the instance is gone, so the Review step shows it with the
+      // regions intact, and returns the instance whenever there's one to
+      // land on. (Sheets and Excel commit into an instance that already
+      // exists, which a failure only flips to `error`, so they still
+      // navigate on the 202.)
+      return commitAndAwait({
+        enqueue: () =>
+          commitMutate({
+            connectorDefinitionId,
+            name: deriveConnectorInstanceName(filesRef.current),
+            plan,
+            uploadSessionId,
+          }),
+        connect: connectSse,
+        fetchJob: async (id) => {
+          const { job } = await fetchJobMutate({ id });
+          return { status: job.status, error: job.error ?? null };
+        },
+        connectorExists: async (id) => {
+          try {
+            await fetchConnectorInstanceMutate({ id });
+            return true;
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 404) return false;
+            throw err;
+          }
+        },
+        onProgress: options?.onProgress,
+        // The new connector's entities and plan appear without a refresh.
+        onLanded: () => {
+          void Promise.all(
             [
               queryKeys.connectorInstances.root,
               queryKeys.connectorEntities.root,
@@ -572,12 +594,18 @@ export const FileUploadConnectorWorkflow: React.FC<
               queryKeys.portalResults.root,
               queryKeys.connectorInstanceLayoutPlans.root,
             ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
-          )
-        )
-        .catch(() => undefined);
-      return { connectorInstanceId: enqueue.connectorInstanceId };
+          ).catch(() => undefined);
+        },
+      });
     },
-    [commitMutate, connectorDefinitionId, connectSse, queryClient]
+    [
+      commitMutate,
+      connectorDefinitionId,
+      connectSse,
+      fetchJobMutate,
+      fetchConnectorInstanceMutate,
+      queryClient,
+    ]
   );
 
   const workflow = useFileUploadWorkflow({
@@ -859,6 +887,7 @@ export const FileUploadConnectorWorkflow: React.FC<
       serverError={workflow.serverError}
       isInterpreting={workflow.isInterpreting}
       isCommitting={workflow.isCommitting}
+      commitProgress={workflow.commitProgress}
       loadSlice={loadSlice}
     />
   );

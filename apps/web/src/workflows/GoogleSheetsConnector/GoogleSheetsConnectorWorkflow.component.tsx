@@ -192,6 +192,9 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
       // a failed commit flips the connector instance to status "error"
       // server-side, and the chip on /connectors/:id needs to refetch
       // to reflect that.
+      // That holds because this instance already existed (created when the
+      // account was connected); a file upload's commit creates its
+      // instance, which a failure deletes, so it waits instead (#887).
       awaitJobCompletion(connectSse, enqueue.jobId)
         .finally(() =>
           Promise.all(

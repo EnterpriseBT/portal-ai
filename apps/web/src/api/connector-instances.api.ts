@@ -107,6 +107,19 @@ export const connectorInstances = {
       options
     ),
 
+  /** Imperative read by id, for a caller that must know right now whether
+   *  the instance exists (#887: did a failed commit's rollback remove it?).
+   *  A 404 rejects with `ApiError` status 404. */
+  fetch: () =>
+    useAuthMutation<ConnectorInstanceGetResponsePayload, { id: string }>({
+      url: ({ id }) => `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`,
+      method: "GET",
+      body: () => undefined,
+      onPermissionDenied: {
+        invalidate: () => [queryKeys.connectorInstances.root],
+      },
+    }),
+
   impact: (id: string, options?: QueryOptions<ConnectorInstanceImpact>) =>
     useAuthQuery<ConnectorInstanceImpact>(
       queryKeys.connectorInstances.impact(id),

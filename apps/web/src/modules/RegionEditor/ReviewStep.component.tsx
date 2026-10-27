@@ -42,6 +42,9 @@ export interface ReviewStepUIProps {
   onCommit: () => void;
   onBack: () => void;
   isCommitting?: boolean;
+  /** The commit job's progress (0–100) while it runs, when the caller
+   *  waits for the job (#887); the button then reads "Importing… N%". */
+  commitProgress?: number | null;
   commitDisabledReason?: string | null;
   /**
    * Per-region dropdown options for the IdentityPanel. The container
@@ -257,6 +260,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   onCommit,
   onBack,
   isCommitting = false,
+  commitProgress = null,
   commitDisabledReason,
   onUpdateBinding,
   onToggleBindingExcluded,
@@ -550,7 +554,11 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
             onClick={onCommit}
             disabled={commitDisabled}
           >
-            {isCommitting ? "Committing…" : "Commit plan"}
+            {isCommitting
+              ? commitProgress != null
+                ? `Importing… ${Math.round(commitProgress)}%`
+                : "Committing…"
+              : "Commit plan"}
           </Button>
         </Stack>
       </Stack>

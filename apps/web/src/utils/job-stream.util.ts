@@ -268,6 +268,19 @@ export interface JobCompletionResult {
   result: Record<string, unknown> | null;
 }
 
+/** The job itself ended `failed` or `cancelled` (#887), as opposed to the
+ *  stream dropping or the wait being aborted, where its outcome is unknown.
+ *  The message is the job's `error`. */
+export class JobFailedError extends Error {
+  constructor(
+    message: string,
+    readonly status: "failed" | "cancelled"
+  ) {
+    super(message);
+    this.name = "JobFailedError";
+  }
+}
+
 /**
  * Imperative wait-for-job — opens an SSE stream and resolves on the
  * job's terminal status. Used inside async callbacks (e.g. the
@@ -275,7 +288,7 @@ export interface JobCompletionResult {
  * Caller passes the auth-aware `connect` factory from `sse.create()`.
  *
  * Resolves with the job's `result` payload on `completed`, rejects
- * with the `error` string on `failed` / `cancelled`. Honors `signal`
+ * with a `JobFailedError` carrying the `error` string on `failed` / `cancelled`. Honors `signal`
  * for cancellation; on abort the EventSource is closed and the
  * promise rejects with an AbortError.
  *
@@ -347,9 +360,10 @@ export async function awaitJobCompletion(
       } else if (data.status === "failed" || data.status === "cancelled") {
         cleanup();
         reject(
-          new Error(
+          new JobFailedError(
             data.error ??
-              (data.status === "cancelled" ? "Job cancelled" : "Job failed")
+              (data.status === "cancelled" ? "Job cancelled" : "Job failed"),
+            data.status
           )
         );
       } else if (onProgress && typeof data.progress === "number") {

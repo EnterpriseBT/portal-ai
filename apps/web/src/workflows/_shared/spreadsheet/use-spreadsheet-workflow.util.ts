@@ -58,6 +58,9 @@ export interface SpreadsheetWorkflowState {
   serverError: ServerError | null;
   isInterpreting: boolean;
   isCommitting: boolean;
+  /** The commit job's progress, 0–100, when the caller reports it (#887);
+   *  null otherwise and between commits. */
+  commitProgress: number | null;
   plan: LayoutPlan | null;
   overallConfidence?: number;
 }
@@ -77,7 +80,10 @@ export interface SpreadsheetWorkflowCallbacks {
    * the pending one), persists the plan, and writes records in one
    * call. On any failure past the instance insert, both rows roll back.
    */
-  runCommit: (plan: LayoutPlan) => Promise<{ connectorInstanceId: string }>;
+  runCommit: (
+    plan: LayoutPlan,
+    options?: { onProgress?: (percent: number) => void }
+  ) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 
@@ -128,6 +134,7 @@ const EMPTY_STATE: SpreadsheetWorkflowState = {
   serverError: null,
   isInterpreting: false,
   isCommitting: false,
+  commitProgress: null,
   plan: null,
 };
 
@@ -706,18 +713,28 @@ export function useSpreadsheetWorkflow(
     setState((prev) => ({
       ...prev,
       isCommitting: true,
+      commitProgress: null,
       serverError: null,
     }));
-    try {
-      const result = await callbacks.runCommit(plan);
+    const onProgress = (percent: number) => {
       if (token !== runTokenRef.current) return;
-      setState((prev) => ({ ...prev, isCommitting: false }));
+      setState((prev) => ({ ...prev, commitProgress: percent }));
+    };
+    try {
+      const result = await callbacks.runCommit(plan, { onProgress });
+      if (token !== runTokenRef.current) return;
+      setState((prev) => ({
+        ...prev,
+        isCommitting: false,
+        commitProgress: null,
+      }));
       callbacks.onCommitSuccess?.(result.connectorInstanceId);
     } catch (err) {
       if (token !== runTokenRef.current) return;
       setState((prev) => ({
         ...prev,
         isCommitting: false,
+        commitProgress: null,
         serverError: toServerErrorFromUnknown(err),
       }));
     }

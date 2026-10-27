@@ -77,7 +77,7 @@ jest.unstable_mockModule("../api/sse.api", () => ({
 // ---------------------------------------------------------------------------
 
 const { renderHook, act, waitFor } = await import("./test-utils");
-const { useJobStream, awaitJobCompletion } =
+const { useJobStream, awaitJobCompletion, JobFailedError } =
   await import("../utils/job-stream.util");
 
 // ---------------------------------------------------------------------------
@@ -517,6 +517,30 @@ describe("awaitJobCompletion", () => {
       return es;
     });
   });
+
+  // #887: a caller can tell the job's own failure from a dropped stream.
+  it.each([
+    [
+      "failed",
+      { error: "Drift at 'warn' severity" },
+      "Drift at 'warn' severity",
+    ],
+    ["cancelled", {}, "Job cancelled"],
+  ] as const)(
+    "rejects a %s job with a JobFailedError carrying its status",
+    async (status, extra, message) => {
+      const promise = awaitJobCompletion(
+        mockConnect as unknown as (path: string) => Promise<EventSource>,
+        "job-1"
+      );
+      const es = await waitForConnection();
+      es.__emit("update", { jobId: "job-1", status, ...extra });
+      const err = await promise.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(JobFailedError);
+      expect((err as InstanceType<typeof JobFailedError>).status).toBe(status);
+      expect((err as Error).message).toBe(message);
+    }
+  );
 
   it("resolves with the job result when an update event reports `completed`", async () => {
     const promise = awaitJobCompletion(
