@@ -28,7 +28,7 @@
 
 Sheets and Excel keep navigating on the 202. Their instance survives a failure, and its page shows the error, so they're not affected. Their stale comment is corrected.
 
-**The error text the user sees:** the job's own message, under the web-side code `LAYOUT_PLAN_COMMIT_FAILED`. The job event has no code, and `UNKNOWN_ERROR` would read as a client bug. The message is the job's `error` as written, and #719's `jobErrorText` already keeps it safe for members to read.
+**The error text the user sees:** the job's own message, under its own code. `jobErrorText` ends the job's error with the root cause's `| code: X` (here `LAYOUT_PLAN_DRIFT_HALT`), so `splitJobError` moves X to the alert's code. Only an error without one falls back to the web-side label `LAYOUT_PLAN_COMMIT_FAILED` (the smoke walk found the alert carrying both). The message is the job's `error` as written, and #719's `jobErrorText` already keeps it safe for members to read.
 
 ## Plan — 1 slice
 
@@ -50,7 +50,7 @@ Sheets and Excel keep navigating on the 202. Their instance survives a failure, 
 
 ## Smoke (manual, against your dev stack)
 
-1. Upload `packages/e2e/src/fixtures/core-loop.csv` with the Anthropic stub that left columns unbound in #489 (or any region whose commit drift-halts). Click **Commit plan**: the button reads "Importing… N%", the dialog can't be dismissed, then the Review step shows `FormAlert` "Drift at 'warn' severity — region drift knobs require halt. (LAYOUT_PLAN_COMMIT_FAILED)". No navigation; the regions are still drawn.
+1. Upload `packages/e2e/src/fixtures/core-loop.csv` with the Anthropic stub that left columns unbound in #489 (or any region whose commit drift-halts). Click **Commit plan**: the button reads "Importing… N%", the dialog can't be dismissed, then the Review step shows `FormAlert` "Drift at 'warn' severity — region drift knobs require halt. (LAYOUT_PLAN_DRIFT_HALT)". No navigation; the regions are still drawn.
 2. Backend: `jobs` has the `layout_plan_commit` row `failed`, and no `connector_instances` row for its `connectorInstanceId` (the rollback ran).
 3. Fix the region (bind the columns) and **Commit plan** again: it succeeds and lands on `/connectors/<new id>` with the entities listed, with no lock alert left behind.
 4. A clean upload commits and lands on the connector page as before. The button shows "Importing… N%" until the job finishes.

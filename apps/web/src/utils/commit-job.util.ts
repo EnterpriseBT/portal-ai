@@ -21,10 +21,22 @@
 import { ApiError } from "./api.util";
 import { awaitJobCompletion, JobFailedError } from "./job-stream.util";
 
-/** The job event carries the failure's text but no code, so the dialog shows
- *  the job's message under this one. It's a web-side label for the alert;
- *  no API response carries it. */
+/** The alert's code when the job's error carries none of its own. A web-side
+ *  label; no API response carries it. */
 export const COMMIT_FAILED_CODE = "LAYOUT_PLAN_COMMIT_FAILED";
+
+/**
+ * A job's error text is `message[ | detail: …][ | code: X]` (#719's
+ * `jobErrorText`). Split off the trailing code so the alert reads "message
+ * (X)" rather than carrying two codes. A code that isn't API-shaped stays in
+ * the message.
+ */
+export function splitJobError(text: string): { message: string; code: string } {
+  const match = / \| code: ([A-Z][A-Z0-9_]*)$/.exec(text);
+  return match
+    ? { message: text.slice(0, match.index), code: match[1] }
+    : { message: text, code: COMMIT_FAILED_CODE };
+}
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
@@ -110,7 +122,10 @@ export async function commitAndAwait(
     const exists = await deps
       .connectorExists(connectorInstanceId)
       .catch(() => true);
-    if (!exists) throw new ApiError(outcome.message, COMMIT_FAILED_CODE);
+    if (!exists) {
+      const { message, code } = splitJobError(outcome.message);
+      throw new ApiError(message, code);
+    }
   }
   deps.onLanded?.();
   return { connectorInstanceId };

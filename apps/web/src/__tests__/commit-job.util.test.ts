@@ -27,7 +27,7 @@ jest.unstable_mockModule("../utils/job-stream.util", () => ({
   JobFailedError,
 }));
 
-const { commitAndAwait, COMMIT_FAILED_CODE } =
+const { commitAndAwait, COMMIT_FAILED_CODE, splitJobError } =
   await import("../utils/commit-job.util");
 const { ApiError } = await import("../utils/api.util");
 
@@ -53,6 +53,32 @@ function deps(overrides: Partial<Parameters<typeof commitAndAwait>[0]> = {}) {
   };
 }
 
+// jobErrorText (#719) appends the root cause's code: "message | code: X".
+const DRIFT_TEXT = `${DRIFT} | code: LAYOUT_PLAN_DRIFT_HALT`;
+
+describe("splitJobError (#887)", () => {
+  it.each([
+    [DRIFT_TEXT, DRIFT, "LAYOUT_PLAN_DRIFT_HALT"],
+    [DRIFT, DRIFT, "LAYOUT_PLAN_COMMIT_FAILED"],
+    [
+      "dup | detail: Key exists | code: DUPLICATE_KEY",
+      "dup | detail: Key exists",
+      "DUPLICATE_KEY",
+    ],
+    [
+      "other side closed | code: UND_ERR_SOCKET",
+      "other side closed",
+      "UND_ERR_SOCKET",
+    ],
+    // Not an API-shaped code: keep the text whole, use the label.
+    ["bad | code: 23505", "bad | code: 23505", "LAYOUT_PLAN_COMMIT_FAILED"],
+    ["Job cancelled", "Job cancelled", "LAYOUT_PLAN_COMMIT_FAILED"],
+  ])("splits %p", (text, message, code) => {
+    expect(splitJobError(text)).toEqual({ message, code });
+    expect(COMMIT_FAILED_CODE).toBe("LAYOUT_PLAN_COMMIT_FAILED");
+  });
+});
+
 describe("commitAndAwait (#887)", () => {
   beforeEach(() => awaitJobCompletionMock.mockReset());
 
@@ -74,15 +100,14 @@ describe("commitAndAwait (#887)", () => {
     expect(d.onLanded).toHaveBeenCalledTimes(1);
   });
 
-  it("throws the job's error when it failed and the rollback removed the connector", async () => {
+  it("throws the job's error, under its own code, when it failed and the rollback removed the connector", async () => {
     awaitJobCompletionMock.mockRejectedValue(
-      new JobFailedError(DRIFT, "failed")
+      new JobFailedError(DRIFT_TEXT, "failed")
     );
     const d = deps();
     const err = await commitAndAwait(d).catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.code).toBe(COMMIT_FAILED_CODE);
-    expect(COMMIT_FAILED_CODE).toBe("LAYOUT_PLAN_COMMIT_FAILED");
+    expect(err.code).toBe("LAYOUT_PLAN_DRIFT_HALT");
     expect(err.message).toBe(DRIFT);
     expect(d.connectorExists).toHaveBeenCalledWith("ci-1");
     expect(d.onLanded).not.toHaveBeenCalled();
@@ -124,12 +149,13 @@ describe("commitAndAwait (#887)", () => {
     const fetchJob = jest
       .fn<FetchJob>()
       .mockResolvedValueOnce({ status: "active", error: null })
-      .mockResolvedValueOnce({ status: "failed", error: DRIFT });
+      .mockResolvedValueOnce({ status: "failed", error: DRIFT_TEXT });
     const d = deps({ fetchJob });
     const err = await commitAndAwait(d).catch((e) => e);
     expect(fetchJob).toHaveBeenCalledTimes(2);
     expect(err).toBeInstanceOf(ApiError);
     expect(err.message).toBe(DRIFT);
+    expect(err.code).toBe("LAYOUT_PLAN_DRIFT_HALT");
   });
 
   it("returns the connector when polling finds the job completed", async () => {
