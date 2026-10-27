@@ -91,6 +91,11 @@ The guard (`npm run lint:ci-cache`) enforces the CI half of this; nothing enforc
 
 ## Troubleshooting
 
+- **`postgres`, `postgres-test`, `redis` or `s3mock` don't resolve by name after a pull (`getaddrinfo ENOTFOUND`).** The compose network was renamed from `mcp-net` to `portal-net` (#882). A container started before the pull stays on `portalai_mcp-net`, and one recreated since (say by `e2e:stack:up`) is on `portalai_portal-net`, so the two can't see each other.
+  1. Run **Rebuild Container**. Compose recreates every service onto `portal-net`; the named volumes (`pgdata`, `redis-data`, `ollama_data`) are untouched.
+  2. The e2e profile's `s3mock` moves the next time `e2e:stack:up` starts it.
+  3. Then drop the empty old network: `docker network rm portalai_mcp-net`. It refuses harmlessly if anything still uses it.
+
 - **Every SQL tool fails with `PORTAL_SQL_UNAVAILABLE`.** Agent SQL runs under the restricted `portalai_sql_reader` role (#660), which migration `0118` creates. `npm run dev` seeds but doesn't migrate, so run `npm run db:migrate` (from `apps/api`) once. The API log's `portal-sql.reader-role-unavailable` line gives the reason; the next SQL call re-checks, so no restart is needed.
 
 - **Maps 500 with `Cannot find SRID (3857) in spatial_ref_sys`.** PostGIS's coordinate-system table on your local DB is empty. `CREATE EXTENSION postgis` (migration `0076`) populates it (~8500 rows) on a fresh DB, so this only happens if it was truncated out-of-band. Repopulate from the PostGIS-shipped SQL:
