@@ -39,7 +39,8 @@ npm run dev
 #    login) → drives /?e2e=1 → "Dev sign-in (E2E)" → Auth0 Universal Login
 npm run --workspace @portalai/e2e e2e:auth:all  # owner + admin + member
 #   or individually: e2e:auth  ·  e2e:auth:admin  ·  e2e:auth:member
-#   writes .auth/storageState.json (owner) + .auth/{admin,member}.storageState.json
+#   writes .auth/{owner,admin,member}.storageState.json; the owner's is also
+#   copied to .auth/storageState.json, the one the MCP server loads
 
 # 2. Seed the deterministic fixture org with all three roles
 npm run --workspace @portalai/e2e e2e:seed
@@ -57,7 +58,7 @@ npm run --workspace @portalai/e2e e2e:seed
 The Playwright MCP loads **one** `storageState` at session start (`.auth/storageState.json`, per `.mcp.json`). Two ways to walk as a different role:
 
 - **Within a live session (no restart):** log out in the browser, then re-run the dev sign-in (`/?e2e=1` → Dev sign-in) and enter another identity's Auth0 credentials. The dev-login button is identity-agnostic — Auth0 decides who signs in.
-- **Boot as a role:** `npm run --workspace @portalai/e2e e2e:use admin` copies `.auth/admin.storageState.json` over the active `.auth/storageState.json`, then **restart the MCP session** so it loads the new state.
+- **Boot as a role:** `npm run --workspace @portalai/e2e e2e:use admin` copies `.auth/admin.storageState.json` over the active `.auth/storageState.json`, then **restart the MCP session** so it loads the new state. `e2e:use owner` switches back.
 
 ## The guarded dev login affordance
 

@@ -21,7 +21,11 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "MICROSOFT_OAUTH_CLIENT_SECRET",
       "OAUTH_STATE_SECRET",
       "QA_AUTH0_PASSWORD", // #489 deployed-env QA identity (e2e)
+      "QA_AUTH0_PASSWORD_ADMIN", // #489 QA admin
+      "QA_AUTH0_PASSWORD_MEMBER", // #489 QA member
       "QA_AUTH0_USERNAME", // #489
+      "QA_AUTH0_USERNAME_ADMIN", // #489
+      "QA_AUTH0_USERNAME_MEMBER", // #489
       "STRIPE_SECRET_KEY", // #218 tier apply
       "STRIPE_WEBHOOK_SECRET", // #239 webhook signature verification
       "TAVILY_API_KEY",
@@ -69,6 +73,12 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
     );
     expect(pathFor(prod, lookupKey("QA_AUTH0_USERNAME"))).toBe(
       "portalai/prod/qa-auth0-username"
+    );
+    expect(pathFor(appDev, lookupKey("QA_AUTH0_PASSWORD_ADMIN"))).toBe(
+      "portalai/dev/qa-auth0-password-admin"
+    );
+    expect(pathFor(prod, lookupKey("QA_AUTH0_USERNAME_MEMBER"))).toBe(
+      "portalai/prod/qa-auth0-username-member"
     );
   });
 

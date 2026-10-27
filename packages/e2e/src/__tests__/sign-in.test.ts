@@ -1,6 +1,11 @@
 import type { Page } from "@playwright/test";
 
-import { E2eSignInError, signIn, signInEntry } from "../lib/sign-in.js";
+import {
+  E2eSignInError,
+  signIn,
+  signInEntry,
+  signInUrl,
+} from "../lib/sign-in.js";
 
 describe("signInEntry", () => {
   it("enters through the #304 dev affordance or the #489 QA sign-in", () => {
@@ -12,6 +17,29 @@ describe("signInEntry", () => {
       path: "/login?qa=1",
       testId: "e2e-qa-login",
     });
+  });
+});
+
+describe("signInUrl", () => {
+  it("is the affordance's own entry by default", () => {
+    expect(signInUrl("https://app.example.test", "qa")).toBe(
+      "https://app.example.test/login?qa=1"
+    );
+  });
+
+  // An invite link already carries ?token=; the affordance flag joins it, and
+  // Authorized's redirect to /login keeps both.
+  it("appends the affordance flag to an entry path's own query", () => {
+    expect(
+      signInUrl(
+        "https://app.example.test",
+        "qa",
+        "/invitations/accept?token=abc"
+      )
+    ).toBe("https://app.example.test/invitations/accept?token=abc&qa=1");
+    expect(signInUrl("http://localhost:3000", "dev", "/stations")).toBe(
+      "http://localhost:3000/stations?e2e=1"
+    );
   });
 });
 

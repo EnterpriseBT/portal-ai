@@ -38,4 +38,13 @@ describe("buildConfig", () => {
     // the walk's session must never land in the uploaded artifacts
     expect(SESSION_STORAGE_STATE).not.toMatch(/test-results/);
   });
+
+  // An accepted invite can't be replayed on the same database, so a retry
+  // would fail for the wrong reason.
+  it("runs the role split as the owner, after setup, never retrying", () => {
+    const roles = (local.projects ?? []).find((p) => p.name === "roles");
+    expect(roles?.retries).toBe(0);
+    expect(roles?.dependencies).toEqual(["setup"]);
+    expect(roles?.use?.storageState).toBe(SESSION_STORAGE_STATE);
+  });
 });

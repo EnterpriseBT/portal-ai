@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import {
+  activeStorageStatePath,
   E2eConfigError,
   resolveCredentials,
   resolveTarget,
@@ -71,23 +72,42 @@ describe("storageStatePath", () => {
   const local = resolveTarget({});
   const prod = resolveTarget({ E2E_TARGET: "prod" });
 
-  it("keeps the #304/#620 local paths", () => {
+  it("keeps each identity's local state where #620 put it, the owner's included", () => {
     expect(storageStatePath(local, undefined, root)).toBe(
-      path.join(root, ".auth/storageState.json")
+      path.join(root, ".auth/owner.storageState.json")
+    );
+    expect(storageStatePath(local, "owner", root)).toBe(
+      path.join(root, ".auth/owner.storageState.json")
     );
     expect(storageStatePath(local, "Admin", root)).toBe(
       path.join(root, ".auth/admin.storageState.json")
     );
   });
 
-  it("puts a deployed env's session in its own directory", () => {
+  it("puts a deployed env's sessions in its own directory, one per QA identity", () => {
     expect(storageStatePath(prod, undefined, root)).toBe(
       path.join(root, ".auth/prod/owner.storageState.json")
     );
+    expect(storageStatePath(prod, "member", root)).toBe(
+      path.join(root, ".auth/prod/member.storageState.json")
+    );
   });
 
-  it("refuses a named identity on a deployed target (only the QA owner exists)", () => {
-    expect(() => storageStatePath(prod, "admin", root)).toThrow(E2eConfigError);
+  it("refuses an identity a deployed env doesn't have", () => {
+    expect(() => storageStatePath(prod, "viewer", root)).toThrow(
+      /owner \| admin \| member/
+    );
+  });
+});
+
+describe("activeStorageStatePath", () => {
+  it("is the file each env's MCP server loads", () => {
+    expect(activeStorageStatePath(resolveTarget({}), "/pkg")).toBe(
+      path.join("/pkg", ".auth/storageState.json")
+    );
+    expect(
+      activeStorageStatePath(resolveTarget({ E2E_TARGET: "app-dev" }), "/pkg")
+    ).toBe(path.join("/pkg", ".auth/app-dev/storageState.json"));
   });
 });
 
@@ -141,5 +161,30 @@ describe("resolveCredentials", () => {
       "app-dev:qa-auth0-password",
       "app-dev:qa-auth0-username",
     ]);
+  });
+
+  it("reads a deployed role identity from its own secret pair", async () => {
+    const reads: string[] = [];
+    const getSecret = async (def: { name: string }, name: string) => {
+      reads.push(`${def.name}:${name}`);
+      return name.startsWith("qa-auth0-username") ? "qa-admin@x.test" : "pw";
+    };
+    await expect(
+      resolveCredentials(appDev, { env: {}, identity: "admin", getSecret })
+    ).resolves.toEqual({ username: "qa-admin@x.test", password: "pw" });
+    expect(reads.sort()).toEqual([
+      "app-dev:qa-auth0-password-admin",
+      "app-dev:qa-auth0-username-admin",
+    ]);
+  });
+
+  it("treats the owner identity as the unsuffixed pair", async () => {
+    await expect(
+      resolveCredentials(local, {
+        env: { E2E_AUTH0_USERNAME: "o@x.test", E2E_AUTH0_PASSWORD: "pw" },
+        identity: "owner",
+        getSecret: noSecrets,
+      })
+    ).resolves.toEqual({ username: "o@x.test", password: "pw" });
   });
 });

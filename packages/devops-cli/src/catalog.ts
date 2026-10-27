@@ -68,10 +68,15 @@ export const CATALOG: CatalogEntry[] = [
   // `portalai-demo-toolpack` Lambda (infra/cloudformation/demo-toolpack.yml),
   // NOT by backend.yml — a catalog-only key (the parity test allows these).
   secret("DEMO_TOOLPACK_SIGNING_SECRETS", "demo-toolpack-signing-secrets"),
-  // #489: the deployed-env QA identity the e2e harness and the post-deploy
-  // login check sign in as. Never read by the API, so not in backend.yml.
+  // #489: the deployed-env QA identities the e2e harness signs in as: the QA
+  // org's owner (also the post-deploy login check), admin and member. Never
+  // read by the API, so not in backend.yml.
   secret("QA_AUTH0_USERNAME", "qa-auth0-username"),
   secret("QA_AUTH0_PASSWORD", "qa-auth0-password"),
+  secret("QA_AUTH0_USERNAME_ADMIN", "qa-auth0-username-admin"),
+  secret("QA_AUTH0_PASSWORD_ADMIN", "qa-auth0-password-admin"),
+  secret("QA_AUTH0_USERNAME_MEMBER", "qa-auth0-username-member"),
+  secret("QA_AUTH0_PASSWORD_MEMBER", "qa-auth0-password-member"),
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
   // #580: public Google browser identifiers the API serves at runtime via

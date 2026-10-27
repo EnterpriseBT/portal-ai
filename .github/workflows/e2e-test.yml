@@ -1,8 +1,8 @@
 name: E2E Tests
 
 # #489: the Playwright walk of a freshly provisioned org (login → dashboard →
-# CSV import → records → station → portal) on an ephemeral stack this job
-# boots itself. NOT a required check: promotion waits on a flake record and is
+# CSV import → records → station → portal, then the owner / admin / member
+# split) on an ephemeral stack this job boots itself. NOT a required check: promotion waits on a flake record and is
 # its own follow-up. Runs on every non-main push, like the other suites.
 on:
   push:
@@ -33,6 +33,11 @@ jobs:
       # DEV-only affordance (#489 spec, D2).
       E2E_AUTH0_USERNAME: ${{ secrets.E2E_CI_AUTH0_USERNAME }}
       E2E_AUTH0_PASSWORD: ${{ secrets.E2E_CI_AUTH0_PASSWORD }}
+      # The admin and member the `roles` spec invites into the owner's org.
+      E2E_AUTH0_USERNAME_ADMIN: ${{ secrets.E2E_CI_AUTH0_USERNAME_ADMIN }}
+      E2E_AUTH0_PASSWORD_ADMIN: ${{ secrets.E2E_CI_AUTH0_PASSWORD_ADMIN }}
+      E2E_AUTH0_USERNAME_MEMBER: ${{ secrets.E2E_CI_AUTH0_USERNAME_MEMBER }}
+      E2E_AUTH0_PASSWORD_MEMBER: ${{ secrets.E2E_CI_AUTH0_PASSWORD_MEMBER }}
       E2E_QA_CONNECTION: ${{ vars.E2E_QA_CONNECTION }}
       E2E_TARGET: local
       E2E_SIGN_IN_VIA: qa
@@ -46,12 +51,14 @@ jobs:
       VITE_AUTH0_AUDIENCE: ${{ secrets.E2E_CI_VITE_AUTH0_AUDIENCE }}
       CI: "1"
     steps:
-      # Fork PRs and a repo without the CI user get no secrets: skip with a
-      # notice rather than fail, since the check isn't required.
-      - name: Check for the CI user
+      # Fork PRs and a repo without the CI users get no secrets: skip with a
+      # notice rather than fail, since the check isn't required. A partial set
+      # skips too, rather than failing `roles` halfway.
+      - name: Check for the CI users
         id: creds
         run: |
-          if [ -z "$E2E_AUTH0_PASSWORD" ] || [ -z "$E2E_QA_CONNECTION" ]; then
+          if [ -z "$E2E_AUTH0_PASSWORD" ] || [ -z "$E2E_AUTH0_PASSWORD_ADMIN" ] \
+            || [ -z "$E2E_AUTH0_PASSWORD_MEMBER" ] || [ -z "$E2E_QA_CONNECTION" ]; then
             echo "::notice::E2E skipped: the E2E_CI_* secrets or E2E_QA_CONNECTION aren't available to this run."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
@@ -95,7 +102,7 @@ jobs:
 
       - name: Walk the core loop
         if: steps.creds.outputs.run == 'true'
-        run: npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login
+        run: npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login --project=roles
 
       # The stack's own logs (API, web, stub, migrate/seed) and Playwright's
       # traces, screenshots, video and HTML report. Local-target artifacts

@@ -92,39 +92,65 @@ export function resolveTarget(env: NodeJS.ProcessEnv = process.env): E2eTarget {
   };
 }
 
+/** The QA identities each deployed env has (one QA org: its owner, an
+ *  invited admin and an invited member). Locally any named role works. */
+export type E2eIdentity = "owner" | "admin" | "member";
+const DEPLOYED_IDENTITIES: readonly E2eIdentity[] = [
+  "owner",
+  "admin",
+  "member",
+];
+
 const identityKey = (identity: string): string =>
   identity.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
 
-function refuseDeployedIdentity(target: E2eTarget, identity?: string): void {
-  if (target.deployed && identity) {
+/** The identity's canonical name: lowercased, with "owner" for none. A
+ *  deployed target refuses a name it has no QA user for. */
+export function normalizeIdentity(
+  target: E2eTarget,
+  identity?: string
+): string {
+  const name = identity ? identity.toLowerCase() : "owner";
+  if (
+    target.deployed &&
+    !(DEPLOYED_IDENTITIES as readonly string[]).includes(name)
+  ) {
     throw new E2eConfigError(
-      `${target.name} has only the QA owner identity; --identity is local-only`
+      `${target.name} has no QA identity "${name}" (expected owner | admin | member)`
     );
   }
+  return name;
 }
 
+const authDir = (target: E2eTarget, root: string): string =>
+  target.deployed
+    ? path.join(root, ".auth", target.name)
+    : path.join(root, ".auth");
+
 /**
- * Local: `.auth/storageState.json` (owner) or `.auth/<id>.storageState.json`,
- * the #304/#620 paths `.mcp.json` and `e2e:use` already read. Deployed:
- * `.auth/<env>/owner.storageState.json`, one directory per env so a deployed
- * session never overwrites the local one.
+ * One state per identity: `.auth/<id>.storageState.json` locally (the #620
+ * paths, now the owner's too) and `.auth/<env>/<id>.storageState.json` for a
+ * deployed env, one directory per env so a deployed session never overwrites
+ * the local one.
  */
 export function storageStatePath(
   target: E2eTarget,
   identity?: string,
   root: string = process.cwd()
 ): string {
-  refuseDeployedIdentity(target, identity);
-  if (target.deployed) {
-    return path.join(root, ".auth", target.name, "owner.storageState.json");
-  }
   return path.join(
-    root,
-    ".auth",
-    identity
-      ? `${identity.toLowerCase()}.storageState.json`
-      : "storageState.json"
+    authDir(target, root),
+    `${normalizeIdentity(target, identity)}.storageState.json`
   );
+}
+
+/** The state an env's Playwright MCP server loads (`.mcp.json`): the owner's
+ *  after `e2e:auth`, or whichever identity `e2e:use` switched to. */
+export function activeStorageStatePath(
+  target: E2eTarget,
+  root: string = process.cwd()
+): string {
+  return path.join(authDir(target, root), "storageState.json");
 }
 
 type GetSecret = (def: EnvironmentDefinition, name: string) => Promise<string>;
@@ -139,17 +165,17 @@ export interface ResolveCredentialsOptions {
 /**
  * Env vars first: `E2E_AUTH0_USERNAME[_<ID>]` / `E2E_AUTH0_PASSWORD[_<ID>]`
  * (the CI deploy job exports the QA pair). A deployed target without them
- * reads `portalai/<env>/qa-auth0-{username,password}` with ambient AWS
- * credentials.
+ * reads `portalai/<env>/qa-auth0-{username,password}[-<id>]` with ambient AWS
+ * credentials. The owner is the unsuffixed pair.
  */
 export async function resolveCredentials(
   target: E2eTarget,
   opts: ResolveCredentialsOptions = {}
 ): Promise<E2eCredentials> {
-  const { identity, env = process.env, getSecret = cliEnvGetSecret } = opts;
-  refuseDeployedIdentity(target, identity);
+  const { env = process.env, getSecret = cliEnvGetSecret } = opts;
+  const identity = normalizeIdentity(target, opts.identity);
 
-  const suffix = identity ? `_${identityKey(identity)}` : "";
+  const suffix = identity === "owner" ? "" : `_${identityKey(identity)}`;
   const userVar = `E2E_AUTH0_USERNAME${suffix}`;
   const passVar = `E2E_AUTH0_PASSWORD${suffix}`;
   const username = env[userVar];
@@ -158,9 +184,10 @@ export async function resolveCredentials(
 
   if (target.deployed) {
     const def = BUILTIN_ENVIRONMENTS[target.name];
+    const secretSuffix = identity === "owner" ? "" : `-${identity}`;
     const [u, p] = await Promise.all([
-      getSecret(def, "qa-auth0-username"),
-      getSecret(def, "qa-auth0-password"),
+      getSecret(def, `qa-auth0-username${secretSuffix}`),
+      getSecret(def, `qa-auth0-password${secretSuffix}`),
     ]);
     return { username: u, password: p };
   }

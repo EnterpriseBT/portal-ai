@@ -128,9 +128,9 @@ New **`src/lib/invite.ts`**: the invite round trip, shared by the `roles` spec a
 
 ```ts
 /** Signed out → the invite link (+ ?qa|e2e) → login → back on /invitations/accept (#884)
- *  → accept-on-mount → resolves on the success card. Throws E2eSignInError naming the
- *  card's title on any other outcome (expired, invalid, error). */
-export async function acceptInvitation(page: Page, opts: SignInOptions & { inviteUrl: string }): Promise<void>;
+ *  → accept-on-mount. Resolves with the joined org's name from the accept response;
+ *  throws E2eSignInError naming the page's heading on any other outcome. */
+export async function acceptInvitation(page: Page, opts: SignInOptions & { inviteUrl: string }): Promise<string>;
 /** As the signed-in owner/admin: Settings → Members → Invite member (email, role) →
  *  reads the one-time link from the "Invite link" field. */
 export async function createInvitation(page: Page, opts: { baseUrl: string; email: string; role: "admin" | "member" }): Promise<string>;
@@ -145,7 +145,7 @@ export interface E2eTarget { name: E2eTargetName; baseUrl: string; apiBaseUrl: s
 export function resolveTarget(env?: NodeJS.ProcessEnv): E2eTarget;
 /** local: E2E_AUTH0_USERNAME/PASSWORD[_<ID>]; deployed: env vars if both set (CI), else cli-env getSecret(def, "qa-auth0-*[-<id>]"). */
 export async function resolveCredentials(target: E2eTarget, identity?: string): Promise<{ username: string; password: string }>;
-/** .auth/storageState.json | .auth/<id>.storageState.json (local, unchanged) · .auth/<env>/<id|owner>.storageState.json (deployed) */
+/** .auth/<id>.storageState.json (local; the owner's is now owner.storageState.json) · .auth/<env>/<id>.storageState.json (deployed); "owner" when none */
 export function storageStatePath(target: E2eTarget, identity?: string): string;
 /** The state the env's MCP server loads: .auth/storageState.json (local) · .auth/<env>/storageState.json (deployed). */
 export function activeStorageStatePath(target: E2eTarget): string;
@@ -156,9 +156,9 @@ export type E2eIdentity = "owner" | "admin" | "member"; // deployed identities; 
 
 **`src/setup/auth.setup.ts`** (the `e2e:auth` CLI) becomes a thin wrapper over `resolveTarget`, `resolveCredentials`, `signIn` and `storageStatePath`:
 - it accepts `--env <local|app-dev|prod>`, which sets `E2E_TARGET`, alongside `--identity`;
-- `--invite <url>` (decision 14) signs in through `acceptInvitation`, for a role user's first sign-in. The URL's origin must equal the target's `baseUrl`, or it refuses;
+- `--invite <url>` (decision 14) signs in through `acceptInvitation`, for a role user's first sign-in. The URL must be an `/invitations/accept` link on the target's own origin, or it refuses. The arguments are parsed by `parseAuthArgs` in `src/lib/auth-args.ts`, apart from the browser run;
 - it writes the state with `mode: 0o600`;
-- for a deployed target it also copies the state to `activeStorageStatePath`, so the identity signed in last is the one the env's MCP server loads after a restart;
+- signing in the **owner** also copies its state to `activeStorageStatePath`, for every target, which is today's local behaviour. Signing in a role writes only that role's file, and `e2e:use` switches to it;
 - existing local invocations behave exactly as today.
 
 **`src/setup/use-identity.ts`** (the `e2e:use` CLI, replacing today's `sh -c` one-liner): `e2e:use <owner|admin|member> [--env <env>]` copies that identity's state to `activeStorageStatePath`. It exits non-zero, naming the `e2e:auth` command to run, when the state is missing. Local `e2e:use admin` behaves as today, and `owner` becomes valid locally too (`.auth/owner.storageState.json`, which local `e2e:auth` now also writes). That closes the gap where an owner's state could be overwritten by a role's with no way back except re-signing in.
@@ -202,12 +202,12 @@ Selectors are role- or label-based. Test ids are added only where no accessible 
 **`src/specs/roles.spec.ts`** (decision 14): one serial `describe` on the owner's fresh org, skipped for a deployed target.
 1. As the owner, `createInvitation` for `E2E_AUTH0_USERNAME_ADMIN` (role `admin`) and `E2E_AUTH0_USERNAME_MEMBER` (role `member`).
 2. For each role, in a new browser context: `acceptInvitation` → the success card names the owner's org. Then `GET /api/organization/memberships` returns exactly 1 membership, in the owner's org. This guards against a personal org being self-provisioned first (#884).
-3. Probes, each a visible affordance plus its server refusal through `page.request` with the role's bearer token (read from the context's Auth0 cache):
+3. Probes, each a visible affordance plus its server refusal through `page.request`, sent with the `Authorization` header the app itself sent on that page's `GET /api/organization/current`:
 
 | As | `/settings` shows | Server |
 |---|---|---|
 | owner | **Members** tab, **Delete organization** | — (the owner's affordances are the control) |
-| admin | **Members** tab with **Invite member**; no **Delete organization** | `DELETE /api/organization/:id` (with a well-formed body) → 403 `PERMISSION_DENIED` |
+| admin | **Members** tab with **Invite member**; no **Delete organization** | `DELETE /api/organization/:id` with a well-formed body naming the **wrong** org → 403 `PERMISSION_DENIED` (the route checks `org.delete` before the name, so a permission regression answers 400 instead of deleting) |
 | member | no **Members** tab | `POST /api/organization/invitations` → 403 `PERMISSION_DENIED` |
 
 4. The same console-error collector as `core-loop`, per context.
@@ -370,7 +370,7 @@ None. No schema change. The deployed QA org is created by the existing first-log
   - `resolveCredentials` for a deployed `admin` calls `getSecret` with `qa-auth0-username-admin` / `qa-auth0-password-admin`;
   - `storageStatePath` for a deployed identity, and `activeStorageStatePath` for local and deployed.
 - `use-identity.test.ts`: copies the identity's state to the active path; a missing state exits non-zero naming the `e2e:auth` command; an unknown identity on a deployed env is refused.
-- `auth-setup.test.ts` (the pure argument parser exported from `auth.setup.ts`): an `--invite` URL on another origin than the target is refused.
+- `auth-args.test.ts` (`parseAuthArgs`): an `--invite` URL on another origin, or not an accept link, is refused.
 - `sign-in.test.ts`: `entryPath` with an existing query gets `qa=1` appended, not replaced.
 - `packages/devops-cli` catalog: the four role secrets resolve to `qa-auth0-{username,password}-{admin,member}`.
 - `roles.spec.ts` (browser): one test covering the invites, two accepts and the probe table.
@@ -419,8 +419,8 @@ Each red run's artifact is linked from the PR.
 - `packages/e2e/src/setup/session.setup.ts`
 - `packages/e2e/src/specs/core-loop.spec.ts`
 - `packages/e2e/src/specs/login.spec.ts`
-- `packages/e2e/src/specs/roles.spec.ts`, `src/lib/invite.ts`, `src/setup/use-identity.ts` (decision 14)
-- `packages/e2e/src/__tests__/{target,anthropic-stub,playwright-config,sign-in,use-identity,auth-setup}.test.ts` and the jest config for the package
+- `packages/e2e/src/specs/roles.spec.ts`, `src/lib/{invite,use-identity,auth-args}.ts`, `src/setup/use-identity.ts` (decision 14)
+- `packages/e2e/src/__tests__/{target,anthropic-stub,playwright-config,sign-in,use-identity,auth-args}.test.ts` and the jest config for the package
 - `.github/workflows/e2e-test.yml`
 - `docs/E2E_DEPLOYED_QA.runbook.md`
 

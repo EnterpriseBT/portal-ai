@@ -25,7 +25,11 @@
     "e2e:auth:app-dev": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env app-dev",
     "e2e:auth:prod": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env prod",
     "e2e:stub:anthropic": "tsx src/stubs/anthropic-stub.ts",
-    "e2e:use": "sh -c 'test -n \"$0\" && cp .auth/\"$0\".storageState.json .auth/storageState.json && echo \"active MCP identity: $0 (restart the MCP session to load it)\" || echo \"usage: npm run e2e:use <admin|member>  (owner/default is the plain storageState.json)\"'"
+    "e2e:auth:app-dev:admin": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env app-dev --identity admin",
+    "e2e:auth:app-dev:member": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env app-dev --identity member",
+    "e2e:auth:prod:admin": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env prod --identity admin",
+    "e2e:auth:prod:member": "dotenv -e .env -- tsx src/setup/auth.setup.ts --env prod --identity member",
+    "e2e:use": "tsx src/setup/use-identity.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

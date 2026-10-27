@@ -16,12 +16,16 @@
  * Targets and identities (see src/lib/target.ts):
  *   - local (default): `--identity <name>` (or `E2E_IDENTITY`) picks a named
  *     role (#620); creds from `E2E_AUTH0_USERNAME[_<ID>]` /
- *     `E2E_AUTH0_PASSWORD[_<ID>]`; written to `.auth/storageState.json` or
- *     `.auth/<id>.storageState.json`. Optional E2E_BASE_URL.
- *   - `--env app-dev|prod` (or `E2E_TARGET`): the QA owner only; creds from
- *     the same env vars if set, else that env's Secrets Manager
- *     (`portalai/<env>/qa-auth0-*`, ambient AWS credentials); written to
- *     `.auth/<env>/owner.storageState.json`.
+ *     `E2E_AUTH0_PASSWORD[_<ID>]`; written to `.auth/<id>.storageState.json`
+ *     (`owner` when none). Optional E2E_BASE_URL.
+ *   - `--env app-dev|prod` (or `E2E_TARGET`): the QA owner, admin or member;
+ *     creds from the same env vars if set, else that env's Secrets Manager
+ *     (`portalai/<env>/qa-auth0-*[-<id>]`, ambient AWS credentials); written
+ *     to `.auth/<env>/<id>.storageState.json`.
+ *   - Signing in the owner also refreshes the env's active state, the file its
+ *     MCP server loads; `e2e:use <role>` switches to another identity.
+ *   - `--invite <link>`: a role user's first sign-in, through its invite link,
+ *     so it joins the inviting org instead of provisioning one of its own.
  *
  * Prerequisites (operator, not code — see packages/e2e/README.md).
  *
@@ -32,17 +36,15 @@ import { chromium } from "@playwright/test";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { parseAuthArgs } from "../lib/auth-args.js";
+import { acceptInvitation } from "../lib/invite.js";
 import { signIn } from "../lib/sign-in.js";
 import {
+  normalizeIdentity,
   resolveCredentials,
-  resolveTarget,
   storageStatePath,
 } from "../lib/target.js";
-
-const argValue = (flag: string): string | undefined => {
-  const idx = process.argv.indexOf(flag);
-  return idx >= 0 ? process.argv[idx + 1] : undefined;
-};
+import { useIdentity } from "../lib/use-identity.js";
 
 function fail(message: string): never {
   console.error(`[e2e:auth] ${message}`);
@@ -50,12 +52,11 @@ function fail(message: string): never {
 }
 
 async function main(): Promise<void> {
-  const envArg = argValue("--env");
-  const target = resolveTarget(
-    envArg ? { ...process.env, E2E_TARGET: envArg } : process.env
+  const { target, identity, inviteUrl } = parseAuthArgs(
+    process.argv.slice(2),
+    process.env
   );
-  const identity =
-    argValue("--identity") || process.env.E2E_IDENTITY || undefined;
+  const name = normalizeIdentity(target, identity);
   const storagePath = storageStatePath(target, identity);
   const { username, password } = await resolveCredentials(target, {
     identity,
@@ -66,16 +67,27 @@ async function main(): Promise<void> {
   const page = await context.newPage();
 
   try {
-    await signIn(page, {
+    const opts = {
       baseUrl: target.baseUrl,
       username,
       password,
       via: target.via,
-    });
+    };
+    if (inviteUrl) {
+      const org = await acceptInvitation(page, { ...opts, inviteUrl });
+      console.log(`[e2e:auth] ${name} joined ${org}`);
+    } else {
+      await signIn(page, opts);
+    }
     mkdirSync(dirname(storagePath), { recursive: true, mode: 0o700 });
     await context.storageState({ path: storagePath });
     chmodSync(storagePath, 0o600);
     console.log(`[e2e:auth] storage state written to ${storagePath}`);
+    if (name === "owner") {
+      console.log(
+        `[e2e:auth] active ${target.name} session: ${useIdentity(target, name)}`
+      );
+    }
   } catch (err) {
     // Never leave a partial/stale state behind on failure.
     fail(

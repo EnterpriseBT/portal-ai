@@ -56,6 +56,16 @@ export function buildConfig(target: E2eTarget): PlaywrightTestConfig {
         testMatch: /specs\/login\.spec\.ts$/,
         retries: 0,
       },
+      {
+        // The owner invites an admin and a member into the walk's org, and
+        // each role's split is checked. An accepted invite can't be replayed
+        // on the same database, so a retry would fail for the wrong reason.
+        name: "roles",
+        testMatch: /specs\/roles\.spec\.ts$/,
+        dependencies: ["setup"],
+        retries: 0,
+        use: { storageState: SESSION_STORAGE_STATE },
+      },
     ],
   };
 }

@@ -17,6 +17,9 @@ export interface SignInOptions {
   username: string;
   password: string;
   via: SignInVia;
+  /** Start here instead of the affordance's own path (an invite link); the
+   *  affordance flag joins its query, and the redirect to /login keeps both. */
+  entryPath?: string;
 }
 
 /** A failed sign-in. The message never contains the password. */
@@ -34,11 +37,24 @@ export function signInEntry(via: SignInVia): { path: string; testId: string } {
     : { path: "/?e2e=1", testId: "e2e-dev-login" };
 }
 
+/** The URL a sign-in starts at. */
+export function signInUrl(
+  baseUrl: string,
+  via: SignInVia,
+  entryPath?: string
+): string {
+  const entry = signInEntry(via);
+  if (!entryPath) return `${baseUrl}${entry.path}`;
+  const url = new URL(entryPath, baseUrl);
+  url.searchParams.set(via === "qa" ? "qa" : "e2e", "1");
+  return url.toString();
+}
+
 export async function signIn(page: Page, opts: SignInOptions): Promise<void> {
-  const { baseUrl, username, password, via } = opts;
+  const { baseUrl, username, password, via, entryPath } = opts;
   const entry = signInEntry(via);
   try {
-    await page.goto(`${baseUrl}${entry.path}`, {
+    await page.goto(signInUrl(baseUrl, via, entryPath), {
       waitUntil: "domcontentloaded",
     });
     await page.getByTestId(entry.testId).click({ timeout: 15_000 });
