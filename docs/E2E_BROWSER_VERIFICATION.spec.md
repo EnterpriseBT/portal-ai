@@ -282,10 +282,12 @@ verify-login:
 
 | Server | `--storage-state` | `--allowed-origins` | `--output-dir` |
 |---|---|---|---|
-| `playwright-app-dev` | `packages/e2e/.auth/app-dev/storageState.json` | `https://app-dev.portalsai.io;https://api-dev.portalsai.io;https://<dev auth0 domain>` | `packages/e2e/test-results/app-dev` |
-| `playwright-prod` | `packages/e2e/.auth/prod/storageState.json` | `https://app.portalsai.io;https://api.portalsai.io;https://<prod auth0 domain>` | `packages/e2e/test-results/prod` |
+| `playwright-app-dev` | `packages/e2e/.auth/app-dev/storageState.json` | `https://app-dev.portalsai.io`, `https://api-dev.portalsai.io`, `https://portalsai-staging.us.auth0.com`, plus the shared hosts | `packages/e2e/test-results/app-dev` |
+| `playwright-prod` | `packages/e2e/.auth/prod/storageState.json` | `https://app.portalsai.io`, `https://api.portalsai.io`, `https://portalsai.us.auth0.com`, plus the shared hosts | `packages/e2e/test-results/prod` |
 
-The Auth0 domains are public values. The plan reads them from the `*_VITE_AUTH0_DOMAIN` secrets' current values and writes them in. If a state file is missing, the server still starts but lands on `/login`; the README says to run `e2e:auth:<env>`. Switching role is `e2e:use <role> --env <env>` and then an MCP restart, the same as local. The server name always carries the env, so the role is the only implicit part.
+The shared hosts are the browser egress the web app uses (`subprocessor-browser-egress.guard.test.ts`): `basemaps.cartocdn.com` and `tile.openstreetmap.org` for maps, and `apis.google.com`, `accounts.google.com` and `www.googleapis.com` for the Google Picker. Without them, those pages would break in a walk. Stripe is deliberately absent, since the conduct rules forbid billing checkout. The Auth0 domains are public values (the local tenant is `dev-ow7j1wh6zixlfcp1.us.auth0.com` and gets no server here).
+
+**`--allowed-origins` is a guardrail, not a boundary.** `@playwright/mcp@0.0.80`'s own help says it "does not serve as a security boundary and does not affect redirects". It keeps a walk from wandering onto another site. Isolation is server-enforced: every QA identity's only membership is the QA org, and every other org is 404 to it. `src/__tests__/mcp-config.test.ts` guards the shape: each deployed server is `--headless --isolated` on the same MCP pin as the local one, loads its own env's active state, writes under `test-results/<env>`, and lists only `https` origins, which include its app, API and Auth0 tenant and never another env's. If a state file is missing, the server still starts but lands on `/login`; the README says to run `e2e:auth:<env>`. Switching role is `e2e:use <role> --env <env>` and then an MCP restart, the same as local. The server name always carries the env, so the role is the only implicit part.
 
 ### Docs
 
@@ -391,7 +393,7 @@ Each red run's artifact is linked from the PR.
 - [ ] `E2E Tests` runs on a PR, boots its own Postgres, Redis, s3mock, stub, API and web, walks the core loop on a freshly provisioned org, tears down, and is not required.
 - [ ] A red `E2E Tests` run uploads trace, screenshots, video and HTML report. A red `verify-login` uploads screenshots + video only.
 - [ ] After `deploy-dev` / `deploy-prod`, `verify-login` signs in as that env's QA user and asserts `organization/current` 200 plus exactly one membership. A broken login turns the run red, and nothing rolls back.
-- [ ] `npm run --workspace @portalai/e2e e2e:auth:prod` (with AWS credentials) writes `.auth/prod/owner.storageState.json` (mode 0600). After an MCP restart, `mcp__playwright-prod__*` can walk the QA org. Navigating to any non-allowed origin is refused.
+- [ ] `npm run --workspace @portalai/e2e e2e:auth:prod` (with AWS credentials) writes `.auth/prod/owner.storageState.json` (mode 0600). After an MCP restart, `mcp__playwright-prod__*` can walk the QA org. A request to an origin outside the server's list is blocked.
 - [ ] A normal user's `/login` on app-dev or prod is unchanged: Google button only. `?qa` is shown only where the build sets the connection, and never in the chart/ECS image or residency builds.
 - [ ] Auth0 sign-up on the QA connection is disabled. That's verified in the runbook walk.
 - [ ] No deployed credential, trace or `storageState` appears in any CI artifact or commit.
@@ -405,7 +407,7 @@ Each red run's artifact is linked from the PR.
 - **`verify-login` flakes, giving a red deploy run that doesn't block anything.** It's diagnosed from the screenshot and video. If it proves flaky, retries stay 0 and the cause is fixed. The job can be removed in one commit without touching the deploy.
 - **The stub drifts from the AI SDK request shape.** The stub's 400-on-unknown and the core-loop run surface it immediately, and the unit test pins the two known schemas.
 - **A `storageState` leaks from a developer machine.** Damage is limited to the QA org (one membership). Recovery is to rotate the QA password per the runbook, which revokes refresh tokens.
-- **Agent misuse in prod.** Isolation is server-enforced by membership, not by prompt. `--allowed-origins` blocks wandering to other hosts.
+- **Agent misuse in prod.** Isolation is server-enforced by membership, not by prompt. `--allowed-origins` only keeps a walk from wandering to other hosts: it isn't a boundary and doesn't cover redirects.
 - **The QA admin and owner can invite (decision 14).** A leaked owner or admin state could invite an outside address into the QA org. It can't reach any customer org. The runbook's membership check flags a fourth member, and rotation revokes the state.
 - **`roles` breaks when the default role permissions change.** That's intended: the probe table names the defaults, and changing them should be a visible edit.
 
