@@ -281,6 +281,10 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    # verify-login waits on this invalidation before signing in (#489).
+    outputs:
+      dist_id: ${{ steps.frontend.outputs.dist_id }}
+      invalidation_id: ${{ steps.invalidate.outputs.id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -329,6 +333,9 @@ jobs:
           VITE_GOOGLE_PICKER_API_KEY: ${{ secrets.DEV_VITE_GOOGLE_PICKER_API_KEY }}
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.DEV_VITE_GOOGLE_OAUTH_CLIENT_ID }}
           VITE_GOOGLE_CLOUD_PROJECT_NUMBER: ${{ secrets.DEV_VITE_GOOGLE_CLOUD_PROJECT_NUMBER }}
+          # #489: the QA sign-in (/login?qa=1) pins this Auth0 connection;
+          # unset, the build has no QA sign-in and verify-login goes red.
+          VITE_AUTH0_QA_CONNECTION: ${{ secrets.DEV_VITE_AUTH0_QA_CONNECTION }}
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           TURBO_TEAM: ${{ vars.TURBO_TEAM }}
           TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
@@ -352,10 +359,13 @@ jobs:
         run: aws s3 sync apps/web/dist/ s3://${{ steps.frontend.outputs.bucket }} --delete
 
       - name: Invalidate CloudFront cache
+        id: invalidate
         run: |
-          aws cloudfront create-invalidation \
+          ID=$(aws cloudfront create-invalidation \
             --distribution-id ${{ steps.frontend.outputs.dist_id }} \
-            --paths "/*"
+            --paths "/*" \
+            --query Invalidation.Id --output text)
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
 
   # ── Backend ───────────────────────────────────────────────
   deploy-backend:
@@ -629,3 +639,91 @@ jobs:
           TAG="dev-$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
           git tag "$TAG"
           git push origin "$TAG"
+
+  # ── Verify login ──────────────────────────────────────────
+  # #489: sign in to the app just deployed as app-dev's QA owner, and go red
+  # if that fails (a stale Auth0 Action looping the login, #873). Nothing
+  # rolls back; that stays a human decision. tag-deploy doesn't wait on this:
+  # the deploy is live either way, and this reports on it.
+  #
+  # The run records no trace and no HTML report for a deployed target
+  # (packages/e2e/src/lib/playwright-config.ts): a trace would capture the
+  # QA password and a live token, and failure artifacts are uploaded.
+  verify-login:
+    needs: [deploy-frontend, deploy-backend]
+    # Same propagation applies two hops down — see deploy-frontend.
+    if: >-
+      ${{ !cancelled()
+      && needs.deploy-frontend.result == 'success'
+      && needs.deploy-backend.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        run: npm run --workspace @portalai/e2e playwright:install
+
+      # The e2e package imports @portalai/cli-env (the env registry).
+      - name: Build workspace dependencies
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+          TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
+        run: npm run build -- --filter=@portalai/e2e^...
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Otherwise the check could sign in to the previous bundle.
+      - name: Wait for the CloudFront invalidation
+        run: |
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${{ needs.deploy-frontend.outputs.dist_id }} \
+            --id ${{ needs.deploy-frontend.outputs.invalidation_id }}
+
+      # The QA credentials are read, masked and used in one step, so they never
+      # reach $GITHUB_ENV or another step's environment.
+      - name: Sign in as the QA owner
+        run: |
+          read_secret() {
+            aws secretsmanager get-secret-value --secret-id "$1" \
+              --query SecretString --output text
+          }
+          E2E_AUTH0_USERNAME=$(read_secret portalai/dev/qa-auth0-username)
+          E2E_AUTH0_PASSWORD=$(read_secret portalai/dev/qa-auth0-password)
+          echo "::add-mask::$E2E_AUTH0_USERNAME"
+          echo "::add-mask::$E2E_AUTH0_PASSWORD"
+          export E2E_AUTH0_USERNAME E2E_AUTH0_PASSWORD
+          E2E_TARGET=app-dev CI=1 \
+            npm run --workspace @portalai/e2e test:e2e -- --project=login
+
+      # Screenshots and video only: no trace or report exists for a deployed
+      # target, and the session file is never under test-results/.
+      - name: Upload artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-login-app-dev-${{ github.run_id }}
+          path: packages/e2e/test-results/app-dev/
+          retention-days: 14

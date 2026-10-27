@@ -266,14 +266,13 @@ verify-login:
   if: ${{ !cancelled() && needs.deploy-frontend.result == 'success' && needs.deploy-backend.result == 'success' }}
 ```
 
-- `deploy-frontend` exposes `outputs.invalidation_id` from its `create-invalidation` step (`--query Invalidation.Id`).
+- `deploy-frontend` exposes `outputs.dist_id` and `outputs.invalidation_id`, the latter from its `create-invalidation` step (`--query Invalidation.Id`).
 - The job's steps:
-  1. checkout + setup + Chromium (same cache);
-  2. configure AWS (the deploy role);
-  3. `aws cloudfront wait invalidation-completed --distribution-id … --id ${{ needs.deploy-frontend.outputs.invalidation_id }}`;
-  4. read `portalai/<env>/qa-auth0-{username,password}` with `aws secretsmanager get-secret-value`, `::add-mask::` both, and export them as `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD`;
-  5. `test:e2e -- --project=login` with `E2E_TARGET=app-dev|prod`;
-  6. `if: failure()`: upload `packages/e2e/test-results/<target>/` (screenshots + video only).
+  1. checkout + setup + Chromium (same cache as `e2e-test.yml`), then `npm run build -- --filter=@portalai/e2e^...` with the Turbo env (the e2e package imports `@portalai/cli-env`'s built output);
+  2. configure AWS (the deploy role, which already holds `cloudfront:GetInvalidation` and `GetSecretValue` on `portalai/<env>/*`);
+  3. `aws cloudfront wait invalidation-completed --distribution-id ${{ needs.deploy-frontend.outputs.dist_id }} --id ${{ needs.deploy-frontend.outputs.invalidation_id }}`;
+  4. in **one step**: read `portalai/<env>/qa-auth0-{username,password}` with `aws secretsmanager get-secret-value`, `::add-mask::` both, export them as `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD` for that step only (never `$GITHUB_ENV`), and run `test:e2e -- --project=login` with `E2E_TARGET=app-dev|prod`;
+  5. `if: failure()`: upload `packages/e2e/test-results/<target>/` (screenshots + video only).
 - `tag-deploy` (dev) is unchanged and doesn't need `verify-login`. A deploy is tagged as soon as it's live, and the check reports on it.
 - The web builds in both deploy workflows add `VITE_AUTH0_QA_CONNECTION: ${{ secrets.<DEV|PROD>_VITE_AUTH0_QA_CONNECTION }}`. The chart/ECS web image build (`deploy-dev.yml:472-495`) does **not** set it.
 
