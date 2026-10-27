@@ -50,6 +50,9 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
     - the specs probing the API the app actually called;
     - `e2e-stack.sh up` stopping what it started when it fails;
     - the shared composite actions.
+16. **Adversarial fixes (2026-10-27).** The adversarial walk found two gaps:
+    - **The login check counted memberships but didn't pin the org.** A QA owner removed from the QA org self-provisions a new org on its next sign-in, so "exactly one membership" passed against the wrong org. A deployed target now resolves the QA org's id (`resolveQaOrgId`: `E2E_QA_ORG_ID`, else `portalai/<env>/qa-org-id`, catalog key `QA_ORG_ID`), and `login` requires the one membership and `organization/current` to be that org. `verify-login` reads it beside the credentials. Locally `E2E_ORG_ID` pins it optionally; a CI run's org is fresh each time. It's kept with the QA identity's secrets, not in SSM, so the deploy role reads it with the grant it already has.
+    - **A local identity name could carry a path.** `normalizeIdentity` checked names only for deployed targets, so `--identity ../../x` wrote outside `.auth/`. Every identity is now a plain name (`[a-z0-9][a-z0-9_-]*`).
 
 ## Scope
 

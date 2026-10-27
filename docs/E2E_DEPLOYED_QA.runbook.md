@@ -15,7 +15,7 @@ The PR-time walk (`E2E Tests`, `e2e-test.yml`) uses the **local/dev** tenant ins
 
 Every QA identity in an environment is a member of **exactly one org, the QA org**. That's the whole boundary, and it's server-enforced: every other org is unreadable to them, so it answers 404 (#692). The agent's conduct rules (`packages/e2e/README.md`) and the MCP server's `--allowed-origins` keep a walk on track, but neither is a boundary. `--allowed-origins` doesn't even cover redirects.
 
-So the one-membership invariant is checked on every post-deploy run (for the owner) and in this runbook (for all three). A fourth member in the QA org, or a second membership for any QA user, is an incident: see "Rotation and incidents".
+So the invariant (one membership, and it is the QA org) is checked on every post-deploy run (for the owner) and in this runbook (for all three). A fourth member in the QA org, or a second membership for any QA user, is an incident: see "Rotation and incidents".
 
 ## Per environment: Auth0 tenant
 
@@ -68,14 +68,18 @@ Run these from the devcontainer with AWS credentials (`docs/LOCAL_DEVELOPMENT.md
    npx portalai org update <orgId> --name "QA (app-dev)" --env app-dev --yes
    npx portalai org set-tier <orgId> <tierSlug> --env app-dev --yes
    ```
-3. **Invite the admin and the member.** Restart the MCP session, then in `playwright-app-dev` (signed in as the owner) go to Settings → Members → Invite member, once as `admin` and once as `member`. Copy each one-time link.
-4. **Each role's first sign-in goes through its link.** Otherwise the first login provisions a personal org and breaks the invariant.
+3. **Record the org's id** as `QA_ORG_ID`. The login check requires each QA identity's one membership to be this org: counting alone would pass for a QA user who was removed and self-provisioned a new org on sign-in. Until it's set, `verify-login` fails reading it.
+   ```bash
+   printf '%s' '<orgId>' | npx portalops vars set QA_ORG_ID - --env app-dev --yes
+   ```
+4. **Invite the admin and the member.** Restart the MCP session, then in `playwright-app-dev` (signed in as the owner) go to Settings → Members → Invite member, once as `admin` and once as `member`. Copy each one-time link.
+5. **Each role's first sign-in goes through its link.** Otherwise the first login provisions a personal org and breaks the invariant.
    ```bash
    npm run --workspace @portalai/e2e e2e:auth -- --env app-dev --identity admin  --invite '<admin link>'
    npm run --workspace @portalai/e2e e2e:auth -- --env app-dev --identity member --invite '<member link>'
    ```
    `--invite` accepts only an `/invitations/accept` link on that env's own app. If a role ever lands in a personal org, delete that org (`portalai org delete`, app-dev only) or file it for prod, then re-invite.
-5. **Verify** that each identity has exactly one membership, the QA org:
+6. **Verify** that each identity has exactly one membership, the QA org (the check reads `qa-org-id`):
    ```bash
    for id in owner admin member; do
      E2E_TARGET=app-dev E2E_IDENTITY=$id \
@@ -104,6 +108,7 @@ The artifact `verify-login-<env>-<run id>` holds the screenshot and video, and n
 | Back on the app, then bounced to sign-in | a login loop on the API side, like #873's leftover post-login Action |
 | `organization/current` not 200 | the API is unhealthy, or an `AUTH0_*` setting drifted |
 | "memberships … toHaveLength(1)" | the QA owner gained a second org: an incident (below) |
+| "the signed-in identity's only org is the QA org" | the QA owner lost its QA membership and sign-in provisioned a new org, or `QA_ORG_ID` is wrong: an incident (below) |
 
 The deploy itself is already live when this runs. Rolling back is a human decision: re-run the previous successful deploy run.
 
@@ -112,6 +117,7 @@ The deploy itself is already live when this runs. Rolling back is a human decisi
 - **Rotate** a QA password in Auth0, then `vars set` the new value. Rotation also revokes refresh tokens, so every captured `storageState` stops working; re-run `e2e:auth:<env>*`.
 - **A leaked `storageState`** reaches only the QA org. Rotate that identity's password. If it was the owner's or admin's, also check the QA org's members and pending invitations: either role can invite.
 - **An extra membership or member:** remove it (`portalai member remove`), find out how it happened, and rotate.
+- **A QA identity outside the QA org** (the check names a different org): delete the org its sign-in provisioned (app-dev; file it for prod), re-invite it to the QA org through a fresh link, and find out how it lost its membership.
 
 ## Analytics
 

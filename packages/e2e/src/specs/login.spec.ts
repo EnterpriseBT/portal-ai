@@ -7,11 +7,18 @@
  * `GET /api/organization/current` to answer 200, then checks the identity
  * belongs to exactly one org (the QA identity's isolation invariant; a fresh
  * CI user's first login provisions exactly one), and that the app renders.
+ *
+ * Deployed, that one org must be the QA org: a QA user removed from it would
+ * self-provision a new org on sign-in and still count one membership.
  */
 import { expect, test } from "@playwright/test";
 
 import { signIn } from "../lib/sign-in.js";
-import { resolveCredentials, resolveTarget } from "../lib/target.js";
+import {
+  resolveCredentials,
+  resolveQaOrgId,
+  resolveTarget,
+} from "../lib/target.js";
 
 const BUDGET_MS = 30_000;
 
@@ -23,6 +30,7 @@ test("signs in and lands in exactly one org", async ({ page }) => {
   const { username, password } = await resolveCredentials(target, {
     identity: process.env.E2E_IDENTITY || undefined,
   });
+  const qaOrgId = await resolveQaOrgId(target);
 
   const current = page.waitForResponse(
     (r) =>
@@ -48,12 +56,19 @@ test("signs in and lands in exactly one org", async ({ page }) => {
   );
   expect(memberships.status()).toBe(200);
   const body = (await memberships.json()) as {
-    payload: { memberships: unknown[] };
+    payload: { memberships: { organization: { id: string } }[] };
   };
-  expect(
-    body.payload.memberships,
-    "memberships of the signed-in identity"
-  ).toHaveLength(1);
+  const orgIds = body.payload.memberships.map((m) => m.organization.id);
+  expect(orgIds, "memberships of the signed-in identity").toHaveLength(1);
+  if (qaOrgId) {
+    expect(orgIds, "the signed-in identity's only org is the QA org").toEqual([
+      qaOrgId,
+    ]);
+    const currentBody = (await res.json()) as {
+      payload: { organization: { id: string } };
+    };
+    expect(currentBody.payload.organization.id, "current org").toBe(qaOrgId);
+  }
 
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible({
     timeout: BUDGET_MS,

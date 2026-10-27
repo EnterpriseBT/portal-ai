@@ -77,6 +77,10 @@ export const CATALOG: CatalogEntry[] = [
   secret("QA_AUTH0_PASSWORD_ADMIN", "qa-auth0-password-admin"),
   secret("QA_AUTH0_USERNAME_MEMBER", "qa-auth0-username-member"),
   secret("QA_AUTH0_PASSWORD_MEMBER", "qa-auth0-password-member"),
+  // The QA org's id, which the login check pins every QA identity to. Not
+  // secret, but kept beside the identities: the deploy role already reads
+  // portalai/<env>/* secrets.
+  secret("QA_ORG_ID", "qa-org-id"),
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
   // #580: public Google browser identifiers the API serves at runtime via

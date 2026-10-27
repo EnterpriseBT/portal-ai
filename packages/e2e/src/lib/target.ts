@@ -106,6 +106,8 @@ const identityKey = (identity: string): string =>
 
 /** The identity's canonical name: lowercased, with "owner" for none. A
  *  deployed target refuses a name it has no QA user for. */
+const IDENTITY_NAME = /^[a-z0-9][a-z0-9_-]*$/;
+
 export function normalizeIdentity(
   target: E2eTarget,
   identity?: string
@@ -117,6 +119,12 @@ export function normalizeIdentity(
   ) {
     throw new E2eConfigError(
       `${target.name} has no QA identity "${name}" (expected owner | admin | member)`
+    );
+  }
+  // The name becomes a file name under .auth/, so it can't carry a path.
+  if (!IDENTITY_NAME.test(name)) {
+    throw new E2eConfigError(
+      `"${identity}" isn't an identity name (letters, digits, "-" and "_")`
     );
   }
   return name;
@@ -201,4 +209,31 @@ export async function resolveCredentials(
   throw new E2eConfigError(
     `${missing.join(" and ")} must be set (the dev-tenant Database-connection test user). See packages/e2e/README.md.`
   );
+}
+
+export interface ResolveQaOrgIdOptions {
+  env?: NodeJS.ProcessEnv;
+  /** Injected for tests; defaults to cli-env's Secrets Manager read. */
+  getSecret?: GetSecret;
+}
+
+/**
+ * The org a target's QA identity must be in (#489). Counting memberships
+ * isn't enough: a QA user removed from the QA org self-provisions a new one
+ * on its next sign-in and has exactly one membership again.
+ *
+ * Deployed: `E2E_QA_ORG_ID` if set (the post-deploy job exports it), else
+ * `portalai/<env>/qa-org-id`. It sits with the QA identity's secrets so the
+ * deploy role reads it with the grant it already has. Local: `E2E_ORG_ID`, or
+ * nothing, since a CI run provisions a fresh org each time. As with the
+ * credentials, the local name never stands in for a deployed one.
+ */
+export async function resolveQaOrgId(
+  target: E2eTarget,
+  opts: ResolveQaOrgIdOptions = {}
+): Promise<string | undefined> {
+  const { env = process.env, getSecret = cliEnvGetSecret } = opts;
+  if (!target.deployed) return env.E2E_ORG_ID || undefined;
+  if (env.E2E_QA_ORG_ID) return env.E2E_QA_ORG_ID;
+  return getSecret(BUILTIN_ENVIRONMENTS[target.name], "qa-org-id");
 }

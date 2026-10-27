@@ -87,7 +87,7 @@ npm run --workspace @portalai/e2e e2e:stack:down
 | Project | What it proves | Retries |
 |---|---|---|
 | `setup` | signs the owner in once; the first login provisions the org | 0 |
-| `login` | sign-in lands with `organization/current` 200, exactly one membership, the Dashboard; runs against any target | 0 |
+| `login` | sign-in lands with `organization/current` 200, exactly one membership, the Dashboard; runs against any target. Deployed, that membership must be the QA org (`qa-org-id`); locally `E2E_ORG_ID` pins it optionally | 0 |
 | `core-loop` | CSV upload → region → entity → interpret (stub) → commit → records → new station → open portal, with no console errors | 1 |
 | `roles` | the owner invites an admin and a member; each joins through its invite link with exactly one membership; the member has no Members tab and gets a 403 inviting; the admin has Members but no Delete organization and gets a 403 deleting | 0 |
 
@@ -107,7 +107,7 @@ npm run --workspace @portalai/e2e e2e:auth:app-dev:member     # a role (first ti
 npm run --workspace @portalai/e2e e2e:use -- member --env app-dev   # switch, then restart the MCP session
 ```
 
-- **Credentials:** read from that env's Secrets Manager (`portalai/<env>/qa-auth0-*`) with your AWS credentials, or from `E2E_QA_AUTH0_USERNAME` / `_PASSWORD[_<ID>]` if exported. Never from the local `E2E_AUTH0_*` pair in `.env`, which is a different tenant's user.
+- **Credentials:** read from that env's Secrets Manager (`portalai/<env>/qa-auth0-*`) with your AWS credentials, or from `E2E_QA_AUTH0_USERNAME` / `_PASSWORD[_<ID>]` if exported. Never from the local `E2E_AUTH0_*` pair in `.env`, which is a different tenant's user. The QA org's id comes the same way (`qa-org-id`, or `E2E_QA_ORG_ID`).
 - **Sessions:** land in `.auth/<env>/<identity>.storageState.json` (mode 0600), and `.auth/<env>/storageState.json` is the active one.
 - **Browser servers:** `playwright-app-dev` and `playwright-prod` in `.mcp.json` load the active session. They run headless and in memory, write under `test-results/<env>/`, and allow only that env's app, API, Auth0 tenant, and the app's map and Google Picker hosts. `--allowed-origins` keeps a walk from wandering, but it isn't a boundary and doesn't cover redirects.
 - **Traces:** a deployed target records no trace, no HTML report and no page snapshot, since each captures typed passwords. Its config also runs only the `login` project: the other specs create data, and only the ephemeral stack is theirs to write to.

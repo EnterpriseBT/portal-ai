@@ -26,6 +26,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "QA_AUTH0_USERNAME", // #489
       "QA_AUTH0_USERNAME_ADMIN", // #489
       "QA_AUTH0_USERNAME_MEMBER", // #489
+      "QA_ORG_ID", // #489 the org every QA identity must belong to
       "STRIPE_SECRET_KEY", // #218 tier apply
       "STRIPE_WEBHOOK_SECRET", // #239 webhook signature verification
       "TAVILY_API_KEY",
@@ -73,6 +74,9 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
     );
     expect(pathFor(prod, lookupKey("QA_AUTH0_USERNAME"))).toBe(
       "portalai/prod/qa-auth0-username"
+    );
+    expect(pathFor(prod, lookupKey("QA_ORG_ID"))).toBe(
+      "portalai/prod/qa-org-id"
     );
     expect(pathFor(appDev, lookupKey("QA_AUTH0_PASSWORD_ADMIN"))).toBe(
       "portalai/dev/qa-auth0-password-admin"

@@ -4,6 +4,7 @@ import {
   activeStorageStatePath,
   E2eConfigError,
   resolveCredentials,
+  resolveQaOrgId,
   resolveTarget,
   storageStatePath,
 } from "../lib/target.js";
@@ -97,6 +98,15 @@ describe("storageStatePath", () => {
     expect(() => storageStatePath(prod, "viewer", root)).toThrow(
       /owner \| admin \| member/
     );
+  });
+
+  it("keeps a local identity a plain name, so its state stays in .auth/", () => {
+    expect(storageStatePath(local, "e2e-viewer_2", root)).toBe(
+      path.join(root, ".auth/e2e-viewer_2.storageState.json")
+    );
+    for (const bad of ["../../x", "a/b", "..", ".hidden", "a\\b", " "]) {
+      expect(() => storageStatePath(local, bad, root)).toThrow(E2eConfigError);
+    }
   });
 });
 
@@ -202,5 +212,51 @@ describe("resolveCredentials", () => {
         getSecret: noSecrets,
       })
     ).resolves.toEqual({ username: "o@x.test", password: "pw" });
+  });
+});
+
+describe("resolveQaOrgId", () => {
+  const local = resolveTarget({});
+  const appDev = resolveTarget({ E2E_TARGET: "app-dev" });
+  const noSecrets = () => Promise.reject(new Error("unexpected secret read"));
+
+  it("pins nothing locally unless E2E_ORG_ID names an org", async () => {
+    await expect(
+      resolveQaOrgId(local, { env: {}, getSecret: noSecrets })
+    ).resolves.toBeUndefined();
+    await expect(
+      resolveQaOrgId(local, {
+        env: { E2E_ORG_ID: "org-1" },
+        getSecret: noSecrets,
+      })
+    ).resolves.toBe("org-1");
+  });
+
+  it("never uses the local E2E_ORG_ID on a deployed target", async () => {
+    const getSecret = async () => "qa-org";
+    await expect(
+      resolveQaOrgId(appDev, { env: { E2E_ORG_ID: "local-org" }, getSecret })
+    ).resolves.toBe("qa-org");
+  });
+
+  it("prefers E2E_QA_ORG_ID on a deployed target (the CI deploy job exports it)", async () => {
+    await expect(
+      resolveQaOrgId(appDev, {
+        env: { E2E_QA_ORG_ID: "qa-org" },
+        getSecret: noSecrets,
+      })
+    ).resolves.toBe("qa-org");
+  });
+
+  it("otherwise reads the env's qa-org-id secret", async () => {
+    const reads: string[] = [];
+    const getSecret = async (def: { name: string }, name: string) => {
+      reads.push(`${def.name}:${name}`);
+      return "qa-org";
+    };
+    await expect(resolveQaOrgId(appDev, { env: {}, getSecret })).resolves.toBe(
+      "qa-org"
+    );
+    expect(reads).toEqual(["app-dev:qa-org-id"]);
   });
 });

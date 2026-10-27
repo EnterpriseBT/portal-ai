@@ -50,7 +50,10 @@ runs:
         E2E_QA_AUTH0_PASSWORD=$(read_secret "$prefix/qa-auth0-password")
         echo "::add-mask::$E2E_QA_AUTH0_USERNAME"
         echo "::add-mask::$E2E_QA_AUTH0_PASSWORD"
-        export E2E_QA_AUTH0_USERNAME E2E_QA_AUTH0_PASSWORD
+        # The QA org the owner must be in: one membership alone would pass
+        # for an owner who was removed and self-provisioned a new org.
+        E2E_QA_ORG_ID=$(read_secret "$prefix/qa-org-id")
+        export E2E_QA_AUTH0_USERNAME E2E_QA_AUTH0_PASSWORD E2E_QA_ORG_ID
         npm run --workspace @portalai/e2e test:e2e -- --project=login
 
     # Screenshots and video only, where a password field renders masked.
