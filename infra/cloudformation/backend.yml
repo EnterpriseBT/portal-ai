@@ -597,15 +597,15 @@ Resources:
             # because dev's subdomain happens to be api-dev. An environment
             # whose subdomain isn't api-<env> — prod, at api.portalsai.io —
             # would otherwise advertise a callback host that doesn't exist.
+            - Name: GOOGLE_OAUTH_REDIRECT_URI
+              Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/google-sheets/callback"
+            - Name: MICROSOFT_OAUTH_REDIRECT_URI
+              Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/microsoft-excel/callback"
             # The web app's origin, which invite links are built on. Unset,
             # the app falls back to http://localhost:3000, and every invite
             # app-dev and prod handed out pointed there (#889).
             - Name: WEB_APP_URL
               Value: !Ref FrontendOrigin
-            - Name: GOOGLE_OAUTH_REDIRECT_URI
-              Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/google-sheets/callback"
-            - Name: MICROSOFT_OAUTH_REDIRECT_URI
-              Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/microsoft-excel/callback"
             # #852: the scheme is the TLS switch (the API's ioredis turns
             # rediss:// into TLS), and the cache refuses plaintext. There is
             # no plaintext cache to point at since #872.

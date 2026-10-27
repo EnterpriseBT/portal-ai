@@ -21,23 +21,24 @@
 - **Source.** Set `WEB_APP_URL: !Ref FrontendOrigin` on the API container. It's per env, already passed by both deploys, and it's the same origin the app is served from. Two alternatives were rejected:
   - deriving it from `CORS_ORIGIN` (an SSM list, possibly several origins) couples two settings;
   - a new SSM parameter is one more thing to set per env.
-- **Fail closed at use.** In production, `SeatService.inviteUrl` refuses when `WEB_APP_URL` is unset or a loopback host. It throws `503 INVITATION_LINK_UNCONFIGURED` ("Invitation links aren't configured on this server"), and the invite or resend writes nothing. A dead link handed to a customer is worse than a visible error. This is checked where the link is built, not at boot, so a misconfigured Helm install still serves everything else.
+- **Fail closed at use.** In production, invite and resend refuse when `WEB_APP_URL` is unset, unparsable or any loopback form (`localhost`/`*.localhost`, `127.0.0.0/8`, `0.0.0.0`, `[::1]`, `[::]`, IPv4-mapped `127.x`). It throws `503 INVITATION_LINK_UNCONFIGURED` ("Invitation links aren't configured on this server"), and the invite or resend writes nothing. A dead link handed to a customer is worse than a visible error. This is checked where the link is built, not at boot, so a misconfigured Helm install still serves everything else.
 - **Guard in CI.** `deploy-parity.test.ts` asserts that the API container's environment sets both `WEB_APP_URL` and `PUBLIC_API_BASE_URL`, the two URL settings with localhost defaults. It's the same class of bug as #382.
 
 ## Plan — 1 slice
 
 **Files**
 - Edit: `infra/cloudformation/backend.yml`: `WEB_APP_URL` from `FrontendOrigin`, with a comment citing #889 beside `PUBLIC_API_BASE_URL`'s. Correct `FrontendOrigin`'s description (it's no longer CORS-only).
-- New: `apps/api/src/utils/invite-link.util.ts`: `inviteLinkBase()` (the production loopback refusal) and `inviteUrl(token)`. A pure util, so it's unit-testable without the database.
+- New: `apps/api/src/utils/invite-link.util.ts`: `inviteLinkBase()` (the production loopback refusal, called once before any write) and `buildInviteUrl(base, token)`. A pure util, so it's unit-testable without the database.
 - Edit: `apps/api/src/services/seat.service.ts`: invite and resend call `inviteLinkBase()` before writing; revoke doesn't (it builds no link).
 - Edit: `apps/api/src/constants/api-codes.constants.ts`: `INVITATION_LINK_UNCONFIGURED`.
-- Edit: `deploy/helm/portalai/values.yaml` + `README.md`: name `WEB_APP_URL` among the `config` examples.
+- Edit: `deploy/helm/portalai/templates/configmap.yaml`: default `WEB_APP_URL` from `ingress.host` (`https` with `ingress.tls.enabled`) unless `config.WEB_APP_URL` is set. The API image runs `NODE_ENV=production`, so without it a chart install would refuse every invite. `values.yaml` + `README.md` say so.
+- Edit: `scripts/check-helm.mjs`: assert the TLS-ingress, plain-ingress, explicit-config and no-ingress renders (`npm run lint:helm`).
 - Edit: `apps/api/.env.example:142`: note that deployed envs get it from the stack.
 
 **Tests** (`npm run test:unit` / `npm run test:integration`, from each package)
-- New: `apps/api/src/__tests__/utils/invite-link.util.test.ts`: production + unset or `localhost` / `127.0.0.1` → `INVITATION_LINK_UNCONFIGURED`; production + `https://app.example` → `https://app.example/invitations/accept?token=…`; development + localhost → allowed.
+- New: `apps/api/src/__tests__/utils/invite-link.util.test.ts`: production + unset or any loopback spelling the URL parser can return → `INVITATION_LINK_UNCONFIGURED`, but `https://127.example.com` is fine; production + `https://app.example` → `https://app.example/invitations/accept?token=…`; development + localhost → allowed.
 - Edit: `seat.service.integration.test.ts`: the link starts with `environment.WEB_APP_URL`, not just `token=`. Also: in production, a refused invite leaves no row, a refused resend leaves the token and expiry as they were, and revoke still works.
-- Edit: `packages/devops-cli/src/__tests__/deploy-parity.test.ts`: the API container sets `WEB_APP_URL` and `PUBLIC_API_BASE_URL`, and `WEB_APP_URL` is `!Ref FrontendOrigin`.
+- Edit: `packages/devops-cli/src/__tests__/deploy-parity.test.ts`: the API container sets `WEB_APP_URL` and `PUBLIC_API_BASE_URL`, `WEB_APP_URL` is `!Ref FrontendOrigin`, and each backend deploy passes exactly its own env's origin.
 
 ## Smoke (manual, against your dev stack)
 
@@ -49,6 +50,8 @@
 6. Prod after the next release (manual): the `portalai-api-prod` task lists `WEB_APP_URL=https://app.portalsai.io`.
 
 ## Out of scope
+
+- **Review decisions kept** (code review, 2026-10-27): the check stays at invite time rather than at boot; 503 rather than 500, so the inviter can read the message; and production still accepts `http:`, since a chart install without TLS runs the whole app over http. A startup check for both URL settings is a follow-up.
 
 - **Re-sending invites already issued with localhost links.** The token is valid on the right host, and the owner can Resend. A sweep would need per-org outreach, so it's tracked on #854's release note, not code.
 - **A boot-time validation framework for every production env var.** That's a new cross-cutting pattern, and per-setting guards at use are enough here.

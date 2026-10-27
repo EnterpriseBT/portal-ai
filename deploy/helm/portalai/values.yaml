@@ -76,8 +76,9 @@ oidc:
 
 # Non-secret env → ConfigMap. Arbitrary key/value pairs the app reads from env
 # (e.g. AUTH0_DOMAIN, PUBLIC_API_BASE_URL, WEB_APP_URL, CORS_ORIGIN, GOOGLE_*
-# non-secret). WEB_APP_URL is the web app's origin; without it, production
-# refuses to create invitations (#889).
+# non-secret). WEB_APP_URL is the web app's origin, which invite links are built
+# on: it defaults from ingress.host (https with ingress.tls), and without one
+# production refuses to create invitations (#889).
 config: {}
 
 # Secret env → Secret (e.g. ENCRYPTION_KEY, ANTHROPIC_API_KEY,

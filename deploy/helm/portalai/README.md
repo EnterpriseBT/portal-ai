@@ -61,7 +61,7 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
 | `imagePullSecrets` | `[]` | Pull secrets for a private registry. |
 | `deployMode` | `saas` | `saas` \| `residency`. Sets `DEPLOY_MODE` (API auth validator) and the web `config.js`. |
 | `oidc.issuer` / `.audience` / `.clientId` | `""` | Customer OIDC identity (residency). Reaches the API validator and the web `config.js`. |
-| `config` | `{}` | Non-secret env → ConfigMap (e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `WEB_APP_URL`, `CORS_ORIGIN`). Set `WEB_APP_URL` to the web app's origin, or invitations are refused. |
+| `config` | `{}` | Non-secret env → ConfigMap (e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `WEB_APP_URL`, `CORS_ORIGIN`). `WEB_APP_URL` (the origin invite links are built on) defaults from `ingress.host`; set it here when the app isn't behind the chart's ingress, or invitations are refused. |
 | `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `STRIPE_*`, `OAUTH_STATE_SECRET`). |
 | `existingSecret` | `""` | Use a pre-created Secret instead of rendering one from `secrets`. |
 | `api.replicaCount` / `web.replicaCount` | `1` | Replicas. |

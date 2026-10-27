@@ -38,7 +38,7 @@ import {
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
-import { inviteLinkBase, inviteUrl } from "../utils/invite-link.util.js";
+import { buildInviteUrl, inviteLinkBase } from "../utils/invite-link.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -70,7 +70,7 @@ export class SeatService {
   ): Promise<InvitationResponse> {
     await PermissionService.check(caller, "member.invite");
     // Before anything is written: production refuses a link no one can open (#889).
-    inviteLinkBase();
+    const linkBase = inviteLinkBase();
     const orgId = caller.organizationId;
     const email = req.email.trim().toLowerCase();
 
@@ -142,7 +142,7 @@ export class SeatService {
         metadata: { role: req.role },
       });
 
-      return SeatService.toResponse(created, inviteUrl(token));
+      return SeatService.toResponse(created, buildInviteUrl(linkBase, token));
     });
   }
 
@@ -327,7 +327,7 @@ export class SeatService {
     auditCtx: SeatAuditContext
   ): Promise<InvitationResponse> {
     await PermissionService.check(caller, "member.invite");
-    inviteLinkBase();
+    const linkBase = inviteLinkBase();
     const inv = await SeatService.requirePending(caller, invitationId);
     const token = crypto.randomBytes(32).toString("hex");
     const updated = await DbService.repository.invitations.update(inv.id, {
@@ -343,7 +343,10 @@ export class SeatService {
       sourceIp: auditCtx.sourceIp,
       userAgent: auditCtx.userAgent,
     });
-    return SeatService.toResponse(updated ?? inv, inviteUrl(token));
+    return SeatService.toResponse(
+      updated ?? inv,
+      buildInviteUrl(linkBase, token)
+    );
   }
 
   /**

@@ -1431,11 +1431,35 @@ describe("the API task sets its externally-reachable URLs (#889)", () => {
       | undefined;
     expect(value?.tag).toBe("!Ref");
     expect(value?.value).toBe("FrontendOrigin");
-    for (const [file, body] of backendDeployWorkflows()) {
-      expect({ file, passes: /FrontendOrigin=https:\/\//.test(body) }).toEqual({
-        file,
-        passes: true,
-      });
-    }
+  });
+
+  // The origin each backend deploy passes, exactly: a copy-pasted app-dev
+  // origin in deploy-prod.yml would point prod's invite links at app-dev.
+  const FRONTEND_ORIGINS: Record<string, string> = {
+    "deploy-dev.yml": "https://app-dev.portalsai.io",
+    "deploy-prod.yml": "https://app.portalsai.io",
+  };
+
+  it("passes each env's own FrontendOrigin, once, from every backend deploy", () => {
+    const passed = Object.fromEntries(
+      backendDeployWorkflows().map(([file, body]) => {
+        const code = body
+          .split("\n")
+          .filter((line) => !line.trim().startsWith("#"))
+          .join("\n");
+        return [
+          file,
+          [...code.matchAll(/FrontendOrigin=(\S+)/g)].map((m) => m[1]),
+        ];
+      })
+    );
+    expect(passed).toEqual(
+      Object.fromEntries(
+        Object.entries(FRONTEND_ORIGINS).map(([file, origin]) => [
+          file,
+          [origin],
+        ])
+      )
+    );
   });
 });

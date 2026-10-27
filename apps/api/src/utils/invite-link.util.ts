@@ -13,7 +13,21 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
 import { ApiError } from "../services/http.service.js";
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
+/** A hostname as `new URL()` normalizes it (lowercase, IPv4 in dotted
+ *  decimal, IPv6 bracketed and compressed). */
+function isLoopback(hostname: string): boolean {
+  const host = hostname.replace(/\.$/, "");
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "0.0.0.0" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "[::1]" ||
+    host === "[::]" ||
+    // IPv4-mapped 127.0.0.0/8, e.g. [::ffff:127.0.0.1] → [::ffff:7f00:1].
+    /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(host)
+  );
+}
 
 function isUsableOrigin(raw: string): boolean {
   let url: URL;
@@ -24,13 +38,12 @@ function isUsableOrigin(raw: string): boolean {
   }
   return (
     (url.protocol === "https:" || url.protocol === "http:") &&
-    !LOOPBACK_HOSTS.has(url.hostname) &&
-    !url.hostname.endsWith(".localhost")
+    !isLoopback(url.hostname)
   );
 }
 
 /** The web origin invite links are built on; throws in production when it
- *  isn't a real one. Call it before writing the invitation. */
+ *  isn't a real one. Call it once, before writing the invitation. */
 export function inviteLinkBase(): string {
   const base = environment.WEB_APP_URL.replace(/\/+$/, "");
   if (environment.NODE_ENV === "production" && !isUsableOrigin(base)) {
@@ -43,6 +56,6 @@ export function inviteLinkBase(): string {
   return base;
 }
 
-export function inviteUrl(token: string): string {
-  return `${inviteLinkBase()}/invitations/accept?token=${token}`;
+export function buildInviteUrl(base: string, token: string): string {
+  return `${base}/invitations/accept?token=${token}`;
 }
