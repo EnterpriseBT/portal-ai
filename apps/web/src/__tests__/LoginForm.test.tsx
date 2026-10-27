@@ -99,6 +99,41 @@ describe("LoginFormUI Component", () => {
   });
 });
 
+describe("LoginFormUI QA sign-in (#489)", () => {
+  it("renders QA sign-in when the container passes a handler, and calls it", async () => {
+    const user = userEvent.setup();
+    const onClickQaLogin = jest.fn();
+    render(
+      <LoginFormUI
+        onClickGoogleLogin={jest.fn()}
+        onClickQaLogin={onClickQaLogin}
+      />
+    );
+    await user.click(screen.getByTestId("e2e-qa-login"));
+    expect(onClickQaLogin).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: "QA sign-in" })
+    ).toBeInTheDocument();
+  });
+
+  it("renders no QA sign-in without a handler", () => {
+    render(<LoginFormUI onClickGoogleLogin={jest.fn()} />);
+    expect(screen.queryByTestId("e2e-qa-login")).not.toBeInTheDocument();
+  });
+
+  it("can show the dev and QA affordances together", () => {
+    render(
+      <LoginFormUI
+        onClickGoogleLogin={jest.fn()}
+        onClickDevLogin={jest.fn()}
+        onClickQaLogin={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId("e2e-dev-login")).toBeInTheDocument();
+    expect(screen.getByTestId("e2e-qa-login")).toBeInTheDocument();
+  });
+});
+
 describe("LoginForm container label (#607)", () => {
   afterEach(() => {
     delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
@@ -123,5 +158,13 @@ describe("LoginForm container label (#607)", () => {
     };
     render(<LoginForm />);
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+  });
+
+  // jest has no import.meta.env, i.e. a build without VITE_AUTH0_QA_CONNECTION.
+  it("#489 — ?qa alone shows nothing when the build names no QA connection", () => {
+    window.history.pushState({}, "", "/login?qa=1");
+    render(<LoginForm />);
+    expect(screen.queryByTestId("e2e-qa-login")).not.toBeInTheDocument();
+    window.history.pushState({}, "", "/");
   });
 });

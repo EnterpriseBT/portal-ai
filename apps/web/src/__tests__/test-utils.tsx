@@ -26,7 +26,11 @@ const defaultAuth: NormalizedAuth = {
     error: undefined,
   },
   getToken: async () => "test-token",
-  login: { withGoogle: () => {}, withUniversal: () => {} },
+  login: {
+    withGoogle: () => {},
+    withUniversal: () => {},
+    withQaConnection: () => {},
+  },
   logout: () => {},
 };
 

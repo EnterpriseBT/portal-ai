@@ -20,6 +20,13 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "GOOGLE_OAUTH_CLIENT_SECRET",
       "MICROSOFT_OAUTH_CLIENT_SECRET",
       "OAUTH_STATE_SECRET",
+      "QA_AUTH0_PASSWORD", // #489 deployed-env QA identity (e2e)
+      "QA_AUTH0_PASSWORD_ADMIN", // #489 QA admin
+      "QA_AUTH0_PASSWORD_MEMBER", // #489 QA member
+      "QA_AUTH0_USERNAME", // #489
+      "QA_AUTH0_USERNAME_ADMIN", // #489
+      "QA_AUTH0_USERNAME_MEMBER", // #489
+      "QA_ORG_ID", // #489 the org every QA identity must belong to
       "STRIPE_SECRET_KEY", // #218 tier apply
       "STRIPE_WEBHOOK_SECRET", // #239 webhook signature verification
       "TAVILY_API_KEY",
@@ -58,6 +65,25 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
     } catch (e) {
       expect((e as { code: string }).code).toBe("ENV_NOT_CONFIGURED");
     }
+  });
+
+  it("the #489 QA identity resolves under each env's secrets prefix", () => {
+    const prod = BUILTIN_ENVIRONMENTS["prod"];
+    expect(pathFor(appDev, lookupKey("QA_AUTH0_PASSWORD"))).toBe(
+      "portalai/dev/qa-auth0-password"
+    );
+    expect(pathFor(prod, lookupKey("QA_AUTH0_USERNAME"))).toBe(
+      "portalai/prod/qa-auth0-username"
+    );
+    expect(pathFor(prod, lookupKey("QA_ORG_ID"))).toBe(
+      "portalai/prod/qa-org-id"
+    );
+    expect(pathFor(appDev, lookupKey("QA_AUTH0_PASSWORD_ADMIN"))).toBe(
+      "portalai/dev/qa-auth0-password-admin"
+    );
+    expect(pathFor(prod, lookupKey("QA_AUTH0_USERNAME_MEMBER"))).toBe(
+      "portalai/prod/qa-auth0-username-member"
+    );
   });
 
   it("pathFor uses the env's AWS prefixes", () => {

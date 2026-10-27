@@ -1,79 +1,50 @@
 /**
- * `e2e:auth` (#304) — drive the app's login ONCE and persist the resulting
- * Auth0 SPA session as a reusable Playwright `storageState`, so the agent
- * browser session and (future) specs never re-drive login.
+ * `e2e:auth` (#304, #489) — drive the app's login ONCE and persist the
+ * resulting Auth0 SPA session as a reusable Playwright `storageState`, so the
+ * agent browser session never re-drives login.
  *
  * The app's normal login is Google-only, which a headless test user cannot
- * drive. This script instead uses the guarded dev affordance (`/?e2e=1` →
- * "Dev sign-in (E2E)" button) which triggers Auth0 Universal Login with no
- * pinned connection, so a **Database-connection** test user can sign in with a
- * username/password. auth0-spa-js (running with `cacheLocation: "localstorage"`)
- * writes its own cache on the callback, so `storageState` captures the real
- * session shape — nothing is hand-assembled.
+ * drive. Locally this enters through the guarded dev affordance (`/?e2e=1` →
+ * "Dev sign-in (E2E)"); against a deployed env (`--env app-dev|prod`) through
+ * the build-flagged QA sign-in (`/login?qa=1`), as that env's QA identity.
+ * Either way Auth0 Universal Login takes a **Database-connection** user's
+ * username/password. auth0-spa-js (running with `cacheLocation:
+ * "localstorage"`) writes its own cache on the callback, so `storageState`
+ * captures the real session shape — nothing is hand-assembled. The file holds
+ * a refresh token: it is written mode 0600 under the git-ignored `.auth/`.
  *
- * Multiple identities (#620): pass `--identity <name>` (or `E2E_IDENTITY`) to
- * capture a named role's session. For identity `X`, creds come from
- * `E2E_AUTH0_USERNAME_<X>` / `E2E_AUTH0_PASSWORD_<X>` (uppercased) and the
- * session is written to `.auth/<x>.storageState.json`. The unnamed default
- * uses `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD` → `.auth/storageState.json`
- * (the path `.mcp.json` loads at MCP-session start — copy a named file over it,
- * or restart the MCP session, to boot as a different role; within a live
- * session, switch by logging out and re-running the dev sign-in as another
- * user). Each identity needs its own dev-tenant Database user.
+ * Targets and identities (see src/lib/target.ts):
+ *   - local (default): `--identity <name>` (or `E2E_IDENTITY`) picks a named
+ *     role (#620); creds from `E2E_AUTH0_USERNAME[_<ID>]` /
+ *     `E2E_AUTH0_PASSWORD[_<ID>]`; written to `.auth/<id>.storageState.json`
+ *     (`owner` when none). Optional E2E_BASE_URL.
+ *   - `--env app-dev|prod` (or `E2E_TARGET`): the QA owner, admin or member;
+ *     creds from the same env vars if set, else that env's Secrets Manager
+ *     (`portalai/<env>/qa-auth0-*[-<id>]`, ambient AWS credentials); written
+ *     to `.auth/<env>/<id>.storageState.json`.
+ *   - Signing in the owner also refreshes the env's active state, the file its
+ *     MCP server loads; `e2e:use <role>` switches to another identity.
+ *   - `--invite <link>`: a role user's first sign-in, through its invite link,
+ *     so it joins the inviting org instead of provisioning one of its own.
  *
- * Prerequisites (operator, not code — see packages/e2e/README.md):
- *   - the dev stack is running (`npm run dev`),
- *   - the dev Auth0 tenant has a Database connection with a test user per
- *     identity,
- *   - env: E2E_AUTH0_USERNAME[_<ID>], E2E_AUTH0_PASSWORD[_<ID>] — from
- *     packages/e2e/.env (git-ignored; copy .env.example) or the dev shell
- *     (shell wins); never committed. Optional E2E_BASE_URL (default
- *     http://localhost:3000).
+ * Prerequisites (operator, not code — see packages/e2e/README.md).
  *
  * Selectors for the Auth0-hosted form are best-effort against New Universal
- * Login and may need a one-time tune on first run against the real tenant.
+ * Login and may need a one-time tune on first run against a new tenant.
  */
 import { chromium } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { chmodSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
-const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
-
-/** Resolve the identity from `--identity <name>` or `E2E_IDENTITY`; unnamed is
- *  the default (back-compat env vars + storageState path). */
-function resolveIdentity(): {
-  name: string | null;
-  username?: string;
-  password?: string;
-  storagePath: string;
-} {
-  const argIdx = process.argv.indexOf("--identity");
-  const name =
-    (argIdx >= 0 ? process.argv[argIdx + 1] : process.env.E2E_IDENTITY) || null;
-  if (!name) {
-    return {
-      name: null,
-      username: process.env.E2E_AUTH0_USERNAME,
-      password: process.env.E2E_AUTH0_PASSWORD,
-      storagePath: resolve(process.cwd(), ".auth/storageState.json"),
-    };
-  }
-  const key = name.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
-  return {
-    name,
-    username: process.env[`E2E_AUTH0_USERNAME_${key}`],
-    password: process.env[`E2E_AUTH0_PASSWORD_${key}`],
-    storagePath: resolve(
-      process.cwd(),
-      `.auth/${name.toLowerCase()}.storageState.json`
-    ),
-  };
-}
-
-const IDENTITY = resolveIdentity();
-const USERNAME = IDENTITY.username;
-const PASSWORD = IDENTITY.password;
-const STORAGE_STATE = IDENTITY.storagePath;
+import { parseAuthArgs } from "../lib/auth-args.js";
+import { acceptInvitation } from "../lib/invite.js";
+import { signIn } from "../lib/sign-in.js";
+import {
+  normalizeIdentity,
+  resolveCredentials,
+  storageStatePath,
+} from "../lib/target.js";
+import { useIdentity } from "../lib/use-identity.js";
 
 function fail(message: string): never {
   console.error(`[e2e:auth] ${message}`);
@@ -81,75 +52,50 @@ function fail(message: string): never {
 }
 
 async function main(): Promise<void> {
-  if (!USERNAME || !PASSWORD) {
-    const suffix = IDENTITY.name
-      ? `_${IDENTITY.name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`
-      : "";
-    fail(
-      `E2E_AUTH0_USERNAME${suffix} and E2E_AUTH0_PASSWORD${suffix} must be set ` +
-        "(the dev-tenant Database-connection test user). See packages/e2e/README.md."
-    );
-  }
+  const { target, identity, inviteUrl } = parseAuthArgs(
+    process.argv.slice(2),
+    process.env
+  );
+  const name = normalizeIdentity(target, identity);
+  const storagePath = storageStatePath(target, identity);
+  const { username, password } = await resolveCredentials(target, {
+    identity,
+  });
 
   const browser = await chromium.launch();
   const context = await browser.newContext();
   const page = await context.newPage();
 
   try {
-    // Guarded dev affordance: ?e2e reveals a Universal-Login button that does
-    // not pin the Google connection.
-    await page.goto(`${BASE_URL}/?e2e=1`, { waitUntil: "domcontentloaded" });
-    await page.getByTestId("e2e-dev-login").click({ timeout: 15_000 });
-
-    // Auth0 New Universal Login (identifier-first OR combined) — handle both.
-    await page.waitForURL(/\/(u\/login|login|authorize)/, { timeout: 30_000 });
-    await page
-      .locator('input[name="username"], input#username')
-      .first()
-      .fill(USERNAME);
-
-    const password = page
-      .locator('input[name="password"], input#password')
-      .first();
-    if (!(await password.isVisible().catch(() => false))) {
-      // identifier-first flow: advance to the password step
-      await page
-        .getByRole("button", { name: /continue|next/i })
-        .first()
-        .click();
+    const opts = {
+      baseUrl: target.baseUrl,
+      username,
+      password,
+      via: target.via,
+    };
+    if (inviteUrl) {
+      const org = await acceptInvitation(page, { ...opts, inviteUrl });
+      console.log(`[e2e:auth] ${name} joined ${org}`);
+    } else {
+      await signIn(page, opts);
     }
-    await password.waitFor({ state: "visible", timeout: 15_000 });
-    await password.fill(PASSWORD);
-    await page
-      .getByRole("button", { name: /continue|log in|sign in/i })
-      .first()
-      .click();
-
-    // App-DOM-agnostic success signal: we are back on the app origin AND
-    // auth0-spa-js has written its localStorage cache after the redirect
-    // callback. Waiting on this (not a specific dashboard element) keeps the
-    // fixture decoupled from app markup.
-    const origin = new URL(BASE_URL).origin;
-    await page.waitForURL((url) => url.origin === origin, { timeout: 45_000 });
-    await page.waitForFunction(
-      () =>
-        Object.keys(window.localStorage).some((k) =>
-          k.startsWith("@@auth0spajs@@")
-        ),
-      undefined,
-      { timeout: 30_000 }
-    );
-
-    mkdirSync(dirname(STORAGE_STATE), { recursive: true });
-    await context.storageState({ path: STORAGE_STATE });
-    console.log(`[e2e:auth] storage state written to ${STORAGE_STATE}`);
+    mkdirSync(dirname(storagePath), { recursive: true, mode: 0o700 });
+    await context.storageState({ path: storagePath });
+    chmodSync(storagePath, 0o600);
+    console.log(`[e2e:auth] storage state written to ${storagePath}`);
+    if (name === "owner") {
+      console.log(
+        `[e2e:auth] active ${target.name} session: ${useIdentity(target, name)}`
+      );
+    }
   } catch (err) {
     // Never leave a partial/stale state behind on failure.
     fail(
-      `login flow failed before a session was captured: ${
-        err instanceof Error ? err.message : String(err)
-      }. No storage state written. Is the dev stack up at ${BASE_URL}, and is ` +
-        "the test user valid in the dev tenant?"
+      `${err instanceof Error ? err.message : String(err)}. No storage state ` +
+        `written. Is ${target.baseUrl} up, and is the ` +
+        (target.deployed
+          ? `${target.name} QA user set up (packages/e2e/README.md)?`
+          : "test user valid in the dev tenant?")
     );
   } finally {
     await browser.close();

@@ -1,0 +1,59 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "max_tokens": 64000,
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "classifications": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceHeader": {
+                  "type": "string",
+                  "description": "min length: 1."
+                },
+                "columnDefinitionId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "min length: 1."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "confidence": {
+                  "type": "number"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": ["sourceHeader", "columnDefinitionId", "confidence"]
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": ["classifications"]
+      }
+    }
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "<prompt elided>"
+        }
+      ]
+    }
+  ]
+}

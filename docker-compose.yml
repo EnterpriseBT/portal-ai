@@ -101,6 +101,27 @@ services:
     networks:
       - mcp-net
 
+  # #489: S3-compatible object storage for the e2e core-loop walk (the
+  # browser PUTs uploads to a presigned URL). e2e profile only, so a plain
+  # `docker compose up` ignores it. adobe/s3mock, not MinIO: MinIO's public
+  # images are gone from Docker Hub. It accepts presigned requests, answers
+  # CORS for any origin, and creates the bucket at boot.
+  s3mock:
+    image: adobe/s3mock:4.7.0
+    profiles: ["e2e"]
+    ports:
+      - "9090:9090"
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: portalai-uploads-e2e
+    healthcheck:
+      # No curl/wget in the image; busybox netstat shows the listener.
+      test: ["CMD-SHELL", "netstat -ltn | grep -q :9090"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - mcp-net
+
 volumes:
   pgdata:
   ollama_data:

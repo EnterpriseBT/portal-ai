@@ -36,6 +36,8 @@ export interface Auth0Settings {
   domain: string;
   clientId: string;
   audience: string;
+  /** #489: Auth0 connection for the deployed QA identity; "" ⇒ no QA sign-in. */
+  qaConnection: string;
 }
 
 /** OIDC provider settings — runtime `OIDC_*` (residency authority). */
@@ -85,6 +87,7 @@ interface ViteAuthEnv {
   VITE_AUTH0_DOMAIN?: string;
   VITE_AUTH0_CLIENT_ID?: string;
   VITE_AUTH0_AUDIENCE?: string;
+  VITE_AUTH0_QA_CONNECTION?: string;
 }
 
 /**
@@ -97,7 +100,28 @@ export function readAuth0Settings(env: ViteAuthEnv | undefined): Auth0Settings {
     domain: env?.VITE_AUTH0_DOMAIN ?? "",
     clientId: env?.VITE_AUTH0_CLIENT_ID ?? "",
     audience: env?.VITE_AUTH0_AUDIENCE ?? "",
+    qaConnection: env?.VITE_AUTH0_QA_CONNECTION?.trim() ?? "",
   };
+}
+
+/**
+ * Whether the login page offers the QA sign-in (#489): the build names a QA
+ * Database connection (`VITE_AUTH0_QA_CONNECTION`, set only by builds that
+ * opt in) AND the URL asks for it with `?qa`. Never under residency OIDC.
+ * The affordance adds no exposure of its own — a connection enabled on the
+ * app is reachable by a crafted `/authorize` URL anyway; the guard is the
+ * connection's own settings (sign-ups off, one user).
+ */
+export function shouldShowQaLogin(args: {
+  isOidc: boolean;
+  qaConnection: string;
+  search: string;
+}): boolean {
+  return (
+    !args.isOidc &&
+    args.qaConnection !== "" &&
+    new URLSearchParams(args.search).has("qa")
+  );
 }
 
 /** Auth0 provider settings from the build-time env (dev-only fallback path). */

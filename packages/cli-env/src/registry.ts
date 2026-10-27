@@ -35,6 +35,9 @@ export const EnvironmentDefinitionSchema = z
     name: z.string().min(1),
     kind: EnvKindSchema,
     apiBaseUrl: z.url(),
+    /** #489: the env's web app, for the e2e harness. Built-ins only: the
+     *  harness targets local/app-dev/prod, so an override can't declare one. */
+    webBaseUrl: z.url().optional(),
     /** null ⇒ no AWS (local): db comes from .env, no tunnel/secrets. */
     aws: AwsConfigSchema.nullable(),
   })
@@ -46,12 +49,14 @@ export const BUILTIN_ENVIRONMENTS: Record<string, EnvironmentDefinition> = {
     name: "local",
     kind: "development",
     apiBaseUrl: "http://localhost:3001",
+    webBaseUrl: "http://localhost:3000",
     aws: null,
   },
   "app-dev": {
     name: "app-dev",
     kind: "staging",
     apiBaseUrl: "https://api-dev.portalsai.io",
+    webBaseUrl: "https://app-dev.portalsai.io",
     aws: { region: "us-east-1", envName: "dev" },
   },
   // #384 (epic #83). `kind: "production"` is the whole contract — every
@@ -64,6 +69,7 @@ export const BUILTIN_ENVIRONMENTS: Record<string, EnvironmentDefinition> = {
     name: "prod",
     kind: "production",
     apiBaseUrl: "https://api.portalsai.io",
+    webBaseUrl: "https://app.portalsai.io",
     aws: { region: "us-east-1", envName: "prod" },
   },
 };

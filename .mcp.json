@@ -14,6 +14,40 @@
         "--output-dir",
         "packages/e2e/test-results/mcp"
       ]
+    },
+    "playwright-app-dev": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "@playwright/mcp@0.0.80",
+        "--browser",
+        "chromium",
+        "--headless",
+        "--isolated",
+        "--storage-state",
+        "packages/e2e/.auth/app-dev/storageState.json",
+        "--allowed-origins",
+        "https://app-dev.portalsai.io;https://api-dev.portalsai.io;https://portalsai-staging.us.auth0.com;https://basemaps.cartocdn.com;https://tile.openstreetmap.org;https://apis.google.com;https://accounts.google.com;https://www.googleapis.com",
+        "--output-dir",
+        "packages/e2e/test-results/app-dev"
+      ]
+    },
+    "playwright-prod": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "@playwright/mcp@0.0.80",
+        "--browser",
+        "chromium",
+        "--headless",
+        "--isolated",
+        "--storage-state",
+        "packages/e2e/.auth/prod/storageState.json",
+        "--allowed-origins",
+        "https://app.portalsai.io;https://api.portalsai.io;https://portalsai.us.auth0.com;https://basemaps.cartocdn.com;https://tile.openstreetmap.org;https://apis.google.com;https://accounts.google.com;https://www.googleapis.com",
+        "--output-dir",
+        "packages/e2e/test-results/prod"
+      ]
     }
   }
 }

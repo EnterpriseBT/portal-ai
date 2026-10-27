@@ -56,6 +56,20 @@ describe("BUILTIN_ENVIRONMENTS", () => {
     expect(prod.apiBaseUrl).toBe("https://api.portalsai.io");
     expect(prod.aws).toEqual({ region: "us-east-1", envName: "prod" });
   });
+
+  // #489: the e2e harness signs in to each env's web app, which the API URL
+  // alone doesn't locate.
+  it("each built-in carries its web app URL", () => {
+    expect(BUILTIN_ENVIRONMENTS["local"].webBaseUrl).toBe(
+      "http://localhost:3000"
+    );
+    expect(BUILTIN_ENVIRONMENTS["app-dev"].webBaseUrl).toBe(
+      "https://app-dev.portalsai.io"
+    );
+    expect(BUILTIN_ENVIRONMENTS["prod"].webBaseUrl).toBe(
+      "https://app.portalsai.io"
+    );
+  });
 });
 
 describe("AWS naming helpers (mirror api-cli.sh conventions)", () => {
@@ -122,6 +136,18 @@ describe("override file (~/.portalai/environments.json)", () => {
     });
     // Built-ins are untouched.
     expect(envs["app-dev"].kind).toBe("staging");
+  });
+
+  // #489: only the built-ins are e2e targets, so an override that names a
+  // web URL is refused rather than silently ignored.
+  it("rejects an override that declares a webBaseUrl", () => {
+    writeOverrides({
+      "scratch-web": {
+        apiBaseUrl: "http://localhost:3999",
+        webBaseUrl: "http://localhost:3998",
+      },
+    });
+    expect(() => loadEnvironments()).toThrow(EnvNotConfiguredError);
   });
 
   it("rejects an override that shadows a built-in", () => {
