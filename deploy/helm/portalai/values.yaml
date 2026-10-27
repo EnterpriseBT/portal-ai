@@ -80,7 +80,8 @@ oidc:
 # webhook toolpack runtimes call back) both default from ingress.host (https with
 # ingress.tls). Without an ingress, set them here: a missing WEB_APP_URL refuses
 # invitations (#889); a missing PUBLIC_API_BASE_URL only stops webhook tools that
-# stream data in or return large results (#891). The install notes say which.
+# stream data in, or return results too large to send inline (#891). An empty
+# value counts as unset. The install notes say which is missing.
 config: {}
 
 # Secret env → Secret (e.g. ENCRYPTION_KEY, ANTHROPIC_API_KEY,

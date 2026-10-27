@@ -30,11 +30,16 @@ So the installer is told, at install and at startup, which URL is missing and wh
   - "`PUBLIC_API_BASE_URL` isn't set. Webhook tools that stream data in or return large results need it to call back, and will refuse until it's set. Plain webhook tools and the rest of the app don't need it."
   - "`WEB_APP_URL` isn't set. Invitations are refused until it is."
 - **The API warns at startup** (production only), once per unusable setting, with code `PUBLIC_URL_UNCONFIGURED`, the setting's name, its value and the same consequence text. That's the line a Helm or ECS operator finds in the logs.
-- **A webhook tool that needs a callback refuses with a reason.** Before minting a read or write grant in production, if `PUBLIC_API_BASE_URL` isn't a public origin, the tool makes no webhook call. It returns the typed result `{ error: { code: "WEBHOOK_CALLBACK_UNCONFIGURED", message } }`. The message says the tool needs this server to have a public API address (`PUBLIC_API_BASE_URL`), and that it isn't set. The agent relays it.
-  - A plain webhook tool never reaches the check, so it's unaffected.
-  - It's never charged: custom tools cost 0.
+- **A webhook tool that needs a callback says why, and only when it really needs one** (code review). In production without a public `PUBLIC_API_BASE_URL`:
+  - **A `streaming` pull of a `queryHandle`** makes no webhook call. It returns the typed result `{ error: { code: "WEBHOOK_CALLBACK_UNCONFIGURED", message } }`, naming the setting and suggesting inline `rows`, which need no callback.
+  - **A large-result tool** is called without its write grant, since most results fit inline. Only a result over the inline cap (`TOOLPACK_RUNTIME_TOO_LARGE`) becomes `WEBHOOK_CALLBACK_UNCONFIGURED`, saying staging needs the address.
+  - **A plain webhook tool** never reaches the check.
+  - The agent relays the message. Custom tools cost 0, so nothing is charged.
+  - Grant URLs are built on the address with any trailing slash trimmed.
 - **Rejected: refusing to start.** It would block a whole install over a feature it may not use.
 - **Rejected: warning only.** The runtime would still be handed a loopback URL, and fail somewhere the portal can't see.
+- **Only loopback counts as not public** (code review, declined). Private ranges (10.x, 192.168.x) and in-cluster names pass the check. A residency install's webhook runtime can sit on the customer's own network, where such an address is the right one; only loopback is always wrong.
+- **An empty Helm `config` value counts as unset.** The ingress default still applies, and the notes still name it.
 - **One judge for both URLs.** `isLoopback`/`isPublicOrigin` move from `invite-link.util.ts` to a new `public-url.util.ts`, used by the invite check, the webhook check and the startup warnings.
 
 ## Plan — 1 slice
@@ -51,7 +56,7 @@ So the installer is told, at install and at startup, which URL is missing and wh
 **Tests** (`npm run test:unit` / `npm run test:integration`, from each package; `npm run lint:helm`)
 - New: `apps/api/src/__tests__/utils/public-url.util.test.ts`: #889's loopback table via `isPublicOrigin`; a warning per bad setting naming it, its value and its consequence; none for real origins; none outside production.
 - Edit: `apps/api/src/__tests__/tools/webhook.tool.test.ts`: in production with a loopback `PUBLIC_API_BASE_URL`, a `streaming` tool given a `queryHandle` and a `HANDLE_PROD` tool return `WEBHOOK_CALLBACK_UNCONFIGURED` without calling the webhook or minting a token. A plain tool calls its webhook as before. Development is unchanged.
-- Edit: `scripts/check-helm.mjs`: `PUBLIC_API_BASE_URL` renders `https://app.example.com` with a TLS ingress, `http://portal.corp` without TLS, the config value when set, and nothing with no ingress.
+- Edit: `scripts/check-helm.mjs`: it renders the install notes (as a `tpl`'d ConfigMap in a scratch copy, since `helm template` skips NOTES). It asserts the notes for no ingress, a TLS ingress, config-only and an empty config value, and that their consequence sentences are `public-url.util.ts`'s. Also, `PUBLIC_API_BASE_URL` renders `https://app.example.com` with a TLS ingress, `http://portal.corp` without TLS, the config value when set, and nothing with no ingress.
 - Unchanged and still green: `invite-link.util.test.ts`, the seat integration tests.
 
 ## Smoke (manual, against your dev stack)

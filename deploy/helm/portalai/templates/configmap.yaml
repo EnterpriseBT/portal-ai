@@ -21,17 +21,20 @@ data:
   # The public URLs default from the ingress host, where the app and /api
   # share one origin (#889, #891). WEB_APP_URL builds invite links;
   # PUBLIC_API_BASE_URL is where webhook runtimes call back. An explicit
-  # config value wins (and renders below, so it isn't written twice).
+  # config value wins (and renders below, so it isn't written twice); an empty
+  # one counts as unset, so the default still applies.
   {{- $ingressOrigin := "" }}
   {{- if and .Values.ingress.enabled .Values.ingress.host }}
   {{- $ingressOrigin = printf "%s://%s" (ternary "https" "http" .Values.ingress.tls.enabled) .Values.ingress.host }}
   {{- end }}
-  {{- if and $ingressOrigin (not (hasKey .Values.config "WEB_APP_URL")) }}
+  {{- if and $ingressOrigin (not (get .Values.config "WEB_APP_URL")) }}
   WEB_APP_URL: {{ $ingressOrigin | quote }}
   {{- end }}
-  {{- if and $ingressOrigin (not (hasKey .Values.config "PUBLIC_API_BASE_URL")) }}
+  {{- if and $ingressOrigin (not (get .Values.config "PUBLIC_API_BASE_URL")) }}
   PUBLIC_API_BASE_URL: {{ $ingressOrigin | quote }}
   {{- end }}
   {{- range $key, $value := .Values.config }}
+  {{- if not (and (has $key (list "WEB_APP_URL" "PUBLIC_API_BASE_URL")) (empty $value)) }}
   {{ $key }}: {{ $value | quote }}
+  {{- end }}
   {{- end }}

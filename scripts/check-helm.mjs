@@ -18,6 +18,8 @@
  */
 
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -126,6 +128,123 @@ const MIGRATION_USER_ARGS = [
   "--set",
   "postgresql.external.migrationUser=owner",
 ];
+
+// #891: the install notes name a missing public URL in the API's own words.
+// `helm template` doesn't render NOTES.txt, so render it as a ConfigMap
+// through `tpl` in a scratch copy of the chart.
+function renderNotes(args) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "portalai-notes-"));
+  try {
+    const chart = path.join(dir, "chart");
+    fs.cpSync(CHART, chart, { recursive: true });
+    fs.renameSync(
+      path.join(chart, "templates", "NOTES.txt"),
+      path.join(chart, "notes.tpl")
+    );
+    fs.writeFileSync(
+      path.join(chart, "templates", "zz-notes.yaml"),
+      'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: rendered-notes\ndata:\n  notes: |\n{{ tpl (.Files.Get "notes.tpl") . | indent 4 }}\n'
+    );
+    const out = run([
+      "template",
+      "p",
+      chart,
+      ...IMAGE_ARGS,
+      ...args,
+      "--show-only",
+      "templates/zz-notes.yaml",
+    ]);
+    return out.split("notes: |")[1] ?? "";
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The consequence sentences the API logs, from `public-url.util.ts`. */
+function apiConsequences() {
+  const src = fs.readFileSync(
+    path.join(REPO_ROOT, "apps/api/src/utils/public-url.util.ts"),
+    "utf8"
+  );
+  const pick = (key) => {
+    const m = new RegExp(`${key}:\\s*"([^"]+)"`).exec(src);
+    if (!m) throw new Error(`PUBLIC_URL_CONSEQUENCES.${key} not found`);
+    return m[1];
+  };
+  return {
+    WEB_APP_URL: pick("WEB_APP_URL"),
+    PUBLIC_API_BASE_URL: pick("PUBLIC_API_BASE_URL"),
+  };
+}
+
+const flat = (text) => text.replace(/\s+/g, " ");
+const notesSay = (notes, key, consequence) =>
+  flat(notes).includes(`${key} isn't set`) &&
+  flat(notes).includes(consequence);
+
+const notesScenarios = () => {
+  const said = apiConsequences();
+  return [
+    {
+      name: "notes: no ingress, no config",
+      args: [],
+      assertions: [
+        [
+          "names WEB_APP_URL in the API's words",
+          (n) => notesSay(n, "WEB_APP_URL", said.WEB_APP_URL),
+        ],
+        [
+          "names PUBLIC_API_BASE_URL in the API's words",
+          (n) =>
+            notesSay(n, "PUBLIC_API_BASE_URL", said.PUBLIC_API_BASE_URL),
+        ],
+      ],
+    },
+    {
+      name: "notes: TLS ingress",
+      args: [
+        "--set",
+        "ingress.enabled=true",
+        "--set",
+        "ingress.host=app.example.com",
+        "--set",
+        "ingress.tls.enabled=true",
+      ],
+      assertions: [
+        ["names no missing URL", (n) => !flat(n).includes("isn't set")],
+      ],
+    },
+    {
+      name: "notes: only config.PUBLIC_API_BASE_URL",
+      args: ["--set", "config.PUBLIC_API_BASE_URL=https://api.example.org"],
+      assertions: [
+        [
+          "names only WEB_APP_URL",
+          (n) =>
+            flat(n).includes("WEB_APP_URL isn't set") &&
+            !flat(n).includes("PUBLIC_API_BASE_URL isn't set"),
+        ],
+      ],
+    },
+    {
+      name: "notes: ingress + empty config.PUBLIC_API_BASE_URL",
+      args: [
+        "--set",
+        "ingress.enabled=true",
+        "--set",
+        "ingress.host=app.example.com",
+        "--set",
+        "config.PUBLIC_API_BASE_URL=",
+      ],
+      assertions: [
+        [
+          "an empty value isn't 'set': the ingress default applies, so no note",
+          (n) => !flat(n).includes("PUBLIC_API_BASE_URL isn't set"),
+        ],
+      ],
+    },
+  ];
+};
 
 const scenarios = [
   {
@@ -273,6 +392,27 @@ const scenarios = [
       [
         "webhook callbacks default to http on the ingress host",
         (out) => publicApiUrls(out).join() === "http://portal.corp",
+      ],
+    ],
+  },
+  {
+    name: "an empty config URL falls back to the ingress default (#891)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "ingress.enabled=true",
+      "--set",
+      "ingress.host=app.example.com",
+      "--set",
+      "config.PUBLIC_API_BASE_URL=",
+    ],
+    assertions: [
+      [
+        "PUBLIC_API_BASE_URL renders once, from the ingress",
+        (out) => publicApiUrls(out).join() === "http://app.example.com",
       ],
     ],
   },
@@ -550,6 +690,29 @@ function main() {
     }
     for (const [label, predicate] of scenario.assertions) {
       if (predicate(out)) {
+        console.log(`✓ [${scenario.name}] ${label}`);
+      } else {
+        console.error(`✗ [${scenario.name}] ${label}`);
+        failures.push(`${scenario.name}: ${label}`);
+      }
+    }
+  }
+
+  // install notes (#891)
+  for (const scenario of notesScenarios()) {
+    let notes;
+    try {
+      notes = renderNotes(scenario.args);
+    } catch (err) {
+      console.error(
+        `✗ [${scenario.name}] failed to render:\n` +
+          (err.stderr || err.stdout || err.message)
+      );
+      failures.push(`render: ${scenario.name}`);
+      continue;
+    }
+    for (const [label, predicate] of scenario.assertions) {
+      if (predicate(notes)) {
         console.log(`✓ [${scenario.name}] ${label}`);
       } else {
         console.error(`✗ [${scenario.name}] ${label}`);

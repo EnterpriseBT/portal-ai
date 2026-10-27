@@ -69,7 +69,7 @@ describe("publicUrlWarnings (#891)", () => {
     expect(w.setting).toBe("PUBLIC_API_BASE_URL");
     expect(w.value).toBe("http://localhost:3001");
     expect(w.message).toMatch(/PUBLIC_API_BASE_URL/);
-    expect(w.message).toMatch(/stream data in or return large results/);
+    expect(w.message).toMatch(/stream data in, or return results too large/);
     expect(w.message).toMatch(/Plain webhook tools and the rest of the app/);
   });
 

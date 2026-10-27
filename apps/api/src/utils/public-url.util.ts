@@ -15,6 +15,8 @@
  * webhook tool refuses, saying why).
  */
 
+import { environment } from "../environment.js";
+
 export type PublicUrlSetting = "WEB_APP_URL" | "PUBLIC_API_BASE_URL";
 
 /** A hostname as `new URL()` normalizes it (lowercase, IPv4 in dotted
@@ -47,12 +49,27 @@ export function isPublicOrigin(raw: string): boolean {
   );
 }
 
-/** What each setting's absence breaks, in the installer's terms. The same
- *  sentences appear in the Helm NOTES. */
+/** `PUBLIC_API_BASE_URL` without a trailing slash, for building URLs on it. */
+export function publicApiBase(): string {
+  return environment.PUBLIC_API_BASE_URL.replace(/\/+$/, "");
+}
+
+/** Whether a webhook runtime can be handed a callback URL: always outside
+ *  production, where localhost is right; in production, only on a public
+ *  origin (#891). */
+export function callbackAddressAvailable(): boolean {
+  return (
+    environment.NODE_ENV !== "production" ||
+    isPublicOrigin(environment.PUBLIC_API_BASE_URL)
+  );
+}
+
+/** What each setting's absence breaks, in the installer's terms. The Helm
+ *  NOTES carry the same sentences, and `npm run lint:helm` holds them to it. */
 export const PUBLIC_URL_CONSEQUENCES: Record<PublicUrlSetting, string> = {
   WEB_APP_URL: "Invitations are refused until it is.",
   PUBLIC_API_BASE_URL:
-    "Webhook tools that stream data in or return large results need it to call back, and will refuse until it's set. Plain webhook tools and the rest of the app don't need it.",
+    "Webhook tools that stream data in, or return results too large to send inline, need it to call back, and refuse until it's set. Plain webhook tools and the rest of the app don't need it.",
 };
 
 export interface PublicUrlWarning {
