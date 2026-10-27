@@ -310,6 +310,19 @@ describe("ReviewStepUI — keyboard and commit (#789)", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  // #887: a caller that waits for the commit job shows its progress.
+  test("the commit button shows the job's progress while importing", () => {
+    setup({ isCommitting: true, commitProgress: 41.6 });
+    expect(
+      screen.getByRole("button", { name: "Importing… 42%" })
+    ).toBeDisabled();
+  });
+
+  test("the commit button reads Committing… without a progress value", () => {
+    setup({ isCommitting: true });
+    expect(screen.getByRole("button", { name: "Committing…" })).toBeDisabled();
+  });
+
   test("Back to regions is disabled while committing", () => {
     setup({ isCommitting: true });
     expect(

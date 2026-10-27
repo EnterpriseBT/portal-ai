@@ -2,10 +2,12 @@ import { jest } from "@jest/globals";
 
 import type { JobCompletionResult } from "../utils/job-stream.util";
 
+type Connect = (path: string) => Promise<EventSource>;
+
 const awaitJobCompletionMock =
   jest.fn<
     (
-      connect: (path: string) => Promise<EventSource>,
+      connect: Connect,
       jobId: string,
       options?: { onProgress?: (percent: number) => void }
     ) => Promise<JobCompletionResult>
@@ -25,61 +27,151 @@ jest.unstable_mockModule("../utils/job-stream.util", () => ({
   JobFailedError,
 }));
 
-const { awaitCommitJob, COMMIT_FAILED_CODE } =
+const { commitAndAwait, COMMIT_FAILED_CODE } =
   await import("../utils/commit-job.util");
 const { ApiError } = await import("../utils/api.util");
 
-const connect = jest.fn<(path: string) => Promise<EventSource>>();
+const DRIFT = "Drift at 'warn' severity — region drift knobs require halt.";
 
-describe("awaitCommitJob (#887)", () => {
+type FetchJob = (
+  id: string
+) => Promise<{ status: string; error: string | null }>;
+
+function deps(overrides: Partial<Parameters<typeof commitAndAwait>[0]> = {}) {
+  return {
+    enqueue: jest
+      .fn<() => Promise<{ jobId: string; connectorInstanceId: string }>>()
+      .mockResolvedValue({ jobId: "job-1", connectorInstanceId: "ci-1" }),
+    connect: jest.fn<Connect>(),
+    fetchJob: jest.fn<FetchJob>().mockRejectedValue(new Error("not expected")),
+    connectorExists: jest
+      .fn<(id: string) => Promise<boolean>>()
+      .mockResolvedValue(false),
+    onLanded: jest.fn(),
+    pollIntervalMs: 0,
+    ...overrides,
+  };
+}
+
+describe("commitAndAwait (#887)", () => {
   beforeEach(() => awaitJobCompletionMock.mockReset());
 
-  it("resolves when the commit job completes", async () => {
-    awaitJobCompletionMock.mockResolvedValue({ result: { ok: true } });
-    await expect(awaitCommitJob(connect, "job-1")).resolves.toBeUndefined();
-    expect(awaitJobCompletionMock).toHaveBeenCalledWith(connect, "job-1", {
-      onProgress: undefined,
+  it("doesn't settle before the job does, then returns the new connector", async () => {
+    let finish!: (r: JobCompletionResult) => void;
+    awaitJobCompletionMock.mockReturnValue(
+      new Promise((resolve) => (finish = resolve))
+    );
+    const d = deps();
+    let settled = false;
+    const done = commitAndAwait(d).then((r) => {
+      settled = true;
+      return r;
     });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(false);
+    finish({ result: null });
+    await expect(done).resolves.toEqual({ connectorInstanceId: "ci-1" });
+    expect(d.onLanded).toHaveBeenCalledTimes(1);
   });
 
-  it("turns a failed job into an ApiError carrying the job's own message", async () => {
+  it("throws the job's error when it failed and the rollback removed the connector", async () => {
     awaitJobCompletionMock.mockRejectedValue(
-      new JobFailedError(
-        "Drift at 'warn' severity — region drift knobs require halt.",
-        "failed"
-      )
+      new JobFailedError(DRIFT, "failed")
     );
-    const err = await awaitCommitJob(connect, "job-1").catch((e) => e);
+    const d = deps();
+    const err = await commitAndAwait(d).catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(COMMIT_FAILED_CODE);
     expect(COMMIT_FAILED_CODE).toBe("LAYOUT_PLAN_COMMIT_FAILED");
-    expect(err.message).toBe(
-      "Drift at 'warn' severity — region drift knobs require halt."
-    );
+    expect(err.message).toBe(DRIFT);
+    expect(d.connectorExists).toHaveBeenCalledWith("ci-1");
+    expect(d.onLanded).not.toHaveBeenCalled();
   });
 
-  it("reports a cancelled job the same way", async () => {
+  it("lands on the connector when a failed or cancelled job left it in place", async () => {
     awaitJobCompletionMock.mockRejectedValue(
       new JobFailedError("Job cancelled", "cancelled")
     );
-    const err = await awaitCommitJob(connect, "job-1").catch((e) => e);
+    const d = deps({
+      connectorExists: jest
+        .fn<(id: string) => Promise<boolean>>()
+        .mockResolvedValue(true),
+    });
+    await expect(commitAndAwait(d)).resolves.toEqual({
+      connectorInstanceId: "ci-1",
+    });
+    expect(d.onLanded).toHaveBeenCalledTimes(1);
+  });
+
+  it("lands on the connector when it can't tell whether the connector survived", async () => {
+    awaitJobCompletionMock.mockRejectedValue(
+      new JobFailedError(DRIFT, "failed")
+    );
+    const d = deps({
+      connectorExists: jest
+        .fn<(id: string) => Promise<boolean>>()
+        .mockRejectedValue(new Error("network")),
+    });
+    await expect(commitAndAwait(d)).resolves.toEqual({
+      connectorInstanceId: "ci-1",
+    });
+  });
+
+  it("polls the job when the stream drops, and reports its real outcome", async () => {
+    awaitJobCompletionMock.mockRejectedValue(
+      new Error("SSE connection error while waiting for job")
+    );
+    const fetchJob = jest
+      .fn<FetchJob>()
+      .mockResolvedValueOnce({ status: "active", error: null })
+      .mockResolvedValueOnce({ status: "failed", error: DRIFT });
+    const d = deps({ fetchJob });
+    const err = await commitAndAwait(d).catch((e) => e);
+    expect(fetchJob).toHaveBeenCalledTimes(2);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.code).toBe(COMMIT_FAILED_CODE);
-    expect(err.message).toBe("Job cancelled");
+    expect(err.message).toBe(DRIFT);
   });
 
-  it("passes an SSE connection error through unchanged: the job's outcome is unknown", async () => {
-    const sseError = new Error("SSE connection error while waiting for job");
-    awaitJobCompletionMock.mockRejectedValue(sseError);
-    await expect(awaitCommitJob(connect, "job-1")).rejects.toBe(sseError);
+  it("returns the connector when polling finds the job completed", async () => {
+    awaitJobCompletionMock.mockRejectedValue(new Error("SSE dropped"));
+    const d = deps({
+      fetchJob: jest
+        .fn<FetchJob>()
+        .mockResolvedValue({ status: "completed", error: null }),
+    });
+    await expect(commitAndAwait(d)).resolves.toEqual({
+      connectorInstanceId: "ci-1",
+    });
+    expect(d.onLanded).toHaveBeenCalledTimes(1);
   });
 
-  it("forwards progress", async () => {
-    const onProgress = jest.fn();
+  it("falls back to the connector page when the job can't be read: never invites a duplicate commit", async () => {
+    awaitJobCompletionMock.mockRejectedValue(new Error("SSE dropped"));
+    const d = deps({ maxPollFailures: 3 });
+    await expect(commitAndAwait(d)).resolves.toEqual({
+      connectorInstanceId: "ci-1",
+    });
+    expect(d.fetchJob).toHaveBeenCalledTimes(3);
+  });
+
+  it("forwards progress from the job stream", async () => {
     awaitJobCompletionMock.mockResolvedValue({ result: null });
-    await awaitCommitJob(connect, "job-1", { onProgress });
-    expect(awaitJobCompletionMock).toHaveBeenCalledWith(connect, "job-1", {
+    const onProgress = jest.fn();
+    const d = deps({ onProgress });
+    await commitAndAwait(d);
+    expect(awaitJobCompletionMock).toHaveBeenCalledWith(d.connect, "job-1", {
       onProgress,
     });
+  });
+
+  it("surfaces an enqueue failure as is, with nothing to wait for", async () => {
+    const refusal = new ApiError("Locked", "ENTITY_LOCKED_BY_JOB", 409);
+    const d = deps({
+      enqueue: jest
+        .fn<() => Promise<{ jobId: string; connectorInstanceId: string }>>()
+        .mockRejectedValue(refusal),
+    });
+    await expect(commitAndAwait(d)).rejects.toBe(refusal);
+    expect(awaitJobCompletionMock).not.toHaveBeenCalled();
   });
 });

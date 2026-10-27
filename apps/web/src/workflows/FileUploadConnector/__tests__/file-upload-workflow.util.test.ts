@@ -584,6 +584,51 @@ describe("useFileUploadWorkflow — onCommit", () => {
     expect(result.current.isCommitting).toBe(false);
   });
 
+  // #887: the commit job's progress reaches the Review step while it runs.
+  test("exposes the commit job's progress while committing, and clears it after", async () => {
+    let finish!: (v: { connectorInstanceId: string }) => void;
+    const runCommit = jest
+      .fn<FileUploadWorkflowCallbacks["runCommit"]>()
+      .mockImplementation(
+        (_plan, options) =>
+          new Promise((resolve) => {
+            options?.onProgress?.(42);
+            finish = resolve;
+          })
+      );
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(makeCallbacks({ runCommit }))
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+      })
+    );
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+    expect(result.current.commitProgress).toBeNull();
+
+    let commit!: Promise<void>;
+    act(() => {
+      commit = result.current.onCommit();
+    });
+    await waitFor(() => expect(result.current.commitProgress).toBe(42));
+    expect(result.current.isCommitting).toBe(true);
+
+    await act(async () => {
+      finish({ connectorInstanceId: "ci_123" });
+      await commit;
+    });
+    expect(result.current.commitProgress).toBeNull();
+    expect(result.current.isCommitting).toBe(false);
+  });
+
   // #887: a failed commit job keeps the user in Review, with what they drew,
   // and a second Commit retries; it never navigates to the instance the
   // failed job's rollback deleted.
@@ -760,7 +805,9 @@ describe("useFileUploadWorkflow — atomic commit (deferred persistence)", () =>
       await result.current.onCommit();
     });
 
-    expect(callbacks.runCommit).toHaveBeenCalledWith(STUB_PLAN);
+    expect(callbacks.runCommit).toHaveBeenCalledWith(STUB_PLAN, {
+      onProgress: expect.any(Function),
+    });
   });
 
   test("onCommit is a no-op when no plan has been produced yet", async () => {

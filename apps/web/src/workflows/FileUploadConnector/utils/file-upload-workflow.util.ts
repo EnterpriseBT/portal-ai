@@ -14,6 +14,7 @@ import {
   toServerErrorFromUnknown,
   useSpreadsheetWorkflow,
 } from "../../_shared/spreadsheet/use-spreadsheet-workflow.util";
+import type { SpreadsheetWorkflowCallbacks } from "../../_shared/spreadsheet/use-spreadsheet-workflow.util";
 import {
   MAX_UPLOAD_FILE_SIZE_BYTES,
   MAX_UPLOAD_FILE_SIZE_LABEL,
@@ -82,7 +83,7 @@ export interface FileUploadWorkflowCallbacks {
     plan: LayoutPlan;
     overallConfidence: number;
   }>;
-  runCommit: (plan: LayoutPlan) => Promise<{ connectorInstanceId: string }>;
+  runCommit: SpreadsheetWorkflowCallbacks["runCommit"];
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 
@@ -337,6 +338,7 @@ export function useFileUploadWorkflow(
     serverError: core.serverError,
     isInterpreting: core.isInterpreting,
     isCommitting: core.isCommitting,
+    commitProgress: core.commitProgress,
     plan: core.plan,
     overallConfidence: core.overallConfidence,
     // File-upload stage

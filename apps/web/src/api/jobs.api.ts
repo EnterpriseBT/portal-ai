@@ -33,6 +33,15 @@ export const jobs = {
       options
     ),
 
+  /** Imperative read by id: a job's status when its event stream has
+   *  dropped (#887). */
+  fetch: () =>
+    useAuthMutation<JobGetResponsePayload, { id: string }>({
+      url: ({ id }) => `/api/jobs/${encodeURIComponent(id)}`,
+      method: "GET",
+      body: () => undefined,
+    }),
+
   cancel: (id: string) =>
     useAuthMutation<JobCancelResponsePayload, void>({
       url: `/api/jobs/${encodeURIComponent(id)}/cancel`,

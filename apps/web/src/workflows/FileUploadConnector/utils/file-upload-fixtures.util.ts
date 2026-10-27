@@ -67,6 +67,8 @@ export interface FileUploadWorkflowState {
   serverError: ServerError | null;
   isInterpreting: boolean;
   isCommitting: boolean;
+  /** The commit job's progress (0–100) while it runs; null otherwise (#887). */
+  commitProgress: number | null;
   /**
    * Full `LayoutPlan` returned from the interpret call — held in memory so
    * the commit action can send it to the atomic-commit endpoint. Null until
@@ -188,6 +190,7 @@ export const IDLE_STATE: FileUploadWorkflowState = {
   serverError: null,
   isInterpreting: false,
   isCommitting: false,
+  commitProgress: null,
   plan: null,
   uploadSessionId: null,
 };
