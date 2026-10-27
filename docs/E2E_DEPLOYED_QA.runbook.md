@@ -50,7 +50,7 @@ Tenants: **app-dev** is `portalsai-staging.us.auth0.com`, **prod** is `portalsai
    # prod: PROD_VITE_AUTH0_QA_CONNECTION
    ```
    The chart/ECS web image never sets it, so customer installs have no QA sign-in.
-3. **Deploy** (a push to `main`, or a release for prod), so the web build carries the QA sign-in.
+3. **Deploy** (a push to `main`, or a release for prod), so the web build carries the QA sign-in. The first such deploy's `verify-login` goes red reading `qa-org-id`, because the QA org doesn't exist yet. That's expected: provision the org (next section), set `QA_ORG_ID`, then re-run the failed `verify-login` job.
 
 ## Per environment: the QA org
 
