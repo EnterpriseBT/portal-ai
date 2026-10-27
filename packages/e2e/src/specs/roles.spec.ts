@@ -54,6 +54,8 @@ async function openSettings(page: Page) {
   return {
     org: body.payload.organization,
     authorization: res.request().headers()["authorization"],
+    // The API the app itself called, which E2E_BASE_URL may have repointed.
+    api: new URL(res.url()).origin,
   };
 }
 
@@ -97,7 +99,6 @@ test("owner, admin and member each get their role's split", async ({
 }) => {
   const target = resolveTarget();
   test.skip(target.deployed, "the role split runs on the ephemeral stack only");
-  const api = target.apiBaseUrl;
   const ownerConsole = collectConsoleErrors(page);
 
   const owner = await openSettings(page);
@@ -136,7 +137,7 @@ test("owner, admin and member each get their role's split", async ({
       try {
         expect(session.joined).toBe(owner.org.name);
 
-        const { org, authorization } = await openSettings(session.page);
+        const { org, authorization, api } = await openSettings(session.page);
         expect(org.id, `${role}'s current org`).toBe(owner.org.id);
 
         // No personal org was provisioned on the way in (#884).

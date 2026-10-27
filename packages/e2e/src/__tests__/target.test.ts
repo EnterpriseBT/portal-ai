@@ -139,13 +139,29 @@ describe("resolveCredentials", () => {
     expect((err as Error).message).not.toMatch(/u@x\.test/);
   });
 
-  it("prefers env vars on a deployed target (the CI deploy job exports them)", async () => {
+  it("prefers the QA env vars on a deployed target (the CI deploy job exports them)", async () => {
     await expect(
       resolveCredentials(appDev, {
-        env: { E2E_AUTH0_USERNAME: "qa@x.test", E2E_AUTH0_PASSWORD: "pw" },
+        env: {
+          E2E_QA_AUTH0_USERNAME: "qa@x.test",
+          E2E_QA_AUTH0_PASSWORD: "pw",
+        },
         getSecret: noSecrets,
       })
     ).resolves.toEqual({ username: "qa@x.test", password: "pw" });
+  });
+
+  // .env holds the local dev-tenant users and every script loads it; their
+  // password must never be typed into a deployed tenant's login.
+  it("never uses the local E2E_AUTH0_* pair on a deployed target", async () => {
+    const getSecret = async (_def: unknown, name: string) =>
+      name === "qa-auth0-username" ? "qa@x.test" : "qa-pw";
+    await expect(
+      resolveCredentials(appDev, {
+        env: { E2E_AUTH0_USERNAME: "dev@x.test", E2E_AUTH0_PASSWORD: "dev-pw" },
+        getSecret,
+      })
+    ).resolves.toEqual({ username: "qa@x.test", password: "qa-pw" });
   });
 
   it("otherwise reads the QA identity from the env's Secrets Manager", async () => {

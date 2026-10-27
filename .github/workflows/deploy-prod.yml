@@ -631,10 +631,11 @@ jobs:
   # if that fails (#873's login loop shipped silently). Nothing rolls back;
   # that stays a human decision.
   #
-  # The run records no trace and no HTML report for a deployed target
-  # (packages/e2e/src/lib/playwright-config.ts): a trace would capture the
-  # QA password and a live token, and failure artifacts are uploaded.
+  # The steps live in .github/actions/verify-login, shared with the other
+  # deploy workflow. A failure uploads screenshots and video only.
   verify-login:
+    # Plain `needs` success, like deploy-frontend: nothing upstream here is
+    # deliberately skipped, so dev's `!cancelled()` override isn't needed.
     needs: [deploy-frontend, deploy-backend]
     runs-on: ubuntu-latest
     environment: prod
@@ -649,18 +650,8 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
-      - name: Playwright version
-        id: pw
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
-
-      - name: Install Chromium
-        run: npm run --workspace @portalai/e2e playwright:install
+      - name: Playwright browsers
+        uses: ./.github/actions/playwright-browsers
 
       # The e2e package imports @portalai/cli-env (the env registry).
       - name: Build workspace dependencies
@@ -676,35 +667,10 @@ jobs:
           role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Otherwise the check could sign in to the previous bundle.
-      - name: Wait for the CloudFront invalidation
-        run: |
-          aws cloudfront wait invalidation-completed \
-            --distribution-id ${{ needs.deploy-frontend.outputs.dist_id }} \
-            --id ${{ needs.deploy-frontend.outputs.invalidation_id }}
-
-      # The QA credentials are read, masked and used in one step, so they never
-      # reach $GITHUB_ENV or another step's environment.
-      - name: Sign in as the QA owner
-        run: |
-          read_secret() {
-            aws secretsmanager get-secret-value --secret-id "$1" \
-              --query SecretString --output text
-          }
-          E2E_AUTH0_USERNAME=$(read_secret portalai/prod/qa-auth0-username)
-          E2E_AUTH0_PASSWORD=$(read_secret portalai/prod/qa-auth0-password)
-          echo "::add-mask::$E2E_AUTH0_USERNAME"
-          echo "::add-mask::$E2E_AUTH0_PASSWORD"
-          export E2E_AUTH0_USERNAME E2E_AUTH0_PASSWORD
-          E2E_TARGET=prod CI=1 \
-            npm run --workspace @portalai/e2e test:e2e -- --project=login
-
-      # Screenshots and video only: no trace or report exists for a deployed
-      # target, and the session file is never under test-results/.
-      - name: Upload artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Verify login
+        uses: ./.github/actions/verify-login
         with:
-          name: verify-login-prod-${{ github.run_id }}
-          path: packages/e2e/test-results/prod/
-          retention-days: 14
+          target: prod
+          secrets-prefix: prod
+          distribution-id: ${{ needs.deploy-frontend.outputs.dist_id }}
+          invalidation-id: ${{ needs.deploy-frontend.outputs.invalidation_id }}

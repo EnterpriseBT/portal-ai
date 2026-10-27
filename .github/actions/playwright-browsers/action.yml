@@ -1,0 +1,21 @@
+name: "Playwright browsers"
+description: "Installs the Chromium build @portalai/e2e's pinned @playwright/test launches, cached by that version (#489)"
+
+runs:
+  using: "composite"
+  steps:
+    # Keyed on the pinned @playwright/test version: a bump re-installs.
+    - name: Playwright version
+      id: pw
+      shell: bash
+      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+    - name: Install Chromium
+      shell: bash
+      run: npm run --workspace @portalai/e2e playwright:install

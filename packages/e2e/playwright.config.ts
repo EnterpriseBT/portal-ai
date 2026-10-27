@@ -1,6 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
-import { buildConfig } from "./src/lib/playwright-config.js";
+import {
+  artifactsArePublishable,
+  buildConfig,
+} from "./src/lib/playwright-config.js";
 import { resolveTarget } from "./src/lib/target.js";
 
 /**
@@ -21,4 +24,11 @@ import { resolveTarget } from "./src/lib/target.js";
  * Dockerfile RUN line and rebuilding the container (CI installs the
  * `@playwright/test` browser itself, cached by version).
  */
-export default defineConfig(buildConfig(resolveTarget()));
+const target = resolveTarget();
+// Playwright's failure snapshot (`error-context.md`) copies every input's
+// value, a password field's too, so a run whose artifacts may be published
+// never writes one. Set here, before the workers fork, so they inherit it.
+if (artifactsArePublishable(target))
+  process.env.PLAYWRIGHT_NO_COPY_PROMPT = "1";
+
+export default defineConfig(buildConfig(target));

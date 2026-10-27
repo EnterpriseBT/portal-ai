@@ -1,12 +1,17 @@
 /**
  * The Playwright config as a pure function of the target (#489), so the
- * deployed-target rules are unit-testable.
+ * artifact rules are unit-testable.
  *
- * A deployed run (the post-deploy login check) records no trace and writes no
- * HTML report: a trace captures typed values and request headers, which for a
- * deployed target means the QA password and a live token, and the failure
- * artifacts are uploaded to CI. Screenshots and video stay; the password
- * field renders masked.
+ * A run whose artifacts can be published (any CI run: this repo is public, so
+ * its workflow artifacts are downloadable by anyone; and any deployed target)
+ * records nothing that holds a typed value:
+ * - no trace: it captures typed values, DOM snapshots and request headers;
+ * - no HTML report: its step titles read `Fill "<value>"`, the password
+ *   included;
+ * - no `error-context.md`: Playwright's failure snapshot of the page copies
+ *   every input's value, a password field's too (`PLAYWRIGHT_NO_COPY_PROMPT`,
+ *   set by playwright.config.ts).
+ * Screenshots and video stay; a password field renders masked in both.
  */
 
 import type { PlaywrightTestConfig } from "@playwright/test";
@@ -17,13 +22,37 @@ import type { E2eTarget } from "./target.js";
  *  test-results/, which CI uploads. */
 export const SESSION_STORAGE_STATE = "./.auth/ci.storageState.json";
 
-export function buildConfig(target: E2eTarget): PlaywrightTestConfig {
+/** The whole sign-in, Auth0 round trip included, fits well inside this; the
+ *  default 30s could time a slow Auth0 out mid-form. */
+const TEST_TIMEOUT_MS = 180_000;
+
+/** Whether this run's artifacts may end up somewhere public. */
+export function artifactsArePublishable(
+  target: E2eTarget,
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  return target.deployed || !!env.CI;
+}
+
+export function buildConfig(
+  target: E2eTarget,
+  env: NodeJS.ProcessEnv = process.env
+): PlaywrightTestConfig {
+  const publishable = artifactsArePublishable(target, env);
+  const login = {
+    // Signs in itself, in a fresh context, against any target. A flake here
+    // must be visible, so it never retries.
+    name: "login",
+    testMatch: /specs\/login\.spec\.ts$/,
+    retries: 0,
+  };
   return {
     testDir: "./src",
     outputDir: `./test-results/${target.name}`,
-    forbidOnly: !!process.env.CI,
+    forbidOnly: !!env.CI,
     workers: 1,
-    reporter: target.deployed
+    timeout: TEST_TIMEOUT_MS,
+    reporter: publishable
       ? [["list"]]
       : [
           ["list"],
@@ -31,41 +60,40 @@ export function buildConfig(target: E2eTarget): PlaywrightTestConfig {
         ],
     use: {
       baseURL: target.baseUrl,
-      trace: target.deployed ? "off" : "on-first-retry",
+      trace: publishable ? "off" : "on-first-retry",
       screenshot: "only-on-failure",
       video: "retain-on-failure",
       headless: true,
     },
-    projects: [
-      {
-        name: "setup",
-        testMatch: /setup\/session\.setup\.ts$/,
-        retries: 0,
-      },
-      {
-        name: "core-loop",
-        testMatch: /specs\/core-loop\.spec\.ts$/,
-        dependencies: ["setup"],
-        retries: 1,
-        use: { storageState: SESSION_STORAGE_STATE },
-      },
-      {
-        // Signs in itself, in a fresh context, against any target. A flake
-        // here must be visible, so it never retries.
-        name: "login",
-        testMatch: /specs\/login\.spec\.ts$/,
-        retries: 0,
-      },
-      {
-        // The owner invites an admin and a member into the walk's org, and
-        // each role's split is checked. An accepted invite can't be replayed
-        // on the same database, so a retry would fail for the wrong reason.
-        name: "roles",
-        testMatch: /specs\/roles\.spec\.ts$/,
-        dependencies: ["setup"],
-        retries: 0,
-        use: { storageState: SESSION_STORAGE_STATE },
-      },
-    ],
+    // A deployed target runs the login check alone: the other projects
+    // create data, and only the ephemeral stack is theirs to write to.
+    projects: target.deployed
+      ? [login]
+      : [
+          {
+            name: "setup",
+            testMatch: /setup\/session\.setup\.ts$/,
+            retries: 0,
+          },
+          {
+            name: "core-loop",
+            testMatch: /specs\/core-loop\.spec\.ts$/,
+            dependencies: ["setup"],
+            retries: 1,
+            use: { storageState: SESSION_STORAGE_STATE },
+          },
+          login,
+          {
+            // The owner invites an admin and a member into the walk's org,
+            // and each role's split is checked. An accepted invite can't be
+            // replayed on the same database, so a retry would fail for the
+            // wrong reason.
+            name: "roles",
+            testMatch: /specs\/roles\.spec\.ts$/,
+            dependencies: ["setup"],
+            retries: 0,
+            use: { storageState: SESSION_STORAGE_STATE },
+          },
+        ],
   };
 }

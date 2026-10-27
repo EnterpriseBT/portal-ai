@@ -59,8 +59,12 @@ export async function signIn(page: Page, opts: SignInOptions): Promise<void> {
     });
     await page.getByTestId(entry.testId).click({ timeout: 15_000 });
 
+    // Leaving the app is the signal that the affordance reached Auth0. A path
+    // match would already be true on the app's own /login.
+    const origin = new URL(baseUrl).origin;
+    await page.waitForURL((url) => url.origin !== origin, { timeout: 30_000 });
+
     // Auth0 New Universal Login (identifier-first OR combined) — handle both.
-    await page.waitForURL(/\/(u\/login|login|authorize)/, { timeout: 30_000 });
     await page
       .locator('input[name="username"], input#username')
       .first()
@@ -85,7 +89,6 @@ export async function signIn(page: Page, opts: SignInOptions): Promise<void> {
 
     // App-DOM-agnostic success signal: back on the app origin AND
     // auth0-spa-js has written its localStorage cache after the callback.
-    const origin = new URL(baseUrl).origin;
     await page.waitForURL((url) => url.origin === origin, { timeout: 45_000 });
     await page.waitForFunction(
       () =>

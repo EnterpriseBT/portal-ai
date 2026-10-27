@@ -25,7 +25,8 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
 10. **Q5 fork PRs:** `e2e-test.yml` skips with a notice when `E2E_CI_AUTH0_PASSWORD` is empty.
 11. **Q6 metrics skew:** recorded in the runbook only.
 12. **Secrets hygiene:**
-    - deployed targets run with `trace: "off"`, no HTML report and no `storageState` written to the artifact dir;
+    - **this repo is public, so every CI artifact is public.** A run whose artifacts can be published (any CI run, and any deployed target) records no trace, no HTML report (its step titles read `Fill "<password>"`) and no page snapshot (`error-context.md` copies input values; `PLAYWRIGHT_NO_COPY_PROMPT=1`). Uploads are screenshots, video and the stack logs only, never anything else under `test-results/`, and no `storageState` is written there (decision 15);
+    - a deployed target reads only `E2E_QA_AUTH0_*` or its Secrets Manager entries, never the local `E2E_AUTH0_*` pair that `.env` holds, so a dev-tenant password is never typed into another tenant;
     - per-env state files are mode `0600` under the git-ignored `.auth/`;
     - QA password rotation invalidates every captured state.
 13. **Fail modes:**
@@ -39,6 +40,16 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
     - **Deployed** envs get two more QA users on the same QA connection, so the MFA exemption by connection covers them too.
     - **The probes are the permission split, not a re-test of RBAC:** a member doesn't see Members and is refused an invite; an admin sees Members but no Delete organization and is refused the delete; the owner sees both. Each hidden affordance is paired with its server refusal (#684: hiding is never the boundary).
     - **`verify-login` stays owner-only.** It checks that login works, and one identity proves that.
+15. **Review fixes (2026-10-27).** The security review found that the CI and deployed artifacts could carry a typed password. The HTML report's step titles hold it, and Playwright's `error-context.md` page snapshot copies input values. The repo is public, so its artifacts are too. Hence decision 12's first bullet. The code review's fixes:
+    - the deployed-only credential names (decision 12);
+    - a deployed config that runs only `login`;
+    - turbo's `test:e2e` passing the run's env through and building its dependencies;
+    - the CI gate naming every missing variable;
+    - the sign-in waiting to *leave* the app rather than for a path that `/login` already matches;
+    - the setup session file at 0600;
+    - the specs probing the API the app actually called;
+    - `e2e-stack.sh up` stopping what it started when it fails;
+    - the shared composite actions.
 
 ## Scope
 
@@ -101,7 +112,7 @@ withQaConnection: () => void;
 
 ### `cli-env` — web URL
 
-**`packages/cli-env/src/registry.ts`**: `EnvironmentDefinitionSchema` gains `webBaseUrl: z.url().optional()`. It's optional so existing `~/.portalai/environments.json` overrides still parse. The built-ins become:
+**`packages/cli-env/src/registry.ts`**: `EnvironmentDefinitionSchema` gains `webBaseUrl: z.url().optional()`, set on the built-ins only. An override can't declare one, since the harness targets only the built-ins, and existing override files (which have none) still parse. The built-ins become:
 - `local`: `http://localhost:3000`
 - `app-dev`: `https://app-dev.portalsai.io`
 - `prod`: `https://app.portalsai.io`
@@ -172,11 +183,16 @@ export type E2eIdentity = "owner" | "admin" | "member"; // deployed identities; 
 | `login` | `login.spec.ts` | none (fresh context) | 0 | signs in itself; runs against any target |
 | `roles` | `roles.spec.ts` | `.auth/ci.storageState.json` (owner) | 0 | `dependencies: ["setup"]`; local target only; signs the admin and member in itself in fresh contexts |
 
-Settings that switch on `resolveTarget().deployed`:
-- `trace` is `"on-first-retry"` locally and `"off"` when deployed;
-- `screenshot` is `"only-on-failure"` and `video` is `"retain-on-failure"` in both cases;
-- the `reporter` is `[["list"], ["html", { open: "never" }]]` locally and `[["list"]]` when deployed;
-- `outputDir` is `test-results/<target>/`.
+Settings that switch on `artifactsArePublishable(target, env)` (deployed, or `CI` set):
+- `trace` is `"on-first-retry"` for a local, non-CI run and `"off"` otherwise;
+- the `reporter` is `[["list"], ["html", { open: "never" }]]` for a local, non-CI run and `[["list"]]` otherwise;
+- `playwright.config.ts` sets `PLAYWRIGHT_NO_COPY_PROMPT=1` before the workers fork, so no failure writes a page snapshot.
+
+Other settings:
+- `screenshot` is `"only-on-failure"` and `video` is `"retain-on-failure"` in every case;
+- `outputDir` is `test-results/<target>/`;
+- `timeout` is 180s, so a slow Auth0 round trip fails at a named wait rather than at the default 30s mid-form;
+- a deployed target's config has **only** the `login` project, since the others create data.
 
 **`src/specs/core-loop.spec.ts`**: one serial `describe` against a freshly provisioned org.
 1. `/` renders Dashboard.
@@ -245,15 +261,15 @@ The web is a production build served by `vite preview` on `:3000`, same-origin t
 
 ### Workflow — `.github/workflows/e2e-test.yml` (new)
 
-- **Triggers:** `pull_request`, plus `push` to non-`main` branches, matching the other suites. Concurrency group `"e2e-test-${{ github.ref }}"` with `cancel-in-progress: true` (the literal leads, per `lint:ci-cache` rule 4).
+- **Triggers:** `push` to non-`main` branches only, so fork code never runs with these secrets. Concurrency group `"e2e-test-${{ github.ref }}"` with `cancel-in-progress: true` (the literal leads, per `lint:ci-cache` rule 4).
 - **Job:** `E2E Tests`, not required. Steps:
   1. Checkout, then `./.github/actions/setup`. Turbo env is carried, per rule 1.
-  2. If `secrets.E2E_CI_AUTH0_PASSWORD` is empty → emit a `::notice::` and exit 0.
-  3. Restore `~/.cache/ms-playwright`, keyed on `@playwright/test` version and OS, then `npx playwright install --with-deps chromium`. The install is a no-op on a cache hit except for deps.
+  2. If any of the CI users' six variables, `E2E_QA_CONNECTION` or the dev tenant's five Auth0 settings is empty → a `::notice::` naming them, and every later step is skipped.
+  3. `./.github/actions/playwright-browsers` (shared with `verify-login`): restore `~/.cache/ms-playwright`, keyed on `@playwright/test` version and OS, then install Chromium.
   4–7. `packages/e2e/scripts/e2e-stack.sh up`, with `E2E_QA_CONNECTION` and the dev-tenant `AUTH0_*` / `VITE_AUTH0_*` from secrets. It boots compose (`postgres-test`, `redis`, `s3mock`), migrates and seeds a fresh database, starts the stub, builds and starts the API, then builds and previews the web, waiting on each.
      The dev affordance requires `import.meta.env.DEV`, which a preview build strips, so this run signs in via the **QA path**: the build sets `VITE_AUTH0_QA_CONNECTION` (from `E2E_QA_CONNECTION`) to the CI user's connection, and the `setup` project uses `via: "qa"`. That also exercises the same code the deployed check uses.
   8. `npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login --project=roles` with `E2E_TARGET=local`, `E2E_SIGN_IN_VIA=qa`, the CI owner's creds in `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD`, the admin's and member's in `E2E_AUTH0_{USERNAME,PASSWORD}_{ADMIN,MEMBER}` (from `E2E_CI_AUTH0_{USERNAME,PASSWORD}_{ADMIN,MEMBER}`), and `CI=1`. Step 2's skip check also requires the two role passwords, so a partial secret set skips with a notice rather than failing `roles` halfway.
-  9. `if: failure()`: upload `packages/e2e/test-results/` and `playwright-report/` (14-day retention).
+  9. `if: failure()`: upload `test-results/stack/` (the stack logs) and `test-results/local/**/*.{png,webm}` (14-day retention). Nothing else.
   10. `if: always()`: `docker compose --profile e2e down -v`.
 
 ### Deploy workflows — `verify-login`
@@ -271,8 +287,9 @@ verify-login:
   1. checkout + setup + Chromium (same cache as `e2e-test.yml`), then `npm run build -- --filter=@portalai/e2e^...` with the Turbo env (the e2e package imports `@portalai/cli-env`'s built output);
   2. configure AWS (the deploy role, which already holds `cloudfront:GetInvalidation` and `GetSecretValue` on `portalai/<env>/*`);
   3. `aws cloudfront wait invalidation-completed --distribution-id ${{ needs.deploy-frontend.outputs.dist_id }} --id ${{ needs.deploy-frontend.outputs.invalidation_id }}`;
-  4. in **one step**: read `portalai/<env>/qa-auth0-{username,password}` with `aws secretsmanager get-secret-value`, `::add-mask::` both, export them as `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD` for that step only (never `$GITHUB_ENV`), and run `test:e2e -- --project=login` with `E2E_TARGET=app-dev|prod`;
-  5. `if: failure()`: upload `packages/e2e/test-results/<target>/` (screenshots + video only).
+  4. in **one step**: read `portalai/<env>/qa-auth0-{username,password}` with `aws secretsmanager get-secret-value`, `::add-mask::` both, export them as `E2E_QA_AUTH0_USERNAME` / `E2E_QA_AUTH0_PASSWORD` for that step only (never `$GITHUB_ENV`), and run `test:e2e -- --project=login` with `E2E_TARGET=app-dev|prod` and `PLAYWRIGHT_NO_COPY_PROMPT=1`;
+  5. `if: failure()`: upload `packages/e2e/test-results/<target>/**/*.{png,webm}` only.
+- Steps 3–5 are the composite `./.github/actions/verify-login` (inputs `target`, `secrets-prefix`, `distribution-id`, `invalidation-id`), shared by both deploy workflows; each job runs checkout, setup, `playwright-browsers`, the dependency build and its own AWS credentials before it.
 - `tag-deploy` (dev) is unchanged and doesn't need `verify-login`. A deploy is tagged as soon as it's live, and the check reports on it.
 - The web builds in both deploy workflows add `VITE_AUTH0_QA_CONNECTION: ${{ secrets.<DEV|PROD>_VITE_AUTH0_QA_CONNECTION }}`. The chart/ECS web image build (`deploy-dev.yml:472-495`) does **not** set it.
 
@@ -391,7 +408,7 @@ Each red run's artifact is linked from the PR.
 
 - [ ] `npm run test:e2e` (from a clean checkout, after `docker compose --profile e2e up`, the stub, and the API + web started per the README) passes `setup`, `core-loop` and `login` locally.
 - [ ] `E2E Tests` runs on a PR, boots its own Postgres, Redis, s3mock, stub, API and web, walks the core loop on a freshly provisioned org, tears down, and is not required.
-- [ ] A red `E2E Tests` run uploads trace, screenshots, video and HTML report. A red `verify-login` uploads screenshots + video only.
+- [ ] A red `E2E Tests` run uploads the stack logs, screenshots and video; a red `verify-login` uploads screenshots and video. Neither uploads a trace, a report or a page snapshot (decision 15).
 - [ ] After `deploy-dev` / `deploy-prod`, `verify-login` signs in as that env's QA user and asserts `organization/current` 200 plus exactly one membership. A broken login turns the run red, and nothing rolls back.
 - [ ] `npm run --workspace @portalai/e2e e2e:auth:prod` (with AWS credentials) writes `.auth/prod/owner.storageState.json` (mode 0600). After an MCP restart, `mcp__playwright-prod__*` can walk the QA org. A request to an origin outside the server's list is blocked.
 - [ ] A normal user's `/login` on app-dev or prod is unchanged: Google button only. `?qa` is shown only where the build sets the connection, and never in the chart/ECS image or residency builds.

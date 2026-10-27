@@ -163,10 +163,11 @@ export interface ResolveCredentialsOptions {
 }
 
 /**
- * Env vars first: `E2E_AUTH0_USERNAME[_<ID>]` / `E2E_AUTH0_PASSWORD[_<ID>]`
- * (the CI deploy job exports the QA pair). A deployed target without them
- * reads `portalai/<env>/qa-auth0-{username,password}[-<id>]` with ambient AWS
- * credentials. The owner is the unsuffixed pair.
+ * Local: `E2E_AUTH0_USERNAME[_<ID>]` / `E2E_AUTH0_PASSWORD[_<ID>]`, the
+ * dev-tenant users in `.env`. Deployed: `E2E_QA_AUTH0_USERNAME[_<ID>]` /
+ * `E2E_QA_AUTH0_PASSWORD[_<ID>]` if both are set (the post-deploy job exports
+ * the owner's pair), else `portalai/<env>/qa-auth0-{username,password}[-<id>]`
+ * with ambient AWS credentials. The owner is the unsuffixed pair.
  */
 export async function resolveCredentials(
   target: E2eTarget,
@@ -176,8 +177,12 @@ export async function resolveCredentials(
   const identity = normalizeIdentity(target, opts.identity);
 
   const suffix = identity === "owner" ? "" : `_${identityKey(identity)}`;
-  const userVar = `E2E_AUTH0_USERNAME${suffix}`;
-  const passVar = `E2E_AUTH0_PASSWORD${suffix}`;
+  // A deployed env's QA identity has its own variable names. The local
+  // E2E_AUTH0_* pair lives in packages/e2e/.env, which every script loads, and
+  // must never be typed into another tenant's login.
+  const prefix = target.deployed ? "E2E_QA_AUTH0" : "E2E_AUTH0";
+  const userVar = `${prefix}_USERNAME${suffix}`;
+  const passVar = `${prefix}_PASSWORD${suffix}`;
   const username = env[userVar];
   const password = env[passVar];
   if (username && password) return { username, password };

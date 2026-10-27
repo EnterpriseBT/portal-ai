@@ -94,7 +94,7 @@ npm run --workspace @portalai/e2e e2e:stack:down
 Notes:
 - **One run per stack.** `roles` can't run twice on one stack, because an accepted invite can't be replayed. Run `e2e:stack:down` and `up` between runs.
 - **Sign-in path.** `E2E_SIGN_IN_VIA=qa` is needed because the preview build has no dev affordance. The stack bakes `VITE_AUTH0_QA_CONNECTION` from `E2E_QA_CONNECTION`.
-- **Failures.** A failed spec leaves a trace, screenshots, video and the HTML report under `test-results/local/` and `playwright-report/`. CI uploads those.
+- **Failures.** Run locally, a failed spec leaves a trace, screenshots, video and the HTML report under `test-results/local/` and `playwright-report/`. In CI (where `CI` is set) there's no trace, no report and no page snapshot, because each would hold a typed password and this repo's artifacts are public. CI uploads only the stack logs, screenshots and video.
 - **Authoring.** `npm run --workspace @portalai/e2e test:e2e:ui` opens the Playwright UI.
 
 ## Deployed environments (app-dev, prod)
@@ -107,10 +107,10 @@ npm run --workspace @portalai/e2e e2e:auth:app-dev:member     # a role (first ti
 npm run --workspace @portalai/e2e e2e:use -- member --env app-dev   # switch, then restart the MCP session
 ```
 
-- **Credentials:** read from that env's Secrets Manager (`portalai/<env>/qa-auth0-*`) with your AWS credentials, or from `E2E_AUTH0_*` if exported.
+- **Credentials:** read from that env's Secrets Manager (`portalai/<env>/qa-auth0-*`) with your AWS credentials, or from `E2E_QA_AUTH0_USERNAME` / `_PASSWORD[_<ID>]` if exported. Never from the local `E2E_AUTH0_*` pair in `.env`, which is a different tenant's user.
 - **Sessions:** land in `.auth/<env>/<identity>.storageState.json` (mode 0600), and `.auth/<env>/storageState.json` is the active one.
 - **Browser servers:** `playwright-app-dev` and `playwright-prod` in `.mcp.json` load the active session. They run headless and in memory, write under `test-results/<env>/`, and allow only that env's app, API, Auth0 tenant, and the app's map and Google Picker hosts. `--allowed-origins` keeps a walk from wandering, but it isn't a boundary and doesn't cover redirects.
-- **Traces:** a deployed target records no trace and no HTML report, since a trace captures typed passwords and tokens.
+- **Traces:** a deployed target records no trace, no HTML report and no page snapshot, since each captures typed passwords. Its config also runs only the `login` project: the other specs create data, and only the ephemeral stack is theirs to write to.
 
 ### Conduct in a deployed environment
 

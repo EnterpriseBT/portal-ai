@@ -40,8 +40,10 @@ test("signs in and lands in exactly one org", async ({ page }) => {
   const res = await current;
   expect(res.status(), "GET /api/organization/current").toBe(200);
   const authorization = res.request().headers()["authorization"];
+  // The API the app itself called, which E2E_BASE_URL may have repointed.
+  const api = new URL(res.url()).origin;
   const memberships = await page.request.get(
-    `${target.apiBaseUrl}/api/organization/memberships`,
+    `${api}/api/organization/memberships`,
     { headers: { authorization } }
   );
   expect(memberships.status()).toBe(200);

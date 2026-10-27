@@ -73,7 +73,19 @@
       // #489: drives a live stack (scripts/e2e-stack.sh in @portalai/e2e, or a
       // deployed env via E2E_TARGET), so nothing about its result is a
       // function of the tree alone. Never cached.
-      "cache": false
+      "cache": false,
+      // The harness imports @portalai/cli-env's built output.
+      "dependsOn": [
+        "^build"
+      ],
+      // Strict env mode would otherwise strip the run's target, credentials
+      // and CI flag, and E2E_TARGET=prod would quietly run against local.
+      "passThroughEnv": [
+        "E2E_*",
+        "CI",
+        "PLAYWRIGHT_*",
+        "AWS_*"
+      ]
     },
     "test:unit": {
       "dependsOn": [

@@ -1,0 +1,67 @@
+name: "Verify login"
+description: "Signs in to a just-deployed env as its QA owner and fails if login is broken (#489). Needs AWS credentials for the env's deploy role, Chromium and the e2e package's dependencies already built."
+
+inputs:
+  target:
+    description: "The e2e target: app-dev or prod"
+    required: true
+  secrets-prefix:
+    description: "The env's Secrets Manager prefix segment: dev or prod"
+    required: true
+  distribution-id:
+    description: "The web app's CloudFront distribution"
+    required: true
+  invalidation-id:
+    description: "The deploy's CloudFront invalidation, waited on first"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # Otherwise the check could sign in to the previous bundle.
+    - name: Wait for the CloudFront invalidation
+      shell: bash
+      run: |
+        aws cloudfront wait invalidation-completed \
+          --distribution-id "${{ inputs.distribution-id }}" \
+          --id "${{ inputs.invalidation-id }}"
+
+    # The QA credentials are read, masked and used in one step, so they never
+    # reach $GITHUB_ENV or another step's environment. They go in the
+    # E2E_QA_AUTH0_* names, which a deployed target reads and the local
+    # E2E_AUTH0_* pair can never stand in for.
+    #
+    # A deployed run records no trace, no HTML report and no page snapshot
+    # (packages/e2e/src/lib/playwright-config.ts): each would hold the typed
+    # password, and this repo's artifacts are public.
+    - name: Sign in as the QA owner
+      shell: bash
+      env:
+        E2E_TARGET: ${{ inputs.target }}
+        CI: "1"
+        PLAYWRIGHT_NO_COPY_PROMPT: "1"
+      run: |
+        read_secret() {
+          aws secretsmanager get-secret-value --secret-id "$1" \
+            --query SecretString --output text
+        }
+        prefix="portalai/${{ inputs.secrets-prefix }}"
+        E2E_QA_AUTH0_USERNAME=$(read_secret "$prefix/qa-auth0-username")
+        E2E_QA_AUTH0_PASSWORD=$(read_secret "$prefix/qa-auth0-password")
+        echo "::add-mask::$E2E_QA_AUTH0_USERNAME"
+        echo "::add-mask::$E2E_QA_AUTH0_PASSWORD"
+        export E2E_QA_AUTH0_USERNAME E2E_QA_AUTH0_PASSWORD
+        npm run --workspace @portalai/e2e test:e2e -- --project=login
+
+    # Screenshots and video only, where a password field renders masked.
+    # Nothing else under test-results/ is uploaded.
+    - name: Upload screenshots and video
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: verify-login-${{ inputs.target }}-${{ github.run_id }}
+        path: |
+          packages/e2e/test-results/${{ inputs.target }}/**/*.png
+          packages/e2e/test-results/${{ inputs.target }}/**/*.webm
+        if-no-files-found: ignore
+        retention-days: 14

@@ -70,6 +70,10 @@ up)
     fi
   done
 
+  # A failure past this point stops whatever up already started (the stub,
+  # the API), so the next up doesn't trip the port check above. The logs stay.
+  trap 'echo "[e2e-stack] up failed; stopping what it started (logs in $STATE)" >&2; stop_pids' ERR
+
   "${COMPOSE[@]}" up -d postgres-test redis s3mock --wait
   psql_admin "DROP DATABASE IF EXISTS $DB WITH (FORCE)"
   psql_admin "CREATE DATABASE $DB"
@@ -105,6 +109,7 @@ up)
   wait_http http://localhost:4010/health "Anthropic stub"
   wait_http http://localhost:3001/api/health API
   wait_http http://localhost:3000/ web
+  trap - ERR
   echo "[e2e-stack] up: web :3000 · api :3001 · stub :4010 · db $DB"
   ;;
 down)

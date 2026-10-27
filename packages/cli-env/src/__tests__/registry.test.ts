@@ -138,25 +138,13 @@ describe("override file (~/.portalai/environments.json)", () => {
     expect(envs["app-dev"].kind).toBe("staging");
   });
 
-  // #489: webBaseUrl is optional, so override files written before it existed
-  // still load (the entry above has none).
-  it("carries an override's webBaseUrl when it declares one", () => {
+  // #489: only the built-ins are e2e targets, so an override that names a
+  // web URL is refused rather than silently ignored.
+  it("rejects an override that declares a webBaseUrl", () => {
     writeOverrides({
       "scratch-web": {
         apiBaseUrl: "http://localhost:3999",
         webBaseUrl: "http://localhost:3998",
-      },
-    });
-    expect(loadEnvironments()["scratch-web"].webBaseUrl).toBe(
-      "http://localhost:3998"
-    );
-  });
-
-  it("rejects an override with a malformed webBaseUrl", () => {
-    writeOverrides({
-      "scratch-web": {
-        apiBaseUrl: "http://localhost:3999",
-        webBaseUrl: "nope",
       },
     });
     expect(() => loadEnvironments()).toThrow(EnvNotConfiguredError);

@@ -1,12 +1,14 @@
 import {
   SESSION_STORAGE_STATE,
+  artifactsArePublishable,
   buildConfig,
 } from "../lib/playwright-config.js";
 import { resolveTarget } from "../lib/target.js";
 
 describe("buildConfig", () => {
-  const local = buildConfig(resolveTarget({}));
-  const prod = buildConfig(resolveTarget({ E2E_TARGET: "prod" }));
+  const local = buildConfig(resolveTarget({}), {});
+  const ci = buildConfig(resolveTarget({}), { CI: "1" });
+  const prod = buildConfig(resolveTarget({ E2E_TARGET: "prod" }), {});
 
   it("never traces a deployed run (a trace records the QA password and token)", () => {
     expect(prod.use?.trace).toBe("off");
@@ -16,6 +18,32 @@ describe("buildConfig", () => {
   it("writes no HTML report for a deployed run", () => {
     expect(prod.reporter).toEqual([["list"]]);
     expect(JSON.stringify(local.reporter)).toContain("html");
+  });
+
+  // This repo is public, so a CI artifact is downloadable by anyone: the
+  // report's step titles and a trace both carry the typed password.
+  it("records no trace and no HTML report in CI, even on the local stack", () => {
+    expect(ci.use?.trace).toBe("off");
+    expect(ci.reporter).toEqual([["list"]]);
+    expect(artifactsArePublishable(resolveTarget({}), { CI: "1" })).toBe(true);
+    expect(artifactsArePublishable(resolveTarget({}), {})).toBe(false);
+    expect(
+      artifactsArePublishable(resolveTarget({ E2E_TARGET: "prod" }), {})
+    ).toBe(true);
+  });
+
+  it("runs only the login check against a deployed target", () => {
+    expect((prod.projects ?? []).map((p) => p.name)).toEqual(["login"]);
+    expect((local.projects ?? []).map((p) => p.name).sort()).toEqual([
+      "core-loop",
+      "login",
+      "roles",
+      "setup",
+    ]);
+  });
+
+  it("gives a test long enough for a slow Auth0 round trip", () => {
+    expect(prod.timeout).toBeGreaterThanOrEqual(120_000);
   });
 
   it("keeps each target's artifacts in its own directory", () => {

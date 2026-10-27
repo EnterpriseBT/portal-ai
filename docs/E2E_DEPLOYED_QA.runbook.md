@@ -95,7 +95,7 @@ After that, later sign-ins need no link: `e2e:auth:<env>`, `e2e:auth:<env>:admin
 
 ## When `verify-login` goes red
 
-The artifact `verify-login-<env>-<run id>` holds the screenshot and video. No trace is recorded, on purpose: it would capture the QA password and a live token.
+The artifact `verify-login-<env>-<run id>` holds the screenshot and video, and nothing else. A trace, an HTML report or Playwright's `error-context.md` page snapshot would each carry the typed QA password, and this repo's artifacts are public. So none is recorded or uploaded. For more detail, reproduce locally with `E2E_TARGET=<env>` and `--project=login`.
 
 | Symptom | Likely cause |
 |---|---|

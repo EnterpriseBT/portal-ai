@@ -35,8 +35,8 @@ export const EnvironmentDefinitionSchema = z
     name: z.string().min(1),
     kind: EnvKindSchema,
     apiBaseUrl: z.url(),
-    /** #489: the env's web app, for the e2e harness. Optional so override
-     *  files written before it existed still load. */
+    /** #489: the env's web app, for the e2e harness. Built-ins only: the
+     *  harness targets local/app-dev/prod, so an override can't declare one. */
     webBaseUrl: z.url().optional(),
     /** null ⇒ no AWS (local): db comes from .env, no tunnel/secrets. */
     aws: AwsConfigSchema.nullable(),
@@ -85,7 +85,6 @@ const OverrideEntrySchema = z
   .object({
     kind: EnvKindSchema.optional(),
     apiBaseUrl: z.url(),
-    webBaseUrl: z.url().optional(),
     aws: AwsConfigSchema.nullable().optional(),
   })
   .strict();
@@ -133,7 +132,6 @@ export function loadEnvironments(): Record<string, EnvironmentDefinition> {
       name,
       kind: "development", // forced — ad-hoc targets are never staging/prod
       apiBaseUrl: entry.apiBaseUrl,
-      ...(entry.webBaseUrl ? { webBaseUrl: entry.webBaseUrl } : {}),
       aws: entry.aws ?? null,
     };
   }

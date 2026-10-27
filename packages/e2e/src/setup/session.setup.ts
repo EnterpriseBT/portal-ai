@@ -5,6 +5,7 @@
  * a personal org on an unknown subject's first request).
  */
 import { test as setup } from "@playwright/test";
+import { chmodSync } from "node:fs";
 
 import { SESSION_STORAGE_STATE } from "../lib/playwright-config.js";
 import { signIn } from "../lib/sign-in.js";
@@ -20,5 +21,7 @@ setup("sign in once for the walk", async ({ page }) => {
     password,
     via: target.via,
   });
+  // Holds a refresh token, like every session file the harness writes.
   await page.context().storageState({ path: SESSION_STORAGE_STATE });
+  chmodSync(SESSION_STORAGE_STATE, 0o600);
 });

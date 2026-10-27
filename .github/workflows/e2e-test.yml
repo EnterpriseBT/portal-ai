@@ -46,6 +46,11 @@ jobs:
       AUTH0_DOMAIN: ${{ secrets.E2E_CI_AUTH0_DOMAIN }}
       AUTH0_AUDIENCE: ${{ secrets.E2E_CI_AUTH0_AUDIENCE }}
       CORS_ORIGIN: http://localhost:3000
+      # This repo's artifacts are public. CI runs record no trace, no HTML
+      # report and no page snapshot (packages/e2e/src/lib/playwright-config.ts),
+      # since each would hold a typed password; this covers the snapshot even
+      # before the config loads.
+      PLAYWRIGHT_NO_COPY_PROMPT: "1"
       VITE_AUTH0_DOMAIN: ${{ secrets.E2E_CI_VITE_AUTH0_DOMAIN }}
       VITE_AUTH0_CLIENT_ID: ${{ secrets.E2E_CI_VITE_AUTH0_CLIENT_ID }}
       VITE_AUTH0_AUDIENCE: ${{ secrets.E2E_CI_VITE_AUTH0_AUDIENCE }}
@@ -53,13 +58,20 @@ jobs:
     steps:
       # Fork PRs and a repo without the CI users get no secrets: skip with a
       # notice rather than fail, since the check isn't required. A partial set
-      # skips too, rather than failing `roles` halfway.
+      # skips too, naming what's missing, rather than failing halfway.
       - name: Check for the CI users
         id: creds
         run: |
-          if [ -z "$E2E_AUTH0_PASSWORD" ] || [ -z "$E2E_AUTH0_PASSWORD_ADMIN" ] \
-            || [ -z "$E2E_AUTH0_PASSWORD_MEMBER" ] || [ -z "$E2E_QA_CONNECTION" ]; then
-            echo "::notice::E2E skipped: the E2E_CI_* secrets or E2E_QA_CONNECTION aren't available to this run."
+          missing=""
+          for v in E2E_AUTH0_USERNAME E2E_AUTH0_PASSWORD \
+                   E2E_AUTH0_USERNAME_ADMIN E2E_AUTH0_PASSWORD_ADMIN \
+                   E2E_AUTH0_USERNAME_MEMBER E2E_AUTH0_PASSWORD_MEMBER \
+                   E2E_QA_CONNECTION AUTH0_DOMAIN AUTH0_AUDIENCE \
+                   VITE_AUTH0_DOMAIN VITE_AUTH0_CLIENT_ID VITE_AUTH0_AUDIENCE; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::E2E skipped: not available to this run:$missing (the E2E_CI_* secrets and E2E_QA_CONNECTION)."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -73,22 +85,9 @@ jobs:
         if: steps.creds.outputs.run == 'true'
         uses: ./.github/actions/setup
 
-      # Keyed on the pinned @playwright/test version: a bump re-installs.
-      - name: Playwright version
+      - name: Playwright browsers
         if: steps.creds.outputs.run == 'true'
-        id: pw
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Playwright browsers
-        if: steps.creds.outputs.run == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
-
-      - name: Install Chromium
-        if: steps.creds.outputs.run == 'true'
-        run: npm run --workspace @portalai/e2e playwright:install
+        uses: ./.github/actions/playwright-browsers
 
       # The stack script builds the API and web itself; their workspace
       # dependencies (core, spreadsheet-parsing, cli-env…) come from turbo.
@@ -104,17 +103,20 @@ jobs:
         if: steps.creds.outputs.run == 'true'
         run: npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login --project=roles
 
-      # The stack's own logs (API, web, stub, migrate/seed) and Playwright's
-      # traces, screenshots, video and HTML report. Local-target artifacts
-      # carry no deployed credential: the session file is under .auth/.
+      # The stack's own logs (API, web, stub, migrate/seed), plus Playwright's
+      # screenshots and video, where a password field renders masked. Nothing
+      # else under test-results/ is uploaded: this repo's artifacts are
+      # public, and the session files under .auth/ hold refresh tokens.
       - name: Upload artifacts
         if: failure() && steps.creds.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: e2e-${{ github.run_id }}
           path: |
-            packages/e2e/test-results/
-            packages/e2e/playwright-report/
+            packages/e2e/test-results/stack/
+            packages/e2e/test-results/local/**/*.png
+            packages/e2e/test-results/local/**/*.webm
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Tear down
