@@ -111,14 +111,16 @@ const apiHasNoMigrationCreds = (out) => {
   );
 };
 
-// #889: every WEB_APP_URL the ConfigMap carries. Invite links are built on it,
-// and production refuses invites without a real one.
-const webAppUrls = (out) =>
+// #889, #891: every value the ConfigMap carries for `key`. The public URLs
+// default from the ingress, so each must render once, or not at all.
+const configValues = (out, key) =>
   [
     ...manifest(out, "ConfigMap", "p-portalai-config").matchAll(
-      /^\s+WEB_APP_URL: "([^"]*)"$/gm
+      new RegExp(`^\\s+${key}: "([^"]*)"$`, "gm")
     ),
   ].map((m) => m[1]);
+const webAppUrls = (out) => configValues(out, "WEB_APP_URL");
+const publicApiUrls = (out) => configValues(out, "PUBLIC_API_BASE_URL");
 
 const MIGRATION_USER_ARGS = [
   "--set",
@@ -141,6 +143,10 @@ const scenarios = [
       [
         "no WEB_APP_URL without an ingress or config (#889)",
         (out) => webAppUrls(out).length === 0,
+      ],
+      [
+        "no PUBLIC_API_BASE_URL without an ingress or config (#891)",
+        (out) => publicApiUrls(out).length === 0,
       ],
       [
         "api reads env from ConfigMap + Secret",
@@ -241,6 +247,10 @@ const scenarios = [
         "invite links default to the ingress origin (#889)",
         (out) => webAppUrls(out).join() === "https://app.example.com",
       ],
+      [
+        "webhook callbacks default to the ingress origin (#891)",
+        (out) => publicApiUrls(out).join() === "https://app.example.com",
+      ],
     ],
   },
   {
@@ -260,10 +270,14 @@ const scenarios = [
         "invite links default to http on the ingress host",
         (out) => webAppUrls(out).join() === "http://portal.corp",
       ],
+      [
+        "webhook callbacks default to http on the ingress host",
+        (out) => publicApiUrls(out).join() === "http://portal.corp",
+      ],
     ],
   },
   {
-    name: "explicit config.WEB_APP_URL beats the ingress default (#889)",
+    name: "explicit config URLs beat the ingress defaults (#889, #891)",
     args: [
       "template",
       "p",
@@ -275,11 +289,17 @@ const scenarios = [
       "ingress.host=app.example.com",
       "--set",
       "config.WEB_APP_URL=https://portal.example.org",
+      "--set",
+      "config.PUBLIC_API_BASE_URL=https://api.example.org",
     ],
     assertions: [
       [
         "WEB_APP_URL renders once, from config",
         (out) => webAppUrls(out).join() === "https://portal.example.org",
+      ],
+      [
+        "PUBLIC_API_BASE_URL renders once, from config",
+        (out) => publicApiUrls(out).join() === "https://api.example.org",
       ],
     ],
   },

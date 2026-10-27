@@ -19,6 +19,20 @@ import { WebhookReadTokenService } from "../services/webhook-read-token.service.
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
+import { isPublicOrigin } from "../utils/public-url.util.js";
+
+/** The typed result a tool that needs a callback returns when this server has
+ *  no public API address (#891). The agent relays it. */
+export function webhookCallbackRefusal(slug: string): {
+  error: { code: ApiCode; message: string };
+} {
+  return {
+    error: {
+      code: ApiCode.WEBHOOK_CALLBACK_UNCONFIGURED,
+      message: `The "${slug}" tool needs to call back to this server to exchange data, and this server's public API address (PUBLIC_API_BASE_URL) isn't set. It can't run until it is. Webhook tools that don't stream data or return large results still work.`,
+    },
+  };
+}
 
 /** Page size advertised to a `streaming` webhook for its pull-on-read loop —
  *  the `getSnapshot` per-call ceiling. */
@@ -72,6 +86,16 @@ export class WebhookTool extends Tool {
     );
   }
 
+  /** Whether this call hands the runtime a callback URL: a `streaming`
+   *  pull of a `queryHandle`, or an output write-grant (#891). */
+  private needsCallback(validated: Record<string, unknown>): boolean {
+    const pullsHandle =
+      this.consumption?.mode === "streaming" &&
+      typeof validated.queryHandle === "string" &&
+      validated.queryHandle.length > 0;
+    return pullsHandle || this.wantsOutputGrant;
+  }
+
   /** A `bounded`/`streaming` tool computes over a dataset, so the runtime
    *  injects the compute-source fields (`queryHandle` / `rows`) into its
    *  schema — for `bounded` it resolves them and POSTs `records`; for
@@ -110,6 +134,25 @@ export class WebhookTool extends Tool {
       inputSchema: this.schema as any,
       execute: async (rawInput: Record<string, unknown>) => {
         const validated = this.validate(rawInput) as Record<string, unknown>;
+        // #891: a runtime that must call back (to pull a queryHandle, or to
+        // stage a large result) needs this server's public API address. In
+        // production without one, refuse with the reason instead of handing
+        // the runtime a loopback URL it can't reach. A plain tool never
+        // calls back, so it never gets here.
+        if (
+          this.needsCallback(validated) &&
+          environment.NODE_ENV === "production" &&
+          !isPublicOrigin(environment.PUBLIC_API_BASE_URL)
+        ) {
+          logger.warn(
+            {
+              toolName: this.slug,
+              code: ApiCode.WEBHOOK_CALLBACK_UNCONFIGURED,
+            },
+            "Webhook tool refused: PUBLIC_API_BASE_URL isn't a public URL"
+          );
+          return webhookCallbackRefusal(this.slug);
+        }
         logger.info(
           {
             toolName: this.slug,

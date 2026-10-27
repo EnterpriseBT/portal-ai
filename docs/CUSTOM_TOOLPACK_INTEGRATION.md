@@ -349,6 +349,8 @@ Instead of rows, the body carries a **short-lived, scoped grant** — your serve
   "output": { "writeUrl": "https://<portal>/api/webhook/handle/<session>", "writeToken": "<opaque>" } }
 ```
 
+Both URLs are on the portal's public API address, which the install sets as `PUBLIC_API_BASE_URL` (#891). An install without one can't give your runtime a reachable callback. So a `streaming` tool asked to pull a `queryHandle`, or a tool that declares large row output, is refused there with `WEBHOOK_CALLBACK_UNCONFIGURED` and is never called. A tool that needs neither grant runs as usual.
+
 **Pull the input** by paging `readUrl` with the read token until you've seen `rowCount` rows:
 
 ```

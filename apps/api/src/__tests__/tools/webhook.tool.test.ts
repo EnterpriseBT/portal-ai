@@ -1,6 +1,13 @@
 /* global AbortController */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 
 import type { Consumption, Production } from "@portalai/core/models";
 
@@ -36,6 +43,7 @@ jest.unstable_mockModule(
 );
 
 const { WebhookTool } = await import("../../tools/webhook.tool.js");
+const { environment } = await import("../../environment.js");
 
 const IMPL = {
   type: "webhook" as const,
@@ -383,5 +391,100 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
         expect.objectContaining({ mode: "write" })
       );
     });
+  });
+});
+
+// #891: a tool that needs its runtime to call back can't run without a public
+// API address. It says so, and a plain tool is unaffected.
+describe("WebhookTool — callback address (#891)", () => {
+  const restores: (() => void)[] = [];
+  function setEnv(nodeEnv: string, publicApi: string) {
+    const node = jest.replaceProperty(environment, "NODE_ENV", nodeEnv);
+    const url = jest.replaceProperty(
+      environment,
+      "PUBLIC_API_BASE_URL",
+      publicApi
+    );
+    restores.push(
+      () => node.restore(),
+      () => url.restore()
+    );
+  }
+
+  beforeEach(() => {
+    mockCallWebhook.mockReset().mockResolvedValue({ ok: true });
+    mockResolveRecordSource.mockReset().mockResolvedValue({ rows: [] });
+    mockGetMeta.mockReset().mockResolvedValue({
+      rowCount: 10,
+      schema: [],
+      _organizationId: "org-1",
+    });
+    mockMint
+      .mockReset()
+      .mockImplementation(async (opts) =>
+        opts.mode === "write" ? "tok-write" : "tok-read"
+      );
+    mockRevoke.mockReset().mockResolvedValue(undefined);
+    mockClearStaged.mockReset().mockResolvedValue(undefined);
+  });
+  afterEach(() => {
+    while (restores.length) restores.pop()!();
+  });
+
+  const expectRefusal = (result: any) => {
+    expect(result).toEqual({
+      error: {
+        code: "WEBHOOK_CALLBACK_UNCONFIGURED",
+        message: expect.stringMatching(/PUBLIC_API_BASE_URL/),
+      },
+    });
+    expect(mockCallWebhook).not.toHaveBeenCalled();
+    expect(mockMint).not.toHaveBeenCalled();
+  };
+
+  it("a streaming tool pulling a queryHandle refuses in production without a public address", async () => {
+    setEnv("production", "http://localhost:3001");
+    const t = buildTool({ mode: "streaming" });
+    expectRefusal(await exec(t, { factor: 1, queryHandle: "qh-1" }));
+  });
+
+  it("a tool that stages large results refuses too", async () => {
+    setEnv("production", "");
+    const t = buildTool(undefined, "org-1", HANDLE_PROD);
+    expectRefusal(await exec(t, { factor: 1 }));
+  });
+
+  it("a plain webhook tool is unaffected", async () => {
+    setEnv("production", "http://localhost:3001");
+    const t = buildTool();
+    await expect(exec(t, { factor: 1 })).resolves.toEqual({ ok: true });
+    expect(mockCallWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it("a streaming tool given inline rows needs no callback, so it runs", async () => {
+    setEnv("production", "http://localhost:3001");
+    const t = buildTool({ mode: "streaming" });
+    await exec(t, { factor: 1, rows: [{ a: 1 }] });
+    expect(mockCallWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it("with a public address, the grants carry it", async () => {
+    setEnv("production", "https://api.example");
+    const t = buildTool({ mode: "streaming" }, "org-1", HANDLE_PROD);
+    await exec(t, { factor: 1, queryHandle: "qh-1" });
+    const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+    expect(body.source.readUrl).toBe(
+      "https://api.example/api/webhook/handle/qh-1"
+    );
+    expect(body.output.writeUrl).toMatch(
+      /^https:\/\/api\.example\/api\/webhook\/handle\//
+    );
+  });
+
+  it("outside production, localhost is fine", async () => {
+    setEnv("development", "http://localhost:3001");
+    const t = buildTool({ mode: "streaming" });
+    await exec(t, { factor: 1, queryHandle: "qh-1" });
+    expect(mockCallWebhook).toHaveBeenCalledTimes(1);
   });
 });
