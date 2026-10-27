@@ -5,7 +5,9 @@
 This spec pins the contract for three browser-verification tiers that share one sign-in library:
 - **PR walk:** a fresh org walked through the core loop on an ephemeral CI stack (`e2e-test.yml`).
 - **Post-deploy login check:** a `verify-login` job at the end of `deploy-dev.yml` / `deploy-prod.yml`.
-- **Agent sessions:** per-env Playwright MCP servers for app-dev and prod, signed in as a QA identity confined to its own QA org.
+- **Agent sessions:** per-env Playwright MCP servers for app-dev and prod, signed in as a QA identity (owner, admin or member) confined to its own QA org.
+
+Every tier but the post-deploy check covers all three roles (amended 2026-10-27, decision 14).
 
 ## Key decisions (flag for review)
 
@@ -29,7 +31,14 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
 13. **Fail modes:**
     - `login` has `retries: 0`, so a flake must surface;
     - `core-loop` has `retries: 1`, with the trace kept on the retry;
+    - `roles` has `retries: 0`: an accepted invite can't be replayed on the same database, so a retry would fail for the wrong reason;
     - `verify-login` fails the deploy run red and never rolls back.
+14. **Multi-role (amendment, 2026-10-27).** Owner, admin and member are verified on the PR stack and available to agent sessions in app-dev and prod.
+    - **Membership comes from the real invite flow,** in CI and in deployed envs alike. A role user's first sign-in goes through its invite link, so it never self-provisions a personal org, and "exactly one membership" holds for every identity. This also keeps the #884 return-to under test on every PR.
+    - **CI** reuses the local e2e admin and member identities from the dev tenant, as it already does for the owner.
+    - **Deployed** envs get two more QA users on the same QA connection, so the MFA exemption by connection covers them too.
+    - **The probes are the permission split, not a re-test of RBAC:** a member doesn't see Members and is refused an invite; an admin sees Members but no Delete organization and is refused the delete; the owner sees both. Each hidden affordance is paired with its server refusal (#684: hiding is never the boundary).
+    - **`verify-login` stays owner-only.** It checks that login works, and one identity proves that.
 
 ## Scope
 
@@ -45,6 +54,7 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
 8. A `verify-login` job in both deploy workflows.
 9. Per-env MCP servers in `.mcp.json`.
 10. A runbook (`docs/E2E_DEPLOYED_QA.runbook.md`), README and `CLAUDE.md` updates.
+11. Multi-role (decision 14): the `roles` project and spec, an invite-link sign-in, deployed `--identity`, and an env-aware `e2e:use`.
 
 ### Out of scope
 
@@ -53,7 +63,7 @@ Discovery decisions D1–D5 and open questions Q1–Q6 are ratified here, taking
 - Live LLM calls in CI.
 - Making `E2E Tests` a required check.
 - `/smoke-walk` against deployed envs.
-- Specs beyond the core loop.
+- Specs beyond the core loop and the role split. Custom roles, groups and per-object sharing keep their unit and integration coverage.
 - Visual regression.
 - Excluding the QA org from analytics.
 
@@ -98,7 +108,7 @@ withQaConnection: () => void;
 
 ### `devops-cli` — catalog
 
-**`packages/devops-cli/src/catalog.ts`**: add `secret("QA_AUTH0_USERNAME", "qa-auth0-username")` and `secret("QA_AUTH0_PASSWORD", "qa-auth0-password")`. They resolve to `portalai/<dev|prod>/qa-auth0-{username,password}`. They are not in `backend.yml` (the API never reads them), and the deploy-parity test only checks that direction.
+**`packages/devops-cli/src/catalog.ts`**: add `secret("QA_AUTH0_USERNAME", "qa-auth0-username")` and `secret("QA_AUTH0_PASSWORD", "qa-auth0-password")`. They resolve to `portalai/<dev|prod>/qa-auth0-{username,password}`. Decision 14 adds `QA_AUTH0_USERNAME_ADMIN` / `QA_AUTH0_PASSWORD_ADMIN` and `QA_AUTH0_USERNAME_MEMBER` / `QA_AUTH0_PASSWORD_MEMBER`, which resolve to `qa-auth0-{username,password}-{admin,member}`. They are not in `backend.yml` (the API never reads them), and the deploy-parity test only checks that direction.
 
 ### `packages/e2e` — library and projects
 
@@ -112,6 +122,20 @@ export async function signIn(page: Page, opts: SignInOptions): Promise<void>;
 export class E2eSignInError extends Error {}  // never includes the password in its message
 ```
 
+`SignInOptions` gains `entryPath?: string` (decision 14). The sign-in starts there instead of at the affordance's own path. `?qa=1` (or `?e2e=1`) is appended to whatever search it already has, and `Authorized`'s redirect to `/login` keeps both. Completion still waits for `@@auth0spajs@@`.
+
+New **`src/lib/invite.ts`**: the invite round trip, shared by the `roles` spec and `e2e:auth --invite`.
+
+```ts
+/** Signed out → the invite link (+ ?qa|e2e) → login → back on /invitations/accept (#884)
+ *  → accept-on-mount → resolves on the success card. Throws E2eSignInError naming the
+ *  card's title on any other outcome (expired, invalid, error). */
+export async function acceptInvitation(page: Page, opts: SignInOptions & { inviteUrl: string }): Promise<void>;
+/** As the signed-in owner/admin: Settings → Members → Invite member (email, role) →
+ *  reads the one-time link from the "Invite link" field. */
+export async function createInvitation(page: Page, opts: { baseUrl: string; email: string; role: "admin" | "member" }): Promise<string>;
+```
+
 New **`src/lib/target.ts`**: resolves where a run points, and with which credentials.
 
 ```ts
@@ -119,18 +143,25 @@ export type E2eTargetName = "local" | "app-dev" | "prod";
 export interface E2eTarget { name: E2eTargetName; baseUrl: string; apiBaseUrl: string; via: SignInVia; deployed: boolean }
 /** E2E_TARGET (default "local") → cli-env BUILTIN_ENVIRONMENTS; E2E_BASE_URL still overrides baseUrl. */
 export function resolveTarget(env?: NodeJS.ProcessEnv): E2eTarget;
-/** local: E2E_AUTH0_USERNAME/PASSWORD[_<ID>]; deployed: env vars if both set (CI), else cli-env getSecret(def, "qa-auth0-*"). */
+/** local: E2E_AUTH0_USERNAME/PASSWORD[_<ID>]; deployed: env vars if both set (CI), else cli-env getSecret(def, "qa-auth0-*[-<id>]"). */
 export async function resolveCredentials(target: E2eTarget, identity?: string): Promise<{ username: string; password: string }>;
-/** .auth/storageState.json | .auth/<id>.storageState.json (local, unchanged) · .auth/<env>/owner.storageState.json (deployed) */
+/** .auth/storageState.json | .auth/<id>.storageState.json (local, unchanged) · .auth/<env>/<id|owner>.storageState.json (deployed) */
 export function storageStatePath(target: E2eTarget, identity?: string): string;
+/** The state the env's MCP server loads: .auth/storageState.json (local) · .auth/<env>/storageState.json (deployed). */
+export function activeStorageStatePath(target: E2eTarget): string;
+export type E2eIdentity = "owner" | "admin" | "member"; // deployed identities; local still accepts any name
 ```
 
-`via` is `"dev"` for `local` and `"qa"` for deployed targets. `E2E_SIGN_IN_VIA=dev|qa` overrides it; the PR workflow sets `qa`, because its preview build has no dev affordance. A deployed target refuses `identity`: it has only the QA owner.
+`via` is `"dev"` for `local` and `"qa"` for deployed targets. `E2E_SIGN_IN_VIA=dev|qa` overrides it; the PR workflow sets `qa`, because its preview build has no dev affordance. A deployed target accepts `identity` `admin` or `member` (omitted means owner) and refuses any other name with an `E2eConfigError`. Each one's secrets are the `-<id>` pair.
 
 **`src/setup/auth.setup.ts`** (the `e2e:auth` CLI) becomes a thin wrapper over `resolveTarget`, `resolveCredentials`, `signIn` and `storageStatePath`:
 - it accepts `--env <local|app-dev|prod>`, which sets `E2E_TARGET`, alongside `--identity`;
+- `--invite <url>` (decision 14) signs in through `acceptInvitation`, for a role user's first sign-in. The URL's origin must equal the target's `baseUrl`, or it refuses;
 - it writes the state with `mode: 0o600`;
+- for a deployed target it also copies the state to `activeStorageStatePath`, so the identity signed in last is the one the env's MCP server loads after a restart;
 - existing local invocations behave exactly as today.
+
+**`src/setup/use-identity.ts`** (the `e2e:use` CLI, replacing today's `sh -c` one-liner): `e2e:use <owner|admin|member> [--env <env>]` copies that identity's state to `activeStorageStatePath`. It exits non-zero, naming the `e2e:auth` command to run, when the state is missing. Local `e2e:use admin` behaves as today, and `owner` becomes valid locally too (`.auth/owner.storageState.json`, which local `e2e:auth` now also writes). That closes the gap where an owner's state could be overwritten by a role's with no way back except re-signing in.
 
 **`playwright.config.ts`**: `testDir: ./src/specs`. Projects:
 
@@ -138,7 +169,8 @@ export function storageStatePath(target: E2eTarget, identity?: string): string;
 |---|---|---|---|---|
 | `setup` | `setup/session.setup.ts` | — | 0 | `signIn` as the CI user → `.auth/ci.storageState.json` (local target only) |
 | `core-loop` | `core-loop.spec.ts` | `.auth/ci.storageState.json` | 1 | `dependencies: ["setup"]` |
-| `login` | `login.spec.ts` | none (fresh context) | 0 | the only spec that signs in itself; runs against any target |
+| `login` | `login.spec.ts` | none (fresh context) | 0 | signs in itself; runs against any target |
+| `roles` | `roles.spec.ts` | `.auth/ci.storageState.json` (owner) | 0 | `dependencies: ["setup"]`; local target only; signs the admin and member in itself in fresh contexts |
 
 Settings that switch on `resolveTarget().deployed`:
 - `trace` is `"on-first-retry"` locally and `"off"` when deployed;
@@ -167,7 +199,22 @@ Selectors are role- or label-based. Test ids are added only where no accessible 
 - The Dashboard heading renders. A single-org user sees no org name anywhere to assert on.
 - All three checks fit a 30s budget.
 
-**Scripts (`packages/e2e/package.json`)**: `test:e2e` = `playwright test`, and `test:e2e:ui` = `playwright test --ui`. `e2e:auth` gains the `--env` pass-through. New scripts `e2e:auth:app-dev` (`--env app-dev`) and `e2e:auth:prod` (`--env prod`). New `e2e:stub:anthropic` = `tsx src/stubs/anthropic-stub.ts`. `@portalai/cli-env` is added as a dependency.
+**`src/specs/roles.spec.ts`** (decision 14): one serial `describe` on the owner's fresh org, skipped for a deployed target.
+1. As the owner, `createInvitation` for `E2E_AUTH0_USERNAME_ADMIN` (role `admin`) and `E2E_AUTH0_USERNAME_MEMBER` (role `member`).
+2. For each role, in a new browser context: `acceptInvitation` → the success card names the owner's org. Then `GET /api/organization/memberships` returns exactly 1 membership, in the owner's org. This guards against a personal org being self-provisioned first (#884).
+3. Probes, each a visible affordance plus its server refusal through `page.request` with the role's bearer token (read from the context's Auth0 cache):
+
+| As | `/settings` shows | Server |
+|---|---|---|
+| owner | **Members** tab, **Delete organization** | — (the owner's affordances are the control) |
+| admin | **Members** tab with **Invite member**; no **Delete organization** | `DELETE /api/organization/:id` (with a well-formed body) → 403 `PERMISSION_DENIED` |
+| member | no **Members** tab | `POST /api/organization/invitations` → 403 `PERMISSION_DENIED` |
+
+4. The same console-error collector as `core-loop`, per context.
+
+The probes are pinned to the system roles' defaults (`permission.service.ts`: `org.delete` is owner-only, `member.invite` is owner/admin). A change to those defaults is a deliberate edit to this table.
+
+**Scripts (`packages/e2e/package.json`)**: `test:e2e` = `playwright test`, and `test:e2e:ui` = `playwright test --ui`. `e2e:auth` gains the `--env` pass-through. New scripts `e2e:auth:app-dev` (`--env app-dev`) and `e2e:auth:prod` (`--env prod`). New `e2e:stub:anthropic` = `tsx src/stubs/anthropic-stub.ts`. Decision 14: `e2e:auth:<env>:admin` / `:member` (`--env <env> --identity <id>`), and `e2e:use` becomes `tsx src/setup/use-identity.ts`. `@portalai/cli-env` is added as a dependency.
 
 **Turbo:** `turbo.json` gains `"test:e2e": { "cache": false }`, and root `package.json` gains `"test:e2e": "turbo run test:e2e"`.
 
@@ -205,7 +252,7 @@ The web is a production build served by `vite preview` on `:3000`, same-origin t
   3. Restore `~/.cache/ms-playwright`, keyed on `@playwright/test` version and OS, then `npx playwright install --with-deps chromium`. The install is a no-op on a cache hit except for deps.
   4–7. `packages/e2e/scripts/e2e-stack.sh up`, with `E2E_QA_CONNECTION` and the dev-tenant `AUTH0_*` / `VITE_AUTH0_*` from secrets. It boots compose (`postgres-test`, `redis`, `s3mock`), migrates and seeds a fresh database, starts the stub, builds and starts the API, then builds and previews the web, waiting on each.
      The dev affordance requires `import.meta.env.DEV`, which a preview build strips, so this run signs in via the **QA path**: the build sets `VITE_AUTH0_QA_CONNECTION` (from `E2E_QA_CONNECTION`) to the CI user's connection, and the `setup` project uses `via: "qa"`. That also exercises the same code the deployed check uses.
-  8. `npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login` with `E2E_TARGET=local`, `E2E_SIGN_IN_VIA=qa`, CI creds in `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD`, and `CI=1`.
+  8. `npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login --project=roles` with `E2E_TARGET=local`, `E2E_SIGN_IN_VIA=qa`, the CI owner's creds in `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD`, the admin's and member's in `E2E_AUTH0_{USERNAME,PASSWORD}_{ADMIN,MEMBER}` (from `E2E_CI_AUTH0_{USERNAME,PASSWORD}_{ADMIN,MEMBER}`), and `CI=1`. Step 2's skip check also requires the two role passwords, so a partial secret set skips with a notice rather than failing `roles` halfway.
   9. `if: failure()`: upload `packages/e2e/test-results/` and `playwright-report/` (14-day retention).
   10. `if: always()`: `docker compose --profile e2e down -v`.
 
@@ -236,29 +283,30 @@ verify-login:
 
 | Server | `--storage-state` | `--allowed-origins` | `--output-dir` |
 |---|---|---|---|
-| `playwright-app-dev` | `packages/e2e/.auth/app-dev/owner.storageState.json` | `https://app-dev.portalsai.io;https://api-dev.portalsai.io;https://<dev auth0 domain>` | `packages/e2e/test-results/app-dev` |
-| `playwright-prod` | `packages/e2e/.auth/prod/owner.storageState.json` | `https://app.portalsai.io;https://api.portalsai.io;https://<prod auth0 domain>` | `packages/e2e/test-results/prod` |
+| `playwright-app-dev` | `packages/e2e/.auth/app-dev/storageState.json` | `https://app-dev.portalsai.io;https://api-dev.portalsai.io;https://<dev auth0 domain>` | `packages/e2e/test-results/app-dev` |
+| `playwright-prod` | `packages/e2e/.auth/prod/storageState.json` | `https://app.portalsai.io;https://api.portalsai.io;https://<prod auth0 domain>` | `packages/e2e/test-results/prod` |
 
-The Auth0 domains are public values. The plan reads them from the `*_VITE_AUTH0_DOMAIN` secrets' current values and writes them in. If a state file is missing, the server still starts but lands on `/login`; the README says to run `e2e:auth:<env>`.
+The Auth0 domains are public values. The plan reads them from the `*_VITE_AUTH0_DOMAIN` secrets' current values and writes them in. If a state file is missing, the server still starts but lands on `/login`; the README says to run `e2e:auth:<env>`. Switching role is `e2e:use <role> --env <env>` and then an MCP restart, the same as local. The server name always carries the env, so the role is the only implicit part.
 
 ### Docs
 
 - **`docs/E2E_DEPLOYED_QA.runbook.md`** (new, durable). Per tenant:
   1. create the Database connection with sign-ups disabled, enabled on the SPA application;
-  2. create the QA user `qa+<env>@portalsai.io`;
+  2. create the QA users `qa+<env>@portalsai.io` (owner), `qa+<env>-admin@portalsai.io` and `qa+<env>-member@portalsai.io`;
   3. add the MFA exemption by connection;
   4. check brute-force protection is on.
   Then, per env:
-  - `portalops vars set QA_AUTH0_{USERNAME,PASSWORD}`;
+  - `portalops vars set QA_AUTH0_{USERNAME,PASSWORD}` and the `_ADMIN` / `_MEMBER` pairs;
   - set the `<ENV>_VITE_AUTH0_QA_CONNECTION` repo secret;
   - first `e2e:auth:<env>`, which provisions the personal org;
   - `portalai org` rename to `QA (<env>)` and `org set-tier <id> <top-tier>`;
-  - check the QA user has exactly one membership;
+  - as the QA owner, invite the admin and the member (Settings → Members), then `e2e:auth --env <env> --identity <admin|member> --invite '<link>'` for each, and confirm the tier's seat cap allows three;
+  - check each QA user has exactly one membership;
   - password rotation;
   - QA-org analytics note.
   It's linked from the release / post-deploy checklist (#854).
 - **`packages/e2e/README.md`**: covers the specs, `test:e2e`, deployed targets and per-env MCP servers. Agent conduct in deployed envs:
-  - QA org only;
+  - QA org only, as whichever QA identity the walk needs (`e2e:use <role> --env <env>`). Never change the QA identities' own roles or memberships in a walk;
   - reproduce customer bugs by recreating their conditions;
   - no billing checkout;
   - created data is prefixed `qa-<yyyymmdd>-`, and cleaned up.
@@ -316,11 +364,22 @@ None. No schema change. The deployed QA org is created by the existing first-log
 - `core-loop.spec.ts`: one end-to-end test (6 assertions).
 - `login.spec.ts`: one test (3 assertions).
 
+### Decision 14 (multi-role) additions
+- `target.test.ts`:
+  - a deployed target accepts `admin` / `member` and refuses any other identity;
+  - `resolveCredentials` for a deployed `admin` calls `getSecret` with `qa-auth0-username-admin` / `qa-auth0-password-admin`;
+  - `storageStatePath` for a deployed identity, and `activeStorageStatePath` for local and deployed.
+- `use-identity.test.ts`: copies the identity's state to the active path; a missing state exits non-zero naming the `e2e:auth` command; an unknown identity on a deployed env is refused.
+- `auth-setup.test.ts` (the pure argument parser exported from `auth.setup.ts`): an `--invite` URL on another origin than the target is refused.
+- `sign-in.test.ts`: `entryPath` with an existing query gets `qa=1` appended, not replaced.
+- `packages/devops-cli` catalog: the four role secrets resolve to `qa-auth0-{username,password}-{admin,member}`.
+- `roles.spec.ts` (browser): one test covering the invites, two accepts and the probe table.
+
 ### Repo guards
 - `npm run lint:ci-cache` stays green with the new workflow: rule 1 Turbo env and a rule 4 concurrency literal.
 - No new required check, so rule 3 doesn't apply.
 
-**Totals ≈ 29 unit cases + 2 browser specs.**
+**Totals ≈ 39 unit cases + 3 browser specs.**
 
 The **deliberate-regression** acceptance is shown once in the PR, not as a committed test. On a scratch commit:
 - break the QA connection name, and `login` fails;
@@ -338,6 +397,8 @@ Each red run's artifact is linked from the PR.
 - [ ] Auth0 sign-up on the QA connection is disabled. That's verified in the runbook walk.
 - [ ] No deployed credential, trace or `storageState` appears in any CI artifact or commit.
 - [ ] `CLAUDE.md`, the e2e README and the runbook describe the three tiers and the deployed-session conduct rules.
+- [ ] `E2E Tests` signs in as owner, admin and member. The admin and member join the owner's org through their invite links, each with exactly one membership, and the probe table holds: hidden affordances absent and their requests refused with 403.
+- [ ] In app-dev and prod, `e2e:auth --env <env> --identity <admin|member>` and `e2e:use <role> --env <env>` let an agent session act as any of the three QA identities, each a member of only the QA org.
 
 ## Risks & rollback
 
@@ -346,6 +407,8 @@ Each red run's artifact is linked from the PR.
 - **The stub drifts from the AI SDK request shape.** The stub's 400-on-unknown and the core-loop run surface it immediately, and the unit test pins the two known schemas.
 - **A `storageState` leaks from a developer machine.** Damage is limited to the QA org (one membership). Recovery is to rotate the QA password per the runbook, which revokes refresh tokens.
 - **Agent misuse in prod.** Isolation is server-enforced by membership, not by prompt. `--allowed-origins` blocks wandering to other hosts.
+- **The QA admin and owner can invite (decision 14).** A leaked owner or admin state could invite an outside address into the QA org. It can't reach any customer org. The runbook's membership check flags a fourth member, and rotation revokes the state.
+- **`roles` breaks when the default role permissions change.** That's intended: the probe table names the defaults, and changing them should be a visible edit.
 
 ## Files touched
 
@@ -356,7 +419,8 @@ Each red run's artifact is linked from the PR.
 - `packages/e2e/src/setup/session.setup.ts`
 - `packages/e2e/src/specs/core-loop.spec.ts`
 - `packages/e2e/src/specs/login.spec.ts`
-- `packages/e2e/src/__tests__/{target,anthropic-stub,playwright-config,sign-in}.test.ts` and the jest config for the package
+- `packages/e2e/src/specs/roles.spec.ts`, `src/lib/invite.ts`, `src/setup/use-identity.ts` (decision 14)
+- `packages/e2e/src/__tests__/{target,anthropic-stub,playwright-config,sign-in,use-identity,auth-setup}.test.ts` and the jest config for the package
 - `.github/workflows/e2e-test.yml`
 - `docs/E2E_DEPLOYED_QA.runbook.md`
 
@@ -388,4 +452,4 @@ Each red run's artifact is linked from the PR.
 6. `verify-login` in both deploy workflows;
 7. `.mcp.json` per-env servers;
 8. runbook + README + `CLAUDE.md`.
-Slices 1–5 need no vendor-side change. Slice 5's CI run needs the `E2E_CI_*` repo secrets. Slices 6–7 need the runbook's Auth0 setup done on each tenant.
+Slices 1–5 need no vendor-side change. Slice 5's CI run needs the `E2E_CI_*` repo secrets. Slices 6–7 need the runbook's Auth0 setup done on each tenant. Decision 14 adds a roles slice after the PR workflow (it needs the `E2E_CI_*_ADMIN` / `_MEMBER` secrets) and extends the MCP and runbook slices; the plan carries the numbering.

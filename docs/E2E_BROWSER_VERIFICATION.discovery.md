@@ -152,6 +152,8 @@ The core loop's CSV step calls Anthropic at interpret time. The PRD rules out li
     - label created data `qa-<date>-…` and clean it up.
     `/smoke-walk` stays local-only.
 
+**Amendment (2026-10-27): owner, admin and member.** After slice 6 the scope widened to all three system roles, on the PR stack and in agent sessions against app-dev and prod. The post-deploy check stays owner-only. Each role is a real user invited into the org it tests, and its first sign-in goes through its invite link, so no identity ever self-provisions a second org. The one-org invariant above holds per identity. The spec's decision 14 pins the contract, and plan slice 7 builds it.
+
 ## Open questions
 
 1. **Does a deployed tenant enforce MFA tenant-wide?** If so, the QA user needs an exemption (an Action or a policy) or unattended login fails. **Lean:** check each tenant in the runbook step. Exempt the QA user by connection in the MFA Action rather than turning MFA off tenant-wide.

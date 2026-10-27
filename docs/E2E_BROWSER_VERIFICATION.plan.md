@@ -4,7 +4,7 @@
 
 Spec: `docs/E2E_BROWSER_VERIFICATION.spec.md`. Discovery: `docs/E2E_BROWSER_VERIFICATION.discovery.md`. Issue: #489. Builds on **shipped #304**: the `@portalai/e2e` harness, the dev affordance and `.mcp.json`.
 
-Nine slices, each behind a green test suite and each leaving the repo compilable. They land as **commits on `feat/489-e2e-browser-verification`**, one feature and one PR (per `CLAUDE.md` → "Phase = commit, not PR").
+Ten slices, each behind a green test suite and each leaving the repo compilable. They land as **commits on `feat/489-e2e-browser-verification`**, one feature and one PR (per `CLAUDE.md` → "Phase = commit, not PR").
 
 Run tests from each package (never invoke jest directly — `feedback_use_npm_test_scripts`):
 
@@ -14,7 +14,7 @@ cd packages/devops-cli && npm run test:unit
 cd packages/e2e && npm run test:unit      # new in slice 2 (replaces `true`)
 cd packages/e2e && npm run test:e2e       # browser specs, slice 5 on
 cd apps/web && npm run test:unit -- --testPathPattern '<touched files>'
-npm run lint:ci-cache                     # slices 6–7
+npm run lint:ci-cache                     # slices 6–8
 ```
 
 Each slice:
@@ -33,9 +33,10 @@ Sequencing rationale: leaves first, then wiring, then CI, then deployed surfaces
 - **Slice 4:** the Anthropic stub, pure and unit-tested.
 - **Slice 5:** compose MinIO, the Playwright projects, the core-loop + login specs and `test:e2e`, all green locally. Uses 2–4.
 - **Slice 6:** `e2e-test.yml`. The first CI run; uses 5.
-- **Slice 7:** `verify-login` in both deploy workflows + `VITE_AUTH0_QA_CONNECTION` in their web builds. Uses 3 and 5. **Its first real run needs the runbook's tenant setup.**
-- **Slice 8:** per-env MCP servers, plus a guard test on `.mcp.json`. Uses 2.
-- **Slice 9:** runbook, README, `CLAUDE.md` / copilot mirror. Docs land last so they describe what shipped.
+- **Slice 7 (amendment, spec decision 14):** owner / admin / member. The `roles` spec on the PR stack, the invite-link sign-in, deployed `--identity` and an env-aware `e2e:use`. Uses 2, 5 and 6. It sits before the deployed slices because those consume its library changes, and its CI proof needs only repo secrets.
+- **Slice 8:** `verify-login` in both deploy workflows + `VITE_AUTH0_QA_CONNECTION` in their web builds. Uses 3 and 5. **Its first real run needs the runbook's tenant setup.**
+- **Slice 9:** per-env MCP servers, plus a guard test on `.mcp.json`. Uses 2 and 7.
+- **Slice 10:** runbook, README, `CLAUDE.md` / copilot mirror. Docs land last so they describe what shipped.
 
 No migration, no seed.
 
@@ -126,7 +127,7 @@ The web base URL becomes known per env. `portalops vars` gains the two QA keys.
 
 **Done when:** the touched web tests and the egress guard pass. A `vite dev` build with `VITE_AUTH0_QA_CONNECTION` set shows the button only with `?qa`.
 
-**Risk:** none at runtime. No build sets the var until slice 6/7.
+**Risk:** none at runtime. No build sets the var until slice 6/8.
 
 ---
 
@@ -189,7 +190,7 @@ A deterministic stand-in for `POST /v1/messages`, so interpret runs without a li
 
 **Risk:**
 - **This is the biggest slice.** If selector work balloons, split the commit: config + login spec, then core loop.
-- **Local setup prerequisite.** A local run needs the **local tenant's CI user + its connection enabled on the dev SPA app**. That's operator setup, listed in slice 9's runbook and needed here already. Ask the user for it at the start of the slice.
+- **Local setup prerequisite.** A local run needs the **local tenant's CI user + its connection enabled on the dev SPA app**. That's operator setup, listed in slice 10's runbook and needed here already. Ask the user for it at the start of the slice.
 - **Containers.** DooD in the devcontainer means compose services publish on the host. Reach MinIO at the address the browser uses (`project_dood_no_workspace_bind_mounts`), and check before writing the spec that the presigned URL host resolves from Chromium.
 
 ---
@@ -221,7 +222,50 @@ The core loop runs on every PR as a non-required **E2E Tests** check.
 
 ---
 
-## Slice 7 — Post-deploy `verify-login`
+## Slice 7 — Owner, admin and member
+
+The PR walk proves each system role's split, and the e2e library can sign in any of the three QA identities in a deployed env (spec decision 14).
+
+**Files**
+
+- New: `packages/e2e/src/lib/invite.ts`: `createInvitation` and `acceptInvitation`.
+- New: `packages/e2e/src/specs/roles.spec.ts`: the invites, the two accepts with the one-membership check, and the probe table.
+- New: `packages/e2e/src/setup/use-identity.ts`: the env-aware `e2e:use`.
+- Edit: `packages/e2e/src/lib/target.ts`:
+  - deployed `admin` / `member` instead of refusing every identity;
+  - `-<id>` secret names;
+  - `activeStorageStatePath`.
+- Edit: `packages/e2e/src/lib/sign-in.ts`: `entryPath`.
+- Edit: `packages/e2e/src/setup/auth.setup.ts`:
+  - `--invite`, with the same-origin check in an exported pure parser;
+  - the copy to the active path for deployed targets;
+  - local owner also writes `.auth/owner.storageState.json`.
+- Edit: `packages/e2e/src/lib/playwright-config.ts`: the `roles` project.
+- Edit: `packages/e2e/package.json`: `e2e:use`, `e2e:auth:<env>:admin|member`.
+- Edit: `packages/devops-cli/src/catalog.ts` (+ test): the four `QA_AUTH0_*_{ADMIN,MEMBER}` secrets.
+- Edit: `.github/workflows/e2e-test.yml`:
+  - the role secrets in the job env;
+  - the skip check covering them;
+  - `--project=roles`.
+- Edit: the scratchpad secret script, extended with the `E2E_CI_AUTH0_*_{ADMIN,MEMBER}` pairs from `packages/e2e/.env`. The user runs it.
+
+**Steps**
+
+1. **Tests (spec "Decision 14 additions").** `target.test.ts`, `use-identity.test.ts`, `auth-setup.test.ts`, `sign-in.test.ts` and the devops-cli catalog cases. Run; fail.
+2. **Implement** the library, CLI and catalog changes. Green.
+3. **Browser:** write `roles.spec.ts` and run it on the local stack (`e2e:stack:up`) until it's green twice. Then a deliberate regression: give `member` the `member.invite` grant on a scratch DB, and `roles` must fail at the member's probe.
+4. **CI:** the user runs the extended secret script. Then push; `E2E Tests` runs all four projects green.
+5. `npm run lint:ci-cache`, lint, type-check, format:check. Root `npm run build`, since devops-cli changed.
+
+**Done when:** `E2E Tests` is green with `roles` on the PR, and the unit cases pass.
+
+**Risk:**
+- **Invite flow quirks in a production build.** The return-to (#884) has only been proven against the dev server. If `roles` finds a bug there, it's filed and fixed through the bug template, not worked around in the spec.
+- **Token extraction.** The probes read the role's bearer token from the context's `@@auth0spajs@@` cache entry. If that shape is unstable, intercept an app request's `Authorization` header instead.
+
+---
+
+## Slice 8 — Post-deploy `verify-login`
 
 After every deploy, CI signs in to that env as its QA user and goes red on failure. It does not roll back.
 
@@ -236,7 +280,7 @@ After every deploy, CI signs in to that env as its QA user and goes red on failu
 
 1. **Test:** `npm run lint:ci-cache` passes. In a review read, the `!cancelled() && …success` guard on `verify-login` must match `tag-deploy`'s. `tag-deploy` must not need `verify-login`.
 2. **Implement.**
-3. **Prerequisite gate:** the app-dev tenant setup from the runbook (slice 9's content; the user does it in the Auth0 dashboard) plus `portalops vars set QA_AUTH0_*` + the `DEV_VITE_AUTH0_QA_CONNECTION` secret. Without them, the first merge to `main` turns `verify-login` red. That's correct behaviour, but noisy.
+3. **Prerequisite gate:** the app-dev tenant setup from the runbook (slice 10's content; the user does it in the Auth0 dashboard) plus `portalops vars set QA_AUTH0_*` + the `DEV_VITE_AUTH0_QA_CONNECTION` secret. Without them, the first merge to `main` turns `verify-login` red. That's correct behaviour, but noisy.
 4. **Proof:** the first app-dev deploy that includes this slice shows `verify-login` green. On a deliberate break (a wrong `DEV_VITE_AUTH0_QA_CONNECTION` on a dispatched run) it goes red with screenshots. Prod is proven on the next release.
 
 **Done when:** lint is green. The live proof is deferred to the first post-merge deploy and recorded in the smoke doc.
@@ -247,7 +291,7 @@ After every deploy, CI signs in to that env as its QA user and goes red on failu
 
 ---
 
-## Slice 8 — Per-env MCP servers
+## Slice 9 — Per-env MCP servers
 
 Agent sessions can target app-dev or prod explicitly, fenced by origin.
 
@@ -264,7 +308,7 @@ Agent sessions can target app-dev or prod explicitly, fenced by origin.
 **Steps**
 
 1. **Test** the guard, which fails while the servers are missing. **Implement.** Green.
-2. **Manual proof:** `e2e:auth:app-dev` → restart the session → `mcp__playwright-app-dev__browser_navigate` to the app lands authenticated in the QA org, and navigating to an outside origin is refused. This needs slice 7's app-dev tenant setup.
+2. **Manual proof:** `e2e:auth:app-dev` → restart the session → `mcp__playwright-app-dev__browser_navigate` to the app lands authenticated in the QA org, and navigating to an outside origin is refused. Then `e2e:use member --env app-dev` → restart → the same session is the QA member (no Members tab). This needs slice 8's app-dev tenant setup.
 
 **Done when:** the guard passes and the manual proof is recorded in the smoke doc.
 
@@ -272,7 +316,7 @@ Agent sessions can target app-dev or prod explicitly, fenced by origin.
 
 ---
 
-## Slice 9 — Runbook + docs sync
+## Slice 10 — Runbook + docs sync
 
 Docs describe what shipped.
 
@@ -282,6 +326,7 @@ Docs describe what shipped.
   - the tenant steps;
   - the MFA exemption by connection;
   - QA org provisioning, which is the first login, then rename + `org set-tier`;
+  - the admin and member QA users: invite each from the QA owner's Settings → Members, then `e2e:auth --env <env> --identity <id> --invite '<link>'`;
   - the one-membership check;
   - rotation;
   - the analytics note;
@@ -311,25 +356,27 @@ Docs describe what shipped.
 | 4 | Anthropic stub | stub test + a real interpret against it |
 | 5 | MinIO, Playwright projects, core-loop + login specs | `test:e2e` green ×2, regressions red |
 | 6 | `e2e-test.yml` | `lint:ci-cache` + a green PR run + a red-run artifact |
-| 7 | `verify-login` in deploys | `lint:ci-cache`; live proof on the first deploy |
-| 8 | Per-env MCP servers | `mcp-config` guard + a manual app-dev session |
-| 9 | Runbook + README + `CLAUDE.md` | `lint:doc-pointers` |
+| 7 | Owner / admin / member: `roles` spec, invite sign-in, deployed `--identity`, `e2e:use --env` | e2e + devops-cli `test:unit`; `E2E Tests` green with `roles`; a member-grant regression red |
+| 8 | `verify-login` in deploys | `lint:ci-cache`; live proof on the first deploy |
+| 9 | Per-env MCP servers | `mcp-config` guard + a manual app-dev session, switched to the member |
+| 10 | Runbook + README + `CLAUDE.md` | `lint:doc-pointers` |
 
 ## Cross-slice notes
 
 **User-side prerequisites.** These are vendor or dashboard steps the agent can't do; the Auth0 CLI isn't logged in here. Ask for each at the start of its slice:
 - **Slice 5:** the local-tenant CI user + its connection on the dev SPA.
 - **Slice 6:** the repo secrets.
-- **Slices 7–8:** the app-dev tenant setup + `QA_AUTH0_*` vars.
+- **Slice 7:** the `E2E_CI_AUTH0_*_{ADMIN,MEMBER}` repo secrets, from the local e2e admin/member identities.
+- **Slices 8–9:** the app-dev tenant setup (three QA users) + `QA_AUTH0_*` vars, including the `_ADMIN` / `_MEMBER` pairs.
 - **Before the next prod release:** the prod tenant setup.
 
 **Other notes:**
 - **Version lockstep.** `@playwright/test` 1.62.1, `@playwright/mcp@0.0.80` and the devcontainer Dockerfile stay pinned together (`playwright.config.ts:10-20`). CI's browser cache key reads the `@playwright/test` version, so a bump re-installs automatically.
-- **Secrets never land in artifacts.** Slice 5's `buildConfig` (`trace: "off"` when deployed) is what slice 7 relies on. Don't add a `trace` override in the workflow.
+- **Secrets never land in artifacts.** Slice 5's `buildConfig` (`trace: "off"` when deployed) is what slice 8 relies on. Don't add a `trace` override in the workflow.
 - **`docker-compose.yml` edits invalidate every cached turbo task** (`globalDependencies`). That's a one-time performance event in slice 5, not a correctness issue.
 - **Tidy screenshots.** Keep all screenshots under `packages/e2e/test-results/` (`feedback_clear_e2e_test_results_after_merge`).
-- **Docs in the same PR.** Slice 9 is mandatory, not a follow-up. `.env.example` edits ride with slices 3 and 5.
-- **Review chain.** This is a full feature, so code-review, security (auth + secrets + prod access: required), smoke and adversarial all apply. The smoke doc records the deferred live proofs from slices 7–8.
+- **Docs in the same PR.** Slice 10 is mandatory, not a follow-up. `.env.example` edits ride with slices 3 and 5.
+- **Review chain.** This is a full feature, so code-review, security (auth + secrets + prod access: required), smoke and adversarial all apply. The smoke doc records the deferred live proofs from slices 8–9.
 
 ## Next step
 
