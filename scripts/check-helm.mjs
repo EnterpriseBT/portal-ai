@@ -111,6 +111,15 @@ const apiHasNoMigrationCreds = (out) => {
   );
 };
 
+// #889: every WEB_APP_URL the ConfigMap carries. Invite links are built on it,
+// and production refuses invites without a real one.
+const webAppUrls = (out) =>
+  [
+    ...manifest(out, "ConfigMap", "p-portalai-config").matchAll(
+      /^\s+WEB_APP_URL: "([^"]*)"$/gm
+    ),
+  ].map((m) => m[1]);
+
 const MIGRATION_USER_ARGS = [
   "--set",
   "postgresql.external.migrationUser=owner",
@@ -129,6 +138,10 @@ const scenarios = [
       ["non-root workloads", (out) => out.includes("runAsNonRoot: true")],
       ["api image reference", (out) => out.includes('image: "example/api:test"')],
       ["web image reference", (out) => out.includes('image: "example/web:test"')],
+      [
+        "no WEB_APP_URL without an ingress or config (#889)",
+        (out) => webAppUrls(out).length === 0,
+      ],
       [
         "api reads env from ConfigMap + Secret",
         (out) =>
@@ -224,6 +237,50 @@ const scenarios = [
         (out) => /name: p-portalai-web\b/.test(out),
       ],
       ["TLS secret wired", (out) => out.includes('secretName: "app-tls"')],
+      [
+        "invite links default to the ingress origin (#889)",
+        (out) => webAppUrls(out).join() === "https://app.example.com",
+      ],
+    ],
+  },
+  {
+    name: "ingress without TLS (#889)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "ingress.enabled=true",
+      "--set",
+      "ingress.host=portal.corp",
+    ],
+    assertions: [
+      [
+        "invite links default to http on the ingress host",
+        (out) => webAppUrls(out).join() === "http://portal.corp",
+      ],
+    ],
+  },
+  {
+    name: "explicit config.WEB_APP_URL beats the ingress default (#889)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "ingress.enabled=true",
+      "--set",
+      "ingress.host=app.example.com",
+      "--set",
+      "config.WEB_APP_URL=https://portal.example.org",
+    ],
+    assertions: [
+      [
+        "WEB_APP_URL renders once, from config",
+        (out) => webAppUrls(out).join() === "https://portal.example.org",
+      ],
     ],
   },
   {

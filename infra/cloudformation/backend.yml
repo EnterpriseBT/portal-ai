@@ -26,7 +26,7 @@ Parameters:
   FrontendOrigin:
     Type: String
     Default: https://app-dev.portalsai.io
-    Description: Origin allowed to PUT to the upload bucket (browser CORS)
+    Description: The web app's origin, allowed to PUT to the upload bucket (browser CORS) and used for invite links (WEB_APP_URL)
   # SIZING IS PER-ENVIRONMENT AND MUST BE PASSED EXPLICITLY (#424).
   # These defaults describe prod. They are NOT what every environment runs:
   # `aws cloudformation deploy` reuses whatever a stack was created with, so
@@ -601,6 +601,11 @@ Resources:
               Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/google-sheets/callback"
             - Name: MICROSOFT_OAUTH_REDIRECT_URI
               Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/microsoft-excel/callback"
+            # The web app's origin, which invite links are built on. Unset,
+            # the app falls back to http://localhost:3000, and every invite
+            # app-dev and prod handed out pointed there (#889).
+            - Name: WEB_APP_URL
+              Value: !Ref FrontendOrigin
             # #852: the scheme is the TLS switch (the API's ioredis turns
             # rediss:// into TLS), and the cache refuses plaintext. There is
             # no plaintext cache to point at since #872.

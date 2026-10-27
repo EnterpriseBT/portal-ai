@@ -112,6 +112,10 @@ export enum ApiCode {
   INVITATION_NOT_FOUND = "INVITATION_NOT_FOUND",
   /** The invitation has expired and can no longer be accepted. 410. */
   INVITATION_EXPIRED = "INVITATION_EXPIRED",
+  /** Production has no real web origin to build an invite link on
+   *  (`WEB_APP_URL` unset or loopback), so it refuses rather than hand out a
+   *  dead link (#889). 503. */
+  INVITATION_LINK_UNCONFIGURED = "INVITATION_LINK_UNCONFIGURED",
   /** Removing this member would strand the org with no owner. 409. */
   LAST_OWNER_REMOVAL = "LAST_OWNER_REMOVAL",
   /** A set-roles that would leave the member with no roles (≥1-role guard). 409. */

@@ -615,6 +615,8 @@ organizationRouter.put(
  *         description: The caller lacks permission to invite members (PERMISSION_DENIED)
  *       409:
  *         description: Already a member, already invited, or seat limit reached
+ *       503:
+ *         description: This server has no web origin to build invite links on (INVITATION_LINK_UNCONFIGURED)
  */
 organizationRouter.post(
   "/invitations",
@@ -761,6 +763,8 @@ organizationRouter.post(
  *               $ref: '#/components/schemas/InvitationResponse'
  *       404:
  *         description: No pending invitation with that id
+ *       503:
+ *         description: This server has no web origin to build invite links on (INVITATION_LINK_UNCONFIGURED)
  */
 organizationRouter.post(
   "/invitations/:id/resend",

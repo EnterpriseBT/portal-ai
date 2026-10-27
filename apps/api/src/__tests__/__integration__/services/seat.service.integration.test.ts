@@ -7,7 +7,14 @@
  * (owner+admin invite, member denied) and audit emission are verified too.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, and, like } from "drizzle-orm";
 import postgres from "postgres";
@@ -18,6 +25,7 @@ import { SeatService } from "../../../services/seat.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { ApiError } from "../../../services/http.service.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+import { environment } from "../../../environment.js";
 import type { PermissionContext } from "../../../services/permission.service.js";
 import {
   generateId,
@@ -117,7 +125,10 @@ describe("SeatService Integration Tests", () => {
     expect(res.status).toBe("pending");
     expect(res.email).toBe("invitee@example.com"); // normalized
     expect(res.role).toBe("member");
-    expect(res.inviteUrl).toContain("token=");
+    // On the configured web origin, not just any URL with a token (#889).
+    const [linkBase, linkToken] = res.inviteUrl!.split("?token=");
+    expect(linkBase).toBe(`${environment.WEB_APP_URL}/invitations/accept`);
+    expect(linkToken).toMatch(/^[0-9a-f]{64}$/);
     expect((res as Record<string, unknown>).tokenHash).toBeUndefined();
 
     const [row] = await asDrizzle()
@@ -215,6 +226,82 @@ describe("SeatService Integration Tests", () => {
     expect(row.tokenHash).not.toBe(oldToken);
     await new Promise((r) => setTimeout(r, 60));
     expect(await auditRows("member.invite.resend")).toHaveLength(1);
+  });
+
+  // ── no real web origin in production (#889) ─────────────────────────
+
+  describe("in production with a loopback WEB_APP_URL", () => {
+    const restores: (() => void)[] = [];
+    const goProduction = () => {
+      const node = jest.replaceProperty(environment, "NODE_ENV", "production");
+      const web = jest.replaceProperty(
+        environment,
+        "WEB_APP_URL",
+        "http://localhost:3000"
+      );
+      restores.push(
+        () => node.restore(),
+        () => web.restore()
+      );
+    };
+    afterEach(() => {
+      while (restores.length) restores.pop()!();
+    });
+
+    it("invite refuses with INVITATION_LINK_UNCONFIGURED and writes no row", async () => {
+      await setSeatCap(null);
+      goProduction();
+      await expect(
+        SeatService.invite(owner, { email: "b@x.com", role: "member" }, AUDIT)
+      ).rejects.toMatchObject({
+        status: 503,
+        code: ApiCode.INVITATION_LINK_UNCONFIGURED,
+      });
+      const rows = await asDrizzle()
+        .select()
+        .from(schema.invitations)
+        .where(eq(schema.invitations.organizationId, orgId));
+      expect(rows).toHaveLength(0);
+    });
+
+    it("resend refuses and leaves the stored token as it was", async () => {
+      await setSeatCap(null);
+      const inv = await SeatService.invite(
+        owner,
+        { email: "c@x.com", role: "member" },
+        AUDIT
+      );
+      const [before] = await asDrizzle()
+        .select()
+        .from(schema.invitations)
+        .where(eq(schema.invitations.id, inv.id));
+      goProduction();
+      await expect(
+        SeatService.resend(owner, inv.id, AUDIT)
+      ).rejects.toMatchObject({ code: ApiCode.INVITATION_LINK_UNCONFIGURED });
+      const [after] = await asDrizzle()
+        .select()
+        .from(schema.invitations)
+        .where(eq(schema.invitations.id, inv.id));
+      expect(after.tokenHash).toBe(before.tokenHash);
+      expect(after.expiresAt).toBe(before.expiresAt);
+    });
+
+    it("still lets an owner revoke, which builds no link", async () => {
+      await setSeatCap(null);
+      const inv = await SeatService.invite(
+        owner,
+        { email: "d@x.com", role: "member" },
+        AUDIT
+      );
+      goProduction();
+      await SeatService.revoke(owner, inv.id, AUDIT);
+      const [row] = await asDrizzle()
+        .select()
+        .from(schema.invitations)
+        .where(eq(schema.invitations.id, inv.id));
+      expect(row.status).toBe("revoked");
+    });
   });
 
   // ── conflicts ───────────────────────────────────────────────────────

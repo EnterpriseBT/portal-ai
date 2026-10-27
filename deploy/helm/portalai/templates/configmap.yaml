@@ -18,6 +18,12 @@ data:
   UPLOAD_S3_BUCKET: {{ include "portalai.s3Bucket" . | quote }}
   UPLOAD_S3_REGION: {{ if .Values.minio.enabled }}"us-east-1"{{ else }}{{ .Values.minio.external.region | quote }}{{ end }}
   UPLOAD_S3_FORCE_PATH_STYLE: {{ if .Values.minio.enabled }}"true"{{ else }}{{ .Values.minio.external.forcePathStyle | quote }}{{ end }}
+  # Invite links are built on the web origin, and production refuses invites
+  # without a real one (#889). Default it from the ingress host; an explicit
+  # config.WEB_APP_URL wins (and renders below, so it isn't written twice).
+  {{- if and .Values.ingress.enabled .Values.ingress.host (not (hasKey .Values.config "WEB_APP_URL")) }}
+  WEB_APP_URL: {{ printf "%s://%s" (ternary "https" "http" .Values.ingress.tls.enabled) .Values.ingress.host | quote }}
+  {{- end }}
   {{- range $key, $value := .Values.config }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
