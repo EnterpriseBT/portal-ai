@@ -32,12 +32,14 @@ Sheets and Excel keep navigating on the 202. Their instance survives a failure, 
 ## Plan — 1 slice
 
 **Files**
+- Edit: `apps/web/src/utils/job-stream.util.ts`: `awaitJobCompletion` rejects a `failed`/`cancelled` job with `JobFailedError` (an `Error` with `status`, same message), so a caller can tell the job's own failure from a dropped stream without matching message text.
 - New: `apps/web/src/utils/commit-job.util.ts`: `awaitCommitJob(connect, jobId, { onProgress? })`. It resolves on `completed`, and on `failed`/`cancelled` throws `ApiError` with code `LAYOUT_PLAN_COMMIT_FAILED` and the job's message. It rethrows an SSE connection error as is.
 - Edit: `FileUploadConnectorWorkflow.component.tsx`: `runCommit` awaits `awaitCommitJob`, and the cache sweep moves to a `finally` around it. The comment says why file upload waits and the cloud connectors don't.
 - Edit: `GoogleSheetsConnectorWorkflow.component.tsx`, `MicrosoftExcelConnectorWorkflow.component.tsx`: comment only (the flip-to-`error` claim is true for them, and says why).
-- Edit: `CLAUDE.md` + `.github/copilot-instructions.md` → Async Job State, frontend rules: a workflow whose job **creates** its target (file upload) waits for the job, because a failure deletes the page it would land on. Post-202 navigation stays the rule otherwise.
+- Edit: `CLAUDE.md` → Async Job State, frontend rules (the Copilot mirror doesn't carry this rule): a workflow whose job **creates** its target (file upload) waits for the job, because a failure deletes the page it would land on. Post-202 navigation stays the rule otherwise.
 
 **Tests** (`npm run test:unit`, apps/web)
+- Edit: `apps/web/src/__tests__/job-stream.util.test.ts`: `failed` and `cancelled` reject with `JobFailedError` and the right `status`.
 - New: `apps/web/src/__tests__/commit-job.util.test.ts`: `completed` → resolves; `failed` with "Drift at 'warn' severity…" → `ApiError` `LAYOUT_PLAN_COMMIT_FAILED` carrying that message; `cancelled` → the same code with "Job cancelled"; an SSE error → rethrown unchanged.
 - Edit: `workflows/FileUploadConnector/__tests__/file-upload-workflow.util.test.ts`: a `runCommit` that rejects with that `ApiError` leaves the phase on `review`, sets `serverError` to it, keeps `regions`/`plan`, and never calls `onCommitSuccess`. A second Commit after that calls `runCommit` again.
 

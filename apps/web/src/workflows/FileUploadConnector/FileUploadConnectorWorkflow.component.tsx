@@ -41,6 +41,7 @@ import { sdk, queryKeys } from "../../api/sdk";
 import { putToS3 } from "../../api/file-uploads.api";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
+import { awaitCommitJob } from "../../utils/commit-job.util";
 import { generatedConnectorName } from "../../utils/connector-instance-name.util";
 import type {
   CellBounds,
@@ -547,34 +548,30 @@ export const FileUploadConnectorWorkflow: React.FC<
         plan,
         uploadSessionId,
       });
-      // Fire-and-forget cache invalidation: when the worker terminates,
-      // sweep the entity-list / records / plan caches so the lock alert
-      // disappears and the freshly-imported entities appear without a
-      // manual refresh. We don't await — the modal closes and the user
-      // lands on /connectors/:id immediately; the lock alert there
-      // serves as the "import in progress" confirmation while the
-      // worker finishes. The connectSse closure + queryClient survive
-      // the modal unmounting (queryClient is provider-scoped; the
-      // EventSource keeps itself open until the terminal event lands).
-      // `.finally` (not `.then`) so the cache sweep runs on BOTH
-      // success and failure — a failed commit flips the connector
-      // instance to status "error" server-side, and the chip on
-      // /connectors/:id needs to refetch to reflect that.
-      awaitJobCompletion(connectSse, enqueue.jobId)
-        .finally(() =>
-          Promise.all(
-            [
-              queryKeys.connectorInstances.root,
-              queryKeys.connectorEntities.root,
-              queryKeys.stations.root,
-              queryKeys.fieldMappings.root,
-              queryKeys.portals.root,
-              queryKeys.portalResults.root,
-              queryKeys.connectorInstanceLayoutPlans.root,
-            ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
-          )
-        )
-        .catch(() => undefined);
+      // #887: wait for the job before navigating. This commit creates the
+      // connector instance, and a failed job's rollback deletes it again, so
+      // landing on /connectors/:id from the 202 left the user on "Connector
+      // instance not found" with the reason never shown. A failure throws
+      // here instead, and the Review step shows it with the regions intact.
+      // (Sheets and Excel commit into an instance that already exists, which
+      // a failure only flips to `error`, so they still navigate on the 202.)
+      // The cache sweep runs on both outcomes, so the new connector's
+      // entities and plan appear without a refresh.
+      try {
+        await awaitCommitJob(connectSse, enqueue.jobId);
+      } finally {
+        void Promise.all(
+          [
+            queryKeys.connectorInstances.root,
+            queryKeys.connectorEntities.root,
+            queryKeys.stations.root,
+            queryKeys.fieldMappings.root,
+            queryKeys.portals.root,
+            queryKeys.portalResults.root,
+            queryKeys.connectorInstanceLayoutPlans.root,
+          ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+        ).catch(() => undefined);
+      }
       return { connectorInstanceId: enqueue.connectorInstanceId };
     },
     [commitMutate, connectorDefinitionId, connectSse, queryClient]

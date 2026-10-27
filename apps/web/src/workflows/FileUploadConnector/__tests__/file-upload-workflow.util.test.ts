@@ -12,6 +12,7 @@ import {
   POST_INTERPRET_REGIONS,
 } from "../utils/file-upload-fixtures.util";
 import type { RegionDraft, Workbook } from "../../../modules/RegionEditor";
+import { ApiError } from "../../../utils/api.util";
 
 const SAMPLE_FILE = new File(
   [new Uint8Array([1, 2, 3])],
@@ -581,6 +582,62 @@ describe("useFileUploadWorkflow — onCommit", () => {
 
     expect(result.current.serverError?.message).toBe("Commit exploded");
     expect(result.current.isCommitting).toBe(false);
+  });
+
+  // #887: a failed commit job keeps the user in Review, with what they drew,
+  // and a second Commit retries; it never navigates to the instance the
+  // failed job's rollback deleted.
+  test("a failed commit job stays in Review with the job's error, and Commit retries", async () => {
+    const onCommitSuccess = jest.fn();
+    const runCommit = jest
+      .fn<FileUploadWorkflowCallbacks["runCommit"]>()
+      .mockRejectedValueOnce(
+        new ApiError(
+          "Drift at 'warn' severity — region drift knobs require halt.",
+          "LAYOUT_PLAN_COMMIT_FAILED"
+        )
+      )
+      .mockResolvedValueOnce({ connectorInstanceId: "ci_retry" });
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(makeCallbacks({ runCommit, onCommitSuccess }))
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+      })
+    );
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+    const reviewStep = result.current.step;
+    const regions = result.current.regions;
+    const plan = result.current.plan;
+
+    await act(async () => {
+      await result.current.onCommit();
+    });
+
+    expect(result.current.serverError).toEqual({
+      message: "Drift at 'warn' severity — region drift knobs require halt.",
+      code: "LAYOUT_PLAN_COMMIT_FAILED",
+    });
+    expect(result.current.step).toBe(reviewStep);
+    expect(result.current.regions).toBe(regions);
+    expect(result.current.plan).toBe(plan);
+    expect(onCommitSuccess).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.onCommit();
+    });
+
+    expect(runCommit).toHaveBeenCalledTimes(2);
+    expect(result.current.serverError).toBeNull();
+    expect(onCommitSuccess).toHaveBeenCalledWith("ci_retry");
   });
 });
 
