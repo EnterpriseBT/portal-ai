@@ -109,7 +109,7 @@ Four findings can't be closed by editing prose alone: the unscanned and unsigned
 - **A. Docs follow the code.** Verify on runtime endpoints. `/schema` and `/metadata` at registration are signed with a secret you don't have yet, so accept them unverified or verify only after storing the secret. This is the demo-toolpack's shape.
 - **B. Code follows the docs.** Let the registrant supply the secret, or do a two-phase register.
 
-**Lean: A for this PR, B as a follow-up ticket.** The schema endpoint serves a tool catalog, not customer data, so an unverified registration fetch is low risk. A contract change belongs in its own ticket.
+**Lean: A for this PR, B as #911.** The schema endpoint serves a tool catalog, not customer data, so an unverified registration fetch is low risk. A contract change belongs in its own ticket.
 
 ### Decision 3 — `.github/copilot-instructions.md`
 
@@ -169,7 +169,7 @@ Four findings can't be closed by editing prose alone: the unscanned and unsigned
 
 1. **Copilot mirror: delete it or generate it?** Is anyone on the team using GitHub Copilot against this repo? Lean: delete it. The team is Claude-only.
 2. **Site-config public snapshot.** Adding `customRbac`/`advancedViewFilters` so pricing can show Enterprise features is a small additive change to the `GET /api/public/site-config` contract. Is it in scope? Lean: yes. Without it the pricing page under-describes the tier that buyers of the security work evaluate.
-3. **Privacy "export directly from the app".** No export route exists. **Decided (user, 2026-10-28):** remove every mention of data export from the privacy page and any other surface. Data export is a feature for its own ticket.
+3. **Privacy "export directly from the app".** No export route exists. **Decided (user, 2026-10-28):** remove every mention of data export from the privacy page and any other surface. Data export is #912.
 4. **Glossary and FAQ gaps (sharing, capabilities, Activity log, job locks, SSO).** These describe shipped capabilities, so this is alignment, not net-new docs. Lean: add terse entries for these in this PR. A shipped feature with no Help entry is drift.
 5. **Web vs API required-field wording on records.** Is the soft `validationErrors` vs hard client block intended? Lean: intended (the API accepts partial data from syncs). Document it and don't change it.
 6. **The `bulk_geocode_records` "metered" wording vs `costHint: expensive`.** Lean: say "expensive" in the prose to match the charge class.
@@ -186,10 +186,10 @@ Four findings can't be closed by editing prose alone: the unscanned and unsigned
 
 ## What this doesn't decide
 
-- **The residency web image's Trivy/SBOM/cosign gate.** It changes the deploy pipeline, so it gets its own ticket and `/security-review`.
-- **A runtime basemap/tile-provider knob for residency.** That's net-new configuration, so it gets its own ticket.
-- **Data export.** No export exists, so this PR removes the claims, and building the feature goes to a follow-up ticket.
-- **The registration signing contract redesign.** It's a toolpack contract change, so it gets its own ticket.
+- **The residency web image's Trivy/SBOM/cosign gate.** It changes the deploy pipeline, so it's #909, with its own `/security-review`.
+- **A runtime basemap/tile-provider knob for residency.** That's net-new configuration, so it's #910.
+- **Data export.** No export exists, so this PR removes the claims, and building the feature is #912.
+- **The registration signing contract redesign.** It's a toolpack contract change, so it's #911.
 - **Code-quality findings the audit surfaced by accident.** `TabbedSnippetAccordion` is an inline helper component, and `WEBHOOK_HANDLE_SCOPE_MISMATCH` is used for a bad offset. Neither is documentation, so they're noted for a chore ticket.
 - **Phase docs.** They're ephemeral by design. The other ~20 spent ones in `docs/` are swept by the next Feature ticket, since this is a Task.
 - **Accessibility copy.** That belongs to the next epic.
