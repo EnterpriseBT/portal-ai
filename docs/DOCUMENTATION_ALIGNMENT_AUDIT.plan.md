@@ -59,7 +59,7 @@ Covers spec S1.1–S1.3.
 **Steps**
 
 1. **Pre-checks: build the egress truth table from code, before editing.** Each entry must map to exactly one §1 row.
-   - `grep -rln "anthropic\|ANTHROPIC" apps/api/src --include=*.ts | grep -v __tests__`; expect five callers.
+   - `grep -rln "anthropic\|ANTHROPIC" apps/api/src --include=*.ts | grep -v __tests__`; expect six callers (the spec said five; slice 1 found `visualize_d3`'s codegen as the sixth).
    - The env vars `subprocessor-egress-parity.test.ts` classifies as egress.
    - The hosts `subprocessor-browser-egress.guard.test.ts` lists.
    Also run `grep -n "STRIPE" deploy/helm/portalai/{values.yaml,README.md}`, which must hit now and be empty after the edit.
@@ -70,7 +70,7 @@ Covers spec S1.1–S1.3.
    - Run `npm run lint:doc-pointers`.
 
 **Done when:**
-- Every truth-table entry maps to a §1 row, and the five Anthropic callers are listed, with data-sample senders marked.
+- Every truth-table entry maps to a §1 row, and the six Anthropic callers are listed, with data-sample senders marked.
 - No `confirm` remains for region or cache.
 - §5 cites the enforcing code for each control.
 - The Helm example can't fail the residency guard.

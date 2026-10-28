@@ -1,8 +1,9 @@
 # Portals AI residency chart — default values. See README.md for the full
-# reference. Data-dependency bundling (postgresql/redis/minio subcharts),
-# migrate/seed hooks, ingress and the bundled Keycloak issuer land in later
-# slices (#566); this skeleton wires the api + web workloads, their config and
-# secret env, and the split liveness/readiness probes.
+# reference. The chart installs the api + web workloads with their config and
+# secret env and split liveness/readiness probes; bundled data dependencies
+# (postgresql/redis/minio subcharts, evaluation-grade); the migrate, seed and
+# #581 upgrade hooks; an optional ingress; and an optional bundled Keycloak
+# issuer for installs with no customer IdP (#566).
 
 # Container images. repository/tag are required at install (the deploy pipeline
 # pushes them to ECR; a customer mirrors them into their own registry).
@@ -64,7 +65,10 @@ containerSecurityContext:
       - ALL
 
 # saas | residency — sets DEPLOY_MODE (selects the API's auth validator) and
-# is echoed into the web config.js.
+# is echoed into the web config.js. The default stays `saas` so the chart's
+# mode always matches an explicit choice; a residency install sets
+# `residency`, which also enables the API's boot guard (OIDC required, no
+# central Stripe credentials — apps/api/src/config/deploy-mode.ts).
 deployMode: saas
 
 # OIDC identity (residency). Non-secret; reaches the API validator and the web
@@ -85,7 +89,9 @@ oidc:
 config: {}
 
 # Secret env → Secret (e.g. ENCRYPTION_KEY, ANTHROPIC_API_KEY,
-# STRIPE_*, OAUTH_STATE_SECRET). Rendered into a chart-managed Secret unless
+# OAUTH_STATE_SECRET). Never STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET on a
+# residency install: the API refuses to boot with them, since residency
+# entitlement comes from the marketplace, not the Stripe webhook. Rendered into a chart-managed Secret unless
 # existingSecret is set, in which case the app reads env from that Secret and
 # these are ignored.
 secrets: {}

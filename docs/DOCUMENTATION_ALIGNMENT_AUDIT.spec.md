@@ -39,7 +39,7 @@ Every **C** row in discovery §1–§5, every **G** row in §3, and every **S** 
 **S1.1 `docs/DEPLOYMENT_SECURITY_REVIEW.md`**
 
 - **§1 Egress** becomes one row per vector. Each row says whether the call is server-side or from the browser, whether it is always on or conditional on an env var, what data it carries, and the residency override if one exists. Rows:
-  - Anthropic, which has **five** callers: the agent, `curated-view-filter-suggest.haiku.ts`, `spreadsheet-parsing-llm.service.ts`, `rest-api/classifier.haiku.ts` and `rest-api/jsonata-suggest.haiku.ts`. The two REST helpers and the interpret path are marked **sends data samples**. The override is `ANTHROPIC_BASE_URL`.
+  - Anthropic, which has **six** callers (the survey found five; `visualize_d3`'s code generation, which sends up to 10 sample rows, was found in slice 1): the agent, `visualize-d3.tool.ts`, `curated-view-filter-suggest.haiku.ts`, `spreadsheet-parsing-llm.service.ts`, `rest-api/classifier.haiku.ts` and `rest-api/jsonata-suggest.haiku.ts`. The two REST helpers and the interpret path are marked **sends data samples**. The override is `ANTHROPIC_BASE_URL`.
   - Tavily (`TAVILY_API_KEY`).
   - Mapbox geocoding (`GEOCODING_API_KEY`).
   - AWS Marketplace Entitlement + SNS. This is us-east-1 only, so it is cross-region for any other install, and it also needs inbound SNS to `/api/webhooks/aws-marketplace`.
@@ -325,7 +325,7 @@ Run per package with `npm run test:unit` (and `npm run test:integration` in `app
 
 ## Acceptance criteria
 - [ ] Every C row in discovery §1–§5 has status **fixed** in the drift report, and every S row is **fixed** or **resolved (reason)**. The drift report is in the PR body.
-- [ ] **Egress parity.** `DEPLOYMENT_SECURITY_REVIEW.md` §1 lists every egress vector in the code, including the five Anthropic callers, AWS Marketplace, the REST and webhook hosts, and the CARTO/OSM browser tiles. `subprocessor-egress-parity` and `subprocessor-browser-egress` still pass.
+- [ ] **Egress parity.** `DEPLOYMENT_SECURITY_REVIEW.md` §1 lists every egress vector in the code, including the six Anthropic callers, AWS Marketplace, the REST and webhook hosts, and the CARTO/OSM browser tiles. `subprocessor-egress-parity` and `subprocessor-browser-egress` still pass.
 - [ ] **Residency boot.** A residency `values.yaml` built from the chart's own example boots past the `deploy-mode` guard.
 - [ ] **Toolpack registration.** A toolpack server following the documented signing instructions registers successfully. The mock toolpack server and `packages/demo-toolpack` already behave this way.
 - [ ] **No false claims.** No user-facing surface (site, Help, getting-started) claims a database connector, scheduled syncs, or data export.
