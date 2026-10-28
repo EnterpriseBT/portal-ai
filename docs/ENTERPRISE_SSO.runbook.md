@@ -30,8 +30,9 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 
 - Add the customer's IdP as an **Auth0 Enterprise Connection** (Okta/Entra/Ping via SAML or OIDC) in the tenant. Auth0 brokers it; the app keeps validating the same Auth0 issuer, so **no `SSO_ISSUERS` change is needed** for the SaaS path.
 - Federated users are **invitation-gated**: seat them first via the #584 invite flow. To make an unmatched federated login **deny** (rather than fall through to a personal org), set the enterprise-connection marker so the app can tell an enterprise login from a self-serve Google one:
-  - `SSO_ENTERPRISE_CLAIM` — the token claim that marks an enterprise login (e.g. a namespaced connection claim added by an Auth0 Action, or `sub`-prefix convention).
+  - `SSO_ENTERPRISE_CLAIM` — the name of an access-token claim that only enterprise logins carry. The check is on that named claim alone (`SsoConfig.isEnterpriseFederated`, `apps/api/src/config/sso.config.ts`): presence, or exact equality with `_VALUE`. There is no prefix match, so a `sub`-prefix convention can't be used.
   - `SSO_ENTERPRISE_CLAIM_VALUE` — optional; when set the claim must equal it, else presence alone marks it.
+  - **Where the claim comes from.** Auth0 puts no connection claim on an access token by default, and adding one takes a post-login Action. Since #873 the tenants run **no** post-login Action (`docs/PROD_PROVISIONING.runbook.md`, `docs/AUTH0_CLI_OPS.md`). Enabling this marker therefore means deliberately adding an Action that only sets this claim, and recording that change against #873's posture. Without it, leave both vars unset: an unmatched federated login then falls through to a personal org, as a self-serve login does.
 - Leave `DEPLOY_MODE` unset (defaults `saas`). Google self-serve login is unchanged.
 
 ### Residency — customer OIDC or bundled issuer
@@ -60,5 +61,6 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 | `SSO_ISSUERS` | api | **saas only** — JSON `[{issuer,audience,alg?}]` for enterprise federation; unset → derived from `AUTH0_*` |
 | `SSO_ENTERPRISE_CLAIM` / `_VALUE` | api | **saas only** — marks an enterprise-federated login for invite-gating |
 | `OIDC_ISSUER` / `OIDC_AUDIENCE` | api | **residency only** — the single customer issuer; boot guard requires both |
+| `OIDC_CLIENT_ID` | web | **residency only** — the customer IdP's client id for the browser sign-in, served in the runtime `config.js` (Helm `oidc.clientId`) |
 | web auth provider | web | runtime `config.js` `AUTH_PROVIDER` (`auth0` / `oidc`, #607) — not a build-time `VITE_*` |
 | ~~`AUTH0_WEBHOOK_SECRET`~~ | — | **removed** (#577 from the app, #873 from the deployment); delete it from each store after the #873 deploy (step 3 above) |

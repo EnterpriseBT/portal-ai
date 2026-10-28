@@ -16,7 +16,7 @@ One published release fires two workflows off the same event:
 
 | Workflow | Deploys | Notes |
 |---|---|---|
-| `deploy-prod.yml` | `app.portalsai.io` + `api.portalsai.io` | the stacks, the web bundle, the API image |
+| `deploy-prod.yml` | `app.portalsai.io` + `api.portalsai.io` | the stacks, the web bundle, the API image (Trivy-gated, attested and signed — `docs/SUPPLY_CHAIN.md`), the residency web image (not yet gated, #909), then `verify-login` signs in to prod as its QA owner (#489) |
 | `deploy-site-prod.yml` | `www.portalsai.io` **and the bare `portalsai.io`** | gated on the `PROD_SITE_CONFIG_URL` variable — see § *Activating www.portalsai.io*. The apex is an alias on the same distribution and 301s to `www` (#404) |
 
 Both run in the **`prod` GitHub Environment**, so both pause for approval.
@@ -30,10 +30,10 @@ Both run in the **`prod` GitHub Environment**, so both pause for approval.
 
       "token.actions.githubusercontent.com:sub": "repo:EnterpriseBT/portal-ai:environment:prod"
 
-  The role's **permission policy is least-privilege IaC (#397)**: `infra/cloudformation/iam.yml` (the `portalai-iam` stack) defines `portalai-deploy-prod-{app,infra}` and attaches them to this role **by name**. `AdministratorAccess` is retired from it once a prod release proves the scoped policy (zero-`AccessDenied` CloudTrail diff) — the trust document above is never changed by that work.
+  The role's **permission policy is least-privilege IaC (#397)**: `infra/cloudformation/iam.yml` (the `portalai-iam` stack) defines `portalai-deploy-prod-{app,infra}` and attaches them to this role **by name**. `AdministratorAccess` was detached from it once a prod release proved the scoped policy (zero-`AccessDenied` CloudTrail diff, #876) — the trust document above was never changed by that work.
 
 - [ ] **`PROD_AWS_ROLE_ARN` and `PROD_HOSTED_ZONE_ID` must be repository secrets, not environment secrets** — `deploy-site-prod.yml` reads them in its caller job, outside the environment.
-- [ ] The eleven `PROD_SECRET_ARN_*` and three `PROD_VITE_AUTH0_*` secrets — see the provisioning runbook. (Twelve until `PROD_SECRET_ARN_AUTH0_WEBHOOK_SECRET` is deleted, after #873's recovery window: `docs/ENTERPRISE_SSO.runbook.md` step 3.)
+- [ ] The eleven `PROD_SECRET_ARN_*` secrets (`ANTHROPIC_API_KEY`, `DATABASE_URL`, `ENCRYPTION_KEY`, `GEOCODING_API_KEY`, `GITHUB_DISPATCH_TOKEN`, `GOOGLE_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_CLIENT_SECRET`, `OAUTH_STATE_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TAVILY_API_KEY`), the four `PROD_VITE_AUTH0_*` secrets (`DOMAIN`, `AUDIENCE`, `CLIENT_ID`, and `QA_CONNECTION` for the QA sign-in, #489) — see the provisioning runbook. The three `PROD_VITE_GOOGLE_*` secrets are still passed by the workflow but no longer read: the picker's values come from the catalog at runtime since #580. The workflow no longer reads `PROD_SECRET_ARN_AUTH0_WEBHOOK_SECRET`; delete that repository secret after #873's recovery window (`docs/ENTERPRISE_SSO.runbook.md` step 3).
 
 ## Cutting a release
 
@@ -42,7 +42,7 @@ Both run in the **`prod` GitHub Environment**, so both pause for approval.
 3. Write the release notes. **These are the deployment journal** — the reason the trigger is a release rather than a manual dispatch. Say what changed, not just which PRs merged.
 4. **Publish**. Both workflows start.
 5. Approve the run when GitHub asks. This is the last point at which stopping is free.
-6. Watch `deploy-infra` → then `deploy-frontend` and `deploy-backend` in parallel.
+6. Watch `deploy-infra` → then `deploy-frontend` and `deploy-backend` in parallel → then `verify-login`. A red `verify-login` means prod sign-in is broken; it never rolls back — see Rollback.
 
 ## The first deploy is different
 
